@@ -4,6 +4,22 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 
+const { spawn } = require('child_process');
+
+// Spawn the Python script
+const pythonProcess = spawn('python', ['/home/anon/JARVIS/JARVIS.py']);
+
+// Store the text output received from the Python script
+let textOutput = '';
+
+// Listen for data from the Python script
+pythonProcess.stdout.on('data', (data) => {
+  textOutput += data.toString();
+});
+
+pythonProcess.stderr.on('data', (data) => {
+  console.error('Python script error:', data.toString());
+});
 
 const app = express();
 const port = 3000; // You can change the port number if needed
@@ -56,6 +72,12 @@ app.post('/upload', upload.single('audio'), (req, res) => {
       res.status(500).send('Error converting audio file');
     })
     .run();
+});
+
+// Handle GET request to retrieve the text output
+app.get('/text-output', (req, res) => {
+  res.send(textOutput);
+  textOutput = ''; // Clear the text output after sending it
 });
 
 // Start the server

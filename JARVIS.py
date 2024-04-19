@@ -6,7 +6,7 @@ from transformers import pipeline
 from groq import Groq
 import librosa
 import pyinotify
-import os
+import sys
 
 # Initialize a queue to handle new files as they come in rather than force them to process all at once which may cause errors
 file_queue = queue.Queue()
@@ -33,6 +33,7 @@ def handle_chat_with_groq(transcribed_text):
     
     response = chat_completion.choices[0].message.content
     print("Model:", response)
+    sys.stdout.flush()
 
 
 # Existing WhisperTEST.py content
@@ -78,7 +79,7 @@ wm = pyinotify.WatchManager()
 handler = EventHandler()
 notifier = pyinotify.Notifier(wm, handler)
 # wm.add_watch is now using pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO instead of IN_CREATE because we want to process the file after it has been fully written
-wdd = wm.add_watch('audio-server/uploads', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
+wdd = wm.add_watch('uploads', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
 
 print("Monitoring 'Uploads' directory for new files. Press CTRL+C to stop.")
 notifier.loop()
