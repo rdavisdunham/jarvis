@@ -78,7 +78,7 @@ wm = pyinotify.WatchManager()
 handler = EventHandler()
 notifier = pyinotify.Notifier(wm, handler)
 # wm.add_watch is now using pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO instead of IN_CREATE because we want to process the file after it has been fully written
-wdd = wm.add_watch('Recordings', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
+wdd = wm.add_watch('audio-server/uploads', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
 
-print("Monitoring 'Recordings' directory for new files. Press CTRL+C to stop.")
+print("Monitoring 'Uploads' directory for new files. Press CTRL+C to stop.")
 notifier.loop()
