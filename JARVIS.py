@@ -11,25 +11,56 @@ import sys
 # Initialize a queue to handle new files as they come in rather than force them to process all at once which may cause errors
 file_queue = queue.Queue()
 
+# Initialize a list to hold the messages
+persistent_messages = []
+
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text):
+    global persistent_messages 
+
     client = Groq(api_key="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")
+
+    #append the user's message to the persistent messages list
+    persistent_messages.append({
+        "role": "user",
+        "content": transcribed_text,
+    })
+
+    # ensure the messages list doesn't exceed the max_messages limit
+    max_messages = 60
+    if len(persistent_messages) > max_messages:
+        # Remove the oldest message to keep the list within the max_messages limit
+        persistent_messages.pop(0)
+        # If the first message is from the assistant, remove it as well to ensure the list starts with a user message
+        if persistent_messages[0]["role"] == "assistant":
+            persistent_messages.pop(0)
     
     messages = [
         {
             "role": "system",
             "content": "You are my good friend and AI companion who loves to roast me. You also love salamanders.",
-        },
-        {
-            "role": "user",
-            "content": transcribed_text,
-        }
-    ]
+        }] + persistent_messages
+
+
     
     chat_completion = client.chat.completions.create(
         messages=messages,
-        model="mixtral-8x7b-32768",
+        model="llama3-70b-8192",
     )
+
+    # extract the llm's response and append it to the messages list
+    response = chat_completion.choices[0].message.content
+    persistent_messages.append({
+        "role": "assistant",
+        "content": response,
+    })
+
+    if len(persistent_messages) > max_messages:
+        # Remove the oldest message to keep the list within the max_messages limit
+        persistent_messages.pop(0)
+        # If the first message is from the assistant, remove it as well to ensure the list starts with a user message
+        if persistent_messages[0]["role"] == "assistant":
+            persistent_messages.pop(0)
     
     response = chat_completion.choices[0].message.content
     print("Model:", response)
