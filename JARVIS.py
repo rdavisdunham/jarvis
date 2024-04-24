@@ -18,7 +18,7 @@ persistent_messages = []
 def handle_chat_with_groq(transcribed_text):
     global persistent_messages 
 
-    client = Groq(api_key="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")
+    client = Groq(api_key="ENTER_API_KEY_HERE")
 
     #append the user's message to the persistent messages list
     persistent_messages.append({
