@@ -14,7 +14,9 @@ let textOutput = '';
 
 // Listen for data from the Python script
 pythonProcess.stdout.on('data', (data) => {
-  textOutput += data.toString();
+  const output = data.toString();
+  console.log('Python script output:', output);
+  textOutput += output;
 });
 
 pythonProcess.stderr.on('data', (data) => {
