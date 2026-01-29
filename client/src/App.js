@@ -1,87 +1,150 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ReactMediaRecorder } from 'react-media-recorder';
 import axios from 'axios';
+import './App.css';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+
+// Simple SVG Icons as components
+const SendIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="22" y1="2" x2="11" y2="13"></line>
+    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+  </svg>
+);
+
+const MicIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+    <line x1="12" y1="19" x2="12" y2="23"></line>
+    <line x1="8" y1="23" x2="16" y2="23"></line>
+  </svg>
+);
+
+const StopIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+  </svg>
+);
 
 const App = () => {
   const [mediaRecorderKey, setMediaRecorderKey] = useState(Date.now());
-  const [textOutput, setTextOutput] = useState([]); // Now an array of messages
-  const [isRecording, setIsRecording] = useState(false); // New state to track recording status
-  const messagesEndRef = useRef(null); // Create a ref for the messages container
+  const [messages, setMessages] = useState([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const messagesEndRef = useRef(null);
   const [userInput, setUserInput] = useState('');
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [backendReady, setBackendReady] = useState(false);
 
-  // Scroll to the bottom function
+  useEffect(() => {
+    const checkBackendReady = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/health`);
+        if (response.data.ready) {
+          setBackendReady(true);
+          return;
+        }
+      } catch (error) {
+        // Backend not reachable yet
+      }
+      setTimeout(checkBackendReady, 1000);
+    };
+    checkBackendReady();
+  }, []);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Use useEffect to scroll to the bottom whenever textOutput changes
   useEffect(() => {
     scrollToBottom();
-  }, [textOutput]);
+  }, [messages]);
 
   const sendTextMessage = async () => {
-    if (userInput.trim() !== '') {
+    if (userInput.trim() !== '' && !isWaitingForResponse) {
+      const message = userInput;
+      setUserInput('');
+      setIsWaitingForResponse(true);
+
       try {
-        setTextOutput(prevTextOutput => [...prevTextOutput, `User: ${userInput}`]); // Add user's input to textOutput
-        await axios.post('http://192.168.1.189:3000/text-message', { message: userInput });
-        setUserInput(''); // Clear the input field after sending
-        pollForTextOutput(); // Start polling for the response
+        setMessages(prev => [...prev, { type: 'user', content: message }]);
+        await axios.post(`${API_URL}/text-message`, { message });
+        await pollForTextOutput();
       } catch (error) {
         console.error('Error sending text message:', error);
+      } finally {
+        setIsWaitingForResponse(false);
       }
     }
   };
 
   const handleStop = async (blobUrl, blob) => {
-    setMediaRecorderKey(Date.now()); // Reset the ReactMediaRecorder component
-    setIsRecording(false); // Update recording status
-    await handleUpload(blob); // Call handleUpload directly after stopping the recording
+    setMediaRecorderKey(Date.now());
+    setIsRecording(false);
+    await handleUpload(blob);
   };
 
   const handleUpload = async (blob) => {
-    if (blob) {
+    if (blob && !isWaitingForResponse) {
+      setIsWaitingForResponse(true);
       const formData = new FormData();
       formData.append('audio', blob, 'recording.webm');
 
       try {
-        await axios.post('http://192.168.1.189:3000/upload', formData, {
+        await axios.post(`${API_URL}/upload`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
-        console.log('Audio uploaded successfully');
-        pollForTextOutput(); // Start polling for text output after successful upload
+        await pollForTextOutput();
       } catch (error) {
         console.error('Error uploading audio:', error);
+      } finally {
+        setIsWaitingForResponse(false);
       }
     }
   };
 
   const pollForTextOutput = async () => {
-    const maxAttempts = 50; // Maximum number of attempts to check for text output
-    const interval = 500; // Interval between attempts in milliseconds
+    const maxAttempts = 60;
+    const interval = 500;
+    let hasModelResponse = false;
 
-    let attempts = 0;
-
-    const checkForTextOutput = async () => {
+    for (let attempts = 0; attempts < maxAttempts; attempts++) {
       try {
-        const response = await axios.get('http://192.168.1.189:3000/text-output');
+        const response = await axios.get(`${API_URL}/text-output`);
         const newTextOutput = response.data;
-        if (newTextOutput) { // Assuming the server returns an empty response or specific status if not ready
-          console.log('Text output from server:', newTextOutput);
-          setTextOutput(prevTextOutput => [...prevTextOutput, newTextOutput]); // Append new message
-          return; // Stop polling since we got the output
+
+        if (newTextOutput && newTextOutput.trim()) {
+          const newMessages = [];
+          const lines = newTextOutput.split('\n');
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('Transcribed Text:')) {
+              newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
+            } else if (trimmed.startsWith('Model:')) {
+              newMessages.push({ type: 'model', content: trimmed.substring(6).trim() });
+              hasModelResponse = true;
+            } else if (trimmed && newMessages.length > 0) {
+              newMessages[newMessages.length - 1].content += '\n' + trimmed;
+            }
+          }
+
+          if (newMessages.length > 0) {
+            setMessages(prev => [...prev, ...newMessages]);
+          }
+
+          if (hasModelResponse) {
+            return;
+          }
         }
-        throw new Error('Text output not ready'); // Trigger retry
+
+        await new Promise(resolve => setTimeout(resolve, interval));
       } catch (error) {
         console.error('Error retrieving text output:', error);
-        if (++attempts < maxAttempts) {
-          setTimeout(checkForTextOutput, interval); // Schedule next attempt
-        } else {
-          console.error('Maximum attempts reached, stopping poll for text output.');
-        }
+        await new Promise(resolve => setTimeout(resolve, interval));
       }
-    };
-
-    checkForTextOutput(); // Start the polling process
+    }
   };
 
   const toggleRecording = (start, stop) => {
@@ -90,81 +153,111 @@ const App = () => {
     } else {
       start();
     }
-    setIsRecording(!isRecording); // Toggle the recording status
+    setIsRecording(!isRecording);
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
       sendTextMessage();
     }
   };
 
+  if (!backendReady) {
+    return (
+      <div className="loading-screen">
+        <h2>J.A.R.V.I.S.</h2>
+        <p>Initializing AI systems...</p>
+        <div className="loader"></div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <ReactMediaRecorder
-        key={mediaRecorderKey} // Use a unique key to force remount
-        audio
-        onStop={handleStop}
-        render={({ status, startRecording, stopRecording }) => (
-          <div>
-            <p>{status}</p>
-            <button onClick={() => toggleRecording(startRecording, stopRecording)}>
-              {isRecording ? 'Stop Recording' : 'Start Recording'}
-            </button>
+    <div className="chat-container">
+      {/* Header */}
+      <div className="chat-header">
+        <div className="header-avatar">J</div>
+        <div className="header-info">
+          <h1>J.A.R.V.I.S.</h1>
+          <div className="header-status">
+            <span className="status-dot"></span>
+            Online
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="messages-container">
+        {messages.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">💬</div>
+            <h3>Start a conversation</h3>
+            <p>Type a message or use voice input</p>
+          </div>
+        ) : (
+          messages.map((message, index) => (
+            <div key={index} className={`message ${message.type}`}>
+              <div className="message-label">
+                {message.type === 'user' ? 'You' : 'JARVIS'}
+              </div>
+              <div className="message-bubble">
+                {message.content}
+              </div>
+            </div>
+          ))
+        )}
+
+        {/* Typing Indicator */}
+        {isWaitingForResponse && (
+          <div className="message model">
+            <div className="message-label">JARVIS</div>
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
         )}
-      />
-      <div
-        style={{
-          height: '80vh',
-          width: '90vw',
-          overflowY: 'scroll',
-          backgroundColor: '#f0f0f0',
-          padding: '10px',
-          boxSizing: 'border-box',
-          resize: 'none',
-          marginTop: '10px',
-          border: '1px solid #ccc',
-        }}
-      >
-        {textOutput.map((message, index) => (
-          <div key={index}>
-            {message.split('\n').reduce((acc, line, lineIndex) => {
-              // Determine the color based on the line prefix or carry over the previous color
-              const color = line.startsWith('User:') ? 'black' :
-                            line.startsWith('Model:') ? 'blue' : acc.prevColor;
 
-              acc.lines.push(
-                <div
-                  key={lineIndex}
-                  style={{
-                    color: color,
-                    marginBottom: '10px',
-                  }}
-                >
-                  {line}
-                </div>
-              );
-
-              // Update the previous color for the next iteration
-              acc.prevColor = color;
-              return acc;
-            }, { lines: [], prevColor: 'black' }).lines // Initialize with black as the default color
-          }
-          </div>
-        ))}
-        <div ref={messagesEndRef} /> {/* Invisible element at the end of the messages */}
+        <div ref={messagesEndRef} />
       </div>
-      <div style={{ display: 'flex', marginTop: '10px' }}>
+
+      {/* Input Area */}
+      <div className="input-container">
+        <ReactMediaRecorder
+          key={mediaRecorderKey}
+          audio
+          onStop={handleStop}
+          render={({ startRecording, stopRecording }) => (
+            <button
+              className={`btn btn-mic ${isRecording ? 'recording' : ''}`}
+              onClick={() => toggleRecording(startRecording, stopRecording)}
+              disabled={isWaitingForResponse}
+              title={isRecording ? 'Stop recording' : 'Start recording'}
+            >
+              {isRecording ? <StopIcon /> : <MicIcon />}
+            </button>
+          )}
+        />
+
         <input
           type="text"
+          className="text-input"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
-          onKeyDown={handleKeyDown} // Add this line
-          placeholder="Type your message..."
-          style={{ flex: 1, marginRight: '10px' }}
+          onKeyDown={handleKeyDown}
+          placeholder="Type a message..."
         />
-        <button onClick={sendTextMessage}>Send</button>
+
+        <button
+          className="btn btn-send"
+          onClick={sendTextMessage}
+          disabled={isWaitingForResponse || !userInput.trim()}
+          title="Send message"
+        >
+          <SendIcon />
+        </button>
       </div>
     </div>
   );
