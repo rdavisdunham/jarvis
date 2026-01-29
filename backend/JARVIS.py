@@ -1,6 +1,9 @@
-# v0.26 adds option to use Groq's hosted Whisper model instead of local
+# v0.27 adds Sesame CSM text-to-speech integration
 import queue
 import threading
+import time
+import base64
+import requests
 from groq import Groq
 import pyinotify
 import sys
@@ -23,6 +26,84 @@ persistent_messages = []
 
 # Initialize Groq client
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "ENTER_API_KEY_HERE"))
+
+# TTS Configuration
+ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() == "true"
+DEEPINFRA_TOKEN = os.environ.get("DEEPINFRA_TOKEN", "")
+TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", "/app/audio-server/outputs")
+TTS_MAX_CHARS = int(os.environ.get("TTS_MAX_CHARS", "1000"))  # Max characters to synthesize
+TTS_VOICE = os.environ.get("TTS_VOICE", "")  # Custom voice name (create via /v1/voices/add)
+# TTS Provider: "chatterbox" (default, consistent voice) or "csm" (local deployment later)
+TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "chatterbox")
+
+# Ensure TTS output directory exists
+if ENABLE_TTS:
+    os.makedirs(TTS_OUTPUT_DIR, exist_ok=True)
+    print(f"TTS enabled, output directory: {TTS_OUTPUT_DIR}", file=sys.stderr)
+
+def text_to_speech(text):
+    """Generate speech using configured TTS provider"""
+    if not DEEPINFRA_TOKEN:
+        print("Warning: DEEPINFRA_TOKEN not set, skipping TTS", file=sys.stderr)
+        return None
+
+    # Truncate long text to avoid cutoff issues
+    original_len = len(text)
+    if original_len > TTS_MAX_CHARS:
+        # Try to truncate at a sentence boundary
+        truncated = text[:TTS_MAX_CHARS]
+        last_period = truncated.rfind('.')
+        last_question = truncated.rfind('?')
+        last_exclaim = truncated.rfind('!')
+        last_sentence = max(last_period, last_question, last_exclaim)
+        if last_sentence > TTS_MAX_CHARS // 2:
+            text = truncated[:last_sentence + 1]
+        else:
+            text = truncated + "..."
+        print(f"TTS: Truncated text from {original_len} to {len(text)} chars", file=sys.stderr)
+
+    # Select TTS provider endpoint
+    if TTS_PROVIDER == "csm":
+        endpoint = "https://api.deepinfra.com/v1/inference/sesame/csm-1b"
+        payload = {"text": text, "response_format": "wav"}
+    else:  # chatterbox (default)
+        endpoint = "https://api.deepinfra.com/v1/inference/ResembleAI/chatterbox-turbo"
+        payload = {"text": text, "output_format": "wav"}
+        if TTS_VOICE:
+            payload["voice"] = TTS_VOICE
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {DEEPINFRA_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+
+        # API returns JSON with base64-encoded audio in data URL format
+        data = response.json()
+        audio_data_url = data.get("audio", "")
+
+        # Parse data URL: "data:audio/wav;base64,<base64_data>"
+        if audio_data_url.startswith("data:"):
+            # Extract base64 portion after the comma
+            base64_data = audio_data_url.split(",", 1)[1]
+            audio_bytes = base64.b64decode(base64_data)
+            return audio_bytes
+        else:
+            print(f"TTS API returned unexpected audio format", file=sys.stderr)
+            return None
+
+    except requests.exceptions.RequestException as e:
+        print(f"TTS API error: {e}", file=sys.stderr)
+        return None
+    except (ValueError, KeyError) as e:
+        print(f"TTS response parsing error: {e}", file=sys.stderr)
+        return None
 
 # Function to transcribe audio using Groq's Whisper API
 def transcribe_with_groq(audio_file_path):
@@ -92,10 +173,28 @@ def handle_chat_with_groq(transcribed_text):
         # If the first message is from the assistant, remove it as well to ensure the list starts with a user message
         if persistent_messages[0]["role"] == "assistant":
             persistent_messages.pop(0)
-    
+
     response = chat_completion.choices[0].message.content
+
+    # Print model response immediately so frontend can display it
     print("Model:", response)
     sys.stdout.flush()
+
+    # Generate TTS audio if enabled (after text is sent to avoid blocking)
+    if ENABLE_TTS:
+        def generate_tts():
+            audio_bytes = text_to_speech(response)
+            if audio_bytes:
+                audio_filename = f"response_{int(time.time() * 1000)}.wav"
+                audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
+                with open(audio_path, 'wb') as f:
+                    f.write(audio_bytes)
+                print(f"Audio: {audio_filename}")
+                sys.stdout.flush()
+
+        # Run TTS in background thread so text appears immediately
+        tts_thread = threading.Thread(target=generate_tts, daemon=True)
+        tts_thread.start()
 
 
 # Load local Whisper model only if configured to use it

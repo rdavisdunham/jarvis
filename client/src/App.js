@@ -36,6 +36,9 @@ const App = () => {
   const [userInput, setUserInput] = useState('');
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [backendReady, setBackendReady] = useState(false);
+  const [audioQueue, setAudioQueue] = useState([]);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const audioRef = useRef(null);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -52,6 +55,39 @@ const App = () => {
     };
     checkBackendReady();
   }, []);
+
+  // Audio playback effect - play queued audio files sequentially
+  useEffect(() => {
+    if (audioQueue.length > 0 && !isPlayingAudio) {
+      const playNextAudio = () => {
+        const nextAudioFile = audioQueue[0];
+        const audio = new Audio(`${API_URL}/audio-output/${nextAudioFile}`);
+        audioRef.current = audio;
+        setIsPlayingAudio(true);
+
+        audio.onended = () => {
+          setAudioQueue(prev => prev.slice(1));
+          setIsPlayingAudio(false);
+          audioRef.current = null;
+        };
+
+        audio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          setAudioQueue(prev => prev.slice(1));
+          setIsPlayingAudio(false);
+          audioRef.current = null;
+        };
+
+        audio.play().catch(err => {
+          console.error('Failed to play audio:', err);
+          setAudioQueue(prev => prev.slice(1));
+          setIsPlayingAudio(false);
+        });
+      };
+
+      playNextAudio();
+    }
+  }, [audioQueue, isPlayingAudio]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -108,6 +144,8 @@ const App = () => {
     const maxAttempts = 60;
     const interval = 500;
     let hasModelResponse = false;
+    let audioPollingAttempts = 0;
+    const maxAudioPollingAttempts = 20; // Keep polling for audio after model response
 
     for (let attempts = 0; attempts < maxAttempts; attempts++) {
       try {
@@ -117,10 +155,16 @@ const App = () => {
         if (newTextOutput && newTextOutput.trim()) {
           const newMessages = [];
           const lines = newTextOutput.split('\n');
+          let gotAudioThisPoll = false;
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (trimmed.startsWith('Transcribed Text:')) {
+            if (trimmed.startsWith('AUDIO:')) {
+              // Queue audio file for playback
+              const audioFile = trimmed.substring(6).trim();
+              setAudioQueue(prev => [...prev, audioFile]);
+              gotAudioThisPoll = true;
+            } else if (trimmed.startsWith('Transcribed Text:')) {
               newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
             } else if (trimmed.startsWith('Model:')) {
               newMessages.push({ type: 'model', content: trimmed.substring(6).trim() });
@@ -134,8 +178,17 @@ const App = () => {
             setMessages(prev => [...prev, ...newMessages]);
           }
 
-          if (hasModelResponse) {
+          // If we got audio after model response, we're done
+          if (hasModelResponse && gotAudioThisPoll) {
             return;
+          }
+        }
+
+        // After getting model response, keep polling briefly for audio
+        if (hasModelResponse) {
+          audioPollingAttempts++;
+          if (audioPollingAttempts >= maxAudioPollingAttempts) {
+            return; // Timeout waiting for audio, but we have the text
           }
         }
 

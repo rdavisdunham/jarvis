@@ -39,6 +39,11 @@ pythonProcess.stdout.on('data', (data) => {
         pythonProcess.stdin.write(`TEXT:${msg}\n`);
       }
       pendingMessages = [];
+    } else if (trimmed.startsWith('Audio:')) {
+      // TTS audio file notification - prefix with AUDIO: for frontend parsing
+      const audioFile = trimmed.substring(6).trim();
+      messageQueue.push(`AUDIO:${audioFile}`);
+      console.log('TTS audio generated:', audioFile);
     } else if (trimmed) {
       messageQueue.push(trimmed);
     }
@@ -55,6 +60,9 @@ const port = 3000; // You can change the port number if needed
 const cors = require('cors');
 app.use(cors());
 app.use(express.json());
+
+// Serve audio output files for TTS
+app.use('/audio-output', express.static(path.join(__dirname, 'outputs')));
 
 // Set up multer for handling file uploads
 const storage = multer.diskStorage({

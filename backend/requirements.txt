@@ -1,5 +1,6 @@
 groq
 pyinotify
+requests
 
 # Required only if USE_LOCAL_WHISPER=true (uncomment to enable local model support)
 torch

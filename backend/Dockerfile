@@ -25,8 +25,8 @@ RUN npm install
 WORKDIR /app
 COPY . .
 
-# Create uploads directory
-RUN mkdir -p /app/audio-server/uploads
+# Create uploads and outputs directories
+RUN mkdir -p /app/audio-server/uploads /app/audio-server/outputs
 
 # Expose port
 EXPOSE 3000
