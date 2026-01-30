@@ -1,70 +1,105 @@
-# Getting Started with Create React App
+# J.A.R.V.I.S.
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A voice-enabled AI assistant with real-time speech-to-text and text-to-speech capabilities. Talk to your AI companion through a modern chat interface with support for both voice and text input.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- **Voice Input** - Record audio messages that are transcribed using Groq's Whisper API (or local Whisper model)
+- **Text Input** - Type messages directly in the chat interface
+- **Text-to-Speech** - AI responses are spoken aloud using configurable TTS providers:
+  - **Orpheus** (Groq) - Low-latency, expressive voices with emotion annotations
+  - **Chatterbox** (DeepInfra) - Consistent voice with custom voice cloning support
+  - **CSM** (DeepInfra) - Sesame's conversational speech model
+- **Real-time Audio** - SSE-based audio delivery for instant playback as responses are generated
+- **Customizable Personality** - Configure the AI's system prompt to your liking
+- **TTS Toggle** - Enable/disable voice responses from the UI
 
-### `npm start`
+## Architecture
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```
+┌─────────────┐     ┌─────────────────┐     ┌─────────────┐
+│   React     │────▶│  Express Server │────▶│   Python    │
+│   Client    │◀────│  (audio-server) │◀────│  (JARVIS)   │
+└─────────────┘ SSE └─────────────────┘     └─────────────┘
+                           │                       │
+                           ▼                       ▼
+                    ┌─────────────┐         ┌─────────────┐
+                    │   ffmpeg    │         │  Groq API   │
+                    │  (convert)  │         │ (LLM + TTS) │
+                    └─────────────┘         └─────────────┘
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## Quick Start
 
-### `npm test`
+1. Copy `.env.example` to `.env` and configure your API keys
+2. Run with Docker:
+   ```bash
+   docker-compose up --build
+   ```
+3. Open http://localhost:8080 in your browser
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Environment Variables
 
-### `npm run build`
+### Required
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+| Variable | Description |
+|----------|-------------|
+| `GROQ_API_KEY` | Your Groq API key for LLM, Whisper, and Orpheus TTS |
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Speech-to-Text
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_LOCAL_WHISPER` | `false` | Set to `true` to use local Whisper model instead of Groq API (requires CUDA) |
 
-### `npm run eject`
+### Text-to-Speech
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TTS_PROVIDER` | `chatterbox` | TTS provider: `orpheus` (Groq), `chatterbox` (DeepInfra), or `csm` (DeepInfra) |
+| `TTS_MAX_CHARS` | `1000` | Max characters to synthesize (longer text is truncated at sentence boundary) |
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#### Orpheus (Groq) Options
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TTS_ORPHEUS_VOICE` | `autumn` | Voice selection: `autumn`, `tara`, `leah`, `jess`, `leo`, `dan`, `mia`, `zac` |
+| `TTS_ORPHEUS_SPEED` | `1.0` | Speech speed: `0.25` (slow) to `4.0` (very fast) |
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+#### DeepInfra Options
 
-## Learn More
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEEPINFRA_TOKEN` | - | DeepInfra API token (only required for `chatterbox` or `csm` providers) |
+| `TTS_VOICE` | - | Custom voice name for Chatterbox (create via DeepInfra's `/v1/voices/add` endpoint) |
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Personality
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JARVIS_SYSTEM_PROMPT` | (friendly AI) | System prompt that defines JARVIS's personality and behavior |
 
-### Code Splitting
+### Frontend
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REACT_APP_API_URL` | `http://localhost:3000` | Backend API URL (set at build time) |
 
-### Analyzing the Bundle Size
+## Orpheus Voice Annotations
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+When using the Orpheus TTS provider, you can include emotion annotations in the AI's responses. These are automatically hidden from the displayed text but affect the voice output:
 
-### Making a Progressive Web App
+- `[warmly]` - Warm, friendly tone
+- `[laughs]` - Laughter
+- `[sighs]` - Sighing
+- `[whispers]` - Whispering
+- `[excited]` - Excited tone
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+Example system prompt:
+```
+You are a friendly assistant. Use emotion annotations like [warmly], [laughs], or [excited] to make your responses more expressive.
+```
 
-### Advanced Configuration
+## License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+MIT
