@@ -16,6 +16,15 @@ let outputBuffer = '';
 let pythonReady = false;
 let pendingMessages = []; // Messages received before Python is ready
 
+// SSE client management for real-time audio notifications
+let sseClients = [];
+
+function broadcastEvent(eventType, data) {
+  sseClients.forEach(client => {
+    client.res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`);
+  });
+}
+
 // Listen for data from the Python script
 pythonProcess.stdout.on('data', (data) => {
   const output = data.toString();
@@ -40,10 +49,10 @@ pythonProcess.stdout.on('data', (data) => {
       }
       pendingMessages = [];
     } else if (trimmed.startsWith('Audio:')) {
-      // TTS audio file notification - prefix with AUDIO: for frontend parsing
+      // TTS audio file notification - push via SSE for real-time delivery
       const audioFile = trimmed.substring(6).trim();
-      messageQueue.push(`AUDIO:${audioFile}`);
-      console.log('TTS audio generated:', audioFile);
+      broadcastEvent('audio', { file: audioFile });
+      console.log('TTS audio pushed via SSE:', audioFile);
     } else if (trimmed) {
       messageQueue.push(trimmed);
     }
@@ -143,6 +152,42 @@ app.post('/text-message', (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ ready: pythonReady });
+});
+
+// SSE endpoint for real-time audio notifications
+app.get('/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Send initial connection confirmation
+  res.write('event: connected\ndata: {}\n\n');
+
+  const clientId = Date.now();
+  sseClients.push({ id: clientId, res });
+  console.log(`SSE client connected: ${clientId}, total clients: ${sseClients.length}`);
+
+  req.on('close', () => {
+    sseClients = sseClients.filter(c => c.id !== clientId);
+    console.log(`SSE client disconnected: ${clientId}, total clients: ${sseClients.length}`);
+  });
+});
+
+// Handle POST request to update TTS setting for audio responses
+app.post('/tts-setting', (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') {
+    return res.status(400).send('Invalid TTS setting');
+  }
+
+  if (pythonReady) {
+    // Send the TTS setting to the Python script
+    pythonProcess.stdin.write(`TTS_SETTING:${enabled ? 'on' : 'off'}\n`);
+    res.json({ success: true, enabled });
+  } else {
+    res.status(503).send('Python not ready');
+  }
 });
 
 // Handle GET request to retrieve the text output

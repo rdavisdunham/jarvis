@@ -5,6 +5,9 @@ import './App.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
+// Strip bracketed annotations like [warmly], [laughs], etc. from display text
+const stripBrackets = (text) => text.replace(/\[.*?\]\s*/g, '').trim();
+
 // Simple SVG Icons as components
 const SendIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -28,6 +31,22 @@ const StopIcon = () => (
   </svg>
 );
 
+const SpeakerOnIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+    <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+  </svg>
+);
+
+const SpeakerOffIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+    <line x1="23" y1="9" x2="17" y2="15"></line>
+    <line x1="17" y1="9" x2="23" y2="15"></line>
+  </svg>
+);
+
 const App = () => {
   const [mediaRecorderKey, setMediaRecorderKey] = useState(Date.now());
   const [messages, setMessages] = useState([]);
@@ -39,6 +58,7 @@ const App = () => {
   const [audioQueue, setAudioQueue] = useState([]);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef(null);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -55,6 +75,31 @@ const App = () => {
     };
     checkBackendReady();
   }, []);
+
+  // SSE connection for real-time audio notifications
+  useEffect(() => {
+    if (backendReady) {
+      const eventSource = new EventSource(`${API_URL}/events`);
+
+      eventSource.addEventListener('audio', (event) => {
+        const data = JSON.parse(event.data);
+        console.log('SSE audio received:', data.file);
+        setAudioQueue(prev => [...prev, data.file]);
+      });
+
+      eventSource.addEventListener('connected', () => {
+        console.log('SSE connected to backend');
+      });
+
+      eventSource.onerror = () => {
+        console.warn('SSE connection error, will auto-reconnect...');
+      };
+
+      return () => {
+        eventSource.close();
+      };
+    }
+  }, [backendReady]);
 
   // Audio playback effect - play queued audio files sequentially
   useEffect(() => {
@@ -96,6 +141,16 @@ const App = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const toggleTts = async () => {
+    const newValue = !ttsEnabled;
+    setTtsEnabled(newValue);
+    try {
+      await axios.post(`${API_URL}/tts-setting`, { enabled: newValue });
+    } catch (error) {
+      console.error('Error updating TTS setting:', error);
+    }
+  };
 
   const sendTextMessage = async () => {
     if (userInput.trim() !== '' && !isWaitingForResponse) {
@@ -141,11 +196,9 @@ const App = () => {
   };
 
   const pollForTextOutput = async () => {
+    // Poll for text messages only - audio arrives via SSE independently
     const maxAttempts = 60;
     const interval = 500;
-    let hasModelResponse = false;
-    let audioPollingAttempts = 0;
-    const maxAudioPollingAttempts = 20; // Keep polling for audio after model response
 
     for (let attempts = 0; attempts < maxAttempts; attempts++) {
       try {
@@ -155,20 +208,13 @@ const App = () => {
         if (newTextOutput && newTextOutput.trim()) {
           const newMessages = [];
           const lines = newTextOutput.split('\n');
-          let gotAudioThisPoll = false;
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (trimmed.startsWith('AUDIO:')) {
-              // Queue audio file for playback
-              const audioFile = trimmed.substring(6).trim();
-              setAudioQueue(prev => [...prev, audioFile]);
-              gotAudioThisPoll = true;
-            } else if (trimmed.startsWith('Transcribed Text:')) {
+            if (trimmed.startsWith('Transcribed Text:')) {
               newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
             } else if (trimmed.startsWith('Model:')) {
               newMessages.push({ type: 'model', content: trimmed.substring(6).trim() });
-              hasModelResponse = true;
             } else if (trimmed && newMessages.length > 0) {
               newMessages[newMessages.length - 1].content += '\n' + trimmed;
             }
@@ -178,17 +224,9 @@ const App = () => {
             setMessages(prev => [...prev, ...newMessages]);
           }
 
-          // If we got audio after model response, we're done
-          if (hasModelResponse && gotAudioThisPoll) {
+          // Return once we have the model response - audio arrives via SSE
+          if (newMessages.some(m => m.type === 'model')) {
             return;
-          }
-        }
-
-        // After getting model response, keep polling briefly for audio
-        if (hasModelResponse) {
-          audioPollingAttempts++;
-          if (audioPollingAttempts >= maxAudioPollingAttempts) {
-            return; // Timeout waiting for audio, but we have the text
           }
         }
 
@@ -238,6 +276,13 @@ const App = () => {
             Online
           </div>
         </div>
+        <button
+          className={`btn-tts-toggle ${ttsEnabled ? 'enabled' : ''}`}
+          onClick={toggleTts}
+          title={ttsEnabled ? 'Voice responses on' : 'Voice responses off'}
+        >
+          {ttsEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+        </button>
       </div>
 
       {/* Messages */}
@@ -255,7 +300,7 @@ const App = () => {
                 {message.type === 'user' ? 'You' : 'JARVIS'}
               </div>
               <div className="message-bubble">
-                {message.content}
+                {message.type === 'model' ? stripBrackets(message.content) : message.content}
               </div>
             </div>
           ))

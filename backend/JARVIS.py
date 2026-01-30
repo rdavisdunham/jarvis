@@ -24,29 +24,80 @@ file_queue = queue.Queue()
 # Initialize a list to hold the messages
 persistent_messages = []
 
+# TTS setting for audio responses (controlled by frontend toggle)
+audio_tts_enabled = True
+
 # Initialize Groq client
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "ENTER_API_KEY_HERE"))
 
-# TTS Configuration
-ENABLE_TTS = os.environ.get("ENABLE_TTS", "false").lower() == "true"
+# TTS Configuration (controlled by frontend toggle, not environment variable)
 DEEPINFRA_TOKEN = os.environ.get("DEEPINFRA_TOKEN", "")
 TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", "/app/audio-server/outputs")
 TTS_MAX_CHARS = int(os.environ.get("TTS_MAX_CHARS", "1000"))  # Max characters to synthesize
 TTS_VOICE = os.environ.get("TTS_VOICE", "")  # Custom voice name (create via /v1/voices/add)
-# TTS Provider: "chatterbox" (default, consistent voice) or "csm" (local deployment later)
+# TTS Provider: "orpheus" (Groq), "chatterbox" (DeepInfra), or "csm" (DeepInfra)
 TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "chatterbox")
+# Orpheus voice options: autumn, tara, leah, jess, leo, dan, mia, zac
+TTS_ORPHEUS_VOICE = os.environ.get("TTS_ORPHEUS_VOICE", "autumn")
+# Orpheus speech speed (1.0 = normal, 1.5 = faster, 2.0 = very fast)
+TTS_ORPHEUS_SPEED = float(os.environ.get("TTS_ORPHEUS_SPEED", "1.0"))
 
 # Ensure TTS output directory exists
-if ENABLE_TTS:
-    os.makedirs(TTS_OUTPUT_DIR, exist_ok=True)
-    print(f"TTS enabled, output directory: {TTS_OUTPUT_DIR}", file=sys.stderr)
+os.makedirs(TTS_OUTPUT_DIR, exist_ok=True)
+
+# Orpheus TTS max input size
+ORPHEUS_MAX_CHARS = 200
+
+def split_text_for_tts(text, max_chars=ORPHEUS_MAX_CHARS):
+    """Split text into chunks under max_chars, breaking at natural boundaries"""
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    remaining = text
+
+    while remaining:
+        if len(remaining) <= max_chars:
+            chunks.append(remaining)
+            break
+
+        # Find the best break point within max_chars
+        chunk = remaining[:max_chars]
+
+        # Try to break at sentence boundaries first
+        last_period = chunk.rfind('. ')
+        last_question = chunk.rfind('? ')
+        last_exclaim = chunk.rfind('! ')
+        last_sentence = max(last_period, last_question, last_exclaim)
+
+        if last_sentence > max_chars // 2:
+            # Break at sentence boundary (include the punctuation)
+            break_point = last_sentence + 1
+        else:
+            # Try to break at comma or other punctuation
+            last_comma = chunk.rfind(', ')
+            last_semicolon = chunk.rfind('; ')
+            last_colon = chunk.rfind(': ')
+            last_punct = max(last_comma, last_semicolon, last_colon)
+
+            if last_punct > max_chars // 2:
+                break_point = last_punct + 1
+            else:
+                # Break at last space
+                last_space = chunk.rfind(' ')
+                if last_space > max_chars // 2:
+                    break_point = last_space
+                else:
+                    # Hard break at max_chars
+                    break_point = max_chars
+
+        chunks.append(remaining[:break_point].strip())
+        remaining = remaining[break_point:].strip()
+
+    return chunks
 
 def text_to_speech(text):
     """Generate speech using configured TTS provider"""
-    if not DEEPINFRA_TOKEN:
-        print("Warning: DEEPINFRA_TOKEN not set, skipping TTS", file=sys.stderr)
-        return None
-
     # Truncate long text to avoid cutoff issues
     original_len = len(text)
     if original_len > TTS_MAX_CHARS:
@@ -61,6 +112,36 @@ def text_to_speech(text):
         else:
             text = truncated + "..."
         print(f"TTS: Truncated text from {original_len} to {len(text)} chars", file=sys.stderr)
+
+    # Use Groq Orpheus TTS
+    if TTS_PROVIDER == "orpheus":
+        try:
+            # Split text into chunks under 200 chars (Orpheus limit)
+            chunks = split_text_for_tts(text)
+            if len(chunks) > 1:
+                print(f"TTS: Split text into {len(chunks)} chunks", file=sys.stderr)
+
+            wav_chunks = []
+            for chunk in chunks:
+                response = groq_client.audio.speech.create(
+                    model="canopylabs/orpheus-v1-english",
+                    voice=TTS_ORPHEUS_VOICE,
+                    response_format="wav",
+                    input=chunk,
+                    speed=TTS_ORPHEUS_SPEED
+                )
+                wav_chunks.append(response.read())
+
+            # Return list of audio chunks for sequential playback
+            return wav_chunks
+        except Exception as e:
+            print(f"Groq TTS error: {e}", file=sys.stderr)
+            return None
+
+    # DeepInfra providers (chatterbox, csm)
+    if not DEEPINFRA_TOKEN:
+        print("Warning: DEEPINFRA_TOKEN not set, skipping TTS", file=sys.stderr)
+        return None
 
     # Select TTS provider endpoint
     if TTS_PROVIDER == "csm":
@@ -125,7 +206,7 @@ def transcribe_with_groq(audio_file_path):
     return transcription
 
 # Function to handle chat with Groq based on transcribed text
-def handle_chat_with_groq(transcribed_text):
+def handle_chat_with_groq(transcribed_text, enable_tts=True):
     global persistent_messages
 
     #append the user's message to the persistent messages list
@@ -180,17 +261,28 @@ def handle_chat_with_groq(transcribed_text):
     print("Model:", response)
     sys.stdout.flush()
 
-    # Generate TTS audio if enabled (after text is sent to avoid blocking)
-    if ENABLE_TTS:
+    # Generate TTS audio if enabled (controlled by frontend toggle)
+    if enable_tts:
         def generate_tts():
-            audio_bytes = text_to_speech(response)
-            if audio_bytes:
-                audio_filename = f"response_{int(time.time() * 1000)}.wav"
-                audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
-                with open(audio_path, 'wb') as f:
-                    f.write(audio_bytes)
-                print(f"Audio: {audio_filename}")
-                sys.stdout.flush()
+            audio_result = text_to_speech(response)
+            if audio_result:
+                timestamp = int(time.time() * 1000)
+                # Handle list of chunks (Orpheus) or single bytes (DeepInfra)
+                if isinstance(audio_result, list):
+                    for i, audio_bytes in enumerate(audio_result):
+                        audio_filename = f"response_{timestamp}_{i}.wav"
+                        audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
+                        with open(audio_path, 'wb') as f:
+                            f.write(audio_bytes)
+                        print(f"Audio: {audio_filename}")
+                        sys.stdout.flush()
+                else:
+                    audio_filename = f"response_{timestamp}.wav"
+                    audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
+                    with open(audio_path, 'wb') as f:
+                        f.write(audio_result)
+                    print(f"Audio: {audio_filename}")
+                    sys.stdout.flush()
 
         # Run TTS in background thread so text appears immediately
         tts_thread = threading.Thread(target=generate_tts, daemon=True)
@@ -211,6 +303,7 @@ else:
 
 # Function to process audio files, now designed to be run in a worker thread
 def process_audio_files():
+    global audio_tts_enabled
     while True:
         # Get the next audio file path from the queue
         audio_file_path = file_queue.get()
@@ -226,7 +319,8 @@ def process_audio_files():
 
             print("Transcribed Text:", transcribed_text)
             sys.stdout.flush()
-            handle_chat_with_groq(transcribed_text)
+            # Use the audio TTS setting (controlled by frontend toggle)
+            handle_chat_with_groq(transcribed_text, enable_tts=audio_tts_enabled)
         except Exception as e:
             # Handle exceptions that occur during file processing
             print(f"Error processing {audio_file_path}: {e}", file=sys.stderr)
@@ -247,13 +341,26 @@ class EventHandler(pyinotify.ProcessEvent):
 
 # Function to read text messages from stdin
 def process_stdin():
+    global audio_tts_enabled
     while True:
         try:
             line = sys.stdin.readline()
             if line.startswith('TEXT:'):
+                # Text input - no TTS by default
                 text_message = line[5:].strip()
                 if text_message:
-                    handle_chat_with_groq(text_message)
+                    handle_chat_with_groq(text_message, enable_tts=False)
+            elif line.startswith('TEXT_TTS:'):
+                # Text input with TTS enabled
+                text_message = line[9:].strip()
+                if text_message:
+                    handle_chat_with_groq(text_message, enable_tts=True)
+            elif line.startswith('TTS_SETTING:'):
+                # Update TTS setting for audio responses
+                setting = line[12:].strip().lower()
+                audio_tts_enabled = setting == 'on'
+                print(f"TTS setting updated: {'on' if audio_tts_enabled else 'off'}", file=sys.stderr)
+                sys.stderr.flush()
         except Exception as e:
             print(f"Error reading stdin: {e}", file=sys.stderr)
             sys.stderr.flush()
