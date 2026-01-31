@@ -11,7 +11,9 @@ services:
       - DEEPINFRA_TOKEN=${DEEPINFRA_TOKEN:-}
       - TTS_MAX_CHARS=${TTS_MAX_CHARS:-1000}
       - TTS_VOICE=${TTS_VOICE:-}
-      - TTS_PROVIDER=${TTS_PROVIDER:-chatterbox}
+      - TTS_PROVIDER=${TTS_PROVIDER:-orpheus}
+      - TTS_ORPHEUS_VOICE=${TTS_ORPHEUS_VOICE:-autumn}
+      - TTS_ORPHEUS_SPEED=${TTS_ORPHEUS_SPEED:-1.0}
     volumes:
       - backend-uploads:/app/audio-server/uploads
     restart: unless-stopped
@@ -21,6 +23,7 @@ services:
       context: ./client
       args:
         - REACT_APP_API_URL=http://localhost:3000
+        - REACT_APP_STT_MODE=${REACT_APP_STT_MODE:-api}
     ports:
       - "8080:80"
     depends_on:

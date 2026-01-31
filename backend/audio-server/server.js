@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 
 const { spawn } = require('child_process');
@@ -45,7 +44,8 @@ pythonProcess.stdout.on('data', (data) => {
       pythonReady = true;
       // Send any pending messages
       for (const msg of pendingMessages) {
-        pythonProcess.stdin.write(`TEXT:${msg}\n`);
+        const prefix = msg.enableTts ? 'TEXT_TTS:' : 'TEXT:';
+        pythonProcess.stdin.write(`${prefix}${msg.message}\n`);
       }
       pendingMessages = [];
     } else if (trimmed.startsWith('Audio:')) {
@@ -86,6 +86,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // Handle POST request for audio upload
+// Now expects WAV files directly from browser (no FFmpeg conversion needed)
 app.post('/upload', upload.single('audio'), (req, res) => {
   if (!req.file) {
     return res.status(400).send('No audio file uploaded');
@@ -93,58 +94,42 @@ app.post('/upload', upload.single('audio'), (req, res) => {
 
   console.log('Audio file received:', req.file.filename);
 
-  // Convert the audio file to WAV format
   const inputFile = path.join(__dirname, 'uploads', req.file.filename);
   const outputFile = path.join(__dirname, 'uploads', path.parse(req.file.filename).name + '.wav');
 
-  // Log input file size
-  const inputStats = fs.statSync(inputFile);
-  console.log(`Input file size: ${inputStats.size} bytes`);
+  // Log file size
+  const stats = fs.statSync(inputFile);
+  console.log(`WAV file size: ${stats.size} bytes`);
 
-  ffmpeg(inputFile)
-    .audioCodec('pcm_s16le')  // Standard WAV codec
-    .audioFrequency(16000)    // Whisper expects 16kHz
-    .audioChannels(1)         // Mono
-    .output(outputFile)
-    .on('end', () => {
-      // Log output file size
-      const outputStats = fs.statSync(outputFile);
-      console.log(`Output WAV size: ${outputStats.size} bytes`);
-      console.log('Audio file converted to WAV');
+  // Rename to ensure .wav extension (file is already WAV from browser)
+  if (inputFile !== outputFile) {
+    fs.renameSync(inputFile, outputFile);
+    console.log('WAV file ready:', outputFile);
+  } else {
+    console.log('WAV file ready:', inputFile);
+  }
 
-      // Delete the original audio file
-      fs.unlink(inputFile, (err) => {
-        if (err) {
-          console.error('Error deleting original audio file:', err);
-        } else {
-          console.log('Original file deleted');
-        }
-      });
-
-      res.send('Audio file uploaded and converted successfully');
-    })
-    .on('error', (err) => {
-      console.error('Error converting audio file:', err);
-      res.status(500).send('Error converting audio file');
-    })
-    .run();
+  res.send('Audio uploaded successfully');
 });
 
 // Handle POST request for text messages
 app.post('/text-message', (req, res) => {
-  const { message } = req.body;
+  const { message, enableTts } = req.body;
   if (!message) {
     return res.status(400).send('No message provided');
   }
 
+  // Use TEXT_TTS: prefix when TTS is explicitly requested, TEXT: otherwise
+  const prefix = enableTts ? 'TEXT_TTS:' : 'TEXT:';
+
   if (pythonReady) {
     // Send the text message to the Python script via stdin
-    pythonProcess.stdin.write(`TEXT:${message}\n`);
+    pythonProcess.stdin.write(`${prefix}${message}\n`);
     res.send('Message sent');
   } else {
     // Queue the message until Python is ready
     console.log('Python not ready, queuing message:', message);
-    pendingMessages.push(message);
+    pendingMessages.push({ message, enableTts });
     res.send('Message queued');
   }
 });

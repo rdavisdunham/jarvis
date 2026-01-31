@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ReactMediaRecorder } from 'react-media-recorder';
+import { useMicVAD } from '@ricky0123/vad-react';
 import axios from 'axios';
 import './App.css';
+import { transcribe, sendTranscribedText, getSTTMode } from './utils/sttService';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
@@ -48,9 +49,8 @@ const SpeakerOffIcon = () => (
 );
 
 const App = () => {
-  const [mediaRecorderKey, setMediaRecorderKey] = useState(Date.now());
   const [messages, setMessages] = useState([]);
-  const [isRecording, setIsRecording] = useState(false);
+  const [vadState, setVadState] = useState('idle'); // 'idle' | 'listening' | 'speaking'
   const messagesEndRef = useRef(null);
   const [userInput, setUserInput] = useState('');
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
@@ -170,32 +170,59 @@ const App = () => {
     }
   };
 
-  const handleStop = async (blobUrl, blob) => {
-    setMediaRecorderKey(Date.now());
-    setIsRecording(false);
-    await handleUpload(blob);
-  };
+  // VAD hook for voice activity detection
+  const vad = useMicVAD({
+    startOnLoad: false,
+    onSpeechStart: () => {
+      console.log('Speech started');
+      setVadState('speaking');
+    },
+    onSpeechEnd: async (audio) => {
+      console.log('Speech ended');
+      setVadState('idle');
+      vad.pause();
 
-  const handleUpload = async (blob) => {
-    if (blob && !isWaitingForResponse) {
+      if (isWaitingForResponse) return;
       setIsWaitingForResponse(true);
-      const formData = new FormData();
-      formData.append('audio', blob, 'recording.webm');
 
       try {
-        await axios.post(`${API_URL}/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        await pollForTextOutput();
+        const sttMode = getSTTMode();
+
+        if (sttMode === 'browser') {
+          // Browser STT: transcribe locally, send text
+          const text = await transcribe(audio);
+          if (text) {
+            setMessages(prev => [...prev, { type: 'user', content: text }]);
+            await sendTranscribedText(text);
+            await pollForTextOutput(true); // Skip user message parsing
+          }
+        } else {
+          // API STT: upload WAV, server transcribes
+          await transcribe(audio);
+          await pollForTextOutput(false);
+        }
       } catch (error) {
-        console.error('Error uploading audio:', error);
+        console.error('STT error:', error);
       } finally {
         setIsWaitingForResponse(false);
       }
+    },
+    onVADMisfire: () => {
+      console.log('VAD misfire - speech too short');
+    },
+  });
+
+  const toggleVAD = () => {
+    if (vadState === 'idle') {
+      vad.start();
+      setVadState('listening');
+    } else {
+      vad.pause();
+      setVadState('idle');
     }
   };
 
-  const pollForTextOutput = async () => {
+  const pollForTextOutput = async (skipUserMessage = false) => {
     // Poll for text messages only - audio arrives via SSE independently
     const maxAttempts = 60;
     const interval = 500;
@@ -212,7 +239,10 @@ const App = () => {
           for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.startsWith('Transcribed Text:')) {
-              newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
+              // Skip user message if we already added it (browser STT mode)
+              if (!skipUserMessage) {
+                newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
+              }
             } else if (trimmed.startsWith('Model:')) {
               newMessages.push({ type: 'model', content: trimmed.substring(6).trim() });
             } else if (trimmed && newMessages.length > 0) {
@@ -236,15 +266,6 @@ const App = () => {
         await new Promise(resolve => setTimeout(resolve, interval));
       }
     }
-  };
-
-  const toggleRecording = (start, stop) => {
-    if (isRecording) {
-      stop();
-    } else {
-      start();
-    }
-    setIsRecording(!isRecording);
   };
 
   const handleKeyDown = (e) => {
@@ -323,21 +344,18 @@ const App = () => {
 
       {/* Input Area */}
       <div className="input-container">
-        <ReactMediaRecorder
-          key={mediaRecorderKey}
-          audio
-          onStop={handleStop}
-          render={({ startRecording, stopRecording }) => (
-            <button
-              className={`btn btn-mic ${isRecording ? 'recording' : ''}`}
-              onClick={() => toggleRecording(startRecording, stopRecording)}
-              disabled={isWaitingForResponse}
-              title={isRecording ? 'Stop recording' : 'Start recording'}
-            >
-              {isRecording ? <StopIcon /> : <MicIcon />}
-            </button>
-          )}
-        />
+        <button
+          className={`btn btn-mic ${vadState !== 'idle' ? 'recording' : ''} ${vadState === 'speaking' ? 'speaking' : ''}`}
+          onClick={toggleVAD}
+          disabled={isWaitingForResponse}
+          title={
+            vadState === 'idle' ? 'Click to listen' :
+            vadState === 'listening' ? 'Listening for speech...' :
+            'Recording...'
+          }
+        >
+          {vadState === 'idle' ? <MicIcon /> : <StopIcon />}
+        </button>
 
         <input
           type="text"
