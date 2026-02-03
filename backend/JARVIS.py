@@ -1,9 +1,7 @@
-# v0.27 adds Sesame CSM text-to-speech integration
+# v0.29 - Token-aware context management with rolling summarization
 import queue
 import threading
 import time
-import base64
-import requests
 from groq import Groq
 import pyinotify
 import sys
@@ -21,8 +19,194 @@ if USE_LOCAL_WHISPER:
 # Initialize a queue to handle new files as they come in rather than force them to process all at once which may cause errors
 file_queue = queue.Queue()
 
-# Initialize a list to hold the messages
-persistent_messages = []
+
+class ContextManager:
+    """
+    Token-aware context management with rolling summarization.
+
+    Uses a hybrid sliding window + rolling summary approach:
+    [System Prompt] + [Rolling Summary] + [Recent Messages]
+       ~500 tokens      ~2000 tokens       up to ~62k tokens
+    """
+
+    # Token thresholds
+    SUMMARIZATION_TRIGGER = 65000  # ~50% of 131k limit
+    HARD_LIMIT = 80000             # ~61% of limit
+    MAX_SINGLE_MESSAGE = 20000    # Truncate very long messages
+    MIN_RECENT_MESSAGES = 10      # Keep at least this many verbatim
+    MIN_SUMMARIZATION_INTERVAL = 30  # Seconds between summarizations
+    MAX_SUMMARY_TOKENS = 4000     # Condense summary if it exceeds this
+
+    def __init__(self, groq_client):
+        self.groq_client = groq_client
+        self.rolling_summary = ""
+        self.recent_messages = []
+        self.last_summarization_time = 0
+        self._lock = threading.Lock()
+
+    def _estimate_tokens(self, text):
+        """Estimate token count using chars/4 heuristic."""
+        return len(text) // 4
+
+    def _estimate_message_tokens(self, message):
+        """Estimate tokens for a single message including role overhead."""
+        return self._estimate_tokens(message.get("content", "")) + 4  # ~4 tokens for role/formatting
+
+    def _get_total_tokens(self, system_prompt):
+        """Calculate total tokens for current context."""
+        total = self._estimate_tokens(system_prompt)
+        if self.rolling_summary:
+            # Summary is embedded in a system message
+            total += self._estimate_tokens(self.rolling_summary) + 50  # overhead for formatting
+        for msg in self.recent_messages:
+            total += self._estimate_message_tokens(msg)
+        return total
+
+    def add_message(self, role, content, system_prompt):
+        """Add a message and trigger summarization if needed."""
+        with self._lock:
+            # Truncate very long messages
+            if self._estimate_tokens(content) > self.MAX_SINGLE_MESSAGE:
+                content = content[:self.MAX_SINGLE_MESSAGE * 4]  # chars = tokens * 4
+                print(f"Warning: Truncated very long {role} message", file=sys.stderr)
+
+            self.recent_messages.append({
+                "role": role,
+                "content": content,
+            })
+
+            # Check if summarization is needed
+            total_tokens = self._get_total_tokens(system_prompt)
+            time_since_last = time.time() - self.last_summarization_time
+
+            if total_tokens > self.SUMMARIZATION_TRIGGER and time_since_last > self.MIN_SUMMARIZATION_INTERVAL:
+                self._perform_summarization(system_prompt)
+            elif total_tokens > self.HARD_LIMIT:
+                # Emergency truncation if we're over hard limit
+                self._emergency_truncate()
+
+    def _perform_summarization(self, system_prompt):
+        """Summarize oldest messages using a fast LLM."""
+        if len(self.recent_messages) <= self.MIN_RECENT_MESSAGES:
+            return
+
+        # Calculate how many messages to summarize (oldest 35%)
+        num_to_summarize = max(1, int(len(self.recent_messages) * 0.35))
+
+        # Ensure we keep at least MIN_RECENT_MESSAGES
+        num_to_summarize = min(num_to_summarize, len(self.recent_messages) - self.MIN_RECENT_MESSAGES)
+
+        if num_to_summarize < 2:
+            return
+
+        # Ensure we don't break user-assistant pairs
+        messages_to_summarize = self.recent_messages[:num_to_summarize]
+        if messages_to_summarize[-1]["role"] == "user":
+            # Don't leave a user message without its response
+            num_to_summarize -= 1
+            messages_to_summarize = self.recent_messages[:num_to_summarize]
+
+        if num_to_summarize < 2:
+            return
+
+        # Build conversation text for summarization
+        conversation_text = "\n".join([
+            f"{msg['role'].upper()}: {msg['content']}"
+            for msg in messages_to_summarize
+        ])
+
+        # Include existing summary for context
+        existing_context = ""
+        if self.rolling_summary:
+            existing_context = f"Previous conversation summary:\n{self.rolling_summary}\n\n"
+
+        summarization_prompt = f"""{existing_context}New conversation to summarize:
+{conversation_text}
+
+Create a concise summary that preserves:
+- Key facts (names, dates, numbers, preferences mentioned)
+- Decisions and conclusions reached
+- User context (their situation, goals, problems)
+- Any commitments or action items
+- The general tone/relationship dynamic
+
+Write in third person (e.g., "The user asked about...", "The assistant explained...").
+If there's a previous summary, merge the new information with it.
+Keep the summary under 500 words."""
+
+        try:
+            completion = self.groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "You are a conversation summarizer. Create concise, informative summaries that preserve key context."},
+                    {"role": "user", "content": summarization_prompt}
+                ],
+                model="llama-3.1-8b-instant",
+                max_tokens=1000,
+            )
+
+            new_summary = completion.choices[0].message.content
+
+            # Update state
+            self.rolling_summary = new_summary
+            self.recent_messages = self.recent_messages[num_to_summarize:]
+            self.last_summarization_time = time.time()
+
+            summary_tokens = self._estimate_tokens(new_summary)
+            print(f"Context summarized: {num_to_summarize} messages -> {summary_tokens} tokens", file=sys.stderr)
+
+            # Check if summary itself is too large
+            if summary_tokens > self.MAX_SUMMARY_TOKENS:
+                self._condense_summary()
+
+        except Exception as e:
+            print(f"Summarization failed: {e}, falling back to emergency truncation", file=sys.stderr)
+            self._emergency_truncate()
+
+    def _condense_summary(self):
+        """Condense an oversized summary."""
+        try:
+            completion = self.groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": "Condense this conversation summary to half its length while keeping the most important facts."},
+                    {"role": "user", "content": self.rolling_summary}
+                ],
+                model="llama-3.1-8b-instant",
+                max_tokens=500,
+            )
+            self.rolling_summary = completion.choices[0].message.content
+            print("Summary condensed due to size", file=sys.stderr)
+        except Exception as e:
+            print(f"Summary condensation failed: {e}", file=sys.stderr)
+            # Truncate summary as fallback
+            self.rolling_summary = self.rolling_summary[:self.MAX_SUMMARY_TOKENS * 4]
+
+    def _emergency_truncate(self):
+        """Emergency truncation when summarization fails or we're over hard limit."""
+        # Keep only the most recent messages
+        if len(self.recent_messages) > self.MIN_RECENT_MESSAGES:
+            removed = len(self.recent_messages) - self.MIN_RECENT_MESSAGES
+            self.recent_messages = self.recent_messages[-self.MIN_RECENT_MESSAGES:]
+            print(f"Emergency truncation: removed {removed} oldest messages", file=sys.stderr)
+
+    def build_messages_for_api(self, system_prompt):
+        """Build the messages array for the API call."""
+        messages = []
+
+        # System prompt with embedded summary
+        if self.rolling_summary:
+            combined_system = f"{system_prompt}\n\n[Previous conversation summary]\n{self.rolling_summary}\n[End of summary - recent conversation follows]"
+        else:
+            combined_system = system_prompt
+
+        messages.append({
+            "role": "system",
+            "content": combined_system,
+        })
+
+        # Add recent messages
+        messages.extend(self.recent_messages)
+
+        return messages
 
 # TTS setting for audio responses (controlled by frontend toggle)
 audio_tts_enabled = True
@@ -30,13 +214,11 @@ audio_tts_enabled = True
 # Initialize Groq client
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "ENTER_API_KEY_HERE"))
 
-# TTS Configuration (controlled by frontend toggle, not environment variable)
-DEEPINFRA_TOKEN = os.environ.get("DEEPINFRA_TOKEN", "")
+# Initialize context manager for token-aware conversation handling
+context_manager = ContextManager(groq_client)
+
+# TTS Configuration (Groq Orpheus)
 TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", "/app/audio-server/outputs")
-TTS_MAX_CHARS = int(os.environ.get("TTS_MAX_CHARS", "1000"))  # Max characters to synthesize
-TTS_VOICE = os.environ.get("TTS_VOICE", "")  # Custom voice name (create via /v1/voices/add)
-# TTS Provider: "orpheus" (Groq), "chatterbox" (DeepInfra), or "csm" (DeepInfra)
-TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "chatterbox")
 # Orpheus voice options: autumn, tara, leah, jess, leo, dan, mia, zac
 TTS_ORPHEUS_VOICE = os.environ.get("TTS_ORPHEUS_VOICE", "autumn")
 # Orpheus speech speed (1.0 = normal, 1.5 = faster, 2.0 = very fast)
@@ -97,94 +279,64 @@ def split_text_for_tts(text, max_chars=ORPHEUS_MAX_CHARS):
     return chunks
 
 def text_to_speech(text):
-    """Generate speech using configured TTS provider"""
-    # Truncate long text to avoid cutoff issues
-    original_len = len(text)
-    if original_len > TTS_MAX_CHARS:
-        # Try to truncate at a sentence boundary
-        truncated = text[:TTS_MAX_CHARS]
-        last_period = truncated.rfind('.')
-        last_question = truncated.rfind('?')
-        last_exclaim = truncated.rfind('!')
-        last_sentence = max(last_period, last_question, last_exclaim)
-        if last_sentence > TTS_MAX_CHARS // 2:
-            text = truncated[:last_sentence + 1]
-        else:
-            text = truncated + "..."
-        print(f"TTS: Truncated text from {original_len} to {len(text)} chars", file=sys.stderr)
-
-    # Use Groq Orpheus TTS
-    if TTS_PROVIDER == "orpheus":
-        try:
-            # Split text into chunks under 200 chars (Orpheus limit)
-            chunks = split_text_for_tts(text)
-            if len(chunks) > 1:
-                print(f"TTS: Split text into {len(chunks)} chunks", file=sys.stderr)
-
-            wav_chunks = []
-            for chunk in chunks:
-                response = groq_client.audio.speech.create(
-                    model="canopylabs/orpheus-v1-english",
-                    voice=TTS_ORPHEUS_VOICE,
-                    response_format="wav",
-                    input=chunk,
-                    speed=TTS_ORPHEUS_SPEED
-                )
-                wav_chunks.append(response.read())
-
-            # Return list of audio chunks for sequential playback
-            return wav_chunks
-        except Exception as e:
-            print(f"Groq TTS error: {e}", file=sys.stderr)
-            return None
-
-    # DeepInfra providers (chatterbox, csm)
-    if not DEEPINFRA_TOKEN:
-        print("Warning: DEEPINFRA_TOKEN not set, skipping TTS", file=sys.stderr)
-        return None
-
-    # Select TTS provider endpoint
-    if TTS_PROVIDER == "csm":
-        endpoint = "https://api.deepinfra.com/v1/inference/sesame/csm-1b"
-        payload = {"text": text, "response_format": "wav"}
-    else:  # chatterbox (default)
-        endpoint = "https://api.deepinfra.com/v1/inference/ResembleAI/chatterbox-turbo"
-        payload = {"text": text, "output_format": "wav"}
-        if TTS_VOICE:
-            payload["voice"] = TTS_VOICE
-
+    """Generate speech using Groq Orpheus TTS"""
     try:
-        response = requests.post(
-            endpoint,
-            headers={
-                "Authorization": f"Bearer {DEEPINFRA_TOKEN}",
-                "Content-Type": "application/json"
-            },
-            json=payload,
-            timeout=60
-        )
-        response.raise_for_status()
+        # Split text into chunks under 200 chars (Orpheus limit)
+        chunks = split_text_for_tts(text)
+        if len(chunks) > 1:
+            print(f"TTS: Split text into {len(chunks)} chunks", file=sys.stderr)
 
-        # API returns JSON with base64-encoded audio in data URL format
-        data = response.json()
-        audio_data_url = data.get("audio", "")
+        wav_chunks = []
+        for chunk in chunks:
+            response = groq_client.audio.speech.create(
+                model="canopylabs/orpheus-v1-english",
+                voice=TTS_ORPHEUS_VOICE,
+                response_format="wav",
+                input=chunk,
+                speed=TTS_ORPHEUS_SPEED
+            )
+            wav_chunks.append(response.read())
 
-        # Parse data URL: "data:audio/wav;base64,<base64_data>"
-        if audio_data_url.startswith("data:"):
-            # Extract base64 portion after the comma
-            base64_data = audio_data_url.split(",", 1)[1]
-            audio_bytes = base64.b64decode(base64_data)
-            return audio_bytes
-        else:
-            print(f"TTS API returned unexpected audio format", file=sys.stderr)
-            return None
-
-    except requests.exceptions.RequestException as e:
-        print(f"TTS API error: {e}", file=sys.stderr)
+        # Return list of audio chunks for sequential playback
+        return wav_chunks
+    except Exception as e:
+        print(f"Groq TTS error: {e}", file=sys.stderr)
         return None
-    except (ValueError, KeyError) as e:
-        print(f"TTS response parsing error: {e}", file=sys.stderr)
-        return None
+
+
+def generate_tts_streaming(text, output_dir):
+    """Generate and write audio chunks immediately as each completes.
+
+    This function combines TTS generation and file writing so that each
+    audio chunk is written to disk immediately after its API call completes,
+    rather than waiting for all chunks to be generated first.
+    """
+    try:
+        chunks = split_text_for_tts(text)
+        if len(chunks) > 1:
+            print(f"TTS: Split text into {len(chunks)} chunks", file=sys.stderr)
+
+        timestamp = int(time.time() * 1000)
+
+        for i, chunk in enumerate(chunks):
+            response = groq_client.audio.speech.create(
+                model="canopylabs/orpheus-v1-english",
+                voice=TTS_ORPHEUS_VOICE,
+                response_format="wav",
+                input=chunk,
+                speed=TTS_ORPHEUS_SPEED
+            )
+            audio_bytes = response.read()
+
+            # Write immediately after this chunk completes
+            audio_filename = f"response_{timestamp}_{i}.wav"
+            audio_path = os.path.join(output_dir, audio_filename)
+            with open(audio_path, 'wb') as f:
+                f.write(audio_bytes)
+            print(f"Audio: {audio_filename}")
+            sys.stdout.flush()
+    except Exception as e:
+        print(f"Groq TTS streaming error: {e}", file=sys.stderr)
 
 # Function to transcribe audio using Groq's Whisper API
 def transcribe_with_groq(audio_file_path):
@@ -207,55 +359,29 @@ def transcribe_with_groq(audio_file_path):
 
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text, enable_tts=True):
-    global persistent_messages
-
-    #append the user's message to the persistent messages list
-    persistent_messages.append({
-        "role": "user",
-        "content": transcribed_text,
-    })
-
-    # ensure the messages list doesn't exceed the max_messages limit
-    max_messages = 60
-    if len(persistent_messages) > max_messages:
-        # Remove the oldest message to keep the list within the max_messages limit
-        persistent_messages.pop(0)
-        # If the first message is from the assistant, remove it as well to ensure the list starts with a user message
-        if persistent_messages[0]["role"] == "assistant":
-            persistent_messages.pop(0)
-    
     system_prompt = os.environ.get(
         "JARVIS_SYSTEM_PROMPT",
         "You are my good friend and AI companion who loves to roast me. You also love salamanders."
     )
-    messages = [
-        {
-            "role": "system",
-            "content": system_prompt,
-        }] + persistent_messages
 
+    # Add user message to context manager (handles summarization if needed)
+    context_manager.add_message("user", transcribed_text, system_prompt)
 
-    
+    # Build messages array with system prompt and rolling summary
+    messages = context_manager.build_messages_for_api(system_prompt)
+
     chat_completion = groq_client.chat.completions.create(
         messages=messages,
-        model="llama-3.3-70b-versatile",
+        # model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
+        reasoning_effort="medium",  # options: "low", "medium", "high"
     )
 
-    # extract the llm's response and append it to the messages list
+    # Extract the LLM's response
     response = chat_completion.choices[0].message.content
-    persistent_messages.append({
-        "role": "assistant",
-        "content": response,
-    })
 
-    if len(persistent_messages) > max_messages:
-        # Remove the oldest message to keep the list within the max_messages limit
-        persistent_messages.pop(0)
-        # If the first message is from the assistant, remove it as well to ensure the list starts with a user message
-        if persistent_messages[0]["role"] == "assistant":
-            persistent_messages.pop(0)
-
-    response = chat_completion.choices[0].message.content
+    # Add assistant response to context manager
+    context_manager.add_message("assistant", response, system_prompt)
 
     # Print model response immediately so frontend can display it
     print("Model:", response)
@@ -263,29 +389,11 @@ def handle_chat_with_groq(transcribed_text, enable_tts=True):
 
     # Generate TTS audio if enabled (controlled by frontend toggle)
     if enable_tts:
-        def generate_tts():
-            audio_result = text_to_speech(response)
-            if audio_result:
-                timestamp = int(time.time() * 1000)
-                # Handle list of chunks (Orpheus) or single bytes (DeepInfra)
-                if isinstance(audio_result, list):
-                    for i, audio_bytes in enumerate(audio_result):
-                        audio_filename = f"response_{timestamp}_{i}.wav"
-                        audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
-                        with open(audio_path, 'wb') as f:
-                            f.write(audio_bytes)
-                        print(f"Audio: {audio_filename}")
-                        sys.stdout.flush()
-                else:
-                    audio_filename = f"response_{timestamp}.wav"
-                    audio_path = os.path.join(TTS_OUTPUT_DIR, audio_filename)
-                    with open(audio_path, 'wb') as f:
-                        f.write(audio_result)
-                    print(f"Audio: {audio_filename}")
-                    sys.stdout.flush()
+        def run_tts():
+            generate_tts_streaming(response, TTS_OUTPUT_DIR)
 
         # Run TTS in background thread so text appears immediately
-        tts_thread = threading.Thread(target=generate_tts, daemon=True)
+        tts_thread = threading.Thread(target=run_tts, daemon=True)
         tts_thread.start()
 
 

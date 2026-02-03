@@ -38,3 +38,8 @@ Thumbs.db
 # Uploads (runtime data)
 uploads/
 outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
