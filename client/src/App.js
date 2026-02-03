@@ -58,6 +58,7 @@ const App = () => {
   const [audioQueue, setAudioQueue] = useState([]);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef(null);
+  const cancelledBeforeRef = useRef(0);  // Timestamp: ignore audio from responses before this
   const [ttsEnabled, setTtsEnabled] = useState(true);
 
   useEffect(() => {
@@ -83,8 +84,21 @@ const App = () => {
 
       eventSource.addEventListener('audio', (event) => {
         const data = JSON.parse(event.data);
-        console.log('SSE audio received:', data.file);
-        setAudioQueue(prev => [...prev, data.file]);
+        const filename = data.file;
+
+        // Extract response ID (timestamp) from filename: response_TIMESTAMP_INDEX.wav
+        const match = filename.match(/^response_(\d+)_\d+\.wav$/);
+        if (match) {
+          const responseTimestamp = parseInt(match[1]);
+          // Ignore chunks from cancelled/old responses
+          if (responseTimestamp <= cancelledBeforeRef.current) {
+            console.log(`Ignoring cancelled audio: ${filename}`);
+            return;
+          }
+        }
+
+        console.log('SSE audio received:', filename);
+        setAudioQueue(prev => [...prev, filename]);
       });
 
       eventSource.addEventListener('connected', () => {
@@ -145,6 +159,19 @@ const App = () => {
   const toggleTts = async () => {
     const newValue = !ttsEnabled;
     setTtsEnabled(newValue);
+
+    // If turning TTS off, stop any currently playing audio
+    if (!newValue) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setAudioQueue([]);
+      setIsPlayingAudio(false);
+      // Cancel all audio from responses generated before now
+      cancelledBeforeRef.current = Date.now();
+    }
+
     try {
       await axios.post(`${API_URL}/tts-setting`, { enabled: newValue });
     } catch (error) {
@@ -214,6 +241,16 @@ const App = () => {
 
   const toggleVAD = () => {
     if (vadState === 'idle') {
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      setAudioQueue([]);
+      setIsPlayingAudio(false);
+      // Cancel all audio from responses generated before now
+      cancelledBeforeRef.current = Date.now();
+
       vad.start();
       setVadState('listening');
     } else {
