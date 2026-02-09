@@ -1,44 +1,66 @@
-# Dependencies
-node_modules
-**/node_modules
+# ── Frontend (not needed by backend image) ──
+client
 
-# Build outputs
-build
-dist
-**/build
-**/dist
-
-# Git
-.git
-.gitignore
-
-# IDE
-.idea
-.vscode
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-
-# Environment files (keep template, ignore actual)
-.env
-.env.local
-.env.*.local
-
-# Python
+# ── Python / ML (massive — venv has PyTorch + CUDA libs) ──
+venv
+.venv
 __pycache__
 *.pyc
 *.pyo
 *.pyd
 .Python
-venv
-.venv
+*.egg-info
 
-# Old/backup files
+# ── Model weights & caches ──
+*.pt
+*.pth
+*.bin
+.cache
+**/.cache
+
+# ── Dependencies ──
+node_modules
+**/node_modules
+
+# ── Build outputs ──
+build
+dist
+**/build
+**/dist
+
+# ── Git ──
+.git
+.gitignore
+
+# ── IDE ──
+.idea
+.vscode
+*.swp
+*.swo
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── Environment files ──
+.env
+.env.local
+.env.*.local
+
+# ── Runtime data ──
+uploads
+outputs
+**/uploads
+**/outputs
+
+# ── Old/backup files ──
 **/OLD
+
+# ── Docs ──
+README.md
+.env.example
+docker-compose.yml
