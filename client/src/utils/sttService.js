@@ -1,7 +1,7 @@
 import { encodeWAV } from './wavEncoder';
 
 const STT_MODE = process.env.REACT_APP_STT_MODE || 'api';
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_URL = `${window.location.protocol}//${window.location.hostname}:3000`;
 
 let whisperPipeline = null;
 

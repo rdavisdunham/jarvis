@@ -14,7 +14,14 @@ WORKDIR /app
 
 # Install Python dependencies first (better caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 1. Copy the 'uv' binary directly from the official image
+# (This is faster and cleaner than 'pip install uv')
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+# 2. Install dependencies using uv + BuildKit Cache
+# The --mount flag creates the "wormhole" to your host machine at /root/.cache/uv
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
 
 # Copy and install Node.js dependencies
 COPY audio-server/package*.json ./audio-server/

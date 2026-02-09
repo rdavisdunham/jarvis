@@ -4,7 +4,8 @@ import axios from 'axios';
 import './App.css';
 import { transcribe, sendTranscribedText, getSTTMode } from './utils/sttService';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+// Dynamically build the URL based on the current browser address
+const API_URL = `${window.location.protocol}//${window.location.hostname}:3000`;
 
 // Strip bracketed annotations like [warmly], [laughs], etc. from display text
 const stripBrackets = (text) => text.replace(/\[.*?\]\s*/g, '').trim();

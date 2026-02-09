@@ -43,3 +43,11 @@ outputs/
 __pycache__/
 *.py[cod]
 *$py.class
+venv/
+*.egg-info/
+
+# CUDA / ML model caches
+*.pt
+*.pth
+*.bin
+.cache/
