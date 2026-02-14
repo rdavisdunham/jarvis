@@ -1,4 +1,5 @@
-# v0.29 - Token-aware context management with rolling summarization
+# v0.31 - Kokoro-82M TTS + conversational interrupt mode
+import base64
 import queue
 import threading
 import time
@@ -217,8 +218,10 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY", "ENTER_API_KEY_HERE"))
 # Initialize context manager for token-aware conversation handling
 context_manager = ContextManager(groq_client)
 
-# TTS Configuration (Groq Orpheus)
+# TTS Configuration
+TTS_PROVIDER = os.environ.get("TTS_PROVIDER", "groq")  # "groq" or "kokoro"
 TTS_OUTPUT_DIR = os.environ.get("TTS_OUTPUT_DIR", "/app/audio-server/outputs")
+# Groq Orpheus settings
 # Orpheus voice options: autumn, tara, leah, jess, leo, dan, mia, zac
 TTS_ORPHEUS_VOICE = os.environ.get("TTS_ORPHEUS_VOICE", "autumn")
 # Orpheus speech speed (1.0 = normal, 1.5 = faster, 2.0 = very fast)
@@ -227,8 +230,20 @@ TTS_ORPHEUS_SPEED = float(os.environ.get("TTS_ORPHEUS_SPEED", "1.0"))
 # Ensure TTS output directory exists
 os.makedirs(TTS_OUTPUT_DIR, exist_ok=True)
 
-# Orpheus TTS max input size
+# Max chunk sizes per provider
 ORPHEUS_MAX_CHARS = 200
+KOKORO_MAX_CHARS = 500
+
+# Lazy-import Kokoro module only when needed
+_tts_kokoro = None
+def _get_kokoro():
+    global _tts_kokoro
+    if _tts_kokoro is None:
+        import tts_kokoro
+        _tts_kokoro = tts_kokoro
+    return _tts_kokoro
+
+print(f"TTS provider: {TTS_PROVIDER}", file=sys.stderr)
 
 def split_text_for_tts(text, max_chars=ORPHEUS_MAX_CHARS):
     """Split text into chunks under max_chars, breaking at natural boundaries"""
@@ -311,8 +326,16 @@ def generate_tts_streaming(text, output_dir):
     audio chunk is written to disk immediately after its API call completes,
     rather than waiting for all chunks to be generated first.
     """
+    if TTS_PROVIDER == "kokoro":
+        _generate_tts_kokoro(text, output_dir)
+    else:
+        _generate_tts_groq(text, output_dir)
+
+
+def _generate_tts_groq(text, output_dir):
+    """Generate TTS via Groq Orpheus API."""
     try:
-        chunks = split_text_for_tts(text)
+        chunks = split_text_for_tts(text, max_chars=ORPHEUS_MAX_CHARS)
         if len(chunks) > 1:
             print(f"TTS: Split text into {len(chunks)} chunks", file=sys.stderr)
 
@@ -328,7 +351,6 @@ def generate_tts_streaming(text, output_dir):
             )
             audio_bytes = response.read()
 
-            # Write immediately after this chunk completes
             audio_filename = f"response_{timestamp}_{i}.wav"
             audio_path = os.path.join(output_dir, audio_filename)
             with open(audio_path, 'wb') as f:
@@ -337,6 +359,28 @@ def generate_tts_streaming(text, output_dir):
             sys.stdout.flush()
     except Exception as e:
         print(f"Groq TTS streaming error: {e}", file=sys.stderr)
+
+
+def _generate_tts_kokoro(text, output_dir):
+    """Generate TTS via local Kokoro-82M model.
+
+    Kokoro handles sentence splitting internally and runs at 50-80x
+    real-time on RTX 3080. Generates full audio, saves as WAV, delivers via SSE.
+    """
+    try:
+        kokoro = _get_kokoro()
+        timestamp = int(time.time() * 1000)
+
+        wav_bytes = kokoro.generate_speech(text)
+        if wav_bytes:
+            audio_filename = f"response_{timestamp}_0.wav"
+            audio_path = os.path.join(output_dir, audio_filename)
+            with open(audio_path, 'wb') as f:
+                f.write(wav_bytes)
+            print(f"Audio: {audio_filename}")
+            sys.stdout.flush()
+    except Exception as e:
+        print(f"Kokoro TTS error: {e}", file=sys.stderr)
 
 # Function to transcribe audio using Groq's Whisper API
 def transcribe_with_groq(audio_file_path):
@@ -463,6 +507,13 @@ def process_stdin():
                 text_message = line[9:].strip()
                 if text_message:
                     handle_chat_with_groq(text_message, enable_tts=True)
+            elif line.startswith('INTERRUPT'):
+                # Cancel ongoing Kokoro generation
+                if TTS_PROVIDER == "kokoro":
+                    kokoro = _get_kokoro()
+                    kokoro.cancel_generation()
+                print("INTERRUPT_ACK")
+                sys.stdout.flush()
             elif line.startswith('TTS_SETTING:'):
                 # Update TTS setting for audio responses
                 setting = line[12:].strip().lower()
@@ -488,6 +539,15 @@ notifier = pyinotify.Notifier(wm, handler)
 wdd = wm.add_watch('uploads', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
 
 print("Monitoring 'uploads' directory for new files. Press CTRL+C to stop.", file=sys.stderr)
+
+# Eager Kokoro model preload when using Kokoro provider
+if TTS_PROVIDER == "kokoro":
+    def _preload_kokoro():
+        kokoro = _get_kokoro()
+        kokoro.load_model()
+        print("KOKORO_READY")
+        sys.stdout.flush()
+    threading.Thread(target=_preload_kokoro, daemon=True).start()
 
 # Signal that we're ready to receive messages
 print("READY")

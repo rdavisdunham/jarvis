@@ -4,5 +4,11 @@ requests
 
 # Required only if USE_LOCAL_WHISPER=true (uncomment to enable local model support)
 torch
+torchaudio
 transformers
 librosa
+
+# Required only if TTS_PROVIDER=kokoro (local Kokoro-82M on GPU)
+numpy
+soundfile
+kokoro>=0.9.4

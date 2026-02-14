@@ -3,10 +3,8 @@ FROM node:20-slim AS build
 
 WORKDIR /app
 
-# Build arguments for API URL and STT mode
-ARG REACT_APP_API_URL=http://localhost:3000
+# Build arguments for STT mode
 ARG REACT_APP_STT_MODE=api
-ENV REACT_APP_API_URL=$REACT_APP_API_URL
 ENV REACT_APP_STT_MODE=$REACT_APP_STT_MODE
 
 # Copy package files

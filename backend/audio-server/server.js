@@ -2,6 +2,8 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const { WebSocketServer } = require('ws');
 
 const { spawn } = require('child_process');
 
@@ -18,16 +20,35 @@ let pendingMessages = []; // Messages received before Python is ready
 // SSE client management for real-time audio notifications
 let sseClients = [];
 
+// WebSocket client management for streaming audio
+const wsClients = new Set();
+
 function broadcastEvent(eventType, data) {
   sseClients.forEach(client => {
     client.res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`);
   });
 }
 
+function wsBroadcastJSON(obj) {
+  const msg = JSON.stringify(obj);
+  for (const ws of wsClients) {
+    if (ws.readyState === 1) { // WebSocket.OPEN
+      ws.send(msg);
+    }
+  }
+}
+
+function wsBroadcastBinary(buffer) {
+  for (const ws of wsClients) {
+    if (ws.readyState === 1) {
+      ws.send(buffer);
+    }
+  }
+}
+
 // Listen for data from the Python script
 pythonProcess.stdout.on('data', (data) => {
   const output = data.toString();
-  console.log('Python script output:', output);
 
   // Buffer the output and split by newlines to get complete messages
   outputBuffer += output;
@@ -48,12 +69,54 @@ pythonProcess.stdout.on('data', (data) => {
         pythonProcess.stdin.write(`${prefix}${msg.message}\n`);
       }
       pendingMessages = [];
+    } else if (trimmed === 'KOKORO_READY') {
+      console.log('Kokoro model loaded and ready');
+      wsBroadcastJSON({ type: 'kokoro_ready' });
+    } else if (trimmed === 'INTERRUPT_ACK') {
+      console.log('Interrupt acknowledged by Python');
+      wsBroadcastJSON({ type: 'interrupt_ack' });
+    } else if (trimmed.startsWith('STREAM_START:')) {
+      // STREAM_START:<responseId>:<sampleRate>
+      const parts = trimmed.substring(13).split(':');
+      const responseId = parts[0];
+      const sampleRate = parseInt(parts[1]) || 24000;
+      console.log(`Stream start: ${responseId} @ ${sampleRate}Hz`);
+      wsBroadcastJSON({
+        type: 'audio_start',
+        responseId,
+        sampleRate,
+        channels: 1,
+        bitDepth: 16
+      });
+    } else if (trimmed.startsWith('STREAM_CHUNK:')) {
+      // STREAM_CHUNK:<responseId>:<chunkIndex>:<base64_pcm_data>
+      const firstColon = 13; // after "STREAM_CHUNK:"
+      const secondColon = trimmed.indexOf(':', firstColon);
+      const thirdColon = trimmed.indexOf(':', secondColon + 1);
+      const chunkIndex = parseInt(trimmed.substring(secondColon + 1, thirdColon));
+      const b64Data = trimmed.substring(thirdColon + 1);
+
+      // Decode base64 to binary PCM
+      const pcmBuffer = Buffer.from(b64Data, 'base64');
+
+      // Build binary message: [4-byte chunkIndex LE][PCM data]
+      const header = Buffer.alloc(4);
+      header.writeUInt32LE(chunkIndex, 0);
+      const binaryMsg = Buffer.concat([header, pcmBuffer]);
+      wsBroadcastBinary(binaryMsg);
+    } else if (trimmed.startsWith('STREAM_END:')) {
+      // STREAM_END:<responseId>
+      const responseId = trimmed.substring(11);
+      console.log(`Stream end: ${responseId}`);
+      wsBroadcastJSON({ type: 'audio_end', responseId });
     } else if (trimmed.startsWith('Audio:')) {
-      // TTS audio file notification - push via SSE for real-time delivery
+      // TTS audio file notification (Groq path) - push via SSE for real-time delivery
       const audioFile = trimmed.substring(6).trim();
       broadcastEvent('audio', { file: audioFile });
       console.log('TTS audio pushed via SSE:', audioFile);
     } else if (trimmed) {
+      // Don't log STREAM_ lines as generic output
+      console.log('Python script output:', trimmed);
       messageQueue.push(trimmed);
     }
   }
@@ -187,7 +250,34 @@ app.get('/text-output', (req, res) => {
   }
 });
 
+// Create HTTP server and attach WebSocket
+const server = http.createServer(app);
+
+const wss = new WebSocketServer({ server, path: '/ws' });
+
+wss.on('connection', (ws) => {
+  wsClients.add(ws);
+  console.log(`WebSocket client connected, total: ${wsClients.size}`);
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === 'interrupt') {
+        console.log('Interrupt requested via WebSocket');
+        pythonProcess.stdin.write('INTERRUPT\n');
+      }
+    } catch (e) {
+      console.error('Invalid WebSocket message:', e.message);
+    }
+  });
+
+  ws.on('close', () => {
+    wsClients.delete(ws);
+    console.log(`WebSocket client disconnected, total: ${wsClients.size}`);
+  });
+});
+
 // Start the server
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });

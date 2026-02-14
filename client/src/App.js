@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMicVAD } from '@ricky0123/vad-react';
 import axios from 'axios';
 import './App.css';
 import { transcribe, sendTranscribedText, getSTTMode } from './utils/sttService';
+import { StreamingAudioPlayer } from './utils/streamingAudio';
 
 // Dynamically build the URL based on the current browser address
 const API_URL = `${window.location.protocol}//${window.location.hostname}:3000`;
+const WS_URL = `ws://${window.location.hostname}:3000/ws`;
 
 // Strip bracketed annotations like [warmly], [laughs], etc. from display text
 const stripBrackets = (text) => text.replace(/\[.*?\]\s*/g, '').trim();
@@ -49,6 +51,12 @@ const SpeakerOffIcon = () => (
   </svg>
 );
 
+const ConversationIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+  </svg>
+);
+
 const App = () => {
   const [messages, setMessages] = useState([]);
   const [vadState, setVadState] = useState('idle'); // 'idle' | 'listening' | 'speaking'
@@ -60,7 +68,20 @@ const App = () => {
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioRef = useRef(null);
   const cancelledBeforeRef = useRef(0);  // Timestamp: ignore audio from responses before this
+  const playingGuardRef = useRef(false); // Prevents double-play race in useEffect
   const [ttsEnabled, setTtsEnabled] = useState(true);
+
+  // Streaming audio state
+  const wsRef = useRef(null);
+  const streamPlayerRef = useRef(null);
+  const [isStreamPlaying, setIsStreamPlaying] = useState(false);
+  const [conversationalMode, setConversationalMode] = useState(false);
+  const conversationalModeRef = useRef(false);
+
+  // Keep ref in sync with state for use in callbacks
+  useEffect(() => {
+    conversationalModeRef.current = conversationalMode;
+  }, [conversationalMode]);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -78,7 +99,91 @@ const App = () => {
     checkBackendReady();
   }, []);
 
-  // SSE connection for real-time audio notifications
+  // WebSocket connection for streaming audio
+  useEffect(() => {
+    if (!backendReady) return;
+
+    const connect = () => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          // JSON control message
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'audio_start') {
+              console.log(`Stream start: ${msg.responseId} @ ${msg.sampleRate}Hz`);
+              if (!streamPlayerRef.current) {
+                streamPlayerRef.current = new StreamingAudioPlayer();
+              }
+              streamPlayerRef.current.onPlaybackEnd = () => {
+                setIsStreamPlaying(false);
+                // In conversational mode, restart VAD after playback ends
+                if (conversationalModeRef.current) {
+                  vad.start();
+                  setVadState('listening');
+                }
+              };
+              streamPlayerRef.current.startStream(msg.responseId, msg.sampleRate);
+              setIsStreamPlaying(true);
+            } else if (msg.type === 'audio_end') {
+              console.log(`Stream end: ${msg.responseId}`);
+              if (streamPlayerRef.current) {
+                streamPlayerRef.current.endStream();
+              }
+            } else if (msg.type === 'interrupt_ack') {
+              console.log('Interrupt acknowledged');
+            }
+          } catch (e) {
+            console.error('Failed to parse WS message:', e);
+          }
+        } else {
+          // Binary message: [4-byte chunkIndex LE][PCM data]
+          const arrayBuffer = event.data;
+          if (arrayBuffer instanceof Blob) {
+            arrayBuffer.arrayBuffer().then(buf => {
+              const pcmData = buf.slice(4); // Skip 4-byte chunk index header
+              if (streamPlayerRef.current?.isPlaying) {
+                streamPlayerRef.current.queueChunk(pcmData);
+              }
+            });
+          } else {
+            const pcmData = arrayBuffer.slice(4);
+            if (streamPlayerRef.current?.isPlaying) {
+              streamPlayerRef.current.queueChunk(pcmData);
+            }
+          }
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected, reconnecting in 2s...');
+        wsRef.current = null;
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendReady]);
+
+  // SSE connection for real-time audio notifications (Groq path)
   useEffect(() => {
     if (backendReady) {
       const eventSource = new EventSource(`${API_URL}/events`);
@@ -116,36 +221,33 @@ const App = () => {
     }
   }, [backendReady]);
 
-  // Audio playback effect - play queued audio files sequentially
+  // Audio playback effect - play queued audio files sequentially (Groq path)
   useEffect(() => {
-    if (audioQueue.length > 0 && !isPlayingAudio) {
-      const playNextAudio = () => {
-        const nextAudioFile = audioQueue[0];
-        const audio = new Audio(`${API_URL}/audio-output/${nextAudioFile}`);
-        audioRef.current = audio;
-        setIsPlayingAudio(true);
+    if (audioQueue.length > 0 && !isPlayingAudio && !playingGuardRef.current) {
+      playingGuardRef.current = true;
+      const nextAudioFile = audioQueue[0];
+      const audio = new Audio(`${API_URL}/audio-output/${nextAudioFile}`);
+      audioRef.current = audio;
+      setIsPlayingAudio(true);
 
-        audio.onended = () => {
-          setAudioQueue(prev => prev.slice(1));
-          setIsPlayingAudio(false);
-          audioRef.current = null;
-        };
-
-        audio.onerror = (e) => {
-          console.error('Audio playback error:', e);
-          setAudioQueue(prev => prev.slice(1));
-          setIsPlayingAudio(false);
-          audioRef.current = null;
-        };
-
-        audio.play().catch(err => {
-          console.error('Failed to play audio:', err);
-          setAudioQueue(prev => prev.slice(1));
-          setIsPlayingAudio(false);
-        });
+      const cleanup = () => {
+        playingGuardRef.current = false;
+        setAudioQueue(prev => prev.slice(1));
+        setIsPlayingAudio(false);
+        audioRef.current = null;
       };
 
-      playNextAudio();
+      audio.onended = cleanup;
+
+      audio.onerror = (e) => {
+        console.error('Audio playback error:', e);
+        cleanup();
+      };
+
+      audio.play().catch(err => {
+        console.error('Failed to play audio:', err);
+        cleanup();
+      });
     }
   }, [audioQueue, isPlayingAudio]);
 
@@ -157,20 +259,39 @@ const App = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Interrupt helper: stop both streaming and file-based audio, notify backend
+  const interruptPlayback = useCallback(() => {
+    // Stop streaming audio
+    if (streamPlayerRef.current?.isPlaying) {
+      streamPlayerRef.current.interrupt();
+    }
+    setIsStreamPlaying(false);
+
+    // Stop file-based audio (Groq path)
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setAudioQueue([]);
+    setIsPlayingAudio(false);
+    playingGuardRef.current = false;
+
+    // Cancel future audio from before now
+    cancelledBeforeRef.current = Date.now();
+
+    // Tell backend to stop generation
+    if (wsRef.current?.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: 'interrupt' }));
+    }
+  }, []);
+
   const toggleTts = async () => {
     const newValue = !ttsEnabled;
     setTtsEnabled(newValue);
 
     // If turning TTS off, stop any currently playing audio
     if (!newValue) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      setAudioQueue([]);
-      setIsPlayingAudio(false);
-      // Cancel all audio from responses generated before now
-      cancelledBeforeRef.current = Date.now();
+      interruptPlayback();
     }
 
     try {
@@ -178,6 +299,10 @@ const App = () => {
     } catch (error) {
       console.error('Error updating TTS setting:', error);
     }
+  };
+
+  const toggleConversationalMode = () => {
+    setConversationalMode(prev => !prev);
   };
 
   const sendTextMessage = async () => {
@@ -204,6 +329,12 @@ const App = () => {
     onSpeechStart: () => {
       console.log('Speech started');
       setVadState('speaking');
+
+      // Auto-interrupt if audio is currently playing (conversational mode)
+      if (streamPlayerRef.current?.isPlaying || isPlayingAudio) {
+        console.log('Conversational interrupt: stopping playback');
+        interruptPlayback();
+      }
     },
     onSpeechEnd: async (audio) => {
       console.log('Speech ended');
@@ -243,14 +374,7 @@ const App = () => {
   const toggleVAD = () => {
     if (vadState === 'idle') {
       // Stop any currently playing audio
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      setAudioQueue([]);
-      setIsPlayingAudio(false);
-      // Cancel all audio from responses generated before now
-      cancelledBeforeRef.current = Date.now();
+      interruptPlayback();
 
       vad.start();
       setVadState('listening');
@@ -261,7 +385,7 @@ const App = () => {
   };
 
   const pollForTextOutput = async (skipUserMessage = false) => {
-    // Poll for text messages only - audio arrives via SSE independently
+    // Poll for text messages only - audio arrives via SSE/WebSocket independently
     const maxAttempts = 60;
     const interval = 500;
 
@@ -292,7 +416,7 @@ const App = () => {
             setMessages(prev => [...prev, ...newMessages]);
           }
 
-          // Return once we have the model response - audio arrives via SSE
+          // Return once we have the model response - audio arrives via SSE/WebSocket
           if (newMessages.some(m => m.type === 'model')) {
             return;
           }
@@ -333,8 +457,16 @@ const App = () => {
           <div className="header-status">
             <span className="status-dot"></span>
             Online
+            {isStreamPlaying && ' (speaking)'}
           </div>
         </div>
+        <button
+          className={`btn-tts-toggle ${conversationalMode ? 'enabled' : ''}`}
+          onClick={toggleConversationalMode}
+          title={conversationalMode ? 'Conversational mode on' : 'Conversational mode off'}
+        >
+          <ConversationIcon />
+        </button>
         <button
           className={`btn-tts-toggle ${ttsEnabled ? 'enabled' : ''}`}
           onClick={toggleTts}
