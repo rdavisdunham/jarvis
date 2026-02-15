@@ -24,15 +24,18 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python dependencies first (better caching)
-COPY requirements.txt .
 # Copy the 'uv' binary directly from the official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-# Install PyTorch with CUDA 12.6, then everything else from PyPI.
+# Install PyTorch + CUDA first (rarely changes, ~1.7GB download)
 ENV UV_HTTP_TIMEOUT=300
-RUN uv pip install --system --index-url https://download.pytorch.org/whl/cu126 torch torchaudio \
-    && uv pip install --system -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --index-url https://download.pytorch.org/whl/cu126 torch torchaudio
+
+# Install remaining Python dependencies (invalidated when requirements.txt changes)
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system -r requirements.txt
 
 # Copy and install Node.js dependencies
 COPY audio-server/package*.json ./audio-server/

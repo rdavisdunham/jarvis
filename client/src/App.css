@@ -170,6 +170,17 @@ body {
   border-color: var(--primary-dim);
 }
 
+.btn-tts-toggle.partial {
+  background: var(--secondary);
+  border-color: var(--secondary);
+  color: var(--on-primary);
+}
+
+.btn-tts-toggle.partial:hover {
+  background: var(--secondary-dim);
+  border-color: var(--secondary-dim);
+}
+
 /* Messages Area */
 .messages-container {
   flex: 1;

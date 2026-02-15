@@ -21,9 +21,19 @@ services:
       - TTS_KOKORO_SPEED=${TTS_KOKORO_SPEED:-1.0}
       - TTS_KOKORO_LANG=${TTS_KOKORO_LANG:-a}
       - HF_TOKEN=${HF_TOKEN}
+      - MEMORY_ENABLED=${MEMORY_ENABLED:-true}
+      - MEMORY_DEVICE=${MEMORY_DEVICE:-cuda}
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - MEMORY_SEARCH_THRESHOLD=${MEMORY_SEARCH_THRESHOLD:-0.5}
+      - MEMORY_SEARCH_LIMIT_USER=${MEMORY_SEARCH_LIMIT_USER:-10}
+      - MEMORY_SEARCH_LIMIT_JARVIS=${MEMORY_SEARCH_LIMIT_JARVIS:-10}
+      - MEMORY_LLM_MODEL=${MEMORY_LLM_MODEL:-llama-3.3-70b-versatile}
     volumes:
       - backend-uploads:/app/audio-server/uploads
       - ~/.cache/huggingface:/root/.cache/huggingface
+    depends_on:
+      - qdrant
     restart: unless-stopped
 
   frontend:
@@ -37,5 +47,14 @@ services:
       - backend
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
 volumes:
   backend-uploads:
+  qdrant_data:

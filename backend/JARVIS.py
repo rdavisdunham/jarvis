@@ -1,4 +1,4 @@
-# v0.31 - Kokoro-82M TTS + conversational interrupt mode
+# v0.32 - Long-term memory (Mem0 + Qdrant)
 import base64
 import queue
 import threading
@@ -7,6 +7,7 @@ from groq import Groq
 import pyinotify
 import sys
 import os
+import memory
 
 # Configuration: set USE_LOCAL_WHISPER=true to use local model instead of Groq API
 USE_LOCAL_WHISPER = os.environ.get("USE_LOCAL_WHISPER", "false").lower() == "true"
@@ -189,15 +190,17 @@ Keep the summary under 500 words."""
             self.recent_messages = self.recent_messages[-self.MIN_RECENT_MESSAGES:]
             print(f"Emergency truncation: removed {removed} oldest messages", file=sys.stderr)
 
-    def build_messages_for_api(self, system_prompt):
+    def build_messages_for_api(self, system_prompt, memory_context=""):
         """Build the messages array for the API call."""
         messages = []
 
-        # System prompt with embedded summary
+        # System prompt with memory context and embedded summary
+        parts = [system_prompt]
+        if memory_context:
+            parts.append(f"\n\n{memory_context}")
         if self.rolling_summary:
-            combined_system = f"{system_prompt}\n\n[Previous conversation summary]\n{self.rolling_summary}\n[End of summary - recent conversation follows]"
-        else:
-            combined_system = system_prompt
+            parts.append(f"\n\n[Previous conversation summary]\n{self.rolling_summary}\n[End of summary - recent conversation follows]")
+        combined_system = "".join(parts)
 
         messages.append({
             "role": "system",
@@ -403,23 +406,31 @@ def transcribe_with_groq(audio_file_path):
 
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text, enable_tts=True):
+    pipeline_start = time.time()
+
     system_prompt = os.environ.get(
         "JARVIS_SYSTEM_PROMPT",
         "You are my good friend and AI companion who loves to roast me. You also love salamanders."
     )
 
+    # Search long-term memory for relevant context
+    memory_context = memory.search_memories(transcribed_text)
+
     # Add user message to context manager (handles summarization if needed)
     context_manager.add_message("user", transcribed_text, system_prompt)
 
-    # Build messages array with system prompt and rolling summary
-    messages = context_manager.build_messages_for_api(system_prompt)
+    # Build messages array with system prompt, memory context, and rolling summary
+    messages = context_manager.build_messages_for_api(system_prompt, memory_context=memory_context)
 
+    t_llm = time.time()
     chat_completion = groq_client.chat.completions.create(
         messages=messages,
         # model="llama-3.3-70b-versatile",
         model="openai/gpt-oss-120b",
         reasoning_effort="medium",  # options: "low", "medium", "high"
     )
+    llm_ms = (time.time() - t_llm) * 1000
+    print(f"[timing] LLM response: {llm_ms:.0f}ms", file=sys.stderr)
 
     # Extract the LLM's response
     response = chat_completion.choices[0].message.content
@@ -431,10 +442,20 @@ def handle_chat_with_groq(transcribed_text, enable_tts=True):
     print("Model:", response)
     sys.stdout.flush()
 
+    response_ready_ms = (time.time() - pipeline_start) * 1000
+    print(f"[timing] Text response ready: {response_ready_ms:.0f}ms total", file=sys.stderr)
+
+    # Extract and store memories in background
+    memory.add_memory_background(transcribed_text, response)
+
     # Generate TTS audio if enabled (controlled by frontend toggle)
     if enable_tts:
         def run_tts():
+            t_tts = time.time()
             generate_tts_streaming(response, TTS_OUTPUT_DIR)
+            tts_ms = (time.time() - t_tts) * 1000
+            total_ms = (time.time() - pipeline_start) * 1000
+            print(f"[timing] TTS generation: {tts_ms:.0f}ms | Pipeline total (with TTS): {total_ms:.0f}ms", file=sys.stderr)
 
         # Run TTS in background thread so text appears immediately
         tts_thread = threading.Thread(target=run_tts, daemon=True)
@@ -514,6 +535,10 @@ def process_stdin():
                     kokoro.cancel_generation()
                 print("INTERRUPT_ACK")
                 sys.stdout.flush()
+            elif line.startswith('MEMORY_MODE:'):
+                # Update memory mode: full, read-only, off
+                mode = line[12:].strip().lower()
+                memory.set_mode(mode)
             elif line.startswith('TTS_SETTING:'):
                 # Update TTS setting for audio responses
                 setting = line[12:].strip().lower()

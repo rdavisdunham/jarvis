@@ -57,6 +57,28 @@ const ConversationIcon = () => (
   </svg>
 );
 
+const MemoryFullIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"></path>
+    <line x1="10" y1="22" x2="14" y2="22"></line>
+  </svg>
+);
+
+const MemoryReadOnlyIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z"></path>
+    <line x1="10" y1="22" x2="14" y2="22"></line>
+    <line x1="4" y1="4" x2="20" y2="20"></line>
+  </svg>
+);
+
+const MemoryOffIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.5-3 5.7V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.3C6.2 13.5 5 11.4 5 9a7 7 0 0 1 7-7z" opacity="0.3"></path>
+    <line x1="4" y1="4" x2="20" y2="20"></line>
+  </svg>
+);
+
 const App = () => {
   const [messages, setMessages] = useState([]);
   const [vadState, setVadState] = useState('idle'); // 'idle' | 'listening' | 'speaking'
@@ -77,6 +99,7 @@ const App = () => {
   const [isStreamPlaying, setIsStreamPlaying] = useState(false);
   const [conversationalMode, setConversationalMode] = useState(false);
   const conversationalModeRef = useRef(false);
+  const [memoryMode, setMemoryMode] = useState('full'); // 'full' | 'read-only' | 'off'
 
   // Keep ref in sync with state for use in callbacks
   useEffect(() => {
@@ -305,6 +328,17 @@ const App = () => {
     setConversationalMode(prev => !prev);
   };
 
+  const cycleMemoryMode = async () => {
+    const modes = ['full', 'read-only', 'off'];
+    const nextMode = modes[(modes.indexOf(memoryMode) + 1) % modes.length];
+    setMemoryMode(nextMode);
+    try {
+      await axios.post(`${API_URL}/memory-mode`, { mode: nextMode });
+    } catch (error) {
+      console.error('Error updating memory mode:', error);
+    }
+  };
+
   const sendTextMessage = async () => {
     if (userInput.trim() !== '' && !isWaitingForResponse) {
       const message = userInput;
@@ -460,6 +494,19 @@ const App = () => {
             {isStreamPlaying && ' (speaking)'}
           </div>
         </div>
+        <button
+          className={`btn-tts-toggle ${memoryMode === 'full' ? 'enabled' : memoryMode === 'read-only' ? 'partial' : ''}`}
+          onClick={cycleMemoryMode}
+          title={
+            memoryMode === 'full' ? 'Memory: full (click to change)' :
+            memoryMode === 'read-only' ? 'Memory: read-only (click to change)' :
+            'Memory: off (click to change)'
+          }
+        >
+          {memoryMode === 'full' ? <MemoryFullIcon /> :
+           memoryMode === 'read-only' ? <MemoryReadOnlyIcon /> :
+           <MemoryOffIcon />}
+        </button>
         <button
           className={`btn-tts-toggle ${conversationalMode ? 'enabled' : ''}`}
           onClick={toggleConversationalMode}

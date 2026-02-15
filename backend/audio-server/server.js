@@ -222,6 +222,22 @@ app.get('/events', (req, res) => {
   });
 });
 
+// Handle POST request to update memory mode
+app.post('/memory-mode', (req, res) => {
+  const { mode } = req.body;
+  const validModes = ['full', 'read-only', 'off'];
+  if (!validModes.includes(mode)) {
+    return res.status(400).json({ error: 'Invalid mode. Must be: full, read-only, or off' });
+  }
+
+  if (pythonReady) {
+    pythonProcess.stdin.write(`MEMORY_MODE:${mode}\n`);
+    res.json({ success: true, mode });
+  } else {
+    res.status(503).send('Python not ready');
+  }
+});
+
 // Handle POST request to update TTS setting for audio responses
 app.post('/tts-setting', (req, res) => {
   const { enabled } = req.body;
