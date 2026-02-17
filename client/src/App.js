@@ -88,6 +88,7 @@ const App = () => {
   const [backendReady, setBackendReady] = useState(false);
   const [audioQueue, setAudioQueue] = useState([]);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const isPlayingAudioRef = useRef(false);
   const audioRef = useRef(null);
   const cancelledBeforeRef = useRef(0);  // Timestamp: ignore audio from responses before this
   const playingGuardRef = useRef(false); // Prevents double-play race in useEffect
@@ -101,10 +102,23 @@ const App = () => {
   const conversationalModeRef = useRef(false);
   const [memoryMode, setMemoryMode] = useState('full'); // 'full' | 'read-only' | 'off'
 
-  // Keep ref in sync with state for use in callbacks
+  // Streaming STT state
+  const [sttProvider, setSttProvider] = useState(null); // 'groq' | 'local' (from server config)
+  const [partialTranscript, setPartialTranscript] = useState('');
+  const pcmWorkletRef = useRef(null); // AudioWorkletNode
+  const pcmStreamRef = useRef(null); // MediaStream source node
+  const sttMicStreamRef = useRef(null); // raw mic MediaStream for worklet
+  const vadRef = useRef(null); // ref to VAD instance for use in WebSocket handler
+  const lastEouRef = useRef(true); // latest EOU result from streaming partials (true = done speaking)
+  const eouTimeoutRef = useRef(null); // force-finalize timeout when EOU says "not done"
+
+  // Keep refs in sync with state for use in callbacks
   useEffect(() => {
     conversationalModeRef.current = conversationalMode;
   }, [conversationalMode]);
+  useEffect(() => {
+    isPlayingAudioRef.current = isPlayingAudio;
+  }, [isPlayingAudio]);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -132,6 +146,8 @@ const App = () => {
 
       ws.onopen = () => {
         console.log('WebSocket connected');
+        // Request server config (STT provider, etc.)
+        ws.send(JSON.stringify({ type: 'get_config' }));
       };
 
       ws.onmessage = (event) => {
@@ -161,6 +177,37 @@ const App = () => {
               }
             } else if (msg.type === 'interrupt_ack') {
               console.log('Interrupt acknowledged');
+            } else if (msg.type === 'config') {
+              // Server config (STT provider, etc.)
+              console.log('[Config] STT provider:', msg.sttProvider);
+              setSttProvider(msg.sttProvider || 'groq');
+            } else if (msg.type === 'stt_partial') {
+              setPartialTranscript(msg.text || '');
+              // Track EOU result from streaming partials
+              if (msg.eou !== undefined) {
+                lastEouRef.current = msg.eou;
+              }
+            } else if (msg.type === 'stt_final') {
+              setPartialTranscript('');
+              lastEouRef.current = true; // reset for next utterance
+              const text = msg.text;
+              if (text) {
+                console.log('[STT] Final transcript:', text);
+                setMessages(prev => [...prev, { type: 'user', content: text }]);
+                setIsWaitingForResponse(true);
+                // Send as text with TTS
+                sendTranscribedText(text).then(() => pollForTextOutput(true))
+                  .catch(err => console.error('Error sending STT text:', err))
+                  .finally(() => setIsWaitingForResponse(false));
+              }
+            } else if (msg.type === 'eou_waiting') {
+              console.log('[EOU] Waiting for more speech — keeping mic active');
+              // Ensure VAD is listening so user can continue their thought
+              if (vadRef.current && !vadRef.current.listening) {
+                vadRef.current.start();
+              }
+              setVadState('listening');
+              setPartialTranscript('...');
             }
           } catch (e) {
             console.error('Failed to parse WS message:', e);
@@ -249,8 +296,7 @@ const App = () => {
     if (audioQueue.length > 0 && !isPlayingAudio && !playingGuardRef.current) {
       playingGuardRef.current = true;
       const nextAudioFile = audioQueue[0];
-      const audio = new Audio(`${API_URL}/audio-output/${nextAudioFile}`);
-      audioRef.current = audio;
+      const audioUrl = `${API_URL}/audio-output/${nextAudioFile}`;
       setIsPlayingAudio(true);
 
       const cleanup = () => {
@@ -258,19 +304,18 @@ const App = () => {
         setAudioQueue(prev => prev.slice(1));
         setIsPlayingAudio(false);
         audioRef.current = null;
+        // In conversational mode, restart VAD after file-based playback ends
+        if (conversationalModeRef.current) {
+          vad.start();
+          setVadState('listening');
+        }
       };
 
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
       audio.onended = cleanup;
-
-      audio.onerror = (e) => {
-        console.error('Audio playback error:', e);
-        cleanup();
-      };
-
-      audio.play().catch(err => {
-        console.error('Failed to play audio:', err);
-        cleanup();
-      });
+      audio.onerror = (e) => { console.error('Audio playback error:', e); cleanup(); };
+      audio.play().catch(err => { console.error('Failed to play audio:', err); cleanup(); });
     }
   }, [audioQueue, isPlayingAudio]);
 
@@ -325,7 +370,14 @@ const App = () => {
   };
 
   const toggleConversationalMode = () => {
-    setConversationalMode(prev => !prev);
+    setConversationalMode(prev => {
+      const newVal = !prev;
+      if (newVal && vadState === 'idle') {
+        vad.start();
+        setVadState('listening');
+      }
+      return newVal;
+    });
   };
 
   const cycleMemoryMode = async () => {
@@ -357,23 +409,143 @@ const App = () => {
     }
   };
 
+  // Start streaming PCM chunks over WebSocket for local STT
+  const startPCMStreaming = useCallback(async () => {
+    if (pcmWorkletRef.current) return; // already streaming
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+      });
+      sttMicStreamRef.current = stream;
+      const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+      await ctx.audioWorklet.addModule('/audio/pcmWorker.js');
+      const source = ctx.createMediaStreamSource(stream);
+      const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
+
+      worklet.port.onmessage = (e) => {
+        // Send binary PCM chunk over WebSocket
+        const ws = wsRef.current;
+        if (ws && ws.readyState === 1) {
+          ws.send(e.data); // ArrayBuffer of Int16 PCM
+        }
+      };
+
+      source.connect(worklet);
+      worklet.connect(ctx.destination); // required to keep worklet alive (output is silence)
+      pcmStreamRef.current = { ctx, source, worklet };
+      pcmWorkletRef.current = worklet;
+
+      // Signal STT stream start
+      if (wsRef.current?.readyState === 1) {
+        wsRef.current.send(JSON.stringify({ type: 'stt_start' }));
+      }
+      console.log('[STT] PCM streaming started');
+    } catch (err) {
+      console.error('[STT] Failed to start PCM streaming:', err);
+    }
+  }, []);
+
+  const stopPCMStreaming = useCallback((finalize = true) => {
+    if (finalize && wsRef.current?.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ type: 'stt_end' }));
+    }
+    if (pcmStreamRef.current) {
+      pcmStreamRef.current.worklet.disconnect();
+      pcmStreamRef.current.source.disconnect();
+      pcmStreamRef.current.ctx.close().catch(() => {});
+      pcmStreamRef.current = null;
+    }
+    pcmWorkletRef.current = null;
+    if (sttMicStreamRef.current) {
+      sttMicStreamRef.current.getTracks().forEach(t => t.stop());
+      sttMicStreamRef.current = null;
+    }
+    console.log('[STT] PCM streaming stopped');
+  }, []);
+
   // VAD hook for voice activity detection
   const vad = useMicVAD({
     startOnLoad: false,
+    redemptionFrames: 15,
+    positiveSpeechThreshold: 0.5,   // speech detection sensitivity (default 0.5)
+    negativeSpeechThreshold: 0.35,  // end-of-speech detection (default 0.35)
+    minSpeechFrames: 3,             // allow short utterances like "no", "yes" (default 3)
+    // Request browser-level echo cancellation and noise suppression on the mic
+    additionalAudioConstraints: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
     onSpeechStart: () => {
       console.log('Speech started');
       setVadState('speaking');
 
       // Auto-interrupt if audio is currently playing (conversational mode)
-      if (streamPlayerRef.current?.isPlaying || isPlayingAudio) {
+      if (streamPlayerRef.current?.isPlaying || isPlayingAudioRef.current) {
         console.log('Conversational interrupt: stopping playback');
         interruptPlayback();
+      }
+
+      // Cancel EOU force-finalize timeout (user started speaking again)
+      if (eouTimeoutRef.current) {
+        clearTimeout(eouTimeoutRef.current);
+        eouTimeoutRef.current = null;
+      }
+
+      // Start PCM streaming for local STT (or continue existing stream)
+      if (sttProvider === 'local') {
+        startPCMStreaming();
       }
     },
     onSpeechEnd: async (audio) => {
       console.log('Speech ended');
-      setVadState('idle');
-      vad.pause();
+
+      // Local streaming STT: check EOU before deciding to pause VAD
+      if (sttProvider === 'local') {
+        if (lastEouRef.current) {
+          // Both VAD + EOU agree speech is done — finalize
+          console.log('[EOU+VAD] Both agree: finalizing');
+          if (eouTimeoutRef.current) {
+            clearTimeout(eouTimeoutRef.current);
+            eouTimeoutRef.current = null;
+          }
+          // NOW pause VAD (only after EOU confirmed done)
+          if (conversationalModeRef.current) {
+            setVadState('listening');
+          } else {
+            setVadState('idle');
+            vad.pause();
+          }
+          stopPCMStreaming(true); // sends stt_end to finalize
+        } else {
+          // VAD silent but EOU says not done — keep everything alive
+          console.log('[EOU+VAD] VAD silent but EOU says not done — waiting');
+          setVadState('listening');
+          // Do NOT pause VAD, do NOT stop PCM streaming
+          // Set force-finalize timeout in case user doesn't continue
+          if (eouTimeoutRef.current) clearTimeout(eouTimeoutRef.current);
+          eouTimeoutRef.current = setTimeout(() => {
+            console.log('[EOU+VAD] Timeout — force finalizing');
+            eouTimeoutRef.current = null;
+            if (conversationalModeRef.current) {
+              setVadState('listening');
+            } else {
+              setVadState('idle');
+              vad.pause();
+            }
+            stopPCMStreaming(true);
+          }, 3000);
+        }
+        return; // Response handling happens in the stt_final WebSocket message handler
+      }
+
+      // Non-local STT (Groq): pause VAD before upload
+      if (conversationalModeRef.current) {
+        setVadState('listening');
+      } else {
+        setVadState('idle');
+        vad.pause();
+      }
 
       if (isWaitingForResponse) return;
       setIsWaitingForResponse(true);
@@ -404,6 +576,7 @@ const App = () => {
       console.log('VAD misfire - speech too short');
     },
   });
+  vadRef.current = vad;
 
   const toggleVAD = () => {
     if (vadState === 'idle') {
@@ -542,6 +715,16 @@ const App = () => {
               </div>
             </div>
           ))
+        )}
+
+        {/* Partial transcript (streaming STT) */}
+        {partialTranscript && (
+          <div className="message user">
+            <div className="message-label">You</div>
+            <div className="message-bubble" style={{ opacity: 0.6, fontStyle: 'italic' }}>
+              {partialTranscript}...
+            </div>
+          </div>
         )}
 
         {/* Typing Indicator */}

@@ -24,18 +24,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy the 'uv' binary directly from the official image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Install PyTorch + CUDA first (rarely changes, ~1.7GB download)
-ENV UV_HTTP_TIMEOUT=300
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --index-url https://download.pytorch.org/whl/cu126 torch torchaudio
+# Install PyTorch + CUDA from pinned wheels (never re-resolves, always caches)
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+    https://download.pytorch.org/whl/cu126/torch-2.6.0%2Bcu126-cp311-cp311-manylinux_2_28_x86_64.whl \
+    https://download.pytorch.org/whl/cu126/torchaudio-2.6.0%2Bcu126-cp311-cp311-linux_x86_64.whl
 
 # Install remaining Python dependencies (invalidated when requirements.txt changes)
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt
 
 # Copy and install Node.js dependencies
 COPY audio-server/package*.json ./audio-server/
@@ -49,8 +47,8 @@ COPY . .
 # Create uploads and outputs directories
 RUN mkdir -p /app/audio-server/uploads /app/audio-server/outputs
 
-# Expose port
-EXPOSE 3000
+# Expose ports (3000 = HTTP/WS, 9001 = internal STT WebSocket)
+EXPOSE 3000 9001
 
 # Start the server
 WORKDIR /app/audio-server

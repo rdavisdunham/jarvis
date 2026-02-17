@@ -3,13 +3,44 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { WebSocketServer } = require('ws');
+const { WebSocket, WebSocketServer } = require('ws');
 
 const { spawn } = require('child_process');
+
+// Configuration
+const STT_PROVIDER = process.env.STT_PROVIDER || 'groq';
+const STT_PORT = process.env.STT_PORT || 9001;
 
 // Spawn the Python script
 const pythonScript = process.env.JARVIS_SCRIPT || path.join(__dirname, '..', 'JARVIS.py');
 const pythonProcess = spawn('python', [pythonScript]);
+
+// Spawn the streaming STT server if using local STT
+let sttProcess = null;
+if (STT_PROVIDER === 'local') {
+  const sttScript = path.join(__dirname, '..', 'stt_streaming.py');
+  sttProcess = spawn('python', [sttScript], {
+    env: { ...process.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  sttProcess.stdout.on('data', (data) => {
+    const output = data.toString().trim();
+    if (output === 'STT_READY') {
+      console.log('Streaming STT server is ready');
+    } else {
+      console.log('STT stdout:', output);
+    }
+  });
+  sttProcess.stderr.on('data', (data) => {
+    console.error('STT:', data.toString().trimEnd());
+  });
+  sttProcess.on('exit', (code) => {
+    console.error(`STT process exited with code ${code}`);
+  });
+  console.log(`Streaming STT server started (provider: ${STT_PROVIDER})`);
+} else {
+  console.log(`STT provider: ${STT_PROVIDER} (no local STT server)`);
+}
 
 // Message queue for responses from Python
 let messageQueue = [];
@@ -72,6 +103,9 @@ pythonProcess.stdout.on('data', (data) => {
     } else if (trimmed === 'KOKORO_READY') {
       console.log('Kokoro model loaded and ready');
       wsBroadcastJSON({ type: 'kokoro_ready' });
+    } else if (trimmed === 'EOU_WAITING') {
+      console.log('EOU: waiting for more speech');
+      wsBroadcastJSON({ type: 'eou_waiting' });
     } else if (trimmed === 'INTERRUPT_ACK') {
       console.log('Interrupt acknowledged by Python');
       wsBroadcastJSON({ type: 'interrupt_ack' });
@@ -275,20 +309,101 @@ wss.on('connection', (ws) => {
   wsClients.add(ws);
   console.log(`WebSocket client connected, total: ${wsClients.size}`);
 
+  // Per-client STT WebSocket connection to Python STT server
+  let sttWs = null;
+  let sttPendingChunks = []; // Buffer PCM chunks while STT WS is connecting
+
+  function connectSTT() {
+    if (STT_PROVIDER !== 'local') return;
+    try {
+      sttWs = new WebSocket(`ws://localhost:${STT_PORT}`);
+      sttWs.on('open', () => {
+        console.log('Connected to STT server for client');
+        // Flush any buffered PCM chunks
+        for (const chunk of sttPendingChunks) {
+          sttWs.send(chunk);
+        }
+        sttPendingChunks = [];
+      });
+      sttWs.on('message', (data) => {
+        // Relay partial/final transcripts back to browser
+        try {
+          const msg = JSON.parse(data.toString());
+          if (msg.type === 'partial') {
+            console.log('[STT Relay] Partial:', msg.text?.substring(0, 60), msg.eou ? '[EOU:done]' : '[EOU:continue]');
+            ws.send(JSON.stringify({ type: 'stt_partial', text: msg.text, eou: msg.eou }));
+          } else if (msg.type === 'final') {
+            ws.send(JSON.stringify({ type: 'stt_final', text: msg.text }));
+            // Also send to JARVIS.py as TEXT_TTS: for LLM processing
+            if (msg.text && pythonReady) {
+              pythonProcess.stdin.write(`TEXT_TTS:${msg.text}\n`);
+            }
+          } else if (msg.type === 'eou_waiting') {
+            console.log('[STT Relay] EOU waiting for more speech');
+            ws.send(JSON.stringify({ type: 'eou_waiting' }));
+          }
+        } catch (e) {
+          console.error('Error parsing STT message:', e);
+        }
+      });
+      sttWs.on('error', (err) => {
+        console.error('STT WebSocket error:', err.message);
+      });
+      sttWs.on('close', () => {
+        sttWs = null;
+      });
+    } catch (e) {
+      console.error('Failed to connect to STT server:', e);
+    }
+  }
+
   ws.on('message', (data) => {
+    // Check if binary data (PCM audio for STT)
+    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+      if (sttWs && sttWs.readyState === WebSocket.OPEN) {
+        sttWs.send(data);
+      } else if (sttWs) {
+        // Still connecting — buffer chunks
+        sttPendingChunks.push(data);
+      }
+      return;
+    }
+
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === 'interrupt') {
         console.log('Interrupt requested via WebSocket');
         pythonProcess.stdin.write('INTERRUPT\n');
+      } else if (msg.type === 'get_config') {
+        ws.send(JSON.stringify({
+          type: 'config',
+          sttProvider: STT_PROVIDER,
+        }));
+      } else if (msg.type === 'stt_start') {
+        // Client starting to stream audio for STT
+        if (!sttWs || sttWs.readyState !== WebSocket.OPEN) {
+          connectSTT();
+        }
+      } else if (msg.type === 'stt_end') {
+        // Client finished speaking, tell STT to finalize
+        if (sttWs && sttWs.readyState === WebSocket.OPEN) {
+          sttWs.send(JSON.stringify({ type: 'finalize' }));
+        }
       }
     } catch (e) {
-      console.error('Invalid WebSocket message:', e.message);
+      // Could be binary data that's not valid JSON - that's fine
+      if (!(data instanceof Buffer)) {
+        console.error('Invalid WebSocket message:', e.message);
+      }
     }
   });
 
   ws.on('close', () => {
     wsClients.delete(ws);
+    if (sttWs) {
+      sttWs.close();
+      sttWs = null;
+    }
     console.log(`WebSocket client disconnected, total: ${wsClients.size}`);
   });
 });

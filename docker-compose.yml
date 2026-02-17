@@ -12,6 +12,8 @@ services:
               capabilities: [gpu]
     environment:
       - GROQ_API_KEY=${GROQ_API_KEY}
+      - STT_PROVIDER=${STT_PROVIDER:-groq}
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium.en}
       - USE_LOCAL_WHISPER=${USE_LOCAL_WHISPER:-false}
       - JARVIS_SYSTEM_PROMPT=${JARVIS_SYSTEM_PROMPT:-}
       - TTS_PROVIDER=${TTS_PROVIDER:-groq}
@@ -29,6 +31,9 @@ services:
       - MEMORY_SEARCH_LIMIT_USER=${MEMORY_SEARCH_LIMIT_USER:-10}
       - MEMORY_SEARCH_LIMIT_JARVIS=${MEMORY_SEARCH_LIMIT_JARVIS:-10}
       - MEMORY_LLM_MODEL=${MEMORY_LLM_MODEL:-llama-3.3-70b-versatile}
+      - EOU_ENABLED=${EOU_ENABLED:-false}
+      - EOU_THRESHOLD=${EOU_THRESHOLD:-0.5}
+      - ORT_LOG_LEVEL=ERROR
     volumes:
       - backend-uploads:/app/audio-server/uploads
       - ~/.cache/huggingface:/root/.cache/huggingface
@@ -48,11 +53,13 @@ services:
     restart: unless-stopped
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.16.3
     ports:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__LOG_LEVEL=WARN
     restart: unless-stopped
 
 volumes:

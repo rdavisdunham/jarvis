@@ -9,10 +9,16 @@ Memories are stored in two categories:
 - "jarvis": facts about what JARVIS said (recommendations, advice, explanations)
 """
 
+import logging
 import os
 import sys
 import threading
 import time
+
+# Suppress noisy Mem0/Qdrant logs (Pydantic validation spam from event:'NONE' bug)
+for _logger_name in ("mem0", "mem0ai", "qdrant_client", "httpx", "httpcore",
+                      "pydantic", "openai", "groq"):
+    logging.getLogger(_logger_name).setLevel(logging.CRITICAL)
 
 MEMORY_ENABLED = os.environ.get("MEMORY_ENABLED", "true").lower() == "true"
 MEMORY_DEVICE = os.environ.get("MEMORY_DEVICE", "cuda")

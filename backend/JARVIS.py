@@ -1,5 +1,4 @@
 # v0.32 - Long-term memory (Mem0 + Qdrant)
-import base64
 import queue
 import threading
 import time
@@ -8,15 +7,12 @@ import pyinotify
 import sys
 import os
 import memory
+import eou_detector
 
-# Configuration: set USE_LOCAL_WHISPER=true to use local model instead of Groq API
-USE_LOCAL_WHISPER = os.environ.get("USE_LOCAL_WHISPER", "false").lower() == "true"
-
-# Only import heavy dependencies if using local whisper
-if USE_LOCAL_WHISPER:
-    import torch
-    from transformers import pipeline
-    import librosa
+# STT Configuration: 'groq' (API batch) or 'local' (streaming faster-whisper on GPU)
+# Backwards compat: map USE_LOCAL_WHISPER=true → STT_PROVIDER=local
+_legacy_local = os.environ.get("USE_LOCAL_WHISPER", "false").lower() == "true"
+STT_PROVIDER = os.environ.get("STT_PROVIDER", "local" if _legacy_local else "groq")
 
 # Initialize a queue to handle new files as they come in rather than force them to process all at once which may cause errors
 file_queue = queue.Queue()
@@ -462,38 +458,61 @@ def handle_chat_with_groq(transcribed_text, enable_tts=True):
         tts_thread.start()
 
 
-# Load local Whisper model only if configured to use it
-local_whisper_pipe = None
-if USE_LOCAL_WHISPER:
-    print("Loading local Whisper model...", file=sys.stderr)
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model_id = "openai/whisper-medium"
-    local_whisper_pipe = pipeline("automatic-speech-recognition", model=model_id, device=device, torch_dtype=torch_dtype)
-    print(f"Local Whisper model loaded on {device}", file=sys.stderr)
+print(f"STT provider: {STT_PROVIDER}", file=sys.stderr)
+if STT_PROVIDER == "local":
+    print("Local STT handled by stt_streaming.py (transcripts arrive via stdin TEXT_TTS:)", file=sys.stderr)
 else:
     print("Using Groq Whisper API for transcription", file=sys.stderr)
 
+# Pending transcript buffer for EOU gating
+_pending_transcript = ""
+_pending_timer = None
+
+def _eou_timeout():
+    """Force-process pending transcript after timeout."""
+    global _pending_transcript, _pending_timer
+    if _pending_transcript:
+        text = _pending_transcript
+        _pending_transcript = ""
+        _pending_timer = None
+        print("Transcribed Text:", text)
+        sys.stdout.flush()
+        handle_chat_with_groq(text, enable_tts=audio_tts_enabled)
+
 # Function to process audio files, now designed to be run in a worker thread
 def process_audio_files():
-    global audio_tts_enabled
+    global audio_tts_enabled, _pending_transcript, _pending_timer
     while True:
         # Get the next audio file path from the queue
         audio_file_path = file_queue.get()
         try:
-            if USE_LOCAL_WHISPER:
-                # Use local Whisper model
-                audio_data, _ = librosa.load(audio_file_path, sr=16000)
-                result = local_whisper_pipe(audio_data)
-                transcribed_text = result["text"]
-            else:
-                # Use Groq Whisper API
-                transcribed_text = transcribe_with_groq(audio_file_path)
+            # Use Groq Whisper API (local STT is handled by stt_streaming.py)
+            transcribed_text = transcribe_with_groq(audio_file_path)
 
-            print("Transcribed Text:", transcribed_text)
-            sys.stdout.flush()
-            # Use the audio TTS setting (controlled by frontend toggle)
-            handle_chat_with_groq(transcribed_text, enable_tts=audio_tts_enabled)
+            # EOU gating: check if user is done speaking
+            full_text = (_pending_transcript + " " + transcribed_text).strip() if _pending_transcript else transcribed_text
+
+            if eou_detector.is_end_of_utterance(full_text):
+                # Cancel any pending timer
+                if _pending_timer:
+                    _pending_timer.cancel()
+                    _pending_timer = None
+                _pending_transcript = ""
+
+                print("Transcribed Text:", full_text)
+                sys.stdout.flush()
+                handle_chat_with_groq(full_text, enable_tts=audio_tts_enabled)
+            else:
+                # Not done speaking — buffer and signal
+                _pending_transcript = full_text
+                print("EOU_WAITING")
+                sys.stdout.flush()
+                # Start 3s timeout to force processing
+                if _pending_timer:
+                    _pending_timer.cancel()
+                _pending_timer = threading.Timer(3.0, _eou_timeout)
+                _pending_timer.daemon = True
+                _pending_timer.start()
         except Exception as e:
             # Handle exceptions that occur during file processing
             print(f"Error processing {audio_file_path}: {e}", file=sys.stderr)
@@ -564,6 +583,9 @@ notifier = pyinotify.Notifier(wm, handler)
 wdd = wm.add_watch('uploads', pyinotify.IN_CLOSE_WRITE | pyinotify.IN_MOVED_TO)
 
 print("Monitoring 'uploads' directory for new files. Press CTRL+C to stop.", file=sys.stderr)
+
+# Pre-load EOU model if enabled
+eou_detector.preload()
 
 # Eager Kokoro model preload when using Kokoro provider
 if TTS_PROVIDER == "kokoro":
