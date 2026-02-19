@@ -44,8 +44,6 @@ services:
   frontend:
     build:
       context: ./client
-      args:
-        - REACT_APP_STT_MODE=${REACT_APP_STT_MODE:-api}
     ports:
       - "8080:80"
     depends_on:

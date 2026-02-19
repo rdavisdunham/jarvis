@@ -1,63 +1,16 @@
 import { encodeWAV } from './wavEncoder';
 
-const STT_MODE = process.env.REACT_APP_STT_MODE || 'api';
 const API_URL = `${window.location.protocol}//${window.location.hostname}:3000`;
 
-let whisperPipeline = null;
-
-// Log the configured STT mode on module load
-console.log(`[STT] Mode configured: ${STT_MODE === 'browser' ? 'Browser (Transformers.js Whisper)' : 'API (Groq Whisper)'}`);
-
-
 /**
- * Initialize browser-based Whisper (lazy load)
- */
-async function initBrowserWhisper() {
-  if (whisperPipeline) return whisperPipeline;
-
-  console.log('[STT] Loading Whisper model in browser (first use, may take a moment)...');
-  const { pipeline } = await import('@huggingface/transformers');
-  whisperPipeline = await pipeline(
-    'automatic-speech-recognition',
-    'Xenova/whisper-tiny.en',
-    { dtype: 'fp32' }  // Use fp32 for broader compatibility
-  );
-  console.log('[STT] Whisper model loaded successfully');
-  return whisperPipeline;
-}
-
-/**
- * Transcribe audio using configured STT mode
+ * Transcribe audio by uploading WAV to server (Groq Whisper API).
+ * Used as fallback when STT_PROVIDER is not 'local'.
  * @param {Float32Array} audioSamples - 16kHz audio samples
- * @returns {Promise<string|null>} - Transcribed text (browser mode) or null (API mode)
+ * @returns {Promise<null>} - Server handles transcription async
  */
 export async function transcribe(audioSamples) {
-  if (STT_MODE === 'browser') {
-    return transcribeBrowser(audioSamples);
-  } else {
-    return transcribeAPI(audioSamples);
-  }
-}
-
-/**
- * Browser-based transcription using Transformers.js
- */
-async function transcribeBrowser(audioSamples) {
-  console.log('[STT] Using BROWSER mode (Transformers.js Whisper)');
-  console.log(`[STT] Processing ${audioSamples.length} audio samples locally...`);
-  const transcriber = await initBrowserWhisper();
-  const result = await transcriber(audioSamples);
-  console.log('[STT] Browser transcription complete:', result.text.trim());
-  return result.text.trim();
-}
-
-/**
- * API-based transcription - upload WAV to server
- */
-async function transcribeAPI(audioSamples) {
-  console.log('[STT] Using API mode (Groq Whisper)');
   const wavBlob = encodeWAV(audioSamples);
-  console.log(`[STT] Uploading ${(wavBlob.size / 1024).toFixed(1)}KB WAV to server...`);
+  console.log(`[STT] Uploading ${(wavBlob.size / 1024).toFixed(1)}KB WAV to server (Groq Whisper)...`);
   const formData = new FormData();
   formData.append('audio', wavBlob, 'recording.wav');
 
@@ -71,13 +24,11 @@ async function transcribeAPI(audioSamples) {
   }
 
   console.log('[STT] Audio uploaded, server will transcribe via Groq API');
-  // Return null - server handles transcription async
-  // Client polls for result via existing mechanism
   return null;
 }
 
 /**
- * Send already-transcribed text to server (browser STT mode)
+ * Send already-transcribed text to server
  * @param {string} text - Transcribed text to send
  * @param {boolean} enableTts - Whether to enable TTS for the response
  */
@@ -92,12 +43,4 @@ export async function sendTranscribedText(text, enableTts = true) {
   if (!response.ok) {
     throw new Error('Failed to send text');
   }
-}
-
-/**
- * Get the current STT mode
- * @returns {string} - 'api' or 'browser'
- */
-export function getSTTMode() {
-  return STT_MODE;
 }

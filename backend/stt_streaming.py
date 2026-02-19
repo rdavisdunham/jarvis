@@ -99,16 +99,11 @@ class StreamingTranscriber:
         return text if text else None
 
     def get_partial(self):
-        """Quick partial transcription (beam=1, last 4s window)."""
+        """Quick partial transcription (beam=1, full audio)."""
         import time
         audio = self.get_audio()
         if audio is None or len(audio) < self._sample_rate * 0.3:
             return None
-
-        # Cap at last 4 seconds to keep inference fast
-        max_samples = self._sample_rate * 4
-        if len(audio) > max_samples:
-            audio = audio[-max_samples:]
 
         t0 = time.monotonic()
         model = get_model()

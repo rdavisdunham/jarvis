@@ -3,10 +3,6 @@ FROM node:20-slim AS build
 
 WORKDIR /app
 
-# Build arguments for STT mode
-ARG REACT_APP_STT_MODE=api
-ENV REACT_APP_STT_MODE=$REACT_APP_STT_MODE
-
 # Copy package files
 COPY package*.json ./
 

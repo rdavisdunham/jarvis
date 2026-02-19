@@ -138,7 +138,7 @@ Keep the summary under 500 words."""
                     {"role": "system", "content": "You are a conversation summarizer. Create concise, informative summaries that preserve key context."},
                     {"role": "user", "content": summarization_prompt}
                 ],
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-20b",
                 max_tokens=1000,
             )
 
@@ -168,7 +168,7 @@ Keep the summary under 500 words."""
                     {"role": "system", "content": "Condense this conversation summary to half its length while keeping the most important facts."},
                     {"role": "user", "content": self.rolling_summary}
                 ],
-                model="llama-3.1-8b-instant",
+                model="openai/gpt-oss-20b",
                 max_tokens=500,
             )
             self.rolling_summary = completion.choices[0].message.content
@@ -400,6 +400,16 @@ def transcribe_with_groq(audio_file_path):
         )
     return transcription
 
+# Sentence-ending punctuation patterns used to detect TTS dispatch boundaries
+_SENTENCE_ENDINGS = ('. ', '? ', '! ', '.\n', '?\n', '!\n')
+
+def _dispatch_tts_sentence(text, pipeline_start):
+    """Fire-and-forget: run TTS for a single sentence chunk in a background thread."""
+    def _run(t=text, ps=pipeline_start):
+        generate_tts_streaming(t, TTS_OUTPUT_DIR)
+    threading.Thread(target=_run, daemon=True).start()
+
+
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text, enable_tts=True):
     pipeline_start = time.time()
@@ -419,43 +429,88 @@ def handle_chat_with_groq(transcribed_text, enable_tts=True):
     messages = context_manager.build_messages_for_api(system_prompt, memory_context=memory_context)
 
     t_llm = time.time()
-    chat_completion = groq_client.chat.completions.create(
+    stream = groq_client.chat.completions.create(
         messages=messages,
         # model="llama-3.3-70b-versatile",
         model="openai/gpt-oss-120b",
         reasoning_effort="medium",  # options: "low", "medium", "high"
+        stream=True,
     )
-    llm_ms = (time.time() - t_llm) * 1000
-    print(f"[timing] LLM response: {llm_ms:.0f}ms", file=sys.stderr)
 
-    # Extract the LLM's response
-    response = chat_completion.choices[0].message.content
+    full_response = ""
+    tts_buffer = ""
+    first_token_logged = False
+
+    # Signal frontend that model text is about to stream
+    print("MODEL_STREAM_START")
+    sys.stdout.flush()
+
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta is None:
+            continue
+
+        if not first_token_logged:
+            print(f"[timing] LLM first token: {(time.time() - t_llm) * 1000:.0f}ms", file=sys.stderr)
+            first_token_logged = True
+
+        full_response += delta
+
+        # Send each chunk to frontend for live rendering
+        # Encode newlines since the stdout protocol is line-based
+        encoded = delta.replace('\\', '\\\\').replace('\n', '\\n')
+        print(f"MODEL_CHUNK:{encoded}")
+        sys.stdout.flush()
+
+        # For Groq TTS: dispatch complete sentences as they arrive so audio
+        # starts before the LLM finishes. Kokoro handles splitting internally
+        # and gets the full text once streaming is done.
+        if enable_tts and TTS_PROVIDER != "kokoro":
+            tts_buffer += delta
+            # Find the last sentence boundary in the buffer
+            last_end = -1
+            for ending in _SENTENCE_ENDINGS:
+                pos = tts_buffer.rfind(ending)
+                if pos + len(ending) > last_end + 1:
+                    last_end = pos + len(ending) - 1
+            if last_end >= 0:
+                sentence = tts_buffer[:last_end + 1].strip()
+                tts_buffer = tts_buffer[last_end + 1:]
+                if sentence:
+                    _dispatch_tts_sentence(sentence, pipeline_start)
+
+    # Signal frontend that streaming is complete
+    print("MODEL_STREAM_END")
+    sys.stdout.flush()
+
+    llm_ms = (time.time() - t_llm) * 1000
+    print(f"[timing] LLM full response: {llm_ms:.0f}ms", file=sys.stderr)
 
     # Add assistant response to context manager
-    context_manager.add_message("assistant", response, system_prompt)
-
-    # Print model response immediately so frontend can display it
-    print("Model:", response)
-    sys.stdout.flush()
+    context_manager.add_message("assistant", full_response, system_prompt)
 
     response_ready_ms = (time.time() - pipeline_start) * 1000
     print(f"[timing] Text response ready: {response_ready_ms:.0f}ms total", file=sys.stderr)
 
     # Extract and store memories in background
-    memory.add_memory_background(transcribed_text, response)
+    memory.add_memory_background(transcribed_text, full_response)
 
     # Generate TTS audio if enabled (controlled by frontend toggle)
     if enable_tts:
-        def run_tts():
-            t_tts = time.time()
-            generate_tts_streaming(response, TTS_OUTPUT_DIR)
-            tts_ms = (time.time() - t_tts) * 1000
-            total_ms = (time.time() - pipeline_start) * 1000
-            print(f"[timing] TTS generation: {tts_ms:.0f}ms | Pipeline total (with TTS): {total_ms:.0f}ms", file=sys.stderr)
-
-        # Run TTS in background thread so text appears immediately
-        tts_thread = threading.Thread(target=run_tts, daemon=True)
-        tts_thread.start()
+        if TTS_PROVIDER == "kokoro":
+            # Kokoro: dispatch full response now that streaming is complete
+            def run_tts_kokoro():
+                t_tts = time.time()
+                generate_tts_streaming(full_response, TTS_OUTPUT_DIR)
+                tts_ms = (time.time() - t_tts) * 1000
+                total_ms = (time.time() - pipeline_start) * 1000
+                print(f"[timing] TTS generation: {tts_ms:.0f}ms | Pipeline total (with TTS): {total_ms:.0f}ms", file=sys.stderr)
+            threading.Thread(target=run_tts_kokoro, daemon=True).start()
+        else:
+            # Groq TTS: flush any remaining text that didn't end on a sentence boundary
+            remainder = tts_buffer.strip()
+            if remainder:
+                _dispatch_tts_sentence(remainder, pipeline_start)
 
 
 print(f"STT provider: {STT_PROVIDER}", file=sys.stderr)

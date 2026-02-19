@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 // Configuration
 const STT_PROVIDER = process.env.STT_PROVIDER || 'groq';
 const STT_PORT = process.env.STT_PORT || 9001;
+console.log(`[Config] STT_PROVIDER=${STT_PROVIDER} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
 
 // Spawn the Python script
 const pythonScript = process.env.JARVIS_SCRIPT || path.join(__dirname, '..', 'JARVIS.py');
@@ -47,6 +48,7 @@ let messageQueue = [];
 let outputBuffer = '';
 let pythonReady = false;
 let pendingMessages = []; // Messages received before Python is ready
+let modelStreamBuffer = ''; // Accumulates MODEL_CHUNK text for polling fallback
 
 // SSE client management for real-time audio notifications
 let sseClients = [];
@@ -143,6 +145,27 @@ pythonProcess.stdout.on('data', (data) => {
       const responseId = trimmed.substring(11);
       console.log(`Stream end: ${responseId}`);
       wsBroadcastJSON({ type: 'audio_end', responseId });
+    } else if (trimmed.startsWith('Transcribed Text:')) {
+      const text = trimmed.substring(17).trim();
+      console.log('Transcribed text:', text);
+      wsBroadcastJSON({ type: 'transcribed_text', text });
+    } else if (trimmed === 'MODEL_STREAM_START') {
+      console.log('Model text streaming started');
+      modelStreamBuffer = '';
+      wsBroadcastJSON({ type: 'model_stream_start' });
+    } else if (trimmed.startsWith('MODEL_CHUNK:')) {
+      // Decode escaped characters from Python's line-based protocol
+      const chunk = trimmed.substring(12).replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+      modelStreamBuffer += chunk;
+      wsBroadcastJSON({ type: 'model_chunk', content: chunk });
+    } else if (trimmed === 'MODEL_STREAM_END') {
+      console.log('Model text streaming ended');
+      // Push full response to messageQueue for polling fallback
+      if (modelStreamBuffer) {
+        messageQueue.push('Model: ' + modelStreamBuffer);
+      }
+      modelStreamBuffer = '';
+      wsBroadcastJSON({ type: 'model_stream_end' });
     } else if (trimmed.startsWith('Audio:')) {
       // TTS audio file notification (Groq path) - push via SSE for real-time delivery
       const audioFile = trimmed.substring(6).trim();
@@ -309,6 +332,13 @@ wss.on('connection', (ws) => {
   wsClients.add(ws);
   console.log(`WebSocket client connected, total: ${wsClients.size}`);
 
+  // Push config immediately on connection (don't wait for client to request it)
+  ws.send(JSON.stringify({
+    type: 'config',
+    sttProvider: STT_PROVIDER,
+  }));
+  console.log(`[Config] Pushed config to client: sttProvider=${STT_PROVIDER}`);
+
   // Per-client STT WebSocket connection to Python STT server
   let sttWs = null;
   let sttPendingChunks = []; // Buffer PCM chunks while STT WS is connecting
@@ -357,9 +387,9 @@ wss.on('connection', (ws) => {
     }
   }
 
-  ws.on('message', (data) => {
-    // Check if binary data (PCM audio for STT)
-    if (Buffer.isBuffer(data) || data instanceof ArrayBuffer) {
+  ws.on('message', (data, isBinary) => {
+    // Binary frames are PCM audio for STT — forward to STT server
+    if (isBinary) {
       if (sttWs && sttWs.readyState === WebSocket.OPEN) {
         sttWs.send(data);
       } else if (sttWs) {
@@ -369,32 +399,33 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // Text frames are JSON control messages
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === 'interrupt') {
         console.log('Interrupt requested via WebSocket');
         pythonProcess.stdin.write('INTERRUPT\n');
       } else if (msg.type === 'get_config') {
+        console.log(`[Config] Client requested config, sending sttProvider=${STT_PROVIDER}`);
         ws.send(JSON.stringify({
           type: 'config',
           sttProvider: STT_PROVIDER,
         }));
       } else if (msg.type === 'stt_start') {
         // Client starting to stream audio for STT
+        console.log('[STT] Client starting audio stream');
         if (!sttWs || sttWs.readyState !== WebSocket.OPEN) {
           connectSTT();
         }
       } else if (msg.type === 'stt_end') {
         // Client finished speaking, tell STT to finalize
+        console.log('[STT] Client ended audio stream, sending finalize');
         if (sttWs && sttWs.readyState === WebSocket.OPEN) {
           sttWs.send(JSON.stringify({ type: 'finalize' }));
         }
       }
     } catch (e) {
-      // Could be binary data that's not valid JSON - that's fine
-      if (!(data instanceof Buffer)) {
-        console.error('Invalid WebSocket message:', e.message);
-      }
+      console.error('Invalid WebSocket message:', e.message);
     }
   });
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMicVAD } from '@ricky0123/vad-react';
 import axios from 'axios';
 import './App.css';
-import { transcribe, sendTranscribedText, getSTTMode } from './utils/sttService';
+import { transcribe, sendTranscribedText } from './utils/sttService';
 import { StreamingAudioPlayer } from './utils/streamingAudio';
 
 // Dynamically build the URL based on the current browser address
@@ -104,10 +104,13 @@ const App = () => {
 
   // Streaming STT state
   const [sttProvider, setSttProvider] = useState(null); // 'groq' | 'local' (from server config)
+  const sttProviderRef = useRef(null); // ref for use in VAD callbacks (avoids stale closure)
   const [partialTranscript, setPartialTranscript] = useState('');
   const pcmWorkletRef = useRef(null); // AudioWorkletNode
   const pcmStreamRef = useRef(null); // MediaStream source node
   const sttMicStreamRef = useRef(null); // raw mic MediaStream for worklet
+  const pcmBufferRef = useRef([]); // rolling pre-speech audio buffer
+  const pcmLiveModeRef = useRef(false); // true = send PCM live, false = buffer
   const vadRef = useRef(null); // ref to VAD instance for use in WebSocket handler
   const lastEouRef = useRef(true); // latest EOU result from streaming partials (true = done speaking)
   const eouTimeoutRef = useRef(null); // force-finalize timeout when EOU says "not done"
@@ -119,6 +122,9 @@ const App = () => {
   useEffect(() => {
     isPlayingAudioRef.current = isPlayingAudio;
   }, [isPlayingAudio]);
+  useEffect(() => {
+    sttProviderRef.current = sttProvider;
+  }, [sttProvider]);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -166,6 +172,9 @@ const App = () => {
                 if (conversationalModeRef.current) {
                   vad.start();
                   setVadState('listening');
+                  if (sttProviderRef.current === 'local' && !pcmWorkletRef.current) {
+                    startPCMStreaming();
+                  }
                 }
               };
               streamPlayerRef.current.startStream(msg.responseId, msg.sampleRate);
@@ -178,10 +187,13 @@ const App = () => {
             } else if (msg.type === 'interrupt_ack') {
               console.log('Interrupt acknowledged');
             } else if (msg.type === 'config') {
-              // Server config (STT provider, etc.)
-              console.log('[Config] STT provider:', msg.sttProvider);
-              setSttProvider(msg.sttProvider || 'groq');
+              const provider = msg.sttProvider || 'groq';
+              console.log(`[Config] STT provider: ${provider} (${provider === 'local' ? 'streaming faster-whisper' : 'Groq Whisper API'})`);
+              console.log('[Config] Raw config message:', JSON.stringify(msg));
+              sttProviderRef.current = provider; // sync ref immediately (don't wait for useEffect)
+              setSttProvider(provider);
             } else if (msg.type === 'stt_partial') {
+              console.log('[STT Partial]', msg.text);
               setPartialTranscript(msg.text || '');
               // Track EOU result from streaming partials
               if (msg.eou !== undefined) {
@@ -195,11 +207,39 @@ const App = () => {
                 console.log('[STT] Final transcript:', text);
                 setMessages(prev => [...prev, { type: 'user', content: text }]);
                 setIsWaitingForResponse(true);
-                // Send as text with TTS
-                sendTranscribedText(text).then(() => pollForTextOutput(true))
-                  .catch(err => console.error('Error sending STT text:', err))
-                  .finally(() => setIsWaitingForResponse(false));
+                // Text is already sent to JARVIS.py by the Node.js relay —
+                // just update UI here. Response arrives via WebSocket streaming.
               }
+            } else if (msg.type === 'transcribed_text') {
+              // User's transcribed speech (Groq STT path)
+              setMessages(prev => [...prev, { type: 'user', content: msg.text }]);
+            } else if (msg.type === 'model_stream_start') {
+              // Add an empty model message that will be filled by chunks
+              // Hide the typing indicator since text is about to stream in
+              setIsWaitingForResponse(false);
+              setMessages(prev => [...prev, { type: 'model', content: '', streaming: true }]);
+            } else if (msg.type === 'model_chunk') {
+              // Append chunk to the last model message
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.type === 'model' && last.streaming) {
+                  updated[updated.length - 1] = { ...last, content: last.content + msg.content };
+                }
+                return updated;
+              });
+            } else if (msg.type === 'model_stream_end') {
+              // Finalize the streaming message
+              setMessages(prev => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last && last.type === 'model' && last.streaming) {
+                  const { streaming, ...rest } = last;
+                  updated[updated.length - 1] = rest;
+                }
+                return updated;
+              });
+              setIsWaitingForResponse(false);
             } else if (msg.type === 'eou_waiting') {
               console.log('[EOU] Waiting for more speech — keeping mic active');
               // Ensure VAD is listening so user can continue their thought
@@ -308,6 +348,9 @@ const App = () => {
         if (conversationalModeRef.current) {
           vad.start();
           setVadState('listening');
+          if (sttProviderRef.current === 'local' && !pcmWorkletRef.current) {
+            startPCMStreaming();
+          }
         }
       };
 
@@ -325,7 +368,7 @@ const App = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, partialTranscript]);
 
   // Interrupt helper: stop both streaming and file-based audio, notify backend
   const interruptPlayback = useCallback(() => {
@@ -375,6 +418,9 @@ const App = () => {
       if (newVal && vadState === 'idle') {
         vad.start();
         setVadState('listening');
+        if (sttProviderRef.current === 'local') {
+          startPCMStreaming();
+        }
       }
       return newVal;
     });
@@ -400,16 +446,18 @@ const App = () => {
       try {
         setMessages(prev => [...prev, { type: 'user', content: message }]);
         await axios.post(`${API_URL}/text-message`, { message });
-        await pollForTextOutput();
+        // Response arrives via WebSocket streaming (model_stream_start/chunk/end)
+        // isWaitingForResponse is cleared by model_stream_end handler
       } catch (error) {
         console.error('Error sending text message:', error);
-      } finally {
         setIsWaitingForResponse(false);
       }
     }
   };
 
-  // Start streaming PCM chunks over WebSocket for local STT
+  // Start capturing PCM audio for local STT.
+  // Starts in buffer mode: keeps a rolling ~500ms buffer of pre-speech audio.
+  // When speech starts, the buffer is flushed and it switches to live mode.
   const startPCMStreaming = useCallback(async () => {
     if (pcmWorkletRef.current) return; // already streaming
     try {
@@ -422,11 +470,23 @@ const App = () => {
       const source = ctx.createMediaStreamSource(stream);
       const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
 
+      pcmLiveModeRef.current = false;
+      pcmBufferRef.current = [];
+
       worklet.port.onmessage = (e) => {
-        // Send binary PCM chunk over WebSocket
-        const ws = wsRef.current;
-        if (ws && ws.readyState === 1) {
-          ws.send(e.data); // ArrayBuffer of Int16 PCM
+        if (pcmLiveModeRef.current) {
+          // Live mode: send PCM directly to server
+          const ws = wsRef.current;
+          if (ws && ws.readyState === 1) {
+            ws.send(e.data);
+          }
+        } else {
+          // Buffer mode: keep rolling ~500ms of pre-speech audio
+          pcmBufferRef.current.push(e.data);
+          // Each chunk is ~100ms at 16kHz, keep last 5 chunks (~500ms)
+          while (pcmBufferRef.current.length > 5) {
+            pcmBufferRef.current.shift();
+          }
         }
       };
 
@@ -435,20 +495,43 @@ const App = () => {
       pcmStreamRef.current = { ctx, source, worklet };
       pcmWorkletRef.current = worklet;
 
-      // Signal STT stream start
+      // Signal STT stream start (establishes server → STT WebSocket connection)
       if (wsRef.current?.readyState === 1) {
         wsRef.current.send(JSON.stringify({ type: 'stt_start' }));
       }
-      console.log('[STT] PCM streaming started');
+      console.log('[STT] PCM capture started (buffer mode)');
     } catch (err) {
       console.error('[STT] Failed to start PCM streaming:', err);
     }
   }, []);
 
-  const stopPCMStreaming = useCallback((finalize = true) => {
-    if (finalize && wsRef.current?.readyState === 1) {
+  // Flush pre-speech buffer and switch to live streaming mode
+  const flushPCMBuffer = useCallback(() => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === 1 && pcmBufferRef.current.length > 0) {
+      console.log(`[STT] Flushing ${pcmBufferRef.current.length} pre-speech chunks (~${pcmBufferRef.current.length * 100}ms)`);
+      for (const chunk of pcmBufferRef.current) {
+        ws.send(chunk);
+      }
+    }
+    pcmBufferRef.current = [];
+    pcmLiveModeRef.current = true;
+  }, []);
+
+  // Send finalize and switch back to buffer mode (keep mic + worklet alive)
+  const finalizePCMStream = useCallback(() => {
+    if (wsRef.current?.readyState === 1) {
       wsRef.current.send(JSON.stringify({ type: 'stt_end' }));
     }
+    pcmLiveModeRef.current = false;
+    pcmBufferRef.current = [];
+    console.log('[STT] Finalized, back to buffer mode');
+  }, []);
+
+  // Fully tear down PCM capture (mic, worklet, everything)
+  const stopPCMStreaming = useCallback(() => {
+    pcmLiveModeRef.current = false;
+    pcmBufferRef.current = [];
     if (pcmStreamRef.current) {
       pcmStreamRef.current.worklet.disconnect();
       pcmStreamRef.current.source.disconnect();
@@ -460,7 +543,7 @@ const App = () => {
       sttMicStreamRef.current.getTracks().forEach(t => t.stop());
       sttMicStreamRef.current = null;
     }
-    console.log('[STT] PCM streaming stopped');
+    console.log('[STT] PCM capture stopped');
   }, []);
 
   // VAD hook for voice activity detection
@@ -492,16 +575,17 @@ const App = () => {
         eouTimeoutRef.current = null;
       }
 
-      // Start PCM streaming for local STT (or continue existing stream)
-      if (sttProvider === 'local') {
-        startPCMStreaming();
+      // For local STT: flush pre-speech buffer and switch to live streaming
+      if (sttProviderRef.current === 'local') {
+        console.log('[VAD] Speech detected — flushing pre-speech buffer');
+        flushPCMBuffer();
       }
     },
     onSpeechEnd: async (audio) => {
       console.log('Speech ended');
 
       // Local streaming STT: check EOU before deciding to pause VAD
-      if (sttProvider === 'local') {
+      if (sttProviderRef.current === 'local') {
         if (lastEouRef.current) {
           // Both VAD + EOU agree speech is done — finalize
           console.log('[EOU+VAD] Both agree: finalizing');
@@ -509,14 +593,16 @@ const App = () => {
             clearTimeout(eouTimeoutRef.current);
             eouTimeoutRef.current = null;
           }
-          // NOW pause VAD (only after EOU confirmed done)
+          // Finalize STT (switches back to buffer mode, keeps mic alive)
+          finalizePCMStream();
+          // Pause VAD if not in conversational mode
           if (conversationalModeRef.current) {
             setVadState('listening');
           } else {
             setVadState('idle');
             vad.pause();
+            stopPCMStreaming(); // fully tear down since VAD is off
           }
-          stopPCMStreaming(true); // sends stt_end to finalize
         } else {
           // VAD silent but EOU says not done — keep everything alive
           console.log('[EOU+VAD] VAD silent but EOU says not done — waiting');
@@ -527,13 +613,14 @@ const App = () => {
           eouTimeoutRef.current = setTimeout(() => {
             console.log('[EOU+VAD] Timeout — force finalizing');
             eouTimeoutRef.current = null;
+            finalizePCMStream();
             if (conversationalModeRef.current) {
               setVadState('listening');
             } else {
               setVadState('idle');
               vad.pause();
+              stopPCMStreaming();
             }
-            stopPCMStreaming(true);
           }, 3000);
         }
         return; // Response handling happens in the stt_final WebSocket message handler
@@ -551,24 +638,11 @@ const App = () => {
       setIsWaitingForResponse(true);
 
       try {
-        const sttMode = getSTTMode();
-
-        if (sttMode === 'browser') {
-          // Browser STT: transcribe locally, send text
-          const text = await transcribe(audio);
-          if (text) {
-            setMessages(prev => [...prev, { type: 'user', content: text }]);
-            await sendTranscribedText(text);
-            await pollForTextOutput(true); // Skip user message parsing
-          }
-        } else {
-          // API STT: upload WAV, server transcribes
-          await transcribe(audio);
-          await pollForTextOutput(false);
-        }
+        // Groq API STT: upload WAV, server transcribes
+        await transcribe(audio);
+        // Transcribed text + model response arrive via WebSocket streaming
       } catch (error) {
         console.error('STT error:', error);
-      } finally {
         setIsWaitingForResponse(false);
       }
     },
@@ -585,54 +659,18 @@ const App = () => {
 
       vad.start();
       setVadState('listening');
+
+      // Start PCM capture in buffer mode so pre-speech audio is captured
+      if (sttProviderRef.current === 'local') {
+        startPCMStreaming();
+      }
     } else {
       vad.pause();
       setVadState('idle');
-    }
-  };
 
-  const pollForTextOutput = async (skipUserMessage = false) => {
-    // Poll for text messages only - audio arrives via SSE/WebSocket independently
-    const maxAttempts = 60;
-    const interval = 500;
-
-    for (let attempts = 0; attempts < maxAttempts; attempts++) {
-      try {
-        const response = await axios.get(`${API_URL}/text-output`);
-        const newTextOutput = response.data;
-
-        if (newTextOutput && newTextOutput.trim()) {
-          const newMessages = [];
-          const lines = newTextOutput.split('\n');
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith('Transcribed Text:')) {
-              // Skip user message if we already added it (browser STT mode)
-              if (!skipUserMessage) {
-                newMessages.push({ type: 'user', content: trimmed.substring(17).trim() });
-              }
-            } else if (trimmed.startsWith('Model:')) {
-              newMessages.push({ type: 'model', content: trimmed.substring(6).trim() });
-            } else if (trimmed && newMessages.length > 0) {
-              newMessages[newMessages.length - 1].content += '\n' + trimmed;
-            }
-          }
-
-          if (newMessages.length > 0) {
-            setMessages(prev => [...prev, ...newMessages]);
-          }
-
-          // Return once we have the model response - audio arrives via SSE/WebSocket
-          if (newMessages.some(m => m.type === 'model')) {
-            return;
-          }
-        }
-
-        await new Promise(resolve => setTimeout(resolve, interval));
-      } catch (error) {
-        console.error('Error retrieving text output:', error);
-        await new Promise(resolve => setTimeout(resolve, interval));
+      // Fully tear down PCM capture
+      if (sttProviderRef.current === 'local') {
+        stopPCMStreaming();
       }
     }
   };
