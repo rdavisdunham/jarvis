@@ -10,7 +10,9 @@ const { spawn } = require('child_process');
 // Configuration
 const STT_PROVIDER = process.env.STT_PROVIDER || 'groq';
 const STT_PORT = process.env.STT_PORT || 9001;
+const EOU_TIMEOUT = parseFloat(process.env.EOU_TIMEOUT || '3.0');
 console.log(`[Config] STT_PROVIDER=${STT_PROVIDER} (from env: ${process.env.STT_PROVIDER || 'not set'})`);
+console.log(`[Config] EOU_TIMEOUT=${EOU_TIMEOUT}s`);
 
 // Spawn the Python script
 const pythonScript = process.env.JARVIS_SCRIPT || path.join(__dirname, '..', 'JARVIS.py');
@@ -410,6 +412,7 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({
           type: 'config',
           sttProvider: STT_PROVIDER,
+          eouTimeout: EOU_TIMEOUT,
         }));
       } else if (msg.type === 'stt_start') {
         // Client starting to stream audio for STT

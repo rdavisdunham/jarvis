@@ -37,6 +37,7 @@ WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'medium.en')
 DEVICE = 'cuda' if os.environ.get('STT_DEVICE', 'cuda') == 'cuda' else 'cpu'
 COMPUTE_TYPE = os.environ.get('STT_COMPUTE_TYPE', 'float16')
 PORT = int(os.environ.get('STT_PORT', '9001'))
+EOU_TIMEOUT = float(os.environ.get('EOU_TIMEOUT', '3.0'))
 
 # Lazy-loaded model
 _model = None
@@ -219,9 +220,19 @@ async def handle_connection(websocket):
                         )
 
                     if text:
-                        # Use pre-computed EOU from partial loop (already checked
-                        # on every partial, no extra round-trip needed)
-                        if last_eou:
+                        # Use pre-computed EOU from partial loop if it says done.
+                        # If not, re-run EOU on the complete transcript — the last
+                        # partial may have run on an incomplete transcript and set
+                        # last_eou=False even though the full utterance is now done.
+                        final_eou = last_eou
+                        if not last_eou:
+                            log.info('last_eou=False — re-checking EOU on complete transcript')
+                            final_eou = await asyncio.get_event_loop().run_in_executor(
+                                None, eou_detector.is_end_of_utterance, text
+                            )
+                            log.info(f'Final EOU re-check: {"END" if final_eou else "CONTINUE"} | "{text[:60]}"')
+
+                        if final_eou:
                             await websocket.send(json.dumps({
                                 'type': 'final',
                                 'text': text,
@@ -241,7 +252,7 @@ async def handle_connection(websocket):
                             buffered_text = text
                             saved_gen = finalize_gen
                             async def force_finalize():
-                                await asyncio.sleep(3.0)
+                                await asyncio.sleep(EOU_TIMEOUT)
                                 nonlocal last_partial_text, last_eou
                                 if finalize_gen != saved_gen:
                                     return

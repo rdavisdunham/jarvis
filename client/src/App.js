@@ -93,6 +93,7 @@ const App = () => {
   const cancelledBeforeRef = useRef(0);  // Timestamp: ignore audio from responses before this
   const playingGuardRef = useRef(false); // Prevents double-play race in useEffect
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const ttsEnabledRef = useRef(true); // ref for use in SSE/WS callbacks (avoids stale closure)
 
   // Streaming audio state
   const wsRef = useRef(null);
@@ -114,6 +115,7 @@ const App = () => {
   const vadRef = useRef(null); // ref to VAD instance for use in WebSocket handler
   const lastEouRef = useRef(true); // latest EOU result from streaming partials (true = done speaking)
   const eouTimeoutRef = useRef(null); // force-finalize timeout when EOU says "not done"
+  const eouTimeoutMsRef = useRef(3000); // EOU wait duration in ms (set from server config)
 
   // Keep refs in sync with state for use in callbacks
   useEffect(() => {
@@ -125,6 +127,9 @@ const App = () => {
   useEffect(() => {
     sttProviderRef.current = sttProvider;
   }, [sttProvider]);
+  useEffect(() => {
+    ttsEnabledRef.current = ttsEnabled;
+  }, [ttsEnabled]);
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -162,6 +167,10 @@ const App = () => {
           try {
             const msg = JSON.parse(event.data);
             if (msg.type === 'audio_start') {
+              if (!ttsEnabledRef.current) {
+                console.log('TTS disabled, ignoring audio stream');
+                return;
+              }
               console.log(`Stream start: ${msg.responseId} @ ${msg.sampleRate}Hz`);
               if (!streamPlayerRef.current) {
                 streamPlayerRef.current = new StreamingAudioPlayer();
@@ -188,9 +197,11 @@ const App = () => {
               console.log('Interrupt acknowledged');
             } else if (msg.type === 'config') {
               const provider = msg.sttProvider || 'groq';
+              const timeoutMs = Math.round((msg.eouTimeout ?? 3.0) * 1000);
               console.log(`[Config] STT provider: ${provider} (${provider === 'local' ? 'streaming faster-whisper' : 'Groq Whisper API'})`);
-              console.log('[Config] Raw config message:', JSON.stringify(msg));
+              console.log(`[Config] EOU timeout: ${timeoutMs}ms`);
               sttProviderRef.current = provider; // sync ref immediately (don't wait for useEffect)
+              eouTimeoutMsRef.current = timeoutMs;
               setSttProvider(provider);
             } else if (msg.type === 'stt_partial') {
               console.log('[STT Partial]', msg.text);
@@ -198,6 +209,22 @@ const App = () => {
               // Track EOU result from streaming partials
               if (msg.eou !== undefined) {
                 lastEouRef.current = msg.eou;
+                // If EOU just flipped to true while we're waiting (3s timeout is
+                // pending), cancel the timeout and finalize immediately instead of
+                // waiting the full 3 seconds.
+                if (msg.eou && eouTimeoutRef.current) {
+                  console.log('[EOU] Flipped to done during wait — finalizing early');
+                  clearTimeout(eouTimeoutRef.current);
+                  eouTimeoutRef.current = null;
+                  finalizePCMStream();
+                  if (conversationalModeRef.current) {
+                    setVadState('listening');
+                  } else {
+                    setVadState('idle');
+                    vadRef.current?.pause();
+                    stopPCMStreaming();
+                  }
+                }
               }
             } else if (msg.type === 'stt_final') {
               setPartialTranscript('');
@@ -214,6 +241,8 @@ const App = () => {
               // User's transcribed speech (Groq STT path)
               setMessages(prev => [...prev, { type: 'user', content: msg.text }]);
             } else if (msg.type === 'model_stream_start') {
+              // New response starting — allow its audio through
+              cancelledBeforeRef.current = 0;
               // Add an empty model message that will be filled by chunks
               // Hide the typing indicator since text is about to stream in
               setIsWaitingForResponse(false);
@@ -299,6 +328,11 @@ const App = () => {
       const eventSource = new EventSource(`${API_URL}/events`);
 
       eventSource.addEventListener('audio', (event) => {
+        // Drop audio immediately if TTS is disabled
+        if (!ttsEnabledRef.current) {
+          return;
+        }
+
         const data = JSON.parse(event.data);
         const filename = data.file;
 
@@ -306,7 +340,7 @@ const App = () => {
         const match = filename.match(/^response_(\d+)_\d+\.wav$/);
         if (match) {
           const responseTimestamp = parseInt(match[1]);
-          // Ignore chunks from cancelled/old responses
+          // Ignore chunks from cancelled/interrupted responses
           if (responseTimestamp <= cancelledBeforeRef.current) {
             console.log(`Ignoring cancelled audio: ${filename}`);
             return;
@@ -387,8 +421,10 @@ const App = () => {
     setIsPlayingAudio(false);
     playingGuardRef.current = false;
 
-    // Cancel future audio from before now
-    cancelledBeforeRef.current = Date.now();
+    // Block all audio until the next response starts (model_stream_start resets to 0).
+    // We avoid Date.now() here because the audio filenames use backend timestamps
+    // (Python time.time) which can differ from the browser clock (WSL vs Windows).
+    cancelledBeforeRef.current = Number.MAX_SAFE_INTEGER;
 
     // Tell backend to stop generation
     if (wsRef.current?.readyState === 1) {
@@ -399,10 +435,14 @@ const App = () => {
   const toggleTts = async () => {
     const newValue = !ttsEnabled;
     setTtsEnabled(newValue);
+    ttsEnabledRef.current = newValue; // sync immediately — don't wait for useEffect
 
-    // If turning TTS off, stop any currently playing audio
     if (!newValue) {
+      // Turning off: stop whatever is playing now
       interruptPlayback();
+    } else {
+      // Turning on: clear the cancel filter so new responses aren't blocked
+      cancelledBeforeRef.current = 0;
     }
 
     try {
@@ -611,6 +651,7 @@ const App = () => {
           // Set force-finalize timeout in case user doesn't continue
           if (eouTimeoutRef.current) clearTimeout(eouTimeoutRef.current);
           eouTimeoutRef.current = setTimeout(() => {
+            // duration set by EOU_TIMEOUT env var via server config
             console.log('[EOU+VAD] Timeout — force finalizing');
             eouTimeoutRef.current = null;
             finalizePCMStream();
@@ -621,7 +662,7 @@ const App = () => {
               vad.pause();
               stopPCMStreaming();
             }
-          }, 3000);
+          }, eouTimeoutMsRef.current);
         }
         return; // Response handling happens in the stt_final WebSocket message handler
       }

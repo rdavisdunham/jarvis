@@ -598,10 +598,10 @@ def process_stdin():
                 if text_message:
                     handle_chat_with_groq(text_message, enable_tts=False)
             elif line.startswith('TEXT_TTS:'):
-                # Text input with TTS enabled
+                # Text input with TTS — respect the current toggle state
                 text_message = line[9:].strip()
                 if text_message:
-                    handle_chat_with_groq(text_message, enable_tts=True)
+                    handle_chat_with_groq(text_message, enable_tts=audio_tts_enabled)
             elif line.startswith('INTERRUPT'):
                 # Cancel ongoing Kokoro generation
                 if TTS_PROVIDER == "kokoro":

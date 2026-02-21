@@ -4,12 +4,18 @@ End-of-Utterance (EOU) detection using LiveKit's turn detector ONNX model.
 Loads the model directly via ONNX Runtime (bypasses LiveKit Agents framework).
 Determines if the user is done speaking based on transcript + conversation context.
 
+The model predicts whether <|im_end|> should appear next — so the final
+<|im_end|> must be stripped from the input. The multilingual model (v0.4.1-intl)
+also expects NFKC-normalized, lowercased, punctuation-stripped text.
+
 ~400MB RAM, ~25ms inference on CPU.
 """
 
 import logging
 import os
+import re
 import sys
+import unicodedata
 
 import numpy as np
 
@@ -23,6 +29,9 @@ if not log.handlers:
 
 EOU_ENABLED = os.environ.get('EOU_ENABLED', 'false').lower() == 'true'
 EOU_THRESHOLD = float(os.environ.get('EOU_THRESHOLD', '0.5'))
+
+_MAX_HISTORY_TOKENS = 128
+_MAX_HISTORY_TURNS = 6
 
 _session = None
 _tokenizer = None
@@ -59,11 +68,26 @@ def _load_model():
             model_path, providers=['CPUExecutionProvider'], sess_options=opts
         )
 
-        _tokenizer = AutoTokenizer.from_pretrained(repo, revision=revision)
+        _tokenizer = AutoTokenizer.from_pretrained(
+            repo, revision=revision, truncation_side='left'
+        )
         log.info(f'EOU model loaded (threshold: {EOU_THRESHOLD})')
 
     except Exception as e:
         log.error(f'Failed to load EOU model: {e}')
+
+
+def _normalize_text(text):
+    """Normalize text for the multilingual model: NFKC, lowercase, strip punctuation."""
+    if not text:
+        return ''
+    text = unicodedata.normalize('NFKC', text.lower())
+    # Remove punctuation except apostrophes and hyphens
+    text = ''.join(
+        ch for ch in text
+        if not (unicodedata.category(ch).startswith('P') and ch not in ("'", "-"))
+    )
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 def is_end_of_utterance(transcript, conversation_history=None):
@@ -80,31 +104,63 @@ def is_end_of_utterance(transcript, conversation_history=None):
         return True
 
     try:
-        # Build chat-style input from conversation history + current transcript
-        messages = []
+        # Build chat-style input from conversation history + current transcript.
+        # Merge adjacent same-role messages (matches LiveKit SDK behavior).
+        raw_messages = []
         if conversation_history:
-            for msg in conversation_history[-6:]:
+            for msg in conversation_history[-_MAX_HISTORY_TURNS:]:
                 role = msg.get('role', 'user')
+                if role not in ('user', 'assistant'):
+                    continue
                 content = msg.get('content', '')
-                messages.append({'role': role, 'content': content})
-        messages.append({'role': 'user', 'content': transcript})
+                raw_messages.append({'role': role, 'content': content})
+        raw_messages.append({'role': 'user', 'content': transcript})
 
-        # Format as ChatML tokens (what the model was trained on)
-        text = ''.join(
-            f'<|im_start|>{m["role"]}\n{m["content"]}<|im_end|>\n'
-            for m in messages
+        # Normalize text and merge adjacent same-role turns
+        merged = []
+        last = None
+        for m in raw_messages:
+            content = _normalize_text(m['content'])
+            if not content:
+                continue
+            if last and last['role'] == m['role']:
+                last['content'] += f' {content}'
+            else:
+                entry = {'role': m['role'], 'content': content}
+                merged.append(entry)
+                last = entry
+
+        # Use the tokenizer's built-in chat template, then strip the final
+        # <|im_end|>. The model's job is to predict WHETHER <|im_end|> should
+        # appear next — if we include it, we're asking the wrong question.
+        text = _tokenizer.apply_chat_template(
+            merged,
+            add_generation_prompt=False,
+            add_special_tokens=False,
+            tokenize=False,
+        )
+        ix = text.rfind('<|im_end|>')
+        if ix != -1:
+            text = text[:ix]
+
+        # Tokenize with truncation (left-side, preserves most recent context)
+        inputs = _tokenizer(
+            text,
+            add_special_tokens=False,
+            return_tensors='np',
+            max_length=_MAX_HISTORY_TOKENS,
+            truncation=True,
         )
 
-        inputs = _tokenizer(text, return_tensors='np')
-        outputs = _session.run(None, {'input_ids': inputs['input_ids']})
-
-        # Output is per-token EOU probability; last token is what we want
-        probs = outputs[0][0]  # shape: (seq_len,)
-        eou_prob = float(probs[-1])
+        # Run inference — model only accepts input_ids (no attention_mask)
+        outputs = _session.run(
+            None, {'input_ids': inputs['input_ids'].astype('int64')}
+        )
+        eou_prob = float(outputs[0].flatten()[-1])
 
         is_eou = eou_prob >= EOU_THRESHOLD
         log.info(
-            f'EOU prob: {eou_prob:.3f} (threshold: {EOU_THRESHOLD}) '
+            f'EOU prob: {eou_prob:.4f} (threshold: {EOU_THRESHOLD}) '
             f'-> {"END" if is_eou else "CONTINUE"} | "{transcript[:60]}"'
         )
         return is_eou
