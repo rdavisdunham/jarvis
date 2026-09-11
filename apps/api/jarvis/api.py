@@ -6,7 +6,7 @@ import json
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -33,6 +33,7 @@ from .models import (
     MemoryReview,
     Notification,
     Occurrence,
+    Project,
     PushSubscription,
     Schedule,
     Source,
@@ -229,6 +230,33 @@ def command_status(command_id: str, user: User):
         return row.result
 
 
+@app.get("/api/v1/projects")
+def projects(user: User):
+    with session_scope() as db:
+        return {
+            "items": [
+                serial(p)
+                for p in db.scalars(
+                    select(Project).where(Project.owner_id == user.owner_id).order_by(Project.name)
+                )
+            ]
+        }
+
+
+@app.get("/api/v1/calendar")
+def calendar_items(user: User, start: date, end: date, timezone: str | None = None):
+    from .workspace import calendar
+
+    with session_scope() as db:
+        return calendar(db, user.owner_id, start, end, timezone or preferences(db, user.owner_id)["timezone"])
+
+
+@app.get("/api/v1/budget/holds")
+def budget_holds(user: User):
+    with session_scope() as db:
+        return {"items": budget.holds(db, user.owner_id)}
+
+
 @app.get("/api/v1/tasks")
 def tasks(
     user: User, q: str = "", before: str | None = None, limit: int = 100, include_archived: bool = False
@@ -256,18 +284,16 @@ def task(task_id: str, user: User):
 
 
 @app.get("/api/v1/schedules")
-def schedules(user: User):
+def schedules(user: User, before: str | None = None, limit: int = 200):
+    limit = max(1, min(limit, 200))
     with session_scope() as db:
+        q = select(Schedule).where(Schedule.owner_id == user.owner_id)
+        if before:
+            q = q.where(Schedule.id < before)
+        rows = list(db.scalars(q.order_by(Schedule.id.desc()).limit(limit + 1)))
         return {
-            "items": [
-                serial(s)
-                for s in db.scalars(
-                    select(Schedule)
-                    .where(Schedule.owner_id == user.owner_id)
-                    .order_by(Schedule.created_at.desc())
-                    .limit(200)
-                )
-            ]
+            "items": [serial(r) for r in rows[:limit]],
+            "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
         }
 
 
@@ -516,13 +542,28 @@ def export(user: User, format: str = "json"):
             model.__tablename__: [
                 serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))
             ]
-            for model in (Task, Schedule, Notification, Memory, Source, MemoryReview)
+            for model in (Task, Project, Schedule, Notification, Memory, Source, MemoryReview)
         }
     if format == "csv":
         buffer = io.StringIO()
         writer = csv.DictWriter(
             buffer,
-            fieldnames=["id", "title", "status", "due_date", "due_time", "due_timezone", "project", "notes"],
+            fieldnames=[
+                "id",
+                "title",
+                "status",
+                "due_date",
+                "due_time",
+                "due_timezone",
+                "project",
+                "project_id",
+                "parent_task_id",
+                "assignee",
+                "work_type",
+                "tags",
+                "priority",
+                "notes",
+            ],
         )
         writer.writeheader()
         for task in data["tasks"]:

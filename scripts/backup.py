@@ -28,6 +28,7 @@ def cipher():
 def counts(database):
     names = [
         "tasks",
+        "projects",
         "schedules",
         "notifications",
         "sources",
@@ -38,6 +39,10 @@ def counts(database):
     return {
         name: int(pg("psql", "-XAt", "-d", database, "-c", f"SELECT count(*) FROM {name}").strip())
         for name in names
+        if pg(
+            "psql", "-XAt", "-d", database, "-c", f"SELECT to_regclass('public.{name}') IS NOT NULL"
+        ).strip()
+        == b"t"
     }
 
 

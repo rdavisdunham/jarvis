@@ -7,7 +7,7 @@ try {
   await page.goto(process.env.JARVIS_REVIEW_TEST_URL);
   await page.getByLabel("Pairing code").fill("memory-review-fixture");
   await page.locator(".login-card button.primary").click();
-  await page.getByRole("button", { name: "All tasks", exact: true }).click();
+  await page.getByRole("button", { name: "Work", exact: true }).click();
   const task = await page.evaluate(async () => {
     const boot = await (await fetch("/api/v1/bootstrap")).json();
     const response = await fetch("/api/v1/commands", {

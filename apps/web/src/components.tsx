@@ -1,3 +1,4 @@
+import { BudgetHolds } from "./BudgetHolds";
 import { useEffect, useState } from "react";
 import {
   CalendarDays,
@@ -12,8 +13,8 @@ import {
   X,
   Brain,
 } from "lucide-react";
-import type { Bootstrap, Task } from "./types";
-function useDialogFocus() {
+import type { Bootstrap, Task, Project, Schedule } from "./types";
+export function useDialogFocus() {
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const trap = (event: KeyboardEvent) => {
@@ -103,9 +104,19 @@ export function TaskRow({
         <span className="task-title">{task.title}</span>
         {(task.notes ||
           task.project ||
+          task.assignee !== "owner" ||
+          task.work_type ||
+          task.tags?.length ||
           !["open", "completed"].includes(task.status)) && (
           <span className="task-meta">
             {task.project && <span>{task.project}</span>}
+            {task.assignee && task.assignee !== "owner" && (
+              <span>Assigned: {task.assignee}</span>
+            )}
+            {task.work_type && <span>{task.work_type}</span>}
+            {!!task.tags?.length && (
+              <span>{task.tags.map((t) => "#" + t).join(" ")}</span>
+            )}
             {!["open", "completed"].includes(task.status) && (
               <span>{task.status.replace("_", " ")}</span>
             )}
@@ -128,7 +139,12 @@ export function TaskRow({
         >
           <CalendarDays size={13} />
           {relativeDate(task.due_date, today)}
-          {task.due_time && <span title={task.due_timezone ?? undefined}> · {task.due_time.slice(0, 5)}</span>}
+          {task.due_time && (
+            <span title={task.due_timezone ?? undefined}>
+              {" "}
+              · {task.due_time.slice(0, 5)}
+            </span>
+          )}
         </button>
       )}
       <button
@@ -143,6 +159,12 @@ export function TaskRow({
 }
 export function TaskDialog({
   timezone,
+  projects,
+  tasks,
+  reminders,
+  onReminder,
+  onAddReminder,
+  error,
   task,
   busy,
   onClose,
@@ -150,6 +172,12 @@ export function TaskDialog({
   onArchive,
 }: {
   timezone: string;
+  projects: Project[];
+  tasks: Task[];
+  reminders: Schedule[];
+  onReminder: (schedule: Schedule) => void;
+  onAddReminder: () => void;
+  error?: string;
   task: Task;
   busy: boolean;
   onClose: () => void;
@@ -178,10 +206,17 @@ export function TaskDialog({
             expected_revision: task.revision,
             title: draft.title,
             notes: draft.notes,
-            project: draft.project || null,
+            project_id: draft.project_id || null,
+            parent_task_id: draft.parent_task_id || null,
+            assignee: draft.assignee || "owner",
+            work_type: draft.work_type || "",
+            tags: draft.tags ?? [],
             due_date: draft.due_date || null,
             due_time: draft.due_date ? draft.due_time || null : null,
-            due_timezone: draft.due_date && draft.due_time ? draft.due_timezone || timezone : null,
+            due_timezone:
+              draft.due_date && draft.due_time
+                ? draft.due_timezone || timezone
+                : null,
             priority: draft.priority,
             status: draft.status,
           });
@@ -198,6 +233,11 @@ export function TaskDialog({
             <X size={20} />
           </button>
         </div>
+        {error && (
+          <p className="error-banner" role="alert">
+            {error}
+          </p>
+        )}
         <label>
           Task
           <input
@@ -228,15 +268,26 @@ export function TaskDialog({
           </label>
           <label>
             Due time (optional)
-            <input type="time" disabled={!draft.due_date}
+            <input
+              type="time"
+              disabled={!draft.due_date}
               value={draft.due_time?.slice(0, 5) ?? ""}
-              onChange={(e) => setDraft({ ...draft, due_time: e.target.value || null })} />
+              onChange={(e) =>
+                setDraft({ ...draft, due_time: e.target.value || null })
+              }
+            />
           </label>
-          {draft.due_time && <label>
-            Due time zone
-            <input value={draft.due_timezone ?? timezone}
-              onChange={(e) => setDraft({ ...draft, due_timezone: e.target.value })} />
-          </label>}
+          {draft.due_time && (
+            <label>
+              Due time zone
+              <input
+                value={draft.due_timezone ?? timezone}
+                onChange={(e) =>
+                  setDraft({ ...draft, due_timezone: e.target.value })
+                }
+              />
+            </label>
+          )}
           <label>
             Priority
             <select
@@ -254,16 +305,86 @@ export function TaskDialog({
           </label>
           <label>
             Project
+            <select
+              aria-label="Project"
+              value={draft.project_id ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, project_id: e.target.value || null })
+              }
+            >
+              <option value="">No project</option>
+              {projects
+                .filter((p) => !p.archived || p.id === draft.project_id)
+                .map((p) => (
+                  <option value={p.id} key={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Parent task
+            <select
+              aria-label="Parent task"
+              value={draft.parent_task_id ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, parent_task_id: e.target.value || null })
+              }
+            >
+              <option value="">Top-level task</option>
+              {tasks
+                .filter((t) => t.id !== draft.id)
+                .map((t) => (
+                  <option value={t.id} key={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Assignee
             <input
-              value={draft.project ?? ""}
-              onChange={(e) => setDraft({ ...draft, project: e.target.value })}
-              placeholder="Inbox"
+              value={draft.assignee ?? "owner"}
+              maxLength={100}
+              required
+              onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
+              list="assignee-options"
+            />
+            <datalist id="assignee-options">
+              <option value="owner" />
+              <option value="Eri" />
+            </datalist>
+          </label>
+          <label>
+            Work type
+            <input
+              value={draft.work_type ?? ""}
+              maxLength={80}
+              placeholder="Personal, research, admin…"
+              onChange={(e) =>
+                setDraft({ ...draft, work_type: e.target.value })
+              }
+            />
+          </label>
+          <label>
+            Tags
+            <input
+              value={(draft.tags ?? []).join(", ")}
+              maxLength={800}
+              placeholder="Separate with commas"
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  tags: e.target.value.split(",").map((t) => t.trim()),
+                })
+              }
             />
           </label>
           <label>
             Status
             <select
               aria-label="Status"
+              disabled={task.id === "new"}
               value={draft.status}
               onChange={(e) => setDraft({ ...draft, status: e.target.value })}
             >
@@ -283,10 +404,43 @@ export function TaskDialog({
           </label>
         </div>
         <p className="footnote">
-          A due date doesn’t create a notification. Set a reminder separately.
+          Assigning a task organizes it; it does not start an agent. A deadline
+          does not send a notification.
         </p>
+        {task.id !== "new" && (
+          <section className="task-reminders">
+            <h3>Reminders</h3>
+            {reminders.map((r) => (
+              <button
+                type="button"
+                key={r.id}
+                className="text-button"
+                disabled={JSON.stringify(draft) !== JSON.stringify(task)}
+                onClick={() => onReminder(r)}
+              >
+                <Clock3 size={14} />
+                {r.title} · {r.status}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="text-button"
+              disabled={JSON.stringify(draft) !== JSON.stringify(task)}
+              onClick={onAddReminder}
+            >
+              <Plus size={14} />
+              Add linked reminder
+            </button>
+            {JSON.stringify(draft) !== JSON.stringify(task) && (
+              <p className="footnote">
+                Save your edits before opening a reminder.
+              </p>
+            )}
+          </section>
+        )}
         <div className="dialog-actions">
           <button
+            hidden={task.id === "new"}
             type="button"
             className="text-button danger"
             onClick={() => void onArchive()}
@@ -514,7 +668,8 @@ export function SettingsPanel({
           {
             key: "deep_sleep_enabled",
             label: "Weekly deep sleep",
-            description: "Review memories on Sundays at 3 AM in your home time zone. Ask before resolving uncertain names.",
+            description:
+              "Review memories on Sundays at 3 AM in your home time zone. Ask before resolving uncertain names.",
           },
         ].map((item) => (
           <label className="setting-row" key={item.key}>
@@ -526,7 +681,14 @@ export function SettingsPanel({
               className="switch"
               type="checkbox"
               role="switch"
-              checked={p[item.key as "history_enabled" | "memory_learning" | "deep_sleep_enabled"]}
+              checked={
+                p[
+                  item.key as
+                    | "history_enabled"
+                    | "memory_learning"
+                    | "deep_sleep_enabled"
+                ]
+              }
               disabled={busy}
               onChange={(e) => void onSave({ [item.key]: e.target.checked })}
             />
@@ -634,19 +796,29 @@ export function SettingsPanel({
             ${boot.budget.spent_usd.toFixed(2)}
             <span> / ${boot.budget.limit_usd.toFixed(0)} this month</span>
           </strong>
-          <span>${boot.budget.active_reserved_usd.toFixed(2)} reserved for active work</span>
+          <span>
+            ${boot.budget.active_reserved_usd.toFixed(2)} reserved for active
+            work
+          </span>
         </div>
-        {boot.budget.uncertain_usd > 0 && <p className="footnote">
-          ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions with unconfirmed final usage.
-        </p>}
+        {boot.budget.uncertain_usd > 0 && (
+          <p className="footnote">
+            ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions with
+            unconfirmed final usage.
+          </p>
+        )}
+        <BudgetHolds />
         <p className="footnote">
-          At this month's pace: about ${boot.budget.projected_month_usd.toFixed(2)} this month.
+          At this month's pace: about $
+          {boot.budget.projected_month_usd.toFixed(2)} this month.
         </p>
-        {boot.budget.budget_mode !== "normal" && <p role="status" className="footnote">
-          {["defer_optional", "paused"].includes(boot.budget.budget_mode)
-            ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
-            : "Your usage and reservations have reached 80% of the monthly limit."}
-        </p>}
+        {boot.budget.budget_mode !== "normal" && (
+          <p role="status" className="footnote">
+            {["defer_optional", "paused"].includes(boot.budget.budget_mode)
+              ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
+              : "Your usage and reservations have reached 80% of the monthly limit."}
+          </p>
+        )}
         <progress
           max={Math.max(1, boot.budget.limit_usd)}
           value={boot.budget.spent_usd + boot.budget.reserved_usd}

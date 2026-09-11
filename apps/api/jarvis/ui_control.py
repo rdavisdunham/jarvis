@@ -7,7 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-View = Literal["today", "inbox", "week", "all", "reminders", "memory", "notifications", "settings"]
+View = Literal[
+    "today", "inbox", "week", "all", "reminders", "calendar", "memory", "notifications", "settings"
+]
 
 
 class UIContext(BaseModel):
@@ -19,8 +21,13 @@ class UIContext(BaseModel):
     query: str = Field(default="", max_length=300)
     selected_task_id: str | None = Field(default=None, max_length=36)
     visible_ids: list[str] = Field(default_factory=list, max_length=60)
-    task_status: Literal["all", "open", "completed"] = "all"
+    task_status: Literal["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
+        "all"
+    )
     project: str = Field(default="", max_length=200)
+    calendar_date: str | None = Field(default=None, max_length=10)
+    selected_schedule_id: str | None = Field(default=None, max_length=36)
+    work_kind: Literal["all", "task", "reminder"] = "all"
 
 
 class UISync(BaseModel):
@@ -33,7 +40,8 @@ pending = {}
 
 APP_MAP = """Site map and available controls:
 Today: tasks due today or overdue. Inbox: tasks without a project. This week: dated tasks through the next 6 days.
-All tasks: every unarchived task, searchable by title/project with status and project filters.
+Work (all): unified tasks and reminders, searchable with status, project and kind filters. Linked reminders appear with their task. Task details include project, parent, tags, assignee and work type.
+Calendar: monthly grid and selected-day agenda, task deadlines plus projected reminder occurrences. ui_calendar selects a date. Projected occurrences are previews, not delivered notifications.
 Reminders: upcoming/due, completed and cancelled schedules. Memory: saved facts, semantic search, source, correction and forget.
 Notifications: delivered reminders with complete, snooze and dismiss. Settings: preferred name, history/learning,
 reminder defaults, notification privacy, model budget, and per-device voice provider/voice/wake-word.

@@ -1963,10 +1963,433 @@ progress::-webkit-progress-value {
   }
 }
 
-.memory-maintenance { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 0 0 1rem; }
-.memory-review { border-color: #bcc5cd; }
-.memory-review h3 { margin: 0 0 .6rem; font-size: 1rem; }
-.memory-review ul { padding-left: 1.3rem; line-height: 1.6; }
-.memory-review label { display: grid; gap: .5rem; font-size: .85rem; }
-.memory-review textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-.memory-review form .primary { margin-top: .7rem; }
+.memory-maintenance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0 0 1rem;
+}
+.memory-review {
+  border-color: #bcc5cd;
+}
+.memory-review h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+.memory-review ul {
+  padding-left: 1.3rem;
+  line-height: 1.6;
+}
+.memory-review label {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.memory-review textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.memory-review form .primary {
+  margin-top: 0.7rem;
+}
+
+/* Unified work list and calendar */
+.work-space-panel {
+  display: block;
+  min-width: 0;
+}
+.workspace-actions,
+.workspace-add,
+.calendar-heading,
+.calendar-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.workspace-actions {
+  justify-content: space-between;
+  margin: 0 0 20px;
+  flex-wrap: wrap;
+}
+.calendar-heading {
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.calendar-heading h2 {
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  margin: 0;
+}
+.calendar-heading > div {
+  gap: 4px;
+}
+.calendar-zone {
+  margin: 6px 0 18px;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.calendar-weekday {
+  padding: 12px 4px;
+  font-size: 10px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.calendar-day {
+  min-height: 102px;
+  min-width: 0;
+  padding: 9px 6px;
+  text-align: left;
+  border-right: 1px solid #ffffff05;
+  border-bottom: 1px solid #ffffff05;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.calendar-day:hover {
+  background: #ffffff05;
+}
+.calendar-day.outside {
+  opacity: 0.45;
+}
+.calendar-day.selected {
+  background: #a9d7c511;
+  box-shadow: inset 0 0 0 1px #a9d7c57a;
+}
+.calendar-day:focus-visible {
+  outline-offset: -3px;
+}
+.calendar-number {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--soft);
+}
+.calendar-day.is-today .calendar-number {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+.calendar-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.calendar-chip {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+  font-size: 9px;
+  border-radius: 4px;
+  padding: 3px 4px;
+  background: #a9d7c512;
+  color: #beded1;
+}
+.calendar-chip.reminder,
+.calendar-chip.routine {
+  background: #b8a5e516;
+  color: #ccb9ec;
+}
+.calendar-chip.completed {
+  text-decoration: line-through;
+  opacity: 0.6;
+  margin: 0;
+}
+.calendar-labels small {
+  font-size: 9px;
+  color: var(--muted);
+}
+.calendar-dots {
+  display: none;
+}
+.agenda-heading {
+  margin-top: 28px;
+}
+.agenda-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 2px;
+}
+.agenda-row .grow {
+  min-width: 0;
+}
+.agenda-row strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.agenda-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 5px;
+}
+.agenda-row.done strong {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.agenda-time {
+  width: 67px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--soft);
+}
+.agenda-kind {
+  color: var(--accent);
+}
+.agenda-kind.reminder,
+.agenda-kind.routine {
+  color: #c9b5e9;
+}
+.calendar-empty {
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.work-reminder {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.work-reminder .task-info {
+  text-align: left;
+  min-width: 0;
+}
+.work-reminder .task-meta {
+  display: block;
+  line-height: 1.7;
+}
+.work-reminder.done .task-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.linked-reminder {
+  margin-left: 29px;
+  padding: 11px 0;
+  background: linear-gradient(90deg, #b8a5e508, transparent);
+}
+.linked-reminder .task-title {
+  font-size: 12px;
+}
+.parent-link {
+  font-size: 10px;
+  padding: 10px 0 0 30px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.work-item {
+  min-width: 0;
+}
+.project-manager {
+  margin-top: 35px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.project-manager summary {
+  cursor: pointer;
+  color: var(--soft);
+  font-size: 12px;
+}
+.project-manager summary span {
+  color: var(--muted);
+  margin-left: 8px;
+}
+.project-create,
+.project-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+.project-create input,
+.project-editor input {
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.project-editor {
+  flex-wrap: wrap;
+}
+.project-editor input {
+  flex: 1 1 170px;
+}
+.task-reminders {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.task-reminders h3 {
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+.task-reminders button {
+  max-width: 100%;
+  text-align: left;
+}
+.dialog {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+}
+.task-filters {
+  flex-wrap: wrap;
+}
+.task-filters select {
+  max-width: 230px;
+}
+.budget-holds {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.budget-holds summary {
+  cursor: pointer;
+}
+.budget-hold {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.budget-hold small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+}
+@media (max-width: 650px) {
+  .calendar-day {
+    min-height: 61px;
+    padding: 6px 4px;
+    gap: 5px;
+    align-items: center;
+  }
+  .calendar-labels {
+    display: none;
+  }
+  .calendar-dots {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    min-height: 6px;
+  }
+  .calendar-dots i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .calendar-dots i.reminder,
+  .calendar-dots i.routine {
+    background: #c9b5e9;
+  }
+  .calendar-dots small {
+    font-size: 7px;
+  }
+  .calendar-weekday {
+    font-size: 9px;
+    letter-spacing: 0;
+    padding: 10px 0;
+  }
+  .calendar-heading h2 {
+    font-size: 18px;
+  }
+  .calendar-heading .icon-button {
+    width: 30px;
+  }
+  .calendar-heading .text-button {
+    font-size: 10px;
+  }
+  .workspace-actions {
+    gap: 10px;
+  }
+  .workspace-actions .record-tabs {
+    display: none;
+  }
+  .workspace-add {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .agenda-row {
+    gap: 9px;
+  }
+  .agenda-time {
+    width: 56px;
+    font-size: 10px;
+  }
+  .agenda-row strong {
+    font-size: 12px;
+  }
+  .project-create {
+    flex-wrap: wrap;
+  }
+  .project-create input {
+    flex-basis: 100%;
+  }
+  .task-filters select {
+    max-width: 150px;
+  }
+  .dialog .form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dialog .form-grid label {
+    min-width: 0;
+  }
+  .dialog select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 650px) {
+  .task-filters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .task-filters label {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
+    font-size: 10px;
+  }
+  .task-filters select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 10px 6px;
+    font-size: 10px;
+  }
+}

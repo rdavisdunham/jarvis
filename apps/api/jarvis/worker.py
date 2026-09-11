@@ -204,6 +204,7 @@ def housekeeping():
                 .limit(500)
             ):
                 delete_source(db, source)
+        budget.expire_abandoned(db, settings.owner_id)
         # Finished DBOS invocations are never replayed under the same workflow ID.
         # Resume intentionally deferred memory work as a new durable job once funds allow.
         if budget.summary(db, settings.owner_id)["budget_mode"] not in {"defer_optional", "paused"}:
@@ -232,6 +233,11 @@ def housekeeping():
                 Job.kind == "chat", Job.status == "running", Job.created_at < now() - timedelta(minutes=10)
             )
         ):
+            reservation = db.get(
+                __import__("jarvis.models", fromlist=["BudgetReservation"]).BudgetReservation, job.id
+            )
+            if reservation and reservation.state == "reserved" and not budget.stale(reservation):
+                continue
             job.status, job.finished_at = "failed", now()
             job.result = {
                 "status": "failed",

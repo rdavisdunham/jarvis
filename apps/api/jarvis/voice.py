@@ -74,6 +74,8 @@ class Controller:
         self.transcripts = {}
         self.memory_context = ""
         self.ui_context = {}
+        self.unreported = set()
+        self.pending_transcription = set()
 
     async def send(self, event):
         if self.ws and not self.closed:
@@ -178,7 +180,11 @@ class Controller:
 
     async def event(self, event):
         kind = event.get("type")
-        if self.closing and kind not in {"response.created", "response.done"}:
+        if self.closing and kind not in {
+            "response.created",
+            "response.done",
+            "conversation.item.input_audio_transcription.completed",
+        }:
             return
         if kind == "session.updated":
             if not self.ready.is_set():
@@ -217,6 +223,7 @@ class Controller:
                 self.ready.set()
         elif kind == "input_audio_buffer.speech_started":
             self.input_started.setdefault(event["item_id"], now())
+            self.pending_transcription.add(event["item_id"])
             await self.interrupt()
         elif kind == "input_audio_buffer.committed":
             item = event["item_id"]
@@ -237,6 +244,20 @@ class Controller:
             )
         elif kind == "conversation.item.input_audio_transcription.completed":
             self.transcripts[event["item_id"]] = event.get("transcript", "")
+            usage = event.get("usage", {})
+            cost = budget.transcription_cost(usage)
+            if cost is not None:
+                with session_scope() as db:
+                    budget.record_usage(
+                        db,
+                        self.owner,
+                        self.id,
+                        f"{self.id}:transcription:{event['item_id']}",
+                        "gpt-live-transcribe",
+                        usage,
+                        cost,
+                    )
+                self.pending_transcription.discard(event["item_id"])
             with session_scope() as db:
                 conv = owned(db, Conversation, self.conversation_id, self.owner)
                 source = capture_source(
@@ -254,6 +275,11 @@ class Controller:
             response = event["response"]
             nonce = response.get("metadata", {}).get("jarvis_request")
             request = self.allowed.pop(nonce, None)
+            if nonce in self.unreported:
+                self.unreported.discard(nonce)
+                self.unreported.add(response["id"])
+            if request is None:
+                self.unreported.add(response["id"])
             if request is not None:
                 self.responses[response["id"]] = request
             if request is None or request["epoch"] != self.epoch or self.closing:
@@ -273,6 +299,10 @@ class Controller:
                         usage,
                         budget.realtime_cost(usage, self.model),
                     )
+            if not usage:
+                self.unreported.add(response["id"])
+            else:
+                self.unreported.discard(response["id"])
             if not request or request["epoch"] != self.epoch:
                 return
             if response.get("status") != "completed":
@@ -425,12 +455,15 @@ class Controller:
         while not self.closed:
             await asyncio.sleep(1)
             current = time.monotonic()
+            with session_scope() as db:
+                budget.touch(db, self.owner, self.id)
             # A live browser renews this lease through status polls. This is
             # orphan cleanup, not an elapsed-time, speech-turn, or silence cap.
             if current - self.client_seen > 30:
                 await self.close()
             elif any(current - r["created"] > 20 for r in [*self.responses.values(), *self.allowed.values()]):
                 await self.interrupt()
+                self.unreported.update(self.allowed)
                 self.allowed.clear()
                 self.state, self.error = "unresolved", "Speak again or choose Respond now to retry this turn."
 
@@ -449,9 +482,11 @@ class Controller:
                     break
             deadline = time.monotonic() + 2
             if asyncio.current_task() != self.receiver:
-                while (self.responses or self.allowed) and time.monotonic() < deadline:
+                while (
+                    self.responses or self.allowed or self.pending_transcription
+                ) and time.monotonic() < deadline:
                     await asyncio.sleep(0.05)
-            unsettled = bool(self.responses or self.allowed)
+            unsettled = bool(self.responses or self.allowed or self.unreported or self.pending_transcription)
             self.closed, self.state = True, "closed"
             if self.call_id:
                 try:

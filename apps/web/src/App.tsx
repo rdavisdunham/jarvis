@@ -28,7 +28,10 @@ import {
 import { api, ApiError, command, post, setCsrf } from "./api";
 import { Voice, type VoiceState } from "./voice";
 import { subscribeEvents } from "./events";
-import { ReminderList } from "./ReminderList";
+import { Workspace } from "./Workspace";
+import { ScheduleDialog } from "./ScheduleDialog";
+import { ProjectManager } from "./ProjectManager";
+import type { Project } from "./types";
 import { MemoryReviewCard } from "./MemoryReviewCard";
 import { WakeWord, recognitionType } from "./wake-word";
 import { useSiteControl } from "./copilot";
@@ -60,8 +63,8 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "today", label: "Today", icon: Sun },
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "week", label: "This week", icon: CalendarDays },
-  { id: "all", label: "All tasks", icon: ListTodo },
-  { id: "reminders", label: "Reminders", icon: Clock3 },
+  { id: "all", label: "Work", icon: ListTodo },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "memory", label: "Memory", icon: Brain },
 ];
 export default function App() {
@@ -75,10 +78,21 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [calendarDay, setCalendarDay] = useState("");
+  const [workKind, setWorkKind] = useState<"all" | "task" | "reminder">("all");
+  const [workVisible, setWorkVisible] = useState<string[]>([]);
+  const [scheduleEditor, setScheduleEditor] = useState<{
+    schedule: Schedule | null;
+    date?: string;
+    task?: Task | null;
+  } | null>(null);
   const pendingNotices = notices.filter((notice) => !notice.completed_at);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryReviews, setMemoryReviews] = useState<MemoryReview[]>([]);
-  const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(null);
+  const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(
+    null,
+  );
   const [query, setQuery] = useState(""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
@@ -107,9 +121,15 @@ export default function App() {
             : "realtime"),
       ) || "marin",
   );
-  const [taskStatus, setTaskStatus] = useState<"all" | "open" | "completed">(
-    "all",
-  );
+  const [taskStatus, setTaskStatus] = useState<
+    | "all"
+    | "open"
+    | "in_progress"
+    | "waiting"
+    | "deferred"
+    | "completed"
+    | "cancelled"
+  >("all");
   const [projectFilter, setProjectFilter] = useState("");
   const [memoryStatus, setMemoryStatus] = useState({
     enabled: true,
@@ -139,11 +159,14 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
-    const [taskData, scheduleData, noticeData] = await Promise.all([
-      api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
-      api<{ items: Schedule[] }>("/schedules"),
-      api<{ items: Notice[] }>("/notifications"),
-    ]);
+    const [taskData, scheduleData, noticeData, projectData] = await Promise.all(
+      [
+        api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
+        api<{ items: Schedule[]; next_cursor?: string | null }>("/schedules"),
+        api<{ items: Notice[] }>("/notifications"),
+        api<{ items: Project[] }>("/projects"),
+      ],
+    );
     let items = taskData.items,
       cursor = taskData.next_cursor;
     while (cursor) {
@@ -154,7 +177,18 @@ export default function App() {
       cursor = page.next_cursor;
     }
     setTasks(items);
-    setSchedules(scheduleData.items);
+    let scheduleItems = scheduleData.items,
+      scheduleCursor = scheduleData.next_cursor;
+    while (scheduleCursor) {
+      const page = await api<{
+        items: Schedule[];
+        next_cursor?: string | null;
+      }>("/schedules?before=" + scheduleCursor);
+      scheduleItems = [...scheduleItems, ...page.items];
+      scheduleCursor = page.next_cursor;
+    }
+    setSchedules(scheduleItems);
+    setProjects(projectData.items);
     setNotices(noticeData.items);
   }, []);
   const initialize = useCallback(async () => {
@@ -162,6 +196,7 @@ export default function App() {
       const info = await api<Bootstrap>("/bootstrap");
       setCsrf(info.csrf);
       setBoot(info);
+      setCalendarDay((day) => day || dayInZone(info.preferences.timezone));
       const saved = sessionStorage.getItem("jarvis-conversation");
       if (saved && !conversationRef.current) {
         try {
@@ -258,6 +293,7 @@ export default function App() {
       if (e.key === "Escape") {
         setSelected(null);
         setReminder(false);
+        setScheduleEditor(null);
         setSidebar(false);
         setCompanion(false);
       }
@@ -305,10 +341,14 @@ export default function App() {
         setError(err.message);
         if (
           err.code === "REVISION_CONFLICT" &&
-          tool.startsWith("task.") &&
-          err.data
-        )
-          setSelected(err.data as Task);
+          err.data &&
+          typeof err.data === "object" &&
+          "id" in err.data
+        ) {
+          if (tool.startsWith("task.")) setSelected(err.data as Task);
+          else if (tool.startsWith("schedule."))
+            setScheduleEditor({ schedule: err.data as Schedule });
+        }
         if (err.code === "NETWORK")
           retryRef.current = async () => {
             await send();
@@ -372,6 +412,30 @@ export default function App() {
     }
   }, [boot?.voice_options, voiceProvider, voiceName]);
 
+  function createTask(date?: string) {
+    setSelected({
+      id: "new",
+      title: "",
+      notes: "",
+      status: "open",
+      priority: 0,
+      project: null,
+      project_id: projects.find((p) => p.name === projectFilter)?.id ?? null,
+      parent_task_id: null,
+      assignee: "owner",
+      work_type: "",
+      tags: [],
+      due_date: date ?? null,
+      due_time: null,
+      due_timezone: null,
+      revision: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_at: null,
+      archived: false,
+      occurrence_id: null,
+    });
+  }
   async function applyAction(action: UIAction) {
     const kind = action.kind ?? "show";
     if (kind === "chat") {
@@ -381,6 +445,7 @@ export default function App() {
     if (
       (selected && selected.id !== action.entity_id) ||
       reminder ||
+      scheduleEditor ||
       editingMemory
     )
       throw new Error(
@@ -388,31 +453,45 @@ export default function App() {
       );
     setSidebar(false);
     if (mobile) setCompanion(false);
-    if (kind === "search") {
+    if (kind === "calendar") {
+      const day = action.date ?? "";
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+        isNaN(Date.parse(day + "T12:00:00Z")) ||
+        new Date(day + "T12:00:00Z").toISOString().slice(0, 10) !== day
+      )
+        throw new Error("Choose a valid calendar date.");
+      setCalendarDay(day);
+      setView("calendar");
+      setQuery("");
+      setTaskStatus("all");
+      setProjectFilter("");
+      setWorkKind("all");
+    } else if (kind === "search") {
       setQuery(action.query ?? "");
       setTaskStatus("all");
       setProjectFilter("");
+      setWorkKind("all");
       setView(action.view ?? "all");
     } else if (kind === "filter") {
-      setView("all");
+      setView(
+        action.view ??
+          (["all", "calendar", "reminders"].includes(view) ? view : "all"),
+      );
       if (action.status !== undefined) setTaskStatus(action.status);
       if (action.project !== undefined) setProjectFilter(action.project);
+      if (action.work_kind !== undefined) setWorkKind(action.work_kind);
     } else if (kind === "form") {
-      if (action.form === "reminder") setReminder(true);
+      if (action.form === "reminder") setScheduleEditor({ schedule: null });
       else {
         setView("all");
-        setTimeout(
-          () =>
-            document
-              .querySelector<HTMLInputElement>('[aria-label="New task"]')
-              ?.focus(),
-          100,
-        );
+        createTask();
       }
     } else {
       setQuery("");
       setTaskStatus("all");
       setProjectFilter("");
+      setWorkKind("all");
       setView(action.view ?? "today");
       if (action.entity_id && action.view === "all") {
         setSelected(
@@ -769,15 +848,20 @@ export default function App() {
     mobile,
     voice_active: !!voiceState && !voiceState.closed,
     query: query.slice(0, 300),
-    selected_task_id: selected?.id ?? null,
-    visible_ids: (view === "reminders"
-      ? schedules
-      : view === "memory"
-        ? memories
-        : filtered
-    )
-      .slice(0, 60)
-      .map((item) => item.id),
+    selected_task_id: selected?.id === "new" ? null : (selected?.id ?? null),
+    selected_schedule_id: scheduleEditor?.schedule?.id ?? null,
+    calendar_date: calendarDay || undefined,
+    work_kind: view === "reminders" ? "reminder" : workKind,
+    visible_ids: ["all", "calendar", "reminders"].includes(view)
+      ? workVisible
+      : (view === "reminders"
+          ? schedules
+          : view === "memory"
+            ? memories
+            : filtered
+        )
+          .slice(0, 60)
+          .map((item) => item.id),
     task_status: taskStatus,
     project: projectFilter,
   };
@@ -799,6 +883,7 @@ export default function App() {
     week: "A look at the week ahead.",
     all: "Everything, in one place.",
     reminders: "The things worth a nudge.",
+    calendar: "Make room for what matters.",
     memory: "A companion that remembers.",
     notifications: "Your reminders are here.",
     settings: "Make yourself at home.",
@@ -954,7 +1039,11 @@ export default function App() {
             <ChevronRight size={14} />
             <strong>
               {nav.find((n) => n.id === view)?.label ??
-                (view === "settings" ? "Settings" : "Notifications")}
+                (view === "settings"
+                  ? "Settings"
+                  : view === "reminders"
+                    ? "Reminders"
+                    : "Notifications")}
             </strong>
           </div>
           <div className="top-actions">
@@ -965,7 +1054,7 @@ export default function App() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={
-                  view === "memory" ? "Search memories" : "Find a task…"
+                  view === "memory" ? "Search memories" : "Search work…"
                 }
                 aria-label="Search"
               />
@@ -1032,11 +1121,22 @@ export default function App() {
                     boot.name +
                     "."
                   : (nav.find((n) => n.id === view)?.label ??
-                    (view === "settings" ? "Settings" : "Notifications"))}
+                    (view === "settings"
+                      ? "Settings"
+                      : view === "reminders"
+                        ? "Reminders"
+                        : "Notifications"))}
               </h1>
               <p>{titles[view]}</p>
             </div>
-            {["today", "inbox", "week", "all"].includes(view) && (
+            {[
+              "today",
+              "inbox",
+              "week",
+              "all",
+              "calendar",
+              "reminders",
+            ].includes(view) && (
               <div className="task-filters">
                 <label>
                   Status
@@ -1049,6 +1149,10 @@ export default function App() {
                   >
                     <option value="all">All</option>
                     <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="waiting">Waiting</option>
+                    <option value="deferred">Deferred</option>
+                    <option value="cancelled">Cancelled</option>
                     <option value="completed">Completed</option>
                   </select>
                 </label>
@@ -1060,22 +1164,70 @@ export default function App() {
                     onChange={(e) => setProjectFilter(e.target.value)}
                   >
                     <option value="">All projects</option>
-                    {[
-                      ...new Set(
-                        tasks
-                          .map((t) => t.project)
-                          .filter((p): p is string => !!p),
-                      ),
-                    ]
-                      .sort()
-                      .map((p) => (
-                        <option key={p}>{p}</option>
-                      ))}
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                        {p.archived ? " (archived)" : ""}
+                      </option>
+                    ))}
                   </select>
                 </label>
+                {["all", "calendar", "reminders"].includes(view) && (
+                  <label>
+                    Kind
+                    <select
+                      aria-label="Work kind filter"
+                      value={workKind}
+                      onChange={(e) =>
+                        setWorkKind(e.target.value as typeof workKind)
+                      }
+                    >
+                      <option value="all">Tasks & reminders</option>
+                      <option value="task">Tasks</option>
+                      <option value="reminder">Reminders</option>
+                    </select>
+                  </label>
+                )}
               </div>
             )}
-            {["today", "inbox", "week", "all"].includes(view) && (
+            {["all", "calendar", "reminders"].includes(view) && (
+              <>
+                <Workspace
+                  calendar={view === "calendar"}
+                  day={calendarDay || today}
+                  onDay={setCalendarDay}
+                  today={today}
+                  tasks={tasks}
+                  schedules={schedules}
+                  notices={notices}
+                  projects={projects}
+                  zone={boot.preferences.timezone}
+                  query={query}
+                  status={taskStatus}
+                  project={projectFilter}
+                  kind={view === "reminders" ? "reminder" : workKind}
+                  highlight={highlight}
+                  busy={busy}
+                  onTask={setSelected}
+                  onSchedule={(schedule) => setScheduleEditor({ schedule })}
+                  toggle={(task) => void toggle(task)}
+                  createTask={createTask}
+                  createReminder={(date) =>
+                    setScheduleEditor({ schedule: null, date })
+                  }
+                  mutate={mutate}
+                  onVisible={setWorkVisible}
+                />
+                {view === "all" && (
+                  <ProjectManager
+                    projects={projects}
+                    busy={busy}
+                    mutate={mutate}
+                  />
+                )}
+              </>
+            )}
+            {["today", "inbox", "week"].includes(view) && (
               <>
                 <form className="quick-add" onSubmit={add}>
                   <Plus size={21} />
@@ -1207,25 +1359,6 @@ export default function App() {
                   )}
               </>
             )}
-            {view === "reminders" && (
-              <>
-                <ReminderList
-                  schedules={schedules}
-                  notices={notices}
-                  zone={boot.preferences.timezone}
-                  busy={busy}
-                  highlight={highlight}
-                  create={() => setReminder(true)}
-                  mutate={mutate}
-                />
-                <p className="footnote">
-                  {boot.capabilities.worker
-                    ? "Scheduler is running."
-                    : "Scheduler is reconnecting. Saved reminders will catch up when it returns."}{" "}
-                  All times shown in {boot.preferences.timezone}.
-                </p>
-              </>
-            )}
             {view === "notifications" && (
               <>
                 <div className="section-head">
@@ -1311,7 +1444,11 @@ export default function App() {
                     ? " · Learning from " +
                       memoryStatus.pending +
                       " saved messages…"
-                    : memoryStatus.deferred > 0 ? " · Paused near the model budget; resumes when room is available" : memoryStatus.retrying > 0 ? "" : " · Up to date"}
+                    : memoryStatus.deferred > 0
+                      ? " · Paused near the model budget; resumes when room is available"
+                      : memoryStatus.retrying > 0
+                        ? ""
+                        : " · Up to date"}
                   {memoryStatus.retrying > 0
                     ? " · Some memories need a retry"
                     : ""}
@@ -1343,36 +1480,69 @@ export default function App() {
                         : maintenance.status === "retrying"
                           ? "Deep sleep hit a problem and is waiting to retry."
                           : maintenance.running
-                        ? "Deep sleep is reviewing memories…"
-                        : "Weekly deep sleep · Next review " +
-                          new Date(maintenance.next_run_at).toLocaleString([], {
-                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-                            timeZone: boot.preferences.timezone,
-                          })
+                            ? "Deep sleep is reviewing memories…"
+                            : "Weekly deep sleep · Next review " +
+                              new Date(maintenance.next_run_at).toLocaleString(
+                                [],
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  timeZone: boot.preferences.timezone,
+                                },
+                              )
                       : "Weekly deep sleep is off"}
                   </p>
-                  <button className="text-button"
-                    disabled={busy || !maintenance?.enabled || maintenance.running}
+                  <button
+                    className="text-button"
+                    disabled={
+                      busy || !maintenance?.enabled || maintenance.running
+                    }
                     onClick={async () => {
                       try {
                         await post("/memory/review");
                         setToast("Memory review queued");
                         setMemoryRevision((v) => v + 1);
-                      } catch (e) { setError((e as Error).message); }
-                    }}>{maintenance?.status === "failed" ? "Retry review" : "Review now"}</button>
-                  {maintenance?.last_run_at && <p className="footnote">
-                    Last successful review: {new Date(maintenance.last_run_at).toLocaleString([], { timeZone: boot.preferences.timezone })}
-                  </p>}
+                      } catch (e) {
+                        setError((e as Error).message);
+                      }
+                    }}
+                  >
+                    {maintenance?.status === "failed"
+                      ? "Retry review"
+                      : "Review now"}
+                  </button>
+                  {maintenance?.last_run_at && (
+                    <p className="footnote">
+                      Last successful review:{" "}
+                      {new Date(maintenance.last_run_at).toLocaleString([], {
+                        timeZone: boot.preferences.timezone,
+                      })}
+                    </p>
+                  )}
                 </div>
                 {memoryReviews.map((review) => (
-                  <MemoryReviewCard key={review.id} review={review} busy={busy}
-                    onResolve={(action, content) => mutate(
-                      "memory.resolve",
-                      { review_id: review.id, expected_revision: review.revision, action,
-                        ...(content ? { content } : {}) },
-                      action === "merge" ? "Memory corrected" :
-                        action === "distinct" ? "Kept as separate facts" : "Eri can ask next week",
-                    )}
+                  <MemoryReviewCard
+                    key={review.id}
+                    review={review}
+                    busy={busy}
+                    onResolve={(action, content) =>
+                      mutate(
+                        "memory.resolve",
+                        {
+                          review_id: review.id,
+                          expected_revision: review.revision,
+                          action,
+                          ...(content ? { content } : {}),
+                        },
+                        action === "merge"
+                          ? "Memory corrected"
+                          : action === "distinct"
+                            ? "Kept as separate facts"
+                            : "Eri can ask next week",
+                      )
+                    }
                   />
                 ))}
                 <MemoryCapture
@@ -1871,13 +2041,31 @@ export default function App() {
       {selected && (
         <TaskDialog
           timezone={boot.preferences.timezone}
+          error={error}
+          projects={projects}
+          tasks={tasks}
+          reminders={schedules.filter((s) => s.task_id === selected.id)}
+          onReminder={(schedule) => {
+            setSelected(null);
+            setScheduleEditor({ schedule });
+          }}
+          onAddReminder={() => {
+            setScheduleEditor({ schedule: null, task: selected });
+            setSelected(null);
+          }}
           task={selected}
           busy={busy}
           onClose={() => setSelected(null)}
           onSave={async (args) => {
+            const values = { ...(args as Record<string, unknown>) };
+            if (selected.id === "new") {
+              delete values.task_id;
+              delete values.expected_revision;
+              delete values.status;
+            }
             const result = await mutate<Task>(
-              "task.update",
-              args,
+              selected.id === "new" ? "task.create" : "task.update",
+              values,
               "Task saved",
             );
             if (result) setSelected(null);
@@ -1894,6 +2082,28 @@ export default function App() {
             );
             if (result) setSelected(null);
           }}
+        />
+      )}
+      {scheduleEditor && (
+        <ScheduleDialog
+          key={
+            scheduleEditor.schedule
+              ? scheduleEditor.schedule.id +
+                ":" +
+                scheduleEditor.schedule.revision
+              : "new-reminder"
+          }
+          error={error}
+          schedule={scheduleEditor.schedule}
+          initialDate={scheduleEditor.date}
+          linkedTask={scheduleEditor.task}
+          zone={boot.preferences.timezone}
+          tasks={tasks}
+          projects={projects}
+          notices={notices}
+          busy={busy}
+          onClose={() => setScheduleEditor(null)}
+          mutate={mutate}
         />
       )}
       {reminder && (

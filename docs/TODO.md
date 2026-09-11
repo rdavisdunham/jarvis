@@ -3,6 +3,41 @@
 Updated September 11, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Current batch: unified workspace and calendar — deployed
+
+Owner order: accounting fixes, workspace/calendar expansion, real-use voice recovery,
+device/operations acceptance, then the seven-day pilot.
+
+- [x] One Work list for tasks and standalone reminders, with linked reminders under
+      their task; searchable metadata, status/project/kind filters and retained history.
+- [x] Month calendar and selected-day agenda for date-only/timed deadlines, delivered
+      reminders and future recurrence previews. Owner timezone, DST-aware schedules,
+      completed items, month navigation and mobile layout. Reading never dispatches work.
+- [x] Real projects with rename/archive, migrated existing project labels, subtasks
+      with cycle checks, assignee labels, work types, tags and priority.
+      Assignment metadata does not launch an agent.
+- [x] Task details can open/create linked reminders. Reminder details support edits,
+      rescheduling, completing one occurrence and cancelling a series.
+      A metadata edit preserves a reminder already queued for delivery.
+- [x] Shared Eri tools for projects, organization fields, calendar reads and calendar
+      navigation/filtering. CopilotKit acknowledges the selected date and filters;
+      an open editor blocks navigation.
+- [x] Budget lifecycle: stale activity becomes unconfirmed rather than active; explicit
+      text-model rejections release unused allowances, unknown outcomes remain held.
+      Missing Realtime usage cannot silently count as zero; separate duration-based
+      transcription usage is recorded once. Settings lists unconfirmed sessions.
+- [x] Audited reconciliation operator command from provider evidence, retaining the
+      original ledger and an idempotent adjustment. No historical charge is guessed.
+- [ ] Historical provider reconciliation still needs billing evidence. The existing
+      project API key received HTTP 403 from the organization Costs endpoint.
+      The 25 older uncertain Realtime sessions plus one abandoned active session
+      retain their unknown headroom. This is held allowance, not confirmed spending.
+      No budget limit was raised and no old hold was automatically forgiven.
+- [x] Deployment, current encrypted restore, 116 backend tests, 36 frontend tests,
+      migration round-trip and isolated desktop/mobile/CopilotKit checks.
+- [ ] Project board/timeline, richer multi-step contextual references, notes,
+      Google sign-in/Calendar, notification bundling and scoped bot API/MCP remain later.
+
 ## Current position
 
 The daily-use task/reminder foundation is running in Docker at
@@ -178,7 +213,9 @@ The first hardening implementation batch is now deployed; remaining acceptance a
 
 ### First: harden the daily-use foundation
 
-Complete the following in order before larger feature or vector-index work.
+Owner reordered the work: accounting fixes, then the unified workspace/calendar expansion;
+voice recovery and device/operations acceptance follow the expansion. The seven-day
+owner pilot follows those checks. Vector-index work remains later.
 The first three code findings were confirmed by reading the current implementation;
 device acceptance items are outstanding checks, not claims of observed failures.
 
@@ -227,7 +264,7 @@ device acceptance items are outstanding checks, not claims of observed failures.
       19:16 UTC snapshot: $2.551407 recorded estimated spend and $124.267111 held
       for unconfirmed sessions. Do not treat held amounts as confirmed charges.
       Retain them until provider evidence supports settlement. Complete the
-      provider-price/transcription accounting audit and seven-day comparison.
+      provider-price/transcription accounting audit. The seven-day comparison moves to the post-expansion pilot.
 - [ ] **Finish voice and site-control recovery acceptance.** Exercise both voice
       providers through long conversations/provider session endings, interruptions,
       a correction arriving during a pending action, close/reopen, network loss and
@@ -237,20 +274,15 @@ device acceptance items are outstanding checks, not claims of observed failures.
       Extend existing record editors/settings coverage after these paths are sound;
       search, filters, navigation and chat control already exist.
 - [x] **Restore the current encrypted backup in isolation.** Verified
-      jarvis-20260911T191619Z.pgdump.enc at migration 0005_task_due_time, including
-      tasks, schedules, notifications, memory reviews and the new time columns.
+      jarvis-20260911T202655Z.pgdump.enc at migration 0006_workspace_accounting,
+      including tasks, projects, schedules, notifications and memory reviews.
       No worker or reminder dispatch ran against the restored database.
 - [ ] **Prove operational recovery and reminder delivery.** Test actual Windows
       reboot startup and locked-phone Web Push, including permission denial and
       opening the notification. Verify an encrypted backup of the current schema
       restores in an isolated stack with dispatch disabled. Keep an encrypted
       recovery copy and its separately stored recovery key off this PC.
-- [ ] **Run the PRD owner pilot and record measured results.** Seven days with at
-      least 50 successful task/reminder interactions; report voice failures,
-      unwanted speech, interruptions, delivery results and per-category costs.
-      Use section 16's fixed command/failure suites for duplicate effects,
-      truthful confirmation, latency and source attribution. Mark unmeasured
-      targets explicitly; cloud memory supersedes the old GPU-specific setup.
+
 
 The hardening exit is evidence of reliable saved actions, current memory context,
 visible failures, recoverable state and understood spending. Automated checks,
@@ -287,21 +319,21 @@ notifications, and an authenticated API/MCP connection for other bots.
 Build these as small successive batches in the listed order, carrying the same
 actions into the web interface and Eri's tools with each release.
 
-- [ ] **Unified work-item experience and organization.** Bring tasks, standalone
-      reminders and scheduled agent work into one coherent interface while retaining
-      separate due dates, schedules, delivery records and completion underneath.
-      Add real projects, work types, subtasks, owner/agent assignees, tags, priority,
-      richer states and sorting. The current project field is a simple label.
-      Ship assignment metadata separately from automatic agent execution.
+- [x] **Unified work-item experience and organization, first release.** Work combines
+      tasks and standalone reminders while preserving schedules, delivery records
+      and completion history. Real projects, work types, subtasks, assignee labels,
+      tags, priorities and status filters are implemented. Tasks sort by priority
+      and deadline; reminders sort by scheduled time. Existing project labels are
+      migrated. Scheduled agent execution and additional sort modes remain later.
 - [ ] **Contextual task editing and full control of those views.** Resolve “move
       that thing I mentioned earlier to Friday” from conversation and selected-record
       context; retain revisions, date semantics and clarification for ambiguous
       targets. Extend CopilotKit to the new fields, editors, settings and multi-step
       workflows. A feature is complete when direct UI use and Eri can both operate it.
-- [ ] **Calendar, project, timeline and day views.** Build these during the task
-      tracker expansion, sharing filters, selection and conversational controls.
-      A task calendar uses local task dates/times without requiring Google sync.
-      These views are intentionally deferred from the hardening batch.
+- [x] **Calendar and day agenda.** Tasks and reminder occurrences share a month
+      calendar, selected-day agenda, filters and conversational controls without
+      requiring Google sync.
+- [ ] **Project board and timeline views.** Follow the calendar/workspace release.
 - [ ] **Linked notes.** Editable notes linked to tasks/projects and conversations,
       tags, Eri-readable source content, and to-do extraction with provenance and
       duplicate prevention. Add cloud embeddings and semantic search.
@@ -330,7 +362,18 @@ actions into the web interface and Eri's tools with each release.
       acceptance. Home Assistant, finance and broader research/capture integrations
       follow the core workspace unless the owner changes priorities.
 
-### Accepted design boundaries — implementation is next
+### After expansion: verify, then pilot
+
+- [ ] Complete real-use voice recovery and actual-device/operations checks listed above
+      after the unified workspace and calendar expansion.
+- [ ] **Run the PRD owner pilot and record measured results.** Seven days with at
+      least 50 successful task/reminder interactions; report voice failures,
+      unwanted speech, interruptions, delivery results and per-category costs.
+      Use section 16's fixed command/failure suites for duplicate effects,
+      truthful confirmation, latency and source attribution. Mark unmeasured
+      targets explicitly; cloud memory supersedes the old GPU-specific setup.
+
+### Accepted design boundaries
 
 - [x] **Notes and memory:** share source links, tags and retrieval infrastructure,
       but retain authored notes as editable source records and personal memory as
@@ -401,7 +444,7 @@ pre-response context. Saved counts and processing counts are reported separately
 - [ ] Validate long conversations on the actual device, varied speech, pauses,
       and interruption timing. Provider/network interruptions remain possible
       with no total-duration/turn cap and the new 15-second quiet timeout.
-- [ ] Run the seven-day usage/cost and voice-quality pilot; record issues and
+- [ ] After expansion and voice/device/operations acceptance, run the seven-day usage/cost and voice-quality pilot; record issues and
       tune the gate and personality from actual use.
 - [ ] Test startup after an actual Windows reboot.
 - [ ] Keep a recovery copy of encrypted backups and the recovery key off this PC.

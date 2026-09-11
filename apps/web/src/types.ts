@@ -5,6 +5,11 @@ export interface Task {
   status: string;
   priority: number;
   project: string | null;
+  project_id: string | null;
+  parent_task_id: string | null;
+  assignee: string;
+  work_type: string;
+  tags: string[];
   due_date: string | null;
   due_time: string | null;
   due_timezone: string | null;
@@ -15,7 +20,29 @@ export interface Task {
   archived: boolean;
   occurrence_id: string | null;
 }
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  archived: boolean;
+  revision: number;
+}
+export interface CalendarEntry {
+  id: string;
+  entity_id: string;
+  kind: "task" | "reminder" | "routine";
+  title: string;
+  date: string;
+  at: string | null;
+  status: string;
+  project_id: string | null;
+  task_id: string | null;
+  revision: number;
+  projected: boolean;
+  notification_id: string | null;
+}
 export interface Schedule {
+  project_id: string | null;
   id: string;
   title: string;
   timezone: string;
@@ -63,7 +90,11 @@ export interface MemoryMaintenance {
   last_run_at: string | null;
   next_run_at: string;
   running: boolean;
-  result: { scanned?: number; merged?: number; queued_questions?: number } | null;
+  result: {
+    scanned?: number;
+    merged?: number;
+    queued_questions?: number;
+  } | null;
 }
 export interface Preferences {
   preferred_name: string;
@@ -112,6 +143,7 @@ export type View =
   | "inbox"
   | "week"
   | "all"
+  | "calendar"
   | "reminders"
   | "memory"
   | "notifications"
@@ -126,11 +158,20 @@ export interface ChatMessage {
 export type VoiceProvider = "realtime" | "live";
 export interface UIAction {
   id: string;
-  kind?: "show" | "chat" | "search" | "filter" | "form";
+  kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar";
+  date?: string;
+  work_kind?: "all" | "task" | "reminder";
   view?: View;
   mode?: "open" | "close" | "auto";
   query?: string;
-  status?: "all" | "open" | "completed";
+  status?:
+    | "all"
+    | "open"
+    | "in_progress"
+    | "waiting"
+    | "deferred"
+    | "completed"
+    | "cancelled";
   project?: string;
   form?: "task" | "reminder";
   entity_id?: string | null;
@@ -138,12 +179,22 @@ export interface UIAction {
 
 export interface UIContext {
   view: View;
+  calendar_date?: string;
+  selected_schedule_id?: string | null;
+  work_kind?: "all" | "task" | "reminder";
   chat_open: boolean;
   mobile: boolean;
   voice_active: boolean;
   query: string;
   selected_task_id: string | null;
   visible_ids: string[];
-  task_status: "all" | "open" | "completed";
+  task_status:
+    | "all"
+    | "open"
+    | "in_progress"
+    | "waiting"
+    | "deferred"
+    | "completed"
+    | "cancelled";
   project: string;
 }

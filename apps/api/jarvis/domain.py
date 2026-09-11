@@ -3,7 +3,7 @@
 import hashlib
 import json
 from datetime import UTC, date, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil import rrule, tz
@@ -21,6 +21,7 @@ from .models import (
     Occurrence,
     Outbox,
     OwnerSettings,
+    Project,
     Schedule,
     Source,
     Task,
@@ -42,6 +43,11 @@ class TaskCreate(Args):
     title: str = Field(min_length=1, max_length=500)
     notes: str = Field(default="", max_length=20000)
     project: str | None = Field(default=None, max_length=200)
+    project_id: str | None = None
+    parent_task_id: str | None = None
+    assignee: str = Field(default="owner", min_length=1, max_length=100)
+    work_type: str = Field(default="", max_length=80)
+    tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
     due_date: date | None = None
     due_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
@@ -56,6 +62,11 @@ class TaskUpdate(Args):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     notes: str | None = Field(default=None, max_length=20000)
     project: str | None = Field(default=None, max_length=200)
+    project_id: str | None = None
+    parent_task_id: str | None = None
+    assignee: str = Field(default="owner", min_length=1, max_length=100)
+    work_type: str = Field(default="", max_length=80)
+    tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
     due_date: date | None = None
     due_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
@@ -79,6 +90,31 @@ class ScheduleCreate(Args):
     task_id: str | None = None
     kind: str = "reminder"
     original_words: str = Field(default="", max_length=5000)
+    project_id: str | None = None
+
+
+class ProjectCreate(Args):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=10000)
+
+
+class ProjectUpdate(Args):
+    project_id: str
+    expected_revision: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    archived: bool | None = None
+
+
+class ScheduleUpdate(Args):
+    schedule_id: str
+    expected_revision: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=500)
+    when: str | None = Field(default=None, max_length=100)
+    timezone: str | None = Field(default=None, max_length=100)
+    recurrence: str | None = Field(default=None, max_length=250)
+    task_id: str | None = None
+    project_id: str | None = None
 
 
 class ScheduleChange(Args):
@@ -126,6 +162,9 @@ class SettingsUpdate(Args):
 
 
 COMMANDS = {
+    "project.create": ProjectCreate,
+    "project.update": ProjectUpdate,
+    "schedule.update": ScheduleUpdate,
     "task.create": TaskCreate,
     "task.update": TaskUpdate,
     "task.complete": TaskState,
@@ -363,6 +402,9 @@ def execute(db, owner, command_id, tool, arguments):
         )
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
+    if tool.startswith(("task.", "project.", "schedule.", "notification.")):
+        # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
+        advisory(db, f"workspace:{owner}")
     data = mutate(db, owner, tool, args, command_id)
     result = {
         "command_id": command_id,
@@ -402,8 +444,15 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    from .organization import mutate_project, project_changes
+
+    if tool.startswith("project."):
+        return mutate_project(db, owner, tool, args)
     if tool == "task.create":
-        task = Task(owner_id=owner, **task_timing(db, owner, args.model_dump()))
+        task = Task(
+            owner_id=owner,
+            **project_changes(db, owner, task_timing(db, owner, args.model_dump(exclude_unset=True))),
+        )
         db.add(task)
         db.flush()
         emit(db, owner, "task.changed", task.id, task.revision)
@@ -430,6 +479,7 @@ def mutate(db, owner, tool, args, command_id):
                 raise DomainError("INVALID_ARGUMENT", f"{key} cannot be empty.")
         if any(key in changes for key in ("due_date", "due_time", "due_timezone")):
             changes = task_timing(db, owner, changes, task)
+        changes = project_changes(db, owner, changes, task)
         for key, value in changes.items():
             setattr(task, key, value)
         if "status" in changes:
@@ -441,6 +491,8 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "schedule.create":
         if args.kind not in {"reminder", "recurring_task"}:
             raise DomainError("INVALID_ARGUMENT", "Choose a reminder or recurring task.")
+        if args.project_id:
+            owned(db, Project, args.project_id, owner)
         if args.task_id:
             owned(db, Task, args.task_id, owner, lock=True)
         if args.kind == "recurring_task" and (args.task_id or not args.recurrence):
@@ -456,6 +508,7 @@ def mutate(db, owner, tool, args, command_id):
             anchor_at=instant,
             next_run_at=instant,
             task_id=args.task_id,
+            project_id=args.project_id,
             kind=args.kind,
             recurrence=validate_recurrence(args.recurrence),
             original_words=args.original_words,
@@ -469,7 +522,44 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("schedule."):
         row = owned(db, Schedule, args.schedule_id, owner, lock=True)
         check_revision(row, args.expected_revision)
-        if tool == "schedule.complete":
+        if tool == "schedule.update":
+            changes = args.model_dump(exclude_unset=True, exclude={"schedule_id", "expected_revision"})
+            for key in ("title", "when", "timezone"):
+                if key in changes and changes[key] is None:
+                    raise DomainError("INVALID_ARGUMENT", f"{key} cannot be null.")
+            if row.status != "active" and any(k in changes for k in ("when", "timezone", "recurrence")):
+                raise DomainError(
+                    "INVALID_ARGUMENT", "Reschedule a finished reminder explicitly before editing its timing."
+                )
+            if changes.get("task_id"):
+                owned(db, Task, changes["task_id"], owner)
+            if changes.get("project_id"):
+                owned(db, Project, changes["project_id"], owner)
+            if row.kind == "recurring_task" and (
+                changes.get("task_id", row.task_id) or not changes.get("recurrence", row.recurrence)
+            ):
+                raise DomainError(
+                    "INVALID_ARGUMENT", "A recurring task needs a recurrence and creates its own tasks."
+                )
+            if "timezone" in changes:
+                zone(changes["timezone"])
+                if "when" not in changes:
+                    raise DomainError("INVALID_ARGUMENT", "Supply the new local time when changing timezone.")
+            if "recurrence" in changes:
+                changes["recurrence"] = validate_recurrence(changes["recurrence"])
+            timing = any(k in changes for k in ("when", "timezone", "recurrence"))
+            when = changes.pop("when", None)
+            for key, value in changes.items():
+                setattr(row, key, value)
+            if when:
+                row.anchor_at = parse_when(
+                    when, row.timezone, preferences(db, owner)["default_reminder_hour"]
+                )
+            if timing:
+                row.next_run_at = first_occurrence(row)
+                if not when and row.next_run_at < now() and row.recurrence:
+                    row.next_run_at = next_occurrence(row, now())
+        elif tool == "schedule.complete":
             if row.recurrence:
                 raise DomainError(
                     "INVALID_ARGUMENT",
@@ -492,7 +582,18 @@ def mutate(db, owner, tool, args, command_id):
             instant = parse_when(args.when, row.timezone, preferences(db, owner)["default_reminder_hour"])
             row.anchor_at, row.status, row.completed_at = instant, "active", None
             row.next_run_at = first_occurrence(row)
+        previous_revision = row.revision
         row.revision += 1
+        if tool == "schedule.update" and not timing:
+            # Metadata edits must not invalidate a due occurrence already queued for delivery.
+            for occurrence in db.scalars(
+                select(Occurrence).where(
+                    Occurrence.schedule_id == row.id,
+                    Occurrence.revision == previous_revision,
+                    Occurrence.status == "pending",
+                )
+            ):
+                occurrence.revision = row.revision
         emit(db, owner, "schedule.changed", row.id, row.revision)
         return serial(row)
     if tool == "memory.resolve":
@@ -606,6 +707,7 @@ def scan_schedules(db, clock=None):
 
 
 def deliver_occurrence(db, job):
+    advisory(db, f"workspace:{job.owner_id}")
     occurrence = db.get(Occurrence, job.payload["occurrence_id"])
     schedule = db.scalar(select(Schedule).where(Schedule.id == occurrence.schedule_id).with_for_update())
     if occurrence.status != "pending":
@@ -622,6 +724,8 @@ def deliver_occurrence(db, job):
             owner_id=job.owner_id,
             title=schedule.title,
             occurrence_id=occurrence.id,
+            project_id=schedule.project_id,
+            project=db.get(Project, schedule.project_id).name if schedule.project_id else None,
             due_date=occurrence.scheduled_at.astimezone(zone(schedule.timezone)).date(),
         )
         db.add(task)

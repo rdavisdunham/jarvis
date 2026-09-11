@@ -510,3 +510,89 @@ remaining acceptance work is real phone wake/ending/interruption and locked
 notifications, an actual Windows reboot, an off-PC backup/key copy, older-hold
 reconciliation and the seven-day owner pilot. The current deployment is its
 baseline; historic synthetic records are not successful owner interactions.
+
+
+## Unified workspace, calendar and accounting — September 11, 2026
+
+The owner moved the seven-day pilot after the workspace expansion and real-use
+voice/device/operations checks. This release adds the Work list and month calendar
+with a selected-day agenda. Existing task/reminder persistence and notification
+delivery remain authoritative. The calendar is a read-only projection, including
+future recurrence previews; viewing it creates no occurrences or jobs.
+
+Migration 0006_workspace_accounting creates projects, migrates every nonempty old
+project label, adds task parent/assignee/work-type/tags metadata, optional schedule
+project links and budget activity/settlement fields. Project renames update task
+labels and revisions; project archives retain records. Owner-scoped graph changes
+are serialized to prevent concurrent parent edits creating cycles. Agent assignee
+labels are organization only.
+
+All new domain actions share the existing authenticated, revision-checked,
+idempotent command path. Eri gets project_list/create/update, schedule_update,
+calendar_list and ui_calendar, plus expanded task fields and calendar filters.
+A device must acknowledge calendar navigation/filtering before success is reported.
+An open editor declines navigation. Reminder metadata edits preserve pending
+deliveries, while timing edits deliberately supersede the previous schedule revision.
+
+The calendar endpoint uses an exclusive end date, at most 62 days per query and
+a 2,000-item response cap with an explicit truncation indicator. Date-only tasks
+remain on their date; timed tasks are converted into the requested IANA timezone.
+Recurring reminders preserve their wall-clock time over DST. Month cells and
+agenda share status/project/kind/search filters. A completed linked task suppresses
+future reminder previews as the worker suppresses their delivery.
+
+Budget activity is durable. A reservation without activity for three minutes is
+shown as uncertain, and housekeeping records its expired lease. Time alone never
+proves a provider call was free. Explicit text-provider 4xx rejections except 408
+release unused headroom; timeouts, 5xx and responses missing usage retain it.
+Cancelled Realtime responses without final usage remain unconfirmed. Duration-based
+transcription usage is recorded separately and idempotently at the current
+gpt-live-transcribe rate. Source verification:
+- [Realtime transcription usage event](https://developers.openai.com/api/reference/resources/realtime/server-events.md#conversation.item.input_audio_transcription.completed)
+- [Realtime 2.1 rates](https://developers.openai.com/api/docs/models/gpt-realtime-2.1)
+- [Live transcription rates](https://developers.openai.com/api/docs/models/gpt-live-transcribe)
+- [GPT-Live rates](https://developers.openai.com/api/docs/models/gpt-live-1)
+- [Provider usage and Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage)
+
+The new estimate version is configured-2026-09-11-v2. Local estimates remain
+distinct from provider invoices. Older estimates did not include the separate
+transcription reports. A read-only Costs API request with the existing project key
+returned 403; no credentials or response secrets were logged. Historical holds
+cannot be safely settled from that key alone.
+
+Run `.venv/bin/python scripts/reconcile_budget.py` from the WSL project to inspect
+holds. To settle a specific reservation only after obtaining provider evidence, use
+`--reservation <id> --final-usd <verified amount> --evidence <provider reference> --apply`.
+The operator command rejects another owner's record and active requests, retains
+all original usage events, adds a signed adjustment in the original period, and
+records the evidence. Repeated identical settlement is idempotent. No reconciliation
+mutation is exposed to the model.
+
+Validation before deployment: all 116 backend tests and 36 frontend tests passed;
+one optional paid-provider test remained skipped. Isolated browser acceptance covered project creation,
+metadata, linked reminders, calendar/DST projection, mobile layouts, unconfirmed
+usage display and the actual CopilotKit calendar/filter/declined-navigation
+acknowledgment path. Existing project/task and budget history survived migration
+0005 -> 0006 -> 0005 -> 0006. No fixtures were written into the owner's database.
+The encrypted pre-deploy snapshot is jarvis-20260911T201738Z.pgdump.enc.
+
+Physical microphone/phone behavior, Windows reboot, off-PC recovery copies and the
+seven-day pilot remain unverified and scheduled after this expansion. No new paid
+voice-provider test was run in this batch.
+
+
+Deployment verified at approximately 20:27 UTC: API, worker and PostgreSQL healthy,
+migration 0006_workspace_accounting, all existing project labels linked to one of
+two project records. The live calendar read returned five entries without truncation.
+Read-only authenticated smoke checks removed their temporary login session.
+Budget snapshot: $2.551407 estimated recorded spend, $128.614433 unconfirmed
+headroom across 26 older sessions, $0 active headroom, $18.83416 available under
+the unchanged $150 limit. The older abandoned active session is now correctly
+classified as uncertain; no historical hold was released without evidence.
+
+Post-deploy encrypted backup jarvis-20260911T202655Z.pgdump.enc restored into a new
+isolated database at migration 0006. Verified 46 tasks, 2 projects, 8 schedules,
+2 notifications, 182 sources, 7 memory assertions, 1 memory review and 140 command
+receipts. No worker/notification dispatch started on the restore; the temporary
+database was removed after verification. Frontend bundle: index-Bo-rGFUu.js.
+The actual Tailnet HTTPS endpoint returned 200 with that bundle.

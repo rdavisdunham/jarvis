@@ -44,6 +44,18 @@ class OwnerSettings(Base):
     values: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_project_owner_name"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Task(Base):
     __tablename__ = "tasks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -53,6 +65,11 @@ class Task(Base):
     status: Mapped[str] = mapped_column(String(30), default="open")
     priority: Mapped[int] = mapped_column(Integer, default=0)
     project: Mapped[str | None] = mapped_column(String(200))
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    parent_task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), index=True)
+    assignee: Mapped[str] = mapped_column(String(100), default="owner")
+    work_type: Mapped[str] = mapped_column(String(80), default="")
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
     due_date: Mapped[datetime | None] = mapped_column(Date)
     due_time: Mapped[str | None] = mapped_column(String(14))
     due_timezone: Mapped[str | None] = mapped_column(String(100))
@@ -97,6 +114,7 @@ class Schedule(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")
     revision: Mapped[int] = mapped_column(Integer, default=1)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), index=True)
     original_words: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -238,6 +256,9 @@ class BudgetReservation(Base):
     actual: Mapped[float | None] = mapped_column(Numeric(12, 6))
     model: Mapped[str] = mapped_column(String(100))
     state: Mapped[str] = mapped_column(String(30), default="reserved")
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settlement: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 

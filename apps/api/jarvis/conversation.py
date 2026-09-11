@@ -156,9 +156,17 @@ async def chat(
                         "max_completion_tokens": 1200,
                     },
                 )
+                if 400 <= response.status_code < 500 and response.status_code != 408:
+                    provider_pending = False  # Explicit rejection, not an unknown timeout.
                 response.raise_for_status()
                 data = response.json()
-                usage = data.get("usage", {})
+                usage = data.get("usage")
+                if (
+                    not isinstance(usage, dict)
+                    or "prompt_tokens" not in usage
+                    or "completion_tokens" not in usage
+                ):
+                    raise ValueError("Provider response omitted usage")
                 rates = (0.75, 4.5) if settings.openai_api_key else (0.15, 0.60)
                 cost = (
                     usage.get("prompt_tokens", 0) * rates[0] + usage.get("completion_tokens", 0) * rates[1]
@@ -253,7 +261,7 @@ async def chat(
         conv = owned(db, Conversation, conversation_id, owner)
         if not private and live_context is None:
             capture_source(db, owner, reply, f"chat:{turn_id}:assistant", role="assistant", conversation=conv)
-        budget.close(db, owner, turn_id, uncertain=failed or provider_pending)
+        budget.close(db, owner, turn_id, uncertain=provider_pending)
     if cancelled:
         raise asyncio.CancelledError()
     return result

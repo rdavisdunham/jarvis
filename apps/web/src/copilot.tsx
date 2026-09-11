@@ -17,19 +17,37 @@ const views = [
   "week",
   "all",
   "reminders",
+  "calendar",
   "memory",
   "notifications",
   "settings",
 ] as const;
 const actionSchema = z.object({
   id: z.string().max(150),
-  kind: z.enum(["show", "chat", "search", "filter", "form"]).default("show"),
+  kind: z
+    .enum(["show", "chat", "search", "filter", "form", "calendar"])
+    .default("show"),
   view: z.enum(views).optional(),
   entity_id: z.string().nullable().optional(),
   mode: z.enum(["open", "close", "auto"]).optional(),
   query: z.string().max(300).optional(),
-  status: z.enum(["all", "open", "completed"]).optional(),
+  status: z
+    .enum([
+      "all",
+      "open",
+      "in_progress",
+      "waiting",
+      "deferred",
+      "completed",
+      "cancelled",
+    ])
+    .optional(),
   project: z.string().max(200).optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  work_kind: z.enum(["all", "task", "reminder"]).optional(),
   form: z.enum(["task", "reminder"]).optional(),
 });
 

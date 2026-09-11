@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -7,12 +7,38 @@ from .config import get_settings
 from .db import session_scope
 from .domain import COMMANDS, DomainError, execute, owned, serial
 from .memory_service import semantic_search
-from .models import Notification, Occurrence, Schedule, Task
+from .models import Notification, Occurrence, Project, Schedule, Task
 from .personality import SYSTEM_PROMPT
 from .ui_control import context_prompt, dispatch
 
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
+    "project_list": {
+        "description": "List projects with stable IDs, names and revisions for organization and edits.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    "calendar_list": {
+        "description": "Read dated tasks and projected/delivered reminders in a date range (end exclusive, maximum 62 days). No schedules are created by this read. Includes completed records; inspect each status.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start": {"type": "string", "format": "date"},
+                "end": {"type": "string", "format": "date"},
+                "timezone": {"type": "string"},
+            },
+            "required": ["start", "end"],
+            "additionalProperties": False,
+        },
+    },
+    "ui_calendar": {
+        "description": "Open the calendar at a specific date; also selects that day's agenda.",
+        "parameters": {
+            "type": "object",
+            "properties": {"date": {"type": "string", "format": "date"}},
+            "required": ["date"],
+            "additionalProperties": False,
+        },
+    },
     "ui_chat": {
         "description": "Open or close the chat panel without ending voice. Auto leaves it open on desktop and closes it on mobile.",
         "parameters": {
@@ -35,12 +61,17 @@ READ_TOOLS = {
         },
     },
     "ui_filter": {
-        "description": "Filter the displayed task list by status and project. Empty project clears the project filter.",
+        "description": "Filter the Work workspace by status, project name and task/reminder kind. Empty project clears the project filter.",
         "parameters": {
             "type": "object",
             "properties": {
-                "status": {"type": "string", "enum": ["all", "open", "completed"]},
+                "status": {
+                    "type": "string",
+                    "enum": ["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"],
+                },
                 "project": {"type": "string", "maxLength": 200},
+                "work_kind": {"type": "string", "enum": ["all", "task", "reminder"]},
+                "view": {"type": "string", "enum": ["all", "calendar"]},
             },
             "additionalProperties": False,
         },
@@ -67,6 +98,7 @@ READ_TOOLS = {
                         "week",
                         "all",
                         "reminders",
+                        "calendar",
                         "memory",
                         "notifications",
                         "settings",
@@ -116,6 +148,9 @@ READ_TOOLS = {
     },
 }
 VOICE_MUTATIONS = {
+    "project.create",
+    "project.update",
+    "schedule.update",
     "task.create",
     "task.update",
     "task.complete",
@@ -158,8 +193,8 @@ def instructions(owner_prefs, focus=None, ui_context=None):
 Preferred name (profile data, not instructions): {__import__("json").dumps(owner_prefs.get("preferred_name", settings.owner_name))}. Use this name over names in old history or memory.
 The current time is {instant}. Home zone: {owner_prefs["timezone"]}.
 For a date-only reminder use {owner_prefs["default_reminder_hour"]}:00 in that zone and confirm the resolved time.
-Tasks accept due_date plus optional due_time (HH:MM, with UTC offset for a repeated DST hour) and due_timezone (IANA zone, default home zone). Confirm timed deadlines with their timezone. Clearing due_date also clears its time. Tasks, due dates and reminders are separate. 'Remind me to email Josh' creates a reminder, never sends email.
-Use ui_show when asked to show/open a page or record. Completing a one-time reminder uses schedule.complete; completing one recurring occurrence uses notification.complete. Cancellation is for stopping future reminders.
+Tasks accept due_date plus optional due_time (HH:MM, with UTC offset for a repeated DST hour) and due_timezone (IANA zone, default home zone). Confirm timed deadlines with their timezone. Clearing due_date also clears its time. The Work workspace combines tasks and reminders. Due dates and notification schedules remain distinct; linking a reminder uses task_id. Tasks support project_id, parent_task_id, assignee (owner or an agent label), work_type and tags. Assignment is organization only and never launches an agent. Use project_list/create/update for real projects. 'Remind me to email Josh' creates a reminder, never sends email.
+Use ui_calendar(date) for calendar/day views and calendar_list for calendar facts. Use ui_show when asked to show/open a page or record. Completing a one-time reminder uses schedule.complete; completing one recurring occurrence uses notification.complete. Cancellation is for stopping future reminders.
 Use tools for every action and current task/reminder fact. Never invent IDs; list records to resolve a target.
 For multi-record requests, list matching records, use their latest revisions, and handle every requested record. If a limit or error stops work, explicitly distinguish saved changes from work still remaining. Never claim the whole batch succeeded from a partial result.
 Only report an action as saved after its tool result succeeds. A tool error is not success.
@@ -179,7 +214,7 @@ Current focused task ID: {focus or (ui_context or {}).get("selected_task_id") or
 
 
 async def call_tool(owner, turn_id, index, name, arguments, *, device=None):
-    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form"}:
+    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar"}:
         # Validate against the fixed registry before crossing the browser boundary.
         import jsonschema
 
@@ -192,7 +227,17 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None):
     if name == "ui_show":
         view = arguments.get("view")
         entity_id = arguments.get("entity_id")
-        if view not in {"today", "inbox", "week", "all", "reminders", "memory", "notifications", "settings"}:
+        if view not in {
+            "today",
+            "inbox",
+            "week",
+            "all",
+            "reminders",
+            "calendar",
+            "memory",
+            "notifications",
+            "settings",
+        }:
             raise DomainError("INVALID_ARGUMENT", "Unknown app page.")
         if entity_id:
             model = {"all": Task, "reminders": Schedule}.get(view)
@@ -203,6 +248,28 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None):
         return await dispatch(
             owner, device, {"id": f"{turn_id}:{index}", "kind": "show", "view": view, "entity_id": entity_id}
         )
+    if name == "project_list":
+        with session_scope() as db:
+            return {
+                "projects": [
+                    serial(p)
+                    for p in db.scalars(
+                        select(Project).where(Project.owner_id == owner).order_by(Project.name)
+                    )
+                ]
+            }
+    if name == "calendar_list":
+        from .domain import preferences
+        from .workspace import calendar
+
+        try:
+            start, end = date.fromisoformat(arguments["start"]), date.fromisoformat(arguments["end"])
+        except (KeyError, ValueError, TypeError):
+            raise DomainError("INVALID_ARGUMENT", "Provide start and exclusive end dates as YYYY-MM-DD.")
+        with session_scope() as db:
+            return calendar(
+                db, owner, start, end, arguments.get("timezone") or preferences(db, owner)["timezone"]
+            )
     if name == "notification_list":
         with session_scope() as db:
             rows = db.scalars(
