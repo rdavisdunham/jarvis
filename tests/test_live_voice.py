@@ -1,0 +1,140 @@
+import asyncio
+from unittest.mock import AsyncMock
+
+import pytest
+from jarvis import budget, live_voice
+from jarvis.db import session_scope
+from jarvis.domain import preferences
+from jarvis.live_voice import LiveController
+from jarvis.models import BudgetReservation, Conversation, Source, Usage
+from sqlalchemy import select
+
+
+@pytest.fixture
+def controller():
+    with session_scope() as db:
+        conv = Conversation(owner_id="davin", device_id="device", private=True, learning=False)
+        db.add(conv)
+        db.flush()
+        c = LiveController("davin", "device", conv.id, None, preferences(db, "davin"))
+        budget.reserve(db, "davin", c.id, 0.1, c.model)
+    c.send = AsyncMock()
+    return c
+
+
+async def test_live_fragments_do_not_execute_tools_and_private_history_is_not_saved(controller):
+    c = controller
+    fragment = {
+        "type": "session.input_transcript.delta",
+        "event_id": "a",
+        "delta": "Create a task",
+        "start_ms": 0,
+        "end_ms": 1000,
+    }
+    await c.event(fragment)
+    await c.event(fragment)
+    assert c.groups[0]["content"] == "Create a task"
+    assert not c.work
+    await c.close()
+    with session_scope() as db:
+        assert db.scalar(select(Source)) is None
+
+
+async def test_delegation_id_and_same_input_are_deduplicated(controller, monkeypatch):
+    c = controller
+    backend = AsyncMock(
+        return_value={"message": "Saved one task.", "actions": [{"command_id": "receipt"}], "ui_actions": []}
+    )
+    monkeypatch.setattr(live_voice, "chat", backend)
+    await c.event(
+        {"type": "session.input_transcript.delta", "delta": "Save one task.", "start_ms": 0, "end_ms": 1000}
+    )
+    event = {"type": "session.delegation.created", "delegation": {"id": "delegation", "target": "client"}}
+    await c.event(event)
+    await c.event(event)
+    await asyncio.gather(*list(c.work))
+    await c.delegate("second-delegation")
+    backend.assert_awaited_once()
+    assert c.receipts == ["receipt"]
+    assert c.send.await_args.kwargs == {}
+    assert c.send.await_args.args[0]["delegation_id"] == "second-delegation"
+
+
+async def test_new_speech_guard_blocks_stale_tool_request(controller, monkeypatch):
+    c = controller
+
+    async def backend(*args, tool_guard, **kwargs):
+        assert tool_guard() is None
+        await c.event(
+            {
+                "type": "session.input_transcript.delta",
+                "delta": "Actually, cancel that.",
+                "start_ms": 3000,
+                "end_ms": 4000,
+            }
+        )
+        assert "continued speaking" in tool_guard()
+        assert tool_guard() is None  # The next model step has received the correction.
+        c.closing = True
+        assert "closing" in tool_guard()
+        return {"message": "Nothing else changed.", "actions": []}
+
+    monkeypatch.setattr(live_voice, "chat", backend)
+    await c.delegate("delegate")
+
+
+async def test_duration_snapshots_are_cumulative_and_minimum_is_credited(controller):
+    c = controller
+    c.record_seconds(15)
+    c.record_seconds(12)
+    c.record_seconds(30)
+    c.record_seconds(30)
+    with session_scope() as db:
+        row = db.get(BudgetReservation, c.id)
+        assert float(row.actual) == pytest.approx(0.025)
+        assert len(list(db.scalars(select(Usage)))) == 2
+
+
+async def test_graceful_close_waits_for_final_usage(controller):
+    c = controller
+    c.session_created = True
+    c.ws = AsyncMock()
+
+    async def send(event):
+        assert event["type"] == "session.close"
+        assert not c.closed
+        await c.event({"type": "session.closed", "usage": {"seconds": 42}, "reason": "close_requested"})
+
+    c.send = send
+    await c.close()
+    assert c.closed and c.finalized.is_set()
+    with session_scope() as db:
+        row = db.get(BudgetReservation, c.id)
+        assert row.state == "closed"
+        assert float(row.actual) == pytest.approx(0.035)
+
+
+async def test_live_interrupt_does_not_cancel_committed_task_work(controller):
+    c = controller
+    c.receipts = ["saved"]
+    await c.interrupt()
+    assert c.receipts == ["saved"]
+    assert c.send.await_args.args[0]["type"] == "session.instructions.append"
+
+
+async def test_uncertain_creation_keeps_budget_reservation(controller):
+    c = controller
+    c.creation_attempted = True
+    await c.close(uncertain=True)
+    with session_scope() as db:
+        assert db.get(BudgetReservation, c.id).state == "uncertain"
+
+
+def test_invalid_provider_voice_is_rejected_before_provider_call(client):
+    conv = client.post("/api/v1/conversations", json={"private": True}).json()
+    result = client.post(
+        "/api/v1/voice/sessions",
+        json={"conversation_id": conv["id"], "sdp": "synthetic", "provider": "realtime", "voice": "willow"},
+    )
+    assert result.status_code == 400
+    assert result.json()["error"]["code"] == "INVALID_ARGUMENT"

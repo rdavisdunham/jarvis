@@ -110,3 +110,49 @@ async def test_abandoned_browser_session_is_closed(controller, monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await c.watch()
     c.close.assert_awaited_once()
+
+
+async def test_recovered_turn_clears_stale_provider_error(controller):
+    c = controller
+    await c.event({"type": "error", "error": {"code": "server_error"}})
+    assert c.error
+    await c.finish_response(
+        {"output": [{"content": [{"text": "SILENT"}]}]}, {"epoch": 0, "phase": "gate"}
+    )
+    assert c.error is None
+    assert c.state == "listening"
+
+
+async def test_new_speech_clears_error_and_finished_action_cannot_be_submitted_again(controller):
+    c = controller
+    c.error = "old error"
+    await c.event({"type": "input_audio_buffer.speech_started", "item_id": "new"})
+    assert c.error is None
+    c.current_item = "new"
+    c.state = "waiting"
+    assert c.can_submit()
+    c.tool_index = 1
+    assert not c.can_submit()
+    c.tool_index = 0
+    c.answered_items.add("new")
+    assert not c.can_submit()
+
+
+@pytest.mark.parametrize("private", [True, False])
+async def test_voice_final_transcript_retention_and_deduplication(controller, client, private):
+    from jarvis.models import Source
+    from sqlalchemy import select
+    c = controller
+    conv = client.post("/api/v1/conversations", json={"private": private}).json()
+    c.conversation_id = conv["id"]
+    await c.event({"type": "input_audio_buffer.speech_started", "item_id": "spoken"})
+    event = {"type": "conversation.item.input_audio_transcription.completed",
+             "item_id": "spoken", "transcript": "A synthetic transcript."}
+    await c.event(event)
+    await c.event(event)
+    with session_scope() as db:
+        sources = list(db.scalars(select(Source).where(Source.conversation_id == conv["id"])))
+        assert len(sources) == (0 if private else 1)
+        if sources:
+            assert sources[0].content == event["transcript"]
+            assert sources[0].created_at == c.input_started["spoken"]

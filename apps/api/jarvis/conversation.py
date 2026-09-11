@@ -16,7 +16,9 @@ def turn_hash(conversation_id, message, focus):
     return hashlib.sha256(json.dumps([conversation_id, message, focus]).encode()).hexdigest()
 
 
-async def chat(owner, device, turn_id, conversation_id, message, focus=None):
+async def chat(
+    owner, device, turn_id, conversation_id, message, focus=None, *, live_context=None, tool_guard=None
+):
     settings = get_settings()
     if not (settings.openai_api_key or settings.groq_api_key):
         raise DomainError(
@@ -64,9 +66,15 @@ async def chat(owner, device, turn_id, conversation_id, message, focus=None):
                 {"role": s.role if s.role in {"user", "assistant"} else "user", "content": s.content[:3000]}
                 for s in reversed(rows)
             ]
-        source = capture_source(db, owner, message, f"chat:{turn_id}:user", conversation=conv)
+        source = (
+            None
+            if live_context is not None
+            else capture_source(db, owner, message, f"chat:{turn_id}:user", conversation=conv)
+        )
         if source and conv.learning:
             enqueue_job(db, owner, "extract_memory", {"source_id": source.id})
+    if live_context is not None:
+        history = live_context
     messages = [
         {"role": "system", "content": instructions(prefs, focus)},
         *history,
@@ -82,6 +90,7 @@ async def chat(owner, device, turn_id, conversation_id, message, focus=None):
         {"type": "function", "function": {k: v for k, v in t.items() if k != "type"}} for t in registry()
     ]
     actions, tool_index = [], 0
+    ui_actions = []
     reply, failed = "", False
     try:
         async with httpx.AsyncClient(timeout=35) as client:
@@ -133,7 +142,13 @@ async def chat(owner, device, turn_id, conversation_id, message, focus=None):
                         if tool_index >= 4:
                             raise DomainError("LIMIT_EXCEEDED", "This request reached its action limit.")
                         args = json.loads(fn["arguments"])
+                        if tool_guard:
+                            changed = tool_guard()
+                            if changed:
+                                raise DomainError("REQUEST_CHANGED", changed)
                         outcome = await call_tool(owner, turn_id, tool_index, fn["name"], args)
+                        if outcome.get("ui_action"):
+                            ui_actions.append(outcome["ui_action"])
                         # Store references only; retrieved personal context is not another transcript store.
                         if outcome.get("command_id"):
                             actions.append({"command_id": outcome["command_id"], "status": outcome["status"]})
@@ -156,15 +171,20 @@ async def chat(owner, device, turn_id, conversation_id, message, focus=None):
         "turn_id": turn_id,
         "message": reply,
         "actions": actions,
+        "ui_actions": ui_actions,
         "status": "failed" if failed else "succeeded",
     }
     with session_scope() as db:
         job = db.get(Job, turn_id)
         job.status, job.finished_at = result["status"], now()
         private = private or not preferences(db, owner)["history_enabled"]
-        job.result = {**result, "message": "Private response was not retained."} if private else result
+        job.result = (
+            {**result, "message": "Private response was not retained."}
+            if private or live_context is not None
+            else result
+        )
         conv = owned(db, Conversation, conversation_id, owner)
-        if not private:
+        if not private and live_context is None:
             capture_source(db, owner, reply, f"chat:{turn_id}:assistant", role="assistant", conversation=conv)
         budget.close(db, owner, turn_id, uncertain=failed)
     return result

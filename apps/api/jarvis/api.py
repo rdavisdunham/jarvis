@@ -31,6 +31,7 @@ from .models import (
     Job,
     Memory,
     Notification,
+    Occurrence,
     PushSubscription,
     Schedule,
     Source,
@@ -38,6 +39,7 @@ from .models import (
     WorkerHealth,
     now,
 )
+from .voice_options import OPTIONS
 from .worker import valid_push_endpoint
 
 
@@ -191,6 +193,7 @@ def bootstrap(user: User):
         backup_health = db.get(WorkerHealth, "backup")
         return {
             "name": settings.owner_name,
+            "agent_model": settings.text_model,
             "csrf": user.csrf,
             "device_id": user.device_id,
             "preferences": prefs,
@@ -201,6 +204,7 @@ def bootstrap(user: User):
                 "push": bool(settings.vapid_public_key),
                 "worker": worker_healthy,
             },
+            "voice_options": OPTIONS,
             "last_backup_at": backup_health.last_scan_at.isoformat() if backup_health else None,
             "vapid_public_key": settings.vapid_public_key,
             "event_cursor": db.scalar(select(func.max(Event.id)).where(Event.owner_id == user.owner_id)) or 0,
@@ -265,12 +269,23 @@ def schedules(user: User):
         }
 
 
+@app.get("/api/v1/schedules/{schedule_id}")
+def schedule_record(schedule_id: str, user: User):
+    with session_scope() as db:
+        return serial(owned(db, Schedule, schedule_id, user.owner_id))
+
+
 @app.get("/api/v1/notifications")
 def notifications(user: User):
     with session_scope() as db:
         return {
             "items": [
-                serial(n)
+                {
+                    **serial(n),
+                    "schedule_id": db.get(Occurrence, n.occurrence_id).schedule_id
+                    if n.occurrence_id
+                    else None,
+                }
                 for n in db.scalars(
                     select(Notification)
                     .where(Notification.owner_id == user.owner_id, Notification.dismissed_at.is_(None))
@@ -374,6 +389,7 @@ async def events(request: Request, user: User, after: int = 0):
     async def stream():
         cursor = after
         ticks = 0
+        yield "retry: 3000\n: connected\n\n"
         while not await request.is_disconnected():
             with session_scope() as db:
                 session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
@@ -391,6 +407,8 @@ async def events(request: Request, user: User, after: int = 0):
                 cursor = event.id
                 yield f"id: {cursor}\ndata: {json.dumps(serial(event))}\n\n"
             ticks += 1
+            if ticks % 10 == 0:
+                yield ": heartbeat\n\n"
             if ticks % 40 == 0:
                 yield "event: refresh\ndata: {}\n\n"
             await asyncio.sleep(0.5)
@@ -398,7 +416,7 @@ async def events(request: Request, user: User, after: int = 0):
     return StreamingResponse(
         stream(),
         media_type="text/event-stream",
-        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache, no-transform"},
     )
 
 

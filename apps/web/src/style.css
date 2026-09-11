@@ -213,26 +213,6 @@ small {
   padding: 2px 6px;
   color: var(--accent);
 }
-.sidebar-note {
-  margin-top: auto;
-  padding: 32px 12px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  color: #788795;
-}
-.sidebar-note strong {
-  font-size: 10px;
-  display: block;
-  color: #a7b4ba;
-  font-weight: 500;
-}
-.sidebar-note span {
-  display: block;
-  font-size: 9px;
-  margin-top: 5px;
-  white-space: nowrap;
-}
 .sidebar-bottom {
   padding-bottom: 18px;
 }
@@ -1586,4 +1566,313 @@ progress::-webkit-progress-value {
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+.transcript-status {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #a9b9b1;
+}
+.message.user .message-label {
+  color: #b0c7bc;
+}
+
+/* A quiet conversation surface, with a distinct live microphone mode. */
+.companion {
+  isolation: isolate;
+  overflow: hidden;
+}
+.companion-header {
+  padding: 17px 0;
+  border-bottom-color: #ffffff08;
+  flex-shrink: 0;
+}
+.new-chat {
+  font-size: 12px;
+  gap: 6px;
+}
+.conversation-empty {
+  min-height: 180px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #94a2b5;
+  text-align: center;
+}
+.conversation-empty svg {
+  color: #b9b2d4;
+}
+.conversation-empty p {
+  font-size: 16px;
+  font-weight: 400;
+}
+.messages {
+  scrollbar-width: thin;
+  scrollbar-color: #3e4659 transparent;
+}
+.message.user {
+  background: #ffffff08;
+  border-radius: 15px 15px 3px 15px;
+}
+.message-label {
+  color: #a4a1b8;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+}
+.message p {
+  font-size: 13px;
+  line-height: 1.75;
+}
+.chat-compose {
+  background: #ffffff05;
+  border-color: #ffffff14;
+  border-radius: 16px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.voice-options {
+  display: flex;
+  gap: 10px;
+  margin: 8px 0 12px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.voice-options label {
+  flex: 1;
+  min-width: 0;
+  color: #9da6b5;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.voice-options select {
+  width: 100%;
+  background: #1a202c;
+  border: 1px solid #ffffff12;
+  border-radius: 8px;
+  color: #e6e6f1;
+  padding: 8px 7px;
+  font-size: 12px;
+}
+.voice-options select:disabled {
+  opacity: 0.65;
+}
+.voice-panel {
+  text-transform: none;
+  padding: 11px 0;
+  color: #d9d1ef;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.voice-mode {
+  background: linear-gradient(180deg, #141923 30%, #1b1b2b);
+}
+.voice-mode .voice-button.recording {
+  color: #e3d9ff;
+  background: #b7a2e916;
+  border-radius: 9px;
+  padding: 8px 10px;
+}
+.voice-mode .chat-compose textarea {
+  display: none;
+}
+.voice-mode .chat-compose > div {
+  margin-top: 0;
+}
+.voice-mode .send-button {
+  display: none;
+}
+.voice-mode .chat-compose > div {
+  justify-content: center;
+}
+.voice-glow {
+  --voice-level: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+  bottom: -50px;
+  left: -20%;
+  width: 140%;
+  height: calc(110px + var(--voice-level) * 160px);
+  opacity: 0;
+  transition:
+    opacity 0.7s,
+    height 0.12s;
+  filter: blur(27px);
+}
+.voice-mode .voice-glow {
+  opacity: calc(0.45 + var(--voice-level) * 0.45);
+}
+.voice-glow i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 0 0;
+  background: radial-gradient(ellipse at 30% 90%, #9781ff 0%, transparent 65%);
+  animation: eri-drift 8s ease-in-out infinite alternate;
+}
+.voice-glow i:nth-child(2) {
+  background: radial-gradient(ellipse at 80% 95%, #5ee5d9 0%, transparent 60%);
+  animation-delay: -3s;
+}
+.voice-glow i:nth-child(3) {
+  background: radial-gradient(ellipse at 55% 100%, #f4a6c4 0%, transparent 55%);
+  animation-delay: -5s;
+}
+@keyframes eri-drift {
+  from {
+    transform: translateX(-8%) scaleY(0.8);
+  }
+  to {
+    transform: translateX(8%) scaleY(1.2);
+  }
+}
+.wake-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin: 0 0 10px;
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
+.wake-controls label {
+  font-size: 11px;
+  color: #b6b9c9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.wake-controls input {
+  width: 13px;
+  height: 13px;
+  accent-color: #b4a1ec;
+}
+.wake-controls > span {
+  font-size: 9px;
+  color: #9295a6;
+  line-height: 1.5;
+}
+.chat-footnote {
+  position: relative;
+  z-index: 1;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+.record-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 18px;
+}
+.record-tabs button {
+  padding: 8px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #9daaba;
+  border: 1px solid transparent;
+}
+.record-tabs button.active {
+  background: #b6a4e812;
+  border-color: #b6a4e840;
+  color: #ded5f4;
+}
+.schedule-row {
+  border-radius: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  transition: background 0.2s;
+}
+.record-highlight {
+  outline: 2px solid #b8a2f0 !important;
+  outline-offset: 3px;
+  background: #b8a2f014;
+  box-shadow: 0 0 26px #b8a2f026;
+}
+.complete-reminder {
+  white-space: nowrap;
+  font-size: 11px;
+}
+@media (min-width: 1201px) {
+  .companion {
+    width: 370px;
+    flex-basis: 370px;
+  }
+}
+@media (min-width: 1600px) {
+  .companion {
+    width: 410px;
+    flex-basis: 410px;
+  }
+}
+@media (max-width: 600px) {
+  .schedule-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .schedule-row .grow {
+    flex-basis: calc(100% - 48px);
+  }
+  .complete-reminder {
+    margin-left: 40px;
+  }
+  .voice-options {
+    margin-top: 2px;
+  }
+  .message p {
+    font-size: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-glow i {
+    animation: none;
+  }
+  .voice-glow {
+    transition: opacity 0.2s;
+  }
+}
+
+.voice-settings {
+  max-width: 680px;
+  margin-bottom: 30px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.voice-settings h2 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+.voice-settings > p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #9ba8b8;
+}
+.voice-settings .voice-options {
+  margin: 18px 0 14px;
+  max-width: 430px;
+}
+.voice-settings .voice-options select {
+  font-size: 14px;
+  padding: 10px;
+}
+.voice-settings .wake-controls {
+  margin-top: 20px;
+}
+.voice-settings .wake-controls label {
+  font-size: 13px;
+}
+.voice-settings .wake-controls > span {
+  font-size: 11px;
+}
+.voice-model-note {
+  margin-top: 8px;
 }

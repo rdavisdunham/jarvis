@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     default_reminder_hour: int = 10
     monthly_budget_usd: float = 150
     realtime_model: str = "gpt-realtime-2.1"
+    live_model: str = "gpt-live-1"
     text_model: str = "gpt-5.4-mini"
     openai_api_key: str = ""
     groq_api_key: str = ""

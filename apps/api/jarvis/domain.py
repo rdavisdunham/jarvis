@@ -114,11 +114,13 @@ COMMANDS = {
     "task.reopen": TaskState,
     "schedule.create": ScheduleCreate,
     "schedule.cancel": ScheduleChange,
+    "schedule.complete": ScheduleChange,
     "schedule.reschedule": ScheduleChange,
     "memory.capture": Capture,
     "memory.correct": Correct,
     "memory.forget": Forget,
     "notification.read": NotificationAction,
+    "notification.complete": NotificationAction,
     "notification.snooze": NotificationAction,
     "notification.dismiss": NotificationAction,
     "settings.update": SettingsUpdate,
@@ -410,13 +412,28 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("schedule."):
         row = owned(db, Schedule, args.schedule_id, owner, lock=True)
         check_revision(row, args.expected_revision)
-        if tool == "schedule.cancel":
+        if tool == "schedule.complete":
+            if row.recurrence:
+                raise DomainError(
+                    "INVALID_ARGUMENT",
+                    "Complete a delivered occurrence with notification.complete; the routine will keep running.",
+                )
+            row.status, row.next_run_at, row.completed_at = "completed", None, now()
+            for notice in db.scalars(
+                select(Notification)
+                .join(Occurrence, Notification.occurrence_id == Occurrence.id)
+                .where(Occurrence.schedule_id == row.id)
+            ):
+                notice.completed_at = notice.completed_at or row.completed_at
+                notice.read_at = notice.read_at or row.completed_at
+                emit(db, owner, "notification.changed", notice.id)
+        elif tool == "schedule.cancel":
             row.status, row.next_run_at = "cancelled", None
         else:
             if not args.when:
                 raise DomainError("INVALID_ARGUMENT", "A new time is required.")
             instant = parse_when(args.when, row.timezone, preferences(db, owner)["default_reminder_hour"])
-            row.anchor_at, row.status = instant, "active"
+            row.anchor_at, row.status, row.completed_at = instant, "active", None
             row.next_run_at = first_occurrence(row)
         row.revision += 1
         emit(db, owner, "schedule.changed", row.id, row.revision)
@@ -451,7 +468,19 @@ def mutate(db, owner, tool, args, command_id):
         return {"id": old.id, "forgotten": True}
     if tool.startswith("notification."):
         item = owned(db, Notification, args.notification_id, owner, lock=True)
-        if tool == "notification.snooze":
+        if tool == "notification.complete":
+            item.completed_at = item.completed_at or now()
+            if item.occurrence_id:
+                occurrence = db.get(Occurrence, item.occurrence_id)
+                schedule = owned(db, Schedule, occurrence.schedule_id, owner, lock=True)
+                occurrence.status = "completed"
+                if not schedule.recurrence and schedule.status == "finished":
+                    schedule.status, schedule.completed_at = "completed", item.completed_at
+                    schedule.revision += 1
+                    emit(db, owner, "schedule.changed", schedule.id, schedule.revision)
+        elif tool == "notification.snooze":
+            if item.completed_at:
+                raise DomainError("INVALID_ARGUMENT", "This reminder is already completed.")
             instant = now() + timedelta(minutes=args.minutes)
             row = Schedule(
                 owner_id=owner,
@@ -510,7 +539,7 @@ def deliver_occurrence(db, job):
     schedule = db.scalar(select(Schedule).where(Schedule.id == occurrence.schedule_id).with_for_update())
     if occurrence.status != "pending":
         return {"status": occurrence.status}
-    if schedule.revision != occurrence.revision or schedule.status == "cancelled":
+    if schedule.revision != occurrence.revision or schedule.status in {"cancelled", "completed"}:
         occurrence.status = "superseded"
         return {"status": "superseded"}
     task = owned(db, Task, schedule.task_id, job.owner_id, lock=True) if schedule.task_id else None

@@ -5,13 +5,44 @@ from sqlalchemy import select
 
 from .config import get_settings
 from .db import session_scope
-from .domain import COMMANDS, DomainError, execute, serial
+from .domain import COMMANDS, DomainError, execute, owned, serial
 from .memory_service import legacy_search, search
-from .models import Schedule, Task
+from .models import Notification, Occurrence, Schedule, Task
 from .personality import SYSTEM_PROMPT
 
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
+    "ui_show": {
+        "description": "Open a page or highlight a saved task or reminder on the owner's current screen. List records first to obtain its ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "view": {
+                    "type": "string",
+                    "enum": [
+                        "today",
+                        "inbox",
+                        "week",
+                        "all",
+                        "reminders",
+                        "memory",
+                        "notifications",
+                        "settings",
+                    ],
+                },
+                "entity_id": {
+                    "type": "string",
+                    "description": "Task ID for all, or schedule ID for reminders. Omit to open only the page.",
+                },
+            },
+            "required": ["view"],
+            "additionalProperties": False,
+        },
+    },
+    "notification_list": {
+        "description": "List delivered reminder occurrences, including completion status. Complete a recurring occurrence with notification.complete; keep its series running.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     "task_list": {
         "description": "List current tasks with IDs and revisions; use these for edits.",
         "parameters": {
@@ -41,6 +72,8 @@ VOICE_MUTATIONS = {
     "task.reopen",
     "schedule.create",
     "schedule.cancel",
+    "schedule.complete",
+    "notification.complete",
     "schedule.reschedule",
     "memory.capture",
 }
@@ -69,6 +102,7 @@ You are assisting {settings.owner_name}.
 The current time is {instant}. Home zone: {owner_prefs["timezone"]}.
 For a date-only reminder use {owner_prefs["default_reminder_hour"]}:00 in that zone and confirm the resolved time.
 Tasks, due dates and reminders are separate. 'Remind me to email Josh' creates a reminder, never sends email.
+Use ui_show when asked to show/open a page or record. Completing a one-time reminder uses schedule.complete; completing one recurring occurrence uses notification.complete. Cancellation is for stopping future reminders.
 Use tools for every action and current task/reminder fact. Never invent IDs; list records to resolve a target.
 Only report an action as saved after its tool result succeeds. A tool error is not success.
 Use expected_revision from the latest record. Ask one brief clarification for an ambiguous target.
@@ -84,6 +118,40 @@ Current focused task ID: {focus or "none"}. Retrieve its current revision before
 
 
 async def call_tool(owner, turn_id, index, name, arguments):
+    if name == "ui_show":
+        view = arguments.get("view")
+        entity_id = arguments.get("entity_id")
+        if view not in {"today", "inbox", "week", "all", "reminders", "memory", "notifications", "settings"}:
+            raise DomainError("INVALID_ARGUMENT", "Unknown app page.")
+        if entity_id:
+            model = {"all": Task, "reminders": Schedule}.get(view)
+            if not model:
+                raise DomainError("INVALID_ARGUMENT", "Highlight a task on all or a reminder on reminders.")
+            with session_scope() as db:
+                owned(db, model, entity_id, owner)
+        return {
+            "ui_action": {"id": f"{turn_id}:{index}", "view": view, "entity_id": entity_id},
+            "status": "queued_for_display",
+        }
+    if name == "notification_list":
+        with session_scope() as db:
+            rows = db.scalars(
+                select(Notification)
+                .where(Notification.owner_id == owner, Notification.dismissed_at.is_(None))
+                .order_by(Notification.created_at.desc())
+                .limit(30)
+            )
+            return {
+                "notifications": [
+                    {
+                        **serial(n),
+                        "schedule_id": db.get(Occurrence, n.occurrence_id).schedule_id
+                        if n.occurrence_id
+                        else None,
+                    }
+                    for n in rows
+                ]
+            }
     if name == "task_list":
         with session_scope() as db:
             q = select(Task).where(Task.owner_id == owner, Task.archived.is_(False))
@@ -98,7 +166,10 @@ async def call_tool(owner, turn_id, index, name, arguments):
                     serial(s)
                     for s in db.scalars(
                         select(Schedule)
-                        .where(Schedule.owner_id == owner, Schedule.status == "active")
+                        .where(
+                            Schedule.owner_id == owner,
+                            Schedule.status.in_(["active", "finished", "completed"]),
+                        )
                         .order_by(Schedule.next_run_at)
                         .limit(30)
                     )

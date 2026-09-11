@@ -24,8 +24,11 @@ export interface Schedule {
   status: string;
   revision: number;
   task_id: string | null;
+  completed_at: string | null;
 }
 export interface Notice {
+  completed_at: string | null;
+  schedule_id: string | null;
   id: string;
   title: string;
   body: string;
@@ -52,6 +55,7 @@ export interface Preferences {
   detailed_notifications: boolean;
 }
 export interface Bootstrap {
+  agent_model: string;
   name: string;
   csrf: string;
   device_id: string;
@@ -68,6 +72,10 @@ export interface Bootstrap {
     push: boolean;
     worker: boolean;
   };
+  voice_options: Record<
+    VoiceProvider,
+    { label: string; voices: string[]; default_voice: string }
+  >;
   last_backup_at: string | null;
   vapid_public_key: string;
   event_cursor: number;
@@ -86,4 +94,11 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   pending?: boolean;
+}
+
+export type VoiceProvider = "realtime" | "live";
+export interface UIAction {
+  id: string;
+  view: View;
+  entity_id?: string | null;
 }

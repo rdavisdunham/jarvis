@@ -27,8 +27,13 @@ import {
 } from "lucide-react";
 import { api, ApiError, command, post, setCsrf } from "./api";
 import { Voice, type VoiceState } from "./voice";
+import { subscribeEvents } from "./events";
+import { ReminderList } from "./ReminderList";
+import { WakeWord, recognitionType } from "./wake-word";
 import type {
   Bootstrap,
+  UIAction,
+  VoiceProvider,
   ChatMessage,
   Memory,
   Notice,
@@ -65,6 +70,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
+  const pendingNotices = notices.filter((notice) => !notice.completed_at);
   const [memories, setMemories] = useState<Memory[]>([]),
     [legacy, setLegacy] = useState<
       { id: string; content: string; attribution: string }[]
@@ -83,11 +89,32 @@ export default function App() {
     [messages, setMessages] = useState<ChatMessage[]>([]),
     [chatText, setChatText] = useState(""),
     [thinking, setThinking] = useState(false);
+  const [syncWarning, setSyncWarning] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
+  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>(() =>
+    localStorage.getItem("eri-voice-provider") === "live" ? "live" : "realtime",
+  );
+  const [voiceName, setVoiceName] = useState(
+    () =>
+      localStorage.getItem(
+        "eri-voice-" +
+          (localStorage.getItem("eri-voice-provider") === "live"
+            ? "live"
+            : "realtime"),
+      ) || "marin",
+  );
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [wakeEnabled, setWakeEnabled] = useState(false);
+  const [wakeStatus, setWakeStatus] = useState("");
+  const wake = useRef<WakeWord | null>(null);
+  const wakeStart = useRef<() => void>(() => {});
+  const glowRef = useRef<HTMLDivElement>(null);
+  const displayedActions = useRef(new Set<string>());
+  const voiceGeneration = useRef(0);
   const voice = useRef<Voice | null>(null),
     conversationRef = useRef<string | null>(null),
     retryRef = useRef<null | (() => Promise<void>)>(null),
-    lastVoiceText = useRef("");
+    lastVoiceReceipt = useRef("");
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
@@ -147,24 +174,31 @@ export default function App() {
   }, [initialize]);
   useEffect(() => {
     if (!boot) return;
-    const events = new EventSource("/api/v1/events?after=" + boot.event_cursor);
-    events.onmessage = () => {
-      void load().catch(() =>
-        setError("Connection lost. Reconnecting to your saved data…"),
-      );
-    };
-    events.addEventListener("refresh", () => {
-      void load().catch(() => {});
-    });
-    events.onopen = () => setError("");
-    events.onerror = () => setError("Connection interrupted. Reconnecting…");
+    const stopEvents = subscribeEvents(
+      boot.event_cursor,
+      () => {
+        void load().catch(() =>
+          setSyncWarning("Task updates are reconnecting…"),
+        );
+      },
+      (online) =>
+        setSyncWarning(
+          online
+            ? ""
+            : "Live task updates are reconnecting. Voice can continue.",
+        ),
+    );
     const timer = setInterval(() => {
       api<Bootstrap>("/bootstrap")
-        .then((info) => setBoot(info))
+        .then(async (info) => {
+          setBoot(info);
+          await load();
+          setSyncWarning("");
+        })
         .catch(() => {});
     }, 30000);
     return () => {
-      events.close();
+      stopEvents();
       clearInterval(timer);
     };
   }, [!!boot, load]);
@@ -302,17 +336,102 @@ export default function App() {
     sessionStorage.setItem("jarvis-conversation", data.id);
     return data.id;
   }
+  useEffect(() => {
+    if (!boot?.voice_options) return;
+    const options = boot.voice_options[voiceProvider];
+    if (!options.voices.includes(voiceName)) {
+      setVoiceName(options.default_voice);
+      localStorage.setItem("eri-voice-" + voiceProvider, options.default_voice);
+    }
+  }, [boot?.voice_options, voiceProvider, voiceName]);
+  async function showActions(actions: UIAction[] = []) {
+    for (const action of actions) {
+      if (displayedActions.current.has(action.id)) continue;
+      displayedActions.current.add(action.id);
+      setQuery("");
+      setView(action.view);
+      setSidebar(false);
+      setCompanion(false);
+      try {
+        if (action.entity_id && action.view === "all") {
+          setSelected(
+            await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
+          );
+        } else if (action.entity_id && action.view === "reminders") {
+          const record = await api<Schedule>(
+            "/schedules/" + encodeURIComponent(action.entity_id),
+          );
+          setSchedules((items) => [
+            ...items.filter((item) => item.id !== record.id),
+            record,
+          ]);
+          setHighlight(record.id);
+        }
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }
+  }
+  useEffect(() => {
+    if (!highlight || view !== "reminders") return;
+    const timer = setTimeout(() => {
+      const target = document.getElementById("record-" + highlight);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    }, 100);
+    const clear = setTimeout(() => setHighlight(null), 12000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(clear);
+    };
+  }, [highlight, view, schedules]);
+  async function newChat() {
+    voiceGeneration.current += 1;
+    const previous = voice.current;
+    voice.current = null;
+    setVoiceState(
+      previous
+        ? {
+            state: "closing",
+            error: null,
+            text: "",
+            closed: false,
+            receipts: [],
+          }
+        : null,
+    );
+    if (previous) await previous.stop();
+    conversationRef.current = null;
+    sessionStorage.removeItem("jarvis-conversation");
+    retryRef.current = null;
+    setMessages([]);
+    setChatText("");
+    setVoiceState(null);
+    setError("");
+  }
+  function chooseProvider(provider: VoiceProvider) {
+    setVoiceProvider(provider);
+    localStorage.setItem("eri-voice-provider", provider);
+    const saved = localStorage.getItem("eri-voice-" + provider);
+    setVoiceName(
+      saved && boot?.voice_options[provider].voices.includes(saved)
+        ? saved
+        : "marin",
+    );
+  }
   async function sendChat(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!chatText.trim() || thinking) return;
+    if (!chatText.trim() || thinking || voice.current) return;
     const content = chatText.trim(),
       turn_id = crypto.randomUUID();
     setChatText("");
+    setThinking(true);
     setMessages((m) => [...m, { id: turn_id, role: "user", content }]);
     let conversation_id: string;
     try {
       conversation_id = await ensureConversation();
     } catch (e) {
+      setThinking(false);
       setError((e as Error).message);
       return;
     }
@@ -326,10 +445,11 @@ export default function App() {
       setThinking(true);
       setError("");
       try {
-        const result = await post<{ message: string; status: string }>(
-          "/chat",
-          body,
-        );
+        const result = await post<{
+          message: string;
+          status: string;
+          ui_actions?: UIAction[];
+        }>("/chat", body);
         setMessages((m) => [
           ...m.filter((item) => item.id !== turn_id + "-reply"),
           {
@@ -340,6 +460,7 @@ export default function App() {
         ]);
         retryRef.current = null;
         await load();
+        await showActions(result.ui_actions);
       } catch (e) {
         const err = e as ApiError;
         setError(err.message);
@@ -353,11 +474,27 @@ export default function App() {
   }
   async function startVoice() {
     if (voice.current) {
-      await voice.current.stop();
+      voiceGeneration.current += 1;
+      const previous = voice.current;
       voice.current = null;
+      setVoiceState({
+        state: "closing",
+        error: null,
+        text: "",
+        closed: false,
+        receipts: [],
+      });
+      await previous.stop();
       setVoiceState(null);
+      setMessages((items) =>
+        items.map((item) => ({ ...item, pending: false })),
+      );
       return;
     }
+    if (voiceState && ["connecting", "closing"].includes(voiceState.state))
+      return;
+    const generation = ++voiceGeneration.current;
+    wake.current?.stop();
     setError("");
     setCompanion(true);
     setVoiceState({
@@ -369,26 +506,94 @@ export default function App() {
     });
     try {
       const id = await ensureConversation();
-      const controller = new Voice((state) => {
-        setVoiceState(state);
-        if (state.text && state.text !== lastVoiceText.current) {
-          lastVoiceText.current = state.text;
-          setMessages((m) => [
-            ...m,
-            { id: crypto.randomUUID(), role: "assistant", content: state.text },
-          ]);
-        }
-        if (state.closed) voice.current = null;
-        if (state.receipts.length) void load();
-      });
+      if (generation !== voiceGeneration.current) return;
+      const controller = new Voice(
+        (state) => {
+          if (voice.current !== controller) return;
+          if (state.closed) voice.current = null;
+          setVoiceState(state);
+          void showActions(state.ui_actions);
+          if (state.text && state.text_id) {
+            setMessages((m) => {
+              const existing = m.find((item) => item.id === state.text_id);
+              if (existing?.content === state.text) return m;
+              const message: ChatMessage = {
+                id: state.text_id!,
+                role: "assistant",
+                content: state.text,
+              };
+              return existing
+                ? m.map((item) => (item.id === message.id ? message : item))
+                : [...m, message];
+            });
+          }
+          const receipt = state.receipts.at(-1);
+          if (receipt && receipt !== lastVoiceReceipt.current) {
+            lastVoiceReceipt.current = receipt;
+            void load().catch(() => {});
+          }
+        },
+        (message) => {
+          if (voice.current !== controller) return;
+          setMessages((m) =>
+            m.some((item) => item.id === message.id)
+              ? m.map((item) => (item.id === message.id ? message : item))
+              : [...m, message],
+          );
+        },
+        (level) =>
+          glowRef.current?.style.setProperty("--voice-level", String(level)),
+      );
       voice.current = controller;
-      await controller.start(id, selected?.id);
+      await controller.start(id, selected?.id, {
+        provider: voiceProvider,
+        voice: voiceName,
+      });
     } catch (e) {
+      if (generation !== voiceGeneration.current) return;
       voice.current = null;
       setVoiceState(null);
       setError((e as Error).message);
     }
   }
+  wakeStart.current = () => {
+    if (!voice.current && !thinking) void startVoice();
+  };
+  useEffect(() => {
+    if (
+      !wakeEnabled ||
+      !boot ||
+      (voiceState && !voiceState.closed) ||
+      thinking
+    ) {
+      wake.current?.stop();
+      return;
+    }
+    let listener: WakeWord | null = null;
+    const begin = () => {
+      listener?.stop();
+      if (document.visibilityState !== "visible") {
+        setWakeStatus("Wake word paused while this page is hidden.");
+        return;
+      }
+      listener = new WakeWord(
+        () => wakeStart.current(),
+        (message) => {
+          setWakeStatus(message);
+          if (!message.startsWith("Listening")) setWakeEnabled(false);
+        },
+      );
+      wake.current = listener;
+      listener.start();
+    };
+    const timer = setTimeout(begin, 300);
+    document.addEventListener("visibilitychange", begin);
+    return () => {
+      clearTimeout(timer);
+      listener?.stop();
+      document.removeEventListener("visibilitychange", begin);
+    };
+  }, [wakeEnabled, !!boot, !!voiceState && !voiceState.closed, thinking]);
   function changePrivacy() {
     if (thinking || voice.current) return;
     setPrivate(!privateMode);
@@ -563,13 +768,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <Shield size={17} />
-          <div>
-            <strong>Your records live at home</strong>
-            <span>Saved on your personal server</span>
-          </div>
-        </div>
         <div className="sidebar-bottom">
           <button
             className={"nav-item " + (view === "settings" ? "active" : "")}
@@ -587,7 +785,7 @@ export default function App() {
               <strong>{boot.name}</strong>
               <span>
                 <i className="status-dot" />
-                Connected to home
+                Connected
               </span>
             </div>
             <button
@@ -838,75 +1036,15 @@ export default function App() {
             )}
             {view === "reminders" && (
               <>
-                <div className="section-head">
-                  <h2>
-                    Scheduled
-                    <span>
-                      {schedules.filter((s) => s.status === "active").length}
-                    </span>
-                  </h2>
-                  <button
-                    className="primary compact"
-                    onClick={() => setReminder(true)}
-                  >
-                    <Plus size={16} />
-                    New reminder
-                  </button>
-                </div>
-                {schedules
-                  .filter((s) => s.status === "active")
-                  .map((s) => (
-                    <div className="schedule-row" key={s.id}>
-                      <span className="item-icon">
-                        {s.recurrence ? (
-                          <Repeat2 size={19} />
-                        ) : (
-                          <Clock3 size={19} />
-                        )}
-                      </span>
-                      <div className="grow">
-                        <strong>{s.title}</strong>
-                        <span>
-                          {s.next_run_at &&
-                            timeLabel(
-                              s.next_run_at,
-                              boot.preferences.timezone,
-                            )}{" "}
-                          · {recurrenceLabel(s.recurrence)}
-                          {s.kind === "recurring_task"
-                            ? " · New task each time"
-                            : ""}
-                        </span>
-                      </div>
-                      <button
-                        className="icon-button"
-                        aria-label={"Cancel " + s.title}
-                        disabled={busy}
-                        onClick={() =>
-                          void mutate(
-                            "schedule.cancel",
-                            {
-                              schedule_id: s.id,
-                              expected_revision: s.revision,
-                            },
-                            "Reminder cancelled",
-                          )
-                        }
-                      >
-                        <X size={17} />
-                      </button>
-                    </div>
-                  ))}
-                {!schedules.some((s) => s.status === "active") && (
-                  <div className="empty-state">
-                    <Clock3 size={30} />
-                    <h3>Let Eridani keep the time.</h3>
-                    <p>
-                      Set a one-time reminder or a repeating routine. It stays
-                      saved when you close the app.
-                    </p>
-                  </div>
-                )}
+                <ReminderList
+                  schedules={schedules}
+                  notices={notices}
+                  zone={boot.preferences.timezone}
+                  busy={busy}
+                  highlight={highlight}
+                  create={() => setReminder(true)}
+                  mutate={mutate}
+                />
                 <p className="footnote">
                   {boot.capabilities.worker
                     ? "Scheduler is running."
@@ -919,7 +1057,7 @@ export default function App() {
               <>
                 <div className="section-head">
                   <h2>
-                    Your Inbox<span>{notices.length}</span>
+                    Your Inbox<span>{pendingNotices.length}</span>
                   </h2>
                   <button
                     className="text-button"
@@ -929,7 +1067,7 @@ export default function App() {
                     Enable notifications
                   </button>
                 </div>
-                {notices.map((n) => (
+                {pendingNotices.map((n) => (
                   <article
                     className={"notice " + (!n.read_at ? "unread" : "")}
                     key={n.id}
@@ -946,14 +1084,14 @@ export default function App() {
                       <button
                         onClick={() =>
                           void mutate(
-                            "notification.read",
+                            "notification.complete",
                             { notification_id: n.id },
-                            "Marked as read",
+                            "Reminder completed",
                           )
                         }
                       >
                         <Check size={14} />
-                        Read
+                        Complete
                       </button>
                       <button
                         onClick={() =>
@@ -981,7 +1119,7 @@ export default function App() {
                     </div>
                   </article>
                 ))}
-                {!notices.length && (
+                {!pendingNotices.length && (
                   <div className="empty-state">
                     <Bell size={30} />
                     <h3>You're all caught up.</h3>
@@ -1087,40 +1225,145 @@ export default function App() {
               </>
             )}
             {view === "settings" && (
-              <SettingsPanel
-                boot={boot}
-                busy={busy}
-                onSave={async (args) => {
-                  await mutate("settings.update", args, "Preferences saved");
-                  const data = await api<Bootstrap>("/bootstrap");
-                  setBoot(data);
-                }}
-                onPush={enablePush}
-              />
+              <>
+                <section className="voice-settings settings-sections">
+                  <h2>Voice & conversation</h2>
+                  <p>
+                    Choose how Eri sounds on this device. Changes apply to the
+                    next voice session.
+                  </p>
+                  <div className="voice-options">
+                    <label>
+                      Voice mode
+                      <select
+                        aria-label="Voice provider"
+                        value={voiceProvider}
+                        disabled={!!voiceState && !voiceState.closed}
+                        onChange={(e) =>
+                          chooseProvider(e.target.value as VoiceProvider)
+                        }
+                      >
+                        <option value="realtime">Realtime</option>
+                        <option value="live">GPT-Live</option>
+                      </select>
+                    </label>
+                    <label>
+                      Voice
+                      <select
+                        aria-label="Voice"
+                        value={voiceName}
+                        disabled={!!voiceState && !voiceState.closed}
+                        onChange={(e) => {
+                          setVoiceName(e.target.value);
+                          localStorage.setItem(
+                            "eri-voice-" + voiceProvider,
+                            e.target.value,
+                          );
+                        }}
+                      >
+                        {(
+                          boot.voice_options?.[voiceProvider]?.voices ?? [
+                            "marin",
+                          ]
+                        ).map((name) => (
+                          <option key={name} value={name}>
+                            {name.charAt(0).toUpperCase() + name.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <p className="voice-model-note">
+                    {voiceProvider === "live"
+                      ? "GPT-Live · natural, simultaneous listening and speaking · $0.05 per connected minute, plus task work."
+                      : "Realtime · the existing turn-based voice experience."}
+                  </p>
+                  <p className="voice-model-note">
+                    Task agent: {boot.agent_model || "gpt-5.4-mini"}. Both voice
+                    modes use the same saved tasks, reminders, and tools.
+                  </p>
+                  {voiceState && !voiceState.closed && (
+                    <p className="voice-model-note">
+                      End the active voice session before changing its model or
+                      voice.
+                    </p>
+                  )}
+                  <div className="wake-controls">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={wakeEnabled}
+                        disabled={!recognitionType()}
+                        onChange={(e) => {
+                          setWakeEnabled(e.target.checked);
+                          if (!e.target.checked) setWakeStatus("");
+                        }}
+                      />
+                      “Hey, Eri”
+                    </label>
+                    <span>
+                      {wakeEnabled
+                        ? voiceState && !voiceState.closed
+                          ? "Paused during voice"
+                          : wakeStatus
+                        : wakeStatus ||
+                          (recognitionType()
+                            ? "Opt in · browser speech service · page open"
+                            : "Unavailable in this browser")}
+                    </span>
+                  </div>
+                </section>
+                <SettingsPanel
+                  boot={boot}
+                  busy={busy}
+                  onSave={async (args) => {
+                    await mutate("settings.update", args, "Preferences saved");
+                    const data = await api<Bootstrap>("/bootstrap");
+                    setBoot(data);
+                  }}
+                  onPush={enablePush}
+                />
+              </>
             )}
             <footer className="page-footer">
               <Shield size={13} />
-              <span>Saved at home. Available across your devices.</span>
+              <span>{syncWarning || "Up to date"}</span>
             </footer>
           </main>
           <aside
-            className={"companion " + (companion ? "visible" : "")}
+            className={
+              "companion " +
+              (companion ? "visible " : "") +
+              (voiceState && !voiceState.closed ? "voice-mode" : "")
+            }
             aria-label="Eridani conversation"
           >
             <div className="companion-header">
-              <span className="companion-logo">
-                <Sparkles size={18} />
-              </span>
-              <div>
-                <strong>Eridani</strong>
-                <span>
-                  {thinking
-                    ? "Working on it…"
-                    : voiceState && !voiceState.closed
-                      ? voiceState.state
-                      : "Here when you need me"}
-                </span>
-              </div>
+              <button
+                className="text-button new-chat"
+                disabled={
+                  thinking ||
+                  (!!voiceState &&
+                    ["connecting", "closing"].includes(voiceState.state))
+                }
+                onClick={() => void newChat()}
+              >
+                <Plus size={16} />
+                New chat
+              </button>
+              <div className="grow" />
+              <button
+                className="icon-button"
+                aria-label="Voice settings"
+                title="Voice settings"
+                onClick={() => {
+                  setView("settings");
+                  setCompanion(false);
+                }}
+              >
+                <Settings2 size={16} />
+              </button>
               <button
                 className={
                   "icon-button privacy " + (effectivePrivate ? "on" : "")
@@ -1160,32 +1403,20 @@ export default function App() {
             )}
             <div className="messages">
               {!messages.length && (
-                <div className="companion-welcome">
-                  <div className="welcome-symbol">
-                    <Sparkles size={25} />
-                  </div>
-                  <h3>Hey, {boot.name}.</h3>
-                  <p>What are we getting out of your head today?</p>
-                  <div className="suggestions">
-                    {[
-                      "What should I focus on today?",
-                      "Remind me tomorrow at 10 AM to plan my day",
-                      "Remember that I prefer short, useful answers",
-                    ].map((s) => (
-                      <button key={s} onClick={() => setChatText(s)}>
-                        {s}
-                        <ArrowUp size={13} />
-                      </button>
-                    ))}
-                  </div>
+                <div className="conversation-empty">
+                  <Sparkles size={23} />
+                  <p>What can I help with?</p>
                 </div>
               )}
               {messages.map((m) => (
                 <div className={"message " + m.role} key={m.id}>
-                  {m.role === "assistant" && (
-                    <span className="message-label">ERIDANI</span>
+                  <span className="message-label">
+                    {m.role === "assistant" ? "ERIDANI" : "YOU"}
+                  </span>
+                  <p>{m.content || (m.pending ? "Listening…" : "")}</p>
+                  {m.pending && (
+                    <span className="transcript-status">Transcribing…</span>
                   )}
-                  <p>{m.content}</p>
                 </div>
               ))}
               {thinking && (
@@ -1199,24 +1430,32 @@ export default function App() {
             {voiceState && !voiceState.closed && (
               <div className="voice-panel">
                 <span className="status-dot" />
-                <span>
-                  {voiceState.state === "waiting"
-                    ? "Take your time. I’m listening."
-                    : voiceState.state}
-                </span>
+                <span>{voiceLabel(voiceState.state)}</span>
                 <button
                   className="icon-button"
                   aria-label="Stop speaking"
-                  onClick={() => void voice.current?.interrupt()}
+                  onClick={() => {
+                    void voice.current
+                      ?.interrupt()
+                      .catch((e) => setError(e.message));
+                  }}
                 >
                   <VolumeX size={17} />
                 </button>
-                <button
-                  className="text-button"
-                  onClick={() => void voice.current?.submit()}
-                >
-                  Submit
-                </button>
+                {voiceProvider === "realtime" && (
+                  <button
+                    className="text-button"
+                    title="Ask Eri to answer your latest speech after you finish talking."
+                    disabled={!voiceState.can_submit}
+                    onClick={() => {
+                      void voice.current
+                        ?.submit()
+                        .catch((e) => setError(e.message));
+                    }}
+                  >
+                    Respond now
+                  </button>
+                )}
               </div>
             )}
             {voiceState?.error && (
@@ -1233,6 +1472,7 @@ export default function App() {
                 }
                 aria-label="Message Eridani"
                 rows={2}
+                disabled={!!voiceState && !voiceState.closed}
                 maxLength={12000}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -1247,7 +1487,12 @@ export default function App() {
                   className={
                     "voice-button " + (voice.current ? "recording" : "")
                   }
-                  disabled={!boot.capabilities.voice || thinking}
+                  disabled={
+                    !boot.capabilities.voice ||
+                    thinking ||
+                    (!!voiceState &&
+                      ["connecting", "closing"].includes(voiceState.state))
+                  }
                   onClick={() => void startVoice()}
                   title={
                     boot.capabilities.voice
@@ -1263,13 +1508,21 @@ export default function App() {
                   type="submit"
                   aria-label="Send message"
                   disabled={
-                    !chatText.trim() || thinking || !boot.capabilities.chat
+                    !chatText.trim() ||
+                    thinking ||
+                    (!!voiceState && !voiceState.closed) ||
+                    !boot.capabilities.chat
                   }
                 >
                   <ArrowUp size={18} />
                 </button>
               </div>
             </form>
+            <div className="voice-glow" ref={glowRef} aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </div>
             {!boot.capabilities.voice && (
               <p className="chat-footnote">
                 Voice needs an OpenAI API key. Text is ready.
@@ -1333,5 +1586,26 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+function voiceLabel(state: string) {
+  return (
+    (
+      {
+        connecting: "Connecting…",
+        closing: "Ending voice…",
+        listening: "Listening",
+        waiting: "Take your time. I’m listening.",
+        evaluating: "Listening…",
+        thinking: "Thinking…",
+        acting: "Saving that…",
+        working: "Taking care of that…",
+        speaking: "Eri is speaking",
+        unresolved: "Ready for your next words",
+        disconnected: "Voice disconnected",
+        closed: "Voice ended",
+      } as Record<string, string>
+    )[state] ?? "Voice is on"
   );
 }

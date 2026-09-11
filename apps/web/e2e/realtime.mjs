@@ -1,5 +1,5 @@
 // Explicit live Realtime acceptance with a synthetic WAV, never the owner's microphone.
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { readFileSync, writeFileSync } from "node:fs";
 const root = new URL("../../../", import.meta.url);
 const token = readFileSync(
@@ -35,9 +35,12 @@ await context.addInitScript(
       const audio = new AudioContext({ sampleRate: 48000 });
       const destination = audio.createMediaStreamDestination();
       source = audio.createBufferSource();
-      source.buffer = await audio.decodeAudioData(
+      const decoded = await audio.decodeAudioData(
         Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0)).buffer,
       );
+      source.buffer = window.__voiceTest.peers.length
+        ? audio.createBuffer(1, 48000, 48000)
+        : decoded;
       source.connect(destination);
       await audio.resume();
       return destination.stream;
@@ -48,6 +51,30 @@ await context.addInitScript(
       errors: [],
       audioResponses: 0,
       gateResults: [],
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      new MutationObserver(() => {
+        if (
+          [...document.querySelectorAll(".message.user")].some(
+            (m) =>
+              m.querySelector(".transcript-status") &&
+              m.querySelector("p")?.textContent !== "Listening…",
+          )
+        )
+          window.__voiceTest.partialVisible = true;
+      }).observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    });
+    window.__eventStreamOpens = 0;
+    const OriginalEvents = window.EventSource;
+    window.EventSource = class extends OriginalEvents {
+      constructor(...args) {
+        super(...args);
+        this.addEventListener("open", () => window.__eventStreamOpens++);
+      }
     };
     const Original = window.RTCPeerConnection;
     window.RTCPeerConnection = class extends Original {
@@ -71,6 +98,12 @@ await context.addInitScript(
         });
         channel.addEventListener("message", (message) => {
           const event = JSON.parse(message.data);
+          if (event.type === "input_audio_buffer.speech_stopped")
+            window.__voiceTest.speechStoppedAt ??= Date.now();
+          if (
+            event.type === "conversation.item.input_audio_transcription.delta"
+          )
+            window.__voiceTest.firstDeltaAt ??= Date.now();
           if (
             event.type ===
             "conversation.item.input_audio_transcription.completed"
@@ -103,9 +136,39 @@ await context.addInitScript(
 );
 const page = await context.newPage();
 const evidence = { states: [], pageErrors: [], session_id: null, task: null };
+const testRecovery = process.env.JARVIS_E2E_RECOVERY === "1";
+let eventFaults = 0,
+  pollFaults = 0;
+if (testRecovery) {
+  await page.route("**/api/v1/events?*", async (route) => {
+    if (!eventFaults++)
+      await route.fulfill({
+        status: 502,
+        headers: { "X-Jarvis-Test-Fault": "1" },
+        body: "Synthetic proxy failure",
+      });
+    else await route.continue();
+  });
+  await page.route(/\/api\/v1\/voice\/sessions\/[^/]+$/, async (route) => {
+    if (route.request().method() === "GET" && !pollFaults++)
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        headers: { "X-Jarvis-Test-Fault": "1" },
+        body: JSON.stringify({
+          error: { code: "NETWORK", message: "Synthetic status failure" },
+        }),
+      });
+    else await route.continue();
+  });
+}
 page.on("pageerror", (e) => evidence.pageErrors.push(e.message));
 page.on("response", async (r) => {
-  if (!r.url().includes("/api/v1/voice/sessions")) return;
+  if (
+    !r.url().includes("/api/v1/voice/sessions") ||
+    r.headers()["x-jarvis-test-fault"]
+  )
+    return;
   try {
     const value = await r.json();
     if (r.request().method() === "POST" && value.session_id) {
@@ -163,9 +226,19 @@ try {
     if (
       scenario === "task" &&
       evidence.task &&
-      (await page.evaluate(() =>
-        window.__voiceTest.events.includes("output_audio_buffer.started"),
-      )) &&
+      (await page.evaluate(async () => {
+        if (!window.__voiceTest.events.includes("output_audio_buffer.started"))
+          return false;
+        for (const peer of window.__voiceTest.peers)
+          for (const stat of (await peer.getStats()).values())
+            if (
+              stat.type === "inbound-rtp" &&
+              stat.kind === "audio" &&
+              stat.totalAudioEnergy > 0
+            )
+              return true;
+        return false;
+      })) &&
       !evidence.interrupted
     ) {
       await page
@@ -197,12 +270,29 @@ try {
       peers.push({ connectionState: p.connectionState, inbound });
     }
     return {
+      partialVisible: !!test.partialVisible,
+      deltaBeforeSpeechStopped:
+        !!test.firstDeltaAt &&
+        (!test.speechStoppedAt || test.firstDeltaAt < test.speechStoppedAt),
       transcripts: test.transcripts,
       events: [...new Set(test.events)],
       errors: test.errors,
       results: test.gateResults,
       peers,
     };
+  });
+  evidence.visible_user_transcripts = await page
+    .locator(".message.user")
+    .allTextContents();
+  evidence.user_transcript_visible = evidence.visible_user_transcripts.some(
+    (t) =>
+      scenario === "task"
+        ? /acceptance voice check/i.test(t)
+        : /thanks/i.test(t),
+  );
+  await page.screenshot({
+    path: new URL(".runtime/voice-transcripts.png", root).pathname,
+    fullPage: true,
   });
   const stop = page.getByRole("button", { name: "End voice", exact: true });
   if (await stop.count()) await stop.click();
@@ -223,8 +313,36 @@ try {
           evidence.browser.events.includes("output_audio_buffer.cleared")
         ? "passed"
         : "failed";
+  if (scenario === "task" && evidence.result === "passed") {
+    const previousSession = evidence.session_id;
+    await page
+      .getByRole("button", { name: "Talk to Eridani", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "End voice", exact: true }),
+    ).toBeEnabled({ timeout: 30000 });
+    await expect(page.locator(".voice-panel")).toContainText("Listening", {
+      timeout: 10000,
+    });
+    evidence.restart_passed = evidence.session_id !== previousSession;
+    await page.getByRole("button", { name: "End voice", exact: true }).click();
+    if (!evidence.restart_passed) evidence.result = "failed";
+  }
+  if (testRecovery) {
+    evidence.recovery = {
+      eventRequests: eventFaults,
+      pollRequests: pollFaults,
+      streamOpens: await page.evaluate(() => window.__eventStreamOpens),
+    };
+    if (eventFaults < 2 || pollFaults < 2 || !evidence.recovery.streamOpens)
+      evidence.result = "failed";
+  }
+  if (!evidence.user_transcript_visible) evidence.result = "failed";
   if (evidence.pageErrors.length || evidence.browser?.errors.length)
     evidence.result = "failed";
+} catch (error) {
+  evidence.result = "failed";
+  evidence.failure = error.message.split("\n")[0];
 } finally {
   await page
     .evaluate(async (session) => {

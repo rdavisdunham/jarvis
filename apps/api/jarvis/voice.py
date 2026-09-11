@@ -6,7 +6,7 @@ import json
 import logging
 import secrets
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
 
@@ -21,8 +21,9 @@ from .auth import Identity, authenticate
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned, preferences
-from .models import Conversation, Source, uid
+from .models import Conversation, Source, now, uid
 from .tools import call_tool, instructions, registry
+from .voice_options import OPTIONS
 
 router = APIRouter()
 User = Annotated[Identity, Depends(authenticate)]
@@ -41,6 +42,8 @@ class VoiceInput(BaseModel):
     conversation_id: UUID
     sdp: str = Field(min_length=1, max_length=64000)
     focus: str | None = None
+    provider: Literal["realtime", "live"] = "realtime"
+    voice: str = "marin"
 
 
 class Controller:
@@ -57,17 +60,33 @@ class Controller:
         self.model = get_settings().realtime_model
         self.send_lock = asyncio.Lock()
         self.receipts = []
+        self.ui_actions = []
+        self.voice = "marin"
+        self.provider = "realtime"
+        self.text_id = None
+        self.input_started = {}
+        self.answered_items = set()
 
     async def send(self, event):
         if self.ws and not self.closed:
             async with self.send_lock:
                 await self.ws.send(json.dumps(event))
 
+    def can_submit(self):
+        return bool(
+            self.current_item
+            and self.current_item not in self.answered_items
+            and self.tool_index == 0
+            and self.state in {"listening", "waiting", "unresolved"}
+            and not self.closed
+        )
+
     async def request(self, phase, **response):
         # 128k input tokens at the highest audio rate, plus capped output and transcription headroom.
         # Pending/cancelled responses retain their allowance until provider completion.
         with session_scope() as db:
             budget.ensure_room(db, self.owner, self.id, (len(self.allowed) + len(self.responses) + 1) * 4.3)
+        self.error = None
         nonce = secrets.token_hex(16)
         self.allowed[nonce] = {"phase": phase, "epoch": self.epoch, "created": time.monotonic()}
         await self.send(
@@ -82,6 +101,7 @@ class Controller:
         )
 
     async def interrupt(self):
+        self.error = None
         self.epoch += 1
         self.activity = time.monotonic()
         self.state = "listening"
@@ -117,9 +137,9 @@ class Controller:
                                         "create_response": False,
                                         "interrupt_response": True,
                                     },
-                                    "transcription": {"model": "gpt-4o-mini-transcribe"},
+                                    "transcription": {"model": "gpt-live-transcribe", "delay": "low"},
                                 },
-                                "output": {"voice": "marin"},
+                                "output": {"voice": self.voice},
                             },
                         },
                     }
@@ -175,6 +195,7 @@ class Controller:
                 self.state = "listening"
                 self.ready.set()
         elif kind == "input_audio_buffer.speech_started":
+            self.input_started.setdefault(event["item_id"], now())
             await self.interrupt()
         elif kind == "input_audio_buffer.committed":
             item = event["item_id"]
@@ -202,6 +223,8 @@ class Controller:
                     f"voice:{self.id}:{event['item_id']}",
                     conversation=conv,
                 )
+                if source and event["item_id"] in self.input_started:
+                    source.created_at = self.input_started[event["item_id"]]
                 if source and conv.learning:
                     enqueue_job(db, self.owner, "extract_memory", {"source_id": source.id})
         elif kind == "response.created":
@@ -227,20 +250,31 @@ class Controller:
                         usage,
                         budget.realtime_cost(usage, self.model),
                     )
-            if not request or request["epoch"] != self.epoch or response.get("status") != "completed":
+            if not request or request["epoch"] != self.epoch:
                 return
+            if response.get("status") != "completed":
+                if response.get("status") == "failed":
+                    self.state, self.error = (
+                        "unresolved",
+                        "That response did not finish. Speak again or choose Respond now.",
+                    )
+                return
+            self.error = None
             # Keep receiving speech/cancel events while asynchronous tool reads are pending.
             self.action = asyncio.create_task(self.finish_response(response, request))
         elif kind == "error":
             code = event.get("error", {}).get("code", "")
             if code not in {"response_cancel_not_active", "output_audio_buffer_clear_empty"}:
-                self.error = "Voice could not complete that turn. Tap submit or use text."
+                safe_code = "".join(c for c in str(code)[:80] if c.isalnum() or c in "_.-")
+                logging.getLogger("jarvis.voice").warning("Realtime provider event (%s)", safe_code)
+                self.error = "That response hit a problem. Speak again or choose Respond now."
                 self.state = "unresolved"
 
     async def finish_response(self, response, request):
         epoch, phase = request["epoch"], request["phase"]
         if epoch != self.epoch or self.closed:
             return
+        self.error = None
         outputs = response.get("output", [])
         content = "".join(
             c.get("text", c.get("transcript", "")) for item in outputs for c in item.get("content", [])
@@ -256,7 +290,7 @@ class Controller:
                     self.state = "thinking"
                     await self.request("plan", output_modalities=["text"])
                 else:
-                    self.state, self.error = "unresolved", "Tap submit to handle this turn."
+                    self.state, self.error = "unresolved", "Choose Respond now to handle this turn."
             elif phase == "plan":
                 calls = [o for o in outputs if o.get("type") == "function_call"]
                 if calls:
@@ -278,6 +312,8 @@ class Controller:
                                 json.loads(call["arguments"]),
                             )
                             self.receipts.append(result.get("command_id"))
+                            if result.get("ui_action"):
+                                self.ui_actions.append(result["ui_action"])
                         except (DomainError, ValueError) as exc:
                             result = {"error": getattr(exc, "code", "INVALID_ARGUMENT"), "message": str(exc)}
                         self.tool_index += 1
@@ -300,6 +336,8 @@ class Controller:
                 else:
                     # Planning/tool turns are text-only. Audible confirmation begins only after receipts commit.
                     self.last_text, self.state = content, "speaking"
+                    self.text_id = f"voice:{self.id}:{response['id']}"
+                    self.answered_items.add(self.current_item)
                     with session_scope() as db:
                         conv = owned(db, Conversation, self.conversation_id, self.owner)
                         capture_source(
@@ -339,7 +377,7 @@ class Controller:
             elif any(current - r["created"] > 20 for r in [*self.responses.values(), *self.allowed.values()]):
                 await self.interrupt()
                 self.allowed.clear()
-                self.state, self.error = "unresolved", "Tap submit to retry this turn, or use text."
+                self.state, self.error = "unresolved", "Speak again or choose Respond now to retry this turn."
 
     async def close(self, uncertain=False):
         if self.closed:
@@ -382,6 +420,13 @@ async def start(body: VoiceInput, user: User):
             "Realtime needs an OpenAI API key. Text and task controls are ready.",
             503,
         )
+    if body.voice not in OPTIONS[body.provider]["voices"]:
+        raise DomainError("INVALID_ARGUMENT", "Choose a voice supported by this provider.")
+    # Authorize the requested conversation before affecting an existing session.
+    with session_scope() as db:
+        conv = owned(db, Conversation, str(body.conversation_id), user.owner_id)
+        if conv.device_id != user.device_id:
+            raise DomainError("NOT_AUTHORIZED", "Conversation belongs to another device.", 403)
     for existing in list(controllers.values()):
         if existing.device == user.device_id and not existing.closed:
             await existing.close()
@@ -390,10 +435,18 @@ async def start(body: VoiceInput, user: User):
         if conv.device_id != user.device_id:
             raise DomainError("NOT_AUTHORIZED", "Conversation belongs to another device.", 403)
         prefs = preferences(db, user.owner_id)
-        c = Controller(user.owner_id, user.device_id, conv.id, body.focus, prefs)
-        budget.reserve(db, user.owner_id, c.id, 5, settings.realtime_model)
+        if body.provider == "live":
+            from .live_voice import LiveController
+
+            c = LiveController(user.owner_id, user.device_id, conv.id, body.focus, prefs)
+        else:
+            c = Controller(user.owner_id, user.device_id, conv.id, body.focus, prefs)
+        c.voice = body.voice
+        budget.reserve(db, user.owner_id, c.id, 0.10 if body.provider == "live" else 5, c.model)
     controllers[c.id] = c
     try:
+        if body.provider == "live":
+            return await c.connect(body.sdp)
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(
                 "https://api.openai.com/v1/realtime/calls",
@@ -414,7 +467,7 @@ async def start(body: VoiceInput, user: User):
                                             "interrupt_response": True,
                                         }
                                     },
-                                    "output": {"voice": "marin"},
+                                    "output": {"voice": c.voice},
                                 },
                             }
                         ),
@@ -427,6 +480,9 @@ async def start(body: VoiceInput, user: User):
         c.timer = asyncio.create_task(c.watch())
         await asyncio.wait_for(c.ready.wait(), 20)
         return {"session_id": c.id, "sdp": response.text, "ready": True}
+    except DomainError:
+        await c.close(uncertain=True)
+        raise
     except Exception:  # noqa: BLE001 - isolate provider/process failures without exposing personal data
         await c.close(uncertain=True)
         raise DomainError(
@@ -439,8 +495,12 @@ async def status(session_id: str, user: User):
     c = control(session_id, user)
     return {
         "state": c.state,
+        "provider": c.provider,
+        "ui_actions": c.ui_actions[-30:],
         "error": c.error,
         "text": c.last_text,
+        "text_id": c.text_id,
+        "can_submit": c.can_submit(),
         "closed": c.closed,
         "receipts": [r for r in c.receipts[-10:] if r],
     }
@@ -461,8 +521,8 @@ async def interrupt(session_id: str, user: User):
 @router.post("/voice/sessions/{session_id}/submit")
 async def submit(session_id: str, user: User):
     c = control(session_id, user)
-    if not c.current_item or c.closed:
-        raise DomainError("INVALID_ARGUMENT", "Speak first, then submit.")
+    if not c.can_submit():
+        raise DomainError("INVALID_ARGUMENT", "Wait until Eri is listening, then speak a new request.")
     await c.interrupt()
     c.state = "thinking"
     await c.request("plan", output_modalities=["text"])
