@@ -3,7 +3,7 @@ import type { ChatMessage, UIAction, VoiceProvider } from "./types";
 import { VoiceTranscript } from "./voice-transcript";
 import { LiveTranscript } from "./live-transcript";
 import { VoiceIdle } from "./voice-idle";
-import { isVoiceEnding } from "./voice-ending";
+import { VoiceEnding } from "./voice-ending";
 export interface VoiceState {
   state: string;
   error: string | null;
@@ -23,6 +23,7 @@ export class Voice {
   private session: string | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private ending = new VoiceEnding();
   private endingTimer: ReturnType<typeof setTimeout> | null = null;
   private idle = new VoiceIdle();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
@@ -54,20 +55,37 @@ export class Voice {
       if (this.stopped || value.role !== "user") return;
       if (this.endingTimer) clearTimeout(this.endingTimer);
       this.endingTimer = null;
-      if (!value.pending && isVoiceEnding(value.content)) {
+      if (this.ending.user(value)) {
         this.endingTimer = setTimeout(() => {
           this.endingTimer = null;
           if (this.stopped) return;
-          this.changed({ ...this.latestState, state: "closing", closed: false, error: null });
-          void this.stop().then(() => this.changed({
-            ...this.latestState, state: "ended", closed: true, error: null, idle_seconds: null,
-          }));
+          this.changed({
+            ...this.latestState,
+            state: "closing",
+            closed: false,
+            error: null,
+          });
+          void this.stop().then(() =>
+            this.changed({
+              ...this.latestState,
+              state: "ended",
+              closed: true,
+              error: null,
+              idle_seconds: null,
+            }),
+          );
         }, 1000);
       }
     };
     this.liveTranscript = new LiveTranscript(
       "live:" + crypto.randomUUID() + ":",
       transcriptMessage,
+      (value) => {
+        if (this.stopped) return;
+        if (value.role === "assistant")
+          this.ending.assistant(value.id, value.content);
+        else this.ending.user(value);
+      },
     );
     this.transcript = new VoiceTranscript(
       "voice-input:" + crypto.randomUUID() + ":",
@@ -149,7 +167,10 @@ export class Voice {
             liveReady.dispatchEvent(new Event("ready"));
           }
           const now = performance.now();
-          if (event.type === "input_audio_buffer.speech_started" && this.endingTimer) {
+          if (
+            event.type === "input_audio_buffer.speech_started" &&
+            this.endingTimer
+          ) {
             clearTimeout(this.endingTimer);
             this.endingTimer = null;
           }
@@ -276,6 +297,8 @@ export class Voice {
       if (this.stopped || this.session !== session) return;
       this.pollFailures = 0;
       this.latestState = state;
+      if (this.provider === "realtime" && state.text_id && state.text)
+        this.ending.assistant(state.text_id, state.text);
       this.idle.state(state.state, performance.now());
       this.changed({
         ...state,

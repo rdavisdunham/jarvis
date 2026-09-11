@@ -222,35 +222,191 @@ test("GPT-Live keeps its peer open while the server collects final usage", async
   expect(Peer.current.close).toHaveBeenCalled();
 });
 
-test.each(["realtime", "live"] as const)("spoken thanks ends %s, releases the mic and allows a fresh session", async (provider) => {
-  const changed = vi.fn();
-  const voice = new Voice(changed);
-  const starting = voice.start("conversation", undefined, { provider, voice: "marin" });
-  await vi.advanceTimersByTimeAsync(0);
-  if (provider === "live") Peer.current.channel.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "session.started" }) }));
-  await starting;
-  const event = provider === "live"
-    ? { type: "session.input_transcript.delta", delta: "Thank you, Eri.", start_ms: 0, end_ms: 1000 }
-    : { type: "conversation.item.input_audio_transcription.completed", item_id: "ending", transcript: "Thank you, Eri." };
-  Peer.current.channel.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(event) }));
-  await vi.advanceTimersByTimeAsync(3000);
-  expect(stopped).toHaveBeenCalled();
-  expect(changed).toHaveBeenCalledWith(expect.objectContaining({ state: "ended", closed: true, error: null }));
-  const next = new Voice(vi.fn());
-  await next.start("fresh");
-  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
-  await next.stop();
-});
+test.each(["realtime", "live"] as const)(
+  "spoken thanks ends %s, releases the mic and allows a fresh session",
+  async (provider) => {
+    const changed = vi.fn();
+    const voice = new Voice(changed);
+    const starting = voice.start("conversation", undefined, {
+      provider,
+      voice: "marin",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    if (provider === "live")
+      Peer.current.channel.dispatchEvent(
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "session.started" }),
+        }),
+      );
+    await starting;
+    const event =
+      provider === "live"
+        ? {
+            type: "session.input_transcript.delta",
+            delta: "Thank you, Eri.",
+            start_ms: 0,
+            end_ms: 1000,
+          }
+        : {
+            type: "conversation.item.input_audio_transcription.completed",
+            item_id: "ending",
+            transcript: "Thank you, Eri.",
+          };
+    Peer.current.channel.dispatchEvent(
+      new MessageEvent("message", { data: JSON.stringify(event) }),
+    );
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(stopped).toHaveBeenCalled();
+    expect(changed).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "ended", closed: true, error: null }),
+    );
+    const next = new Voice(vi.fn());
+    await next.start("fresh");
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+    await next.stop();
+  },
+);
 
 test("a new speech start cancels a pending spoken ending", async () => {
   const voice = new Voice(vi.fn());
   await voice.start("conversation");
-  Peer.current.channel.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({
-    type: "conversation.item.input_audio_transcription.completed", item_id: "thanks", transcript: "Thanks",
-  }) }));
+  Peer.current.channel.dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        type: "conversation.item.input_audio_transcription.completed",
+        item_id: "thanks",
+        transcript: "Thanks",
+      }),
+    }),
+  );
   await vi.advanceTimersByTimeAsync(500);
-  Peer.current.channel.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "input_audio_buffer.speech_started", item_id: "next" }) }));
+  Peer.current.channel.dispatchEvent(
+    new MessageEvent("message", {
+      data: JSON.stringify({
+        type: "input_audio_buffer.speech_started",
+        item_id: "next",
+      }),
+    }),
+  );
   await vi.advanceTimersByTimeAsync(700);
   expect(stopped).not.toHaveBeenCalled();
   await voice.stop();
 });
+
+function event(data: Record<string, unknown>) {
+  Peer.current.channel.dispatchEvent(
+    new MessageEvent("message", { data: JSON.stringify(data) }),
+  );
+}
+
+async function startVoice(provider: "live" | "realtime", changed = vi.fn()) {
+  const voice = new Voice(changed);
+  const starting = voice.start("conversation", undefined, {
+    provider,
+    voice: "marin",
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  if (provider === "live") event({ type: "session.started" });
+  await starting;
+  return voice;
+}
+
+async function assistantQuestion(
+  provider: "live" | "realtime",
+  question: string,
+) {
+  if (provider === "live") {
+    event({
+      type: "session.output_transcript.delta",
+      event_id: "a",
+      delta: question,
+      start_ms: 1000,
+      end_ms: 2100,
+    });
+  } else {
+    vi.mocked(api).mockResolvedValue({
+      state: "listening",
+      closed: false,
+      error: null,
+      receipts: [],
+      text_id: "a",
+      text: question,
+    });
+    await vi.advanceTimersByTimeAsync(400);
+  }
+}
+
+function userReply(provider: "live" | "realtime", reply: string, id = "reply") {
+  event(
+    provider === "live"
+      ? {
+          type: "session.input_transcript.delta",
+          event_id: id,
+          delta: reply,
+          start_ms: 2200,
+          end_ms: 2400,
+        }
+      : {
+          type: "conversation.item.input_audio_transcription.completed",
+          item_id: id,
+          transcript: reply,
+        },
+  );
+}
+
+test.each(["live", "realtime"] as const)(
+  "%s closes after a contextual confirmation and preserves provider cleanup",
+  async (provider) => {
+    const changed = vi.fn();
+    await startVoice(provider, changed);
+    await assistantQuestion(
+      provider,
+      "Saved. Anything else I can help you with?",
+    );
+    userReply(provider, "No.");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(stopped).toHaveBeenCalledOnce();
+    expect(Peer.current.close).toHaveBeenCalledOnce();
+    expect(changed).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "ended", closed: true }),
+    );
+    if (provider === "live")
+      expect(api).toHaveBeenCalledWith(
+        "/voice/sessions/test-session/stop",
+        expect.objectContaining({ method: "POST" }),
+      );
+    else expect(post).toHaveBeenCalledWith("/voice/sessions/test-session/stop");
+  },
+);
+
+test.each(["live", "realtime"] as const)(
+  "%s keeps listening when the answer requests more help",
+  async (provider) => {
+    const voice = await startVoice(provider);
+    await assistantQuestion(provider, "Will that be all?");
+    userReply(provider, "No.");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(stopped).not.toHaveBeenCalled();
+    await voice.stop();
+  },
+);
+
+test.each(["live", "realtime"] as const)(
+  "%s cancels an agreed ending when the user continues",
+  async (provider) => {
+    const voice = await startVoice(provider);
+    await assistantQuestion(provider, "Will that be all?");
+    userReply(provider, "Yes.");
+    await vi.advanceTimersByTimeAsync(provider === "live" ? 2000 : 500);
+    if (provider === "live")
+      userReply(provider, " Actually, move that task first.", "continuation");
+    else
+      event({
+        type: "input_audio_buffer.speech_started",
+        item_id: "continuation",
+      });
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(stopped).not.toHaveBeenCalled();
+    await voice.stop();
+  },
+);

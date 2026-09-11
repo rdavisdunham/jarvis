@@ -35,6 +35,16 @@ device/operations acceptance, then the seven-day pilot.
       No budget limit was raised and no old hold was automatically forgiven.
 - [x] Deployment, current encrypted restore, 116 backend tests, 36 frontend tests,
       migration round-trip and isolated desktop/mobile/CopilotKit checks.
+- [x] Conversational voice sign-off: Eri may offer a natural closing question.
+      The next complete reply follows the question's meaning (no to "anything else",
+      yes to "will that be all"). Added requests/continued speech keep voice open.
+      Live uses raw captions for context before animated text finishes appearing.
+      Both providers retain their microphone cleanup, wake listening and quiet timeout.
+- [ ] Verify the new natural sign-off with the owner's microphone on Live and Realtime.
+- [ ] Reconcile old allowances against a Jarvis-only OpenAI cost export for September 11
+      UTC. The current command settles individual sessions; project/day aggregates
+      need a matching period-level adjustment, not invented per-session costs.
+      Preserve original usage, exclude unrelated project activity, and avoid double counting.
 - [ ] Project board/timeline, richer multi-step contextual references, notes,
       Google sign-in/Calendar, notification bundling and scoped bot API/MCP remain later.
 

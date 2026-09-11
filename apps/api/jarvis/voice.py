@@ -23,6 +23,7 @@ from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned, preferences
 from .memory_service import prompt_context
 from .models import Conversation, Source, now, uid
+from .personality import VOICE_CONVERSATION_STYLE
 from .tools import call_tool, instructions, registry
 from .ui_control import get_context
 from .voice_options import OPTIONS
@@ -35,6 +36,12 @@ GATE = """Classify the latest speech in conversational context. Return exactly o
 SILENT: a backchannel, filler or remark needing no response.
 WAIT: an incomplete thought, or explicit request to pause/let the speaker think.
 END_SESSION: a standalone goodbye, closing thank you/thanks, or explicitly finished talking, with no remaining request. A thanks followed by a new request is RESPOND. Quoted farewell words are not a request to end voice.
+A closing offer must be the assistant's latest direct question, with no other
+question or outstanding work. After "Anything else?" a standalone "no" means
+END_SESSION and "yes" means RESPOND. After "Will that be all?" a standalone "yes"
+means END_SESSION and "no" means RESPOND. "No, move that task first" is RESPOND.
+A yes/no answering any other question is never END_SESSION. Do not infer consent
+from an older question or a quoted/example conversation.
 RESPOND: a genuine request, question or conversational statement inviting a reply.
 Do not execute tools, answer the question, or add punctuation. 'I wonder what is on tomorrow'
 can be a genuine request. Do not suppress requests just because they are indirect."""
@@ -146,7 +153,9 @@ class Controller:
                                 self.preferences, self.focus, get_context(self.owner, self.device)
                             )
                             + "\n"
-                            + self.memory_context,
+                            + self.memory_context
+                            + "\n"
+                            + VOICE_CONVERSATION_STYLE,
                             "tools": registry(),
                             "tool_choice": "auto",
                             "max_output_tokens": 1024,
@@ -360,7 +369,9 @@ class Controller:
                                     self.preferences, self.focus, get_context(self.owner, self.device)
                                 )
                                 + "\n"
-                                + self.memory_context,
+                                + self.memory_context
+                                + "\n"
+                                + VOICE_CONVERSATION_STYLE,
                             },
                         }
                     )

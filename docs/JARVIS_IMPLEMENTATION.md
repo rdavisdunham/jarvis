@@ -596,3 +596,57 @@ isolated database at migration 0006. Verified 46 tasks, 2 projects, 8 schedules,
 receipts. No worker/notification dispatch started on the restore; the temporary
 database was removed after verification. Frontend bundle: index-Bo-rGFUu.js.
 The actual Tailnet HTTPS endpoint returned 200 with that bundle.
+
+
+## Conversational voice sign-off — September 11, 2026
+
+Both media providers share voice-only conduct in personality.py. Eri can offer
+"Anything else I can help you with?" or "Will that be all for now?" when the
+exchange is complete, sparingly and without an outstanding question or task.
+Realtime's existing speech gate interprets confirmations in conversational context.
+
+The browser also tracks the latest direct closing question within the current
+voice session. It preserves question polarity, including polite yes/no replies.
+Offers apply only to the next utterance and expire after 30 seconds; they are not
+restored from old history. Compound/quoted questions and an added task request do
+not trigger a contextual ending. Continued speech cancels the existing one-second
+closing grace period. Normal cleanup preserves Live final-usage collection and
+returns to wake listening once voice is fully closed.
+
+Live passes raw transcript text to the closing tracker separately from animated
+captions, so a fast reply can be understood before display animation finishes.
+If Live groups the reply with an earlier user display bubble, the tracker uses
+only the suffix after the closing offer. Classification is limited to the supported
+English closing phrases; the natural-choice prompt and actual microphone timing
+remain part of the owner's real-use acceptance.
+
+Budget investigation remains read-only: the September 11 snapshot has 26 older
+Realtime reservations from 04:36 to 06:59 UTC, $128.614433 of held headroom,
+$2.551407 recorded estimates and $18.83416 available under the $150 limit.
+These are internal allowances, not bank/payment-card holds or confirmed provider
+charges. New lifecycle fixes do not prove the cost of an older unreported response.
+
+Provider evidence can come from the Jarvis project's Costs dashboard/export or an
+organization billing API credential with access to the Costs endpoint. The existing
+project key was denied that endpoint. Official Costs results are aggregated by
+time bucket and project (and supported billing dimensions), not session ID:
+[OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs).
+The current reconcile_budget.py command requires a session-specific final amount.
+A project/date export therefore needs period-scoped reconciliation that accounts
+for already-recorded usage and unrelated project activity; it must not be divided
+into invented per-session charges. This remains an explicit follow-up pending
+billing evidence. No allowance or spending cap was changed in this batch.
+
+Validation: 34 focused backend tests passed (voice lifecycle, Live cleanup,
+Realtime settlement and budget reconciliation), and all 71 frontend tests passed.
+New cases cover both question polarities, polite replies, continued requests,
+fresh-session/expired/stale questions, compound/quoted questions, early Live
+captions and multiple exchanges sharing a display bubble. Ruff and the final
+Docker TypeScript/Vite production build passed. No paid-provider microphone test
+was run; that remains in the owner acceptance list.
+
+Deployed at approximately 21:21 UTC: API/worker/PostgreSQL health checks pass.
+The actual Tailnet HTTPS site returns 200 and serves index-D_YBQZJy.js.
+The running image contains the shared voice prompt and contextual Realtime gate.
+A read-only post-deploy budget check confirmed unchanged historical holds and no
+active reservation. No database migration or owner-record mutation was needed.

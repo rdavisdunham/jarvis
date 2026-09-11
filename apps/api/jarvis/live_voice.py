@@ -18,6 +18,7 @@ from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import prompt_context, semantic_search
 from .models import Conversation, Source, now, uid
+from .personality import VOICE_CONVERSATION_STYLE
 from .tools import instructions
 from .ui_control import get_context
 from .voice import Controller, controllers
@@ -88,10 +89,11 @@ class LiveController(Controller):
             "instructions": instructions(self.preferences, self.focus, get_context(self.owner, self.device))
             + "\n"
             + self.memory_context
+            + "\n"
+            + VOICE_CONVERSATION_STYLE
             + """
 This is a live, full-duplex voice conversation. Listen through pauses and let the user finish.
 You may listen while speaking. Be brief, responsive, and comfortable with silence.
-A standalone goodbye or closing thank you ends voice; the app releases the microphone and returns to wake listening. Do not delegate a farewell or start a new topic. A thanks followed by another request keeps the conversation going.
 Delegate ALL tasks involving personal records, reminders, saved memory, navigation, or actions
 to the backend. Also delegate questions needing facts you do not have. It has the task tools
 and current time. Do not claim a task succeeded until its backend result confirms success.

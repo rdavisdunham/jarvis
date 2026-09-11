@@ -17,6 +17,7 @@ export class LiveTranscript {
   constructor(
     private prefix: string,
     private changed: (message: ChatMessage) => void,
+    private observed: (message: ChatMessage) => void = () => {},
   ) {}
   receive(event: Record<string, any>) {
     const role =
@@ -49,6 +50,9 @@ export class LiveTranscript {
     group.full += event.delta;
     group.end = Math.max(group.end, end);
     group.message = { ...group.message, pending: true };
+    // Behavioral context uses the raw transcript immediately, independently of
+    // word-by-word display and its delayed completion callbacks.
+    this.observed({ ...group.message, content: group.full });
     clearTimeout(group.finishTimer);
     if (
       role === "user" ||

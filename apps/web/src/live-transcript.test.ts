@@ -90,3 +90,23 @@ test("large assistant chunks reveal words while input captions remain immediate"
   expect(changed.mock.calls.at(-1)?.[0].pending).toBe(false);
   captions.dispose();
 });
+
+test("closing context receives raw assistant text before animated captions catch up", () => {
+  vi.useFakeTimers();
+  const display = vi.fn(),
+    observed = vi.fn();
+  const captions = new LiveTranscript("live:", display, observed);
+  const text = "The task is saved. Will that be all for now?";
+  captions.receive({
+    type: "session.output_transcript.delta",
+    event_id: "a",
+    delta: text,
+    start_ms: 0,
+    end_ms: 2000,
+  });
+  expect(observed).toHaveBeenCalledWith(
+    expect.objectContaining({ content: text, pending: true }),
+  );
+  expect(display.mock.calls[0][0].content).not.toBe(text);
+  captions.dispose();
+});
