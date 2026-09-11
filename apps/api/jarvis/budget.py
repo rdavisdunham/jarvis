@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
+from .config import get_settings
 from .domain import DomainError, advisory, preferences
 from .models import BudgetReservation, Usage, now
 
@@ -11,7 +12,28 @@ from .models import BudgetReservation, Usage, now
 PRICING_VERSION = "configured-2026-09-11-v2"
 
 
+def enabled():
+    return get_settings().cost_tracking_enabled
+
+
 def summary(db, owner):
+    if not enabled():
+        return {
+            "tracking_enabled": False,
+            "budget_mode": "disabled",
+            "spent_usd": None,
+            "uncertain_usd": None,
+            "active_reserved_usd": None,
+            "projected_month_usd": None,
+            "reserved_usd": None,
+            "remaining_usd": None,
+            "limit_usd": None,
+            "usage_by_model": {},
+            "unconfirmed_sessions": None,
+            "pricing_version": None,
+            "month": now().strftime("%Y-%m"),
+            "approximate": False,
+        }
     month = now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     rows = db.scalars(
         select(BudgetReservation).where(
@@ -37,6 +59,7 @@ def summary(db, owner):
     fraction = float((spent + reserved) / limit) if limit else 1.0
     elapsed_days = max(1, (now() - month).total_seconds() / 86400)
     return {
+        "tracking_enabled": True,
         "uncertain_usd": float(uncertain),
         "unconfirmed_sessions": sum(r.state == "uncertain" or stale(r) for r in rows),
         "active_reserved_usd": float(reserved - uncertain),
@@ -60,6 +83,8 @@ def summary(db, owner):
 
 
 def reserve(db, owner, reservation_id, amount, model, *, optional=False):
+    if not enabled():
+        return
     advisory(db, f"budget:{owner}")
     existing = db.get(BudgetReservation, reservation_id)
     if existing:
@@ -85,6 +110,8 @@ def reserve(db, owner, reservation_id, amount, model, *, optional=False):
 
 def ensure_room(db, owner, reservation_id, headroom):
     """Reserve a conservative bound before EACH provider request, including tool continuations."""
+    if not enabled():
+        return
     advisory(db, f"budget:{owner}")
     row = db.get(BudgetReservation, reservation_id)
     if not row or row.owner_id != owner or row.state == "closed":
@@ -103,6 +130,8 @@ def ensure_room(db, owner, reservation_id, headroom):
 
 
 def record_usage(db, owner, reservation_id, request_id, model, tokens, amount):
+    if not enabled():
+        return
     advisory(db, f"budget:{owner}")
     if db.get(Usage, request_id):
         return
@@ -127,6 +156,8 @@ def record_usage(db, owner, reservation_id, request_id, model, tokens, amount):
 
 
 def close(db, owner, reservation_id, uncertain=False, reason=None):
+    if not enabled():
+        return
     advisory(db, f"budget:{owner}")
     row = db.get(BudgetReservation, reservation_id)
     if row and row.owner_id == owner:
@@ -162,6 +193,8 @@ def stale(row):
 
 
 def touch(db, owner, reservation_id):
+    if not enabled():
+        return
     advisory(db, f"budget:{owner}")
     row = db.get(BudgetReservation, reservation_id)
     if row and row.owner_id == owner and row.state == "reserved":
@@ -169,6 +202,8 @@ def touch(db, owner, reservation_id):
 
 
 def expire_abandoned(db, owner):
+    if not enabled():
+        return 0
     advisory(db, f"budget:{owner}")
     rows = db.scalars(
         select(BudgetReservation).where(
@@ -183,6 +218,8 @@ def expire_abandoned(db, owner):
 
 
 def holds(db, owner):
+    if not enabled():
+        return []
     rows = db.scalars(
         select(BudgetReservation)
         .where(BudgetReservation.owner_id == owner, BudgetReservation.state != "closed")
@@ -210,6 +247,8 @@ def holds(db, owner):
 
 def reconcile(db, owner, reservation_id, final_amount, evidence):
     """Explicit operator settlement from provider evidence; never infer zero from age."""
+    if not enabled():
+        raise DomainError("TRACKING_DISABLED", "Cost tracking is disabled during development.")
     advisory(db, f"budget:{owner}")
     row = db.get(BudgetReservation, reservation_id)
     if not row or row.owner_id != owner:

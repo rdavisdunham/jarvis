@@ -1,5 +1,5 @@
 import { BudgetHolds } from "./BudgetHolds";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   CalendarDays,
   Check,
@@ -82,7 +82,11 @@ export function TaskRow({
   busy,
   onToggle,
   onOpen,
+  selected,
+  onSelect,
 }: {
+  selected?: boolean;
+  onSelect?: () => void;
   task: Task;
   today: string;
   busy: boolean;
@@ -92,6 +96,15 @@ export function TaskRow({
   const done = task.status === "completed";
   return (
     <div className={"task-row " + (done ? "done" : "")}>
+      {onSelect && (
+        <input
+          className="task-selection"
+          type="checkbox"
+          aria-label={"Select " + task.title}
+          checked={selected}
+          onChange={onSelect}
+        />
+      )}
       <button
         className="task-check"
         disabled={busy}
@@ -158,6 +171,7 @@ export function TaskRow({
   );
 }
 export function TaskDialog({
+  linkedNotes,
   timezone,
   projects,
   tasks,
@@ -171,6 +185,7 @@ export function TaskDialog({
   onSave,
   onArchive,
 }: {
+  linkedNotes?: ReactNode;
   timezone: string;
   projects: Project[];
   tasks: Task[];
@@ -407,6 +422,14 @@ export function TaskDialog({
           Assigning a task organizes it; it does not start an agent. A deadline
           does not send a notification.
         </p>
+        {linkedNotes && (
+          <fieldset
+            className="linked-notes-fieldset"
+            disabled={JSON.stringify(draft) !== JSON.stringify(task)}
+          >
+            {linkedNotes}
+          </fieldset>
+        )}
         {task.id !== "new" && (
           <section className="task-reminders">
             <h3>Reminders</h3>
@@ -766,67 +789,84 @@ export function SettingsPanel({
       </section>
       <section>
         <h2>Model usage</h2>
-        <form
-          className="setting-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            void onSave({ monthly_budget_usd: Number(data.get("limit")) });
-          }}
-        >
-          <label>
-            Monthly limit ($)
-            <input
-              name="limit"
-              type="number"
-              min="0"
-              max="10000"
-              step="1"
-              defaultValue={boot.budget.limit_usd}
-              key={boot.budget.limit_usd}
-              style={{ width: "100px", marginTop: "8px" }}
-            />
-          </label>
-          <button className="secondary" disabled={busy}>
-            Save limit
-          </button>
-        </form>
-        <div className="budget-line">
-          <strong>
-            ${boot.budget.spent_usd.toFixed(2)}
-            <span> / ${boot.budget.limit_usd.toFixed(0)} this month</span>
-          </strong>
-          <span>
-            ${boot.budget.active_reserved_usd.toFixed(2)} reserved for active
-            work
-          </span>
-        </div>
-        {boot.budget.uncertain_usd > 0 && (
+        {boot.budget.tracking_enabled === false ? (
           <p className="footnote">
-            ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions with
-            unconfirmed final usage.
+            Cost tracking and spending limits are off during development.
+            Monitor usage in{" "}
+            <a
+              href="https://platform.openai.com/usage"
+              target="_blank"
+              rel="noreferrer"
+            >
+              OpenAI Usage
+            </a>
+            .
           </p>
+        ) : (
+          <>
+            <form
+              className="setting-row"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const data = new FormData(event.currentTarget);
+                void onSave({ monthly_budget_usd: Number(data.get("limit")) });
+              }}
+            >
+              <label>
+                Monthly limit ($)
+                <input
+                  name="limit"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="1"
+                  defaultValue={boot.budget.limit_usd}
+                  key={boot.budget.limit_usd}
+                  style={{ width: "100px", marginTop: "8px" }}
+                />
+              </label>
+              <button className="secondary" disabled={busy}>
+                Save limit
+              </button>
+            </form>
+            <div className="budget-line">
+              <strong>
+                ${boot.budget.spent_usd.toFixed(2)}
+                <span> / ${boot.budget.limit_usd.toFixed(0)} this month</span>
+              </strong>
+              <span>
+                ${boot.budget.active_reserved_usd.toFixed(2)} reserved for
+                active work
+              </span>
+            </div>
+            {boot.budget.uncertain_usd > 0 && (
+              <p className="footnote">
+                ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions
+                with unconfirmed final usage.
+              </p>
+            )}
+            <BudgetHolds />
+            <p className="footnote">
+              At this month's pace: about $
+              {boot.budget.projected_month_usd.toFixed(2)} this month.
+            </p>
+            {boot.budget.budget_mode !== "normal" && (
+              <p role="status" className="footnote">
+                {["defer_optional", "paused"].includes(boot.budget.budget_mode)
+                  ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
+                  : "Your usage and reservations have reached 80% of the monthly limit."}
+              </p>
+            )}
+            <progress
+              max={Math.max(1, boot.budget.limit_usd)}
+              value={boot.budget.spent_usd + boot.budget.reserved_usd}
+            />
+            <p className="footnote">
+              Usage is estimated from provider reports. Tasks and reminders keep
+              working when model spending stops.
+            </p>
+          </>
         )}
-        <BudgetHolds />
-        <p className="footnote">
-          At this month's pace: about $
-          {boot.budget.projected_month_usd.toFixed(2)} this month.
-        </p>
-        {boot.budget.budget_mode !== "normal" && (
-          <p role="status" className="footnote">
-            {["defer_optional", "paused"].includes(boot.budget.budget_mode)
-              ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
-              : "Your usage and reservations have reached 80% of the monthly limit."}
-          </p>
-        )}
-        <progress
-          max={Math.max(1, boot.budget.limit_usd)}
-          value={boot.budget.spent_usd + boot.budget.reserved_usd}
-        />
-        <p className="footnote">
-          Usage is estimated from provider reports. Tasks and reminders keep
-          working when model spending stops.
-        </p>
       </section>
       <section>
         <h2>Your data</h2>

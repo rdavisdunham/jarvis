@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     origin: str = "http://localhost:8765"
     timezone: str = "America/Chicago"
     default_reminder_hour: int = 10
+    cost_tracking_enabled: bool = True
     monthly_budget_usd: float = 150
     realtime_model: str = "gpt-realtime-2.1"
     live_model: str = "gpt-live-1"

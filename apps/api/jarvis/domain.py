@@ -77,6 +77,10 @@ class TaskUpdate(Args):
     archived: bool | None = None
 
 
+class TaskBatch(Args):
+    items: list[TaskUpdate] = Field(min_length=1, max_length=100)
+
+
 class TaskState(Args):
     task_id: str
     expected_revision: int = Field(ge=1)
@@ -165,6 +169,7 @@ COMMANDS = {
     "project.create": ProjectCreate,
     "project.update": ProjectUpdate,
     "schedule.update": ScheduleUpdate,
+    "task.batch": TaskBatch,
     "task.create": TaskCreate,
     "task.update": TaskUpdate,
     "task.complete": TaskState,
@@ -402,7 +407,7 @@ def execute(db, owner, command_id, tool, arguments):
         )
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
-    if tool.startswith(("task.", "project.", "schedule.", "notification.")):
+    if tool.startswith(("task.", "project.", "schedule.", "notification.", "note.")):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
     data = mutate(db, owner, tool, args, command_id)
@@ -446,6 +451,17 @@ def task_timing(db, owner, changes, task=None):
 def mutate(db, owner, tool, args, command_id):
     from .organization import mutate_project, project_changes
 
+    if tool.startswith("note."):
+        from .notes import mutate_note
+
+        return mutate_note(db, owner, tool, args)
+    if tool == "task.batch":
+        ids = [item.task_id for item in args.items]
+        if len(set(ids)) != len(ids):
+            raise DomainError("INVALID_ARGUMENT", "Choose each task only once.")
+        for item in args.items:
+            check_revision(owned(db, Task, item.task_id, owner, lock=True), item.expected_revision)
+        return {"tasks": [mutate(db, owner, "task.update", item, command_id) for item in args.items]}
     if tool.startswith("project."):
         return mutate_project(db, owner, tool, args)
     if tool == "task.create":
@@ -746,3 +762,8 @@ def deliver_occurrence(db, job):
     occurrence.status = "delivered"
     emit(db, job.owner_id, "notification.changed", notification.id)
     return {"notification_id": notification.id}
+
+
+from .note_schema import NOTE_COMMANDS
+
+COMMANDS.update(NOTE_COMMANDS)

@@ -199,7 +199,15 @@ async def chat(
                             if changed:
                                 batch_guard_error = changed
                                 raise DomainError("REQUEST_CHANGED", changed)
-                        outcome = await call_tool(owner, turn_id, tool_index, fn["name"], args, device=device)
+                        outcome = await call_tool(
+                            owner,
+                            turn_id,
+                            tool_index,
+                            fn["name"],
+                            args,
+                            device=device,
+                            conversation_id=conversation_id,
+                        )
                         if outcome.get("ui_action"):
                             ui_actions.append(outcome["ui_action"])
                         # Store references only; retrieved personal context is not another transcript store.

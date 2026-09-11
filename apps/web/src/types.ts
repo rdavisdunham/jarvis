@@ -113,17 +113,20 @@ export interface Bootstrap {
   csrf: string;
   device_id: string;
   preferences: Preferences;
-  budget: {
-    spent_usd: number;
-    uncertain_usd: number;
-    active_reserved_usd: number;
-    projected_month_usd: number;
-    usage_by_model: Record<string, number>;
-    budget_mode: string;
-    reserved_usd: number;
-    limit_usd: number;
-    remaining_usd: number;
-  };
+  budget:
+    | { tracking_enabled: false; budget_mode: "disabled" }
+    | {
+        tracking_enabled?: true;
+        spent_usd: number;
+        uncertain_usd: number;
+        active_reserved_usd: number;
+        projected_month_usd: number;
+        usage_by_model: Record<string, number>;
+        budget_mode: string;
+        reserved_usd: number;
+        limit_usd: number;
+        remaining_usd: number;
+      };
   capabilities: {
     voice: boolean;
     chat: boolean;
@@ -145,6 +148,7 @@ export type View =
   | "all"
   | "calendar"
   | "reminders"
+  | "notes"
   | "memory"
   | "notifications"
   | "settings";
@@ -158,7 +162,7 @@ export interface ChatMessage {
 export type VoiceProvider = "realtime" | "live";
 export interface UIAction {
   id: string;
-  kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar";
+  kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar" | "select";
   date?: string;
   work_kind?: "all" | "task" | "reminder";
   view?: View;
@@ -173,7 +177,8 @@ export interface UIAction {
     | "completed"
     | "cancelled";
   project?: string;
-  form?: "task" | "reminder";
+  form?: "task" | "reminder" | "note";
+  task_ids?: string[];
   entity_id?: string | null;
 }
 
@@ -187,6 +192,8 @@ export interface UIContext {
   voice_active: boolean;
   query: string;
   selected_task_id: string | null;
+  selected_task_ids?: string[];
+  selected_note_id?: string | null;
   visible_ids: string[];
   task_status:
     | "all"

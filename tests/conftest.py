@@ -19,6 +19,7 @@ def test_database():
         connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
     testing = make_url(original).set(database=name).render_as_string(hide_password=False)
     os.environ["JARVIS_DATABASE_URL"] = testing
+    os.environ["JARVIS_COST_TRACKING_ENABLED"] = "true"
     os.environ["JARVIS_OWNER_TOKEN"] = "test-owner-token"
     os.environ["JARVIS_ORIGIN"] = "http://testserver"
     get_settings.cache_clear()

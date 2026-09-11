@@ -280,3 +280,47 @@ class WorkerHealth(Base):
 
 
 Index("sources_search", Source.owner_id, Source.created_at)
+
+
+class Note(Base):
+    __tablename__ = "notes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+    project_id: Mapped[str | None] = mapped_column(ForeignKey("projects.id"), index=True)
+    conversation_id: Mapped[str | None] = mapped_column(ForeignKey("conversations.id"))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    index_state: Mapped[str] = mapped_column(String(30), default="queued")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class NoteEmbedding(Base):
+    __tablename__ = "note_embeddings"
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    embedding: Mapped[list] = mapped_column(JSONB)
+    model: Mapped[str] = mapped_column(String(100))
+
+
+class NoteTaskLink(Base):
+    __tablename__ = "note_task_links"
+    __table_args__ = (UniqueConstraint("note_id", "fingerprint", name="uq_note_extraction"),)
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), primary_key=True)
+    linked: Mapped[bool] = mapped_column(Boolean, default=True)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    note_revision: Mapped[int | None] = mapped_column(Integer)
+    fingerprint: Mapped[str | None] = mapped_column(String(64))
+
+
+class TaskReference(Base):
+    __tablename__ = "task_references"
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    touched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

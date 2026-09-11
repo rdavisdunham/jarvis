@@ -404,6 +404,7 @@ class Controller:
                                 call["name"],
                                 json.loads(call["arguments"]),
                                 device=self.device,
+                                conversation_id=self.conversation_id,
                             )
                             self.receipts.append(result.get("command_id"))
                             if result.get("ui_action"):

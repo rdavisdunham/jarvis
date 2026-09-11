@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,6 +31,8 @@ from .models import (
     Job,
     Memory,
     MemoryReview,
+    Note,
+    NoteTaskLink,
     Notification,
     Occurrence,
     Project,
@@ -249,6 +251,47 @@ def calendar_items(user: User, start: date, end: date, timezone: str | None = No
 
     with session_scope() as db:
         return calendar(db, user.owner_id, start, end, timezone or preferences(db, user.owner_id)["timezone"])
+
+
+@app.get("/api/v1/notes")
+def notes(
+    user: User,
+    q: str = Query(default="", max_length=300),
+    project_id: str | None = None,
+    task_id: str | None = None,
+    archived: bool = False,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    from .notes import list_notes
+
+    with session_scope() as db:
+        return list_notes(db, user.owner_id, q, project_id, task_id, archived, limit, offset)
+
+
+@app.get("/api/v1/notes/search")
+async def notes_search(
+    user: User, q: str = Query(min_length=1, max_length=500), project_id: str | None = None,
+    task_id: str | None = None,
+):
+    from .notes import search_notes
+
+    return await asyncio.to_thread(search_notes, user.owner_id, q, project_id, task_id)
+
+
+@app.get("/api/v1/notes/{note_id}")
+def note_detail(note_id: str, user: User):
+    from .notes import note_data
+
+    with session_scope() as db:
+        return note_data(db, owned(db, Note, note_id, user.owner_id))
+
+
+@app.post("/api/v1/notes/{note_id}/suggest-tasks")
+async def note_suggestions(note_id: str, user: User):
+    from .notes import suggest_tasks
+
+    return await asyncio.to_thread(suggest_tasks, user.owner_id, note_id)
 
 
 @app.get("/api/v1/budget/holds")
@@ -542,8 +585,16 @@ def export(user: User, format: str = "json"):
             model.__tablename__: [
                 serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))
             ]
-            for model in (Task, Project, Schedule, Notification, Memory, Source, MemoryReview)
+            for model in (Task, Project, Schedule, Notification, Memory, Source, MemoryReview, Note)
         }
+        data["note_task_links"] = [
+            serial(link)
+            for link in db.scalars(
+                select(NoteTaskLink)
+                .join(Note, Note.id == NoteTaskLink.note_id)
+                .where(Note.owner_id == user.owner_id)
+            )
+        ]
     if format == "csv":
         buffer = io.StringIO()
         writer = csv.DictWriter(

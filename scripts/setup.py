@@ -30,6 +30,7 @@ def main():
         ),
         "JARVIS_TIMEZONE": "America/Chicago",
         "JARVIS_MONTHLY_BUDGET_USD": "150",
+        "JARVIS_COST_TRACKING_ENABLED": "true",
     }
     password = existing.get("JARVIS_POSTGRES_PASSWORD") or defaults["JARVIS_POSTGRES_PASSWORD"]
     defaults["JARVIS_DATABASE_URL"] = f"postgresql+psycopg://jarvis:{password}@127.0.0.1:54329/jarvis"

@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 View = Literal[
-    "today", "inbox", "week", "all", "reminders", "calendar", "memory", "notifications", "settings"
+    "today", "inbox", "week", "all", "reminders", "calendar", "notes", "memory", "notifications", "settings"
 ]
 
 
@@ -19,6 +19,8 @@ class UIContext(BaseModel):
     mobile: bool = False
     voice_active: bool = False
     query: str = Field(default="", max_length=300)
+    selected_task_ids: list[str] = Field(default_factory=list, max_length=100)
+    selected_note_id: str | None = Field(default=None, max_length=36)
     selected_task_id: str | None = Field(default=None, max_length=36)
     visible_ids: list[str] = Field(default_factory=list, max_length=60)
     task_status: Literal["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
@@ -42,6 +44,7 @@ APP_MAP = """Site map and available controls:
 Today: tasks due today or overdue. Inbox: tasks without a project. This week: dated tasks through the next 6 days.
 Work (all): unified tasks and reminders, searchable with status, project and kind filters. Linked reminders appear with their task. Task details include project, parent, tags, assignee and work type.
 Calendar: monthly grid and selected-day agenda, task deadlines plus projected reminder occurrences. ui_calendar selects a date. Projected occurrences are previews, not delivered notifications.
+Notes: authored notes with project/task/conversation links, tags, keyword/semantic search, archive/restore and reviewed to-do extraction. Notes are distinct from learned facts.
 Reminders: upcoming/due, completed and cancelled schedules. Memory: saved facts, semantic search, source, correction and forget.
 Notifications: delivered reminders with complete, snooze and dismiss. Settings: preferred name, history/learning,
 reminder defaults, notification privacy, model budget, and per-device voice provider/voice/wake-word.

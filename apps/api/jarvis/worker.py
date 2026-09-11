@@ -51,6 +51,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind == "embed_note":
+        from .notes import index_note
+
+        return index_note(job_id)
     if kind == "review_memory":
         from .memory_review import process
 
@@ -86,7 +90,8 @@ def dispatch_outbox(client):
                 {
                     "workflow_name": "jarvis_job_v1",
                     "queue_name": "jarvis-memory"
-                    if db.get(Job, row.job_id).kind in {"extract_memory", "embed_memory", "review_memory"}
+                    if db.get(Job, row.job_id).kind
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note"}
                     else "jarvis",
                     "workflow_id": row.job_id,
                 },
@@ -215,7 +220,7 @@ def housekeeping():
                 .where(
                     Job.owner_id == settings.owner_id,
                     Job.status == "deferred_budget",
-                    Job.kind.in_(["extract_memory", "embed_memory"]),
+                    Job.kind.in_(["extract_memory", "embed_memory", "embed_note"]),
                 )
                 .with_for_update()
                 .limit(20)

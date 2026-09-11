@@ -18,6 +18,7 @@ const views = [
   "all",
   "reminders",
   "calendar",
+  "notes",
   "memory",
   "notifications",
   "settings",
@@ -25,7 +26,7 @@ const views = [
 const actionSchema = z.object({
   id: z.string().max(150),
   kind: z
-    .enum(["show", "chat", "search", "filter", "form", "calendar"])
+    .enum(["show", "chat", "search", "filter", "form", "calendar", "select"])
     .default("show"),
   view: z.enum(views).optional(),
   entity_id: z.string().nullable().optional(),
@@ -48,7 +49,8 @@ const actionSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   work_kind: z.enum(["all", "task", "reminder"]).optional(),
-  form: z.enum(["task", "reminder"]).optional(),
+  task_ids: z.array(z.string()).max(100).optional(),
+  form: z.enum(["task", "reminder", "note"]).optional(),
 });
 
 // The existing authenticated chat/voice transports deliver tool calls. CopilotKit owns

@@ -3,10 +3,44 @@
 Updated September 11, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: unified workspace and calendar — deployed
+## Current batch: development mode, contextual tasks and notes — deployed
 
-Owner order: accounting fixes, workspace/calendar expansion, real-use voice recovery,
-device/operations acceptance, then the seven-day pilot.
+Owner order: keep expanding before the large testing round. Internal cost recording
+and budget enforcement are disabled locally during development; the owner monitors
+OpenAI Usage. Historical holds remain preserved and no longer block work.
+
+- [x] Development switch in ignored .env.upgrade: JARVIS_COST_TRACKING_ENABLED=false.
+      No new cost events/reservations, headroom checks or reconciliation writes while
+      disabled. Settings shows the disabled state and links to OpenAI Usage.
+- [x] Contextual task lookup from current selection, visible records and recently
+      discussed tasks in the same conversation, with fresh revisions and ambiguity.
+- [x] Select tasks and bulk-edit status, project, assignee, priority and due date.
+      One stale task rejects the whole batch; no partial update. Eri shares the API.
+- [x] Notes workspace with editable text, tags, project/task/conversation links,
+      archive/restore, keyword search and explicit search by meaning.
+- [x] Cloud note embeddings and durable indexing; extraction previews with exact
+      source quotes, linked tasks and duplicate prevention. Authored notes do not
+      silently become personal memory assertions.
+- [x] Eri can read/search/edit notes, propose or create requested to-dos, select
+      task groups and open linked records through the CopilotKit bridge.
+- [x] Network-response-loss regression: repeat Save reuses the original command
+      receipt. Search changes cannot mix old pagination or trigger meaning queries.
+- [x] Deployed schema 0007; API/worker/PostgreSQL healthy; live HTTPS bundle checked.
+      130 backend and 71 frontend tests, isolated browser/migration checks, and
+      post-deploy encrypted backup/restore passed. Historical cost ledger unchanged.
+- [ ] Next expansion: Google owner sign-in and read-only Calendar availability;
+      then smarter notifications and scoped external bot API/MCP.
+- [ ] Complete fine-grained CopilotKit field/settings controls, archived-note
+      filter parity, broader contextual-reference quality and project board/timeline.
+- [ ] After expansion: real-use voice recovery, physical devices/operations,
+      then the seven-day owner pilot. Use OpenAI Usage for development costs.
+- [ ] Before re-enabling internal accounting, reconcile historical holds and account
+      for the unrecorded development period. Disabled tracking cannot backfill usage.
+
+## Previous batch: unified workspace and calendar — deployed
+
+Previous owner order: accounting fixes, workspace/calendar expansion, then acceptance.
+The development-mode decision above now defers accounting reconciliation.
 
 - [x] One Work list for tasks and standalone reminders, with linked reminders under
       their task; searchable metadata, status/project/kind filters and retained history.
@@ -28,7 +62,7 @@ device/operations acceptance, then the seven-day pilot.
       transcription usage is recorded once. Settings lists unconfirmed sessions.
 - [x] Audited reconciliation operator command from provider evidence, retaining the
       original ledger and an idempotent adjustment. No historical charge is guessed.
-- [ ] Historical provider reconciliation still needs billing evidence. The existing
+- [ ] Deferred until accounting is re-enabled: historical reconciliation needs billing evidence. The existing
       project API key received HTTP 403 from the organization Costs endpoint.
       The 25 older uncertain Realtime sessions plus one abandoned active session
       retain their unknown headroom. This is held allowance, not confirmed spending.
@@ -41,12 +75,13 @@ device/operations acceptance, then the seven-day pilot.
       Live uses raw captions for context before animated text finishes appearing.
       Both providers retain their microphone cleanup, wake listening and quiet timeout.
 - [ ] Verify the new natural sign-off with the owner's microphone on Live and Realtime.
-- [ ] Reconcile old allowances against a Jarvis-only OpenAI cost export for September 11
+- [ ] Before accounting is re-enabled, reconcile allowances against a Jarvis-only OpenAI cost export for September 11
       UTC. The current command settles individual sessions; project/day aggregates
       need a matching period-level adjustment, not invented per-session costs.
       Preserve original usage, exclude unrelated project activity, and avoid double counting.
-- [ ] Project board/timeline, richer multi-step contextual references, notes,
-      Google sign-in/Calendar, notification bundling and scoped bot API/MCP remain later.
+- [ ] Project board/timeline, deeper contextual references, Google sign-in/Calendar,
+      notification bundling and scoped bot API/MCP remain later. The first notes and
+      contextual editing release is implemented in the current batch.
 
 ## Current position
 
@@ -72,8 +107,8 @@ the original sequence. Current implementation and owner feedback change that ord
 - **R3, memory/context:** source-backed cloud learning, embeddings, retrieval,
   correction/deletion and the first weekly review are active. Retrieval quality,
   clarification follow-through, richer context brokering and indexed search remain.
-- **R4, richer personal work:** projects, durable research/planner jobs, finance
-  and broader integrations remain expansions. GPT-Live's short task delegation
+- **R4, richer personal work:** projects and linked notes are implemented; durable
+  research/planner jobs, finance and broader integrations remain expansions. GPT-Live's short task delegation
   does not implement the durable research system.
 
 Later owner decisions supersede the PRD's local GPU/legacy-memory migration
@@ -83,12 +118,13 @@ timeout without the old total-session caps, and use the configured fixed pairing
 PIN until Google sign-in. GPT-Live, full conversational app control, linked notes,
 unified work items and weekly memory review extend the original PRD.
 
-**Execution order:** checkpoint the current work; close existing capability and
-correctness gaps; validate recovery, devices and costs; build unified work items
-and contextual editing; add linked notes; connect Google Calendar and smarter
-notifications; expose bot access and bounded agent work; then build Android and
-other integrations. Expand CopilotKit coverage with each feature, so voice and
-the website do not drift apart. The checklists below define the work.
+**Execution order:** development cost tracking off; contextual task editing and
+linked notes (current batch); Google sign-in and read-only Calendar; smarter
+notifications; scoped bot access and bounded agent work. Then complete real-use
+voice recovery and device/operations acceptance, followed by the seven-day pilot.
+Android and broader integrations follow the core workspace. Expand CopilotKit
+coverage alongside every feature. Accounting reconciliation and vector indexing
+are deferred until base hardening; do not treat missing development costs as zero.
 
 ## Done
 
@@ -223,9 +259,10 @@ The first hardening implementation batch is now deployed; remaining acceptance a
 
 ### First: harden the daily-use foundation
 
-Owner reordered the work: accounting fixes, then the unified workspace/calendar expansion;
-voice recovery and device/operations acceptance follow the expansion. The seven-day
-owner pilot follows those checks. Vector-index work remains later.
+Owner reordered the work: finish connected-workspace expansions before the large
+voice/device/operations acceptance round, then the seven-day owner pilot. Internal
+cost tracking and enforcement are off for development. Reconciliation before
+re-enabling accounting and vector-index work remain later.
 The first three code findings were confirmed by reading the current implementation;
 device acceptance items are outstanding checks, not claims of observed failures.
 
@@ -239,7 +276,7 @@ device acceptance items are outstanding checks, not claims of observed failures.
       call after the planning allowance. Reads count toward the tool allowance.
       Task reads paginate; limits preserve receipts and expose partial results.
       Larger allowances trade more possible model work for fewer interrupted
-      batches; budget checks and explicit cancellation still apply.
+      batches; explicit cancellation still applies. Budget checks are disabled in local development.
 - [x] **End voice by speaking.** Standalone "goodbye," "thank you" or "that's all"
       should end voice, release the microphone and return to wake listening for
       "Hey, Eri" or "Eri." Exclude quoted phrases and thanks followed by another
@@ -270,7 +307,7 @@ device acceptance items are outstanding checks, not claims of observed failures.
       usage estimates. Deferred memory jobs resume durably when room returns.
       Cancellation during initial retrieval releases the unused chat allowance;
       cancelling an in-flight paid request keeps its outcome marked uncertain.
-- [ ] **Reconcile older holds and finish accounting validation.** September 11,
+- [ ] **Deferred: reconcile holds before re-enabling accounting.** September 11,
       19:16 UTC snapshot: $2.551407 recorded estimated spend and $124.267111 held
       for unconfirmed sessions. Do not treat held amounts as confirmed charges.
       Retain them until provider evidence supports settlement. Complete the
@@ -335,21 +372,25 @@ actions into the web interface and Eri's tools with each release.
       tags, priorities and status filters are implemented. Tasks sort by priority
       and deadline; reminders sort by scheduled time. Existing project labels are
       migrated. Scheduled agent execution and additional sort modes remain later.
-- [ ] **Contextual task editing and full control of those views.** Resolve “move
-      that thing I mentioned earlier to Friday” from conversation and selected-record
-      context; retain revisions, date semantics and clarification for ambiguous
-      targets. Extend CopilotKit to the new fields, editors, settings and multi-step
-      workflows. A feature is complete when direct UI use and Eri can both operate it.
+- [x] **Contextual task editing, first release.** Resolve selected, visible and
+      recently discussed task references within a conversation, re-read current
+      records, preserve ambiguity and revision checks, and edit groups atomically.
+      The web selection/bulk editor and shared Eri tools use the same commands.
+- [ ] **Full field/settings control and richer references.** Extend CopilotKit to
+      every editor field, setting and multi-step workflow; measure reference quality
+      with real conversations. Archived-note filter controls still need UI parity.
 - [x] **Calendar and day agenda.** Tasks and reminder occurrences share a month
       calendar, selected-day agenda, filters and conversational controls without
       requiring Google sync.
 - [ ] **Project board and timeline views.** Follow the calendar/workspace release.
-- [ ] **Linked notes.** Editable notes linked to tasks/projects and conversations,
+- [x] **Linked notes, first release.** Editable notes linked to tasks/projects and conversations,
       tags, Eri-readable source content, and to-do extraction with provenance and
-      duplicate prevention. Add cloud embeddings and semantic search.
-      Keep the authored note distinct from derived memory assertions. After
-      hardening, evaluate the pgvector migration alongside the growing note corpus;
-      retain source/deletion checks and measure retrieval before switching indexes.
+      duplicate prevention. Cloud embeddings and hybrid semantic/keyword search
+      use PostgreSQL JSONB chunks; keyword lookup remains available during provider
+      failures. Authored notes stay separate from personal memory assertions.
+- [ ] Measure note retrieval and extraction quality on real owner content before
+      the later pgvector migration. Add richer source lifecycle and note-to-memory
+      review only if the owner wants authored notes to supply learned facts.
 - [ ] **Google sign-in and read-only Calendar first.** Add persistent owner sign-in
       and separately authorized calendar access. Show availability, conflicts,
       timezone-aware planning, source links and sync freshness. Use private-host-

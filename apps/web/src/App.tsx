@@ -9,6 +9,7 @@ import {
   Clock3,
   Inbox,
   ListTodo,
+  FileText,
   LogOut,
   Menu,
   MessageCircle,
@@ -28,6 +29,14 @@ import {
 import { api, ApiError, command, post, setCsrf } from "./api";
 import { Voice, type VoiceState } from "./voice";
 import { subscribeEvents } from "./events";
+import {
+  NotesPage,
+  NoteEditor,
+  TaskNotes,
+  blankNote,
+  type NoteRecord,
+} from "./Notes";
+import { BulkTaskDialog } from "./BulkTaskDialog";
 import { Workspace } from "./Workspace";
 import { ScheduleDialog } from "./ScheduleDialog";
 import { ProjectManager } from "./ProjectManager";
@@ -65,6 +74,7 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "week", label: "This week", icon: CalendarDays },
   { id: "all", label: "Work", icon: ListTodo },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
+  { id: "notes", label: "Notes", icon: FileText },
   { id: "memory", label: "Memory", icon: Brain },
 ];
 export default function App() {
@@ -78,6 +88,14 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
+  const [noteEditor, setNoteEditor] = useState<NoteRecord | null>(null);
+  const [noteRevision, setNoteRevision] = useState(0);
+  const [noteVisible, setNoteVisible] = useState<string[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [selectingTasks, setSelectingTasks] = useState(false);
+  const pendingSelection = useRef<string[] | null>(null);
+  const [selectionRequest, setSelectionRequest] = useState(0);
+  const [bulkEditor, setBulkEditor] = useState<Task[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [calendarDay, setCalendarDay] = useState("");
   const [workKind, setWorkKind] = useState<"all" | "task" | "reminder">("all");
@@ -156,6 +174,9 @@ export default function App() {
     conversationRef = useRef<string | null>(null),
     retryRef = useRef<null | (() => Promise<void>)>(null),
     lastVoiceReceipt = useRef("");
+  const pendingCommands = useRef(
+    new Map<string, ReturnType<typeof command<unknown>>>(),
+  );
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
@@ -190,6 +211,7 @@ export default function App() {
     setSchedules(scheduleItems);
     setProjects(projectData.items);
     setNotices(noticeData.items);
+    setNoteRevision((n) => n + 1);
   }, []);
   const initialize = useCallback(async () => {
     try {
@@ -294,6 +316,8 @@ export default function App() {
         setSelected(null);
         setReminder(false);
         setScheduleEditor(null);
+        setNoteEditor(null);
+        setBulkEditor(null);
         setSidebar(false);
         setCompanion(false);
       }
@@ -326,26 +350,41 @@ export default function App() {
     args: unknown,
     success: string,
   ): Promise<T | undefined> {
-    const request = command<T>(tool, args);
+    // A lost response may hide a committed write. Repeated Save must reuse its receipt.
+    const key = JSON.stringify([tool, args]);
+    const request =
+      pendingCommands.current.get(key) ?? command<unknown>(tool, args);
+    pendingCommands.current.set(key, request);
     async function send() {
       setBusy(true);
       setError("");
       try {
         const result = await request.send();
-        await load();
+        pendingCommands.current.delete(key);
+        await load().catch(() =>
+          setSyncWarning(
+            "Saved. The workspace will refresh when the connection returns.",
+          ),
+        );
         setToast(success);
         retryRef.current = null;
-        return result.data;
+        return result.data as T;
       } catch (e) {
         const err = e as ApiError;
-        setError(err.message);
+        if (err.code !== "NETWORK") pendingCommands.current.delete(key);
+        setError(
+          tool === "task.batch" && err.code === "REVISION_CONFLICT"
+            ? "One of these tasks changed. Close this editor and reopen the selection to review its latest values."
+            : err.message,
+        );
         if (
           err.code === "REVISION_CONFLICT" &&
           err.data &&
           typeof err.data === "object" &&
           "id" in err.data
         ) {
-          if (tool.startsWith("task.")) setSelected(err.data as Task);
+          if (tool.startsWith("task.") && tool !== "task.batch")
+            setSelected(err.data as Task);
           else if (tool.startsWith("schedule."))
             setScheduleEditor({ schedule: err.data as Schedule });
         }
@@ -436,6 +475,62 @@ export default function App() {
       occurrence_id: null,
     });
   }
+  async function openNote(id: string) {
+    try {
+      const note = await api<NoteRecord>("/notes/" + encodeURIComponent(id));
+      setError("");
+      setSelected(null);
+      setNoteEditor(note);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function openNoteTask(id: string) {
+    try {
+      const task = await api<Task>("/tasks/" + encodeURIComponent(id));
+      setError("");
+      setNoteEditor(null);
+      setSelected(task);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function openNoteConversation(id: string) {
+    if (voice.current) {
+      setError("End voice before switching conversations.");
+      return;
+    }
+    try {
+      const data = await api<{
+        id: string;
+        private: boolean;
+        messages: ChatMessage[];
+      }>("/conversations/" + id);
+      conversationRef.current = data.id;
+      sessionStorage.setItem("jarvis-conversation", data.id);
+      setMessages(data.messages);
+      setPrivate(data.private);
+      setNoteEditor(null);
+      setCompanion(true);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    const requested = pendingSelection.current;
+    pendingSelection.current = null;
+    setSelectedTaskIds(requested ?? []);
+    setSelectingTasks(requested !== null);
+  }, [
+    view,
+    query,
+    taskStatus,
+    projectFilter,
+    workKind,
+    calendarDay,
+    selectionRequest,
+  ]);
+
   async function applyAction(action: UIAction) {
     const kind = action.kind ?? "show";
     if (kind === "chat") {
@@ -446,14 +541,29 @@ export default function App() {
       (selected && selected.id !== action.entity_id) ||
       reminder ||
       scheduleEditor ||
-      editingMemory
+      editingMemory ||
+      noteEditor ||
+      bulkEditor
     )
       throw new Error(
         "An editor is open. Save or close it before changing pages.",
       );
     setSidebar(false);
     if (mobile) setCompanion(false);
-    if (kind === "calendar") {
+    if (kind === "select") {
+      const ids = action.task_ids ?? [];
+      if (ids.some((id) => !tasks.some((t) => t.id === id)))
+        throw new Error(
+          "Some tasks are no longer available. Refresh the workspace.",
+        );
+      setView("all");
+      setQuery("");
+      setTaskStatus("all");
+      setProjectFilter("");
+      setWorkKind("task");
+      pendingSelection.current = ids;
+      setSelectionRequest((n) => n + 1);
+    } else if (kind === "calendar") {
       const day = action.date ?? "";
       if (
         !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
@@ -483,7 +593,10 @@ export default function App() {
       if (action.work_kind !== undefined) setWorkKind(action.work_kind);
     } else if (kind === "form") {
       if (action.form === "reminder") setScheduleEditor({ schedule: null });
-      else {
+      else if (action.form === "note") {
+        setView("notes");
+        setNoteEditor(blankNote());
+      } else {
         setView("all");
         createTask();
       }
@@ -496,6 +609,13 @@ export default function App() {
       if (action.entity_id && action.view === "all") {
         setSelected(
           await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
+        );
+      } else if (action.entity_id && action.view === "notes") {
+        // Fetch directly so failures are acknowledged as failed site actions.
+        setNoteEditor(
+          await api<NoteRecord>(
+            "/notes/" + encodeURIComponent(action.entity_id),
+          ),
         );
       } else if (action.entity_id && action.view === "reminders") {
         const record = await api<Schedule>(
@@ -850,18 +970,26 @@ export default function App() {
     query: query.slice(0, 300),
     selected_task_id: selected?.id === "new" ? null : (selected?.id ?? null),
     selected_schedule_id: scheduleEditor?.schedule?.id ?? null,
+    selected_task_ids: selectedTaskIds
+      .filter((id) => tasks.some((t) => t.id === id))
+      .slice(0, 100),
+    selected_note_id:
+      noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
     work_kind: view === "reminders" ? "reminder" : workKind,
-    visible_ids: ["all", "calendar", "reminders"].includes(view)
-      ? workVisible
-      : (view === "reminders"
-          ? schedules
-          : view === "memory"
-            ? memories
-            : filtered
-        )
-          .slice(0, 60)
-          .map((item) => item.id),
+    visible_ids:
+      view === "notes"
+        ? noteVisible
+        : ["all", "calendar", "reminders"].includes(view)
+          ? workVisible
+          : (view === "reminders"
+              ? schedules
+              : view === "memory"
+                ? memories
+                : filtered
+            )
+              .slice(0, 60)
+              .map((item) => item.id),
     task_status: taskStatus,
     project: projectFilter,
   };
@@ -884,6 +1012,7 @@ export default function App() {
     all: "Everything, in one place.",
     reminders: "The things worth a nudge.",
     calendar: "Make room for what matters.",
+    notes: "Thoughts, connected to your work.",
     memory: "A companion that remembers.",
     notifications: "Your reminders are here.",
     settings: "Make yourself at home.",
@@ -1054,7 +1183,11 @@ export default function App() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={
-                  view === "memory" ? "Search memories" : "Search work…"
+                  view === "notes"
+                    ? "Search notes…"
+                    : view === "memory"
+                      ? "Search memories"
+                      : "Search work…"
                 }
                 aria-label="Search"
               />
@@ -1082,7 +1215,7 @@ export default function App() {
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
-            {retryRef.current && (
+            {retryRef.current && !noteEditor && !bulkEditor && (
               <button onClick={() => void retryRef.current?.()}>
                 Retry same request
               </button>
@@ -1217,6 +1350,19 @@ export default function App() {
                   }
                   mutate={mutate}
                   onVisible={setWorkVisible}
+                  selecting={selectingTasks}
+                  selectedIds={selectedTaskIds}
+                  onSelecting={(value) => {
+                    setSelectingTasks(value);
+                    if (!value) setSelectedTaskIds([]);
+                  }}
+                  onSelection={setSelectedTaskIds}
+                  onBulk={() => {
+                    setError("");
+                    setBulkEditor(
+                      tasks.filter((t) => selectedTaskIds.includes(t.id)),
+                    );
+                  }}
                 />
                 {view === "all" && (
                   <ProjectManager
@@ -1433,6 +1579,21 @@ export default function App() {
                   </div>
                 )}
               </>
+            )}
+            {view === "notes" && (
+              <NotesPage
+                query={query}
+                projects={projects}
+                project={projectFilter}
+                onProject={setProjectFilter}
+                revision={noteRevision}
+                onVisible={setNoteVisible}
+                onOpen={(id) => void openNote(id)}
+                onNew={() => {
+                  setError("");
+                  setNoteEditor(blankNote());
+                }}
+              />
             )}
             {view === "memory" && (
               <>
@@ -2053,6 +2214,20 @@ export default function App() {
             setScheduleEditor({ schedule: null, task: selected });
             setSelected(null);
           }}
+          linkedNotes={
+            selected.id !== "new" ? (
+              <TaskNotes
+                taskId={selected.id}
+                revision={noteRevision}
+                onOpen={(id) => void openNote(id)}
+                onNew={() => {
+                  setNoteEditor(blankNote(selected));
+                  setSelected(null);
+                  setError("");
+                }}
+              />
+            ) : null
+          }
           task={selected}
           busy={busy}
           onClose={() => setSelected(null)}
@@ -2081,6 +2256,54 @@ export default function App() {
               "Task archived",
             );
             if (result) setSelected(null);
+          }}
+        />
+      )}
+      {noteEditor && (
+        <NoteEditor
+          key={
+            noteEditor.id +
+            ":" +
+            noteEditor.revision +
+            ":" +
+            noteEditor.tasks.map((t) => t.id).join(",")
+          }
+          note={noteEditor}
+          projects={projects}
+          tasks={tasks}
+          busy={busy}
+          error={error}
+          mutate={mutate}
+          onSaved={setNoteEditor}
+          onClose={() => {
+            setNoteEditor(null);
+            setError("");
+          }}
+          onTask={(id) => void openNoteTask(id)}
+          onConversation={(id) => void openNoteConversation(id)}
+        />
+      )}
+      {bulkEditor && (
+        <BulkTaskDialog
+          tasks={bulkEditor}
+          projects={projects}
+          busy={busy}
+          error={error}
+          onClose={() => {
+            setBulkEditor(null);
+            setError("");
+          }}
+          onSave={async (items) => {
+            const result = await mutate(
+              "task.batch",
+              { items },
+              "Tasks updated",
+            );
+            if (result) {
+              setBulkEditor(null);
+              setSelectedTaskIds([]);
+              setSelectingTasks(false);
+            }
           }}
         />
       )}

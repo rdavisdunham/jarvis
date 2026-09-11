@@ -20,6 +20,11 @@ import {
 import type { Task, Schedule, Notice, Project, CalendarEntry } from "./types";
 
 type Props = {
+  selecting: boolean;
+  selectedIds: string[];
+  onSelecting: (value: boolean) => void;
+  onSelection: (ids: string[]) => void;
+  onBulk: () => void;
   highlight?: string | null;
   calendar: boolean;
   day: string;
@@ -231,6 +236,14 @@ export function Workspace(p: Props) {
           </span>
         </div>
         <div className="workspace-add">
+          {!p.calendar && p.kind !== "reminder" && (
+            <button
+              className="text-button"
+              onClick={() => p.onSelecting(!p.selecting)}
+            >
+              {p.selecting ? "Done selecting" : "Select tasks"}
+            </button>
+          )}
           <button
             className="secondary compact"
             onClick={() => p.createReminder(p.calendar ? p.day : undefined)}
@@ -247,6 +260,37 @@ export function Workspace(p: Props) {
           </button>
         </div>
       </div>
+      {p.selecting && !p.calendar && (
+        <div className="bulk-toolbar">
+          <label>
+            <input
+              type="checkbox"
+              aria-label="Select visible tasks"
+              checked={
+                !!tasks.length &&
+                tasks.slice(0, 100).every((t) => p.selectedIds.includes(t.id))
+              }
+              onChange={(e) =>
+                p.onSelection(
+                  e.target.checked ? tasks.slice(0, 100).map((t) => t.id) : [],
+                )
+              }
+            />
+            Select visible tasks
+          </label>
+          <span>{p.selectedIds.length} selected</span>
+          <button
+            className="secondary compact"
+            disabled={!p.selectedIds.length || p.busy}
+            onClick={p.onBulk}
+          >
+            Edit selected
+          </button>
+          {tasks.length > 100 && (
+            <small>Select up to 100 tasks at a time.</small>
+          )}
+        </div>
+      )}
       {p.calendar ? (
         <>
           <div className="calendar-heading">
@@ -460,6 +504,17 @@ export function Workspace(p: Props) {
                 )}
                 <TaskRow
                   task={task}
+                  selected={p.selectedIds.includes(task.id)}
+                  onSelect={
+                    p.selecting
+                      ? () =>
+                          p.onSelection(
+                            p.selectedIds.includes(task.id)
+                              ? p.selectedIds.filter((id) => id !== task.id)
+                              : [...p.selectedIds, task.id].slice(0, 100),
+                          )
+                      : undefined
+                  }
                   today={p.today}
                   busy={p.busy}
                   onToggle={() => p.toggle(task)}

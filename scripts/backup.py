@@ -29,6 +29,10 @@ def counts(database):
     names = [
         "tasks",
         "projects",
+        "notes",
+        "note_task_links",
+        "note_embeddings",
+        "task_references",
         "schedules",
         "notifications",
         "sources",
