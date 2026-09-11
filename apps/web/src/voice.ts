@@ -3,6 +3,7 @@ import type { ChatMessage, UIAction, VoiceProvider } from "./types";
 import { VoiceTranscript } from "./voice-transcript";
 import { LiveTranscript } from "./live-transcript";
 import { VoiceIdle } from "./voice-idle";
+import { isVoiceEnding } from "./voice-ending";
 export interface VoiceState {
   state: string;
   error: string | null;
@@ -22,6 +23,7 @@ export class Voice {
   private session: string | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private endingTimer: ReturnType<typeof setTimeout> | null = null;
   private idle = new VoiceIdle();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private outputAnalyser: AnalyserNode | null = null;
@@ -47,13 +49,29 @@ export class Voice {
     message: (value: ChatMessage) => void = () => {},
     private level: (value: number) => void = () => {},
   ) {
+    const transcriptMessage = (value: ChatMessage) => {
+      message(value);
+      if (this.stopped || value.role !== "user") return;
+      if (this.endingTimer) clearTimeout(this.endingTimer);
+      this.endingTimer = null;
+      if (!value.pending && isVoiceEnding(value.content)) {
+        this.endingTimer = setTimeout(() => {
+          this.endingTimer = null;
+          if (this.stopped) return;
+          this.changed({ ...this.latestState, state: "closing", closed: false, error: null });
+          void this.stop().then(() => this.changed({
+            ...this.latestState, state: "ended", closed: true, error: null, idle_seconds: null,
+          }));
+        }, 1000);
+      }
+    };
     this.liveTranscript = new LiveTranscript(
       "live:" + crypto.randomUUID() + ":",
-      message,
+      transcriptMessage,
     );
     this.transcript = new VoiceTranscript(
       "voice-input:" + crypto.randomUUID() + ":",
-      message,
+      transcriptMessage,
     );
   }
   async start(
@@ -131,6 +149,10 @@ export class Voice {
             liveReady.dispatchEvent(new Event("ready"));
           }
           const now = performance.now();
+          if (event.type === "input_audio_buffer.speech_started" && this.endingTimer) {
+            clearTimeout(this.endingTimer);
+            this.endingTimer = null;
+          }
           if (event.type === "input_audio_buffer.speech_started")
             this.idle.speech(true, now);
           if (event.type === "input_audio_buffer.speech_stopped")
@@ -370,6 +392,8 @@ export class Voice {
   }
   private async cleanup() {
     this.stopped = true;
+    if (this.endingTimer) clearTimeout(this.endingTimer);
+    this.endingTimer = null;
     if (this.idleTimer) clearInterval(this.idleTimer);
     this.idleTimer = null;
     this.liveTranscript.dispose();

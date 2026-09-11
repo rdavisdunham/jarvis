@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 
@@ -82,7 +83,21 @@ async def chat(
         if live_context is None
         else " ".join(m["content"] for m in live_context if m["role"] == "user")[-1500:]
     )
-    memory_context = await prompt_context(owner, memory_query)
+    try:
+        memory_context = await prompt_context(owner, memory_query)
+    except asyncio.CancelledError:
+        with session_scope() as db:
+            job = db.get(Job, turn_id)
+            job.status, job.finished_at = "cancelled", now()
+            job.result = {
+                "turn_id": turn_id,
+                "status": "cancelled",
+                "message": "Voice ended before any actions started.",
+                "actions": [],
+                "ui_actions": [],
+            }
+            budget.close(db, owner, turn_id)
+        raise
     messages = [
         {
             "role": "system",
@@ -102,10 +117,21 @@ async def chat(
     ]
     actions, tool_index = [], 0
     ui_actions = []
-    reply, failed = "", False
+    reply, failed, limited = "", False, False
+    cancelled, provider_pending = False, False
+    tool_errors = []
     try:
         async with httpx.AsyncClient(timeout=35) as client:
-            for step in range(5):
+            for step in range(settings.max_model_rounds_per_request + 1):
+                final_round = step == settings.max_model_rounds_per_request
+                if final_round or tool_index >= settings.max_tool_calls_per_request:
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": "The application tool/round allowance is reached. Do not request more tools. Summarize only verified saved results and explicitly identify unfinished work.",
+                        }
+                    )
+                    limited = True
                 # Byte count is a conservative token upper bound; reserve each continuation.
                 input_bound = len(json.dumps([messages, tools], ensure_ascii=False).encode()) + 1024
                 if input_bound > 250000:
@@ -118,6 +144,7 @@ async def chat(
                     budget.ensure_room(
                         db, owner, turn_id, (input_bound * rates[0] + 1200 * rates[1]) / 1_000_000
                     )
+                provider_pending = True
                 response = await client.post(
                     endpoint,
                     headers={"Authorization": f"Bearer {api_key}"},
@@ -125,7 +152,7 @@ async def chat(
                         "model": model,
                         "messages": messages,
                         "tools": tools,
-                        "tool_choice": "none" if step == 4 else "auto",
+                        "tool_choice": "none" if limited else "auto",
                         "max_completion_tokens": 1200,
                     },
                 )
@@ -138,6 +165,7 @@ async def chat(
                 ) / 1_000_000
                 with session_scope() as db:
                     budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost)
+                provider_pending = False
                 msg = data["choices"][0]["message"]
                 messages.append({k: v for k, v in msg.items() if k in {"role", "content", "tool_calls"}})
                 calls = msg.get("tool_calls", [])
@@ -147,15 +175,21 @@ async def chat(
                         or "I couldn't finish that response. Your saved changes are still visible."
                     )
                     break
+                batch_guard_error = None
                 for call in calls:
                     fn = call["function"]
                     try:
-                        if tool_index >= 4:
-                            raise DomainError("LIMIT_EXCEEDED", "This request reached its action limit.")
+                        if final_round or tool_index >= settings.max_tool_calls_per_request:
+                            limited = True
+                            raise DomainError(
+                                "LIMIT_EXCEEDED",
+                                f"This request reached its allowance of {settings.max_tool_calls_per_request} tool calls or {settings.max_model_rounds_per_request} model rounds. Saved changes remain; report any unfinished work.",
+                            )
                         args = json.loads(fn["arguments"])
                         if tool_guard:
-                            changed = tool_guard()
+                            changed = batch_guard_error or tool_guard()
                             if changed:
+                                batch_guard_error = changed
                                 raise DomainError("REQUEST_CHANGED", changed)
                         outcome = await call_tool(owner, turn_id, tool_index, fn["name"], args, device=device)
                         if outcome.get("ui_action"):
@@ -169,33 +203,57 @@ async def chat(
                             "message": str(exc),
                             "data": getattr(exc, "data", None),
                         }
+                    if outcome.get("error"):
+                        tool_errors.append({"tool": fn["name"], **outcome})
                     tool_index += 1
                     messages.append(
                         {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(outcome)}
                     )
+    except asyncio.CancelledError:
+        cancelled = True
+        reply = "Voice ended. Already saved actions remain; no further actions were started."
     except DomainError as exc:
         reply = exc.message
+        limited = True
     except (httpx.HTTPError, ValueError, KeyError):
         failed = True
         reply = "I lost the model connection. Any changes already saved are still in your task list; I haven't repeated them."
+    if not reply:
+        reply = "I could not finish this batch. Previously saved changes remain; some requested work is unfinished."
+        limited = True
     result = {
         "turn_id": turn_id,
         "message": reply,
         "actions": actions,
         "ui_actions": ui_actions,
-        "status": "failed" if failed else "succeeded",
+        "status": "cancelled"
+        if cancelled
+        else "failed"
+        if failed
+        else "partial"
+        if limited or tool_errors
+        else "succeeded",
+        "tool_calls": tool_index,
+        "tool_errors": tool_errors,
+        "limits": {
+            "tool_calls": settings.max_tool_calls_per_request,
+            "model_rounds": settings.max_model_rounds_per_request,
+        },
     }
     with session_scope() as db:
         job = db.get(Job, turn_id)
         job.status, job.finished_at = result["status"], now()
         private = private or not preferences(db, owner)["history_enabled"]
+        retained = {**result, "tool_errors": [{"tool": e["tool"], "error": e["error"]} for e in tool_errors]}
         job.result = (
-            {**result, "message": "Private response was not retained."}
+            {**retained, "message": "Private response was not retained."}
             if private or live_context is not None
-            else result
+            else retained
         )
         conv = owned(db, Conversation, conversation_id, owner)
         if not private and live_context is None:
             capture_source(db, owner, reply, f"chat:{turn_id}:assistant", role="assistant", conversation=conv)
-        budget.close(db, owner, turn_id, uncertain=failed)
+        budget.close(db, owner, turn_id, uncertain=failed or provider_pending)
+    if cancelled:
+        raise asyncio.CancelledError()
     return result

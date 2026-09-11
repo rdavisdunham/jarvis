@@ -77,7 +77,7 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
         raise DomainError("INTEGRATION_UNAVAILABLE", "Memory learning needs an OpenAI API key.", 503)
     reservation = "memory:" + uid()
     with session_scope() as db:
-        budget.reserve(db, owner, reservation, allowance, model)
+        budget.reserve(db, owner, reservation, allowance, model, optional=True)
     uncertain = True
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -317,6 +317,10 @@ def process(job_id):
     except Exception as exc:
         with session_scope() as db:
             job = db.get(Job, job_id)
+            if isinstance(exc, DomainError) and exc.code == "BUDGET_DEFERRED":
+                job.status = "deferred_budget"
+                job.result = {"error": "BUDGET_DEFERRED"}
+                return
             job.status = "failed" if job.payload.get("attempts", 0) >= 10 else "retrying"
             job.result = {"error": getattr(exc, "code", type(exc).__name__)}
         raise
@@ -350,7 +354,7 @@ def queue_backfill(db, limit=10):
                 Job.kind == "extract_memory",
                 Job.payload["source_id"].astext == source.id,
                 (
-                    (Job.status.in_(["queued", "running", "retrying"]))
+                    (Job.status.in_(["queued", "running", "retrying", "deferred_budget"]))
                     | (Job.payload["version"].astext == str(VERSION))
                 ),
             )

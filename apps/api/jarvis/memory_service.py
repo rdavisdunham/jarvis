@@ -69,7 +69,27 @@ async def semantic_search(owner, query="", limit=10):
         if lexical or similarity >= 0.30:
             ranked.append((max(similarity, lexical * 0.65) + lexical * 0.15, record))
     ranked.sort(key=lambda item: (item[0], item[1]["created_at"]), reverse=True)
-    return [record for _, record in ranked[:limit]]
+    # The provider await above can overlap corrections, suppression or source deletion.
+    # Serve only the same revisions that were ranked, after a fresh canonical read.
+    with session_scope() as db:
+        current = {
+            m.id: m
+            for m in db.scalars(
+                select(Memory)
+                .join(Source, Source.id == Memory.source_id)
+                .where(
+                    Memory.owner_id == owner,
+                    Memory.suppressed.is_(False),
+                    Source.deleted_at.is_(None),
+                    Memory.id.in_([record["id"] for _, record in ranked]),
+                )
+            )
+        }
+        return [
+            serial(current[record["id"]])
+            for _, record in ranked
+            if record["id"] in current and current[record["id"]].revision == record["revision"]
+        ][:limit]
 
 
 async def prompt_context(owner, query=""):

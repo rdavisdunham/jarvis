@@ -112,6 +112,8 @@ def test_defer_and_context_cooldown_leave_question_pending():
     with session_scope() as db:
         context = review.context_for_agent(db, "davin")
         assert rid in context and "not a fact" in context
+        assert rid in review.context_for_agent(db, "davin")  # Preparation is not delivery.
+        review.record_question(db, "davin", "Is your cat named Hayes or Haze?")
         assert review.context_for_agent(db, "davin") == ""
         execute(
             db,
@@ -236,3 +238,27 @@ def test_review_failure_is_retryable_without_partial_merges(monkeypatch):
     with session_scope() as db:
         assert db.get(Job, jid).status == "retrying"
         assert not db.get(Memory, a).suppressed and not db.get(Memory, b).suppressed
+
+
+def test_review_failure_is_visible_and_manual_retry_queues_new_run():
+    remember("The user likes tea.")
+    with session_scope() as db:
+        job = review.queue_review(db, "davin", manual=True)
+        job.status, job.result = "failed", {"error": "SyntheticError"}
+    with session_scope() as db:
+        result = review.status(db, "davin")
+        assert result["status"] == "failed" and result["last_error"] == "SyntheticError"
+        assert not result["running"]
+        retry = review.queue_review(db, "davin", manual=True)
+        assert retry.status == "queued"
+        assert review.status(db, "davin")["running"]
+
+
+def test_unasked_review_remains_available_and_private_output_records_question():
+    _, _, rid, _ = ambiguous()
+    with session_scope() as db:
+        assert rid in review.context_for_agent(db, "davin")
+        review.record_question(db, "davin", "Your task is saved.")
+        assert rid in review.context_for_agent(db, "davin")
+        review.record_question(db, "davin", "Is it Hayes or Haze?")
+        assert review.context_for_agent(db, "davin") == ""

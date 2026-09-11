@@ -386,6 +386,15 @@ async def memories(user: User, q: str = ""):
                 Job.status.in_(["retrying", "failed"]),
             )
         )
+        deferred = db.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.owner_id == user.owner_id,
+                Job.kind.in_(["extract_memory", "embed_memory"]),
+                Job.status == "deferred_budget",
+            )
+        )
         enabled = preferences(db, user.owner_id)["memory_learning"]
         from .memory_review import pending_reviews, review_data, status
 
@@ -395,7 +404,7 @@ async def memories(user: User, q: str = ""):
         "items": items,
         "reviews": reviews,
         "maintenance": maintenance,
-        "learning": {"enabled": enabled, "pending": pending, "retrying": retrying},
+        "learning": {"enabled": enabled, "pending": pending, "retrying": retrying, "deferred": deferred},
     }
 
 
@@ -511,7 +520,10 @@ def export(user: User, format: str = "json"):
         }
     if format == "csv":
         buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=["id", "title", "status", "due_date", "project", "notes"])
+        writer = csv.DictWriter(
+            buffer,
+            fieldnames=["id", "title", "status", "due_date", "due_time", "due_timezone", "project", "notes"],
+        )
         writer.writeheader()
         for task in data["tasks"]:
             # Spreadsheet programs must treat user text as text, never executable formulas.

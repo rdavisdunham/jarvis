@@ -152,3 +152,22 @@ def test_evidence_allows_outer_quote_marks_but_never_invented_words():
     )
     assert len(accepted) == 1 and accepted[0].evidence == "My cat Hayes"
     assert learning.verified_facts("My cat Hayes", [fact(evidence='"My dog Hayes"')]) == []
+
+
+@pytest.mark.parametrize("action", ["correct", "forget"])
+async def test_memory_changed_during_query_embedding_is_not_returned(cloud, monkeypatch, action):
+    _, jid = source()
+    learning.process(jid)
+    with session_scope() as db:
+        mid = db.scalar(select(Memory.id))
+
+    def change(*_):
+        with session_scope() as db:
+            args = {"memory_id": mid}
+            if action == "correct":
+                args["content"] = "The user no longer owns a cat."
+            execute(db, "davin", "during-search", "memory." + action, args)
+        return [[1.0, 0.0]]
+
+    monkeypatch.setattr(learning, "embeddings", change)
+    assert await semantic_search("davin", "cat") == []

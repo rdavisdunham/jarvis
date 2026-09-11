@@ -43,6 +43,10 @@ class TaskCreate(Args):
     notes: str = Field(default="", max_length=20000)
     project: str | None = Field(default=None, max_length=200)
     due_date: date | None = None
+    due_time: str | None = Field(
+        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
+    )
+    due_timezone: str | None = Field(default=None, max_length=100)
     priority: int = Field(default=0, ge=0, le=3)
 
 
@@ -53,6 +57,10 @@ class TaskUpdate(Args):
     notes: str | None = Field(default=None, max_length=20000)
     project: str | None = Field(default=None, max_length=200)
     due_date: date | None = None
+    due_time: str | None = Field(
+        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
+    )
+    due_timezone: str | None = Field(default=None, max_length=100)
     priority: int | None = Field(default=None, ge=0, le=3)
     status: str | None = None
     archived: bool | None = None
@@ -276,6 +284,10 @@ def check_revision(record, expected):
 
 
 def capture_source(db, owner, content, native_id, role="user", conversation=None, explicit=False):
+    if role == "assistant":
+        from .memory_review import record_question
+
+        record_question(db, owner, content)
     if (
         conversation
         and not explicit
@@ -363,9 +375,35 @@ def execute(db, owner, command_id, tool, arguments):
     return result
 
 
+def task_timing(db, owner, changes, task=None):
+    values = {key: getattr(task, key, None) for key in ("due_date", "due_time", "due_timezone")}
+    values.update(changes)
+    if "due_date" in changes and changes["due_date"] is None:
+        if changes.get("due_time"):
+            raise DomainError("INVALID_ARGUMENT", "A due time needs a due date.")
+        changes.update(due_time=None, due_timezone=None)
+        return changes
+    clock = values.get("due_time")
+    if not clock:
+        changes.update(due_time=None, due_timezone=None)
+        return changes
+    day = values.get("due_date")
+    if not day:
+        raise DomainError("INVALID_ARGUMENT", "Choose a due date before adding a due time.")
+    location = values.get("due_timezone") or preferences(db, owner)["timezone"]
+    instant = parse_when(day.isoformat() + "T" + clock, location)
+    local = instant.astimezone(zone(location))
+    if local.date() != day or local.strftime("%H:%M") != clock[:5]:
+        raise DomainError(
+            "INVALID_ARGUMENT", "The supplied UTC offset does not match that time zone and date."
+        )
+    changes.update(due_time=clock, due_timezone=location)
+    return changes
+
+
 def mutate(db, owner, tool, args, command_id):
     if tool == "task.create":
-        task = Task(owner_id=owner, **args.model_dump())
+        task = Task(owner_id=owner, **task_timing(db, owner, args.model_dump()))
         db.add(task)
         db.flush()
         emit(db, owner, "task.changed", task.id, task.revision)
@@ -390,6 +428,8 @@ def mutate(db, owner, tool, args, command_id):
         for key in ("title", "notes", "priority", "archived"):
             if key in changes and changes[key] is None:
                 raise DomainError("INVALID_ARGUMENT", f"{key} cannot be empty.")
+        if any(key in changes for key in ("due_date", "due_time", "due_timezone")):
+            changes = task_timing(db, owner, changes, task)
         for key, value in changes.items():
             setattr(task, key, value)
         if "status" in changes:

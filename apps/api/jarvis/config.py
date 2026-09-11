@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,8 @@ class Settings(BaseSettings):
     realtime_model: str = "gpt-realtime-2.1"
     live_model: str = "gpt-live-1"
     text_model: str = "gpt-5.4-mini"
+    max_tool_calls_per_request: int = Field(default=100, ge=1, le=1000)
+    max_model_rounds_per_request: int = Field(default=30, ge=2, le=100)
     openai_api_key: str = ""
     groq_api_key: str = ""
     history_days: int = 0

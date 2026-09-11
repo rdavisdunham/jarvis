@@ -128,6 +128,7 @@ export function TaskRow({
         >
           <CalendarDays size={13} />
           {relativeDate(task.due_date, today)}
+          {task.due_time && <span title={task.due_timezone ?? undefined}> · {task.due_time.slice(0, 5)}</span>}
         </button>
       )}
       <button
@@ -141,12 +142,14 @@ export function TaskRow({
   );
 }
 export function TaskDialog({
+  timezone,
   task,
   busy,
   onClose,
   onSave,
   onArchive,
 }: {
+  timezone: string;
   task: Task;
   busy: boolean;
   onClose: () => void;
@@ -177,6 +180,8 @@ export function TaskDialog({
             notes: draft.notes,
             project: draft.project || null,
             due_date: draft.due_date || null,
+            due_time: draft.due_date ? draft.due_time || null : null,
+            due_timezone: draft.due_date && draft.due_time ? draft.due_timezone || timezone : null,
             priority: draft.priority,
             status: draft.status,
           });
@@ -221,6 +226,17 @@ export function TaskDialog({
               onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
             />
           </label>
+          <label>
+            Due time (optional)
+            <input type="time" disabled={!draft.due_date}
+              value={draft.due_time?.slice(0, 5) ?? ""}
+              onChange={(e) => setDraft({ ...draft, due_time: e.target.value || null })} />
+          </label>
+          {draft.due_time && <label>
+            Due time zone
+            <input value={draft.due_timezone ?? timezone}
+              onChange={(e) => setDraft({ ...draft, due_timezone: e.target.value })} />
+          </label>}
           <label>
             Priority
             <select
@@ -618,8 +634,19 @@ export function SettingsPanel({
             ${boot.budget.spent_usd.toFixed(2)}
             <span> / ${boot.budget.limit_usd.toFixed(0)} this month</span>
           </strong>
-          <span>${boot.budget.reserved_usd.toFixed(2)} reserved</span>
+          <span>${boot.budget.active_reserved_usd.toFixed(2)} reserved for active work</span>
         </div>
+        {boot.budget.uncertain_usd > 0 && <p className="footnote">
+          ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions with unconfirmed final usage.
+        </p>}
+        <p className="footnote">
+          At this month's pace: about ${boot.budget.projected_month_usd.toFixed(2)} this month.
+        </p>
+        {boot.budget.budget_mode !== "normal" && <p role="status" className="footnote">
+          {["defer_optional", "paused"].includes(boot.budget.budget_mode)
+            ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
+            : "Your usage and reservations have reached 80% of the monthly limit."}
+        </p>}
         <progress
           max={Math.max(1, boot.budget.limit_usd)}
           value={boot.budget.spent_usd + boot.budget.reserved_usd}

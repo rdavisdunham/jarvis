@@ -6,6 +6,8 @@ export interface Task {
   priority: number;
   project: string | null;
   due_date: string | null;
+  due_time: string | null;
+  due_timezone: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -55,6 +57,8 @@ export interface MemoryReview {
   candidates: Memory[];
 }
 export interface MemoryMaintenance {
+  status: string;
+  last_error: string | null;
   enabled: boolean;
   last_run_at: string | null;
   next_run_at: string;
@@ -80,6 +84,11 @@ export interface Bootstrap {
   preferences: Preferences;
   budget: {
     spent_usd: number;
+    uncertain_usd: number;
+    active_reserved_usd: number;
+    projected_month_usd: number;
+    usage_by_model: Record<string, number>;
+    budget_mode: string;
     reserved_usd: number;
     limit_usd: number;
     remaining_usd: number;

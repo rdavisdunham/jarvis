@@ -204,6 +204,28 @@ def housekeeping():
                 .limit(500)
             ):
                 delete_source(db, source)
+        # Finished DBOS invocations are never replayed under the same workflow ID.
+        # Resume intentionally deferred memory work as a new durable job once funds allow.
+        if budget.summary(db, settings.owner_id)["budget_mode"] not in {"defer_optional", "paused"}:
+            from .domain import enqueue_job
+
+            for deferred in db.scalars(
+                select(Job)
+                .where(
+                    Job.owner_id == settings.owner_id,
+                    Job.status == "deferred_budget",
+                    Job.kind.in_(["extract_memory", "embed_memory"]),
+                )
+                .with_for_update()
+                .limit(20)
+            ):
+                resumed = enqueue_job(
+                    db,
+                    deferred.owner_id,
+                    deferred.kind,
+                    {k: v for k, v in deferred.payload.items() if k != "attempts"},
+                )
+                deferred.status, deferred.result = "cancelled", {"resumed_as": resumed.id}
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
             select(Job).where(

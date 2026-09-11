@@ -1,9 +1,13 @@
+from calendar import monthrange
 from decimal import Decimal
 
 from sqlalchemy import select
 
 from .domain import DomainError, advisory, preferences
 from .models import BudgetReservation, Usage, now
+
+# Identifies the configured estimation rates, not a provider billing statement.
+PRICING_VERSION = "configured-2026-09-11-v1"
 
 
 def summary(db, owner):
@@ -13,10 +17,32 @@ def summary(db, owner):
             BudgetReservation.owner_id == owner, BudgetReservation.created_at >= month
         )
     ).all()
-    spent = sum((r.actual or Decimal(0)) for r in rows)
+    usage = list(db.scalars(select(Usage).where(Usage.owner_id == owner, Usage.created_at >= month)))
+    spent = sum((u.amount for u in usage), Decimal(0))
+    by_model = {}
+    for item in usage:
+        by_model[item.model] = by_model.get(item.model, Decimal(0)) + item.amount
+    uncertain = sum(
+        (max(Decimal(0), r.amount - (r.actual or Decimal(0))) for r in rows if r.state == "uncertain"),
+        Decimal(0),
+    )
     reserved = sum(max(Decimal(0), r.amount - (r.actual or Decimal(0))) for r in rows if r.state != "closed")
     limit = Decimal(str(preferences(db, owner)["monthly_budget_usd"]))
+    fraction = float((spent + reserved) / limit) if limit else 1.0
+    elapsed_days = max(1, (now() - month).total_seconds() / 86400)
     return {
+        "uncertain_usd": float(uncertain),
+        "active_reserved_usd": float(reserved - uncertain),
+        "usage_by_model": {model: float(amount) for model, amount in by_model.items()},
+        "projected_month_usd": float(spent) / elapsed_days * monthrange(month.year, month.month)[1],
+        "budget_mode": "paused"
+        if fraction >= 1
+        else "defer_optional"
+        if fraction >= 0.95
+        else "warning"
+        if fraction >= 0.8
+        else "normal",
+        "pricing_version": PRICING_VERSION,
         "spent_usd": float(spent),
         "reserved_usd": float(reserved),
         "limit_usd": float(limit),
@@ -26,12 +52,17 @@ def summary(db, owner):
     }
 
 
-def reserve(db, owner, reservation_id, amount, model):
+def reserve(db, owner, reservation_id, amount, model, *, optional=False):
     advisory(db, f"budget:{owner}")
     existing = db.get(BudgetReservation, reservation_id)
     if existing:
         return existing
-    if summary(db, owner)["remaining_usd"] < amount:
+    available = summary(db, owner)
+    if optional and available["budget_mode"] in {"defer_optional", "paused"}:
+        raise DomainError(
+            "BUDGET_DEFERRED", "Automatic memory work is paused near the monthly model budget.", 402
+        )
+    if available["remaining_usd"] < amount:
         raise DomainError(
             "BUDGET_EXCEEDED", "The model budget is reserved or used. Tasks and reminders still work.", 402
         )
@@ -73,7 +104,7 @@ def record_usage(db, owner, reservation_id, request_id, model, tokens, amount):
             owner_id=owner,
             reservation_id=reservation_id,
             model=model,
-            tokens=tokens,
+            tokens={**tokens, "pricing_version": PRICING_VERSION},
             amount=cost,
         )
     )

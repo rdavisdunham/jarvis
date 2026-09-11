@@ -32,9 +32,9 @@ User = Annotated[Identity, Depends(authenticate)]
 controllers = {}
 
 GATE = """Classify the latest speech in conversational context. Return exactly one word:
-SILENT: a final thanks, backchannel, filler or remark needing no response.
+SILENT: a backchannel, filler or remark needing no response.
 WAIT: an incomplete thought, or explicit request to pause/let the speaker think.
-END_SESSION: explicitly finished talking, with no remaining request.
+END_SESSION: a standalone goodbye, closing thank you/thanks, or explicitly finished talking, with no remaining request. A thanks followed by a new request is RESPOND. Quoted farewell words are not a request to end voice.
 RESPOND: a genuine request, question or conversational statement inviting a reply.
 Do not execute tools, answer the question, or add punctuation. 'I wonder what is on tomorrow'
 can be a genuine request. Do not suppress requests just because they are indirect."""
@@ -54,6 +54,7 @@ class Controller:
         self.conversation_id, self.focus, self.preferences = conversation_id, focus, preferences
         self.call_id, self.ws = None, None
         self.epoch, self.current_item, self.tool_index, self.turns = 0, None, 0, 0
+        self.plan_rounds = 0
         self.allowed, self.responses, self.seen_items = {}, {}, set()
         self.ready, self.closed = asyncio.Event(), False
         self.closing = False
@@ -91,6 +92,10 @@ class Controller:
     async def request(self, phase, **response):
         if self.closed or self.closing:
             return
+        if phase == "plan":
+            self.plan_rounds += 1
+            if self.plan_rounds > get_settings().max_model_rounds_per_request:
+                response["tool_choice"] = "none"
         # 128k input tokens at the highest audio rate, plus capped output and transcription headroom.
         # Pending/cancelled responses retain their allowance until provider completion.
         with session_scope() as db:
@@ -219,6 +224,7 @@ class Controller:
                 return
             self.seen_items.add(item)
             self.current_item, self.tool_index = item, 0
+            self.plan_rounds = 0
             self.turns += 1
             self.state, self.activity = "evaluating", time.monotonic()
             await self.request(
@@ -339,8 +345,14 @@ class Controller:
                         if self.epoch != epoch or self.closed or self.closing:
                             return
                         try:
-                            if self.tool_index >= 4:
-                                raise DomainError("LIMIT_EXCEEDED", "This turn reached its tool limit.")
+                            if (
+                                self.tool_index >= get_settings().max_tool_calls_per_request
+                                or self.plan_rounds > get_settings().max_model_rounds_per_request
+                            ):
+                                raise DomainError(
+                                    "LIMIT_EXCEEDED",
+                                    "The request allowance was reached. Report saved changes and unfinished work separately.",
+                                )
                             turn_id = hashlib.sha256(f"{self.id}:{self.current_item}".encode()).hexdigest()[
                                 :40
                             ]
@@ -372,7 +384,9 @@ class Controller:
                         await self.request(
                             "plan",
                             output_modalities=["text"],
-                            tool_choice="none" if self.tool_index >= 4 else "auto",
+                            tool_choice="none"
+                            if self.tool_index >= get_settings().max_tool_calls_per_request
+                            else "auto",
                         )
                 else:
                     # Planning/tool turns are text-only. Audible confirmation begins only after receipts commit.

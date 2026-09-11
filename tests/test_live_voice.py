@@ -138,3 +138,48 @@ def test_invalid_provider_voice_is_rejected_before_provider_call(client):
     )
     assert result.status_code == 400
     assert result.json()["error"]["code"] == "INVALID_ARGUMENT"
+
+
+async def test_quiet_memory_update_is_bounded_deduplicated_and_acknowledged(controller, monkeypatch):
+    c = controller
+    monkeypatch.setattr(
+        live_voice,
+        "semantic_search",
+        AsyncMock(
+            return_value=[
+                {
+                    "id": "memory-id",
+                    "revision": 1,
+                    "source_id": "source-id",
+                    "content": "The user prefers tea.",
+                }
+            ]
+        ),
+    )
+    c.groups = [{"role": "user", "content": "What drink do I prefer?", "saved": True}]
+    await c.refresh_memory_context(c.input_revision)
+    message = c.send.await_args.args[0]
+    assert message["type"] == "session.thinking.append" and message["delegation_id"] is None
+    assert len(message["content"].encode()) <= 480
+    await c.event({"type": "session.thinking.appended", "client_event_id": message["event_id"]})
+    assert not c.context_pending
+    await c.refresh_memory_context(c.input_revision)
+    c.send.assert_awaited_once()
+    await c.close()
+
+
+async def test_close_cancels_pending_context_lookup_before_send(controller, monkeypatch):
+    c = controller
+    started = asyncio.Event()
+
+    async def lookup(*_):
+        started.set()
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(live_voice, "semantic_search", lookup)
+    c.groups = [{"role": "user", "content": "What drink do I prefer?", "saved": True}]
+    c.memory_task = asyncio.create_task(c.refresh_memory_context(c.input_revision))
+    await started.wait()
+    await c.close()
+    assert c.memory_task.cancelled()
+    assert not any(call.args[0]["type"] == "session.thinking.append" for call in c.send.await_args_list)

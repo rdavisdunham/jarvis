@@ -222,3 +222,45 @@ def test_concurrent_budget_reservation_and_usage_dedup():
         budget.close(db, "davin", row.id)
     with session_scope() as db:
         assert budget.summary(db, "davin")["spent_usd"] == 0.25
+
+
+def test_task_due_time_updates_export_and_no_implicit_reminder(client):
+    task = run("task.create", {"title": "Finish report", "due_date": "2026-09-18", "due_time": "14:30"})
+    assert task["due_timezone"] == "America/Chicago"
+    moved = run("task.update", {"task_id": task["id"], "expected_revision": 1, "due_date": "2026-09-19"})
+    assert moved["due_time"] == "14:30"
+    assert "14:30" in client.get("/api/v1/export?format=csv").text
+    cleared = run("task.update", {"task_id": task["id"], "expected_revision": 2, "due_date": None})
+    assert cleared["due_time"] is None and cleared["due_timezone"] is None
+    with session_scope() as db:
+        assert db.scalar(select(func.count(Schedule.id))) == 0
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"due_time": "12:30"},
+        {"due_date": "2026-09-18", "due_time": "25:00"},
+        {"due_date": "2026-03-08", "due_time": "02:30", "due_timezone": "America/Chicago"},
+        {"due_date": "2026-11-01", "due_time": "01:30", "due_timezone": "America/Chicago"},
+        {"due_date": "2026-09-18", "due_time": "12:30", "due_timezone": "Invalid/Zone"},
+    ],
+)
+def test_invalid_or_ambiguous_task_due_times_do_not_save(values):
+    with pytest.raises(DomainError):
+        run("task.create", {"title": "Should not save", **values})
+    with session_scope() as db:
+        assert db.scalar(select(func.count(Task.id))) == 0
+
+
+def test_repeated_dst_hour_can_use_an_explicit_offset():
+    task = run(
+        "task.create",
+        {
+            "title": "Fall back",
+            "due_date": "2026-11-01",
+            "due_time": "01:30-06:00",
+            "due_timezone": "America/Chicago",
+        },
+    )
+    assert task["due_time"] == "01:30-06:00"

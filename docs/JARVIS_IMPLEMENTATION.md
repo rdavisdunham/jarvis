@@ -25,7 +25,7 @@ Google account sign-in already requested by the owner.
 
 - Python/FastAPI owns the domain API; PostgreSQL owns tasks, reminders, sources, sessions, receipts and usage. A separate DBOS worker performs durable work.
 - React/TypeScript/Vite provides a responsive, installable web app at the same origin. Text, voice and buttons use the same validated commands.
-- Task deadlines remain date-only. Reminders have explicit IANA time zones and resolved instants. The default is America/Chicago at 10 AM when only a date is supplied.
+- Task deadlines support a date with an optional local due time and IANA timezone. Date-only tasks remain supported; time changes do not create notifications. Reminders have explicit IANA time zones and resolved instants. The default is America/Chicago at 10 AM when only a date is supplied.
 - Repeated routines create independent task occurrences. Completing one occurrence does not cancel the series. Independent recurring reminders also remain independent of task completion.
 - History and conservative memory learning start enabled. Private sessions do not retain transcripts. Explicitly requested tasks and saved memories still persist. Jarvis does not record raw audio.
 - The default voice candidate is GPT-Realtime-2.1. The server controls response creation, silence, waiting, interruption and tool execution. Audible confirmations are requested only after commands commit.
@@ -34,7 +34,7 @@ Google account sign-in already requested by the owner.
 
 ## What is implemented
 
-Tasks support capture, notes, priorities, projects, dates, status changes, completion/reopening, archive, search, Inbox/Today/Week/All views, and JSON/CSV export. Stable command IDs prevent duplicate effects after a retry; revision conflicts expose the current record.
+Tasks support capture, notes, priorities, projects, dates and optional due times, status changes, completion/reopening, archive, search, Inbox/Today/Week/All views, and JSON/CSV export. Stable command IDs prevent duplicate effects after a retry; revision conflicts expose the current record.
 
 Schedules support one-off reminders, daily/weekly/selected-weekday/monthly recurrence, independent recurring tasks, rescheduling through the command API, cancellation, snooze and a durable notification Inbox. Missed recurring runs coalesce into one late occurrence before continuing from the current time. Invalid spring-forward times are rejected; recurring nonexistent times are skipped. Ambiguous initial times require an explicit offset. Monthly dates such as the 31st skip months without that date.
 
@@ -44,7 +44,7 @@ The companion supports real text tool calls, private sessions, retained conversa
 
 Canonical memory search combines cloud query embeddings, Python cosine scoring and lexical/tag matches over PostgreSQL records. There is no active Mem0 or Qdrant path. pgvector/HNSW is deferred until base functionality is hardened.
 
-## Verified evidence
+## Original foundation evidence (before later batches)
 
 - **39 backend tests** cover concurrent duplicate commands, ownership, revision conflicts, atomic rollback, source/privacy behavior, budget continuations, recurrence/DST cases, and voice-controller state rules, including unlimited active-session duration/turns/silence and orphan-session cleanup.
 - A worker process was killed and restarted against PostgreSQL. Replaying an outbox submission produced one notification and no duplicate task occurrence.
@@ -440,3 +440,73 @@ replace this PIN. Only the API container needs recreation to reload the setting.
 Session tokens, CSRF values and infrastructure secrets still use secure randomness.
 Existing paired sessions remain valid; Google OAuth remains on the roadmap.
 The PIN value is intentionally not copied into tracked documentation or source.
+
+
+## September 11 hardening: multi-action work, voice endings and timed deadlines
+
+The previous deployed memory/UI/weekly-review baseline was committed and pushed
+to main as b9d1a4cd63216790a473f1b94b7101ee93e205fa before this batch.
+
+- The shared backend now allows 100 tool calls and 30 planning rounds per request,
+  with one final text summary call. Realtime uses the same configured allowance.
+  Override JARVIS_MAX_TOOL_CALLS_PER_REQUEST (1–1000) and
+  JARVIS_MAX_MODEL_ROUNDS_PER_REQUEST (2–100) in deployment configuration, then
+  recreate the API. Reads count as calls. These are application controls, not a
+  GPT-Live provider restriction. Paid requests still reserve budget.
+- Task reads return pagination information. Bulk work preserves command receipts,
+  reports partial outcomes and blocks the rest of an old tool batch after a spoken
+  correction. Closing Live cancels pending backend work and optional retrieval;
+  completed domain effects persist. Initial-retrieval cancellation releases its
+  unused chat reservation; an interrupted paid request retains uncertain headroom.
+- Existing memory correction/forgetting and notification read/snooze/dismiss
+  commands are exposed through the same text/voice tool registry.
+- Standalone farewell/thanks phrases end voice and release its microphone.
+  Continued speech cancels a pending close; quoted phrases and thanks followed by
+  another request do not match. Wake listening resumes through the existing
+  enabled wake-word controller. Live transcript grouping is heuristic, so actual
+  conversational pause behavior still belongs in the device pilot.
+- Migration 0005_task_due_time adds nullable due_time and due_timezone to tasks.
+  Tools, task editing, row labels and CSV/JSON export preserve them. Clearing a due
+  date clears its time. Nonexistent local times are rejected; a repeated DST hour
+  needs an explicit offset. Due times do not create reminders. Calendar/project/
+  timeline/day views remain deferred to the task-tracker expansion.
+- Semantic retrieval rechecks source visibility, suppression and assertion
+  revisions after the cloud query. Weekly review exposes failures/retries and
+  last success. Its offer cooldown follows a question containing the candidate
+  spellings, rather than context preparation; this does not establish audible
+  delivery or full semantic clarification tracking.
+- Live can receive small relevant memory updates during a session through
+  session.thinking.append. Updates are debounced, deduplicated and cancelled on
+  close. UTF-8 byte bounds keep each payload below the documented 500-token limit.
+  Acknowledgments establish accepted context, not that the next speech uses all
+  of it. See [Managing GPT-Live sessions](https://developers.openai.com/api/docs/guides/live-conversations).
+- Budget reporting separates recorded spend, active reservations and uncertain
+  holds. It includes a calendar-month pace projection, an 80% warning and a 95%
+  deferral of optional memory work. Deferred jobs resume with a new durable job
+  when capacity returns. New usage records identify their configured pricing
+  assumptions; existing rates remain estimates pending the provider-account audit.
+
+Deployment and recovery: the current API/worker/PostgreSQL health checks pass.
+The updated web bundle is index-DCkz93wi.js. Before migration, encrypted backup
+jarvis-20260911T191149Z.pgdump.enc was saved. After deployment,
+jarvis-20260911T191619Z.pgdump.enc restored into a new isolated database at revision
+0005_task_due_time: 46 tasks, 8 schedules, 2 notifications, 182 sources,
+7 memory assertions, 1 review and 140 command receipts. Dispatch was disabled,
+and the temporary restored database was removed after verification.
+
+A local, in-container HTTP check authenticated with the configured pairing PIN,
+verified the new bootstrap/memory/task responses, and removed only its temporary
+test session. At 19:16 UTC, recorded estimated spend was $2.551407 and older
+uncertain holds totaled $124.267111. Those holds were not released without final
+provider evidence. There was 1 visible canonical memory at that snapshot.
+
+Validation: **99 backend tests and 33 frontend tests pass**, with one optional
+paid-provider test skipped. Ruff and the production build pass. Checks include
+a populated-memory migration upgrade/downgrade/upgrade,
+isolated mobile memory review and task-time editing, budget UI checks, and visual
+inspection at 390 by 844. New voice lifecycle and Live-context behavior have
+automated tests; no new paid-provider voice trial was run in this batch. The
+remaining acceptance work is real phone wake/ending/interruption and locked
+notifications, an actual Windows reboot, an off-PC backup/key copy, older-hold
+reconciliation and the seven-day owner pilot. The current deployment is its
+baseline; historic synthetic records are not successful owner interactions.

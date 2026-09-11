@@ -300,7 +300,6 @@ def context_for_agent(db, owner):
     for review in pending_reviews(db, owner):
         if review.last_offered_at and review.last_offered_at > now() - timedelta(days=1):
             continue
-        review.last_offered_at = now()
         data = review_data(db, review)
         return (
             "\nA weekly memory review has one optional clarification. Finish the user's request first. "
@@ -323,6 +322,25 @@ def context_for_agent(db, owner):
     return ""
 
 
+def record_question(db, owner, text):
+    """Start the cooldown only when assistant text actually contains the clarification.
+    Transcript production does not establish that its audio was heard by the owner.
+    """
+    advisory(db, f"memory:{owner}")
+    tokens = set(words(text))
+    if "?" not in text and not ({"or", "which"} & tokens):
+        return
+    for review in pending_reviews(db, owner):
+        records = review_candidates(db, review)
+        a, b = [words(m.content) for m in records]
+        differences = [(x, y) for x, y in zip(a, b) if x != y]
+        if len(differences) == 1 and set(differences[0]) <= tokens:
+            # Do not extend the cooldown each time a cumulative transcript is saved.
+            if not review.last_offered_at or review.last_offered_at < now() - timedelta(days=1):
+                review.last_offered_at = now()
+            break
+
+
 def status(db, owner):
     prefs = preferences(db, owner)
     last = db.scalar(
@@ -336,11 +354,18 @@ def status(db, owner):
         .where(Job.owner_id == owner, Job.kind == KIND, Job.status.in_(["queued", "running", "retrying"]))
         .limit(1)
     )
+    latest = db.scalar(
+        select(Job).where(Job.owner_id == owner, Job.kind == KIND).order_by(Job.created_at.desc()).limit(1)
+    )
     _, next_at = period(prefs, now())
     return {
         "enabled": prefs["deep_sleep_enabled"] and prefs["memory_learning"],
         "last_run_at": last.finished_at.isoformat() if last else None,
         "next_run_at": next_at.isoformat(),
         "running": bool(pending),
+        "status": pending.status if pending else latest.status if latest else "idle",
+        "last_error": latest.result.get("error")
+        if latest and latest.status in {"failed", "retrying"} and latest.result
+        else None,
         "result": last.result if last else None,
     }

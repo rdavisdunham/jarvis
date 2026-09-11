@@ -54,6 +54,8 @@ class Task(Base):
     priority: Mapped[int] = mapped_column(Integer, default=0)
     project: Mapped[str | None] = mapped_column(String(200))
     due_date: Mapped[datetime | None] = mapped_column(Date)
+    due_time: Mapped[str | None] = mapped_column(String(14))
+    due_timezone: Mapped[str | None] = mapped_column(String(100))
     revision: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

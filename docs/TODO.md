@@ -114,7 +114,25 @@ the website do not drift apart. The checklists below define the work.
 
 ## Latest validation
 
-September 11: **76 backend tests and 18 frontend tests pass** (one optional
+September 11 hardening: **99 backend tests and 33 frontend tests pass** (one
+optional paid-provider test skipped). Ruff and the production build pass.
+Migration 0005_task_due_time is deployed; API, worker and
+PostgreSQL are healthy. Backend regression coverage includes bulk edits beyond the
+old caps, partial results, correction/cancellation races, stale memory reads,
+review failure/cooldown behavior, task-time/DST rules and budget deferral/resume.
+Frontend coverage includes standalone endings and microphone release for both
+providers. Mobile task-time editing and the budget display passed browser checks,
+alongside the existing memory-review flow. Screenshots were visually inspected.
+A current encrypted backup restored successfully with dispatch disabled.
+
+The live snapshot at 19:16 UTC has 1 visible canonical memory; older assertions
+remain as history/suppressed records. No test tasks or memories were written to the
+live owner in this batch. The physical-phone/reboot checks and seven-day owner
+pilot remain open. Use this deployment as the pilot baseline; do not count historic
+synthetic acceptance records as owner interactions.
+
+
+Earlier September 11 baseline: **76 backend tests and 18 frontend tests pass** (one optional
 paid-provider test is skipped in the normal suite). Ruff and the production build
 pass. Migration `0004_memory_review` preserved a populated memory during an
 isolated upgrade/downgrade/upgrade check. Mobile browser review/correction and
@@ -146,7 +164,7 @@ Owner-requested feature expansions are also recorded in the app's “Eridani
 roadmap” project. The code-review findings and release gates added here on
 September 11 are tracked in this document; they have not been copied into new
 app tasks. This order takes precedence over the older thematic lists below.
-This prioritization changes documentation only.
+The first hardening implementation batch is now deployed; remaining acceptance and expansion work stays open.
 
 ### Completed: current experience
 
@@ -164,46 +182,52 @@ Complete the following in order before larger feature or vector-index work.
 The first three code findings were confirmed by reading the current implementation;
 device acceptance items are outstanding checks, not claims of observed failures.
 
-- [ ] **Checkpoint the current deployed work before the next coding batch.**
-      Review the accumulated memory/UI/idle/name/weekly-review changes, record the
-      validation baseline and commit/push the checkpoint to main. The last pushed
-      checkpoint remains the one recorded under Git checkpoint below.
-- [ ] **Raise the multi-action allowance and explain limits.** GPT-Live reached
-      the current backend cap while editing several tasks. Investigate read,
-      mutation and model-round limits; use a generous configurable allowance,
-      budget protection, cancellation and truthful partial results. Record the
-      defaults so the owner can revisit the trade-off.
-- [ ] **End voice by speaking.** Standalone "goodbye," "thank you" or "that's all"
+- [x] **Checkpoint the current deployed work before the next coding batch.**
+      Committed and pushed the memory/UI/deep-sleep baseline to main as
+      b9d1a4cd63216790a473f1b94b7101ee93e205fa before changing app code.
+- [x] **Raise the multi-action allowance and explain limits.** Replaced four
+      calls with 100 tool calls and 30 planning rounds per request, configurable
+      through JARVIS_MAX_TOOL_CALLS_PER_REQUEST and
+      JARVIS_MAX_MODEL_ROUNDS_PER_REQUEST. Text/GPT-Live have one final summary
+      call after the planning allowance. Reads count toward the tool allowance.
+      Task reads paginate; limits preserve receipts and expose partial results.
+      Larger allowances trade more possible model work for fewer interrupted
+      batches; budget checks and explicit cancellation still apply.
+- [x] **End voice by speaking.** Standalone "goodbye," "thank you" or "that's all"
       should end voice, release the microphone and return to wake listening for
       "Hey, Eri" or "Eri." Exclude quoted phrases and thanks followed by another
       request. Preserve committed actions and make pending work status clear.
-- [ ] **Optional task due times.** Add a time and timezone with the due date in
+- [x] **Optional task due times.** Add a time and timezone with the due date in
       storage, tools, forms and displays. Preserve date-only tasks; a due time
       does not create a reminder. Validate timezone and date/time edits.
-- [ ] **Complete Eri's access to existing actions.** Expose the existing
+- [x] **Complete Eri's access to existing actions.** Expose the existing
       memory.correct, memory.forget, notification.read, notification.snooze and
       notification.dismiss commands through the shared model-tool registry.
       Preserve current owner checks, revisions, idempotency and truthful results.
       Cover text, Realtime and GPT-Live delegation through the same contract.
       PRD: T01 and the shared tool gateway.
-- [ ] **Prevent stale memory context.** Retrieval currently snapshots facts before
+- [x] **Prevent stale memory context.** Retrieval currently snapshots facts before
       awaiting the cloud query embedding. Recheck canonical source visibility,
       suppression and memory revisions after that await and before returning or
       injecting context. Test correction/deletion during a delayed lookup.
       PRD: M05 and section 11.4.
-- [ ] **Make weekly-review outcomes and follow-through reliable.** Distinguish
-      a question supplied to the model from one actually asked, then track answers
-      and deferrals without repeated nudges. The current cooldown starts when
-      context is prepared. Expose failed review jobs, their last successful run,
-      retry status and a clear retry action; current status omits terminal failures.
-      Keep spelling/identity decisions tied to explicit owner answers.
-- [ ] **Close cost-accounting gaps.** Reconcile older uncertain session holds only
-      where provider evidence supports it; expose unresolved amounts separately
-      from known spend. The newer Realtime close leak is already fixed.
-      Add the PRD's usage projections, 80% warning and 95% optional-work deferral,
-      and version the pricing assumptions used in estimates. Verify every enabled
-      paid path is included and that ordinary task/reminder operations still work
-      when model spending is paused. Do not raise the budget to hide held funds.
+- [x] **Weekly-review failure visibility and clarification cooldown.** Failed
+      reviews now show their state, last successful run and Retry review.
+      Preparing context no longer consumes the daily offer. The cooldown starts
+      when an assistant question contains the candidate spellings; transcript
+      production is not proof that audio was heard. Broader semantic follow-through
+      remains part of the later memory-quality work.
+- [x] **Cost visibility and optional-work controls.** Show active reservations,
+      uncertain holds, calendar-month spend and a pace-based projection separately.
+      Add the 80% warning, 95% optional-memory deferral and a version label on new
+      usage estimates. Deferred memory jobs resume durably when room returns.
+      Cancellation during initial retrieval releases the unused chat allowance;
+      cancelling an in-flight paid request keeps its outcome marked uncertain.
+- [ ] **Reconcile older holds and finish accounting validation.** September 11,
+      19:16 UTC snapshot: $2.551407 recorded estimated spend and $124.267111 held
+      for unconfirmed sessions. Do not treat held amounts as confirmed charges.
+      Retain them until provider evidence supports settlement. Complete the
+      provider-price/transcription accounting audit and seven-day comparison.
 - [ ] **Finish voice and site-control recovery acceptance.** Exercise both voice
       providers through long conversations/provider session endings, interruptions,
       a correction arriving during a pending action, close/reopen, network loss and
@@ -212,6 +236,10 @@ device acceptance items are outstanding checks, not claims of observed failures.
       browser action acknowledgments and recovery on the actual mobile device.
       Extend existing record editors/settings coverage after these paths are sound;
       search, filters, navigation and chat control already exist.
+- [x] **Restore the current encrypted backup in isolation.** Verified
+      jarvis-20260911T191619Z.pgdump.enc at migration 0005_task_due_time, including
+      tasks, schedules, notifications, memory reviews and the new time columns.
+      No worker or reminder dispatch ran against the restored database.
 - [ ] **Prove operational recovery and reminder delivery.** Test actual Windows
       reboot startup and locked-phone Web Push, including permission denial and
       opening the notification. Verify an encrypted backup of the current schema
@@ -241,10 +269,12 @@ be exercised during the pilot.
 - [x] **Retire the legacy Qdrant bridge.** Remove its active search adapter, UI,
       configuration, Compose service and backup mount. Old volumes/backups remain
       offline recovery artifacts; the running app does not read them.
-- [ ] **Quiet memory updates during GPT-Live.** Feed relevant retrieved facts
+- [x] **Quiet memory updates during GPT-Live.** Feed relevant retrieved facts
       through session.thinking.append while speech continues, with debouncing,
       small payloads, freshness/deletion checks and cancellation on close.
-      The API supports this; current app retrieval remains startup + delegation.
+      Implemented with a one-second debounce, bounded factual payloads, revision
+      checks and append acknowledgments. New protocol/lifecycle tests pass; the
+      owner's real-provider pilot still needs to assess the resulting conversation.
       An append acknowledgment is estimated context delivery, not a guarantee
       that the end of the current response or the next words use the entire update.
 
@@ -413,8 +443,9 @@ The remote previously used `master`; `main` was created at the owner's request.
 Before this batch, caption/recovery, GPT-Live, daily-use polish and the roadmap
 were committed and pushed to `origin/main` as
 `404c230ddd9b7dae48fab4c78d6a5c2e87ea3707`. Remote equality was verified before
-new edits. The memory/UI/idle/name batch and subsequent weekly memory-review work remain
-uncommitted after that requested checkpoint.
+new edits. The memory/UI/idle/name and weekly-review work was subsequently
+committed and pushed to main as b9d1a4cd63216790a473f1b94b7101ee93e205fa before
+this hardening batch. The following source commit records the hardening work.
 
 ## Maintenance rule
 

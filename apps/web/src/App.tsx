@@ -115,6 +115,7 @@ export default function App() {
     enabled: true,
     pending: 0,
     retrying: 0,
+    deferred: 0,
   });
   const [memoryRevision, setMemoryRevision] = useState(0);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
@@ -754,6 +755,7 @@ export default function App() {
       (a, b) =>
         b.priority - a.priority ||
         (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") ||
+        (a.due_time ?? "99:99").localeCompare(b.due_time ?? "99:99") ||
         b.created_at.localeCompare(a.created_at),
     );
   const active = filtered.filter(
@@ -1309,7 +1311,7 @@ export default function App() {
                     ? " · Learning from " +
                       memoryStatus.pending +
                       " saved messages…"
-                    : " · Up to date"}
+                    : memoryStatus.deferred > 0 ? " · Paused near the model budget; resumes when room is available" : memoryStatus.retrying > 0 ? "" : " · Up to date"}
                   {memoryStatus.retrying > 0
                     ? " · Some memories need a retry"
                     : ""}
@@ -1336,7 +1338,11 @@ export default function App() {
                 <div className="memory-maintenance">
                   <p className="subtle">
                     {maintenance?.enabled
-                      ? maintenance.running
+                      ? maintenance.status === "failed"
+                        ? "Deep sleep could not finish. Your memories are unchanged; retry the review."
+                        : maintenance.status === "retrying"
+                          ? "Deep sleep hit a problem and is waiting to retry."
+                          : maintenance.running
                         ? "Deep sleep is reviewing memories…"
                         : "Weekly deep sleep · Next review " +
                           new Date(maintenance.next_run_at).toLocaleString([], {
@@ -1353,7 +1359,10 @@ export default function App() {
                         setToast("Memory review queued");
                         setMemoryRevision((v) => v + 1);
                       } catch (e) { setError((e as Error).message); }
-                    }}>Review now</button>
+                    }}>{maintenance?.status === "failed" ? "Retry review" : "Review now"}</button>
+                  {maintenance?.last_run_at && <p className="footnote">
+                    Last successful review: {new Date(maintenance.last_run_at).toLocaleString([], { timeZone: boot.preferences.timezone })}
+                  </p>}
                 </div>
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard key={review.id} review={review} busy={busy}
@@ -1861,6 +1870,7 @@ export default function App() {
       )}
       {selected && (
         <TaskDialog
+          timezone={boot.preferences.timezone}
           task={selected}
           busy={busy}
           onClose={() => setSelected(null)}
@@ -1921,6 +1931,7 @@ function voiceLabel(state: string) {
         unresolved: "Ready for your next words",
         disconnected: "Voice disconnected",
         closed: "Voice ended",
+        ended: "Voice ended · Say Hey Eri when you need me",
         idle_timeout: "Voice ended after 15 quiet seconds",
       } as Record<string, string>
     )[state] ?? "Voice is on"

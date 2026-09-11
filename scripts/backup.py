@@ -1,15 +1,16 @@
 """Encrypted PostgreSQL backup and isolated restore. Never restore over an existing database."""
+
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import signal
 import subprocess
 import tempfile
 import threading
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from cryptography.fernet import Fernet
 
@@ -25,8 +26,19 @@ def cipher():
 
 
 def counts(database):
-    names = ["tasks", "schedules", "notifications", "sources", "memory_assertions", "commands"]
-    return {name: int(pg("psql", "-XAt", "-d", database, "-c", f"SELECT count(*) FROM {name}").strip()) for name in names}
+    names = [
+        "tasks",
+        "schedules",
+        "notifications",
+        "sources",
+        "memory_assertions",
+        "memory_reviews",
+        "commands",
+    ]
+    return {
+        name: int(pg("psql", "-XAt", "-d", database, "-c", f"SELECT count(*) FROM {name}").strip())
+        for name in names
+    }
 
 
 def backup():
@@ -36,7 +48,7 @@ def backup():
     dump = pg("pg_dump", "--format=custom", "--no-owner", "--no-acl", "-d", database)
     # Authenticate the whole snapshot. Keys and provider secrets are never part of the dump.
     encoded = cipher().encrypt(dump)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = destination / f"jarvis-{stamp}.pgdump.enc"
     temporary = target.with_suffix(".tmp")
     temporary.write_bytes(encoded)
@@ -44,14 +56,29 @@ def backup():
     with temporary.open("rb") as stream:
         os.fsync(stream.fileno())
     temporary.replace(target)
-    manifest = {"created_at": stamp, "sha256": hashlib.sha256(encoded).hexdigest(), "bytes": len(encoded), "format": 1}
+    manifest = {
+        "created_at": stamp,
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+        "bytes": len(encoded),
+        "format": 1,
+    }
     target.with_suffix(".json").write_text(json.dumps(manifest, indent=2) + "\n")
-    pg("psql", "-XAt", "-d", database, "-c", "INSERT INTO worker_health (id,last_scan_at) VALUES ('backup',now()) ON CONFLICT (id) DO UPDATE SET last_scan_at=now()")
+    pg(
+        "psql",
+        "-XAt",
+        "-d",
+        database,
+        "-c",
+        "INSERT INTO worker_health (id,last_scan_at) VALUES ('backup',now()) ON CONFLICT (id) DO UPDATE SET last_scan_at=now()",
+    )
     print(json.dumps({"backup": target.name, "bytes": len(encoded)}), flush=True)
     # Prune only our exact timestamped filenames, after a successful new snapshot.
-    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff = datetime.now(UTC) - timedelta(days=30)
     for old in destination.glob("jarvis-*.pgdump.enc"):
-        if re.fullmatch(r"jarvis-\d{8}T\d{6}Z\.pgdump\.enc", old.name) and datetime.fromtimestamp(old.stat().st_mtime, timezone.utc) < cutoff:
+        if (
+            re.fullmatch(r"jarvis-\d{8}T\d{6}Z\.pgdump\.enc", old.name)
+            and datetime.fromtimestamp(old.stat().st_mtime, UTC) < cutoff
+        ):
             old.unlink()
             old.with_suffix(".json").unlink(missing_ok=True)
     return target
@@ -68,8 +95,13 @@ def restore(path, target):
         subprocess.run(["pg_restore", "--list"], stdin=dump, check=True, stdout=subprocess.DEVNULL)
         dump.seek(0)
         pg("createdb", target)
-        subprocess.run(["pg_restore", "--exit-on-error", "--no-owner", "--no-acl", "-d", target], stdin=dump, check=True)
-    print(json.dumps({"restored_database": target, "counts": counts(target), "workers_started": False}), flush=True)
+        subprocess.run(
+            ["pg_restore", "--exit-on-error", "--no-owner", "--no-acl", "-d", target], stdin=dump, check=True
+        )
+    print(
+        json.dumps({"restored_database": target, "counts": counts(target), "workers_started": False}),
+        flush=True,
+    )
 
 
 def main():
