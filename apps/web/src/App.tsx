@@ -36,6 +36,9 @@ import {
   blankNote,
   type NoteRecord,
 } from "./Notes";
+import { GoogleSettings, startGoogle } from "./GoogleSettings";
+import { GoogleEventDialog } from "./GoogleEventDialog";
+import type { CalendarEntry } from "./types";
 import { BulkTaskDialog } from "./BulkTaskDialog";
 import { Workspace } from "./Workspace";
 import { ScheduleDialog } from "./ScheduleDialog";
@@ -83,11 +86,15 @@ export default function App() {
   const [view, setView] = useState<View>(
     new URLSearchParams(location.search).get("view") === "notifications"
       ? "notifications"
-      : "today",
+      : new URLSearchParams(location.search).get("view") === "settings"
+        ? "settings"
+        : "today",
   );
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
+  const [googleLogin, setGoogleLogin] = useState(false);
+  const [googleEvent, setGoogleEvent] = useState<CalendarEntry | null>(null);
   const [noteEditor, setNoteEditor] = useState<NoteRecord | null>(null);
   const [noteRevision, setNoteRevision] = useState(0);
   const [noteVisible, setNoteVisible] = useState<string[]>([]);
@@ -177,6 +184,29 @@ export default function App() {
   const pendingCommands = useRef(
     new Map<string, ReturnType<typeof command<unknown>>>(),
   );
+  useEffect(() => {
+    if (!boot)
+      api<{ google: boolean }>("/auth/options")
+        .then((d) => setGoogleLogin(d.google))
+        .catch(() => {});
+  }, [!!boot]);
+  useEffect(() => {
+    const result = new URLSearchParams(location.search).get("google");
+    if (!result) return;
+    history.replaceState({}, "", location.pathname + "?view=settings");
+    if (result === "connected") setToast("Google account connected");
+    else
+      setError(
+        (
+          {
+            cancelled: "Google connection cancelled.",
+            permission: "Calendar permission was not granted.",
+            account: "Use the Google account already linked to Eri.",
+          } as Record<string, string>
+        )[result] ??
+          "Google sign-in could not finish. Start again from Settings.",
+      );
+  }, []);
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
@@ -317,6 +347,7 @@ export default function App() {
         setReminder(false);
         setScheduleEditor(null);
         setNoteEditor(null);
+        setGoogleEvent(null);
         setBulkEditor(null);
         setSidebar(false);
         setCompanion(false);
@@ -543,6 +574,7 @@ export default function App() {
       scheduleEditor ||
       editingMemory ||
       noteEditor ||
+      googleEvent ||
       bulkEditor
     )
       throw new Error(
@@ -571,6 +603,9 @@ export default function App() {
         new Date(day + "T12:00:00Z").toISOString().slice(0, 10) !== day
       )
         throw new Error("Choose a valid calendar date.");
+      if (action.entity_id)
+        await api("/calendar/events/" + encodeURIComponent(action.entity_id));
+      setHighlight(action.entity_id ?? null);
       setCalendarDay(day);
       setView("calendar");
       setQuery("");
@@ -667,7 +702,7 @@ export default function App() {
     return () => clearInterval(timer);
   }, [!!boot]);
   useEffect(() => {
-    if (!highlight || view !== "reminders") return;
+    if (!highlight || !["reminders", "calendar"].includes(view)) return;
     const timer = setTimeout(() => {
       const target = document.getElementById("record-" + highlight);
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -973,6 +1008,7 @@ export default function App() {
     selected_task_ids: selectedTaskIds
       .filter((id) => tasks.some((t) => t.id === id))
       .slice(0, 100),
+    selected_calendar_event_id: googleEvent?.entity_id ?? null,
     selected_note_id:
       noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
@@ -1040,6 +1076,25 @@ export default function App() {
             <br />
             Pair this device to get started.
           </p>
+          {googleLogin && (
+            <button
+              type="button"
+              className="google-signin"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  await startGoogle("login");
+                } catch (e) {
+                  setError((e as Error).message);
+                  setBusy(false);
+                }
+              }}
+            >
+              <img src="/google-sign-in.png" alt="Sign in with Google" />
+            </button>
+          )}
           <label>
             Pairing code
             <input
@@ -1315,7 +1370,11 @@ export default function App() {
                         setWorkKind(e.target.value as typeof workKind)
                       }
                     >
-                      <option value="all">Tasks & reminders</option>
+                      <option value="all">
+                        {view === "calendar"
+                          ? "All items"
+                          : "Tasks & reminders"}
+                      </option>
                       <option value="task">Tasks</option>
                       <option value="reminder">Reminders</option>
                     </select>
@@ -1326,6 +1385,7 @@ export default function App() {
             {["all", "calendar", "reminders"].includes(view) && (
               <>
                 <Workspace
+                  onGoogleEvent={setGoogleEvent}
                   calendar={view === "calendar"}
                   day={calendarDay || today}
                   onDay={setCalendarDay}
@@ -1887,6 +1947,11 @@ export default function App() {
                     </span>
                   </div>
                 </section>
+                <GoogleSettings
+                  revision={noteRevision}
+                  voiceActive={!!voiceState && !voiceState.closed}
+                  mutate={mutate}
+                />
                 <SettingsPanel
                   boot={boot}
                   busy={busy}
@@ -2256,6 +2321,16 @@ export default function App() {
               "Task archived",
             );
             if (result) setSelected(null);
+          }}
+        />
+      )}
+      {googleEvent && (
+        <GoogleEventDialog
+          event={googleEvent}
+          timezone={boot.preferences.timezone}
+          onClose={() => {
+            setGoogleEvent(null);
+            setError("");
           }}
         />
       )}

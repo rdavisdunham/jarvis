@@ -121,7 +121,20 @@ def calendar(db, owner, start: date, end: date, timezone: str):
             add(schedule.anchor_at, schedule.status, False)
         if truncated:
             break
-    truncated = truncated or len(events) > 2000
+    from .google_calendar import connection_status
+    from .google_projection import project
+
+    google_events, incomplete = project(db, owner, start, end, timezone)
+    # A deadline is an instant, not an assumed-duration booking.
+    for event in events:
+        if event["kind"] == "task" and event["at"]:
+            at = datetime.fromisoformat(event["at"])
+            event["conflicts"] = list(dict.fromkeys(
+                g["title"] for g in google_events if g["busy"]
+                and datetime.fromisoformat(g["busy_start"]) <= at < datetime.fromisoformat(g["end_at"])
+            ))
+    events.extend(google_events)
+    truncated = truncated or incomplete or len(events) > 2000
     events.sort(key=lambda e: (e["date"], e["at"] or "", e["title"], e["id"]))
     return {
         "items": events[:2000],
@@ -129,4 +142,5 @@ def calendar(db, owner, start: date, end: date, timezone: str):
         "end": end.isoformat(),
         "timezone": timezone,
         "truncated": truncated,
+        "google": connection_status(db, owner),
     }

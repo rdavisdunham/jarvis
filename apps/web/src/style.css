@@ -2574,3 +2574,179 @@ progress::-webkit-progress-value {
     padding: 20px;
   }
 }
+
+.google-settings {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.google-settings h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.google-settings > p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.integration-hint {
+  padding: 14px 16px;
+  background: var(--surface-raised, #202b2c);
+  border-radius: 10px;
+}
+.connection-label,
+.external-link,
+.calendar-sync-row,
+.calendar-sync-row button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.connection-label {
+  color: var(--accent);
+  font-size: 13px;
+}
+.calendar-sync-row {
+  justify-content: space-between;
+  font-size: 12px;
+  margin: 16px 0;
+  color: var(--muted);
+}
+.google-calendar-choices input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.google-settings > .external-link {
+  margin-top: 20px;
+  width: fit-content;
+}
+.disconnect-confirm {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.google-signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #f2f2f2;
+  color: #1f1f1f;
+  width: 100%;
+  border: 1px solid #747775;
+  border-radius: 6px;
+  min-height: 44px;
+  margin-bottom: 18px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.google-signin > span {
+  font-size: 20px;
+  font-weight: 700;
+}
+.calendar-chip.google {
+  background: #253446;
+  color: #b9d4ff;
+}
+.calendar-dots .google {
+  background: #95bcf3;
+}
+.agenda-kind.google {
+  color: #a8c9f7;
+}
+.availability-panel {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 8px 0 18px;
+}
+.availability-panel summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.availability-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0;
+}
+.availability-controls label {
+  min-width: 110px;
+  flex: 1;
+}
+.availability-controls input,
+.availability-controls select {
+  width: 100%;
+  margin-top: 8px;
+}
+.available-times {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0;
+  list-style: none;
+}
+.available-times li {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+@media (max-width: 600px) {
+  .google-settings {
+    padding: 18px;
+  }
+  .google-settings .setting-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .google-settings .setting-row > span {
+    min-width: 0;
+  }
+  .calendar-sync-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .availability-controls {
+    align-items: stretch;
+  }
+  .availability-controls > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Pre-approved Google Identity button; keep the source image's aspect ratio and branding. */
+.google-signin {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.google-signin img {
+  display: block;
+  width: auto;
+  height: 40px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.google-signin:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.google-settings > .text-button.danger {
+  display: block;
+  min-height: 40px;
+  padding: 8px 0;
+}
+.disconnect-confirm > button + button {
+  margin-left: 12px;
+}

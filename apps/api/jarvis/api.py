@@ -22,6 +22,7 @@ from .config import get_settings
 from .conversation import chat
 from .db import session_scope
 from .domain import DomainError, execute, owned, preferences, serial
+from .google_routes import router as google_router
 from .memory_service import semantic_search
 from .models import (
     AuthSession,
@@ -57,6 +58,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
+app.include_router(google_router)
 User = Annotated[Identity, Depends(authenticate)]
 login_attempts = defaultdict(deque)
 

@@ -51,6 +51,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind == "google_sync":
+        from .google_calendar import process
+
+        return process(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -89,7 +93,9 @@ def dispatch_outbox(client):
             client.enqueue(
                 {
                     "workflow_name": "jarvis_job_v1",
-                    "queue_name": "jarvis-memory"
+                    "queue_name": "jarvis-google"
+                    if db.get(Job, row.job_id).kind == "google_sync"
+                    else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
                     in {"extract_memory", "embed_memory", "review_memory", "embed_note"}
                     else "jarvis",
@@ -266,6 +272,7 @@ def main():
     )
     Queue("jarvis", concurrency=1, worker_concurrency=1)
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
+    Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     DBOS.launch()
     client = DBOSClient(system_database_url=settings.database_url)
     running = True
@@ -287,6 +294,9 @@ def main():
                 from .memory_review import queue_due_reviews
 
                 queue_due_reviews(db)
+                from .google_calendar import queue_sync
+
+                queue_sync(db, settings.owner_id)
                 health = db.get(WorkerHealth, "worker")
                 if health:
                     health.last_scan_at = now()

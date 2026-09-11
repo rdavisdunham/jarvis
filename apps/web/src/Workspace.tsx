@@ -8,6 +8,8 @@ import {
   Repeat2,
   Check,
 } from "lucide-react";
+import { Availability } from "./Availability";
+import type { GoogleStatus } from "./GoogleSettings";
 import { api } from "./api";
 import { TaskRow, timeLabel } from "./components";
 import {
@@ -20,6 +22,7 @@ import {
 import type { Task, Schedule, Notice, Project, CalendarEntry } from "./types";
 
 type Props = {
+  onGoogleEvent: (event: CalendarEntry) => void;
   selecting: boolean;
   selectedIds: string[];
   onSelecting: (value: boolean) => void;
@@ -52,6 +55,7 @@ export function Workspace(p: Props) {
   const [calendarData, setCalendarData] = useState<{
     items: CalendarEntry[];
     truncated: boolean;
+    google?: GoogleStatus;
   } | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -65,7 +69,7 @@ export function Workspace(p: Props) {
     let current = true;
     setCalendarData(null);
     setError("");
-    api<{ items: CalendarEntry[]; truncated: boolean }>(
+    api<{ items: CalendarEntry[]; truncated: boolean; google?: GoogleStatus }>(
       "/calendar?start=" +
         from +
         "&end=" +
@@ -136,7 +140,9 @@ export function Workspace(p: Props) {
     (e) =>
       matchesStatus(e.status, p.status) &&
       (p.kind === "all" ||
-        (p.kind === "task" ? e.kind === "task" : e.kind !== "task")) &&
+        (p.kind === "task"
+          ? e.kind === "task"
+          : e.kind === "reminder" || e.kind === "routine")) &&
       (!p.project || e.project_id === selectedProject) &&
       (!query || e.title.toLocaleLowerCase().includes(query)),
   );
@@ -153,6 +159,10 @@ export function Workspace(p: Props) {
   );
   const agenda = events.filter((e) => e.date === p.day);
   const openEntry = (e: CalendarEntry) => {
+    if (e.kind === "google") {
+      p.onGoogleEvent(e);
+      return;
+    }
     if (e.kind === "task") {
       const task = p.tasks.find((t) => t.id === e.entity_id);
       if (task) p.onTask(task);
@@ -232,7 +242,7 @@ export function Workspace(p: Props) {
       <div className="workspace-actions">
         <div className="record-tabs">
           <span className="footnote">
-            {p.calendar ? "Deadlines & reminders" : "Tasks & reminders"}
+            {p.calendar ? "Your calendar" : "Tasks & reminders"}
           </span>
         </div>
         <div className="workspace-add">
@@ -323,6 +333,21 @@ export function Workspace(p: Props) {
           <p className="footnote calendar-zone">
             {p.zone} · Dates without a time stay all-day.
           </p>
+          {calendarData?.google?.calendar_enabled && (
+            <p className="footnote calendar-sync-row" role="status">
+              {calendarData.google.syncing
+                ? "Google calendars are syncing…"
+                : calendarData.google.status === "needs_reconnect"
+                  ? "Reconnect Google Calendar in Settings."
+                  : calendarData.google.stale ||
+                      calendarData.google.status === "error"
+                    ? "Google events may be out of date. Check the connection in Settings."
+                    : "Google synced " +
+                      new Date(
+                        calendarData.google.last_sync_at!,
+                      ).toLocaleString()}
+            </p>
+          )}
           {error && (
             <p className="error-banner" role="alert">
               {error}{" "}
@@ -416,8 +441,8 @@ export function Workspace(p: Props) {
           </div>
           {calendarData?.truncated && (
             <p role="status">
-              This month has more items than can be displayed. Narrow the date
-              range with Eri.
+              Some items could not be shown. Try a shorter range with Eri, or
+              check Google Calendar for the complete schedule.
             </p>
           )}
           <div className="section-head agenda-heading">
@@ -431,13 +456,22 @@ export function Workspace(p: Props) {
               <span>{agenda.length}</span>
             </h2>
           </div>
+          <Availability
+            key={p.day + ":" + p.zone}
+            day={p.day}
+            timezone={p.zone}
+            enabled={!!calendarData?.google?.calendar_enabled}
+          />
           <div className="calendar-agenda">
             {agenda.map((e) => (
               <button
                 key={e.id}
                 className={
-                  "agenda-row " + (e.status === "completed" ? "done" : "")
+                  "agenda-row " +
+                  (e.status === "completed" ? "done" : "") +
+                  (p.highlight === e.entity_id ? " record-highlight" : "")
                 }
+                id={"record-" + e.entity_id}
                 onClick={() => openEntry(e)}
               >
                 <span className={"agenda-kind " + e.kind}>
@@ -461,12 +495,16 @@ export function Workspace(p: Props) {
                 <span className="grow">
                   <strong>{e.title}</strong>
                   <small>
-                    {e.kind === "task"
-                      ? "Task deadline"
-                      : e.kind === "routine"
-                        ? "Repeating task"
-                        : "Reminder"}
-                    {e.projected ? " · Upcoming" : ""}
+                    {e.kind === "google"
+                      ? e.calendar_title + " · Google"
+                      : e.kind === "task"
+                        ? "Task deadline"
+                        : e.kind === "routine"
+                          ? "Repeating task"
+                          : "Reminder"}
+                    {e.projected && e.kind !== "google" ? " · Upcoming" : ""}
+                    {!!e.conflicts?.length &&
+                      " · Deadline during " + e.conflicts.join(", ")}
                     {e.status === "completed" ? " · Completed" : ""}
                     {e.task_id && e.kind !== "task" ? " · Linked to task" : ""}
                   </small>

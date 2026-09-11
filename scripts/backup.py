@@ -29,6 +29,9 @@ def counts(database):
     names = [
         "tasks",
         "projects",
+        "google_identities",
+        "google_calendars",
+        "google_calendar_events",
         "notes",
         "note_task_links",
         "note_embeddings",
@@ -55,7 +58,7 @@ def backup():
     destination.mkdir(parents=True, exist_ok=True)
     database = os.environ.get("PGDATABASE", "jarvis")
     dump = pg("pg_dump", "--format=custom", "--no-owner", "--no-acl", "-d", database)
-    # Authenticate the whole snapshot. Keys and provider secrets are never part of the dump.
+    # Authenticate the whole snapshot. Integration tokens are already encrypted; keys stay outside the dump.
     encoded = cipher().encrypt(dump)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     target = destination / f"jarvis-{stamp}.pgdump.enc"

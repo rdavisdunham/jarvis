@@ -35,6 +35,7 @@ class AuthSession(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     device_id: Mapped[str] = mapped_column(String(36))
     csrf: Mapped[str] = mapped_column(String(64))
+    auth_method: Mapped[str] = mapped_column(String(20), default="pairing")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -324,3 +325,56 @@ class TaskReference(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     touched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GoogleIdentity(Base):
+    __tablename__ = "google_identities"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(255), unique=True)
+    email: Mapped[str] = mapped_column(String(320))
+    credentials: Mapped[str | None] = mapped_column(Text)
+    calendar_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    generation: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(30), default="not_connected")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str] = mapped_column(String(100), default="")
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class GoogleOAuthAttempt(Base):
+    __tablename__ = "google_oauth_attempts"
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    browser_hash: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(20))
+    account_subject: Mapped[str | None] = mapped_column(String(255))
+    account_generation: Mapped[int | None] = mapped_column(Integer)
+    session_hash: Mapped[str | None] = mapped_column(String(64))
+    nonce: Mapped[str] = mapped_column(String(100))
+    verifier: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class GoogleCalendar(Base):
+    __tablename__ = "google_calendars"
+    __table_args__ = (UniqueConstraint("owner_id", "provider_id", name="uq_google_calendar"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("google_identities.owner_id"), index=True)
+    provider_id: Mapped[str] = mapped_column(String(1024))
+    title: Mapped[str] = mapped_column(String(500))
+    timezone: Mapped[str] = mapped_column(String(100), default="UTC")
+    selected: Mapped[bool] = mapped_column(Boolean, default=False)
+    available: Mapped[bool] = mapped_column(Boolean, default=True)
+    primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    sync_token: Mapped[str | None] = mapped_column(Text)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GoogleCalendarEvent(Base):
+    __tablename__ = "google_calendar_events"
+    __table_args__ = (UniqueConstraint("calendar_id", "provider_id", name="uq_google_event"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    calendar_id: Mapped[str] = mapped_column(ForeignKey("google_calendars.id"), index=True)
+    provider_id: Mapped[str] = mapped_column(String(1024))
+    payload: Mapped[dict] = mapped_column(JSONB)

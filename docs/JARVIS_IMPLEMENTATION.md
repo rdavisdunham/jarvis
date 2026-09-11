@@ -29,7 +29,7 @@ Google account sign-in already requested by the owner.
 - Repeated routines create independent task occurrences. Completing one occurrence does not cancel the series. Independent recurring reminders also remain independent of task completion.
 - History and conservative memory learning start enabled. Private sessions do not retain transcripts. Explicitly requested tasks and saved memories still persist. Jarvis does not record raw audio.
 - The default voice candidate is GPT-Realtime-2.1. The server controls response creation, silence, waiting, interruption and tool execution. Audible confirmations are requested only after commands commit.
-- The model budget starts at $150/month and is editable in Settings. Each paid continuation reserves capacity before execution; uncertain provider outcomes retain their reservation.
+- Internal cost recording and budget enforcement are disabled during development. The owner monitors OpenAI Usage. The optional accounting system retains its historical ledger and reservations; reconcile those before re-enabling it.
 - Canonical facts and embeddings live in PostgreSQL and link to retained sources. The legacy Qdrant bridge was retired at the owner's request on September 11; the planned later vector index is pgvector/HNSW.
 
 ## What is implemented
@@ -747,3 +747,89 @@ isolated database at schema 0007. Verified 46 tasks, 2 projects, 8 schedules,
 2 notifications, 182 sources, 7 memory assertions, 1 memory review and 140 command
 receipts, plus all four new notes/context tables (empty in the owner's live data).
 No worker was started on the restore; its temporary database was removed.
+
+
+## Google sign-in and read-only Calendar — September 11
+
+Migration 0008_google_calendar adds google_identities, google_oauth_attempts,
+google_calendars and google_calendar_events, plus auth_sessions.auth_method.
+Google is optional: pairing works while the client credentials are absent.
+[GOOGLE_SETUP.md](GOOGLE_SETUP.md) contains the exact callback and setup steps.
+
+FastAPI owns OAuth authorization-code exchange using google-auth-oauthlib and
+ID-token verification using google-auth. Linking starts from a current owner session
+with CSRF protection. Login requires the previously linked stable Google subject;
+an unpaired visitor cannot claim the account. A one-use state, browser cookie,
+PKCE verifier and nonce bind each redirect. Signature, issuer, audience, expiry,
+nonce and verified email are checked. Callback access logs omit query parameters.
+Google sessions use the existing Secure, HTTP-only session cookies. No JWT or
+refresh token is exposed to frontend code.
+
+Identity/email and Calendar consent are separate. Calendar uses calendar.readonly
+and an offline refresh token encrypted with Fernet in PostgreSQL. The key is generated
+in ignored .env.upgrade, with a local .runtime/integration-key recovery copy. Neither
+the key nor client credentials are committed. JSON exports omit integration secrets.
+Encrypted database backups retain the encrypted credentials. Disconnect removes
+cached events and attempts provider revocation; unlink additionally invalidates Google
+sessions. Existing pairing sessions remain usable. Changing credentials or losing the
+encryption key requires reconnecting Calendar.
+
+The existing durable DBOS worker polls selected calendars, normally every five
+minutes. CalendarList and Events pagination complete before events and sync cursors
+commit together. An invalid sync token (HTTP 410) triggers a fresh snapshot. Deleted
+events, removed calendars and inaccessible sources are handled. Generation checks
+discard work completed after disconnect or selection changes; stale pending jobs
+recover after fifteen minutes. Expired refresh grants require reconnection.
+Source metadata defaults to the primary calendar only; additional sources are opt-in.
+
+The month/day workspace overlays read-only events on tasks and reminders. Date-only
+Google events stay all-day; supported recurrence includes daily/weekly/monthly/yearly
+rules, exceptions, moved instances and DST. Projection is bounded to 2,000 entries
+per series/output; sub-daily rules are marked incomplete. Initial sync is bounded to
+2,500 calendars and 50,000 events per calendar. A collection beyond those limits
+requires a later narrower/indexed sync design. A truncated view says it is incomplete.
+
+Availability queries use Google's current freeBusy endpoint for selected calendars,
+up to a seven-day window and fifty sources. They merge overlaps and return free
+intervals only when every requested calendar succeeds and the connection remains
+current. Cached events are labelled with their sync time. Task deadlines/reminders
+do not reserve time; a timed deadline inside a cached busy event gets a conflict hint.
+This batch cannot create, move or delete Google events.
+
+Eri uses calendar_connection, calendar_sync, calendar_availability, calendar_list and
+revisioned calendar.select through the current agent runtime. CopilotKit can navigate
+to a selected event and highlight it. The selected event is part of the app context;
+open editors block navigation. Google consent remains a user action in Settings.
+
+Synthetic tests cover OAuth state/replay/identity/scope enforcement, encryption,
+disconnect races, refresh recovery, pagination, sync reset, atomic failures,
+recurrence/DST, free/busy errors and ownership. Browser acceptance uses a disposable
+database and synthetic Google responses to exercise redirects, source selection,
+availability, event details/highlights, desktop/mobile layouts, disconnect/reconnect
+and unlink. Signed-JWT tests run through Google's verifier. These checks do not
+prove the owner's real Cloud project or consent grant is configured.
+
+The browser automation helper failed to launch twice while opening Google Console;
+no Google client or real grant was created. The two client credential slots in .env
+remain empty. Real account linking, first sync and second-device sign-in are open.
+The broad physical-device/voice round and seven-day pilot remain deferred.
+
+
+Validation/deployment: 157 backend tests and 71 frontend tests pass; one optional
+paid-provider test remains skipped. TypeScript/Vite, scoped Ruff, migration
+round-trip, isolated browser acceptance and visual desktop/mobile review pass.
+No real Google requests or paid voice acceptance were run for this batch.
+
+Pre-deploy encrypted snapshot: jarvis-20260911T230811Z.pgdump.enc. Deployed at
+approximately 23:12 UTC with healthy API/worker/PostgreSQL, schema 0008_google_calendar
+and HTTPS bundle index-uUPdYU9g.js. Live authenticated checks verified working pairing,
+the unconfigured Google state, and disabled cost tracking. All 322 historical
+reservations and 560 usage events matched the pre-deploy content digest.
+The temporary smoke-login session was removed.
+
+Post-deploy encrypted backup jarvis-20260911T231255Z.pgdump.enc restored in an isolated
+database: 46 tasks, 2 projects, 8 schedules, 2 notifications, 182 sources, 7 memory
+assertions, 1 memory review and 140 receipts. Notes/context and Google tables exist
+and are currently empty. The restore started no worker and its temporary database
+was removed. This proves schema/data recovery; encrypted real Google credential
+recovery still requires a real connected account.

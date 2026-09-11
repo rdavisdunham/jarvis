@@ -41,16 +41,24 @@ def sign_in(token):
     settings = get_settings()
     if not settings.owner_token or not secrets.compare_digest(token, settings.owner_token):
         raise DomainError("NOT_AUTHORIZED", "That pairing code is not valid.", 401)
+    return new_session(settings.owner_id)
+
+
+def new_session(owner, method="pairing", *, db=None):
+    settings = get_settings()
     session_token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    with session_scope() as db:
-        db.execute(delete(AuthSession).where(AuthSession.expires_at < now()))
-        db.add(
-            AuthSession(
-                token_hash=digest(session_token),
-                owner_id=settings.owner_id,
-                device_id=uid(),
-                csrf=csrf,
-                expires_at=now() + timedelta(hours=settings.session_hours),
-            )
+    if db is None:
+        with session_scope() as session:
+            return new_session(owner, method, db=session)
+    db.execute(delete(AuthSession).where(AuthSession.expires_at < now()))
+    db.add(
+        AuthSession(
+            token_hash=digest(session_token),
+            owner_id=owner,
+            device_id=uid(),
+            csrf=csrf,
+            auth_method=method,
+            expires_at=now() + timedelta(hours=settings.session_hours),
         )
+    )
     return session_token, csrf

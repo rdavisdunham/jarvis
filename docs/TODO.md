@@ -3,7 +3,31 @@
 Updated September 11, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: development mode, contextual tasks and notes — deployed
+## Current batch: Google sign-in and Calendar — deployed; account setup pending
+
+- [x] Owner-only Google sign-in, linked from an existing authenticated session.
+      PIN pairing stays available for recovery. Separate read-only Calendar consent.
+- [x] Encrypted refresh credentials, selected calendars, durable incremental sync,
+      deleted-event handling, expired-token recovery and disconnect/unlink controls.
+- [x] Google events alongside task deadlines/reminders, recurring-event projection,
+      source details/highlighting and current free/busy availability for Eri and UI.
+- [x] Isolated browser acceptance for consent redirects, reconnect, source selection,
+      mobile layouts and CopilotKit event navigation. Existing notes and sessions
+      survive the schema 0007 → 0008 → 0007 → 0008 migration round-trip.
+- [x] Deployed schema 0008; API/worker/PostgreSQL healthy and HTTPS bundle verified.
+      157 backend and 71 frontend tests pass; isolated browser/migration checks pass.
+      Encrypted backup jarvis-20260911T231255Z.pgdump.enc restored successfully.
+      Existing records and the full historical cost ledger are unchanged.
+- [ ] Configure the real Google Cloud web OAuth client, then link the owner's account,
+      grant Calendar access and verify the first real sync and Google sign-in.
+      See [GOOGLE_SETUP.md](GOOGLE_SETUP.md). Credential slots are ready in ignored
+      .env; browser automation could not start, so Console setup remains open.
+- [ ] Next: smarter notifications (priority, snooze controls and bundling), then
+      authenticated scoped API/MCP access for external bots.
+- [ ] Real-use voice recovery, device/operations checks and the seven-day pilot stay
+      after expansion. Internal cost tracking stays disabled during development.
+
+## Previous batch: development mode, contextual tasks and notes — deployed
 
 Owner order: keep expanding before the large testing round. Internal cost recording
 and budget enforcement are disabled locally during development; the owner monitors
@@ -28,8 +52,8 @@ OpenAI Usage. Historical holds remain preserved and no longer block work.
 - [x] Deployed schema 0007; API/worker/PostgreSQL healthy; live HTTPS bundle checked.
       130 backend and 71 frontend tests, isolated browser/migration checks, and
       post-deploy encrypted backup/restore passed. Historical cost ledger unchanged.
-- [ ] Next expansion: Google owner sign-in and read-only Calendar availability;
-      then smarter notifications and scoped external bot API/MCP.
+- [x] Next expansion implemented: Google owner sign-in and read-only Calendar;
+      real account setup remains in the current batch above.
 - [ ] Complete fine-grained CopilotKit field/settings controls, archived-note
       filter parity, broader contextual-reference quality and project board/timeline.
 - [ ] After expansion: real-use voice recovery, physical devices/operations,
@@ -119,7 +143,7 @@ PIN until Google sign-in. GPT-Live, full conversational app control, linked note
 unified work items and weekly memory review extend the original PRD.
 
 **Execution order:** development cost tracking off; contextual task editing and
-linked notes (current batch); Google sign-in and read-only Calendar; smarter
+linked notes (deployed); Google sign-in and read-only Calendar (implemented, real account setup pending); smarter
 notifications; scoped bot access and bounded agent work. Then complete real-use
 voice recovery and device/operations acceptance, followed by the seven-day pilot.
 Android and broader integrations follow the core workspace. Expand CopilotKit
@@ -391,12 +415,13 @@ actions into the web interface and Eri's tools with each release.
 - [ ] Measure note retrieval and extraction quality on real owner content before
       the later pgvector migration. Add richer source lifecycle and note-to-memory
       review only if the owner wants authored notes to supply learned facts.
-- [ ] **Google sign-in and read-only Calendar first.** Add persistent owner sign-in
-      and separately authorized calendar access. Show availability, conflicts,
-      timezone-aware planning, source links and sync freshness. Use private-host-
-      compatible outbound polling; handle recurring exceptions, deletions and invalid
-      sync cursors. Add explicit event edits only after read/sync behavior is proven.
-      The temporary pairing PIN remains usable until this batch.
+- [x] **Google sign-in and read-only Calendar implementation.** Persistent owner
+      sign-in, separate Calendar consent, current availability, deadline conflicts,
+      source links/freshness and private-host-compatible polling are deployed.
+      Supported recurring exceptions, deletions and invalid cursors are covered.
+      Pairing remains a recovery route.
+- [ ] Configure the real Google client and complete first account-link/sync checks.
+      Add Google event edits only after read/sync behavior is proven.
 - [ ] **Smarter notifications.** Flexible/natural-language snoozing, bundling or
       digests, priority levels and preferences. Extend the existing simple snooze
       while preserving delivery/completion history and recurring behavior.
@@ -482,9 +507,10 @@ pre-response context. Saved counts and processing counts are reported separately
       name stays until edited; prompts no longer hard-code Davin.
       Also saved in the app as “Make my preferred name editable in Settings.”
 
-- [ ] Add Google OAuth/OpenID Connect sign-in, restricted to Davin's authorized
-      Google account. Preserve persistent sessions and device revocation.
-      Also saved in Eridani's task list as “Add Google account sign-in to Jarvis.”
+- [x] Implement Google OAuth/OpenID Connect restricted to the account linked by
+      the owner, with persistent sessions and device revocation.
+- [ ] Complete the real Google client setup and account-link acceptance before
+      closing the app task “Add Google account sign-in to Jarvis.”
 - [ ] Verify the added standalone “Eri” phrase on the owner's actual device,
       including mic handoff after the timeout. Existing Hey Eri is owner-confirmed;
       parser, idle behavior and automated voice checks pass.
@@ -519,8 +545,8 @@ project in the app:
       reliable clarification follow-through. The first version does not silently
       merge merely similar facts or run an LLM over the whole memory collection.
 - [ ] Connect Home Assistant with explicit device mappings.
-- [ ] Google Calendar and availability integration is now in the prioritized
-      connected-workspace batch above; retain private-host-compatible sync.
+- [x] Google Calendar and availability code is deployed with outbound polling;
+      real credentials and owner consent remain open in the current batch above.
 - [ ] Add bounded, durable research/planner jobs with progress, cancellation,
       saved artifacts, sourced web research, and replay-safe child delegation.
       GPT-Live's short conversational task delegation is not this R4 job system.

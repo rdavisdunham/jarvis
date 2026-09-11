@@ -30,7 +30,15 @@ export interface Project {
 export interface CalendarEntry {
   id: string;
   entity_id: string;
-  kind: "task" | "reminder" | "routine";
+  kind: "task" | "reminder" | "routine" | "google";
+  end_at?: string;
+  all_day?: boolean;
+  calendar_title?: string;
+  calendar_id?: string;
+  url?: string | null;
+  location?: string;
+  busy?: boolean;
+  conflicts?: string[];
   title: string;
   date: string;
   at: string | null;
@@ -193,6 +201,7 @@ export interface UIContext {
   query: string;
   selected_task_id: string | null;
   selected_task_ids?: string[];
+  selected_calendar_event_id?: string | null;
   selected_note_id?: string | null;
   visible_ids: string[];
   task_status:

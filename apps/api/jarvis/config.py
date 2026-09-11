@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_public_key: str = ""
     vapid_subject: str = "mailto:owner@localhost"
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    integration_encryption_key: str = ""
+    google_poll_seconds: int = Field(default=300, ge=60, le=3600)
     home_assistant_url: str = ""
     home_assistant_token: str = ""
     home_entities: str = ""

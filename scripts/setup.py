@@ -20,6 +20,7 @@ def main():
     defaults = {
         "JARVIS_POSTGRES_PASSWORD": secrets.token_urlsafe(32),
         "JARVIS_BACKUP_KEY": Fernet.generate_key().decode(),
+        "JARVIS_INTEGRATION_ENCRYPTION_KEY": Fernet.generate_key().decode(),
         "JARVIS_OWNER_TOKEN": secrets.token_urlsafe(32),
         "JARVIS_ORIGIN": "http://localhost:8765",
         "JARVIS_VAPID_PRIVATE_KEY": encoded(key.private_numbers().private_value.to_bytes(32, "big")),
@@ -47,6 +48,9 @@ def main():
     recovery = runtime / "backup-key"
     recovery.write_text(dotenv_values(path)["JARVIS_BACKUP_KEY"])
     recovery.chmod(0o600)
+    integration_recovery = runtime / "integration-key"
+    integration_recovery.write_text(dotenv_values(path)["JARVIS_INTEGRATION_ENCRYPTION_KEY"])
+    integration_recovery.chmod(0o600)
     print("Upgrade configuration ready. Pairing code: .runtime/pairing-code (not printed).")
     print("Legacy data and .env were not changed.")
 

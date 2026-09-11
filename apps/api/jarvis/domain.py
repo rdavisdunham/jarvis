@@ -451,6 +451,10 @@ def task_timing(db, owner, changes, task=None):
 def mutate(db, owner, tool, args, command_id):
     from .organization import mutate_project, project_changes
 
+    if tool == "calendar.select":
+        from .google_calendar import select_calendar
+
+        return select_calendar(db, owner, args)
     if tool.startswith("note."):
         from .notes import mutate_note
 
@@ -767,3 +771,7 @@ def deliver_occurrence(db, job):
 from .note_schema import NOTE_COMMANDS
 
 COMMANDS.update(NOTE_COMMANDS)
+
+from .google_schema import CalendarSelection
+
+COMMANDS["calendar.select"] = CalendarSelection
