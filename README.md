@@ -1,4 +1,8 @@
+Progress and next steps: [docs/TODO.md](docs/TODO.md). Assistant personality: [Eridani / Eri](apps/api/jarvis/personality.py).
+
 # J.A.R.V.I.S.
+
+The new durable Jarvis app runs separately as `jarvis-next`: tasks, reminders, text chat, private sessions, source-backed memory and encrypted backups. Read [implementation and operating notes](docs/JARVIS_IMPLEMENTATION.md) for the private app address, selected design decisions, validation results and remaining voice/device release gates. The original voice stack is documented below and remains available.
 
 A real-time voice AI assistant you can actually talk to. It listens, thinks, speaks back, and remembers what you've discussed across conversations.
 
@@ -146,9 +150,9 @@ Only applies when `STT_PROVIDER=local`. Uses the [LiveKit turn detector](https:/
 
 ### Personality
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JARVIS_SYSTEM_PROMPT` | *(friendly AI)* | System prompt defining JARVIS's personality and behavior |
+The active deployment uses [Eridani / Eri's shared personality](apps/api/jarvis/personality.py)
+for both text and voice. Edit that versioned source and rebuild the API/worker;
+the retired `JARVIS_SYSTEM_PROMPT` environment setting no longer controls this deployment.
 
 ## License
 

@@ -7,7 +7,7 @@ import { StreamingAudioPlayer } from './utils/streamingAudio';
 
 // Dynamically build the URL based on the current browser address
 const API_URL = `${window.location.protocol}//${window.location.hostname}:3000`;
-const WS_URL = `ws://${window.location.hostname}:3000/ws`;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.hostname}:3000/ws`;
 
 // Strip bracketed annotations like [warmly], [laughs], etc. from display text
 const stripBrackets = (text) => text.replace(/\[.*?\]\s*/g, '').trim();
@@ -79,6 +79,32 @@ const MemoryOffIcon = () => (
   </svg>
 );
 
+const SunIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="5"></circle>
+    <line x1="12" y1="1" x2="12" y2="3"></line>
+    <line x1="12" y1="21" x2="12" y2="23"></line>
+    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+    <line x1="1" y1="12" x2="3" y2="12"></line>
+    <line x1="21" y1="12" x2="23" y2="12"></line>
+    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+  </svg>
+);
+
+const MoonIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+  </svg>
+);
+
+const Waveform = ({ active }) => (
+  <div className={`waveform ${active ? 'waveform--active' : ''}`}>
+    {[...Array(5)].map((_, i) => <span key={i} className="waveform__bar" />)}
+  </div>
+);
+
 const App = () => {
   const [messages, setMessages] = useState([]);
   const [vadState, setVadState] = useState('idle'); // 'idle' | 'listening' | 'speaking'
@@ -102,6 +128,7 @@ const App = () => {
   const [conversationalMode, setConversationalMode] = useState(false);
   const conversationalModeRef = useRef(false);
   const [memoryMode, setMemoryMode] = useState('full'); // 'full' | 'read-only' | 'off'
+  const [themeMode, setThemeMode] = useState('dark');
 
   // Streaming STT state
   const [sttProvider, setSttProvider] = useState(null); // 'groq' | 'local' (from server config)
@@ -130,6 +157,10 @@ const App = () => {
   useEffect(() => {
     ttsEnabledRef.current = ttsEnabled;
   }, [ttsEnabled]);
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', themeMode);
+  }, [themeMode]);
+  const toggleTheme = () => setThemeMode(t => t === 'dark' ? 'light' : 'dark');
 
   useEffect(() => {
     const checkBackendReady = async () => {
@@ -726,9 +757,9 @@ const App = () => {
   if (!backendReady) {
     return (
       <div className="loading-screen">
-        <h2>J.A.R.V.I.S.</h2>
-        <p>Initializing AI systems...</p>
+        <h2>j.a.r.v.i.s.</h2>
         <div className="loader"></div>
+        <p>Initializing systems...</p>
       </div>
     );
   }
@@ -737,17 +768,18 @@ const App = () => {
     <div className="chat-container">
       {/* Header */}
       <div className="chat-header">
-        <div className="header-avatar">J</div>
-        <div className="header-info">
-          <h1>J.A.R.V.I.S.</h1>
+        <div className="header-wordmark">
+          <h1>jarvis</h1>
           <div className="header-status">
             <span className="status-dot"></span>
-            Online
-            {isStreamPlaying && ' (speaking)'}
+            {isStreamPlaying || isPlayingAudio ? 'speaking' : 'online'}
           </div>
+          {(isStreamPlaying || isPlayingAudio) && (
+            <Waveform active={true} />
+          )}
         </div>
         <button
-          className={`btn-tts-toggle ${memoryMode === 'full' ? 'enabled' : memoryMode === 'read-only' ? 'partial' : ''}`}
+          className={`btn-icon ${memoryMode === 'full' ? 'enabled' : memoryMode === 'read-only' ? 'partial' : ''}`}
           onClick={cycleMemoryMode}
           title={
             memoryMode === 'full' ? 'Memory: full (click to change)' :
@@ -760,18 +792,21 @@ const App = () => {
            <MemoryOffIcon />}
         </button>
         <button
-          className={`btn-tts-toggle ${conversationalMode ? 'enabled' : ''}`}
+          className={`btn-icon ${conversationalMode ? 'enabled' : ''}`}
           onClick={toggleConversationalMode}
           title={conversationalMode ? 'Conversational mode on' : 'Conversational mode off'}
         >
           <ConversationIcon />
         </button>
         <button
-          className={`btn-tts-toggle ${ttsEnabled ? 'enabled' : ''}`}
+          className={`btn-icon ${ttsEnabled ? 'enabled' : ''}`}
           onClick={toggleTts}
           title={ttsEnabled ? 'Voice responses on' : 'Voice responses off'}
         >
           {ttsEnabled ? <SpeakerOnIcon /> : <SpeakerOffIcon />}
+        </button>
+        <button className="btn-icon" onClick={toggleTheme} title="Toggle theme">
+          {themeMode === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
       </div>
 
@@ -779,13 +814,16 @@ const App = () => {
       <div className="messages-container">
         {messages.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon">💬</div>
-            <h3>Start a conversation</h3>
-            <p>Type a message or use voice input</p>
+            <div className="empty-state-wordmark">jarvis</div>
+            <p>Ask me anything.</p>
           </div>
         ) : (
           messages.map((message, index) => (
-            <div key={index} className={`message ${message.type}`}>
+            <div
+              key={index}
+              className={`message ${message.type}`}
+              style={{ '--msg-delay': `${Math.min(index * 0.04, 0.25)}s` }}
+            >
               <div className="message-label">
                 {message.type === 'user' ? 'You' : 'JARVIS'}
               </div>

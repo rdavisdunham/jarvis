@@ -3,6 +3,7 @@ services:
     build: ./backend
     ports:
       - "3000:3000"
+      - "9001:9001"   # STT WebSocket — also used by cc-g2 glasses transcription
     deploy:
       resources:
         reservations:
@@ -34,9 +35,13 @@ services:
       - EOU_ENABLED=${EOU_ENABLED:-false}
       - EOU_THRESHOLD=${EOU_THRESHOLD:-0.5}
       - ORT_LOG_LEVEL=ERROR
+      - SSL_CERT=/certs/server.crt
+      - SSL_KEY=/certs/server.key
     volumes:
       - backend-uploads:/app/audio-server/uploads
       - ~/.cache/huggingface:/root/.cache/huggingface
+      - ${SSL_CERT:-/dev/null}:/certs/server.crt:ro
+      - ${SSL_KEY:-/dev/null}:/certs/server.key:ro
     depends_on:
       - qdrant
     restart: unless-stopped
@@ -46,6 +51,13 @@ services:
       context: ./client
     ports:
       - "8080:80"
+      - "443:443"
+    environment:
+      - SSL_CERT=/certs/server.crt
+      - SSL_KEY=/certs/server.key
+    volumes:
+      - ${SSL_CERT:-/dev/null}:/certs/server.crt:ro
+      - ${SSL_KEY:-/dev/null}:/certs/server.key:ro
     depends_on:
       - backend
     restart: unless-stopped

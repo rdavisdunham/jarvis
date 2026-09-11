@@ -1,0 +1,4 @@
+FROM postgres:16.15-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-cryptography && rm -rf /var/lib/apt/lists/*
+COPY scripts/backup.py /usr/local/bin/jarvis-backup.py
+ENTRYPOINT ["python3", "/usr/local/bin/jarvis-backup.py"]

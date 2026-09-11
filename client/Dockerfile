@@ -21,7 +21,7 @@ FROM nginx:alpine
 # Copy built assets
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Copy nginx config for SPA routing
+# Base HTTP config (used when SSL not configured)
 RUN echo 'server { \
     listen 80; \
     location / { \
@@ -31,6 +31,11 @@ RUN echo 'server { \
     } \
 }' > /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+# Entrypoint that conditionally enables SSL
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 80
+EXPOSE 443
+
+CMD ["/entrypoint.sh"]

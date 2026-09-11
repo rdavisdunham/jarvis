@@ -52,3 +52,13 @@ venv/
 *.bin
 .cache/
 backend/wheels/flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl
+
+# Durable Jarvis development/runtime
+.venv/
+.runtime/
+.env.upgrade
+.pytest_cache/
+.ruff_cache/
+*.tsbuildinfo
+apps/web/test-results/
+apps/web/playwright-report/

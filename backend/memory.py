@@ -26,7 +26,7 @@ QDRANT_HOST = os.environ.get("QDRANT_HOST", "qdrant")
 QDRANT_PORT = int(os.environ.get("QDRANT_PORT", "6333"))
 
 USER_ID = "davin"
-MEMORY_LLM_MODEL = os.environ.get("MEMORY_LLM_MODEL", "llama-3.3-70b-versatile")
+MEMORY_LLM_MODEL = os.environ.get("MEMORY_LLM_MODEL", "openai/gpt-oss-120b")
 
 
 def _search_threshold():

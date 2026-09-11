@@ -1,0 +1,102 @@
+name: jarvis-next
+services:
+  postgres:
+    image: postgres:16.15-bookworm
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: ${JARVIS_POSTGRES_PASSWORD:?Run scripts/setup.py first}
+      POSTGRES_DB: jarvis
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - core-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d jarvis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  legacy-memory:
+    image: qdrant/qdrant:v1.16.3
+    volumes:
+      - legacy-memory:/qdrant/storage
+    environment:
+      QDRANT__TELEMETRY_DISABLED: "true"
+    restart: unless-stopped
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    environment:
+      PGHOST: postgres
+      PGUSER: jarvis
+      PGDATABASE: jarvis
+      PGPASSWORD: ${JARVIS_POSTGRES_PASSWORD}
+      JARVIS_BACKUP_KEY: ${JARVIS_BACKUP_KEY}
+    volumes:
+      - "${JARVIS_BACKUP_HOST_DIRECTORY:-C:/Users/davin/JarvisBackups}:/backups"
+      - legacy-original:/legacy-memory:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.upgrade
+    image: jarvis-core:local
+    env_file:
+      - .env.upgrade
+    environment:
+      JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+  api:
+    image: jarvis-core:local
+    env_file:
+      - path: .env
+        required: false
+      - .env.upgrade
+    environment:
+      JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
+      JARVIS_QDRANT_URL: http://legacy-memory:6333
+    ports:
+      - "127.0.0.1:8765:8765"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  worker:
+    image: jarvis-core:local
+    env_file:
+      - path: .env
+        required: false
+      - .env.upgrade
+    environment:
+      JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
+    command: ["/app/.venv/bin/python", "-m", "jarvis.worker"]
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "from jarvis.db import session_scope; from jarvis.models import WorkerHealth, now; from datetime import timedelta; db=session_scope(); s=db.__enter__(); h=s.get(WorkerHealth,'worker'); assert h and now()-h.last_scan_at<timedelta(seconds=30); db.__exit__(None,None,None)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+volumes:
+  core-postgres:
+  legacy-memory:
+    external: true
+    name: jarvis-next-legacy-memory
+  legacy-original:
+    external: true
+    name: jarvis_qdrant_data

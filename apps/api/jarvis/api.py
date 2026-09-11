@@ -1,0 +1,455 @@
+import asyncio
+import csv
+import hashlib
+import io
+import json
+import time
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select, text
+
+from . import budget
+from .auth import Identity, authenticate, digest, sign_in
+from .config import get_settings
+from .conversation import chat
+from .db import session_scope
+from .domain import DomainError, execute, owned, preferences, serial
+from .memory_service import legacy_search, search
+from .models import (
+    AuthSession,
+    Command,
+    Conversation,
+    Event,
+    Job,
+    Memory,
+    Notification,
+    PushSubscription,
+    Schedule,
+    Source,
+    Task,
+    WorkerHealth,
+    now,
+)
+from .worker import valid_push_endpoint
+
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    from .voice import controllers
+
+    await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
+
+
+app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
+User = Annotated[Identity, Depends(authenticate)]
+login_attempts = defaultdict(deque)
+
+
+@app.exception_handler(DomainError)
+async def domain_error(request, exc):
+    return JSONResponse(
+        status_code=exc.status,
+        content=jsonable_encoder({"error": {"code": exc.code, "message": exc.message, "data": exc.data}}),
+    )
+
+
+@app.middleware("http")
+async def security(request, call_next):
+    settings = get_settings()
+    origin = request.headers.get("origin")
+    if request.url.path.startswith("/api/") and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        if origin and origin.rstrip("/") != settings.origin.rstrip("/"):
+            return JSONResponse(
+                {"error": {"code": "NOT_AUTHORIZED", "message": "This origin is not allowed."}},
+                status_code=403,
+            )
+        if request.headers.get("sec-fetch-site") == "cross-site":
+            return JSONResponse(
+                {"error": {"code": "NOT_AUTHORIZED", "message": "Cross-site request rejected."}},
+                status_code=403,
+            )
+    try:
+        length = int(request.headers.get("content-length", "0") or "0")
+    except ValueError:
+        return JSONResponse(
+            {"error": {"code": "INVALID_ARGUMENT", "message": "Invalid request length."}}, status_code=400
+        )
+    if length < 0 or length > 100_000:
+        return JSONResponse(
+            {"error": {"code": "INVALID_ARGUMENT", "message": "Request is too large."}}, status_code=413
+        )
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Permissions-Policy"] = "microphone=(self), camera=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://api.openai.com wss://api.openai.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+    )
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Login(Input):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class Mutation(Input):
+    command_id: str = Field(min_length=1, max_length=100)
+    tool: str
+    arguments: dict
+
+
+class ConversationInput(Input):
+    private: bool = False
+
+
+class ChatInput(Input):
+    turn_id: UUID
+    conversation_id: UUID
+    message: str = Field(min_length=1, max_length=12000)
+    focus: str | None = None
+
+
+class PushInput(Input):
+    endpoint: str = Field(max_length=4096)
+    keys: dict[str, str]
+    expirationTime: float | None = None
+
+
+@app.get("/health/live")
+def live():
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+def ready():
+    try:
+        with session_scope() as db:
+            db.execute(text("SELECT 1"))
+        return {"status": "ready"}
+    except Exception:  # noqa: BLE001 - isolate provider/process failures without exposing personal data
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+
+
+@app.post("/api/v1/auth/login")
+def login(body: Login, request: Request):
+    key = request.client.host if request.client else "unknown"
+    attempts = login_attempts[key]
+    clock = time.monotonic()
+    while attempts and attempts[0] < clock - 60:
+        attempts.popleft()
+    if len(attempts) >= 10:
+        raise DomainError("RATE_LIMITED", "Wait a minute before trying another pairing code.", 429)
+    attempts.append(clock)
+    token, csrf = sign_in(body.token)
+    attempts.clear()
+    response = JSONResponse({"csrf": csrf})
+    response.set_cookie(
+        "jarvis_session",
+        token,
+        httponly=True,
+        secure=get_settings().secure_cookie,
+        samesite="strict",
+        max_age=get_settings().session_hours * 3600,
+    )
+    return response
+
+
+@app.post("/api/v1/auth/logout")
+def logout(request: Request, user: User):
+    with session_scope() as db:
+        row = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
+        if row:
+            db.delete(row)
+    response = JSONResponse({"signed_out": True})
+    response.delete_cookie("jarvis_session")
+    return response
+
+
+@app.get("/api/v1/bootstrap")
+def bootstrap(user: User):
+    settings = get_settings()
+    with session_scope() as db:
+        prefs = preferences(db, user.owner_id)
+        health = db.get(WorkerHealth, "worker")
+        worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
+        backup_health = db.get(WorkerHealth, "backup")
+        return {
+            "name": settings.owner_name,
+            "csrf": user.csrf,
+            "device_id": user.device_id,
+            "preferences": prefs,
+            "budget": budget.summary(db, user.owner_id),
+            "capabilities": {
+                "voice": bool(settings.openai_api_key),
+                "chat": bool(settings.openai_api_key or settings.groq_api_key),
+                "push": bool(settings.vapid_public_key),
+                "worker": worker_healthy,
+            },
+            "last_backup_at": backup_health.last_scan_at.isoformat() if backup_health else None,
+            "vapid_public_key": settings.vapid_public_key,
+            "event_cursor": db.scalar(select(func.max(Event.id)).where(Event.owner_id == user.owner_id)) or 0,
+        }
+
+
+@app.post("/api/v1/commands")
+def command(body: Mutation, user: User):
+    with session_scope() as db:
+        result = execute(db, user.owner_id, body.command_id, body.tool, body.arguments)
+    return result
+
+
+@app.get("/api/v1/commands/{command_id}")
+def command_status(command_id: str, user: User):
+    with session_scope() as db:
+        row = db.get(Command, (user.owner_id, command_id))
+        if not row:
+            raise DomainError("NOT_FOUND", "No accepted command with that ID.", 404)
+        return row.result
+
+
+@app.get("/api/v1/tasks")
+def tasks(
+    user: User, q: str = "", before: str | None = None, limit: int = 100, include_archived: bool = False
+):
+    limit = max(1, min(limit, 200))
+    with session_scope() as db:
+        query = select(Task).where(Task.owner_id == user.owner_id)
+        if not include_archived:
+            query = query.where(Task.archived.is_(False))
+        if q:
+            query = query.where(Task.title.ilike("%" + q[:200] + "%"))
+        if before:
+            query = query.where(Task.id < before)
+        rows = list(db.scalars(query.order_by(Task.id.desc()).limit(max(1, min(limit, 200)) + 1)))
+        return {
+            "items": [serial(t) for t in rows[:limit]],
+            "next_cursor": rows[limit - 1].id if len(rows) > limit else None,
+        }
+
+
+@app.get("/api/v1/tasks/{task_id}")
+def task(task_id: str, user: User):
+    with session_scope() as db:
+        return serial(owned(db, Task, task_id, user.owner_id))
+
+
+@app.get("/api/v1/schedules")
+def schedules(user: User):
+    with session_scope() as db:
+        return {
+            "items": [
+                serial(s)
+                for s in db.scalars(
+                    select(Schedule)
+                    .where(Schedule.owner_id == user.owner_id)
+                    .order_by(Schedule.created_at.desc())
+                    .limit(200)
+                )
+            ]
+        }
+
+
+@app.get("/api/v1/notifications")
+def notifications(user: User):
+    with session_scope() as db:
+        return {
+            "items": [
+                serial(n)
+                for n in db.scalars(
+                    select(Notification)
+                    .where(Notification.owner_id == user.owner_id, Notification.dismissed_at.is_(None))
+                    .order_by(Notification.created_at.desc())
+                    .limit(100)
+                )
+            ]
+        }
+
+
+@app.post("/api/v1/push")
+def push(body: PushInput, user: User):
+    if not valid_push_endpoint(body.endpoint) or set(body.keys) != {"p256dh", "auth"}:
+        raise DomainError("INVALID_ARGUMENT", "That push subscription is not supported.")
+    if any(not value or len(value) > 500 for value in body.keys.values()):
+        raise DomainError("INVALID_ARGUMENT", "Invalid subscription key.")
+    sid = hashlib.sha256(body.endpoint.encode()).hexdigest()
+    with session_scope() as db:
+        row = db.get(PushSubscription, sid)
+        if row and row.owner_id != user.owner_id:
+            raise DomainError("NOT_AUTHORIZED", "Subscription is already registered.", 403)
+        if row:
+            row.subscription, row.active, row.device_id = body.model_dump(), True, user.device_id
+        else:
+            db.add(
+                PushSubscription(
+                    id=sid, owner_id=user.owner_id, device_id=user.device_id, subscription=body.model_dump()
+                )
+            )
+    return {"registered": True}
+
+
+@app.post("/api/v1/conversations")
+def create_conversation(body: ConversationInput, user: User):
+    with session_scope() as db:
+        prefs = preferences(db, user.owner_id)
+        row = Conversation(
+            owner_id=user.owner_id,
+            device_id=user.device_id,
+            private=body.private or not prefs["history_enabled"],
+            learning=prefs["memory_learning"],
+        )
+        db.add(row)
+        db.flush()
+        return serial(row)
+
+
+@app.get("/api/v1/conversations/{conversation_id}")
+def conversation(conversation_id: str, user: User):
+    with session_scope() as db:
+        row = owned(db, Conversation, conversation_id, user.owner_id)
+        if row.device_id != user.device_id:
+            raise DomainError("NOT_AUTHORIZED", "This conversation belongs to another device.", 403)
+        sources = list(
+            db.scalars(
+                select(Source)
+                .where(Source.conversation_id == row.id, Source.deleted_at.is_(None))
+                .order_by(Source.created_at.desc())
+                .limit(200)
+            )
+        )
+        return {**serial(row), "messages": [serial(s) for s in reversed(sources)]}
+
+
+@app.post("/api/v1/chat")
+async def chat_endpoint(body: ChatInput, user: User):
+    return await chat(
+        user.owner_id, user.device_id, str(body.turn_id), str(body.conversation_id), body.message, body.focus
+    )
+
+
+@app.get("/api/v1/memory")
+async def memories(user: User, q: str = ""):
+    with session_scope() as db:
+        items = search(db, user.owner_id, q[:500], 100 if not q else 20)
+    return {"items": items, "legacy": await legacy_search(q[:500]) if q else []}
+
+
+@app.get("/api/v1/sources/{source_id}")
+def source(source_id: str, user: User):
+    with session_scope() as db:
+        row = owned(db, Source, source_id, user.owner_id)
+        if row.deleted_at:
+            raise DomainError("NOT_FOUND", "This source has been deleted.", 404)
+        return serial(row)
+
+
+@app.get("/api/v1/jobs/{job_id}")
+def job(job_id: str, user: User):
+    with session_scope() as db:
+        return serial(owned(db, Job, job_id, user.owner_id))
+
+
+@app.get("/api/v1/events")
+async def events(request: Request, user: User, after: int = 0):
+    try:
+        after = max(after, int(request.headers.get("last-event-id", "0")))
+    except ValueError:
+        pass
+
+    async def stream():
+        cursor = after
+        ticks = 0
+        while not await request.is_disconnected():
+            with session_scope() as db:
+                session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
+                if not session or session.expires_at <= now():
+                    return
+                events = list(
+                    db.scalars(
+                        select(Event)
+                        .where(Event.owner_id == user.owner_id, Event.id > cursor)
+                        .order_by(Event.id)
+                        .limit(200)
+                    )
+                )
+            for event in events:
+                cursor = event.id
+                yield f"id: {cursor}\ndata: {json.dumps(serial(event))}\n\n"
+            ticks += 1
+            if ticks % 40 == 0:
+                yield "event: refresh\ndata: {}\n\n"
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/api/v1/export")
+def export(user: User, format: str = "json"):
+    with session_scope() as db:
+        data = {
+            model.__tablename__: [
+                serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))
+            ]
+            for model in (Task, Schedule, Notification, Memory, Source)
+        }
+    if format == "csv":
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=["id", "title", "status", "due_date", "project", "notes"])
+        writer.writeheader()
+        for task in data["tasks"]:
+            # Spreadsheet programs must treat user text as text, never executable formulas.
+            cells = {k: task.get(k) for k in writer.fieldnames}
+            writer.writerow(
+                {
+                    k: "'" + v if isinstance(v, str) and v.startswith(("=", "+", "-", "@", "\t", "\r")) else v
+                    for k, v in cells.items()
+                }
+            )
+        return Response(
+            buffer.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="jarvis-tasks.csv"'},
+        )
+    return JSONResponse(
+        {"version": 1, "exported_at": now().isoformat(), **data},
+        headers={"Content-Disposition": 'attachment; filename="jarvis-export.json"'},
+    )
+
+
+# Routes are included before the SPA fallback so API errors never become HTML.
+from .voice import router as voice_router
+
+app.include_router(voice_router, prefix="/api/v1")
+
+
+@app.get("/{path:path}")
+def frontend(path: str):
+    if path.startswith(("api/", "health/")):
+        raise DomainError("NOT_FOUND", "Endpoint not found.", 404)
+    root = get_settings().web_dist.resolve()
+    candidate = (root / path).resolve()
+    if candidate.is_relative_to(root) and candidate.is_file():
+        return FileResponse(candidate)
+    index = root / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    return JSONResponse({"message": "Build the web app with npm run build in apps/web."}, status_code=503)

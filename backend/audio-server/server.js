@@ -325,8 +325,30 @@ app.get('/text-output', (req, res) => {
   }
 });
 
-// Create HTTP server and attach WebSocket
-const server = http.createServer(app);
+// Create HTTP or HTTPS server depending on SSL config
+const SSL_CERT = process.env.SSL_CERT;
+const SSL_KEY  = process.env.SSL_KEY;
+
+let server;
+if (SSL_CERT && SSL_KEY) {
+  try {
+    const certContent = fs.readFileSync(SSL_CERT);
+    const keyContent  = fs.readFileSync(SSL_KEY);
+    if (certContent.length > 0 && keyContent.length > 0) {
+      const https = require('https');
+      server = https.createServer({ cert: certContent, key: keyContent }, app);
+      console.log('[Config] HTTPS enabled');
+    } else {
+      throw new Error('Cert files are empty');
+    }
+  } catch (e) {
+    console.warn(`[Config] SSL cert load failed (${e.message}), falling back to HTTP`);
+    server = http.createServer(app);
+  }
+} else {
+  console.log('[Config] HTTP mode (SSL_CERT/SSL_KEY not set)');
+  server = http.createServer(app);
+}
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 
