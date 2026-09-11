@@ -14,12 +14,10 @@ from sqlalchemy import or_, select
 from . import budget
 from .config import get_settings
 from .db import session_scope
-from .domain import advisory, delete_source, deliver_occurrence, emit, preferences, scan_schedules
+from .domain import advisory, delete_source, deliver_occurrence, preferences, scan_schedules
 from .models import (
-    Conversation,
     Delivery,
     Job,
-    Memory,
     Notification,
     Outbox,
     PushSubscription,
@@ -50,44 +48,24 @@ def valid_push_endpoint(endpoint):
 @DBOS.step(retries_allowed=True, interval_seconds=2, max_attempts=10, backoff_rate=2)
 def perform_job(job_id):
     with session_scope() as db:
+        job = db.get(Job, job_id)
+        kind = job.kind if job else None
+        learning = kind in {"extract_memory", "embed_memory"}
+    if kind == "review_memory":
+        from .memory_review import process
+
+        return process(job_id)
+    if learning:
+        from .memory_learning import process
+
+        return process(job_id)
+    with session_scope() as db:
         job = db.scalar(select(Job).where(Job.id == job_id).with_for_update())
         if not job or job.status in {"succeeded", "cancelled", "expired"}:
             return
         if job.kind == "reminder":
             job.result = deliver_occurrence(db, job)
             job.status, job.finished_at = "succeeded", now()
-        elif job.kind == "extract_memory":
-            # Start with exact owner-stated preferences. No invented model assertions.
-            source = db.get(Source, job.payload["source_id"], with_for_update=True)
-            conv = db.get(Conversation, source.conversation_id) if source else None
-            if (
-                source
-                and not source.deleted_at
-                and conv
-                and conv.learning
-                and not conv.private
-                and preferences(db, job.owner_id)["memory_learning"]
-            ):
-                content = source.content.strip()
-                markers = (
-                    "remember that ",
-                    "remember this: ",
-                    "my favorite ",
-                    "i prefer ",
-                    "i live in ",
-                    "i work at ",
-                )
-                if content.lower().startswith(markers):
-                    db.add(
-                        Memory(
-                            owner_id=job.owner_id,
-                            source_id=source.id,
-                            content=content,
-                            attribution="owner_statement",
-                        )
-                    )
-                    emit(db, job.owner_id, "memory.changed", source.id)
-            job.status, job.finished_at, job.result = "succeeded", now(), {"processed": True}
         else:
             job.status, job.finished_at, job.result = "failed", now(), {"error": "Unsupported job kind"}
 
@@ -105,7 +83,13 @@ def dispatch_outbox(client):
         for row in rows:
             # Enqueue identity is stable across a crash before submitted_at commits.
             client.enqueue(
-                {"workflow_name": "jarvis_job_v1", "queue_name": "jarvis", "workflow_id": row.job_id},
+                {
+                    "workflow_name": "jarvis_job_v1",
+                    "queue_name": "jarvis-memory"
+                    if db.get(Job, row.job_id).kind in {"extract_memory", "embed_memory", "review_memory"}
+                    else "jarvis",
+                    "workflow_id": row.job_id,
+                },
                 row.job_id,
             )
             row.submitted_at = now()
@@ -248,6 +232,7 @@ def main():
         }
     )
     Queue("jarvis", concurrency=1, worker_concurrency=1)
+    Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
     DBOS.launch()
     client = DBOSClient(system_database_url=settings.database_url)
     running = True
@@ -263,6 +248,12 @@ def main():
         try:
             with session_scope() as db:
                 scan_schedules(db)
+                from .memory_learning import queue_backfill
+
+                queue_backfill(db)
+                from .memory_review import queue_due_reviews
+
+                queue_due_reviews(db)
                 health = db.get(WorkerHealth, "worker")
                 if health:
                     health.last_scan_at = now()

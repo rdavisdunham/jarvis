@@ -107,6 +107,7 @@ try {
   await page.goto("https://davispc.tail957c2.ts.net:9443");
   await page.getByLabel("Pairing code").fill(token);
   await page.locator(".login-card button.primary").click();
+  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
   await page
     .getByRole("button", { name: "Start a private session", exact: true })
     .click();
@@ -115,6 +116,7 @@ try {
     .click();
   await page.getByLabel("Voice provider", { exact: true }).selectOption("live");
   await page.getByLabel("Voice", { exact: true }).selectOption("marin");
+  await page.getByRole("button", {name: "Open Eridani", exact: true}).click();
   const baseline = await page.evaluate(async () =>
     (await (await fetch("/api/v1/tasks")).json()).items.map((t) => t.id),
   );
@@ -167,12 +169,24 @@ try {
     evidence.browser.captions.assistant,
   );
   evidence.voiceMode =
-    (await page.locator(".companion.voice-mode .voice-glow").count()) === 1;
+    (await page.locator(".app-shell.voice-active > .voice-glow").count()) === 1;
   await page.screenshot({
     path: new URL(".runtime/gpt-live.png", root).pathname,
     fullPage: true,
   });
-  await page.getByRole("button", { name: "End voice", exact: true }).click();
+  await page.getByRole("button", {name: "Close conversation", exact: true}).click();
+  await page.setViewportSize({width: 390, height: 844});
+  await expect(page.locator(".voice-dock")).toBeVisible();
+  await expect(page.locator(".voice-glow")).toBeVisible();
+  evidence.globalVoiceDock = true;
+  await page.screenshot({path: new URL(".runtime/voice-dock-mobile.png", root).pathname, fullPage: true});
+  const quietStarted = Date.now();
+  await expect(page.locator(".voice-dock")).toBeHidden({timeout: 35000});
+  evidence.idleStopAfterCheckSeconds = (Date.now() - quietStarted) / 1000;
+  if (evidence.idleStopAfterCheckSeconds < 7) throw new Error("Voice timed out too early");
+  evidence.idleTimeout = true;
+  await page.setViewportSize({width: 1440, height: 1000});
+  await page.getByRole("button", {name: "Open Eridani", exact: true}).click();
   await expect(page.getByLabel("Voice provider", { exact: true })).toBeEnabled({
     timeout: 20000,
   });

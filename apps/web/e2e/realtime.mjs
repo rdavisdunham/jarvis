@@ -188,6 +188,7 @@ try {
   await page.goto("https://davispc.tail957c2.ts.net:9443");
   await page.getByLabel("Pairing code").fill(token);
   await page.locator(".login-card button.primary").click();
+  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
   await page
     .getByRole("button", { name: "Start a private session", exact: true })
     .click();

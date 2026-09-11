@@ -450,6 +450,35 @@ export function SettingsPanel({
   return (
     <div className="settings-sections">
       <section>
+        <h2>Your name</h2>
+        <form
+          className="setting-row"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const preferred_name = String(
+              new FormData(e.currentTarget).get("preferred_name") ?? "",
+            ).trim();
+            if (preferred_name) await onSave({ preferred_name });
+          }}
+        >
+          <label>
+            What should Eri call you?
+            <input
+              key={p.preferred_name}
+              name="preferred_name"
+              aria-label="Preferred name"
+              defaultValue={p.preferred_name}
+              required
+              maxLength={80}
+              autoComplete="nickname"
+            />
+          </label>
+          <button className="secondary" disabled={busy}>
+            Save name
+          </button>
+        </form>
+      </section>
+      <section>
         <h2>Conversation & memory</h2>
         <p>
           Choose what stays with you. New settings apply to new conversations.
@@ -464,7 +493,12 @@ export function SettingsPanel({
             key: "memory_learning",
             label: "Learn from conversations",
             description:
-              "Remember explicitly stated preferences with their sources.",
+              "Automatically extract useful facts and preferences, with sources and semantic search.",
+          },
+          {
+            key: "deep_sleep_enabled",
+            label: "Weekly deep sleep",
+            description: "Review memories on Sundays at 3 AM in your home time zone. Ask before resolving uncertain names.",
           },
         ].map((item) => (
           <label className="setting-row" key={item.key}>
@@ -476,7 +510,7 @@ export function SettingsPanel({
               className="switch"
               type="checkbox"
               role="switch"
-              checked={p[item.key as "history_enabled" | "memory_learning"]}
+              checked={p[item.key as "history_enabled" | "memory_learning" | "deep_sleep_enabled"]}
               disabled={busy}
               onChange={(e) => void onSave({ [item.key]: e.target.checked })}
             />

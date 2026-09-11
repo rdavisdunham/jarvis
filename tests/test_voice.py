@@ -67,6 +67,7 @@ async def test_live_browser_has_no_elapsed_turn_or_silence_cap(controller, monke
     from unittest.mock import AsyncMock
 
     from jarvis import voice
+
     c = controller
     c.started = c.activity = 0
     c.turns = 100
@@ -94,6 +95,7 @@ async def test_abandoned_browser_session_is_closed(controller, monkeypatch):
     from unittest.mock import AsyncMock
 
     from jarvis import voice
+
     c = controller
     c.client_seen = 0
     c.close = AsyncMock()
@@ -116,9 +118,7 @@ async def test_recovered_turn_clears_stale_provider_error(controller):
     c = controller
     await c.event({"type": "error", "error": {"code": "server_error"}})
     assert c.error
-    await c.finish_response(
-        {"output": [{"content": [{"text": "SILENT"}]}]}, {"epoch": 0, "phase": "gate"}
-    )
+    await c.finish_response({"output": [{"content": [{"text": "SILENT"}]}]}, {"epoch": 0, "phase": "gate"})
     assert c.error is None
     assert c.state == "listening"
 
@@ -142,12 +142,16 @@ async def test_new_speech_clears_error_and_finished_action_cannot_be_submitted_a
 async def test_voice_final_transcript_retention_and_deduplication(controller, client, private):
     from jarvis.models import Source
     from sqlalchemy import select
+
     c = controller
     conv = client.post("/api/v1/conversations", json={"private": private}).json()
     c.conversation_id = conv["id"]
     await c.event({"type": "input_audio_buffer.speech_started", "item_id": "spoken"})
-    event = {"type": "conversation.item.input_audio_transcription.completed",
-             "item_id": "spoken", "transcript": "A synthetic transcript."}
+    event = {
+        "type": "conversation.item.input_audio_transcription.completed",
+        "item_id": "spoken",
+        "transcript": "A synthetic transcript.",
+    }
     await c.event(event)
     await c.event(event)
     with session_scope() as db:

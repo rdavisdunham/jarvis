@@ -8,8 +8,10 @@ from . import budget
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, capture_source, enqueue_job, owned, preferences
+from .memory_service import prompt_context
 from .models import Conversation, Job, Source, now
 from .tools import call_tool, instructions, registry
+from .ui_control import get_context
 
 
 def turn_hash(conversation_id, message, focus):
@@ -75,8 +77,17 @@ async def chat(
             enqueue_job(db, owner, "extract_memory", {"source_id": source.id})
     if live_context is not None:
         history = live_context
+    memory_query = (
+        message
+        if live_context is None
+        else " ".join(m["content"] for m in live_context if m["role"] == "user")[-1500:]
+    )
+    memory_context = await prompt_context(owner, memory_query)
     messages = [
-        {"role": "system", "content": instructions(prefs, focus)},
+        {
+            "role": "system",
+            "content": instructions(prefs, focus, get_context(owner, device)) + "\n" + memory_context,
+        },
         *history,
         {"role": "user", "content": message},
     ]
@@ -146,7 +157,7 @@ async def chat(
                             changed = tool_guard()
                             if changed:
                                 raise DomainError("REQUEST_CHANGED", changed)
-                        outcome = await call_tool(owner, turn_id, tool_index, fn["name"], args)
+                        outcome = await call_tool(owner, turn_id, tool_index, fn["name"], args, device=device)
                         if outcome.get("ui_action"):
                             ui_actions.append(outcome["ui_action"])
                         # Store references only; retrieved personal context is not another transcript store.

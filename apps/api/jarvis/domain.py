@@ -3,6 +3,7 @@
 import hashlib
 import json
 from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil import rrule, tz
@@ -92,14 +93,23 @@ class Forget(Args):
     delete_source: bool = False
 
 
+class ResolveMemory(Args):
+    review_id: str
+    expected_revision: int = Field(ge=1)
+    action: Literal["merge", "distinct", "defer"]
+    content: str | None = Field(default=None, min_length=1, max_length=20000)
+
+
 class NotificationAction(Args):
     notification_id: str
     minutes: int = Field(default=10, ge=1, le=10080)
 
 
 class SettingsUpdate(Args):
+    preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
     memory_learning: bool | None = None
+    deep_sleep_enabled: bool | None = None
     history_days: int | None = Field(default=None, ge=0, le=36500)
     timezone: str | None = None
     default_reminder_hour: int | None = Field(default=None, ge=0, le=23)
@@ -119,6 +129,7 @@ COMMANDS = {
     "memory.capture": Capture,
     "memory.correct": Correct,
     "memory.forget": Forget,
+    "memory.resolve": ResolveMemory,
     "notification.read": NotificationAction,
     "notification.complete": NotificationAction,
     "notification.snooze": NotificationAction,
@@ -132,7 +143,7 @@ def serial(record):
         {
             c.name: getattr(record, c.name)
             for c in record.__table__.columns
-            if c.name not in {"owner_id", "token_hash"}
+            if c.name not in {"owner_id", "token_hash", "embedding", "fingerprint"}
         }
     )
 
@@ -161,8 +172,10 @@ def preferences(db, owner):
     settings = get_settings()
     row = db.get(OwnerSettings, owner)
     return {
+        "preferred_name": settings.owner_name,
         "history_enabled": True,
         "memory_learning": True,
+        "deep_sleep_enabled": True,
         "history_days": settings.history_days,
         "timezone": settings.timezone,
         "default_reminder_hour": settings.default_reminder_hour,
@@ -288,11 +301,13 @@ def capture_source(db, owner, content, native_id, role="user", conversation=None
 
 def delete_source(db, source):
     """Keep tombstones and idempotency identifiers, remove stored source content."""
+    advisory(db, f"memory:{source.owner_id}")
     source.deleted_at, source.content = now(), ""
     ids = set()
     for memory in db.scalars(select(Memory).where(Memory.source_id == source.id)):
         ids.add(memory.id)
         memory.suppressed, memory.content = True, ""
+        memory.embedding, memory.evidence, memory.tags = None, "", []
     for receipt in db.scalars(select(Command).where(Command.owner_id == source.owner_id)):
         data = receipt.result.get("data", {})
         if data.get("id") in ids or data.get("source_id") == source.id:
@@ -334,6 +349,8 @@ def execute(db, owner, command_id, tool, arguments):
         raise DomainError(
             "INVALID_ARGUMENT", "Please check the action details.", data=exc.errors(include_url=False)
         )
+    if tool.startswith("memory."):
+        advisory(db, f"memory:{owner}")
     data = mutate(db, owner, tool, args, command_id)
     result = {
         "command_id": command_id,
@@ -438,29 +455,43 @@ def mutate(db, owner, tool, args, command_id):
         row.revision += 1
         emit(db, owner, "schedule.changed", row.id, row.revision)
         return serial(row)
+    if tool == "memory.resolve":
+        from .memory_review import resolve
+
+        return resolve(db, owner, args, command_id)
     if tool == "memory.capture":
         source = capture_source(db, owner, args.content, f"capture:{command_id}", explicit=True)
-        memory = Memory(owner_id=owner, source_id=source.id, content=args.content)
+        memory = Memory(
+            owner_id=owner,
+            source_id=source.id,
+            content=args.content,
+            fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
+        )
         db.add(memory)
         db.flush()
+        enqueue_job(db, owner, "embed_memory", {"memory_id": memory.id})
         emit(db, owner, "memory.changed", memory.id)
         return serial(memory)
     if tool in {"memory.correct", "memory.forget"}:
         old = owned(db, Memory, args.memory_id, owner, lock=True)
-        old.suppressed = True
+        old.suppressed, old.embedding = True, None
         if tool == "memory.correct":
             source = capture_source(db, owner, args.content, f"correction:{command_id}", explicit=True)
             row = Memory(
                 owner_id=owner,
                 source_id=source.id,
                 content=args.content,
+                fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
                 supersedes_id=old.id,
+                fact_key=old.fact_key,
                 revision=old.revision + 1,
             )
             db.add(row)
             db.flush()
+            enqueue_job(db, owner, "embed_memory", {"memory_id": row.id})
             emit(db, owner, "memory.changed", row.id)
             return serial(row)
+        old.content, old.evidence, old.tags = "", "", []
         if args.delete_source:
             source = owned(db, Source, old.source_id, owner, lock=True)
             delete_source(db, source)

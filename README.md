@@ -1,3 +1,8 @@
+> **Current app:** Eridani runs from `compose.upgrade.yml` with FastAPI,
+> PostgreSQL, DBOS and a React web app. See [implementation and operations](docs/JARVIS_IMPLEMENTATION.md)
+> and [TODO](docs/TODO.md). The Mem0/Qdrant architecture below describes the
+> original Jarvis prototype; its legacy reader has been retired from the current app.
+
 Progress and next steps: [docs/TODO.md](docs/TODO.md). Assistant personality: [Eridani / Eri](apps/api/jarvis/personality.py).
 
 # J.A.R.V.I.S.

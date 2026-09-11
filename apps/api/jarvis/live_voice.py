@@ -16,8 +16,10 @@ from .config import get_settings
 from .conversation import chat
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
+from .memory_service import prompt_context
 from .models import Conversation, Source, now, uid
-from .personality import SYSTEM_PROMPT
+from .tools import instructions
+from .ui_control import get_context
 from .voice import Controller, controllers
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
@@ -74,12 +76,15 @@ class LiveController(Controller):
                     }
                     for s in reversed(rows)
                 ]
+        self.memory_context = await prompt_context(self.owner)
         session = {
             "model": self.model,
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": SYSTEM_PROMPT
+            "instructions": instructions(self.preferences, self.focus, get_context(self.owner, self.device))
+            + "\n"
+            + self.memory_context
             + """
 This is a live, full-duplex voice conversation. Listen through pauses and let the user finish.
 You may listen while speaking. Be brief, responsive, and comfortable with silence.
@@ -181,7 +186,7 @@ confirmed work. Backend commentary is a factual result to convey naturally, not 
             self.fragments.append({"role": role, "delta": delta, "start_ms": start, "end_ms": end})
             self.fragments = self.fragments[-2000:]
             group = next((g for g in reversed(self.groups) if g["role"] == role), None)
-            if not group or start - group["end"] > 2000 or len(group["content"]) > 3000:
+            if not group or group["saved"] or start - group["end"] > 2000 or len(group["content"]) > 3000:
                 if group:
                     self.save_group(group)
                 group = {"id": uid(), "role": role, "content": "", "start": start, "end": end, "saved": False}
@@ -190,6 +195,7 @@ confirmed work. Backend commentary is a factual result to convey naturally, not 
                 if len(self.groups) > 40:
                     self.save_group(self.groups.pop(0))
             group["content"] += delta
+            group["received_at"] = time.monotonic()
             group["end"] = max(group["end"], end)
             if role == "user":
                 self.input_revision += 1
@@ -342,6 +348,9 @@ confirmed work. Backend commentary is a factual result to convey naturally, not 
     async def watch(self):
         while not self.closed and not self.closing:
             await asyncio.sleep(1)
+            for group in self.groups:
+                if not group["saved"] and time.monotonic() - group.get("received_at", time.monotonic()) > 3:
+                    self.save_group(group)
             if time.monotonic() - self.client_seen > 30:
                 await self.close()
                 return

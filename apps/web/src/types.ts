@@ -38,6 +38,9 @@ export interface Notice {
   created_at: string;
 }
 export interface Memory {
+  tags: string[];
+  evidence: string;
+  embedding_model: string | null;
   id: string;
   content: string;
   source_id: string;
@@ -45,9 +48,24 @@ export interface Memory {
   created_at: string;
   revision: number;
 }
+export interface MemoryReview {
+  id: string;
+  revision: number;
+  question: string;
+  candidates: Memory[];
+}
+export interface MemoryMaintenance {
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string;
+  running: boolean;
+  result: { scanned?: number; merged?: number; queued_questions?: number } | null;
+}
 export interface Preferences {
+  preferred_name: string;
   history_enabled: boolean;
   memory_learning: boolean;
+  deep_sleep_enabled: boolean;
   history_days: number;
   timezone: string;
   default_reminder_hour: number;
@@ -99,6 +117,24 @@ export interface ChatMessage {
 export type VoiceProvider = "realtime" | "live";
 export interface UIAction {
   id: string;
-  view: View;
+  kind?: "show" | "chat" | "search" | "filter" | "form";
+  view?: View;
+  mode?: "open" | "close" | "auto";
+  query?: string;
+  status?: "all" | "open" | "completed";
+  project?: string;
+  form?: "task" | "reminder";
   entity_id?: string | null;
+}
+
+export interface UIContext {
+  view: View;
+  chat_open: boolean;
+  mobile: boolean;
+  voice_active: boolean;
+  query: string;
+  selected_task_id: string | null;
+  visible_ids: string[];
+  task_status: "all" | "open" | "completed";
+  project: string;
 }

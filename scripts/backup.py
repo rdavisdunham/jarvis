@@ -32,15 +32,6 @@ def counts(database):
 def backup():
     destination = Path(os.environ.get("JARVIS_BACKUP_DIRECTORY", "/backups"))
     destination.mkdir(parents=True, exist_ok=True)
-    legacy = Path("/legacy-memory")
-    archive = destination / "jarvis-legacy-memory.tar.gz.enc"
-    if legacy.exists() and not archive.exists():
-        # The original legacy volume is mounted read-only and no live service writes it.
-        data = pg("tar", "-cz", "-C", str(legacy), ".")
-        temporary = archive.with_suffix(".tmp")
-        temporary.write_bytes(cipher().encrypt(data))
-        temporary.chmod(0o600)
-        temporary.replace(archive)
     database = os.environ.get("PGDATABASE", "jarvis")
     dump = pg("pg_dump", "--format=custom", "--no-owner", "--no-acl", "-d", database)
     # Authenticate the whole snapshot. Keys and provider secrets are never part of the dump.

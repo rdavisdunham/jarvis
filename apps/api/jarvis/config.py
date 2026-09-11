@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     text_model: str = "gpt-5.4-mini"
     openai_api_key: str = ""
     groq_api_key: str = ""
-    qdrant_url: str = "http://127.0.0.1:6333"
-    qdrant_collection: str = "jarvis_memories"
     history_days: int = 0
     web_dist: Path = Path("apps/web/dist")
     vapid_private_key: str = ""

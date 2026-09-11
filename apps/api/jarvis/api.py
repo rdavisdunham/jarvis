@@ -22,7 +22,7 @@ from .config import get_settings
 from .conversation import chat
 from .db import session_scope
 from .domain import DomainError, execute, owned, preferences, serial
-from .memory_service import legacy_search, search
+from .memory_service import semantic_search
 from .models import (
     AuthSession,
     Command,
@@ -30,6 +30,7 @@ from .models import (
     Event,
     Job,
     Memory,
+    MemoryReview,
     Notification,
     Occurrence,
     PushSubscription,
@@ -39,6 +40,7 @@ from .models import (
     WorkerHealth,
     now,
 )
+from .ui_control import UISync, sync
 from .voice_options import OPTIONS
 from .worker import valid_push_endpoint
 
@@ -192,7 +194,7 @@ def bootstrap(user: User):
         worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
         backup_health = db.get(WorkerHealth, "backup")
         return {
-            "name": settings.owner_name,
+            "name": prefs["preferred_name"],
             "agent_model": settings.text_model,
             "csrf": user.csrf,
             "device_id": user.device_id,
@@ -350,6 +352,11 @@ def conversation(conversation_id: str, user: User):
         return {**serial(row), "messages": [serial(s) for s in reversed(sources)]}
 
 
+@app.post("/api/v1/ui/sync")
+async def ui_sync(body: UISync, user: User):
+    return sync(user.owner_id, user.device_id, body)
+
+
 @app.post("/api/v1/chat")
 async def chat_endpoint(body: ChatInput, user: User):
     return await chat(
@@ -359,9 +366,82 @@ async def chat_endpoint(body: ChatInput, user: User):
 
 @app.get("/api/v1/memory")
 async def memories(user: User, q: str = ""):
+    items = await semantic_search(user.owner_id, q[:500], 100 if not q else 20)
     with session_scope() as db:
-        items = search(db, user.owner_id, q[:500], 100 if not q else 20)
-    return {"items": items, "legacy": await legacy_search(q[:500]) if q else []}
+        pending = db.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.owner_id == user.owner_id,
+                Job.kind.in_(["extract_memory", "embed_memory"]),
+                Job.status.in_(["queued", "running"]),
+            )
+        )
+        retrying = db.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.owner_id == user.owner_id,
+                Job.kind.in_(["extract_memory", "embed_memory"]),
+                Job.status.in_(["retrying", "failed"]),
+            )
+        )
+        enabled = preferences(db, user.owner_id)["memory_learning"]
+        from .memory_review import pending_reviews, review_data, status
+
+        reviews = [review_data(db, r) for r in pending_reviews(db, user.owner_id)]
+        maintenance = status(db, user.owner_id)
+    return {
+        "items": items,
+        "reviews": reviews,
+        "maintenance": maintenance,
+        "learning": {"enabled": enabled, "pending": pending, "retrying": retrying},
+    }
+
+
+@app.post("/api/v1/memory/review")
+def run_memory_review(user: User):
+    from .memory_review import queue_review
+
+    with session_scope() as db:
+        job = queue_review(db, user.owner_id, manual=True)
+        if not job:
+            raise DomainError("INVALID_ARGUMENT", "Enable learning and weekly memory review first.")
+        return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/v1/memory/retry")
+def retry_memory(user: User):
+    from .domain import enqueue_job
+    from .memory_learning import VERSION, eligible
+
+    count = 0
+    with session_scope() as db:
+        rows = list(
+            db.scalars(
+                select(Job)
+                .where(
+                    Job.owner_id == user.owner_id,
+                    Job.kind.in_(["extract_memory", "embed_memory"]),
+                    Job.status == "failed",
+                )
+                .with_for_update()
+            )
+        )
+        for job in rows:
+            if job.kind == "extract_memory":
+                source = db.get(Source, job.payload["source_id"])
+                if not eligible(db, source, user.owner_id):
+                    continue
+            job.status = "cancelled"
+            enqueue_job(
+                db,
+                user.owner_id,
+                job.kind,
+                {k: v for k, v in job.payload.items() if k != "attempts"} | {"version": VERSION},
+            )
+            count += 1
+    return {"queued": count}
 
 
 @app.get("/api/v1/sources/{source_id}")
@@ -427,7 +507,7 @@ def export(user: User, format: str = "json"):
             model.__tablename__: [
                 serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))
             ]
-            for model in (Task, Schedule, Notification, Memory, Source)
+            for model in (Task, Schedule, Notification, Memory, Source, MemoryReview)
         }
     if format == "csv":
         buffer = io.StringIO()

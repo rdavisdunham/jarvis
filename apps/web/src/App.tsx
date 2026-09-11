@@ -29,13 +29,18 @@ import { api, ApiError, command, post, setCsrf } from "./api";
 import { Voice, type VoiceState } from "./voice";
 import { subscribeEvents } from "./events";
 import { ReminderList } from "./ReminderList";
+import { MemoryReviewCard } from "./MemoryReviewCard";
 import { WakeWord, recognitionType } from "./wake-word";
+import { useSiteControl } from "./copilot";
 import type {
   Bootstrap,
   UIAction,
+  UIContext,
   VoiceProvider,
   ChatMessage,
   Memory,
+  MemoryReview,
+  MemoryMaintenance,
   Notice,
   Schedule,
   Task,
@@ -71,10 +76,9 @@ export default function App() {
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
   const pendingNotices = notices.filter((notice) => !notice.completed_at);
-  const [memories, setMemories] = useState<Memory[]>([]),
-    [legacy, setLegacy] = useState<
-      { id: string; content: string; attribution: string }[]
-    >([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [memoryReviews, setMemoryReviews] = useState<MemoryReview[]>([]);
+  const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(null);
   const [query, setQuery] = useState(""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
@@ -103,6 +107,22 @@ export default function App() {
             : "realtime"),
       ) || "marin",
   );
+  const [taskStatus, setTaskStatus] = useState<"all" | "open" | "completed">(
+    "all",
+  );
+  const [projectFilter, setProjectFilter] = useState("");
+  const [memoryStatus, setMemoryStatus] = useState({
+    enabled: true,
+    pending: 0,
+    retrying: 0,
+  });
+  const [memoryRevision, setMemoryRevision] = useState(0);
+  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
+  const [mobile, setMobile] = useState(() => window.innerWidth <= 1000);
+  const uiResults = useRef<{ id: string; status: string; message?: string }[]>(
+    [],
+  );
+  const syncUIRef = useRef<() => Promise<void>>(async () => {});
   const [highlight, setHighlight] = useState<string | null>(null);
   const [wakeEnabled, setWakeEnabled] = useState(false);
   const [wakeStatus, setWakeStatus] = useState("");
@@ -177,6 +197,7 @@ export default function App() {
     const stopEvents = subscribeEvents(
       boot.event_cursor,
       () => {
+        setMemoryRevision((v) => v + 1);
         void load().catch(() =>
           setSyncWarning("Task updates are reconnecting…"),
         );
@@ -206,13 +227,18 @@ export default function App() {
     if (view !== "memory" || !boot) return;
     let current = true;
     const timer = setTimeout(() => {
-      api<{ items: Memory[]; legacy: typeof legacy }>(
-        "/memory?q=" + encodeURIComponent(query),
-      )
+      api<{
+        items: Memory[];
+        reviews: MemoryReview[];
+        maintenance: MemoryMaintenance;
+        learning: typeof memoryStatus;
+      }>("/memory?q=" + encodeURIComponent(query))
         .then((data) => {
           if (current) {
             setMemories(data.items);
-            setLegacy(data.legacy);
+            setMemoryReviews(data.reviews ?? []);
+            setMaintenance(data.maintenance);
+            if (data.learning) setMemoryStatus(data.learning);
           }
         })
         .catch((e) => setError(e.message));
@@ -221,7 +247,7 @@ export default function App() {
       current = false;
       clearTimeout(timer);
     };
-  }, [view, query, !!boot, toast]);
+  }, [view, query, !!boot, toast, memoryRevision]);
   useEffect(() => {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -344,34 +370,102 @@ export default function App() {
       localStorage.setItem("eri-voice-" + voiceProvider, options.default_voice);
     }
   }, [boot?.voice_options, voiceProvider, voiceName]);
+
+  async function applyAction(action: UIAction) {
+    const kind = action.kind ?? "show";
+    if (kind === "chat") {
+      setCompanion(action.mode === "auto" ? !mobile : action.mode === "open");
+      return;
+    }
+    if (
+      (selected && selected.id !== action.entity_id) ||
+      reminder ||
+      editingMemory
+    )
+      throw new Error(
+        "An editor is open. Save or close it before changing pages.",
+      );
+    setSidebar(false);
+    if (mobile) setCompanion(false);
+    if (kind === "search") {
+      setQuery(action.query ?? "");
+      setTaskStatus("all");
+      setProjectFilter("");
+      setView(action.view ?? "all");
+    } else if (kind === "filter") {
+      setView("all");
+      if (action.status !== undefined) setTaskStatus(action.status);
+      if (action.project !== undefined) setProjectFilter(action.project);
+    } else if (kind === "form") {
+      if (action.form === "reminder") setReminder(true);
+      else {
+        setView("all");
+        setTimeout(
+          () =>
+            document
+              .querySelector<HTMLInputElement>('[aria-label="New task"]')
+              ?.focus(),
+          100,
+        );
+      }
+    } else {
+      setQuery("");
+      setTaskStatus("all");
+      setProjectFilter("");
+      setView(action.view ?? "today");
+      if (action.entity_id && action.view === "all") {
+        setSelected(
+          await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
+        );
+      } else if (action.entity_id && action.view === "reminders") {
+        const record = await api<Schedule>(
+          "/schedules/" + encodeURIComponent(action.entity_id),
+        );
+        setSchedules((items) => [
+          ...items.filter((item) => item.id !== record.id),
+          record,
+        ]);
+        setHighlight(record.id);
+      }
+    }
+  }
   async function showActions(actions: UIAction[] = []) {
     for (const action of actions) {
       if (displayedActions.current.has(action.id)) continue;
       displayedActions.current.add(action.id);
-      setQuery("");
-      setView(action.view);
-      setSidebar(false);
-      setCompanion(false);
       try {
-        if (action.entity_id && action.view === "all") {
-          setSelected(
-            await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
-          );
-        } else if (action.entity_id && action.view === "reminders") {
-          const record = await api<Schedule>(
-            "/schedules/" + encodeURIComponent(action.entity_id),
-          );
-          setSchedules((items) => [
-            ...items.filter((item) => item.id !== record.id),
-            record,
-          ]);
-          setHighlight(record.id);
-        }
+        await runSiteControl(action);
+        uiResults.current.push({ id: action.id, status: "displayed" });
       } catch (e) {
-        setError((e as Error).message);
+        const message = (e as Error).message;
+        uiResults.current.push({ id: action.id, status: "failed", message });
+        setError(message);
       }
     }
   }
+  useEffect(() => {
+    const resize = () => setMobile(window.innerWidth <= 1000);
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  useEffect(() => {
+    if (!boot) return;
+    let inFlight = false;
+    const sync = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        await syncUIRef.current();
+      } catch {
+        /* retry with the same acknowledgements */
+      } finally {
+        inFlight = false;
+      }
+    };
+    void sync();
+    const timer = setInterval(sync, 700);
+    return () => clearInterval(timer);
+  }, [!!boot]);
   useEffect(() => {
     if (!highlight || view !== "reminders") return;
     const timer = setTimeout(() => {
@@ -445,6 +539,7 @@ export default function App() {
       setThinking(true);
       setError("");
       try {
+        await syncUIRef.current();
         const result = await post<{
           message: string;
           status: string;
@@ -545,6 +640,7 @@ export default function App() {
           glowRef.current?.style.setProperty("--voice-level", String(level)),
       );
       voice.current = controller;
+      await syncUIRef.current();
       await controller.start(id, selected?.id, {
         provider: voiceProvider,
         voice: voiceName,
@@ -647,6 +743,8 @@ export default function App() {
         !t.project?.toLowerCase().includes(query.toLowerCase())
       )
         return false;
+      if (taskStatus !== "all" && t.status !== taskStatus) return false;
+      if (projectFilter && t.project !== projectFilter) return false;
       if (view === "today") return !!t.due_date && t.due_date <= today;
       if (view === "week") return !!t.due_date && t.due_date <= weekEnd;
       if (view === "inbox") return !t.project;
@@ -663,6 +761,36 @@ export default function App() {
     ),
     done = filtered.filter((t) => t.status === "completed"),
     unread = notices.filter((n) => !n.read_at).length;
+  const uiContext: UIContext = {
+    view,
+    chat_open: companion,
+    mobile,
+    voice_active: !!voiceState && !voiceState.closed,
+    query: query.slice(0, 300),
+    selected_task_id: selected?.id ?? null,
+    visible_ids: (view === "reminders"
+      ? schedules
+      : view === "memory"
+        ? memories
+        : filtered
+    )
+      .slice(0, 60)
+      .map((item) => item.id),
+    task_status: taskStatus,
+    project: projectFilter,
+  };
+  const runSiteControl = useSiteControl(uiContext, applyAction, !!boot);
+  syncUIRef.current = async () => {
+    const acknowledged = [...uiResults.current];
+    const response = await post<{ actions: UIAction[] }>("/ui/sync", {
+      context: uiContext,
+      results: acknowledged,
+    });
+    uiResults.current = uiResults.current.filter(
+      (r) => !acknowledged.includes(r),
+    );
+    await showActions(response.actions);
+  };
   const titles: Record<View, string> = {
     today: "A little space for your day.",
     inbox: "Catch it. Clear your head.",
@@ -721,7 +849,11 @@ export default function App() {
       </div>
     );
   return (
-    <div className="app-shell">
+    <div
+      className={
+        "app-shell " + (voiceState && !voiceState.closed ? "voice-active" : "")
+      }
+    >
       {sidebar && (
         <button
           className="nav-scrim"
@@ -902,6 +1034,45 @@ export default function App() {
               </h1>
               <p>{titles[view]}</p>
             </div>
+            {["today", "inbox", "week", "all"].includes(view) && (
+              <div className="task-filters">
+                <label>
+                  Status
+                  <select
+                    aria-label="Task status filter"
+                    value={taskStatus}
+                    onChange={(e) =>
+                      setTaskStatus(e.target.value as typeof taskStatus)
+                    }
+                  >
+                    <option value="all">All</option>
+                    <option value="open">Open</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </label>
+                <label>
+                  Project
+                  <select
+                    aria-label="Project filter"
+                    value={projectFilter}
+                    onChange={(e) => setProjectFilter(e.target.value)}
+                  >
+                    <option value="">All projects</option>
+                    {[
+                      ...new Set(
+                        tasks
+                          .map((t) => t.project)
+                          .filter((p): p is string => !!p),
+                      ),
+                    ]
+                      .sort()
+                      .map((p) => (
+                        <option key={p}>{p}</option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+            )}
             {["today", "inbox", "week", "all"].includes(view) && (
               <>
                 <form className="quick-add" onSubmit={add}>
@@ -1130,6 +1301,71 @@ export default function App() {
             )}
             {view === "memory" && (
               <>
+                <p className="learning-status" role="status">
+                  {memoryStatus.enabled
+                    ? "Automatic learning is on"
+                    : "Automatic learning is off"}
+                  {memoryStatus.pending > 0
+                    ? " · Learning from " +
+                      memoryStatus.pending +
+                      " saved messages…"
+                    : " · Up to date"}
+                  {memoryStatus.retrying > 0
+                    ? " · Some memories need a retry"
+                    : ""}
+                </p>
+
+                {memoryStatus.retrying > 0 && (
+                  <button
+                    className="text-button"
+                    onClick={async () => {
+                      const result = await post<{ queued: number }>(
+                        "/memory/retry",
+                      );
+                      setToast(
+                        result.queued
+                          ? "Memory learning queued again"
+                          : "Learning is already retrying",
+                      );
+                      setMemoryRevision((v) => v + 1);
+                    }}
+                  >
+                    Retry memory learning
+                  </button>
+                )}
+                <div className="memory-maintenance">
+                  <p className="subtle">
+                    {maintenance?.enabled
+                      ? maintenance.running
+                        ? "Deep sleep is reviewing memories…"
+                        : "Weekly deep sleep · Next review " +
+                          new Date(maintenance.next_run_at).toLocaleString([], {
+                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                            timeZone: boot.preferences.timezone,
+                          })
+                      : "Weekly deep sleep is off"}
+                  </p>
+                  <button className="text-button"
+                    disabled={busy || !maintenance?.enabled || maintenance.running}
+                    onClick={async () => {
+                      try {
+                        await post("/memory/review");
+                        setToast("Memory review queued");
+                        setMemoryRevision((v) => v + 1);
+                      } catch (e) { setError((e as Error).message); }
+                    }}>Review now</button>
+                </div>
+                {memoryReviews.map((review) => (
+                  <MemoryReviewCard key={review.id} review={review} busy={busy}
+                    onResolve={(action, content) => mutate(
+                      "memory.resolve",
+                      { review_id: review.id, expected_revision: review.revision, action,
+                        ...(content ? { content } : {}) },
+                      action === "merge" ? "Memory corrected" :
+                        action === "distinct" ? "Kept as separate facts" : "Eri can ask next week",
+                    )}
+                  />
+                ))}
                 <MemoryCapture
                   busy={busy}
                   onCapture={(content) =>
@@ -1149,6 +1385,13 @@ export default function App() {
                 {memories.map((m) => (
                   <article className="memory" key={m.id}>
                     <p>{m.content}</p>
+                    {!!m.tags?.length && (
+                      <div className="memory-tags">
+                        {m.tags.map((tag) => (
+                          <span key={tag}>{tag}</span>
+                        ))}
+                      </div>
+                    )}
                     <footer>
                       <span>
                         {m.attribution === "owner_statement"
@@ -1176,6 +1419,12 @@ export default function App() {
                         <ChevronRight size={13} />
                       </button>
                       <button
+                        className="text-button"
+                        onClick={() => setEditingMemory(m)}
+                      >
+                        Correct
+                      </button>
+                      <button
                         className="icon-button"
                         aria-label="Forget this memory"
                         onClick={() =>
@@ -1191,24 +1440,7 @@ export default function App() {
                     </footer>
                   </article>
                 ))}
-                {legacy.length > 0 && (
-                  <>
-                    <div className="section-head">
-                      <h2>From earlier conversations</h2>
-                    </div>
-                    {legacy.map((m) => (
-                      <article className="memory legacy" key={m.id}>
-                        <p>{m.content}</p>
-                        <footer>
-                          <span>
-                            Legacy memory · Original transcript unavailable
-                          </span>
-                        </footer>
-                      </article>
-                    ))}
-                  </>
-                )}
-                {!memories.length && !legacy.length && (
+                {!memories.length && (
                   <div className="empty-state">
                     <Brain size={30} />
                     <h3>
@@ -1217,8 +1449,8 @@ export default function App() {
                         : "Keep the useful little things."}
                     </h3>
                     <p>
-                      Tell Eridani “remember this,” or save something above.
-                      Search also checks your available legacy memories.
+                      Eri learns useful facts and preferences from saved
+                      conversations. You can also save something above.
                     </p>
                   </div>
                 )}
@@ -1230,7 +1462,8 @@ export default function App() {
                   <h2>Voice & conversation</h2>
                   <p>
                     Choose how Eri sounds on this device. Changes apply to the
-                    next voice session.
+                    next voice session. Voice ends after 15 quiet seconds
+                    following the last response.
                   </p>
                   <div className="voice-options">
                     <label>
@@ -1300,7 +1533,7 @@ export default function App() {
                           if (!e.target.checked) setWakeStatus("");
                         }}
                       />
-                      “Hey, Eri”
+                      “Eri” or “Hey, Eri”
                     </label>
                     <span>
                       {wakeEnabled
@@ -1415,7 +1648,9 @@ export default function App() {
                   </span>
                   <p>{m.content || (m.pending ? "Listening…" : "")}</p>
                   {m.pending && (
-                    <span className="transcript-status">Transcribing…</span>
+                    <span className="transcript-status">
+                      {m.role === "user" ? "Transcribing…" : "Speaking…"}
+                    </span>
                   )}
                 </div>
               ))}
@@ -1430,7 +1665,13 @@ export default function App() {
             {voiceState && !voiceState.closed && (
               <div className="voice-panel">
                 <span className="status-dot" />
-                <span>{voiceLabel(voiceState.state)}</span>
+                <span>
+                  {voiceState.idle_seconds !== null &&
+                  voiceState.idle_seconds !== undefined &&
+                  voiceState.idle_seconds <= 5
+                    ? "Voice ends in " + voiceState.idle_seconds + "s"
+                    : voiceLabel(voiceState.state)}
+                </span>
                 <button
                   className="icon-button"
                   aria-label="Stop speaking"
@@ -1518,11 +1759,7 @@ export default function App() {
                 </button>
               </div>
             </form>
-            <div className="voice-glow" ref={glowRef} aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </div>
+
             {!boot.capabilities.voice && (
               <p className="chat-footnote">
                 Voice needs an OpenAI API key. Text is ready.
@@ -1537,6 +1774,85 @@ export default function App() {
           </aside>
         </div>
       </div>
+      <div className="voice-glow" ref={glowRef} aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
+      {voiceState && !voiceState.closed && !companion && (
+        <div className="voice-dock" aria-label="Active voice controls">
+          <button className="text-button" onClick={() => setCompanion(true)}>
+            <MessageCircle size={17} />
+            {voiceState.idle_seconds !== null &&
+            voiceState.idle_seconds !== undefined &&
+            voiceState.idle_seconds <= 5
+              ? "Listening · " + voiceState.idle_seconds + "s"
+              : voiceLabel(voiceState.state)}
+          </button>
+          <button
+            className="icon-button"
+            aria-label="Stop speaking"
+            onClick={() =>
+              void voice.current?.interrupt().catch((e) => setError(e.message))
+            }
+          >
+            <VolumeX size={17} />
+          </button>
+          <button
+            className="icon-button"
+            aria-label="End voice"
+            disabled={voiceState.state === "closing"}
+            onClick={() => void startVoice()}
+          >
+            <Square size={16} />
+          </button>
+        </div>
+      )}
+      {editingMemory && (
+        <div className="modal-backdrop">
+          <form
+            className="dialog"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const content = String(
+                new FormData(e.currentTarget).get("content"),
+              ).trim();
+              if (
+                content &&
+                (await mutate(
+                  "memory.correct",
+                  { memory_id: editingMemory.id, content },
+                  "Memory corrected",
+                ))
+              )
+                setEditingMemory(null);
+            }}
+          >
+            <div className="dialog-heading">
+              <h2>Correct memory</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close memory editor"
+                onClick={() => setEditingMemory(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <textarea
+              name="content"
+              aria-label="Memory correction"
+              defaultValue={editingMemory.content}
+              required
+              maxLength={20000}
+              rows={5}
+            />
+            <button className="primary" disabled={busy}>
+              Save correction
+            </button>
+          </form>
+        </div>
+      )}
       {toast && (
         <div className="toast" role="status">
           <Check size={16} />
@@ -1605,6 +1921,7 @@ function voiceLabel(state: string) {
         unresolved: "Ready for your next words",
         disconnected: "Voice disconnected",
         closed: "Voice ended",
+        idle_timeout: "Voice ended after 15 quiet seconds",
       } as Record<string, string>
     )[state] ?? "Voice is on"
   );

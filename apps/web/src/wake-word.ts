@@ -1,6 +1,8 @@
 // Browser recognition is opt-in and foreground-only. No local model is downloaded.
 export const isWakePhrase = (text: string) =>
-  /^(hey|hi|okay|ok)[,\s]+(eri|erie|airy|eridani)[.!?,\s]*$/i.test(text.trim());
+  /^(?:(?:hey|hi|okay|ok)[,\s]+)?(?:eri|erie|airy|eridani)[.!?,\s]*$/i.test(
+    text.trim(),
+  );
 
 type Recognition = {
   continuous: boolean;
@@ -75,7 +77,9 @@ export class WakeWord {
     };
     try {
       recognition.start();
-      this.status("Listening for “Hey, Eri” while this page is visible.");
+      this.status(
+        "Listening for “Eri” or “Hey, Eri” while this page is visible.",
+      );
     } catch {
       this.stop();
       this.status("Wake word could not start. Tap voice to talk.");

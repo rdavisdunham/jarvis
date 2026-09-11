@@ -30,7 +30,7 @@ Google account sign-in already requested by the owner.
 - History and conservative memory learning start enabled. Private sessions do not retain transcripts. Explicitly requested tasks and saved memories still persist. Jarvis does not record raw audio.
 - The default voice candidate is GPT-Realtime-2.1. The server controls response creation, silence, waiting, interruption and tool execution. Audible confirmations are requested only after commands commit.
 - The model budget starts at $150/month and is editable in Settings. Each paid continuation reserves capacity before execution; uncertain provider outcomes retain their reservation.
-- Preserve legacy memory through a read-only adapter and an isolated Qdrant copy. New assertions belong to Jarvis and link to retained source records.
+- Canonical facts and embeddings live in PostgreSQL and link to retained sources. The legacy Qdrant bridge was retired at the owner's request on September 11; the planned later vector index is pgvector/HNSW.
 
 ## What is implemented
 
@@ -42,7 +42,7 @@ The worker accepts jobs through a transactional outbox, submits stable DBOS work
 
 The companion supports real text tool calls, private sessions, retained conversation recovery on the same browser tab, explicit memory capture, source inspection, correction through the command API, and deletion. Turning history off affects existing conversations too. Deleting a source blanks dependent assertions and redacts retained response/command content associated with that source.
 
-New memory search uses PostgreSQL full-text search. Legacy search uses a bounded lexical bridge over up to 1,000 records. Legacy facts are labeled unverified and have no claimed original transcript. The restored collection currently contains 263 records with 384-dimensional cosine vectors.
+Canonical memory search combines cloud query embeddings, Python cosine scoring and lexical/tag matches over PostgreSQL records. There is no active Mem0 or Qdrant path. pgvector/HNSW is deferred until base functionality is hardened.
 
 ## Verified evidence
 
@@ -57,7 +57,7 @@ New memory search uses PostgreSQL full-text search. Legacy search uses a bounded
 - After the Eridani update, a live private text identity check introduced Eridani/Eri correctly, and the rebuilt deployment passed the synthetic voice task/audio/interruption check again.
 - A separate browser text chat survived page reload. A private API conversation retained no transcript.
 - The deployed reminder worker delivered a synthetic reminder into the Inbox. API/worker container restart preserved the task and exactly one notification.
-- All **430 files** in the original Qdrant volume matched their copied-file checksums before the isolated Qdrant service started. The restored collection reports healthy.
+- All **430 files** in the original Qdrant volume matched their copied-file checksums before the isolated Qdrant service started. This was verified before the September 11 retirement of the bridge.
 - A populated encrypted PostgreSQL backup restored into a new isolated database: 5 tasks, 2 schedules, 1 notification, 2 sources, 2 assertions and 18 command receipts. The test task ID/title/revision, notification ID and deleted-source tombstones were checked.
 - The Windows startup helper completed successfully with Docker running. An actual Windows reboot was not performed.
 
@@ -96,7 +96,7 @@ provider charge; include it in the cost pilot.
 
 ## Backups and recovery
 
-A dedicated container creates an encrypted PostgreSQL snapshot at startup and every 24 hours, retaining 30 days of timestamped snapshots. The original legacy memory archive is encrypted separately. Backup completion time appears in Settings.
+A dedicated container creates an encrypted PostgreSQL snapshot at startup and every 24 hours, retaining 30 days of timestamped snapshots. An earlier encrypted legacy-memory archive remains offline; the backup service no longer mounts Qdrant. Backup completion time appears in Settings.
 
 Current locations:
 
@@ -159,7 +159,7 @@ This is the daily-use task/reminder foundation, with an initial source-backed me
 
 Davin reports a successful real microphone conversation. Gate quality across varied speech, measured interruption latency on the phone, locked-phone Web Push and the seven-day cost pilot remain unverified. Live synthetic browser tests establish provider connectivity and the exercised tool/audio paths, but do not replace those device and quality checks. Voice sessions are foreground-only. Application duration, speech-turn and idle-silence caps have been removed. Browser status polls renew a 30-second orphan-cleanup lease; disconnected clients are cleaned up. Explicit stop, provider failures and budget controls still apply.
 
-Home Assistant, calendar, finance, delegated research, GPU embeddings/reranking and the full memory quality benchmark are later PRD increments. No accounts or devices were invented or connected. Legacy correction/deletion overlays and semantic legacy retrieval remain part of that later memory work.
+Home Assistant, calendar, finance, delegated research, GPU embeddings/reranking and the full memory quality benchmark are later PRD increments. No accounts or devices were invented or connected. Legacy migration has been dropped at the owner's request.
 
 Usage is an application estimate based on reported model calls and configured rates. It is not a provider-enforced billing cap; transcription charges, missing usage reports and pricing changes can differ from the displayed total. The checked price sources are [Groq GPT-OSS 120B](https://console.groq.com/docs/model/openai/gpt-oss-120b), [GPT-Realtime-2.1](https://developers.openai.com/api/docs/models/gpt-realtime-2.1), [Realtime Mini](https://developers.openai.com/api/docs/models/gpt-realtime-2.1-mini), and [GPT-5.4 Mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 
@@ -265,3 +265,178 @@ Ignored evidence is in `.runtime/gpt-live-evidence.json`,
 `.runtime/realtime-task-evidence.json`, and `.runtime/polish-evidence.json`.
 The original checkpoint remains on main; this follow-up is deployed locally and
 has not yet been committed or pushed.
+
+## September 11 — automatic memory and conversational site controls
+
+Checkpoint before edits: `404c230ddd9b7dae48fab4c78d6a5c2e87ea3707`, pushed to main
+and verified. New work below is deployed locally, not yet committed.
+Encrypted backup `jarvis-20260911T080749Z.pgdump.enc` completed before migration.
+Additive migration `0003_memory_learning` preserves task/reminder/source history.
+
+### Memory
+
+`memory_learning.py` uses structured gpt-5.4-mini extraction: up to five useful
+owner-stated facts, confidence >= .85, exact source evidence, tags and stable fact
+keys. Paired quotation wrappers may be removed from otherwise verbatim evidence.
+Facts embedded in requests can be learned; the requested action is not a memory.
+Private conversations, opt-outs, deleted sources and assistant claims are excluded.
+Eligibility is checked again after cloud calls, before committing facts.
+
+Cloud `text-embedding-3-small` creates 512-dimensional embeddings stored in
+PostgreSQL JSONB. There is no local inference or additional vector service.
+Personal-scale cosine retrieval combines lexical/tag scoring and a lexical
+fallback on provider failure. Larger stores may warrant pgvector indexes.
+API reads never return raw vectors.
+
+Fingerprints and same-key semantic matches prevent duplicates. Corrections create
+new sources/revisions; supersession requires an eligible older fact and a newer
+source. Forgetting clears content, evidence and embeddings and keeps a tombstone.
+Entity/alias reconciliation remains a follow-up: phonetic names can produce
+different supported spellings.
+
+Cloud calls have budget accounting. Learning uses a separate `jarvis-memory` DBOS
+queue (concurrency 2), so backfill cannot block reminders. Saved eligible history
+is backfilled incrementally. Pipeline version 4 includes the revised evidence
+validation. Failures retry, then appear for manual retry; failed current-version
+jobs do not create unlimited replacement jobs. The Memory page shows learning
+status, tags, source access, correction, forgetting, semantic search and retry.
+
+Text retrieves before its first model call. Realtime seeds memory on connection
+and retrieves from input transcription before planning, preserving interruptions.
+GPT-Live receives startup memory and delegates personal-data work to the existing
+backend, which retrieves using recent user transcript context. Retrieved JSON
+is evidence, never executable instructions. Live transcript groups are persisted
+after a quiet interval so learning need not wait for the session to close.
+
+### Site controls, name and voice
+
+CopilotKit 1.71's headless React registry manages the typed frontend handler.
+Existing authenticated text/Realtime/Live transports invoke it through a per-device
+bridge; no extra model runtime, CopilotKit cloud or conversation database is added.
+`/api/v1/ui/sync` exchanges page, selected/visible IDs, search, filters, viewport,
+chat/voice state and acknowledgements. Context expires in memory and is never
+stored as transcript. UI actions wait up to ten seconds for the requesting device's
+displayed/failed acknowledgement; other devices cannot receive or acknowledge them.
+
+Tools cover page/record navigation, chat open/close/auto, task or memory search,
+status/project filters and task/reminder entry. A capability map explains the site.
+Open editors block conflicting navigation. Mobile navigation closes chat while
+voice continues. Handler refs keep viewport and editor state current.
+
+Preferred name is an owner setting (1–80 characters) used by bootstrap, greetings
+and shared prompts; the personality file no longer hard-codes an owner name.
+Existing profile names remain until edited.
+
+Wake recognition accepts Eri/Eridani and Hey Eri plus existing recognition spellings.
+The owner confirmed Hey Eri works. It remains opt-in, foreground-only and resumes
+after voice cleanup. The browser grants 15 seconds of quiet after responses.
+Speech, task work, captions and actual microphone/output audio activity extend
+the window, preventing early transcript delivery from cutting off audible speech.
+Unused newly opened sessions also close after 15 seconds. Provider/network/budget
+limits remain, without the old total-duration or speech-turn caps.
+
+The glow belongs to the app shell. A dock exposes reopen-chat, interrupt and end
+while chat is closed. Live assistant captions reveal small word groups with bounded
+catch-up and exact final text. This is display smoothing, not exact audio alignment.
+Reduced-motion users get immediate captions.
+
+Realtime close cancels/drains responses before settlement and accepts an already
+ended media call. Unsettled generations retain a hold. Three verified test holds
+were released; older uncertain reservations remain for evidence-based reconciliation.
+The $150 monthly limit was unchanged.
+
+### Validation and remaining work
+
+64 backend and 18 frontend tests pass, plus separate real OpenAI extraction,
+embedding and semantic-recall acceptance in a disposable database.
+Ruff, production build and diff checks pass; migration and Docker health pass.
+
+`e2e/site-control.mjs` verifies actual agent chat closing, filters/search, mobile
+navigation, visible learned facts, name Settings, no browser errors or overflow.
+`e2e/live.mjs` verifies one task, speaker captions, audio, global mobile dock/glow,
+quiet shutdown, final usage, New chat and switching to Realtime.
+`e2e/realtime.mjs` with recovery enabled verifies one task, audible output,
+interruption with save retained, restart, captions and injected SSE/poll recovery.
+The latest Realtime reservation is confirmed closed.
+
+Live history inspection: 65 eligible user sources processed, 2 visible embedded
+memories, no pending extraction jobs. Synthetic voice tasks archived.
+Inspected `.runtime/voice-dock-mobile.png` and `.runtime/memory-mobile.png`.
+The added standalone wake phrase still needs the owner's physical microphone check.
+
+Accepted boundaries: authored notes and derived memory share sources/retrieval
+but retain their roles. Tasks/reminders will share a work-item interface while
+scheduling, execution, delivery and completion remain distinct underneath.
+Those data-model/UI migrations, richer organization, Calendar, notifications,
+scoped MCP/API and Android are the next feature phase.
+
+## Weekly deep sleep and legacy retirement — September 11
+
+The owner requested weekly memory consolidation and clarification of similar
+spellings. The first version uses a durable `review_memory` job on the existing
+`jarvis-memory` DBOS queue. Each owner gets one Sunday 03:00 slot in their saved
+IANA timezone; startup catches up the latest missed slot once. Manual Review now
+shares pending work rather than duplicating it. Turning memory learning or weekly
+review off prevents scheduled and in-flight review effects.
+
+Exact normalized duplicates retain one active fact and preserve the other sources
+through `merged_into_id` links. Similar spellings are candidate questions only.
+The current candidate detector compares otherwise matching word sequences with
+one differing word, using spelling/phonetic similarity; cross-sentence alias
+resolution and broader semantic reconciliation remain roadmap work.
+
+`memory_reviews` holds candidate IDs/revisions and review status, without copying
+the source text. A source deletion or correction invalidates pending questions.
+The Memory page supports a full corrected fact, separate facts, or deferral for
+seven days. `memory_review_list` and `memory_resolve` expose the same workflow to
+text, Realtime and Live's delegated backend. Confirmed resolutions preserve
+provenance, create explicit owner-statement memories, and queue re-embedding.
+
+Prompt context can offer one optional clarification per owner per 24 hours.
+It asks the assistant to finish the user's request first and ask only at a natural
+pause. This is an offer to a model, not evidence the question was spoken or heard.
+The UI queue remains the durable place to review unresolved questions.
+
+The active Qdrant reader, frontend legacy results, settings, Compose service and
+backup mount have been removed. Existing volumes and historical encrypted
+archives are retained offline, but are not read by the new app. PostgreSQL with
+pgvector/HNSW is the future vector-store direction after base hardening.
+
+OpenAI documents `session.thinking.append` for quiet mid-session context updates.
+Updates are injected progressively; acknowledgments do not guarantee the model
+has consumed all content or will use it in its next speech. This capability is
+recorded in TODO; the app currently retrieves at startup and for delegated work.
+References: [context timing](https://developers.openai.com/api/docs/guides/live-conversations),
+[append events](https://developers.openai.com/api/docs/guides/live-delegation).
+
+Validation: 76 backend tests pass, including 12 weekly-review tests for duplicate
+consolidation, source preservation, spelling ambiguity, ownership, stale edits,
+idempotent resolution, deferral, prompt timing, concurrent enqueue, retries and
+DST-aware weekly slots. One opt-in paid-provider test is skipped. All 18 frontend
+tests and the production build pass. An isolated migration check retained an
+existing memory through upgrade/downgrade/upgrade; the mobile browser correction
+flow and Review now passed without writing synthetic memories to the live owner.
+The screenshot was inspected for readable controls and horizontal overflow.
+
+Before deployment, encrypted snapshot `jarvis-20260911T160818Z.pgdump.enc`
+was created. Docker applied migration `0004_memory_review`; API, worker and
+PostgreSQL are healthy. The retired `jarvis-next-legacy-memory-1` container was
+removed without deleting its volumes. The first durable review scanned 2 facts,
+merged none and queued the Hayes/Haze clarification. Next weekly run is
+September 13 at 03:00 America/Chicago. A credential-free HTTPS check verified the
+`index-B0knHE1o.js` bundle. The optional authenticated tailnet smoke test was
+blocked by automatic approval review because pairing-token transfer to that
+destination was considered unverified; no token was sent by that test.
+Both TODO and the app roadmap record the weekly review, retired bridge, deferred
+vector index and quiet Live context follow-up. No owner clarification has been
+answered on their behalf.
+
+## Temporary fixed pairing PIN — September 11
+
+At the owner's request, pairing now uses their chosen fixed PIN in the ignored
+`JARVIS_OWNER_TOKEN` setting, mirrored to `.runtime/pairing-code`. The existing
+setup script preserves configured values, so setup and container restarts do not
+replace this PIN. Only the API container needs recreation to reload the setting.
+Session tokens, CSRF values and infrastructure secrets still use secure randomness.
+Existing paired sessions remain valid; Google OAuth remains on the roadmap.
+The PIN value is intentionally not copied into tracked documentation or source.

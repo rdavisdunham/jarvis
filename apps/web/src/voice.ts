@@ -2,6 +2,7 @@ import { api, post, ApiError } from "./api";
 import type { ChatMessage, UIAction, VoiceProvider } from "./types";
 import { VoiceTranscript } from "./voice-transcript";
 import { LiveTranscript } from "./live-transcript";
+import { VoiceIdle } from "./voice-idle";
 export interface VoiceState {
   state: string;
   error: string | null;
@@ -12,6 +13,7 @@ export interface VoiceState {
   can_submit?: boolean;
   provider?: VoiceProvider;
   ui_actions?: UIAction[];
+  idle_seconds?: number | null;
 }
 export class Voice {
   private pc: RTCPeerConnection | null = null;
@@ -20,6 +22,18 @@ export class Voice {
   private session: string | null = null;
   private poll: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
+  private idle = new VoiceIdle();
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  private outputAnalyser: AnalyserNode | null = null;
+  private inputAnalyser: AnalyserNode | null = null;
+  private latestState: VoiceState = {
+    state: "connecting",
+    error: null,
+    text: "",
+    closed: false,
+    receipts: [],
+  };
+
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pollFailures = 0;
   private transcript: VoiceTranscript;
@@ -70,6 +84,13 @@ export class Voice {
       this.audio.autoplay = true;
       this.pc.ontrack = (event) => {
         if (this.audio) this.audio.srcObject = event.streams[0];
+        if (this.audioContext) {
+          this.outputAnalyser = this.audioContext.createAnalyser();
+          this.outputAnalyser.fftSize = 512;
+          this.audioContext
+            .createMediaStreamSource(event.streams[0])
+            .connect(this.outputAnalyser);
+        }
       };
       this.pc.onconnectionstatechange = () => {
         const state = this.pc?.connectionState;
@@ -109,6 +130,21 @@ export class Voice {
             liveStarted = true;
             liveReady.dispatchEvent(new Event("ready"));
           }
+          const now = performance.now();
+          if (event.type === "input_audio_buffer.speech_started")
+            this.idle.speech(true, now);
+          if (event.type === "input_audio_buffer.speech_stopped")
+            this.idle.speech(false, now);
+          if (
+            [
+              "session.input_transcript.delta",
+              "session.output_transcript.delta",
+              "output_audio_buffer.started",
+              "output_audio_buffer.stopped",
+              "output_audio_buffer.cleared",
+            ].includes(event.type)
+          )
+            this.idle.touch(now);
           if (this.provider === "live") this.liveTranscript.receive(event);
           else this.transcript.receive(event);
         } catch {
@@ -202,6 +238,8 @@ export class Voice {
       }
       if (this.stopped) return;
       this.stream.getTracks().forEach((t) => (t.enabled = true));
+      this.idle.start(performance.now());
+      this.idleTimer = setInterval(() => this.checkIdle(), 200);
       this.check();
     } catch (error) {
       await this.stop();
@@ -215,7 +253,12 @@ export class Voice {
       const state = await api<VoiceState>("/voice/sessions/" + session);
       if (this.stopped || this.session !== session) return;
       this.pollFailures = 0;
-      this.changed(state);
+      this.latestState = state;
+      this.idle.state(state.state, performance.now());
+      this.changed({
+        ...state,
+        idle_seconds: this.idle.remaining(performance.now()),
+      });
       if (state.closed) {
         await this.stop();
         return;
@@ -249,6 +292,7 @@ export class Voice {
       void context.resume().catch(() => {});
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
+      this.inputAnalyser = analyser;
       context.createMediaStreamSource(this.stream).connect(analyser);
       const samples = new Uint8Array(analyser.fftSize);
       const tick = () => {
@@ -266,6 +310,44 @@ export class Voice {
       tick();
     } catch {
       /* Audio metering is decorative; voice still works. */
+    }
+  }
+  private checkIdle() {
+    if (this.stopped) return;
+    const now = performance.now();
+    // Sample incoming playout as well as microphone energy: output text can arrive
+    // seconds before the corresponding speech has finished playing.
+    for (const analyser of [this.outputAnalyser, this.inputAnalyser]) {
+      if (!analyser) continue;
+      const samples = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(samples);
+      const rms = Math.sqrt(
+        samples.reduce((sum, x) => sum + ((x - 128) / 128) ** 2, 0) /
+          samples.length,
+      );
+      if (rms > 0.012) this.idle.touch(now);
+    }
+    if (this.idle.expired(now)) {
+      this.changed({
+        ...this.latestState,
+        state: "closing",
+        closed: false,
+        idle_seconds: 0,
+      });
+      void this.stop().then(() =>
+        this.changed({
+          ...this.latestState,
+          state: "idle_timeout",
+          closed: true,
+          error: null,
+          idle_seconds: 0,
+        }),
+      );
+    } else {
+      this.changed({
+        ...this.latestState,
+        idle_seconds: this.idle.remaining(now),
+      });
     }
   }
   async interrupt() {
@@ -288,6 +370,8 @@ export class Voice {
   }
   private async cleanup() {
     this.stopped = true;
+    if (this.idleTimer) clearInterval(this.idleTimer);
+    this.idleTimer = null;
     this.liveTranscript.dispose();
     if (this.meterFrame !== null) cancelAnimationFrame(this.meterFrame);
     this.meterFrame = null;

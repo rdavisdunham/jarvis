@@ -16,13 +16,6 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
-  legacy-memory:
-    image: qdrant/qdrant:v1.16.3
-    volumes:
-      - legacy-memory:/qdrant/storage
-    environment:
-      QDRANT__TELEMETRY_DISABLED: "true"
-    restart: unless-stopped
   backup:
     build:
       context: .
@@ -35,7 +28,6 @@ services:
       JARVIS_BACKUP_KEY: ${JARVIS_BACKUP_KEY}
     volumes:
       - "${JARVIS_BACKUP_HOST_DIRECTORY:-C:/Users/davin/JarvisBackups}:/backups"
-      - legacy-original:/legacy-memory:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -62,7 +54,6 @@ services:
       - .env.upgrade
     environment:
       JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
-      JARVIS_QDRANT_URL: http://legacy-memory:6333
     ports:
       - "127.0.0.1:8765:8765"
     healthcheck:
@@ -94,9 +85,3 @@ services:
     restart: unless-stopped
 volumes:
   core-postgres:
-  legacy-memory:
-    external: true
-    name: jarvis-next-legacy-memory
-  legacy-original:
-    external: true
-    name: jarvis_qdrant_data

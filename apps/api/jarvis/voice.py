@@ -21,8 +21,10 @@ from .auth import Identity, authenticate
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned, preferences
+from .memory_service import prompt_context
 from .models import Conversation, Source, now, uid
 from .tools import call_tool, instructions, registry
+from .ui_control import get_context
 from .voice_options import OPTIONS
 
 router = APIRouter()
@@ -54,6 +56,8 @@ class Controller:
         self.epoch, self.current_item, self.tool_index, self.turns = 0, None, 0, 0
         self.allowed, self.responses, self.seen_items = {}, {}, set()
         self.ready, self.closed = asyncio.Event(), False
+        self.closing = False
+        self.close_lock = asyncio.Lock()
         self.state, self.error, self.last_text = "connecting", None, ""
         self.started = self.activity = self.client_seen = time.monotonic()
         self.receiver, self.timer, self.action = None, None, None
@@ -66,6 +70,9 @@ class Controller:
         self.text_id = None
         self.input_started = {}
         self.answered_items = set()
+        self.transcripts = {}
+        self.memory_context = ""
+        self.ui_context = {}
 
     async def send(self, event):
         if self.ws and not self.closed:
@@ -82,6 +89,8 @@ class Controller:
         )
 
     async def request(self, phase, **response):
+        if self.closed or self.closing:
+            return
         # 128k input tokens at the highest audio rate, plus capped output and transcription headroom.
         # Pending/cancelled responses retain their allowance until provider completion.
         with session_scope() as db:
@@ -112,6 +121,7 @@ class Controller:
 
     async def run(self):
         settings = get_settings()
+        self.memory_context = await prompt_context(self.owner)
         try:
             async with websockets.connect(
                 f"wss://api.openai.com/v1/realtime?call_id={quote(self.call_id)}",
@@ -125,7 +135,11 @@ class Controller:
                         "type": "session.update",
                         "session": {
                             "type": "realtime",
-                            "instructions": instructions(self.preferences, self.focus),
+                            "instructions": instructions(
+                                self.preferences, self.focus, get_context(self.owner, self.device)
+                            )
+                            + "\n"
+                            + self.memory_context,
                             "tools": registry(),
                             "tool_choice": "auto",
                             "max_output_tokens": 1024,
@@ -154,11 +168,13 @@ class Controller:
             if not self.closed:
                 self.error, self.state = "Voice connection ended. Your saved work is safe.", "disconnected"
         finally:
-            if not self.closed:
+            if not self.closed and not self.closing:
                 await self.close(uncertain=True)
 
     async def event(self, event):
         kind = event.get("type")
+        if self.closing and kind not in {"response.created", "response.done"}:
+            return
         if kind == "session.updated":
             if not self.ready.is_set():
                 # Restore a compact text history; never replay prior function calls.
@@ -214,6 +230,7 @@ class Controller:
                 instructions=GATE,
             )
         elif kind == "conversation.item.input_audio_transcription.completed":
+            self.transcripts[event["item_id"]] = event.get("transcript", "")
             with session_scope() as db:
                 conv = owned(db, Conversation, self.conversation_id, self.owner)
                 source = capture_source(
@@ -231,10 +248,10 @@ class Controller:
             response = event["response"]
             nonce = response.get("metadata", {}).get("jarvis_request")
             request = self.allowed.pop(nonce, None)
-            if request is None or request["epoch"] != self.epoch:
-                await self.send({"type": "response.cancel", "response_id": response["id"]})
-            else:
+            if request is not None:
                 self.responses[response["id"]] = request
+            if request is None or request["epoch"] != self.epoch or self.closing:
+                await self.send({"type": "response.cancel", "response_id": response["id"]})
         elif kind == "response.done":
             response = event["response"]
             request = self.responses.pop(response["id"], None)
@@ -272,7 +289,7 @@ class Controller:
 
     async def finish_response(self, response, request):
         epoch, phase = request["epoch"], request["phase"]
-        if epoch != self.epoch or self.closed:
+        if epoch != self.epoch or self.closed or self.closing:
             return
         self.error = None
         outputs = response.get("output", [])
@@ -288,6 +305,29 @@ class Controller:
                     self.state = "waiting" if decision == "WAIT" else "listening"
                 elif decision == "RESPOND":
                     self.state = "thinking"
+                    # Give transcription a short chance to arrive; keep the receiver free
+                    # to accept speech interrupts while retrieval runs.
+                    item = self.current_item
+                    for _ in range(10):
+                        if item in self.transcripts or self.epoch != epoch:
+                            break
+                        await asyncio.sleep(0.1)
+                    self.memory_context = await prompt_context(self.owner, self.transcripts.get(item, ""))
+                    if self.epoch != epoch or self.closed or self.closing:
+                        return
+                    await self.send(
+                        {
+                            "type": "session.update",
+                            "session": {
+                                "type": "realtime",
+                                "instructions": instructions(
+                                    self.preferences, self.focus, get_context(self.owner, self.device)
+                                )
+                                + "\n"
+                                + self.memory_context,
+                            },
+                        }
+                    )
                     await self.request("plan", output_modalities=["text"])
                 else:
                     self.state, self.error = "unresolved", "Choose Respond now to handle this turn."
@@ -296,7 +336,7 @@ class Controller:
                 if calls:
                     self.state = "acting"
                     for call in calls:
-                        if self.epoch != epoch or self.closed:
+                        if self.epoch != epoch or self.closed or self.closing:
                             return
                         try:
                             if self.tool_index >= 4:
@@ -310,6 +350,7 @@ class Controller:
                                 self.tool_index,
                                 call["name"],
                                 json.loads(call["arguments"]),
+                                device=self.device,
                             )
                             self.receipts.append(result.get("command_id"))
                             if result.get("ui_action"):
@@ -380,27 +421,47 @@ class Controller:
                 self.state, self.error = "unresolved", "Speak again or choose Respond now to retry this turn."
 
     async def close(self, uncertain=False):
-        if self.closed:
-            return
-        uncertain = uncertain or bool(self.responses or self.allowed)
-        self.closed = True
-        self.state = "closed"
-        if self.call_id:
-            try:
-                async with httpx.AsyncClient(timeout=5) as client:
-                    response = await client.post(
-                        f"https://api.openai.com/v1/realtime/calls/{quote(self.call_id)}/hangup",
-                        headers={"Authorization": f"Bearer {get_settings().openai_api_key}"},
+        async with self.close_lock:
+            if self.closed:
+                return
+            self.closing, self.state = True, "closing"
+            self.epoch += 1
+            # Keep sideband alive briefly to collect usage for cancelled responses.
+            # A browser may already have hung up media; a 404 then means "already ended".
+            for response_id in list(self.responses):
+                try:
+                    await self.send({"type": "response.cancel", "response_id": response_id})
+                except Exception:  # noqa: BLE001 - the remaining reservation covers uncertain usage
+                    break
+            deadline = time.monotonic() + 2
+            if asyncio.current_task() != self.receiver:
+                while (self.responses or self.allowed) and time.monotonic() < deadline:
+                    await asyncio.sleep(0.05)
+            unsettled = bool(self.responses or self.allowed)
+            self.closed, self.state = True, "closed"
+            if self.call_id:
+                try:
+                    async with httpx.AsyncClient(timeout=5) as client:
+                        response = await client.post(
+                            f"https://api.openai.com/v1/realtime/calls/{quote(self.call_id)}/hangup",
+                            headers={"Authorization": f"Bearer {get_settings().openai_api_key}"},
+                        )
+                        if response.status_code not in {404, 409}:
+                            response.raise_for_status()
+                except httpx.HTTPError:
+                    # Realtime bills generated/input tokens, not connected silence.
+                    # Keep a hold for unresolved responses, never for unused idle headroom.
+                    logging.getLogger("jarvis.voice").info(
+                        "Realtime hangup was already disconnected or unavailable"
                     )
-                    response.raise_for_status()
-            except httpx.HTTPError:
-                uncertain = True
-        if self.ws:
-            await self.ws.close()
-        with session_scope() as db:
-            budget.close(db, self.owner, self.id, uncertain=uncertain)
-        # Closed controllers are removed after the client has a chance to observe shutdown.
-        asyncio.get_running_loop().call_later(60, lambda: controllers.pop(self.id, None))
+            if self.ws:
+                await self.ws.close()
+            with session_scope() as db:
+                budget.close(db, self.owner, self.id, uncertain=unsettled)
+            for task in (self.receiver, self.timer):
+                if task and task != asyncio.current_task():
+                    task.cancel()
+            asyncio.get_running_loop().call_later(60, lambda: controllers.pop(self.id, None))
 
 
 def control(session_id, user):

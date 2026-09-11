@@ -187,6 +187,7 @@ class Source(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     explicit: Mapped[bool] = mapped_column(Boolean, default=False)
+    memory_version: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Memory(Base):
@@ -196,10 +197,35 @@ class Memory(Base):
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"))
     content: Mapped[str] = mapped_column(Text)
     attribution: Mapped[str] = mapped_column(String(40), default="owner_statement")
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+    evidence: Mapped[str] = mapped_column(Text, default="")
+    fact_key: Mapped[str] = mapped_column(String(200), default="")
+    fingerprint: Mapped[str] = mapped_column(String(64), default="", index=True)
+    embedding: Mapped[list | None] = mapped_column(JSONB)
+    embedding_model: Mapped[str | None] = mapped_column(String(100))
     revision: Mapped[int] = mapped_column(Integer, default=1)
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
     supersedes_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))
+    merged_into_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MemoryReview(Base):
+    __tablename__ = "memory_reviews"
+    __table_args__ = (UniqueConstraint("owner_id", "pair_key", name="uq_memory_review_pair"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    pair_key: Mapped[str] = mapped_column(String(64))
+    memory_ids: Mapped[list] = mapped_column(JSONB)
+    memory_revisions: Mapped[list] = mapped_column(JSONB)
+    kind: Mapped[str] = mapped_column(String(30), default="spelling")
+    status: Mapped[str] = mapped_column(String(30), default="pending")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    result_memory_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))
+    last_offered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class BudgetReservation(Base):
