@@ -113,7 +113,9 @@ def project(db, owner, start, end, timezone):
                         "url": safe_link(item.get("htmlLink")),
                         "location": item.get("location", ""),
                         "busy": item.get("transparency") != "transparent",
-                        "read_only": True,
+                        "read_only": not (account.calendar_write_enabled and source.access_role in {"owner", "writer"}),
+                        "recurring": bool(item.get("recurrence") or item.get("recurringEventId")),
+                        "occurrence_start": (item.get("originalStartTime", {}).get("date") or item.get("originalStartTime", {}).get("dateTime") or (point.date().isoformat() if all_day else point.isoformat())) if item.get("recurrence") or item.get("recurringEventId") else None,
                     }
                 )
                 day += timedelta(days=1)

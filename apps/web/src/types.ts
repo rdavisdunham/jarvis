@@ -33,6 +33,9 @@ export interface CalendarEntry {
   kind: "task" | "reminder" | "routine" | "google";
   end_at?: string;
   all_day?: boolean;
+  recurring?: boolean;
+  occurrence_start?: string | null;
+  read_only?: boolean;
   calendar_title?: string;
   calendar_id?: string;
   url?: string | null;
@@ -169,6 +172,7 @@ export interface ChatMessage {
 
 export type VoiceProvider = "realtime" | "live";
 export interface UIAction {
+  calendar_view?: "month" | "week" | "day";
   id: string;
   kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar" | "select";
   date?: string;
@@ -193,6 +197,7 @@ export interface UIAction {
 export interface UIContext {
   view: View;
   calendar_date?: string;
+  calendar_view?: "month" | "week" | "day";
   selected_schedule_id?: string | null;
   work_kind?: "all" | "task" | "reminder";
   chat_open: boolean;

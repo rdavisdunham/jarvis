@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from .auth import Identity, authenticate, digest
 from .config import get_settings
@@ -14,7 +15,9 @@ from .db import session_scope
 from .domain import DomainError, parse_when
 from .google_auth import CALLBACK_PATH, COOKIE, begin, callback_uri, configured, disconnect_calendar, finish
 from .google_calendar import availability, connection_status, queue_sync
-from .models import GoogleIdentity
+from .google_schema import CalendarRead
+from .google_writes import read_event, write_status
+from .models import GoogleIdentity, Job
 
 
 class OAuthLogFilter(logging.Filter):
@@ -170,3 +173,26 @@ async def unlink(user: User):
     from .google_auth import unlink_google
 
     return await asyncio.to_thread(unlink_google, user.owner_id)
+
+
+@router.post("/api/v1/calendar/event-detail")
+async def event_read(body: CalendarRead, user: User):
+    return await asyncio.to_thread(read_event, user.owner_id, body)
+
+
+@router.get("/api/v1/calendar/writes")
+def writes(user: User):
+    with session_scope() as db:
+        rows = db.scalars(
+            select(Job)
+            .where(Job.owner_id == user.owner_id, Job.kind == "google_write")
+            .order_by(Job.created_at.desc())
+            .limit(20)
+        )
+        return {"items": [write_status(db, user.owner_id, row.id) for row in rows]}
+
+
+@router.get("/api/v1/calendar/writes/{job_id}")
+def write(job_id: str, user: User):
+    with session_scope() as db:
+        return write_status(db, user.owner_id, job_id)

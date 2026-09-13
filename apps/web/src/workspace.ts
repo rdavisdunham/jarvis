@@ -46,3 +46,20 @@ export function scheduleProject(
   const t = tasks.find((t) => t.id === s.task_id);
   return t?.project ?? projects.find((p) => p.id === s.project_id)?.name ?? "";
 }
+
+export type CalendarMode = "month" | "week" | "day";
+export function shiftDate(day: string, amount: number) {
+  const date = new Date(day + "T12:00:00Z");
+  date.setUTCDate(date.getUTCDate() + amount);
+  return dateKey(date);
+}
+export function weekDays(day: string) {
+  const date = new Date(day + "T12:00:00Z");
+  const first = shiftDate(day, -date.getUTCDay());
+  return Array.from({ length: 7 }, (_, i) => shiftDate(first, i));
+}
+export function calendarRange(day: string, mode: CalendarMode) {
+  const days =
+    mode === "month" ? monthDays(day) : mode === "week" ? weekDays(day) : [day];
+  return { days, from: days[0], end: shiftDate(days[days.length - 1], 1) };
+}

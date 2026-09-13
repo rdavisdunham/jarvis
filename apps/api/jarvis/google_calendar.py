@@ -46,10 +46,14 @@ class CalendarClient:
             follow_redirects=False,
         )
 
-    def request(self, path, params=None, body=None):
+    def request(self, path, params=None, body=None, *, method=None, headers=None):
         try:
             response = self.client.request(
-                "POST" if body is not None else "GET", path, params=params, json=body
+                (method or ("POST" if body is not None else "GET")),
+                path,
+                params=params,
+                json=body,
+                headers=headers,
             )
             if response.status_code >= 400:
                 code = (
@@ -60,7 +64,7 @@ class CalendarClient:
                     else "unavailable"
                 )
                 raise SyncFailure(code, response.status_code)
-            return response.json()
+            return {} if response.status_code == 204 else response.json()
         except (httpx.HTTPError, ValueError):
             raise SyncFailure("unavailable") from None
 
@@ -91,6 +95,7 @@ def connection_status(db, owner):
         "linked": bool(account),
         "email": account.email if account else None,
         "calendar_enabled": bool(account and account.calendar_enabled),
+        "calendar_write_enabled": bool(account and account.calendar_write_enabled),
         "status": account.status if account else "not_connected",
         "syncing": pending,
         "error": account.error if account else "",
@@ -106,6 +111,14 @@ def connection_status(db, owner):
                 "selected": row.selected,
                 "available": row.available,
                 "primary": row.primary,
+                "access_role": row.access_role,
+                "writable": bool(
+                    account
+                    and account.calendar_write_enabled
+                    and row.access_role in {"owner", "writer"}
+                    and row.available
+                    and row.selected
+                ),
                 "revision": row.revision,
                 "last_sync_at": row.last_sync_at.isoformat() if row.last_sync_at else None,
             }
@@ -179,6 +192,9 @@ def clean_event(event):
         key: event[key]
         for key in [
             "id",
+            "etag",
+            "eventType",
+            "locked",
             "summary",
             "start",
             "end",
@@ -192,6 +208,7 @@ def clean_event(event):
         ]
         if key in event
     }
+    data["has_guests"] = bool(event.get("attendees"))
     data["declined"] = any(
         a.get("self") and a.get("responseStatus") == "declined" for a in event.get("attendees", [])
     )
@@ -209,7 +226,12 @@ def process(job_id):
             return
         owner, generation, encrypted = account.owner_id, account.generation, account.credentials
         snapshots = {
-            row.provider_id: {"id": row.id, "selected": row.selected, "sync_token": row.sync_token}
+            row.provider_id: {
+                "id": row.id,
+                "selected": row.selected,
+                "sync_token": row.sync_token,
+                "revision": row.revision,
+            }
             for row in db.scalars(select(GoogleCalendar).where(GoogleCalendar.owner_id == owner))
         }
         job.status = "running"
@@ -276,6 +298,7 @@ def process(job_id):
                     db.add(row)
                     db.flush()
                 row.title, row.timezone = item.get("summary", "Calendar")[:500], item.get("timeZone", "UTC")
+                row.access_role = item.get("accessRole", "reader")
                 update = updates.get(cid)
                 row.available = not (update and update.get("unavailable"))
                 if update and update.get("unavailable"):
@@ -283,6 +306,10 @@ def process(job_id):
                     db.execute(delete(GoogleCalendarEvent).where(GoogleCalendarEvent.calendar_id == row.id))
                     continue
                 if not update:
+                    continue
+                if cid in snapshots and row.revision != snapshots[cid]["revision"]:
+                    # A local write completed after this sync fetched its snapshot.
+                    account.next_sync_at = now()
                     continue
                 if update["full"]:
                     db.execute(delete(GoogleCalendarEvent).where(GoogleCalendarEvent.calendar_id == row.id))

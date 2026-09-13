@@ -451,6 +451,10 @@ def task_timing(db, owner, changes, task=None):
 def mutate(db, owner, tool, args, command_id):
     from .organization import mutate_project, project_changes
 
+    if tool in {"calendar.create", "calendar.update", "calendar.delete"}:
+        from .google_writes import queue_write
+
+        return queue_write(db, owner, tool, args)
     if tool == "calendar.select":
         from .google_calendar import select_calendar
 
@@ -775,3 +779,8 @@ COMMANDS.update(NOTE_COMMANDS)
 from .google_schema import CalendarSelection
 
 COMMANDS["calendar.select"] = CalendarSelection
+from .google_schema import CalendarCreate, CalendarDelete, CalendarUpdate
+
+COMMANDS.update(
+    {"calendar.create": CalendarCreate, "calendar.update": CalendarUpdate, "calendar.delete": CalendarDelete}
+)

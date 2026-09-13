@@ -66,6 +66,13 @@ try {
   await expect(page.getByLabel("Use calendar Work calendar")).toBeEnabled();
   await request("/__test_google_sync");
   await expect(page.getByLabel("Use calendar Work calendar")).toBeChecked();
+  await page
+    .getByRole("button", { name: "Enable Calendar editing", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Reconnect editing", exact: true }),
+  ).toBeVisible();
+  await request("/__test_google_sync");
   await shot("google-settings-desktop.png");
   const shown = await ui("ui_calendar", { date: "2026-09-18" });
   if (
@@ -116,6 +123,116 @@ try {
     await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)
   )
     throw new Error("Calendar overflows on mobile");
+  // Reproduce the reported mobile jump across the real 30-second background refresh.
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await request("/__test_google_dense");
+  await expect(page.locator(".agenda-row")).toHaveCount(24);
+  await page.locator(".agenda-row").last().scrollIntoViewIfNeeded();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  if (scrollBefore < 300)
+    throw new Error("Mobile scroll regression did not scroll into the agenda");
+  const agendaNodes = await page.locator(".agenda-row").count();
+  let calendarRequests = 0;
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/calendar?")) calendarRequests++;
+  });
+  await page.route("**/api/v1/calendar?**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  await page.waitForTimeout(32000);
+  const scrollAfter = await page.evaluate(() => window.scrollY);
+  if (
+    Math.abs(scrollAfter - scrollBefore) > 3 ||
+    (await page.locator(".agenda-row").count()) !== agendaNodes ||
+    !calendarRequests
+  )
+    throw new Error(
+      "Background calendar refresh moved the mobile agenda: " +
+        scrollBefore +
+        " -> " +
+        scrollAfter,
+    );
+  await page.unroute("**/api/v1/calendar?**");
+  await page.getByRole("button", { name: "Week", exact: true }).click();
+  await expect(page.getByLabel("Week dates")).toBeVisible();
+  await expect(page.locator(".calendar-day-agenda")).toHaveCount(7);
+  await shot("google-calendar-week-mobile.png");
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await page.locator('[data-day="2026-09-18"]').dblclick();
+  await expect(
+    page.getByRole("button", { name: "Day", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Month dates")).toHaveCount(0);
+  await expect(page.locator(".calendar-day-agenda")).toHaveCount(1);
+  await shot("google-calendar-day-mobile.png");
+  await page.getByRole("button", { name: "Next day", exact: true }).click();
+  await expect(page.getByLabel("Agenda for 2026-09-19")).toBeVisible();
+  await ui("ui_calendar", { date: "2026-09-18", calendar_view: "day" });
+  await page.getByRole("button", { name: "New event", exact: true }).click();
+  await expect(page.getByLabel("Event title")).toBeVisible();
+  await page.getByLabel("Event title").fill("Mobile appointment");
+  await page.getByLabel("Event start").fill("2026-09-18T15:00");
+  await page.getByLabel("Event end").fill("2026-09-18T15:45");
+  await page.getByLabel("Event location").fill("Home office");
+  await shot("google-calendar-editor-mobile.png");
+  if (
+    await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)
+  )
+    throw new Error("Event editor overflows mobile");
+  // A committed command with a lost response retries the same receipt and Google event ID.
+  let lost = false;
+  await page.route("**/api/v1/commands", async (route) => {
+    const body = route.request().postDataJSON();
+    if (!lost && body.tool === "calendar.create") {
+      lost = true;
+      await route.fetch();
+      await route.abort("connectionreset");
+    } else await route.continue();
+  });
+  await page.getByRole("button", { name: "Create event", exact: true }).click();
+  await expect(
+    page.getByText(
+      "The request did not finish. Retry the same change to check its saved receipt.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Create event", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.unroute("**/api/v1/commands");
+  await expect(
+    page.locator(".agenda-row").filter({ hasText: "Mobile appointment" }),
+  ).toHaveCount(1);
+  await page
+    .locator(".agenda-row")
+    .filter({ hasText: "Mobile appointment" })
+    .click();
+  await page.getByRole("button", { name: "Edit event", exact: true }).click();
+  await page.getByLabel("Event title").fill("Mobile appointment edited");
+  await page.getByLabel("Event end").fill("2026-09-18T16:00");
+  await page.getByRole("button", { name: "Save event", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page
+      .locator(".agenda-row")
+      .filter({ hasText: "Mobile appointment edited" }),
+  ).toHaveCount(1);
+  await page
+    .locator(".agenda-row")
+    .filter({ hasText: "Mobile appointment edited" })
+    .click();
+  await page.getByRole("button", { name: "Delete event", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Confirm delete", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.locator(".agenda-row").filter({ hasText: "Mobile appointment" }),
+  ).toHaveCount(0);
+  await page.getByText("Recent calendar changes", { exact: true }).click();
+  await expect(
+    page.getByText("Confirmed by Google", { exact: true }),
+  ).toHaveCount(3);
   await ui("ui_show", { view: "settings" });
   await shot("google-settings-mobile.png");
   if (
@@ -158,7 +275,7 @@ try {
   ).toHaveCount(0);
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(
-    "Google sign-in redirect, calendar selection, availability, event details/highlighting, mobile layout and disconnect/unlink passed.",
+    "Google consent/read/write, mobile views, 30-second scroll stability, lost-response save retry, event CRUD, CopilotKit and disconnect/unlink passed.",
   );
 } finally {
   await browser.close();

@@ -20,6 +20,7 @@ from .models import AuthSession, GoogleCalendar, GoogleCalendarEvent, GoogleIden
 
 IDENTITY_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 COOKIE = "eri_google_oauth"
 CALLBACK_PATH = "/api/v1/auth/google/callback"
 
@@ -66,7 +67,9 @@ def make_flow(purpose, state, verifier):
                 "token_uri": "https://oauth2.googleapis.com/token",
             }
         },
-        scopes=IDENTITY_SCOPES + ([CALENDAR_SCOPE] if purpose == "calendar" else []),
+        scopes=IDENTITY_SCOPES
+        + ([CALENDAR_SCOPE] if purpose in {"calendar", "calendar_write"} else [])
+        + ([WRITE_SCOPE] if purpose == "calendar_write" else []),
         state=state,
         code_verifier=verifier,
         autogenerate_code_verifier=False,
@@ -80,7 +83,7 @@ def begin(purpose, session_hash=None):
     parsed = urlsplit(callback_uri())
     if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise DomainError("INTEGRATION_UNAVAILABLE", "Google sign-in requires a secure app address.", 503)
-    if purpose not in {"login", "link", "calendar"}:
+    if purpose not in {"login", "link", "calendar", "calendar_write"}:
         raise DomainError("INVALID_ARGUMENT", "Choose a supported Google connection.")
     state, browser, nonce, verifier = [secrets.token_urlsafe(48) for _ in range(4)]
     with session_scope() as db:
@@ -109,7 +112,7 @@ def begin(purpose, session_hash=None):
         )
     flow = make_flow(purpose, state, verifier)
     kwargs = {"nonce": nonce, "prompt": "select_account"}
-    if purpose == "calendar":
+    if purpose in {"calendar", "calendar_write"}:
         kwargs.update(access_type="offline", prompt="consent select_account", include_granted_scopes="true")
     url, _ = flow.authorization_url(**kwargs)
     return url, browser
@@ -206,12 +209,18 @@ def finish(state, browser, code=None, error=None):
             db.add(identity)
             db.flush()
         identity.email = email
-        if purpose == "calendar":
+        if purpose in {"calendar", "calendar_write"}:
             scopes = tokens.get("scope", [])
             scopes = scopes.split() if isinstance(scopes, str) else scopes
             if CALENDAR_SCOPE not in scopes:
                 raise DomainError(
                     "GOOGLE_SCOPE", "Calendar permission was not granted. Sign-in is unchanged.", 403
+                )
+            if purpose == "calendar_write" and WRITE_SCOPE not in scopes:
+                raise DomainError(
+                    "GOOGLE_SCOPE",
+                    "Calendar editing permission was not granted. Existing access is unchanged.",
+                    403,
                 )
             refresh = tokens.get("refresh_token")
             if not refresh and identity.credentials:
@@ -224,6 +233,7 @@ def finish(state, browser, code=None, error=None):
                     "GOOGLE_RECONNECT", "Reconnect Calendar and allow access while you are away.", 409
                 )
             identity.credentials = seal({"refresh_token": refresh})
+            identity.calendar_write_enabled = WRITE_SCOPE in scopes
             identity.calendar_enabled, identity.status, identity.error = True, "pending", ""
             identity.generation += 1
             identity.next_sync_at = now()
@@ -244,7 +254,7 @@ def disconnect_calendar(owner, *, unlink=False):
                 token = unseal(identity.credentials).get("refresh_token")
             except DomainError:
                 pass
-        identity.credentials, identity.calendar_enabled = None, False
+        identity.credentials, identity.calendar_enabled, identity.calendar_write_enabled = None, False, False
         identity.status, identity.error, identity.last_sync_at, identity.next_sync_at = (
             "not_connected",
             "",

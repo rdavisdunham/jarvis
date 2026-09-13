@@ -105,6 +105,16 @@ export default function App() {
   const [bulkEditor, setBulkEditor] = useState<Task[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [calendarDay, setCalendarDay] = useState("");
+  const [calendarMode, setCalendarMode] = useState<"month" | "week" | "day">(
+    () => {
+      const stored = localStorage.getItem("eri-calendar-view");
+      return stored === "week" || stored === "day" ? stored : "month";
+    },
+  );
+  useEffect(
+    () => localStorage.setItem("eri-calendar-view", calendarMode),
+    [calendarMode],
+  );
   const [workKind, setWorkKind] = useState<"all" | "task" | "reminder">("all");
   const [workVisible, setWorkVisible] = useState<string[]>([]);
   const [scheduleEditor, setScheduleEditor] = useState<{
@@ -607,6 +617,8 @@ export default function App() {
         await api("/calendar/events/" + encodeURIComponent(action.entity_id));
       setHighlight(action.entity_id ?? null);
       setCalendarDay(day);
+      if (action.calendar_view || action.entity_id)
+        setCalendarMode(action.calendar_view ?? "day");
       setView("calendar");
       setQuery("");
       setTaskStatus("all");
@@ -703,17 +715,21 @@ export default function App() {
   }, [!!boot]);
   useEffect(() => {
     if (!highlight || !["reminders", "calendar"].includes(view)) return;
-    const timer = setTimeout(() => {
+    let attempts = 0;
+    const timer = setInterval(() => {
       const target = document.getElementById("record-" + highlight);
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
-      target?.focus({ preventScroll: true });
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        target.focus({ preventScroll: true });
+        clearInterval(timer);
+      } else if (++attempts >= 30) clearInterval(timer);
     }, 100);
     const clear = setTimeout(() => setHighlight(null), 12000);
     return () => {
-      clearTimeout(timer);
+      clearInterval(timer);
       clearTimeout(clear);
     };
-  }, [highlight, view, schedules]);
+  }, [highlight, view]);
   async function newChat() {
     voiceGeneration.current += 1;
     const previous = voice.current;
@@ -1012,6 +1028,7 @@ export default function App() {
     selected_note_id:
       noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
+    calendar_view: calendarMode,
     work_kind: view === "reminders" ? "reminder" : workKind,
     visible_ids:
       view === "notes"
@@ -1387,6 +1404,24 @@ export default function App() {
                 <Workspace
                   onGoogleEvent={setGoogleEvent}
                   calendar={view === "calendar"}
+                  calendarMode={calendarMode}
+                  onCalendarMode={setCalendarMode}
+                  onCreateEvent={(day) =>
+                    setGoogleEvent({
+                      id: "new",
+                      entity_id: "new",
+                      kind: "google",
+                      title: "New event",
+                      date: day,
+                      at: null,
+                      status: "active",
+                      project_id: null,
+                      task_id: null,
+                      revision: 1,
+                      projected: false,
+                      notification_id: null,
+                    })
+                  }
                   day={calendarDay || today}
                   onDay={setCalendarDay}
                   today={today}
@@ -2326,8 +2361,23 @@ export default function App() {
       )}
       {googleEvent && (
         <GoogleEventDialog
+          key={
+            googleEvent.entity_id +
+            ":" +
+            (googleEvent.occurrence_start ?? googleEvent.date)
+          }
           event={googleEvent}
           timezone={boot.preferences.timezone}
+          mutate={mutate}
+          onSettings={() => {
+            setGoogleEvent(null);
+            setView("settings");
+          }}
+          onSaved={() => {
+            setGoogleEvent(null);
+            setToast("Google Calendar updated");
+            void load();
+          }}
           onClose={() => {
             setGoogleEvent(null);
             setError("");

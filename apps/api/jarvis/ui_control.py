@@ -28,6 +28,7 @@ class UIContext(BaseModel):
         "all"
     )
     project: str = Field(default="", max_length=200)
+    calendar_view: Literal["month", "week", "day"] = "month"
     calendar_date: str | None = Field(default=None, max_length=10)
     selected_schedule_id: str | None = Field(default=None, max_length=36)
     work_kind: Literal["all", "task", "reminder"] = "all"
@@ -44,7 +45,7 @@ pending = {}
 APP_MAP = """Site map and available controls:
 Today: tasks due today or overdue. Inbox: tasks without a project. This week: dated tasks through the next 6 days.
 Work (all): unified tasks and reminders, searchable with status, project and kind filters. Linked reminders appear with their task. Task details include project, parent, tags, assignee and work type.
-Calendar: monthly grid and selected-day agenda, task deadlines, projected reminder occurrences and read-only Google events. Settings links Google and selects calendars; availability checks Google live. Event details open a source link. Never treat cached or unavailable results as confirmed free time. ui_calendar selects a date. Projected occurrences are previews, not delivered notifications.
+Calendar: Month, Week and dedicated Day views; double-tap a date to open Day. Google event editing is available after separate consent. ui_calendar accepts calendar_view month/week/day. The calendar shows task deadlines, projected reminder occurrences and read-only Google events. Settings links Google and selects calendars; availability checks Google live. Event details open a source link. Never treat cached or unavailable results as confirmed free time. ui_calendar selects a date. Projected occurrences are previews, not delivered notifications.
 Notes: authored notes with project/task/conversation links, tags, keyword/semantic search, archive/restore and reviewed to-do extraction. Notes are distinct from learned facts.
 Reminders: upcoming/due, completed and cancelled schedules. Memory: saved facts, semantic search, source, correction and forget.
 Notifications: delivered reminders with complete, snooze and dismiss. Settings: preferred name, history/learning,

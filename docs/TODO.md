@@ -1,31 +1,55 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 11, 2026. Eridani (Eri) is the assistant's name.
+Updated September 12, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: Google sign-in and Calendar — deployed; account setup pending
+## Current batch: mobile Calendar and Google editing — deployed
 
-- [x] Owner-only Google sign-in, linked from an existing authenticated session.
-      PIN pairing stays available for recovery. Separate read-only Calendar consent.
-- [x] Encrypted refresh credentials, selected calendars, durable incremental sync,
-      deleted-event handling, expired-token recovery and disconnect/unlink controls.
-- [x] Google events alongside task deadlines/reminders, recurring-event projection,
-      source details/highlighting and current free/busy availability for Eri and UI.
-- [x] Isolated browser acceptance for consent redirects, reconnect, source selection,
-      mobile layouts and CopilotKit event navigation. Existing notes and sessions
-      survive the schema 0007 → 0008 → 0007 → 0008 migration round-trip.
-- [x] Deployed schema 0008; API/worker/PostgreSQL healthy and HTTPS bundle verified.
-      157 backend and 71 frontend tests pass; isolated browser/migration checks pass.
-      Encrypted backup jarvis-20260911T231255Z.pgdump.enc restored successfully.
-      Existing records and the full historical cost ledger are unchanged.
-- [ ] Configure the real Google Cloud web OAuth client, then link the owner's account,
-      grant Calendar access and verify the first real sync and Google sign-in.
-      See [GOOGLE_SETUP.md](GOOGLE_SETUP.md). Credential slots are ready in ignored
-      .env; browser automation could not start, so Console setup remains open.
-- [ ] Next: smarter notifications (priority, snooze controls and bundling), then
-      authenticated scoped API/MCP access for external bots.
+- [x] Owner confirmed real Google Calendar sync works on mobile.
+- [x] Fixed the roughly 30-second scroll jump: background refresh retains the
+      agenda instead of clearing it; assistant highlights scroll only once.
+- [x] Month, Week and Day views, remembered on this browser. Double-tap a date
+      to open Day, with an explicit Open day button and previous/next navigation.
+- [x] Google event creation, editing/rescheduling and deletion through the website
+      and Eri's shared tools. Choose a writable selected calendar; timed/all-day
+      events, title, notes, location, availability and basic repeating events.
+      Recurring edits explicitly target one occurrence or the entire series.
+- [x] Separate optional Calendar editing consent, fresh Google permissions,
+      conditional edits to prevent stale overwrites, durable write receipts and
+      retry reconciliation to avoid duplicate events. Recent calendar changes
+      shows confirmed, pending, failed or unconfirmed outcomes.
+- [x] Automated validation: 183 backend tests plus the additional uncertain-outcome
+      regression pass; 74 frontend tests, production build, scoped Ruff and isolated
+      browser/migration acceptance pass. Browser checks cover a real 30-second
+      refresh on a long mobile agenda, all views and create/edit/delete with a
+      lost-response retry. No synthetic writes were made to the owner's calendar.
+- [x] Deployed schema 0009 with healthy API/worker/PostgreSQL and the verified HTTPS
+      bundle. Google credentials/selections, 2,680 cached events and the historical
+      cost ledger are preserved; cost tracking remains off. Encrypted backup
+      jarvis-20260913T002615Z.pgdump.enc restored successfully in an isolated database.
+- [ ] Owner: Settings → Google → Enable Calendar editing, grant the additional
+      Google permission, then try a real personal event. See [GOOGLE_SETUP.md](GOOGLE_SETUP.md).
+      Events with guests and special Google event types remain managed in Google.
+- [ ] Verify multiple selected calendars and combined availability on the real
+      account, including shared calendars. Source selection and simultaneous sync
+      are implemented; owner confirmed general sync, not this whole matrix.
+- [ ] Next expansion: smarter notifications (priority, snooze controls and bundling),
+      then authenticated scoped API/MCP access for external bots.
 - [ ] Real-use voice recovery, device/operations checks and the seven-day pilot stay
       after expansion. Internal cost tracking stays disabled during development.
+
+## Previous batch: Google sign-in and Calendar — deployed and connected
+
+- [x] Owner-only Google sign-in linked from an authenticated session, separate
+      read-only Calendar consent and PIN pairing retained for recovery.
+- [x] Encrypted refresh credentials, selected calendars, durable incremental sync,
+      recurring/deleted-event handling, availability and disconnect/unlink controls.
+- [x] Deployed schema 0008 with healthy API/worker/PostgreSQL. 157 backend and 71
+      frontend tests, browser/migration acceptance and encrypted restore passed.
+      Backup: jarvis-20260911T231255Z.pgdump.enc; historical cost ledger preserved.
+- [x] Owner created the Google Cloud project/client and saved credentials locally.
+      API/worker loaded the configuration; owner subsequently confirmed real sync.
+- [ ] Verify Google sign-in from a second device. Pairing remains the recovery route.
 
 ## Previous batch: development mode, contextual tasks and notes — deployed
 
@@ -53,7 +77,7 @@ OpenAI Usage. Historical holds remain preserved and no longer block work.
       130 backend and 71 frontend tests, isolated browser/migration checks, and
       post-deploy encrypted backup/restore passed. Historical cost ledger unchanged.
 - [x] Next expansion implemented: Google owner sign-in and read-only Calendar;
-      real account setup remains in the current batch above.
+      real account sync has since been confirmed by the owner.
 - [ ] Complete fine-grained CopilotKit field/settings controls, archived-note
       filter parity, broader contextual-reference quality and project board/timeline.
 - [ ] After expansion: real-use voice recovery, physical devices/operations,

@@ -1,8 +1,9 @@
 # Connect Google to Eridani
 
-The app integration is implemented. The remaining one-time setup is a Google Cloud
-OAuth client, followed by linking your account in Settings. No Google client
-credentials were present in this checkout when this batch was built.
+Google sign-in and Calendar sync are implemented. The owner has configured the
+Cloud client and confirmed real Calendar sync. The next optional step is
+**Enable Calendar editing** in Settings (step 4 below). Earlier setup steps are
+retained for recovery or a new deployment.
 
 ## 1. Create the Google client
 
@@ -26,8 +27,9 @@ Your browser must have access to the Tailnet when Google redirects it back.
 [Google's web-server setup guide](https://developers.google.com/identity/protocols/oauth2/web-server)
 
 The connection asks first for OpenID identity/email; Calendar is a separate grant
-using `https://www.googleapis.com/auth/calendar.readonly`. It cannot edit Google
-events. If Google Console rejects the Tailnet hostname or requires domain ownership
+using `https://www.googleapis.com/auth/calendar.readonly`. Editing is an additional,
+optional grant using `https://www.googleapis.com/auth/calendar.events`. Read-only
+sync works without it. If Google Console rejects the Tailnet hostname or requires domain ownership
 verification for your chosen publishing configuration, stop at that specific
 message and configure an owner-controlled HTTPS hostname; do not expose Jarvis
 publicly as a workaround.
@@ -69,6 +71,37 @@ Only the Google account linked from an existing authenticated owner session can
 sign in. Eridani matches Google's stable account subject, not merely an email
 address. [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
 
+## 4. Enable event editing
+
+1. In **Settings → Google**, choose **Enable Calendar editing**.
+2. Approve the additional Calendar permission in Google and return to Eridani.
+3. Select a calendar marked **Can edit**. Your Google account must have writer
+   or owner access to that calendar.
+4. In Calendar, choose **New event**, or open an existing event and choose
+   **Edit event** / **Delete event**. Eri can use the same operations by request.
+
+Use the existing OAuth client and callback; no new credentials are needed.
+If you maintain the scope list in Google Auth Platform → Data Access, include
+`https://www.googleapis.com/auth/calendar.events` alongside the existing read scope.
+The app requests the extra scope only when you enable editing. Denying that
+additional permission preserves the existing read connection.
+
+Choose Month, Week or Day above the calendar. A single date tap selects its agenda;
+double-tap opens Day. **Open day** provides the same action without a gesture.
+The chosen view is remembered on the current browser.
+
+Recurring-event changes offer **This occurrence** or **Entire series**. All-day
+forms use inclusive first/last dates. Google stores the end date exclusively.
+Guest invitations and special Google events stay in Google's own editor in this
+release; the event dialog provides a Google link.
+
+**Recent calendar changes** tracks write results. A queued change is not yet saved.
+If an outcome is unconfirmed, check Google before creating a replacement; repeat
+status checks reuse the original receipt. Concurrent Google edits require reopening
+the event instead of overwriting a newer version.
+[Google event creation](https://developers.google.com/workspace/calendar/api/guides/create-events),
+[conditional updates](https://developers.google.com/workspace/calendar/api/guides/version-resources)
+
 ## Connection maintenance
 
 Google refresh tokens for external apps in Testing generally expire after seven
@@ -90,17 +123,14 @@ notes and memories without the Google grant.
 
 ## Validation boundary
 
-Automated tests replace Google consent/token/calendar responses in an isolated
-database. They exercise the actual browser state/cookie redirects, selected calendars,
-event overlays, availability, disconnect and unlink. Token verification also has
-local signed-JWT tests through Google's verifier. These tests do not establish that
-your real Cloud project, consent settings or Calendar permissions are configured.
-Complete the account-link and first-sync checks above after saving the real client.
+Automated tests use synthetic Google responses in a disposable database. They cover
+the real browser consent redirects, source selection, read/write forms, duplicate
+save retries, recurring targets, permissions, disconnect and unlink. Mobile checks
+also verify scroll stability across the normal 30-second refresh and all three
+views. The owner has separately confirmed real read sync. Real write consent and
+the first owner-created event still require the step above; the tests did not
+create fixtures on the owner's calendar.
 
 The sign-in button uses Google's unmodified neutral rectangular PNG from the
 [official branding assets](https://developers.google.com/identity/branding-guidelines),
 stored at apps/web/public/google-sign-in.png and displayed at its original aspect ratio.
-
-The Codex browser helper failed to start during this batch, so no Cloud Console
-client was created automatically. The local integration and credential slots are
-ready for the setup above.

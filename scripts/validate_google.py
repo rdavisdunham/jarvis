@@ -72,6 +72,51 @@ def main():
                 db.execute(text("SELECT content FROM notes WHERE id='preserved-note'")).scalar()
                 == "Preserve this through migration"
             )
+        # Preserve an existing read-only Google connection through the additive write upgrade.
+        migrate("downgrade", "0008_google_calendar")
+        with engine().begin() as db:
+            db.execute(
+                text("""INSERT INTO google_identities (owner_id,subject,email,credentials,calendar_enabled,status)
+                VALUES ('migration-owner','migration-subject','migration@example.test','preserved-encrypted-token',true,'ready')""")
+            )
+            db.execute(
+                text("""INSERT INTO google_calendars (id,owner_id,provider_id,title,selected)
+                VALUES ('migration-calendar','migration-owner','fixture-calendar','Preserved calendar',true)""")
+            )
+        migrate("upgrade", "head")
+        with engine().connect() as db:
+            assert (
+                db.execute(
+                    text(
+                        "SELECT calendar_write_enabled FROM google_identities WHERE owner_id='migration-owner'"
+                    )
+                ).scalar()
+                is False
+            )
+            assert (
+                db.execute(
+                    text("SELECT access_role FROM google_calendars WHERE id='migration-calendar'")
+                ).scalar()
+                == "reader"
+            )
+        migrate("downgrade", "0008_google_calendar")
+        migrate("upgrade", "head")
+        with engine().begin() as db:
+            assert (
+                db.execute(
+                    text("SELECT credentials FROM google_identities WHERE owner_id='migration-owner'")
+                ).scalar()
+                == "preserved-encrypted-token"
+            )
+            assert (
+                db.execute(
+                    text("SELECT selected FROM google_calendars WHERE id='migration-calendar'")
+                ).scalar()
+                is True
+            )
+            db.execute(text("DELETE FROM google_calendars WHERE id='migration-calendar'"))
+            db.execute(text("DELETE FROM google_identities WHERE owner_id='migration-owner'"))
+
         from jarvis.google_auth import seal
         from jarvis.models import GoogleIdentity, now
 

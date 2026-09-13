@@ -833,3 +833,67 @@ assertions, 1 memory review and 140 receipts. Notes/context and Google tables ex
 and are currently empty. The restore started no worker and its temporary database
 was removed. This proves schema/data recovery; encrypted real Google credential
 recovery still requires a real connected account.
+
+
+## Mobile Calendar and optional Google editing — September 12
+
+The owner confirmed real read sync and authorized event writes in this batch.
+Month, Week and Day views share the existing task/reminder/Google projection;
+double-tap or Open day selects a dedicated agenda. Calendar view is persisted per
+browser and included in CopilotKit context/navigation. Background polling keeps
+existing entries visible until the replacement arrives. The old data-clearing
+effect collapsed long agendas every 30 seconds and clamped mobile scroll position.
+Assistant highlights now scroll once rather than on every task refresh.
+
+Migration 0009_calendar_writes adds calendar_write_enabled and calendar access_role.
+Existing encrypted credentials and selections remain intact; editing defaults off.
+A separate calendar_write OAuth purpose requests calendar.events alongside existing
+identity/read scopes. Declining the extra grant preserves the current connection.
+
+Website forms and Eri use shared calendar.create/update/delete commands, through the
+existing command receipts, transactional outbox and DBOS Google queue. There is no
+additional agent runtime. calendar_event_read fetches a current provider event and
+returns an expiring encrypted edit token bound to owner, source, generation,
+recurrence scope and ETag. Every write rechecks source selection and current Google
+ACL. PATCH and DELETE use If-Match, so a stale edit cannot overwrite newer content.
+
+Creation uses a persistent provider event ID; create/update also attach a private
+write marker. Retries read Google first to reconcile lost responses. Unknown outcomes
+remain unconfirmed, including when Google access is lost after a write started.
+Queued writes expire after one hour before a new outbound attempt. Confirmed writes
+update the local event cache and invalidate sync snapshots started before that
+change. calendar_write_status and Recent calendar changes expose the durable result;
+Eri must not claim a queued operation has been saved.
+
+Forms support timed/all-day events, title, location, notes, busy/free and basic
+daily/weekly/monthly recurrence on creation. All-day last dates are inclusive in
+the UI and exclusive at the provider boundary. Recurring changes explicitly select
+one occurrence or the whole series. Guest events, invitations and special Google
+event types remain managed in Google; no guest notifications are sent by this UI.
+Read-only Calendar remains available without the additional write consent.
+
+Validation: the full backend suite passed 183 tests with one optional provider test
+skipped; a subsequently added unknown-outcome regression passed with all 27 write
+tests. All 74 frontend tests passed. Production build, scoped Ruff and isolated
+migration/browser acceptance passed. Acceptance includes 0008/0009 round-trip
+credential/selection preservation, mobile Month/Week/Day, actual 30-second refresh
+scroll stability, create/edit/delete, response-loss retry and consent/disconnect.
+Provider writes were synthetic and isolated; no fixture events were created in the
+owner's real calendars. Cost tracking remains disabled. Real voice/device checks
+and the seven-day usage pilot remain deferred.
+
+Deployment verified at approximately 00:26 UTC on September 13 (September 12 local).
+Schema 0009_calendar_writes is active; API/worker/PostgreSQL are healthy. The Tailnet
+HTTPS page serves index-DpWrne0k.js and includes the editing controls. Google remains
+linked with read sync enabled and write consent pending. Identity/credential and
+calendar-selection digests match the pre-deploy baseline; all 322 historical cost
+reservations and 560 usage events also match, with tracking still disabled.
+A real read-only sync was queued to refresh source access roles. No Google write
+jobs or synthetic events were created on the owner's account.
+
+Pre-deploy backup jarvis-20260913T002220Z.pgdump.enc restored at schema 0008.
+Post-deploy backup jarvis-20260913T002615Z.pgdump.enc restored at schema 0009,
+including encrypted credentials, selections/access roles and 2,680 Google events.
+The restored snapshot also contains 47 tasks, 2 projects, 8 schedules, 3 notifications,
+238 sources, 11 memory assertions, 1 memory review and 146 command receipts.
+Neither restore started a worker; both temporary databases were removed.

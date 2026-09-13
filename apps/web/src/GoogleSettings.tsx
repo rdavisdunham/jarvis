@@ -7,6 +7,7 @@ export interface GoogleStatus {
   linked: boolean;
   email: string | null;
   calendar_enabled: boolean;
+  calendar_write_enabled: boolean;
   status: string;
   syncing: boolean;
   error: string;
@@ -20,10 +21,14 @@ export interface GoogleStatus {
     available: boolean;
     primary: boolean;
     revision: number;
+    access_role: string;
+    writable: boolean;
     last_sync_at: string | null;
   }[];
 }
-export async function startGoogle(purpose: "login" | "link" | "calendar") {
+export async function startGoogle(
+  purpose: "login" | "link" | "calendar" | "calendar_write",
+) {
   const result = await post<{ url: string }>("/auth/google/start", { purpose });
   location.assign(result.url);
 }
@@ -128,8 +133,7 @@ export function GoogleSettings({
             <span>
               <strong>Calendar access</strong>
               <small>
-                Read-only events and availability. Choose which calendars Eri
-                can use.
+                Events and availability from your selected calendars.
               </small>
             </span>
             <button
@@ -142,6 +146,27 @@ export function GoogleSettings({
                 : "Connect Calendar"}
             </button>
           </div>
+          {data.calendar_enabled && (
+            <div className="setting-row">
+              <span>
+                <strong>Calendar editing</strong>
+                <small>
+                  {data.calendar_write_enabled
+                    ? "Create, edit and delete personal events on writable calendars."
+                    : "Allow Eri and the website to save changes to Google Calendar."}
+                </small>
+              </span>
+              <button
+                className="secondary compact"
+                disabled={!data.configured || busy || voiceActive}
+                onClick={() => void act(() => startGoogle("calendar_write"))}
+              >
+                {data.calendar_write_enabled
+                  ? "Reconnect editing"
+                  : "Enable Calendar editing"}
+              </button>
+            </div>
+          )}
           {voiceActive && (
             <p className="footnote">End voice before opening Google sign-in.</p>
           )}
@@ -185,7 +210,10 @@ export function GoogleSettings({
                         {cal.primary ? " · Primary" : ""}
                       </strong>
                       <small>
-                        {cal.available ? cal.timezone : "No longer accessible"}
+                        {cal.available
+                          ? cal.timezone +
+                            (cal.writable ? " · Can edit" : " · Read-only")
+                          : "No longer accessible"}
                         {cal.selected && !cal.last_sync_at
                           ? " · Waiting for sync"
                           : ""}

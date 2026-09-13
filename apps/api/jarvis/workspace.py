@@ -129,10 +129,14 @@ def calendar(db, owner, start: date, end: date, timezone: str):
     for event in events:
         if event["kind"] == "task" and event["at"]:
             at = datetime.fromisoformat(event["at"])
-            event["conflicts"] = list(dict.fromkeys(
-                g["title"] for g in google_events if g["busy"]
-                and datetime.fromisoformat(g["busy_start"]) <= at < datetime.fromisoformat(g["end_at"])
-            ))
+            event["conflicts"] = list(
+                dict.fromkeys(
+                    g["title"]
+                    for g in google_events
+                    if g["busy"]
+                    and datetime.fromisoformat(g["busy_start"]) <= at < datetime.fromisoformat(g["end_at"])
+                )
+            )
     events.extend(google_events)
     truncated = truncated or incomplete or len(events) > 2000
     events.sort(key=lambda e: (e["date"], e["at"] or "", e["title"], e["id"]))

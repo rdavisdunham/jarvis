@@ -51,6 +51,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind == "google_write":
+        from .google_writes import process_write
+
+        return process_write(job_id)
     if kind == "google_sync":
         from .google_calendar import process
 
@@ -94,7 +98,7 @@ def dispatch_outbox(client):
                 {
                     "workflow_name": "jarvis_job_v1",
                     "queue_name": "jarvis-google"
-                    if db.get(Job, row.job_id).kind == "google_sync"
+                    if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
                     in {"extract_memory", "embed_memory", "review_memory", "embed_note"}
