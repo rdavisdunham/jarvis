@@ -1,7 +1,9 @@
 # Background model candidates
 
 Checked September 12, 2026 against official model and pricing documentation.
-Selection discussion only: Eridani's configured gpt-5.4-mini agent is unchanged.
+Update September 13: Gemini 3.8 Flash is integrated as an optional task agent in
+Settings; GPT-5.4 mini remains the default. See [GEMINI_SETUP.md](GEMINI_SETUP.md).
+Real Gemini verification and quality comparison await the owner's API key.
 
 Standard text prices, USD per million tokens, uncached input / output:
 
@@ -27,9 +29,8 @@ Luna/Terra also have higher rates for prompts above 272K input tokens.
 Recommendation: evaluate Luna first for bounded extraction, classification,
 summaries and routine task operations. Keep 5.4 mini as the working baseline.
 Consider Terra for difficult planning/escalation if measured improvements justify
-its cost. Flash is a credible alternative for evaluation, but switching providers
-adds integration work and its introductory pricing should not be treated as
-permanent.
+its cost. Flash is now available for evaluation through the shared tool loop. Its
+introductory pricing should not be treated as permanent.
 
 An evaluation should measure cost per correct completed workflow, not only token
 price: exact record resolution, safe multi-task edits, date/time interpretation,

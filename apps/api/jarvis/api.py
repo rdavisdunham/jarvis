@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
 
-from . import budget
+from . import agent_models, budget
 from .auth import Identity, authenticate, digest, sign_in
 from .config import get_settings
 from .conversation import chat
@@ -201,16 +201,19 @@ def bootstrap(user: User):
         health = db.get(WorkerHealth, "worker")
         worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
         backup_health = db.get(WorkerHealth, "backup")
+        agent = agent_models.selected(prefs)
         return {
             "name": prefs["preferred_name"],
-            "agent_model": settings.text_model,
+            "agent_model": agent.model,
+            "agent_provider": agent.provider,
+            "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,
             "device_id": user.device_id,
             "preferences": prefs,
             "budget": budget.summary(db, user.owner_id),
             "capabilities": {
                 "voice": bool(settings.openai_api_key),
-                "chat": bool(settings.openai_api_key or settings.groq_api_key),
+                "chat": agent.available,
                 "push": bool(settings.vapid_public_key),
                 "worker": worker_healthy,
             },

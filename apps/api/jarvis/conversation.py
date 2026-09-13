@@ -5,7 +5,7 @@ import json
 import httpx
 from sqlalchemy import select
 
-from . import budget
+from . import agent_models, budget
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, capture_source, enqueue_job, owned, preferences
@@ -23,10 +23,6 @@ async def chat(
     owner, device, turn_id, conversation_id, message, focus=None, *, live_context=None, tool_guard=None
 ):
     settings = get_settings()
-    if not (settings.openai_api_key or settings.groq_api_key):
-        raise DomainError(
-            "INTEGRATION_UNAVAILABLE", "Add an API key to use chat. You can still manage tasks directly.", 503
-        )
     with session_scope() as db:
         conv = owned(db, Conversation, conversation_id, owner)
         if conv.device_id != device:
@@ -45,14 +41,21 @@ async def chat(
             )
         prefs = preferences(db, owner)
         private = private or not prefs["history_enabled"]
-        model = settings.text_model if settings.openai_api_key else "openai/gpt-oss-120b"
+        # Pin the route for this entire turn, even if Settings changes during a tool call.
+        agent = agent_models.selected(prefs, require_key=True)
+        model = agent.model
         budget.reserve(db, owner, turn_id, 0.10, model)
         job = Job(
             id=turn_id,
             owner_id=owner,
             kind="chat",
             status="running",
-            payload={"request_hash": key, "conversation_id": conv.id},
+            payload={
+                "request_hash": key,
+                "conversation_id": conv.id,
+                "provider": agent.provider,
+                "model": model,
+            },
         )
         db.add(job)
         history = []
@@ -106,12 +109,6 @@ async def chat(
         *history,
         {"role": "user", "content": message},
     ]
-    api_key = settings.openai_api_key or settings.groq_api_key
-    endpoint = (
-        "https://api.openai.com/v1/chat/completions"
-        if settings.openai_api_key
-        else "https://api.groq.com/openai/v1/chat/completions"
-    )
     tools = [
         {"type": "function", "function": {k: v for k, v in t.items() if k != "type"}} for t in registry()
     ]
@@ -121,7 +118,7 @@ async def chat(
     cancelled, provider_pending = False, False
     tool_errors = []
     try:
-        async with httpx.AsyncClient(timeout=35) as client:
+        async with httpx.AsyncClient(timeout=60 if agent.provider == "gemini" else 35) as client:
             for step in range(settings.max_model_rounds_per_request + 1):
                 final_round = step == settings.max_model_rounds_per_request
                 if final_round or tool_index >= settings.max_tool_calls_per_request:
@@ -139,22 +136,19 @@ async def chat(
                         "LIMIT_EXCEEDED",
                         "This request needs a narrower scope. Saved actions remain available.",
                     )
-                rates = (0.75, 4.5) if settings.openai_api_key else (0.15, 0.60)
+                rates = agent.rates()
                 with session_scope() as db:
                     budget.ensure_room(
-                        db, owner, turn_id, (input_bound * rates[0] + 1200 * rates[1]) / 1_000_000
+                        db,
+                        owner,
+                        turn_id,
+                        (input_bound * rates[0] + agent.max_output_tokens * rates[1]) / 1_000_000,
                     )
                 provider_pending = True
                 response = await client.post(
-                    endpoint,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "tools": tools,
-                        "tool_choice": "none" if limited else "auto",
-                        "max_completion_tokens": 1200,
-                    },
+                    agent.endpoint,
+                    headers={"Authorization": f"Bearer {agent.api_key}"},
+                    json=agent.request(messages, tools, limited),
                 )
                 if 400 <= response.status_code < 500 and response.status_code != 408:
                     provider_pending = False  # Explicit rejection, not an unknown timeout.
@@ -167,7 +161,7 @@ async def chat(
                     or "completion_tokens" not in usage
                 ):
                     raise ValueError("Provider response omitted usage")
-                rates = (0.75, 4.5) if settings.openai_api_key else (0.15, 0.60)
+                rates = agent.rates()
                 cost = (
                     usage.get("prompt_tokens", 0) * rates[0] + usage.get("completion_tokens", 0) * rates[1]
                 ) / 1_000_000
@@ -175,13 +169,17 @@ async def chat(
                     budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost)
                 provider_pending = False
                 msg = data["choices"][0]["message"]
-                messages.append({k: v for k, v in msg.items() if k in {"role", "content", "tool_calls"}})
-                calls = msg.get("tool_calls", [])
+                # Preserve Gemini's opaque thought signatures (including nested tool-call
+                # extra_content) exactly, in memory only, across all steps in this turn.
+                fields = {"role", "content", "tool_calls", "extra_content"}
+                messages.append({k: v for k, v in msg.items() if k in fields})
+                calls = msg.get("tool_calls") or []
                 if not calls:
-                    reply = (
-                        msg.get("content")
-                        or "I couldn't finish that response. Your saved changes are still visible."
-                    )
+                    if data["choices"][0].get("finish_reason") == "length":
+                        limited = True
+                    reply = msg.get("content")
+                    if not isinstance(reply, str) or not reply.strip():
+                        raise ValueError("Provider returned no answer or tool call")
                     break
                 batch_guard_error = None
                 for call in calls:
@@ -223,7 +221,12 @@ async def chat(
                         tool_errors.append({"tool": fn["name"], **outcome})
                     tool_index += 1
                     messages.append(
-                        {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(outcome)}
+                        {
+                            "role": "tool",
+                            "name": fn["name"],
+                            "tool_call_id": call["id"],
+                            "content": json.dumps(outcome),
+                        }
                     )
     except asyncio.CancelledError:
         cancelled = True
@@ -231,13 +234,21 @@ async def chat(
     except DomainError as exc:
         reply = exc.message
         limited = True
-    except (httpx.HTTPError, ValueError, KeyError):
+    except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
         failed = True
-        reply = "I lost the model connection. Any changes already saved are still in your task list; I haven't repeated them."
+        reply = f"I lost the {agent.label} connection. Any changes already saved are still in your task list; I haven't repeated them."
+        if isinstance(exc, httpx.HTTPStatusError):
+            code = exc.response.status_code
+            if code in {401, 403, 404}:
+                reply = f"{agent.label} could not be accessed. Check its API key and model access, or choose another task agent in Settings. Already saved changes remain."
+            elif code == 429:
+                reply = f"{agent.label} reached its provider quota or rate limit. Try again later or choose another task agent in Settings. Already saved changes remain."
     if not reply:
         reply = "I could not finish this batch. Previously saved changes remain; some requested work is unfinished."
         limited = True
     result = {
+        "provider": agent.provider,
+        "model": model,
         "turn_id": turn_id,
         "message": reply,
         "actions": actions,

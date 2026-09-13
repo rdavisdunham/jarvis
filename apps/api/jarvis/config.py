@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     max_model_rounds_per_request: int = Field(default=30, ge=2, le=100)
     openai_api_key: str = ""
     groq_api_key: str = ""
+    gemini_api_key: str = ""
     history_days: int = 0
     web_dist: Path = Path("apps/web/dist")
     vapid_private_key: str = ""
@@ -54,4 +55,5 @@ def get_settings():
     settings = Settings()
     settings.openai_api_key = settings.openai_api_key or legacy.get("OPENAI_API_KEY", "") or ""
     settings.groq_api_key = settings.groq_api_key or legacy.get("GROQ_API_KEY", "") or ""
+    settings.gemini_api_key = settings.gemini_api_key or legacy.get("GEMINI_API_KEY", "") or ""
     return settings

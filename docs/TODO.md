@@ -1,9 +1,43 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 12, 2026. Eridani (Eri) is the assistant's name.
+Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: productivity graph — deployed
+## Current batch: Gemini task-agent trial — deployed
+
+- [x] Add Gemini 3.8 Flash alongside the existing OpenAI task agent, selected in
+      Settings. Persist the owner's choice across devices and pin each active turn
+      to one provider. Text chat and GPT-Live delegation share the selection.
+- [x] Add a blank GEMINI_API_KEY entry in the ignored .env, server-side key loading,
+      missing-key guidance and an opt-in synthetic real-provider handshake.
+      Setup: [GEMINI_SETUP.md](GEMINI_SETUP.md).
+- [x] Preserve tool authorization, revisions, receipts, action limits and Gemini
+      thought signatures across sequential/parallel calls. No automatic provider
+      fallback or replay after a failed request. Cost tracking stays disabled.
+- [x] Validation: 225 backend tests (one optional skip), 76 frontend tests,
+      production build, Ruff and desktop/mobile browser Settings checks passed.
+      API/worker/PostgreSQL are healthy; authenticated deployed bootstrap and HTTPS
+      bundle index-CjYJ0is5.js verified. Task/memory counts and historical cost ledger
+      are unchanged. The backup service is active.
+- [ ] Owner supplies the Gemini key; recreate API/worker, run the synthetic
+      handshake, then compare real text and GPT-Live task workflows against
+      GPT-5.4 mini. Automatic memory/note extraction and embeddings remain OpenAI.
+
+## Database backups
+
+- [x] **Automated database backups are already implemented and running.**
+      Dedicated Docker backup service runs at startup and every 24 hours.
+      Encrypted PostgreSQL custom dumps and SHA-256 manifests are written to
+      C:/Users/davin/JarvisBackups; successful backups keep 30 days of history.
+      Failed attempts retry after five minutes. Settings shows the latest backup.
+- [x] Restore validation for the current schema, including the productivity graph,
+      completed in an isolated database with workers disabled. Most recent verified
+      dump: jarvis-20260913T042040Z.pgdump.enc.
+- [ ] Keep an off-PC recovery copy and recovery key (see daily-use operations below).
+- [ ] Automate periodic isolated restore drills and actionable backup-failure/stale
+      backup alerts; current restore checks are operator-run.
+
+## Previous batch: productivity graph — deployed
 
 - [x] Private Personal/Business spaces and ongoing areas, with optional organization
       for standalone tasks. Existing work stays unclassified until assigned.
@@ -37,7 +71,8 @@ Jarvis remains the repository and infrastructure project name.
       a later feature.
 - [ ] Model comparison recorded in [BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
       Evaluate Luna against the 5.4-mini baseline on representative workflows;
-      compare Flash and Terra where needed. No model switch or cost-tracking change.
+      compare Flash using the new Settings option, and Terra where needed.
+      The default model and disabled cost tracking remain unchanged.
 - [ ] Shared space membership, richer outcome check-ins and independently managed
       agent jobs remain later expansions. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).
 

@@ -946,3 +946,35 @@ Background model selection is discussed in
 [BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
 The running agent remains gpt-5.4-mini. Comparative provider evaluation and
 Langfuse remain future work; no model switch was made.
+
+
+## September 13: optional Gemini task agent
+
+Added a server-defined backend-provider catalog and persistent owner selection in
+Settings. OpenAI stays the configured default; Gemini 3.8 Flash uses Google's
+OpenAI-compatible Chat Completions endpoint with low reasoning and an 8,192-token
+generation allowance. Each text/GPT-Live delegated turn pins its provider, keeps
+Gemini thought signatures across the existing tool loop, and retains durable
+receipts without provider fallback after errors. Audio, memory/note extraction
+and embeddings keep their existing providers. No schema migration is required;
+the choice uses the existing OwnerSettings JSON record. Development cost
+accounting remains disabled.
+
+GEMINI_API_KEY is loaded only on the server; .env has a blank row for the owner.
+Bootstrap exposes model names and credential availability, never credentials.
+See docs/GEMINI_SETUP.md for container recreation and the synthetic real-provider
+tool-catalog/continuation check. Real Gemini access remains unverified until the
+key is supplied.
+
+The existing dedicated backup service already performs encrypted daily database
+backups with 30-day retention. TODO now records that explicitly and separates
+off-PC recovery copies, automated restore drills and failure alerts still to do.
+
+
+Validation and deployment: 225 backend tests (one optional skip), 76 frontend
+tests, production build, Ruff, and desktop/mobile Settings acceptance passed.
+Empty/filtered/malformed model responses now terminate the local job cleanly.
+The rebuilt API/worker are healthy; authenticated bootstrap identifies the default
+gpt-5.4-mini route and the Gemini option waiting for its key. HTTPS serves
+index-CjYJ0is5.js. Task, project, goal, note, memory and historical cost-ledger
+counts match before/after deployment. No real Gemini call has run yet.

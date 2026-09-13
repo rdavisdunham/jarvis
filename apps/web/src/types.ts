@@ -139,7 +139,9 @@ export interface MemoryMaintenance {
     queued_questions?: number;
   } | null;
 }
+export type AgentProvider = "openai" | "gemini" | "groq";
 export interface Preferences {
+  agent_provider: AgentProvider;
   preferred_name: string;
   history_enabled: boolean;
   memory_learning: boolean;
@@ -151,6 +153,13 @@ export interface Preferences {
   detailed_notifications: boolean;
 }
 export interface Bootstrap {
+  agent_provider: AgentProvider;
+  agent_options: {
+    provider: AgentProvider;
+    model: string;
+    label: string;
+    available: boolean;
+  }[];
   agent_model: string;
   name: string;
   csrf: string;

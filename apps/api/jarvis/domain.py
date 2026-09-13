@@ -154,6 +154,7 @@ class NotificationAction(Args):
 
 
 class SettingsUpdate(Args):
+    agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
     memory_learning: bool | None = None
@@ -221,9 +222,12 @@ def advisory(db, key):
 
 
 def preferences(db, owner):
+    from .agent_models import default_provider
+
     settings = get_settings()
     row = db.get(OwnerSettings, owner)
     return {
+        "agent_provider": default_provider(),
         "preferred_name": settings.owner_name,
         "history_enabled": True,
         "memory_learning": True,
@@ -763,6 +767,10 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "settings.update":
         advisory(db, f"budget:{owner}")
         values = args.model_dump(exclude_none=True)
+        if "agent_provider" in values:
+            from .agent_models import selected
+
+            selected(values, require_key=True)
         if "timezone" in values:
             zone(values["timezone"])
         row = db.get(OwnerSettings, owner)

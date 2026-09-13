@@ -813,6 +813,38 @@ export function SettingsPanel({
         <p className="footnote">Home time zone: {p.timezone}</p>
       </section>
       <section>
+        <h2>Task agent</h2>
+        <label className="setting-row">
+          <span>
+            <strong>Backend model</strong>
+            <small>Used for text chat and tasks delegated by GPT-Live.</small>
+          </span>
+          <select
+            aria-label="Backend model"
+            value={boot.agent_provider}
+            disabled={busy}
+            onChange={(e) => void onSave({ agent_provider: e.target.value })}
+          >
+            {boot.agent_options.map((model) => (
+              <option key={model.provider} value={model.provider} disabled={!model.available}>
+                {model.label}{model.available ? "" : " · API key needed"}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="footnote">
+          Changes apply to the next request on all your devices. Voice selection
+          is separate. Automatic memory learning and note extraction still use
+          OpenAI.
+        </p>
+        {boot.agent_options.some((model) => model.provider === "gemini" && !model.available) && (
+          <p className="footnote">
+            To try Gemini, add GEMINI_API_KEY to the server .env file, then recreate
+            the API and worker containers.
+          </p>
+        )}
+      </section>
+      <section>
         <h2>Model usage</h2>
         {boot.budget.tracking_enabled === false ? (
           <p className="footnote">
@@ -824,6 +856,10 @@ export function SettingsPanel({
               rel="noreferrer"
             >
               OpenAI Usage
+            </a>{" "}
+            and{" "}
+            <a href="https://aistudio.google.com/usage" target="_blank" rel="noreferrer">
+              Google AI Studio
             </a>
             .
           </p>
