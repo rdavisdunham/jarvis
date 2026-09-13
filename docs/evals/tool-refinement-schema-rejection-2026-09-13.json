@@ -1,0 +1,20 @@
+[
+  {
+    "profile": "luna",
+    "status": 400,
+    "tool_count": 81,
+    "error_code": "invalid_function_parameters",
+    "error_param": "tools[18].parameters",
+    "message": "Invalid schema for function 'ui_select': In context=('properties', 'task_ids'), 'uniqueItems' is not permitted."
+  },
+  {
+    "profile": "gemini",
+    "status": 200,
+    "tool_count": 81,
+    "usage": {
+      "completion_tokens": 1,
+      "prompt_tokens": 16232,
+      "total_tokens": 16233
+    }
+  }
+]

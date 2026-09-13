@@ -133,6 +133,8 @@ LOCAL_TOOLS = {
     "task_complete",
     "task_reopen",
     "task_batch",
+    "task_selection_update",
+    "time_resolve",
     "project_list",
     "organization_list",
     "project_create",
@@ -230,6 +232,10 @@ def seed_case(case, repeat):
     with engine().begin() as db:
         for table in reversed(Base.metadata.sorted_tables):
             db.execute(table.delete())
+    # These snapshots are process-local domain state and must not carry across fixtures.
+    from jarvis.task_tools import snapshots
+
+    snapshots.clear()
     ids = count()
     with patch.object(
         models, "uuid4", side_effect=lambda: uuid5(NAMESPACE_URL, f"expert-v1:{case}:{repeat}:{next(ids)}")
@@ -933,11 +939,16 @@ def plan_constraints(times):
 
 
 def _validate(name, args):
+    if name in READ_TOOLS:
+        try:
+            jsonschema.validate(
+                args, READ_TOOLS[name]["parameters"], format_checker=jsonschema.FormatChecker()
+            )
+        except jsonschema.ValidationError as exc:
+            raise DomainError("INVALID_ARGUMENT", "Invalid tool arguments: " + exc.message[:300]) from None
+        return
     try:
-        if name in READ_TOOLS:
-            jsonschema.validate(args, READ_TOOLS[name]["parameters"])
-        else:
-            COMMANDS[name.replace("_", ".", 1)].model_validate(args)
+        COMMANDS[name.replace("_", ".", 1)].model_validate(args)
     except Exception as exc:
         raise DomainError("INVALID_ARGUMENT", "Synthetic adapter rejected invalid tool arguments.") from exc
 
@@ -1001,7 +1012,17 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
             else:
                 if arguments["job_id"] != f["remote_job"]:
                     raise DomainError("NOT_FOUND", "Unknown synthetic write job.")
-                result = {"job_id": f["remote_job"], "status": "retrying", "result": None}
+                result = {
+                    "job_id": f["remote_job"],
+                    "status": "retrying",
+                    "result": None,
+                    "operation": "create",
+                    "created_at": CLOCK.isoformat(),
+                }
+            if name in {"calendar_create", "calendar_write_status"}:
+                from jarvis.remote_status import retry_metadata
+
+                result.update(retry_metadata(result["status"], result.get("result")))
             entry["simulation"] = "remote_queue"
         elif name == "calendar_availability":
             result = availability_fixture(f, arguments)
@@ -1020,7 +1041,7 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
         else:
             if (
                 f["case"] == "stale_revision"
-                and name in {"task_batch", "task_update"}
+                and name in {"task_batch", "task_update", "task_selection_update"}
                 and "stale_revision" not in f["faults"]
             ):
                 with session_scope() as db:
@@ -1035,7 +1056,25 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
             if name == "note_search" and arguments.get("semantic"):
                 arguments = {**arguments, "semantic": False}
                 entry["simulation"] = "lexical_note_retrieval"
+            if name == "task_selection_update":
+                from jarvis.task_tools import selection
+
+                preview = selection(owner, arguments["selection_id"])
+                entry["authoritative_selection"] = {
+                    "selection_id": arguments["selection_id"],
+                    "match_count": preview["total"],
+                    "records": copy.deepcopy(preview["records"]),
+                }
             result = await real_tool(owner, turn_id, index, name, arguments, **kwargs)
+            if name == "task_list" and result.get("selection_id"):
+                from jarvis.task_tools import selection
+
+                preview = selection(owner, result["selection_id"])
+                entry["authoritative_selection"] = {
+                    "selection_id": result["selection_id"],
+                    "match_count": preview["total"],
+                    "records": copy.deepcopy(preview["records"]),
+                }
             if f["case"] == "lost_ack" and name == "task_create" and "lost_ack" not in f["faults"]:
                 f["faults"].append("lost_ack")
                 entry["injected"] = "lost_ack"

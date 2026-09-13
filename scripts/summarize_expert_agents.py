@@ -313,7 +313,11 @@ def render(report, summary):
         for m, d in summary["models"].items()
     )
     run_label = "Diagnostic sample" if summary["diagnostic_only"] else "Scored run " + summary["state"]
-    truth = Counter(r["verdict"] for r in summary["manual_review"].get("reviews", []))
+    truth = Counter(
+        "supported" if r.get("factual_response_pass") is True
+        else "misleading" if r.get("factual_response_pass") is False else "uncertain"
+        for r in summary["manual_review"].get("reviews", [])
+    )
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Eridani expert task-agent evaluation</title>
 <style>
 :root{{color-scheme:light dark;font-family:system-ui,sans-serif;color:light-dark(#202427,#e7ecef);background:light-dark(#fafbfc,#171b1f)}}

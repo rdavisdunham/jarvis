@@ -1,0 +1,20 @@
+{
+  "artifact": ".runtime/tool-refinement-validation-diagnostic.json",
+  "sha256": "4ed61ab97e3cc5ef57333178ed57cf0ae88342477444c72999cfdbb5892fc7d5",
+  "checks": {
+    "completed_all6": true,
+    "diagnostic_only": true,
+    "all_exact_state_checks_pass": true,
+    "identical_v3_fixture_hashes": true,
+    "diagnostic_source_hashes_unchanged": true,
+    "v3_artifact_unchanged": true,
+    "api_credentials_absent": true,
+    "native_reasoning_content_absent": true,
+    "database_removed": true,
+    "no_active_run": true,
+    "no_provider_failure": true,
+    "model_ids_match": true,
+    "no_remaining_eval_databases": true
+  },
+  "all_checks_pass": true
+}

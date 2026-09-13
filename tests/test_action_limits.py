@@ -21,6 +21,9 @@ def task(title):
 
 def setup(monkeypatch, responses):
     monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic-test-key")
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "synthetic-test-key")
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "gemini"})
     monkeypatch.setattr(conversation, "prompt_context", AsyncMock(return_value=""))
     sent = []
 
@@ -161,6 +164,9 @@ async def test_task_list_paginates_instead_of_silently_truncating():
 
 async def test_cancel_during_initial_memory_lookup_releases_chat_reservation(monkeypatch):
     cid, sent = setup(monkeypatch, [])
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "synthetic-test-key")
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "gemini"})
     monkeypatch.setattr(conversation, "prompt_context", AsyncMock(side_effect=asyncio.CancelledError()))
     turn = str(uuid4())
     with pytest.raises(asyncio.CancelledError):

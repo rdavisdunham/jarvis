@@ -1986,7 +1986,7 @@ export default function App() {
                       : "Realtime · the existing turn-based voice experience."}
                   </p>
                   <p className="voice-model-note">
-                    Task agent: {boot.agent_model || "gpt-5.4-mini"}. GPT-Live
+                    Task agent: {boot.agent_model || "gpt-5.6-luna"}. GPT-Live
                     delegates task work to this agent using your saved records
                     and tools.
                   </p>

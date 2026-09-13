@@ -1,0 +1,38 @@
+{
+  "verified_at": "2026-09-13T10:43:55.164212+00:00",
+  "backend_tests": {
+    "passed": 379,
+    "skipped": 1,
+    "excluded": "tests/test_voice.py (paused Realtime)"
+  },
+  "frontend_tests": {
+    "passed": 60,
+    "files": 8,
+    "excluded": "**/voice.test.ts (paused Realtime)"
+  },
+  "ruff_changed_files": "passed",
+  "docker_build": "passed",
+  "application_sources_verified_against_scored_v3": 19,
+  "https_bundle": "index-DCL2bqzL.js",
+  "services": {
+    "api": "healthy",
+    "worker": "healthy",
+    "postgres": "healthy",
+    "backup": "running"
+  },
+  "browser_checks": {
+    "desktop_mobile_settings": true,
+    "live_only": true,
+    "legacy_voice_preference_recovery": true,
+    "retired_model_absent": true,
+    "active_model": "gpt-5.6-luna",
+    "cost_tracking": false,
+    "report_trials": 120,
+    "report_filters": true,
+    "overflow_or_page_errors": false
+  },
+  "limits": [
+    "Synthetic evals do not verify real microphone or remote integration behavior.",
+    "Separate validation diagnostic never replaces scored v3."
+  ]
+}

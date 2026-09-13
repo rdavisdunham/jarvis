@@ -6,7 +6,7 @@ import json
 from sqlalchemy import delete, select
 
 from .db import session_scope
-from .memory_learning import EMBEDDING_MODEL, EXTRACTION_MODEL, cosine, embeddings, provider_request
+from .memory_learning import EMBEDDING_MODEL, EXTRACTION_MODEL, cosine, embeddings, extraction_request
 from .models import Conversation, Job, Note, NoteEmbedding, NoteTaskLink, Project, Task, now
 from .note_schema import Suggestions
 
@@ -74,7 +74,15 @@ def mutate_note(db, owner, tool, args):
                     task = owned(db, Task, link.task_id, owner)
                     link.linked = True
                     results.append(
-                        {"id": task.id, "title": task.title, "revision": task.revision, "existing": True}
+                        {
+                            "id": task.id,
+                            "title": task.title,
+                            "revision": task.revision,
+                            "existing": True,
+                            "source_note_id": row.id,
+                            "source_note_revision": link.note_revision,
+                            "evidence": link.evidence,
+                        }
                     )
                     continue
                 task = mutate(
@@ -99,9 +107,24 @@ def mutate_note(db, owner, tool, args):
                     )
                 )
                 db.flush()
-                results.append({**task, "existing": False})
+                results.append(
+                    {
+                        **task,
+                        "existing": False,
+                        "source_note_id": row.id,
+                        "source_note_revision": row.revision,
+                        "evidence": item.evidence,
+                    }
+                )
             emit(db, owner, "note.changed", row.id, row.revision)
-            return {"note_id": row.id, "tasks": results}
+            return {
+                "note_id": row.id,
+                "source_note_revision": row.revision,
+                "tasks": results,
+                "requested_count": len(args.items),
+                "created_count": sum(not r["existing"] for r in results),
+                "existing_count": sum(r["existing"] for r in results),
+            }
         values = args.model_dump(
             exclude_unset=True, exclude={"note_id", "expected_revision", "task_ids"} | link_keys
         )
@@ -333,7 +356,7 @@ def suggest_tasks(owner, note_id):
         if row.archived:
             raise DomainError("INVALID_ARGUMENT", "Restore the note first.")
         content, revision = row.content, row.revision
-    data = provider_request(
+    data = extraction_request(
         owner,
         "chat/completions",
         {

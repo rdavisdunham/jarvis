@@ -1,7 +1,7 @@
 # Try Gemini as Eri's task agent
 
 Gemini 3.8 Flash can handle text chat and the task work delegated by GPT-Live.
-The existing GPT-5.4 mini option remains the default when its key is configured.
+GPT-5.4 mini is retired. Luna is the OpenAI option and the default when its key is configured.
 The selection is saved for the owner, applies across devices on the next request,
 and remains fixed throughout an in-progress request.
 
@@ -20,7 +20,7 @@ and remains fixed throughout an in-progress request.
    ```
 
 4. Refresh Eri, then select **Settings → Task agent → Backend model →
-   Gemini 3.8 Flash**. Switch back to GPT-5.4 mini in the same menu.
+   Gemini 3.8 Flash**. Switch to GPT-5.6 Luna in the same menu.
 
 An option marked **API key needed** is unavailable until its key is loaded.
 A loaded key does not prove model access or available quota; the first real check
@@ -36,7 +36,7 @@ From the WSL repository directory, run:
 uv run python scripts/check_gemini.py
 ```
 
-This opt-in check sends the full function catalog and synthetic conversation to
+This opt-in transport check sends the full function catalog (the production loop loads groups on demand) and synthetic conversation to
 Gemini, requests a task-list call, supplies a synthetic result, and verifies the
 continuation. It never executes the requested tools or touches a database,
 Google Calendar or Linear. It makes two billable model calls.
@@ -59,9 +59,9 @@ connected-service acceptance remain separate checks.
   stay in the active request's memory; they are not stored as conversation text.
 - Settings choose only server-defined providers, endpoints and models. Keys stay
   on the server and never appear in bootstrap responses or browser storage.
-- GPT-Live and Realtime remain the audio providers. Realtime executes the existing
-  tools directly; GPT-Live delegates task work to the chosen backend model.
-  Automatic memory extraction, note extraction and embeddings remain on OpenAI.
+- GPT-Live is the active voice provider and delegates task work to the chosen backend.
+  Realtime is disabled with its code retained. Memory/note extraction uses Luna
+  Responses with low reasoning; embeddings remain text-embedding-3-small.
 - Development cost tracking remains disabled. If re-enabled, Gemini uses its own
   published estimated rates, including the January 2027 pricing change, and its
   generated-token allowance. Completion usage includes thinking tokens.

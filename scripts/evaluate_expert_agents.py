@@ -26,11 +26,13 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
-from jarvis import agent_models, conversation
+from jarvis import agent_instructions, agent_models, conversation
 from jarvis import tools as jarvis_tools
 from jarvis.config import get_settings
 from jarvis.db import engine
 from jarvis.models import Base
+from jarvis.personality import SYSTEM_PROMPT
+from jarvis.tool_catalog import ToolSession
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 
@@ -38,6 +40,90 @@ ROOT = Path(__file__).resolve().parents[1]
 MODELS = ("gpt-5.6-luna", "gemini-3.8-flash")
 DATABASE_PREFIX = "jarvis_expert_eval_"
 FIXED_TIME = datetime(2030, 1, 14, 9, tzinfo=ZoneInfo("America/Chicago"))
+TOOL_REFINEMENT_CASES = (
+    "bulk_pagination",
+    "selected_not_visible",
+    "ambiguous_followup",
+    "singular_ambiguous",
+    "stale_revision",
+    "lost_ack",
+    "dst_gap",
+    "dst_fold",
+    "clear_deadline",
+    "goal_rewire",
+    "note_preservation",
+    "evidence_extraction",
+    "note_injection",
+    "unsupported_email",
+    "calendar_unknown",
+    "constraint_schedule",
+    "impossible_schedule",
+    "pending_remote",
+    "ui_refusal",
+    "recurring_occurrence",
+)
+TOOL_REFINEMENT_EXCLUSIONS = {
+    "subtask_reparent": "Previously clean; relationship preservation remains covered by goal_rewire and note_preservation.",
+    "cross_zone": "Previously clean; offset-sensitive resolution remains covered by dst_gap and dst_fold.",
+    "memory_override": "Previously clean; untrusted-data restraint remains covered by note_injection and unavailable-capability cases.",
+    "all_day_span": "Previously clean; retained scheduling and DST cases stress the revised time tools more directly.",
+}
+
+
+def json_bytes(value):
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
+
+
+def request_context_metrics(body, request_bytes):
+    inputs = body.get("input", body.get("messages", []))
+    definitions = body.get("tools", [])
+    names = [tool.get("name") or tool.get("function", {}).get("name") for tool in definitions]
+    system = [item.get("content") for item in inputs if item.get("role") == "system"]
+    return {
+        "offered_tool_names": names,
+        "offered_tool_count": len(definitions),
+        "tool_schema_bytes": json_bytes(definitions),
+        "system_prompt_bytes": json_bytes(system),
+        "input_context_bytes": json_bytes(inputs),
+        "request_body_bytes": request_bytes,
+    }
+
+
+def requested_functions(data, api):
+    """Project only executable function calls, never native reasoning or signatures."""
+    if api == "responses":
+        calls = [
+            {"name": item.get("name"), "call_id": item.get("call_id"), "arguments": item.get("arguments")}
+            for item in data.get("output", [])
+            if item.get("type") == "function_call"
+        ]
+    else:
+        message = (data.get("choices") or [{}])[0].get("message", {})
+        calls = [
+            {
+                "name": item.get("function", {}).get("name"),
+                "call_id": item.get("id"),
+                "arguments": item.get("function", {}).get("arguments"),
+            }
+            for item in message.get("tool_calls", [])
+        ]
+    for call in calls:
+        try:
+            call["arguments"] = json.loads(call["arguments"])
+        except (TypeError, ValueError):
+            call["arguments_valid_json"] = False
+    return calls
+
+
+def select_cases(all_cases, suite, requested=None):
+    if suite not in {"expert24", "tool-refinement20"}:
+        raise ValueError("Unknown evaluation suite")
+    names = list(all_cases) if suite == "expert24" else list(TOOL_REFINEMENT_CASES)
+    if requested:
+        if set(requested) - set(names):
+            raise ValueError("Requested case is outside this fixed evaluation suite")
+        names = [name for name in names if name in requested]
+    return {name: all_cases[name] for name in names}
 
 
 class InstructionDateTime(datetime):
@@ -108,12 +194,21 @@ def source_manifest(profiles, settings, cases, repeats, seed):
         "scripts/expert_eval_cases.py",
         "apps/api/jarvis/conversation.py",
         "apps/api/jarvis/tools.py",
+        "apps/api/jarvis/tool_catalog.py",
+        "apps/api/jarvis/agent_instructions.py",
+        "apps/api/jarvis/task_tools.py",
+        "apps/api/jarvis/time_tools.py",
+        "apps/api/jarvis/remote_status.py",
         "apps/api/jarvis/personality.py",
         "apps/api/jarvis/responses_adapter.py",
         "apps/api/jarvis/agent_models.py",
         "apps/api/jarvis/domain.py",
         "apps/api/jarvis/productivity.py",
         "apps/api/jarvis/task_context.py",
+        "apps/api/jarvis/notes.py",
+        "apps/api/jarvis/google_writes.py",
+        "apps/api/jarvis/ui_control.py",
+        "apps/api/jarvis/memory_learning.py",
         "apps/api/jarvis/models.py",
         "apps/api/jarvis/config.py",
     ]
@@ -129,6 +224,7 @@ def source_manifest(profiles, settings, cases, repeats, seed):
     except (OSError, subprocess.CalledProcessError):
         commit, dirty = None, None
     schemas = jarvis_tools.registry()
+    initial_schemas = ToolSession(schemas).definitions()
     return {
         "started_at": datetime.now(UTC).isoformat(),
         "git_commit": commit,
@@ -137,7 +233,14 @@ def source_manifest(profiles, settings, cases, repeats, seed):
         "tool_schema_sha256": hashlib.sha256(
             json.dumps(schemas, sort_keys=True, ensure_ascii=False).encode()
         ).hexdigest(),
-        "system_personality_sha256": hashlib.sha256(jarvis_tools.SYSTEM_PROMPT.encode()).hexdigest(),
+        "system_personality_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),
+        "initial_catalog": {
+            "tool_names": [item["name"] for item in initial_schemas],
+            "tool_count": len(initial_schemas),
+            "definition_bytes": json_bytes(initial_schemas),
+        },
+        "full_catalog": {"tool_count": len(schemas), "definition_bytes": json_bytes(schemas)},
+        "context_metric_encoding": "UTF-8 bytes of compact JSON; input_context_bytes includes opaque reasoning state size without its contents",
         "fixed_instruction_time": FIXED_TIME.isoformat(),
         "runtime_clock_frozen": False,
         "seed": seed,
@@ -289,6 +392,7 @@ def outbound_guard(profile, database_url, provider_calls, blocked_calls):
                 json.dumps(system_content, sort_keys=True, ensure_ascii=False).encode()
             ).hexdigest(),
         }
+        meter.update(request_context_metrics(body, len(request.content)))
         provider_calls.append(meter)
         started = time.perf_counter()
         try:
@@ -302,7 +406,11 @@ def outbound_guard(profile, database_url, provider_calls, blocked_calls):
                 meter["invalid_json"] = True
             if response.is_success:
                 # Usage metadata has numeric token counts, never reasoning contents.
-                meter.update(response_model=data.get("model"), usage=data.get("usage", {}))
+                meter.update(
+                    response_model=data.get("model"),
+                    usage=data.get("usage", {}),
+                    requested_tools=requested_functions(data, profile.api),
+                )
                 meter["finish_reason"] = (
                     data.get("status")
                     if profile.api == "responses"
@@ -314,6 +422,13 @@ def outbound_guard(profile, database_url, provider_calls, blocked_calls):
                 meter["error_code"] = (
                     str(code) if code is not None and re.fullmatch(r"[\w.-]{1,100}", str(code)) else None
                 )
+                parameter = error.get("param") if isinstance(error, dict) else None
+                if isinstance(parameter, str) and re.fullmatch(r"[A-Za-z0-9_.\[\]-]{1,200}", parameter):
+                    meter["error_param"] = parameter
+                if code == "invalid_function_parameters" and isinstance(error.get("message"), str):
+                    meter["schema_error"] = safe_exception(ValueError(error["message"]), (profile.api_key,))[
+                        "message"
+                    ]
             return response
         except Exception as exc:
             meter["exception_type"] = type(exc).__name__
@@ -379,9 +494,19 @@ def summarize(results, models):
     return summary
 
 
-async def evaluate_case(cases_module, profile, run_spec, database_url):
+async def evaluate_case(cases_module, profile, run_spec, database_url, on_progress=None):
     provider_calls, blocked_calls, turns, checks = [], [], [], {}
-    current = {**run_spec, "provider_calls": provider_calls, "turns": turns}
+    discovery_calls = []
+    active_turn = {"index": None, "id": None}
+    current = {
+        **run_spec,
+        "provider_calls": provider_calls,
+        "turns": turns,
+        "discovery_calls": discovery_calls,
+        "tools": [],
+    }
+    if on_progress:
+        on_progress(current)
     started = time.perf_counter()
     fixture = None
     exception = None
@@ -389,12 +514,38 @@ async def evaluate_case(cases_module, profile, run_spec, database_url):
     secrets = [profile.api_key, make_url(database_url).password]
     try:
         fixture = cases_module.seed_case(run_spec["case"], run_spec["repeat"])
+        current["tools"] = fixture["tools"]
         current["fixture_hash"] = fixture["fixture_hash"]
         current["fixture_prompts_sha256"] = hashlib.sha256(
             json.dumps(fixture["prompts"], ensure_ascii=False).encode()
         ).hexdigest()
         current["injected_memory_sha256"] = hashlib.sha256(fixture["memory_context"].encode()).hexdigest()
         real_tool = conversation.call_tool
+
+        class ObservedToolSession(ToolSession):
+            def load(self, arguments):
+                trace = {
+                    "name": "tools_load",
+                    "arguments": copy.deepcopy(arguments),
+                    "turn_id": active_turn["id"],
+                    "turn_index": active_turn["index"],
+                    "provider_call_index": len(provider_calls) - 1,
+                    "offered_tool_names_before": list(self.names),
+                }
+                discovery_calls.append(trace)
+                load_started = time.perf_counter()
+                try:
+                    result = super().load(arguments)
+                    trace["outcome"] = copy.deepcopy(result)
+                    return result
+                except Exception as exc:
+                    trace["error"] = getattr(exc, "code", type(exc).__name__)
+                    trace["message"] = str(exc)
+                    raise
+                finally:
+                    trace["seconds"] = round(time.perf_counter() - load_started, 4)
+                    trace["offered_tool_names_after"] = list(self.names)
+                    trace["definition_bytes_after"] = json_bytes(self.definitions())
 
         async def invoke(owner, turn, index, name, arguments, **kwargs):
             return await cases_module.invoke_tool(
@@ -428,15 +579,19 @@ async def evaluate_case(cases_module, profile, run_spec, database_url):
             patch.object(conversation, "get_context", context),
             patch.object(jarvis_tools, "get_context", context),
             patch.object(jarvis_tools, "dispatch", displayed),
-            patch.object(jarvis_tools, "datetime", InstructionDateTime),
+            patch.object(agent_instructions, "datetime", InstructionDateTime),
+            patch.object(conversation, "ToolSession", ObservedToolSession),
         ):
             for turn_index, prompt in enumerate(fixture["prompts"]):
                 turn_started = time.perf_counter()
                 first_call = len(provider_calls)
+                first_discovery = len(discovery_calls)
+                active_turn.update(index=turn_index, id=str(uuid4()))
+                current["pending_user_message"] = prompt
                 result = await conversation.chat(
                     cases_module.OWNER,
                     cases_module.DEVICE,
-                    str(uuid4()),
+                    active_turn["id"],
                     fixture["conversation"],
                     prompt,
                 )
@@ -451,9 +606,11 @@ async def evaluate_case(cases_module, profile, run_spec, database_url):
                     "tool_calls": result.get("tool_calls", 0),
                     "seconds": round(time.perf_counter() - turn_started, 4),
                     "provider_call_range": [first_call, len(provider_calls)],
+                    "discovery_call_range": [first_discovery, len(discovery_calls)],
                     "result": result,
                 }
                 turns.append(turn)
+                current.pop("pending_user_message", None)
                 checks.update(
                     {
                         f"turn_{turn_index + 1}.{name}": bool(value)
@@ -493,6 +650,7 @@ async def evaluate_case(cases_module, profile, run_spec, database_url):
         behavior_flags=grading["behavior_flags"],
         blocked_outbound_calls=blocked_calls,
         tools=fixture["tools"] if fixture else [],
+        discovery_calls=discovery_calls,
         exception=exception,
         outcome=outcome,
         task_success=outcome in {"clean_success", "recovered_success"},
@@ -501,13 +659,22 @@ async def evaluate_case(cases_module, profile, run_spec, database_url):
     return current
 
 
-async def run(repeats, output, models, cases=None, seed=20260913, preflight=False):
+async def run(
+    repeats,
+    output,
+    models,
+    cases=None,
+    seed=20260913,
+    preflight=False,
+    suite="expert24",
+    stop_file=None,
+    diagnostic_only=False,
+):
+    stop_file = Path(stop_file) if stop_file else Path(output).with_suffix(".stop")
+    if stop_file.exists():
+        raise ValueError("A stop file already exists for this output; use a fresh output path.")
     cases_module = importlib.import_module("expert_eval_cases")
-    selected_cases = {
-        name: metadata for name, metadata in cases_module.CASES.items() if not cases or name in cases
-    }
-    if cases and set(cases) - set(selected_cases):
-        raise ValueError("Unknown expert-evaluation case")
+    selected_cases = select_cases(cases_module.CASES, suite, cases)
     catalog = agent_models.catalog()
     profiles = {key: catalog["luna" if key == "gpt-5.6-luna" else "gemini"] for key in models}
     if any(profile.max_output_tokens != 8192 for profile in profiles.values()):
@@ -528,11 +695,18 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
     created = False
     report = {
         "manifest": source_manifest(profiles, get_settings(), selected_cases, repeats, seed),
-        "diagnostic_only": preflight,
+        "suite": suite,
+        "baseline_artifact": "docs/evals/expert-agents-2026-09-13.json.gz"
+        if suite == "tool-refinement20"
+        else None,
+        "excluded_cases": TOOL_REFINEMENT_EXCLUSIONS if suite == "tool-refinement20" else {},
+        "diagnostic_only": preflight or diagnostic_only,
         "state": "running",
         "planned_runs": len(selected_cases) * repeats * len(models),
         "results": [],
         "blocked_models": {},
+        "active_run": None,
+        "stop_file": str(stop_file),
         "database_removed": False,
     }
     checkpoint(output, report)
@@ -544,7 +718,9 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
         with isolated_environment(database_url):
             validate_disposable_database(make_url(get_settings().database_url).database, name)
             Base.metadata.create_all(engine())
-            for spec in scenario_order(selected_cases, repeats, models, seed):
+            schedule = scenario_order(selected_cases, repeats, models, seed)
+            for run_index, spec in enumerate(schedule):
+                reason = None
                 if spec["model"] in report["blocked_models"]:
                     result = {
                         **spec,
@@ -556,11 +732,18 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
                         "checks": {},
                     }
                 else:
-                    result = await evaluate_case(cases_module, profiles[spec["model"]], spec, database_url)
+                    result = await evaluate_case(
+                        cases_module,
+                        profiles[spec["model"]],
+                        spec,
+                        database_url,
+                        on_progress=lambda current: report.update(active_run=current),
+                    )
                     reason = provider_stop_reason(result["provider_calls"])
                     if reason:
                         report["blocked_models"][spec["model"]] = reason
                 report["results"].append(result)
+                report["active_run"] = None
                 report["summary"] = summarize(report["results"], models)
                 checkpoint(output, report)
                 print(
@@ -576,7 +759,47 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
                     ),
                     flush=True,
                 )
-        report["state"] = "completed"
+                if reason and suite == "tool-refinement20":
+                    report["state"] = "provider_blocked"
+                    report["halt_reason"] = {"model": spec["model"], "reason": reason}
+                    for remaining in schedule[run_index + 1 :]:
+                        report["results"].append(
+                            {
+                                **remaining,
+                                "outcome": "skipped",
+                                "skip_reason": "paired_suite_halted_after_provider_rejection",
+                                "task_success": False,
+                                "clean_completion": False,
+                                "turns": [],
+                                "checks": {},
+                            }
+                        )
+                    report["summary"] = summarize(report["results"], models)
+                    checkpoint(output, report)
+                    print(
+                        json.dumps(
+                            {
+                                "paired_suite_halted": True,
+                                "attempted_before_halt": run_index + 1,
+                                "remaining_skipped": len(schedule) - run_index - 1,
+                            }
+                        ),
+                        flush=True,
+                    )
+                    break
+                next_spec = schedule[run_index + 1] if run_index + 1 < len(schedule) else None
+                pair_complete = next_spec is None or (next_spec["case"], next_spec["repeat"]) != (
+                    spec["case"],
+                    spec["repeat"],
+                )
+                if pair_complete and stop_file.exists():
+                    report["state"] = "stopped"
+                    report["stop_reason"] = "requested_at_completed_pair_boundary"
+                    report["remaining_unattempted"] = schedule[run_index + 1 :]
+                    checkpoint(output, report)
+                    break
+        if report["state"] == "running":
+            report["state"] = "completed"
     except BaseException as exc:
         report["state"] = (
             "interrupted" if isinstance(exc, (KeyboardInterrupt, asyncio.CancelledError)) else "failed"
@@ -586,6 +809,8 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
         )
         raise
     finally:
+        if report.get("active_run") is not None:
+            report["active_run"]["incomplete"] = True
         if created:
             # This name is generated once by this invocation, never read from the CLI.
             validate_disposable_database(name, name)
@@ -602,15 +827,39 @@ async def run(repeats, output, models, cases=None, seed=20260913, preflight=Fals
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, choices=range(1, 11), default=3)
-    parser.add_argument("--output", type=Path, default=Path(".runtime/expert-evaluation.json"))
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--suite", choices=["expert24", "tool-refinement20"], default="expert24")
     parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
     parser.add_argument("--cases", nargs="+")
     parser.add_argument("--seed", type=int, default=20260913)
     parser.add_argument(
+        "--stop-file", type=Path, help="Create this file to stop after the current model pair."
+    )
+    parser.add_argument(
         "--preflight", action="store_true", help="Diagnostic-only run; excluded from final comparison"
     )
+    parser.add_argument(
+        "--diagnostic-only", action="store_true", help="Exclude from scored comparison; preserve --repeats"
+    )
     args = parser.parse_args()
-    asyncio.run(run(args.repeats, args.output, args.models, args.cases, args.seed, args.preflight))
+    output = args.output or Path(
+        ".runtime/tool-refinement-evaluation.json"
+        if args.suite == "tool-refinement20"
+        else ".runtime/expert-evaluation.json"
+    )
+    asyncio.run(
+        run(
+            args.repeats,
+            output,
+            args.models,
+            args.cases,
+            args.seed,
+            args.preflight,
+            args.suite,
+            args.stop_file,
+            args.diagnostic_only,
+        )
+    )
 
 
 if __name__ == "__main__":

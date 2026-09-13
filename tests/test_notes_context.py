@@ -79,7 +79,7 @@ def test_search_literal_wildcards_tags_and_pagination(client):
 def test_extraction_is_preview_verifies_quotes_and_never_creates_tasks(client, monkeypatch):
     n = note(client, "Call the dentist. Buy printer paper.")
     monkeypatch.setattr(
-        "jarvis.notes.provider_request",
+        "jarvis.notes.extraction_request",
         lambda *a, **k: {
             "choices": [
                 {
@@ -153,7 +153,7 @@ def test_extraction_reply_cannot_use_note_edited_during_cloud_request(client, mo
             ]
         }
 
-    monkeypatch.setattr("jarvis.notes.provider_request", model)
+    monkeypatch.setattr("jarvis.notes.extraction_request", model)
     from jarvis.domain import DomainError
 
     with pytest.raises(DomainError, match="note changed"):

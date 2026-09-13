@@ -1,6 +1,6 @@
 # Jarvis upgrade: implementation and operation
 
-Implemented September 10–11, 2026. The owner delegated the design choices and confirmed that the host PC stays awake.
+Started September 10–11, 2026; updated September 13. The owner delegated the design choices and confirmed that the host PC stays awake.
 
 ## Open Jarvis
 
@@ -8,7 +8,7 @@ Use **https://davispc.tail957c2.ts.net:9443** while connected to Tailscale. Pair
 
 The new deployment is the Docker Compose project **jarvis-next**, separate from the original stack. Its API listens on host loopback port 8765; PostgreSQL uses loopback port 54329. The existing Tailscale service on port 8443 remains available.
 
-OpenAI authentication and model access are verified using `OPENAI_API_KEY` in the ignored `.env`. Text uses `gpt-5.4-mini`; foreground voice uses `gpt-realtime-2.1` with Marin. The API and worker were recreated after the owner supplied the key. After future environment changes, run `scripts/operations.ps1 start` to recreate services. Groq remains the text fallback when an OpenAI key is absent.
+OpenAI authentication and model access are verified using `OPENAI_API_KEY` in the ignored `.env`. Text and GPT-Live delegation use the selected Luna or Gemini profile. GPT-5.4 mini is retired; previous OpenAI selections resolve to Luna. Foreground voice uses GPT-Live; Realtime is disabled with its code retained. Memory/note extraction uses Luna; embeddings remain text-embedding-3-small. The API and worker were recreated after the owner supplied the key. After future environment changes, run `scripts/operations.ps1 start` to recreate services. Groq remains the text fallback when an OpenAI key is absent.
 
 ## Assistant identity and progress
 
@@ -28,7 +28,7 @@ Google account sign-in already requested by the owner.
 - Task deadlines support a date with an optional local due time and IANA timezone. Date-only tasks remain supported; time changes do not create notifications. Reminders have explicit IANA time zones and resolved instants. The default is America/Chicago at 10 AM when only a date is supplied.
 - Repeated routines create independent task occurrences. Completing one occurrence does not cancel the series. All reminders are task alerts. Repeated alerts on a single task stop when it is completed; routine templates generate independently completable tasks.
 - History and conservative memory learning start enabled. Private sessions do not retain transcripts. Explicitly requested tasks and saved memories still persist. Jarvis does not record raw audio.
-- The default voice candidate is GPT-Realtime-2.1. The server controls response creation, silence, waiting, interruption and tool execution. Audible confirmations are requested only after commands commit.
+- GPT-Live is the enabled voice mode. A short conversation/delegation prompt shares Eri's personality; backend tool instructions load by capability group. Confirmations follow verified tool results.
 - Internal cost recording and budget enforcement are disabled during development. The owner monitors OpenAI Usage. The optional accounting system retains its historical ledger and reservations; reconcile those before re-enabling it.
 - Canonical facts and embeddings live in PostgreSQL and link to retained sources. The legacy Qdrant bridge was retired at the owner's request on September 11; the planned later vector index is pgvector/HNSW.
 
@@ -1072,3 +1072,34 @@ Live's 13-voice list and saved selection, without creating a paid voice session.
 The deployed server rejects the paused route, and API/worker/PostgreSQL are healthy.
 HTTPS serves index-DUXj-4wa.js. No migration, model-default change or cost-accounting
 change; future real-device checks target GPT-Live only.
+
+
+## September 13, 2026 — tool refinement deployed
+
+Research-backed tool descriptions and parameter contracts now accompany a short
+global policy. Eighteen common typed tools are initially offered; the remaining
+capabilities load by group. GPT-Live delegates to the same Luna/Gemini backend
+loop. GPT-5.4 mini is retired from active routing and selection; automatic
+memory/note extraction uses Luna Responses. No schema migration or bulk memory
+reprocessing was required. Cost tracking remains disabled and Realtime stays
+paused.
+
+The seven earlier tool findings are implemented: exact filtered selections,
+lookup recovery, authoritative batch counts, DST resolution, explicit remote
+retry status, relationship diffs/peer revisions, and source-note evidence.
+[Research and implementation](TOOL_DESIGN_RESEARCH.md) describes the contracts.
+
+The fixed twenty expert scenarios ran three times per model. Reviewed workflow
+completion was Gemini 58/60 and Luna 57/60; native grades, every failed attempt,
+three explicit phrase-grader corrections and a separate six-trial validation
+feedback diagnostic remain in [the results](TOOL_REFINEMENT_RESULTS.md).
+Scheduling and malformed-link recovery still need further hardening.
+
+Validation: 379 backend tests passed and one optional test skipped, excluding the
+paused Realtime test module. Sixty applicable frontend tests, production build,
+Ruff, source integrity, provider schema acceptance, synthetic Luna extraction,
+and desktop/mobile Settings/report checks passed. API, worker and PostgreSQL
+are healthy; all nineteen evaluated application source hashes match the running
+API container. HTTPS serves index-DCL2bqzL.js. The automated backup service remains
+running. Microphone/wake-word recovery and connected-service writes were not part
+of these synthetic tests.

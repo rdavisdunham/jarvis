@@ -1,0 +1,12 @@
+{
+  "fixture_count": 72,
+  "mismatches": [],
+  "original_question_and_grader_functions_unchanged": {
+    "_seed": true,
+    "grade_case": true,
+    "stage_checks": true,
+    "safety_diff": true,
+    "expected_graph": true,
+    "remote_event_correct": true
+  }
+}

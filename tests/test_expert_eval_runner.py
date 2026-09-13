@@ -275,7 +275,7 @@ async def test_run_records_all_provider_skips_and_removes_only_its_database(monk
     }
     calls, created_names = [], []
 
-    async def evaluate(_cases, _profile, spec, database_url):
+    async def evaluate(_cases, _profile, spec, database_url, **_kwargs):
         calls.append(spec)
         created_names.append(runner.make_url(database_url).database)
         unavailable = spec["model"] == runner.MODELS[0]
@@ -329,3 +329,415 @@ async def test_run_fatal_error_keeps_checkpoint_and_restores_environment(monkeyp
     assert saved["state"] == "failed"
     assert saved["fatal_exception"]["type"] == "RuntimeError"
     assert runner.get_settings().database_url == original_database
+
+
+def expert_cases():
+    case_spec = importlib.util.spec_from_file_location(
+        "expert_eval_cases", Path(__file__).resolve().parents[1] / "scripts/expert_eval_cases.py"
+    )
+    module = importlib.util.module_from_spec(case_spec)
+    case_spec.loader.exec_module(module)
+    return module
+
+
+def test_tool_refinement_fixed_selection_includes_failures_and_has_exact_exclusions():
+    cases = expert_cases()
+    selected = runner.select_cases(cases.CASES, "tool-refinement20")
+    assert len(selected) == 20
+    assert set(cases.CASES) - set(selected) == set(runner.TOOL_REFINEMENT_EXCLUSIONS)
+    assert {"bulk_pagination", "evidence_extraction", "dst_gap", "pending_remote", "goal_rewire"} <= set(
+        selected
+    )
+    with pytest.raises(ValueError):
+        runner.select_cases(cases.CASES, "tool-refinement20", ["cross_zone"])
+
+
+def test_context_metrics_measure_actual_offered_catalog_without_retaining_payload():
+    body = {
+        "model": "synthetic",
+        "tools": [{"type": "function", "name": "task_list", "parameters": {"type": "object"}}],
+        "input": [
+            {"role": "system", "content": "Synthetic instruction"},
+            {"type": "reasoning", "encrypted_content": "DO_NOT_RETAIN"},
+            {"role": "user", "content": "Find the task"},
+        ],
+    }
+    metrics = runner.request_context_metrics(body, 1234)
+    assert metrics["offered_tool_names"] == ["task_list"]
+    assert metrics["offered_tool_count"] == 1
+    assert metrics["tool_schema_bytes"] == runner.json_bytes(body["tools"])
+    assert metrics["input_context_bytes"] == runner.json_bytes(body["input"])
+    assert metrics["request_body_bytes"] == 1234
+    assert "DO_NOT_RETAIN" not in str(metrics)
+
+
+@pytest.mark.parametrize("api", ["responses", "chat_completions"])
+def test_function_projection_preserves_discovery_arguments_without_native_reasoning(api):
+    arguments = '{"groups":["notes"]}'
+    data = {
+        "output": [
+            {"type": "reasoning", "encrypted_content": "SECRET_NATIVE"},
+            {"type": "function_call", "name": "tools_load", "call_id": "call-1", "arguments": arguments},
+        ],
+        "choices": [
+            {
+                "message": {
+                    "extra_content": {"thought_signature": "SECRET_NATIVE"},
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "function": {"name": "tools_load", "arguments": arguments},
+                            "extra_content": {"thought_signature": "SECRET_NATIVE"},
+                        }
+                    ],
+                },
+            }
+        ],
+    }
+    calls = runner.requested_functions(data, api)
+    assert calls == [{"name": "tools_load", "call_id": "call-1", "arguments": {"groups": ["notes"]}}]
+    assert "SECRET_NATIVE" not in str(calls)
+
+
+@pytest.mark.asyncio
+async def test_discovery_observer_preserves_production_loader_and_records_outcome(monkeypatch):
+    fixture = {
+        "case": "example",
+        "fixture_hash": "fixture-hash",
+        "conversation": "synthetic-conversation",
+        "prompts": ["Read the note"],
+        "memory_context": "",
+        "context": {},
+        "tools": [],
+    }
+
+    async def fake_chat(*args):
+        session = runner.conversation.ToolSession(runner.jarvis_tools.registry())
+        assert "note_update" not in session.names
+        loaded = session.load({"groups": ["notes"]})
+        assert loaded["status"] == "loaded" and "note_update" in session.names
+        assert runner.agent_instructions.datetime.now(UTC) == datetime(2030, 1, 14, 15, tzinfo=UTC)
+        return {"message": "Read it.", "status": "succeeded", "tool_errors": []}
+
+    module = SimpleNamespace(
+        OWNER="owner",
+        DEVICE="device",
+        seed_case=lambda *_: fixture,
+        stage_checks=lambda *_: {},
+        grade_case=lambda *_: {"checks": {"read": True}, "safety_violations": [], "behavior_flags": []},
+        invoke_tool=None,
+    )
+    monkeypatch.setattr(runner, "outbound_guard", lambda *_: nullcontext())
+    monkeypatch.setattr(runner.conversation, "chat", fake_chat)
+    result = await runner.evaluate_case(
+        module,
+        profile(),
+        {"case": "example", "repeat": 1, "model": "luna"},
+        "postgresql://localhost/test",
+    )
+    assert result["outcome"] == "clean_success"
+    assert result["turns"][0]["discovery_call_range"] == [0, 1]
+    load = result["discovery_calls"][0]
+    assert load["arguments"] == {"groups": ["notes"]}
+    assert "note_update" not in load["offered_tool_names_before"]
+    assert "note_update" in load["offered_tool_names_after"]
+    assert load["turn_id"] and load["definition_bytes_after"] > 0
+    assert set(load["outcome"]) == {"status", "tools", "message"}
+    assert set(load["outcome"]["tools"]) <= set(load["offered_tool_names_after"])
+    assert "parameters" not in runner.json.dumps(load["outcome"])
+    session = runner.ToolSession(runner.jarvis_tools.registry())
+    session.load({"groups": ["notes"]})
+    definitions = [
+        {"type": "function", "function": {key: value for key, value in tool.items() if key != "type"}}
+        for tool in session.definitions()
+    ]
+    for model in runner.agent_models.catalog().values():
+        body = model.request([{"role": "system", "content": "Synthetic"}], definitions)
+        metrics = runner.request_context_metrics(body, runner.json_bytes(body))
+        assert metrics["offered_tool_names"] == session.names
+        assert len(set(metrics["offered_tool_names"])) == metrics["offered_tool_count"]
+
+
+@pytest.mark.asyncio
+async def test_selection_adapter_uses_exact_production_selection_and_original_oracle():
+    cases = expert_cases()
+    fixture = cases.seed_case("bulk_pagination", 2)
+    read = await cases.invoke_tool(
+        fixture,
+        runner.jarvis_tools.call_tool,
+        cases.OWNER,
+        "selection-test",
+        0,
+        "task_list",
+        {
+            "project_id": fixture["p1"],
+            "status": "open",
+            "assignee": "owner",
+            "tags_all": ["ship"],
+            "tags_none": ["hold"],
+            "due_from": "2030-01-15",
+            "due_through": "2030-01-18",
+            "limit": 3,
+        },
+        device=cases.DEVICE,
+        conversation_id=fixture["conversation"],
+    )
+    assert read["match_count"] == 24 and len(read["tasks"]) == 3
+    selection = fixture["tools"][0]["authoritative_selection"]
+    assert {row["id"] for row in selection["records"]} == set(fixture["targets"])
+    write = await cases.invoke_tool(
+        fixture,
+        runner.jarvis_tools.call_tool,
+        cases.OWNER,
+        "selection-test",
+        1,
+        "task_selection_update",
+        {"selection_id": read["selection_id"], "changes": {"priority": 2, "planned_date": "2030-01-16"}},
+        device=cases.DEVICE,
+        conversation_id=fixture["conversation"],
+    )
+    assert write["data"]["applied_count"] == 24
+    assert fixture["tools"][1]["authoritative_selection"]["match_count"] == 24
+    graded = cases.grade_case(fixture, [{"message": "Updated24 tasks.", "status": "succeeded"}])
+    assert all(graded["checks"].values())
+    assert not graded["safety_violations"]
+
+
+@pytest.mark.asyncio
+async def test_selection_update_still_receives_concurrent_revision_fault():
+    from jarvis.domain import DomainError
+
+    cases = expert_cases()
+    fixture = cases.seed_case("stale_revision", 1)
+    read = await cases.invoke_tool(
+        fixture,
+        runner.jarvis_tools.call_tool,
+        cases.OWNER,
+        "selection-race",
+        0,
+        "task_list",
+        {"query": "Migration"},
+        device=cases.DEVICE,
+        conversation_id=fixture["conversation"],
+    )
+    with pytest.raises(DomainError) as error:
+        await cases.invoke_tool(
+            fixture,
+            runner.jarvis_tools.call_tool,
+            cases.OWNER,
+            "selection-race",
+            1,
+            "task_selection_update",
+            {"selection_id": read["selection_id"], "changes": {"priority": 2}},
+            device=cases.DEVICE,
+            conversation_id=fixture["conversation"],
+        )
+    assert error.value.code == "REVISION_CONFLICT"
+    assert fixture["faults"] == ["stale_revision"]
+    with runner.engine().connect() as db:
+        rows = db.exec_driver_sql(
+            "SELECT priority FROM tasks WHERE id = ANY(%s)", (fixture["targets"],)
+        ).all()
+    assert all(row[0] == 0 for row in rows)
+
+
+@pytest.mark.asyncio
+async def test_refinement_stops_both_models_after_provider_rejection(monkeypatch, tmp_path):
+    fake_cases = SimpleNamespace(CASES={"bulk_pagination": {"title": "Synthetic", "category": "Test"}})
+    original_import = runner.importlib.import_module
+    monkeypatch.setattr(
+        runner.importlib,
+        "import_module",
+        lambda name: fake_cases if name == "expert_eval_cases" else original_import(name),
+    )
+    monkeypatch.setattr(runner.agent_models, "catalog", lambda: {"luna": profile(), "gemini": profile()})
+    called = []
+
+    async def reject(_cases, _profile, spec, _database_url, **_kwargs):
+        called.append(spec)
+        return {
+            **spec,
+            "outcome": "task_failure",
+            "task_success": False,
+            "clean_completion": False,
+            "turns": [],
+            "checks": {"provider_completed": False},
+            "seconds": 0,
+            "provider_calls": [{"status": 400, "error_code": "invalid_function_parameters"}],
+        }
+
+    monkeypatch.setattr(runner, "evaluate_case", reject)
+    report = await runner.run(
+        3,
+        tmp_path / "blocked.json",
+        list(runner.MODELS),
+        cases=["bulk_pagination"],
+        suite="tool-refinement20",
+    )
+    assert len(called) == 1
+    assert report["state"] == "provider_blocked" and report["database_removed"] is True
+    assert len(report["results"]) == 6
+    assert sum(row["outcome"] == "skipped" for row in report["results"]) == 5
+    assert not any(row["task_success"] for row in report["results"])
+
+
+@pytest.mark.asyncio
+async def test_schema_rejection_keeps_safe_diagnostic_and_redacts_credentials(monkeypatch):
+    monkeypatch.setattr(runner.socket, "getaddrinfo", fake_dns)
+    calls = []
+
+    async def reject(_request):
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "invalid_function_parameters",
+                    "param": "tools[4].parameters",
+                    "message": "Invalid schema for ui_select; credential synthetic-secret must be scrubbed.",
+                }
+            },
+        )
+
+    with runner.outbound_guard(profile(), "postgresql://localhost:5432/test", calls, []):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reject)) as client:
+            await client.post(profile().endpoint, json={"model": profile().model})
+    assert calls[0]["error_param"] == "tools[4].parameters"
+    assert "ui_select" in calls[0]["schema_error"]
+    assert "synthetic-secret" not in calls[0]["schema_error"]
+
+
+@pytest.mark.asyncio
+async def test_stop_file_waits_until_both_models_finish_fixture(monkeypatch, tmp_path):
+    fake_cases = SimpleNamespace(CASES={"bulk_pagination": {"title": "Synthetic", "category": "Test"}})
+    original_import = runner.importlib.import_module
+    monkeypatch.setattr(
+        runner.importlib,
+        "import_module",
+        lambda name: fake_cases if name == "expert_eval_cases" else original_import(name),
+    )
+    monkeypatch.setattr(runner.agent_models, "catalog", lambda: {"luna": profile(), "gemini": profile()})
+    output = tmp_path / "paired.json"
+    called = []
+
+    async def evaluate(_cases, _profile, spec, _database_url, **_kwargs):
+        called.append(spec)
+        output.with_suffix(".stop").touch()
+        return {
+            **spec,
+            "outcome": "clean_success",
+            "task_success": True,
+            "clean_completion": True,
+            "turns": [],
+            "checks": {"saved": True},
+            "seconds": 0,
+            "provider_calls": [{"status": 200}],
+        }
+
+    monkeypatch.setattr(runner, "evaluate_case", evaluate)
+    report = await runner.run(
+        3,
+        output,
+        list(runner.MODELS),
+        cases=["bulk_pagination"],
+        suite="tool-refinement20",
+    )
+    assert len(called) == 2 and {row["model"] for row in called} == set(runner.MODELS)
+    assert report["state"] == "stopped" and report["database_removed"]
+    assert len(report["results"]) == 2 and len(report["remaining_unattempted"]) == 4
+    assert report["active_run"] is None
+
+
+@pytest.mark.asyncio
+async def test_interruption_preserves_current_meter_and_tool_evidence(monkeypatch, tmp_path):
+    fake_cases = SimpleNamespace(CASES={"bulk_pagination": {"title": "Synthetic", "category": "Test"}})
+    original_import = runner.importlib.import_module
+    monkeypatch.setattr(
+        runner.importlib,
+        "import_module",
+        lambda name: fake_cases if name == "expert_eval_cases" else original_import(name),
+    )
+    monkeypatch.setattr(runner.agent_models, "catalog", lambda: {"luna": profile(), "gemini": profile()})
+
+    async def interrupted(_cases, _profile, spec, _database_url, on_progress=None):
+        partial = {**spec, "provider_calls": [], "tools": [], "turns": []}
+        on_progress(partial)
+        partial["provider_calls"].append({"status": 200, "usage": {"input_tokens": 80, "output_tokens": 5}})
+        partial["tools"].append({"name": "task_list", "arguments": {"query": "Synthetic"}})
+        raise runner.asyncio.CancelledError()
+
+    monkeypatch.setattr(runner, "evaluate_case", interrupted)
+    output = tmp_path / "interrupted.json"
+    with pytest.raises(runner.asyncio.CancelledError):
+        await runner.run(
+            1,
+            output,
+            list(runner.MODELS),
+            cases=["bulk_pagination"],
+            suite="tool-refinement20",
+        )
+    report = runner.json.loads(output.read_text())
+    assert report["state"] == "interrupted" and report["database_removed"]
+    assert report["results"] == []
+    assert report["active_run"]["incomplete"] is True
+    assert report["active_run"]["provider_calls"][0]["usage"]["input_tokens"] == 80
+    assert report["active_run"]["tools"][0]["arguments"] == {"query": "Synthetic"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("minutes", [1, 481])
+async def test_mock_read_validation_error_matches_production(minutes):
+    from jarvis.domain import DomainError
+
+    cases = expert_cases()
+    arguments = {
+        "start": "2030-01-15T09:00:00-06:00",
+        "end": "2030-01-15T16:00:00-06:00",
+        "minutes": minutes,
+    }
+    with pytest.raises(DomainError) as actual:
+        await runner.jarvis_tools.call_tool(
+            "synthetic-owner", "validation-parity", 0, "calendar_availability", arguments
+        )
+    with pytest.raises(DomainError) as synthetic:
+        cases._validate("calendar_availability", arguments)
+    assert synthetic.value.code == actual.value.code == "INVALID_ARGUMENT"
+    assert str(synthetic.value) == str(actual.value)
+    assert str(minutes) in str(synthetic.value)
+
+
+@pytest.mark.asyncio
+async def test_diagnostic_only_label_preserves_three_repeat_schedule(monkeypatch, tmp_path):
+    fake_cases = SimpleNamespace(CASES={"bulk_pagination": {"title": "Synthetic", "category": "Test"}})
+    original_import = runner.importlib.import_module
+    monkeypatch.setattr(
+        runner.importlib,
+        "import_module",
+        lambda name: fake_cases if name == "expert_eval_cases" else original_import(name),
+    )
+    monkeypatch.setattr(runner.agent_models, "catalog", lambda: {"luna": profile(), "gemini": profile()})
+
+    async def complete(_cases, _profile, spec, _database_url, **_kwargs):
+        return {
+            **spec,
+            "outcome": "clean_success",
+            "task_success": True,
+            "clean_completion": True,
+            "turns": [],
+            "checks": {"saved": True},
+            "seconds": 0,
+            "provider_calls": [],
+        }
+
+    monkeypatch.setattr(runner, "evaluate_case", complete)
+    report = await runner.run(
+        3,
+        tmp_path / "diagnostic.json",
+        list(runner.MODELS),
+        cases=["bulk_pagination"],
+        suite="tool-refinement20",
+        diagnostic_only=True,
+    )
+    assert report["diagnostic_only"] is True
+    assert report["planned_runs"] == len(report["results"]) == 6
+    assert {row["repeat"] for row in report["results"]} == {1, 2, 3}
+    assert report["state"] == "completed" and report["database_removed"] is True

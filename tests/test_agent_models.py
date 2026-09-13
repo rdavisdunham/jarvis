@@ -49,6 +49,23 @@ def fake_provider(monkeypatch, responses):
                 response = response()
             if isinstance(response, BaseException):
                 raise response
+            if url.endswith("/responses") and isinstance(response, dict):
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "resp_test",
+                        "status": "completed",
+                        "usage": {"input_tokens": 100, "output_tokens": 40},
+                        "output": [
+                            {
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [{"type": "output_text", "text": response["message"]["content"]}],
+                            }
+                        ],
+                    },
+                )
             return httpx.Response(
                 response if isinstance(response, int) else 200,
                 request=httpx.Request("POST", url),
@@ -94,7 +111,7 @@ def response(*calls, content=None):
 def test_selection_is_persisted_and_bootstrap_never_exposes_keys(keys, client):
     boot = client.get("/api/v1/bootstrap").json()
     assert boot["agent_provider"] == "openai"
-    assert boot["agent_model"] == "gpt-5.4-mini"
+    assert boot["agent_model"] == "gpt-5.6-luna"
     assert next(m for m in boot["agent_options"] if m["provider"] == "gemini")["available"]
     select_provider("gemini")
     boot = client.get("/api/v1/bootstrap").json()
@@ -160,7 +177,10 @@ async def test_gemini_parallel_and_sequential_tools_keep_signatures_and_receipts
     assert sent[0]["body"]["max_tokens"] == 8192
     assert "max_completion_tokens" not in sent[0]["body"]
     assert "Remembered context" in sent[0]["body"]["messages"][0]["content"]
-    assert len(sent[0]["body"]["tools"]) > 70
+    assert len(sent[0]["body"]["tools"]) < 20
+    assert {"note_search", "note_read", "ui_show"} <= {
+        t["function"]["name"] for t in sent[0]["body"]["tools"]
+    }
     history = sent[-1]["body"]["messages"]
     assistant = [m for m in history if m["role"] == "assistant"]
     assert assistant == [first["message"], second["message"]]
@@ -183,6 +203,7 @@ async def test_provider_stays_pinned_during_turn_and_changes_on_next_turn(keys, 
     cid, sent = fake_provider(
         monkeypatch,
         [
+            response(tool("tools_load", {"groups": ["settings"]}, "opaque-load")),
             response(tool("settings_update", {"agent_provider": "openai"}, "opaque-A")),
             response(content="Updated the task agent."),
             response(content="OpenAI handles this request."),
@@ -190,11 +211,12 @@ async def test_provider_stays_pinned_during_turn_and_changes_on_next_turn(keys, 
     )
     await conversation.chat("davin", "test", str(uuid4()), cid, "Switch to the OpenAI task agent.")
     result = await conversation.chat("davin", "test", str(uuid4()), cid, "Hello")
-    assert [s["body"]["model"] for s in sent] == ["gemini-3.8-flash", "gemini-3.8-flash", "gpt-5.4-mini"]
+    assert [s["body"]["model"] for s in sent] == ["gemini-3.8-flash"] * 3 + ["gpt-5.6-luna"]
     assert result["provider"] == "openai"
     assert "reasoning_effort" not in sent[-1]["body"]
     assert "max_tokens" not in sent[-1]["body"]
-    assert sent[-1]["body"]["max_completion_tokens"] == 1200
+    assert sent[-1]["body"]["max_output_tokens"] == 8192
+    assert sent[-1]["body"]["reasoning"] == {"effort": "low"}
 
 
 @pytest.mark.parametrize("failure", [403, 429, httpx.ReadTimeout("synthetic timeout")])

@@ -11,6 +11,7 @@ from .db import session_scope
 from .domain import DomainError, advisory, capture_source, enqueue_job, owned, preferences
 from .memory_service import prompt_context
 from .models import Conversation, Job, Source, now
+from .tool_catalog import ToolSession
 from .tools import call_tool, instructions, registry
 from .ui_control import get_context
 
@@ -110,9 +111,7 @@ async def chat(
         *history,
         {"role": "user", "content": message},
     ]
-    tools = [
-        {"type": "function", "function": {k: v for k, v in t.items() if k != "type"}} for t in registry()
-    ]
+    tool_session = ToolSession(registry())
     actions, tool_index = [], 0
     ui_actions = []
     reply, failed, limited = "", False, False
@@ -132,6 +131,11 @@ async def chat(
                         }
                     )
                     limited = True
+                tools = [
+                    {"type": "function", "function": {k: v for k, v in t.items() if k != "type"}}
+                    for t in tool_session.definitions()
+                ]
+                offered_tools = set(tool_session.names)
                 # Byte count is a conservative token upper bound; reserve each continuation.
                 input_bound = len(json.dumps([messages, tools], ensure_ascii=False).encode()) + 1024
                 if input_bound > 250000:
@@ -196,15 +200,23 @@ async def chat(
                             if changed:
                                 batch_guard_error = changed
                                 raise DomainError("REQUEST_CHANGED", changed)
-                        outcome = await call_tool(
-                            owner,
-                            turn_id,
-                            tool_index,
-                            fn["name"],
-                            args,
-                            device=device,
-                            conversation_id=conversation_id,
-                        )
+                        if fn["name"] not in offered_tools:
+                            raise DomainError(
+                                "TOOL_NOT_LOADED",
+                                "Load the matching group with tools_load before calling this tool.",
+                            )
+                        if fn["name"] == "tools_load":
+                            outcome = tool_session.load(args)
+                        else:
+                            outcome = await call_tool(
+                                owner,
+                                turn_id,
+                                tool_index,
+                                fn["name"],
+                                args,
+                                device=device,
+                                conversation_id=conversation_id,
+                            )
                         if outcome.get("ui_action"):
                             ui_actions.append(outcome["ui_action"])
                         # Store references only; retrieved personal context is not another transcript store.

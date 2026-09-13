@@ -1,0 +1,180 @@
+{
+  "baseline_selected20": {
+    "artifact": "docs/evals/expert-agents-2026-09-13.json.gz",
+    "diagnostic_only": false,
+    "state": "completed",
+    "models": {
+      "gemini-3.8-flash": {
+        "trials": 60,
+        "raw_task_successes": 59,
+        "raw_clean_completions": 53,
+        "raw_outcomes": {
+          "clean_success": 53,
+          "recovered_success": 6,
+          "task_failure": 1
+        },
+        "tool_errors": 6,
+        "execution_tool_calls": 168,
+        "discovery_calls": 0,
+        "provider_requests": 207,
+        "task_seconds_mean": 7.103941666666667,
+        "task_seconds_median": 5.821199999999999,
+        "provider_seconds_total": 414.4798,
+        "provider_usage_totals": {
+          "input_tokens": 4210913,
+          "output_tokens": 25274,
+          "cached_input_tokens": 3161881,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": null
+        },
+        "reasoning_usage_requests_reporting": 0,
+        "estimated_cost_usd_using_current_catalog": 3.25296225
+      },
+      "gpt-5.6-luna": {
+        "trials": 60,
+        "raw_task_successes": 57,
+        "raw_clean_completions": 49,
+        "raw_outcomes": {
+          "clean_success": 49,
+          "recovered_success": 8,
+          "task_failure": 3
+        },
+        "tool_errors": 11,
+        "execution_tool_calls": 174,
+        "discovery_calls": 0,
+        "provider_requests": 200,
+        "task_seconds_mean": 10.725348333333333,
+        "task_seconds_median": 8.793199999999999,
+        "provider_seconds_total": 631.3552,
+        "provider_usage_totals": {
+          "input_tokens": 2830047,
+          "output_tokens": 21643,
+          "cached_input_tokens": 2517698,
+          "cache_write_tokens": 311749,
+          "reasoning_tokens": 6023
+        },
+        "reasoning_usage_requests_reporting": 200,
+        "estimated_cost_usd_using_current_catalog": 0.15438281
+      }
+    }
+  },
+  "v3_scored120": {
+    "artifact": ".runtime/tool-refinement-evaluation-v3.json",
+    "diagnostic_only": false,
+    "state": "completed",
+    "models": {
+      "gemini-3.8-flash": {
+        "trials": 60,
+        "raw_task_successes": 55,
+        "raw_clean_completions": 48,
+        "raw_outcomes": {
+          "clean_success": 48,
+          "recovered_success": 7,
+          "task_failure": 5
+        },
+        "tool_errors": 7,
+        "execution_tool_calls": 167,
+        "discovery_calls": 25,
+        "provider_requests": 234,
+        "task_seconds_mean": 6.512826666666666,
+        "task_seconds_median": 5.438750000000001,
+        "provider_seconds_total": 378.0914,
+        "provider_usage_totals": {
+          "input_tokens": 1985813,
+          "output_tokens": 15387,
+          "cached_input_tokens": 175508,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": null
+        },
+        "reasoning_usage_requests_reporting": 0,
+        "estimated_cost_usd_using_current_catalog": 1.547061
+      },
+      "gpt-5.6-luna": {
+        "trials": 60,
+        "raw_task_successes": 57,
+        "raw_clean_completions": 49,
+        "raw_outcomes": {
+          "clean_success": 49,
+          "recovered_success": 8,
+          "task_failure": 3
+        },
+        "tool_errors": 12,
+        "execution_tool_calls": 188,
+        "discovery_calls": 51,
+        "provider_requests": 258,
+        "task_seconds_mean": 8.631696666666667,
+        "task_seconds_median": 8.78875,
+        "provider_seconds_total": 504.4622,
+        "provider_usage_totals": {
+          "input_tokens": 1617128,
+          "output_tokens": 18168,
+          "cached_input_tokens": 1313593,
+          "cache_write_tokens": 302761,
+          "reasoning_tokens": 4693
+        },
+        "reasoning_usage_requests_reporting": 258,
+        "estimated_cost_usd_using_current_catalog": 0.12391851
+      }
+    }
+  },
+  "validation_parity_diagnostic6": {
+    "artifact": ".runtime/tool-refinement-validation-diagnostic.json",
+    "diagnostic_only": true,
+    "state": "completed",
+    "models": {
+      "gemini-3.8-flash": {
+        "trials": 3,
+        "raw_task_successes": 3,
+        "raw_clean_completions": 3,
+        "raw_outcomes": {
+          "clean_success": 3
+        },
+        "tool_errors": 0,
+        "execution_tool_calls": 18,
+        "discovery_calls": 3,
+        "provider_requests": 21,
+        "task_seconds_mean": 8.101366666666667,
+        "task_seconds_median": 8.4174,
+        "provider_seconds_total": 23.5166,
+        "provider_usage_totals": {
+          "input_tokens": 204618,
+          "output_tokens": 2856,
+          "cached_input_tokens": 16100,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": null
+        },
+        "reasoning_usage_requests_reporting": 0,
+        "estimated_cost_usd_using_current_catalog": 0.1641735
+      },
+      "gpt-5.6-luna": {
+        "trials": 3,
+        "raw_task_successes": 3,
+        "raw_clean_completions": 0,
+        "raw_outcomes": {
+          "recovered_success": 3
+        },
+        "tool_errors": 3,
+        "execution_tool_calls": 30,
+        "discovery_calls": 3,
+        "provider_requests": 15,
+        "task_seconds_mean": 13.9672,
+        "task_seconds_median": 14.3498,
+        "provider_seconds_total": 40.6321,
+        "provider_usage_totals": {
+          "input_tokens": 114369,
+          "output_tokens": 3225,
+          "cached_input_tokens": 101709,
+          "cache_write_tokens": 12615,
+          "reasoning_tokens": 815
+        },
+        "reasoning_usage_requests_reporting": 15,
+        "estimated_cost_usd_using_current_catalog": 0.00906693
+      }
+    }
+  },
+  "notes": [
+    "Raw deterministic grades are unchanged; consult independent manual audit for phrase-check false negatives and factual-claim findings.",
+    "Cost is an estimate from reported usage and current local model catalog rates, not an invoice. Diagnostic and scored usages are separate.",
+    "Task latency is conversation.chat elapsed; it excludes fixture setup and grading."
+  ]
+}

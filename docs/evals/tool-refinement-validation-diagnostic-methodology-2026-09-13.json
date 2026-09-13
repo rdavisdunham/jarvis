@@ -1,0 +1,43 @@
+{
+  "kind": "post-scored diagnostic; excluded from v3 score",
+  "intended_trials": 6,
+  "change": "Only READ_TOOLS synthetic validation matches production jsonschema FormatChecker and specific DomainError text; runner adds diagnostic-only label preserving repetitions.",
+  "original_questions_seed_and_oracles_unchanged": {
+    "_seed": true,
+    "grade_case": true,
+    "stage_checks": true,
+    "safety_diff": true,
+    "expected_graph": true,
+    "remote_event_correct": true
+  },
+  "prior_v3_scored_artifact_sha256": "4167dc3f901c3c208d7c982295c6b240376c5dc7e57054942e8511ba7f10a9e6",
+  "corrected_harness_sha256": {
+    "scripts/evaluate_expert_agents.py": "b451d66afe9cee04eb17493b70dc8c3ca6d7eddab4d92b559b297fde0c4e6dc7",
+    "scripts/expert_eval_cases.py": "dbfd72877007d0f342351355670d4ac931f55d53adfe0d53e653e0e3d3cdb8ca",
+    "tests/test_expert_eval_runner.py": "60cdbe423905f8ede7388eb80acc06aee6a646325a2e0ebd79fde9d39d6489de"
+  },
+  "calendar_fallback_limitation": "Synthetic calendar_availability reports seeded connected-calendar freebusy, while real calendar_list reads an empty disposable integration cache and no Google connection. This preexisting fallback mismatch remains unchanged; interpret recovery via calendar_list with this caveat.",
+  "v3_luna_repeat3_calendar_list_receipt": [
+    {
+      "items": [],
+      "start": "2030-01-15",
+      "end": "2030-01-16",
+      "timezone": "America/Chicago",
+      "truncated": false,
+      "warnings": [],
+      "google": {
+        "configured": true,
+        "linked": false,
+        "email": null,
+        "calendar_enabled": false,
+        "calendar_write_enabled": false,
+        "status": "not_connected",
+        "syncing": false,
+        "error": "",
+        "last_sync_at": null,
+        "stale": true,
+        "calendars": []
+      }
+    }
+  ]
+}

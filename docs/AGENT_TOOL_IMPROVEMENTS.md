@@ -1,6 +1,9 @@
 # Tool improvements informed by the expert evaluation
 
-These are evidence-backed follow-up candidates, not changes to the tool surface.
+These seven candidates were implemented on September 13. The observations below
+preserve the original baseline; descriptions of the old tool surface are historical.
+Current design: [TOOL_DESIGN_RESEARCH.md](TOOL_DESIGN_RESEARCH.md).
+The fixed follow-up protocol is [TOOL_REFINEMENT_EVAL_PLAN.md](TOOL_REFINEMENT_EVAL_PLAN.md).
 The expert-suite baseline remains frozen during the comparison. Real model calls
 operate on synthetic records; Google/UI behavior uses declared adapters.
 

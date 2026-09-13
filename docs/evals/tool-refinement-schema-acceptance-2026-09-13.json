@@ -1,0 +1,29 @@
+[
+  {
+    "profile": "luna",
+    "status": 200,
+    "tool_count": 81,
+    "usage": {
+      "input_tokens": 10734,
+      "input_tokens_details": {
+        "cache_write_tokens": 10659,
+        "cached_tokens": 0
+      },
+      "output_tokens": 5,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 10739
+    }
+  },
+  {
+    "profile": "gemini",
+    "status": 200,
+    "tool_count": 81,
+    "usage": {
+      "completion_tokens": 1,
+      "prompt_tokens": 16232,
+      "total_tokens": 16233
+    }
+  }
+]

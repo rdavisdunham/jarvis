@@ -3,7 +3,57 @@
 Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: GPT-Live only — deployed
+## Current batch: tool design and paired regression
+
+- [x] Research official OpenAI/Google guidance and implement a short global policy,
+      detailed tool-local schemas and portable capability loading. Eighteen tools are
+      initially exposed; 81 remain available across thirteen groups.
+      See [TOOL_DESIGN_RESEARCH.md](TOOL_DESIGN_RESEARCH.md).
+- [x] Implement all seven earlier tool findings: exact task selections, actionable
+      ID failures, authoritative counts, DST resolution, explicit remote retries,
+      relationship diffs/current peer revisions, and source-note provenance.
+- [x] Retire GPT-5.4 mini from active routing and Settings. Previous OpenAI
+      selections resolve to Luna; explicit Gemini preferences are preserved.
+      Automatic memory/note extraction also uses Luna with low reasoning.
+- [x] Validate both providers against the full 81-tool catalog. Fix strict-mode
+      compatibility for unsupported uniqueItems while keeping server validation.
+      Preserve the interrupted first evaluation as separate evidence.
+- [x] Complete the fixed 20 scenarios × 3 repeats × 2 models and audit every
+      reply. Keep the original baseline, diagnostic runs and matched comparison.
+      Protocol: [TOOL_REFINEMENT_EVAL_PLAN.md](TOOL_REFINEMENT_EVAL_PLAN.md).
+      Reviewed completions: Gemini 58/60, Luna 57/60; original scores and three
+      explicit grader corrections remain visible. [Results](TOOL_REFINEMENT_RESULTS.md).
+- [x] Deploy and verify the exact evaluated code on desktop/mobile. API, worker
+      and PostgreSQL are healthy; all 19 evaluated application source hashes match
+      the running container. HTTPS serves index-DCL2bqzL.js.
+- [x] Verification: 379 backend tests passed (one optional skip; paused Realtime
+      module excluded), 60 frontend tests, build, Ruff and browser checks passed.
+      Separate production-error diagnostic: both models 3/3 scheduling passes;
+      retain outside the 120 scored results. Real voice/device acceptance remains
+      a follow-up. Development cost tracking remains off.
+
+### New evidence to harden next
+
+- [ ] Return field/reference-kind-specific errors for invalid note links; teach
+      sparse edits to avoid copying unchanged IDs. Luna once mistyped an existing
+      goal ID and safely failed the note edit.
+- [x] Align synthetic read validation with production errors and separately
+      audit six scheduling trials. Preserve the original 120 scores and sources.
+- [ ] Align simulated calendar-list/availability connection state and remote
+      polling behavior; never silently merge follow-up scores.
+
+- [ ] Add calendar planning preflight that checks a proposed block set against
+      confirmed busy/free windows and dependencies. Normalize availability into
+      the requested time zone while retaining exact UTC instants. One Luna
+      diagnostic scheduled across a known busy interval; the tool stored the
+      requested timestamps faithfully, so agent reasoning still needs a guard.
+- [ ] Add held-out agent scenarios for entity-type discovery (authored notes
+      versus tasks) and valid natural-language explanations of infeasibility.
+      Keep deterministic domain tests and a literal-effects reply audit.
+- [ ] Complete real-device GPT-Live delegation/recovery and connected Google/
+      Linear acceptance; synthetic evals do not replace those checks.
+
+## Previous batch: GPT-Live only — deployed
 
 - [x] Pause Realtime without deleting its controller, voice catalog or protocol code.
       The server rejects new Realtime sessions before any provider call or session
@@ -16,7 +66,9 @@ Jarvis remains the repository and infrastructure project name.
       48 Live transcript/idle/sign-off tests, Ruff, production build, and deployed
       desktop/mobile preference recovery and voice-list checks passed.
 - [ ] Continue real-device voice acceptance with GPT-Live only. Realtime comparisons
-      and provider testing are paused until the owner asks to revisit them.
+      and provider testing are paused until the owner asks to revisit them. Before
+      re-enabling Realtime, adapt its direct-tool path to the new discovery contract
+      (Live uses the backend loader) and rerun protocol acceptance.
 
 ## Previous batch: expert task-agent evaluation — complete
 
@@ -34,14 +86,15 @@ Jarvis remains the repository and infrastructure project name.
 - [x] Verify 115 evaluation tests, fixture/prompt pairing, artifact integrity,
       cleanup, and desktop/mobile report behavior. Production selection remains
       GPT-5.4 mini; no deployment or production tool changes in this batch.
-- [ ] Sharpen the tools using the retained evidence: structured task filtering
+- [x] Sharpen the tools using the retained evidence: structured task filtering
       and selection counts, robust record references and lookup recovery,
       explicit batch receipts, read-only DST validation, clear remote retry
       semantics, affected relationship revisions and source-note provenance.
       Candidates and validation requirements are in
       [AGENT_TOOL_IMPROVEMENTS.md](AGENT_TOOL_IMPROVEMENTS.md).
-- [ ] Re-evaluate both models after tool improvements, including fresh held-out
-      scenarios; retain the original baseline and report any grader corrections.
+- [x] Re-evaluate both models on the twenty fixed regression scenarios after tool
+      improvements; retain the original baseline and explicit grader corrections.
+- [ ] Add fresh held-out scenarios before claiming broader reliability gains.
 
 ## Previous batch: Gemini task-agent trial — deployed
 
@@ -64,7 +117,7 @@ Jarvis remains the repository and infrastructure project name.
       Luna 11/12 clean, with one rejected ID typo corrected successfully. Final
       records correct in all 12 cases for each. See the model comparison/eval trace.
 - [ ] Owner tries Gemini in real text and GPT-Live conversations, then compares
-      against the 5.4-mini baseline. Audio/device and connected-service behavior
+      against Luna. The 5.4-mini baseline is historical; audio/device and connected-service behavior
       were not part of the synthetic task-loop comparison.
 - [x] Add reasoning-enabled Luna through Responses and expose it in Settings.
       Low reasoning, stateless encrypted reasoning continuity, existing tool
@@ -75,9 +128,9 @@ Jarvis remains the repository and infrastructure project name.
       corrected and a fresh timed-task check passed. 232 backend tests, 76 frontend
       tests, desktop/mobile model selection and Gemini handshake passed.
       See [LUNA_SETUP.md](LUNA_SETUP.md) and the retained eval evidence.
-- [ ] Owner compares reasoning-enabled Luna, Gemini and the 5.4-mini baseline during
-      real text/GPT-Live use. The default remains 5.4-mini; automatic memory/note
-      extraction and embeddings remain OpenAI.
+- [ ] Owner compares reasoning-enabled Luna and Gemini during real text/GPT-Live
+      use. GPT-5.4 mini is retired; automatic memory/note extraction uses Luna
+      and embeddings remain OpenAI.
 
 ## Database backups
 
@@ -127,7 +180,7 @@ Jarvis remains the repository and infrastructure project name.
       a later feature.
 - [ ] Model comparison recorded in [BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
       Initial Luna/Flash task acceptance is recorded; compare the candidates with
-      the 5.4-mini baseline during real use, and Terra where needed.
+      Luna/Gemini during real use, with a stronger planner considered where needed.
       The default model and disabled cost tracking remain unchanged.
 - [ ] Shared space membership, richer outcome check-ins and independently managed
       agent jobs remain later expansions. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).

@@ -262,7 +262,10 @@ def write_status(db, owner, job_id):
     job = owned(db, Job, job_id, owner)
     if job.kind != "google_write":
         raise DomainError("NOT_FOUND", "Calendar change not found.", 404)
+    from .remote_status import retry_metadata
+
     return {
+        **retry_metadata(job.status, job.result),
         "job_id": job.id,
         "status": job.status,
         "operation": job.payload["operation"],

@@ -12,14 +12,13 @@ import websockets
 from sqlalchemy import select
 
 from . import budget
+from .agent_instructions import live_instructions
 from .config import get_settings
 from .conversation import chat
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import prompt_context, semantic_search
 from .models import Conversation, Source, now, uid
-from .personality import VOICE_CONVERSATION_STYLE
-from .tools import instructions
 from .ui_control import get_context
 from .voice import Controller, controllers
 
@@ -86,21 +85,11 @@ class LiveController(Controller):
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": instructions(self.preferences, self.focus, get_context(self.owner, self.device))
+            "instructions": live_instructions(
+                self.preferences, self.focus, get_context(self.owner, self.device)
+            )
             + "\n"
-            + self.memory_context
-            + "\n"
-            + VOICE_CONVERSATION_STYLE
-            + """
-This is a live, full-duplex voice conversation. Listen through pauses and let the user finish.
-You may listen while speaking. Be brief, responsive, and comfortable with silence.
-Delegate ALL tasks involving personal records, reminders, saved memory, navigation, or actions
-to the backend. Also delegate questions needing facts you do not have. It has the task tools
-and current time. Do not claim a task succeeded until its backend result confirms success.
-Acknowledge briefly if work takes time; never narrate tool names or internal state.
-If the user corrects a request while work runs, delegate the correction and preserve already
-confirmed work. Backend commentary is a factual result to convey naturally, not a new user request.
-""",
+            + self.memory_context,
             "input": [
                 {
                     "type": "message",

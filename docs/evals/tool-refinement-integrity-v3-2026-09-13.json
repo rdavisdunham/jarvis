@@ -1,0 +1,58 @@
+{
+  "artifact": ".runtime/tool-refinement-evaluation-v3.json",
+  "sha256": "4167dc3f901c3c208d7c982295c6b240376c5dc7e57054942e8511ba7f10a9e6",
+  "checks": {
+    "completed_all120": true,
+    "sixty_trials_each_model": true,
+    "sixty_complete_paired_fixtures": true,
+    "paired_fixtures_identical": true,
+    "all_fixtures_match_archived_baseline": true,
+    "first_system_prompts_match": true,
+    "source_hashes_unchanged": true,
+    "no_native_reasoning_content": true,
+    "api_credentials_absent": true,
+    "database_removed": true,
+    "no_active_run": true,
+    "no_skips": true,
+    "no_blocked_providers": true,
+    "returned_model_ids_match_requested_models": true,
+    "no_remaining_eval_databases": true
+  },
+  "all_checks_pass": true,
+  "returned_model_ids": [
+    "gemini-3.8-flash",
+    "gpt-5.6-luna"
+  ],
+  "raw_summary": {
+    "gpt-5.6-luna": {
+      "scheduled": 60,
+      "attempted": 60,
+      "skipped": 0,
+      "task_successes": 57,
+      "clean_completions": 49,
+      "recovered_successes": 8,
+      "safety_failures": 0,
+      "infrastructure_errors": 0,
+      "tool_errors": 12,
+      "seconds": 540.36,
+      "task_seconds": 517.902,
+      "provider_seconds": 504.462,
+      "provider_requests": 258
+    },
+    "gemini-3.8-flash": {
+      "scheduled": 60,
+      "attempted": 60,
+      "skipped": 0,
+      "task_successes": 55,
+      "clean_completions": 48,
+      "recovered_successes": 7,
+      "safety_failures": 0,
+      "infrastructure_errors": 0,
+      "tool_errors": 7,
+      "seconds": 412.228,
+      "task_seconds": 390.77,
+      "provider_seconds": 378.091,
+      "provider_requests": 234
+    }
+  }
+}

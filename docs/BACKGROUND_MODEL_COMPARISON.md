@@ -1,5 +1,9 @@
 # Background model candidates
 
+Historical model-selection research and prior evaluation evidence. GPT-5.4 mini
+was retired on September 13; current behavior and follow-up results are tracked
+in [TOOL_DESIGN_RESEARCH.md](TOOL_DESIGN_RESEARCH.md) and [TODO.md](TODO.md).
+
 Checked September 12, 2026 against official model and pricing documentation.
 Update September 13: Gemini 3.8 Flash is integrated as an optional task agent in
 Settings; GPT-5.4 mini remains the default. See [GEMINI_SETUP.md](GEMINI_SETUP.md).

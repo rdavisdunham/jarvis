@@ -49,6 +49,8 @@ ALLOWED = {
     "task_update",
     "task_complete",
     "task_batch",
+    "task_selection_update",
+    "time_resolve",
     "task_resolve",
     "project_list",
     "project_update",
@@ -191,9 +193,12 @@ async def run(repeats, output, models, luna_api="responses", cases=None):
     original = get_settings().database_url
     profiles = {
         "gpt-5.6-luna": replace(
-            agent_models.catalog()["openai"],
+            agent_models.catalog()["luna"],
             model="gpt-5.6-luna",
             label="GPT-5.6 Luna",
+            api="chat_completions",
+            endpoint="https://api.openai.com/v1/chat/completions",
+            reasoning_effort=None,
             max_output_tokens=8192,
         ),
         "gemini-3.8-flash": agent_models.catalog()["gemini"],

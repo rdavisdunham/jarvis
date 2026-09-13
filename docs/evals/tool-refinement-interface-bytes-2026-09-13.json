@@ -1,0 +1,19 @@
+{
+  "before": {
+    "catalog_compact_bytes": 51310,
+    "catalog_default_bytes": 55728,
+    "backend_instructions_bytes": 12789,
+    "initial_tools": 78
+  },
+  "after": {
+    "initial_tools": 18,
+    "total_tools": 81,
+    "catalog_bytes": 20833,
+    "full_catalog_bytes": 65096,
+    "backend_instructions_bytes": 4532,
+    "live_instructions_bytes": 4298,
+    "site_map_bytes": 1000
+  },
+  "baseline_commit": "7be31838934974fc41e3d0ab5369b08fe8adbd07",
+  "encoding": "Compact UTF-8 JSON for catalog; UTF-8 instructions. Dynamic personal context is excluded."
+}

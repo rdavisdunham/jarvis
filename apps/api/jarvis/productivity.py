@@ -129,6 +129,17 @@ def replace_goals(db, owner, row, ids):
     for pid in wanted ^ previous:
         changed(db, owner, peers[pid])
     db.flush()
+    peer_links = "goal_ids" if is_goal else "project_ids"
+    return {
+        "added_ids": sorted(wanted - previous),
+        "removed_ids": sorted(previous - wanted),
+        "peer_kind": "project" if is_goal else "goal",
+        "peers": [
+            {"id": pid, "revision": peers[pid].revision, peer_links: data(db, peers[pid])[peer_links]}
+            for pid in sorted(wanted ^ previous)
+        ],
+        "message": "Both sides of these links are already updated. Use these peer revisions for later edits.",
+    }
 
 
 def data(db, row):
@@ -256,8 +267,7 @@ def mutate(db, owner, tool, args):
     if hasattr(row, "updated_at"):
         row.updated_at = now()
     db.flush()
-    if links is not None:
-        replace_goals(db, owner, row, links)
+    relationships = replace_goals(db, owner, row, links) if links is not None else None
     if kind == "project" and (old_name != row.name or old_home != (row.space_id, row.area_id)):
         for child in db.scalars(select(Task).where(Task.owner_id == owner, Task.project_id == row.id)):
             child.project, child.space_id, child.area_id = row.name, row.space_id, row.area_id
@@ -278,7 +288,10 @@ def mutate(db, owner, tool, args):
             changed(db, owner, task)
     emit(db, owner, kind + ".changed", row.id, row.revision)
     db.flush()
-    return data(db, row)
+    result = data(db, row)
+    if relationships is not None:
+        result["relationship_changes"] = relationships
+    return result
 
 
 def related_notes(db, owner, kind, entity_id):

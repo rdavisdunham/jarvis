@@ -109,7 +109,9 @@ async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(
     assert body["store"] is False and body["max_output_tokens"] == 8192
     assert "messages" not in body and "previous_response_id" not in body
     assert body["tools"][0]["type"] == "function" and "function" not in body["tools"][0]
-    assert all(t["strict"] is False for t in body["tools"])
+    tool_schemas = {t["name"]: t for t in body["tools"]}
+    assert tool_schemas["task_get"]["strict"] is True
+    assert tool_schemas["task_update"]["strict"] is False
     history = sent[-1]["body"]["input"]
     assert history[2:5] == first["output"]
     assert history[7:9] == second["output"]
@@ -208,7 +210,7 @@ def test_luna_model_profile_and_legacy_preferences(monkeypatch, client):
     with session_scope() as db:
         # An older client's provider-only edit replaces the model profile too.
         execute(db, "davin", str(uuid4()), "settings.update", {"agent_provider": "openai"})
-        assert preferences(db, "davin")["agent_profile"] == "openai"
+        assert preferences(db, "davin")["agent_profile"] == "luna"
     monkeypatch.setattr(get_settings(), "openai_api_key", "")
     with pytest.raises(DomainError, match="OPENAI_API_KEY"):
         choose("luna")

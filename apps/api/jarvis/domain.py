@@ -61,9 +61,7 @@ class TaskCreate(Args):
     priority: int = Field(default=0, ge=0, le=3)
 
 
-class TaskUpdate(Args):
-    task_id: str
-    expected_revision: int = Field(ge=1)
+class TaskChanges(Args):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     notes: str | None = Field(default=None, max_length=20000)
     project: str | None = Field(default=None, max_length=200)
@@ -87,8 +85,18 @@ class TaskUpdate(Args):
     archived: bool | None = None
 
 
+class TaskUpdate(TaskChanges):
+    task_id: str
+    expected_revision: int = Field(ge=1)
+
+
 class TaskBatch(Args):
-    items: list[TaskUpdate] = Field(min_length=1, max_length=100)
+    items: list[TaskUpdate] = Field(min_length=1, max_length=1000)
+
+
+class TaskSelectionUpdate(Args):
+    selection_id: str
+    changes: TaskChanges
 
 
 class TaskState(Args):
@@ -172,6 +180,7 @@ COMMANDS = {
     "project.update": ProjectUpdate,
     "schedule.update": ScheduleUpdate,
     "task.batch": TaskBatch,
+    "task.selection_update": TaskSelectionUpdate,
     "task.create": TaskCreate,
     "task.update": TaskUpdate,
     "task.complete": TaskState,
@@ -480,13 +489,35 @@ def mutate(db, owner, tool, args, command_id):
         from .notes import mutate_note
 
         return mutate_note(db, owner, tool, args)
+    if tool == "task.selection_update":
+        from .task_tools import apply_selection
+
+        return apply_selection(db, owner, args, command_id)
     if tool == "task.batch":
         ids = [item.task_id for item in args.items]
         if len(set(ids)) != len(ids):
             raise DomainError("INVALID_ARGUMENT", "Choose each task only once.")
         for item in args.items:
             check_revision(owned(db, Task, item.task_id, owner, lock=True), item.expected_revision)
-        return {"tasks": [mutate(db, owner, "task.update", item, command_id) for item in args.items]}
+        tasks, applied_ids, unchanged_ids = [], [], []
+        for item in args.items:
+            current = owned(db, Task, item.task_id, owner)
+            changes = item.model_dump(exclude_unset=True, exclude={"task_id", "expected_revision"})
+            if all(getattr(current, key) == value for key, value in changes.items()):
+                tasks.append(serial(current))
+                unchanged_ids.append(current.id)
+            else:
+                tasks.append(mutate(db, owner, "task.update", item, command_id))
+                applied_ids.append(current.id)
+        return {
+            "tasks": tasks,
+            "requested_count": len(ids),
+            "applied_count": len(applied_ids),
+            "unchanged_count": len(unchanged_ids),
+            "task_ids": ids,
+            "applied_ids": applied_ids,
+            "unchanged_ids": unchanged_ids,
+        }
     if tool.startswith(("project.", "space.", "area.", "goal.", "actor.")):
         from .productivity import mutate as productivity_mutate
 

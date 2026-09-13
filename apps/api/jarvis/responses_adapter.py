@@ -2,6 +2,8 @@
 
 
 def request(agent, messages, tools, limited):
+    from .tool_catalog import strict_compatible
+
     inputs = []
     for message in messages:
         native = (message.get("extra_content") or {}).get("responses_output")
@@ -21,7 +23,14 @@ def request(agent, messages, tools, limited):
     return {
         "model": agent.model,
         "input": inputs,
-        "tools": [{"type": "function", **tool["function"], "strict": False} for tool in tools],
+        "tools": [
+            {
+                "type": "function",
+                **tool["function"],
+                "strict": strict_compatible(tool["function"]["parameters"]),
+            }
+            for tool in tools
+        ],
         "tool_choice": "none" if limited else "auto",
         "reasoning": {"effort": agent.reasoning_effort},
         "max_output_tokens": agent.max_output_tokens,

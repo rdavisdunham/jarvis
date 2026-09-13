@@ -1,0 +1,7 @@
+{
+  "model": "gpt-5.6-luna",
+  "memory_fact_count": 1,
+  "note_task_proposal_count": 1,
+  "synthetic_only": true,
+  "saved_records": 0
+}

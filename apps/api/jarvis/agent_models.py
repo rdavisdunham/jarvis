@@ -91,13 +91,6 @@ class AgentModel:
 def catalog():
     settings = get_settings()
     return {
-        "openai": AgentModel(
-            "openai",
-            settings.text_model,
-            "GPT-5.4 mini" if settings.text_model == "gpt-5.4-mini" else settings.text_model,
-            "https://api.openai.com/v1/chat/completions",
-            settings.openai_api_key,
-        ),
         "luna": AgentModel(
             "openai",
             "gpt-5.6-luna",
@@ -130,14 +123,17 @@ def catalog():
 
 def default_provider():
     models = catalog()
-    # Preserve the existing OpenAI-first/Groq-second default.
-    return next((p for p in ("openai", "groq", "gemini") if models[p].available), "openai")
+    # Preserve the existing provider preference while retiring the old OpenAI model.
+    return next((p for p in ("luna", "groq", "gemini") if models[p].available), "luna")
 
 
 def selected(prefs, *, require_key=False):
     from .domain import DomainError
 
     profile = prefs.get("agent_profile") or prefs.get("agent_provider") or default_provider()
+    # Old saved profile/provider values resolve to Luna, never the retired model.
+    if profile == "openai":
+        profile = "luna"
     model = catalog().get(profile)
     if model is None:
         raise DomainError("INVALID_ARGUMENT", "Choose a supported task agent in Settings.")
