@@ -1,4 +1,4 @@
-"""Canonical assistant identity and voice, shared by text and Realtime.
+"""Canonical assistant identity and voice, shared by text and voice.
 
 Edit this file to change Eridani's personality. Environment files hold credentials
 and deployment settings, not a second competing personality prompt.

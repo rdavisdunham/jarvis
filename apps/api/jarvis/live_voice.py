@@ -125,9 +125,9 @@ confirmed work. Backend commentary is a factual result to convey naturally, not 
             with session_scope() as db:
                 budget.close(db, self.owner, self.id)
             message = (
-                "GPT-Live is not enabled for this API project or key. Check its model access, or choose Realtime."
+                "GPT-Live is not enabled for this API project or key. Check its model access; text and task controls remain available."
                 if response.status_code in {401, 403, 404}
-                else "GPT-Live could not start. Choose Realtime or try again shortly."
+                else "GPT-Live could not start. Try again shortly or use text."
             )
             logging.getLogger("jarvis.voice").warning(
                 "Live creation rejected (HTTP %s)", response.status_code

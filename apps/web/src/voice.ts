@@ -41,7 +41,7 @@ export class Voice {
   private pollFailures = 0;
   private transcript: VoiceTranscript;
   private liveTranscript: LiveTranscript;
-  private provider: VoiceProvider = "realtime";
+  private provider: VoiceProvider = "live";
   private audioContext: AudioContext | null = null;
   private meterFrame: number | null = null;
   private stopPromise: Promise<void> | null = null;
@@ -96,7 +96,7 @@ export class Voice {
     conversation_id: string,
     focus?: string,
     options: { provider: VoiceProvider; voice: string } = {
-      provider: "realtime",
+      provider: "live",
       voice: "marin",
     },
   ) {

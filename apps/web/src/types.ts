@@ -191,10 +191,10 @@ export interface Bootstrap {
     push: boolean;
     worker: boolean;
   };
-  voice_options: Record<
+  voice_options: Partial<Record<
     VoiceProvider,
     { label: string; voices: string[]; default_voice: string }
-  >;
+  >>;
   last_backup_at: string | null;
   vapid_public_key: string;
   event_cursor: number;

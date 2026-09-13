@@ -63,7 +63,7 @@ Calendar: Month, Week and dedicated Day views; double-tap a date to open Day. Go
 Notes: authored notes with project/task/conversation links, tags, keyword/semantic search, archive/restore and reviewed to-do extraction. Notes are distinct from learned facts.
 Reminders: upcoming/due, completed and cancelled schedules. Memory: saved facts, semantic search, source, correction and forget.
 Notifications: delivered reminders with complete, snooze and dismiss. Settings: preferred name, history/learning,
-reminder defaults, notification privacy, model budget, and per-device voice provider/voice/wake-word.
+reminder defaults, notification privacy, model budget, and GPT-Live voice and per-device voice/wake-word settings. Realtime is temporarily disabled.
 Chat is a collapsible side panel on desktop and an overlay on mobile. Voice continues when chat is closed;
 the bottom voice dock has open-chat, interrupt, and end controls.
 Use ui_show to open pages/records; ui_chat to open/close/automatically size chat, ui_search to search,

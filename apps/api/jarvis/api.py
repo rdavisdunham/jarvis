@@ -45,7 +45,7 @@ from .models import (
     now,
 )
 from .ui_control import UISync, sync
-from .voice_options import OPTIONS
+from .voice_options import available_options
 from .worker import valid_push_endpoint
 
 
@@ -219,7 +219,7 @@ def bootstrap(user: User):
                 "push": bool(settings.vapid_public_key),
                 "worker": worker_healthy,
             },
-            "voice_options": OPTIONS,
+            "voice_options": available_options(),
             "last_backup_at": backup_health.last_scan_at.isoformat() if backup_health else None,
             "vapid_public_key": settings.vapid_public_key,
             "event_cursor": db.scalar(select(func.max(Event.id)).where(Event.owner_id == user.owner_id)) or 0,

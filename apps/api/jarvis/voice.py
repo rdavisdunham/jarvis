@@ -1,4 +1,4 @@
-"""Server-owned Realtime sessions. Media is enabled only after sideband readiness."""
+"""Shared voice routes and retained Realtime controller. New sessions use GPT-Live."""
 
 import asyncio
 import hashlib
@@ -26,7 +26,7 @@ from .models import Conversation, Source, now, uid
 from .personality import VOICE_CONVERSATION_STYLE
 from .tools import call_tool, instructions, registry
 from .ui_control import get_context
-from .voice_options import OPTIONS
+from .voice_options import DEFAULT_PROVIDER, ENABLED_PROVIDERS, OPTIONS
 
 router = APIRouter()
 User = Annotated[Identity, Depends(authenticate)]
@@ -51,7 +51,7 @@ class VoiceInput(BaseModel):
     conversation_id: UUID
     sdp: str = Field(min_length=1, max_length=64000)
     focus: str | None = None
-    provider: Literal["realtime", "live"] = "realtime"
+    provider: Literal["realtime", "live"] = DEFAULT_PROVIDER
     voice: str = "marin"
 
 
@@ -535,11 +535,16 @@ def control(session_id, user):
 
 @router.post("/voice/sessions")
 async def start(body: VoiceInput, user: User):
+    if body.provider not in ENABLED_PROVIDERS:
+        raise DomainError(
+            "INVALID_ARGUMENT",
+            "Realtime is temporarily disabled. Refresh the app to use GPT-Live.",
+        )
     settings = get_settings()
     if not settings.openai_api_key:
         raise DomainError(
             "INTEGRATION_UNAVAILABLE",
-            "Realtime needs an OpenAI API key. Text and task controls are ready.",
+            "GPT-Live needs an OpenAI API key. Text and task controls are ready.",
             503,
         )
     if body.voice not in OPTIONS[body.provider]["voices"]:

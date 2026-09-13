@@ -3,7 +3,22 @@
 Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: expert task-agent evaluation — complete
+## Current batch: GPT-Live only — deployed
+
+- [x] Pause Realtime without deleting its controller, voice catalog or protocol code.
+      The server rejects new Realtime sessions before any provider call or session
+      replacement. Only GPT-Live is advertised to devices.
+- [x] Default new and previously Realtime-selected devices to GPT-Live. Preserve
+      the saved Live voice; replace unsupported names with Marin. Hide the provider
+      selector while only one mode is enabled; keep the Live voice selector.
+- [x] Update connection-error guidance and Eri's site map. API/worker are healthy;
+      HTTPS serves index-DUXj-4wa.js. Eleven Live/availability backend tests,
+      48 Live transcript/idle/sign-off tests, Ruff, production build, and deployed
+      desktop/mobile preference recovery and voice-list checks passed.
+- [ ] Continue real-device voice acceptance with GPT-Live only. Realtime comparisons
+      and provider testing are paused until the owner asks to revisit them.
+
+## Previous batch: expert task-agent evaluation — complete
 
 - [x] Build 24 difficult scenarios with deterministic state/scope graders and
       paired synthetic fixtures. Include multi-turn clarification, date edge
@@ -286,7 +301,7 @@ The development-mode decision above now defers accounting reconciliation.
       yes to "will that be all"). Added requests/continued speech keep voice open.
       Live uses raw captions for context before animated text finishes appearing.
       Both providers retain their microphone cleanup, wake listening and quiet timeout.
-- [ ] Verify the new natural sign-off with the owner's microphone on Live and Realtime.
+- [ ] Verify the new natural sign-off with the owner's microphone on GPT-Live.
 - [ ] Before accounting is re-enabled, reconcile allowances against a Jarvis-only OpenAI cost export for September 11
       UTC. The current command settles individual sessions; project/day aggregates
       need a matching period-level adjustment, not invented per-session costs.
@@ -298,7 +313,7 @@ The development-mode decision above now defers accounting reconciliation.
 ## Current position
 
 The daily-use task/reminder foundation is running in Docker at
-https://davispc.tail957c2.ts.net:9443. OpenAI text, Realtime, and selectable GPT-Live voice are connected.
+https://davispc.tail957c2.ts.net:9443. Text task agents and GPT-Live voice are connected. Realtime is temporarily disabled; its code is retained.
 The owner reports that real voice conversations and “Hey, Eri” work very well. This is the working
 foundation, not completion of every integration in the upgrade PRD.
 
@@ -702,8 +717,9 @@ pre-response context. Saved counts and processing counts are reported separately
 - [ ] Verify the added standalone “Eri” phrase on the owner's actual device,
       including mic handoff after the timeout. Existing Hey Eri is owner-confirmed;
       parser, idle behavior and automated voice checks pass.
-- [ ] Compare GPT-Live and Realtime across long conversations, interruptions,
-      late task corrections, and different voices. Basic real-provider checks pass.
+- [ ] Verify GPT-Live across long conversations, interruptions, late task
+      corrections and different voices. Realtime comparisons are paused.
+      Earlier real-provider evidence remains recorded above.
 - [ ] Test locked-phone Web Push on the actual phone, including permission,
       delivery, opening the notice, and recovery after a connection gap.
 - [ ] Validate long conversations on the actual device, varied speech, pauses,

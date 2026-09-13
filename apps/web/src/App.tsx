@@ -151,18 +151,14 @@ export default function App() {
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
-  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>(() =>
-    localStorage.getItem("eri-voice-provider") === "live" ? "live" : "realtime",
-  );
+  // Realtime is paused. Old device preferences must not start a disabled session.
+  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("live");
   const [voiceName, setVoiceName] = useState(
-    () =>
-      localStorage.getItem(
-        "eri-voice-" +
-          (localStorage.getItem("eri-voice-provider") === "live"
-            ? "live"
-            : "realtime"),
-      ) || "marin",
+    () => localStorage.getItem("eri-voice-live") || "marin",
   );
+  useEffect(() => {
+    localStorage.setItem("eri-voice-provider", "live");
+  }, []);
   const [taskStatus, setTaskStatus] = useState<
     | "all"
     | "open"
@@ -494,6 +490,7 @@ export default function App() {
   useEffect(() => {
     if (!boot?.voice_options) return;
     const options = boot.voice_options[voiceProvider];
+    if (!options) return;
     if (!options.voices.includes(voiceName)) {
       setVoiceName(options.default_voice);
       localStorage.setItem("eri-voice-" + voiceProvider, options.default_voice);
@@ -779,11 +776,12 @@ export default function App() {
     setError("");
   }
   function chooseProvider(provider: VoiceProvider) {
+    if (!boot?.voice_options[provider]) return;
     setVoiceProvider(provider);
     localStorage.setItem("eri-voice-provider", provider);
     const saved = localStorage.getItem("eri-voice-" + provider);
     setVoiceName(
-      saved && boot?.voice_options[provider].voices.includes(saved)
+      saved && boot?.voice_options[provider]?.voices.includes(saved)
         ? saved
         : "marin",
     );
@@ -1936,20 +1934,25 @@ export default function App() {
                     following the last response.
                   </p>
                   <div className="voice-options">
-                    <label>
-                      Voice mode
-                      <select
-                        aria-label="Voice provider"
-                        value={voiceProvider}
-                        disabled={!!voiceState && !voiceState.closed}
-                        onChange={(e) =>
-                          chooseProvider(e.target.value as VoiceProvider)
-                        }
-                      >
-                        <option value="realtime">Realtime</option>
-                        <option value="live">GPT-Live</option>
-                      </select>
-                    </label>
+                    {Object.keys(boot.voice_options).length > 1 && (
+                      <label>
+                        Voice mode
+                        <select
+                          aria-label="Voice provider"
+                          value={voiceProvider}
+                          disabled={!!voiceState && !voiceState.closed}
+                          onChange={(e) =>
+                            chooseProvider(e.target.value as VoiceProvider)
+                          }
+                        >
+                          {Object.entries(boot.voice_options).map(([provider, option]) => (
+                            <option key={provider} value={provider}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label>
                       Voice
                       <select
@@ -1983,13 +1986,13 @@ export default function App() {
                       : "Realtime · the existing turn-based voice experience."}
                   </p>
                   <p className="voice-model-note">
-                    Task agent: {boot.agent_model || "gpt-5.4-mini"}. Both voice
-                    modes use the same saved tasks, reminders, and tools.
+                    Task agent: {boot.agent_model || "gpt-5.4-mini"}. GPT-Live
+                    delegates task work to this agent using your saved records
+                    and tools.
                   </p>
                   {voiceState && !voiceState.closed && (
                     <p className="voice-model-note">
-                      End the active voice session before changing its model or
-                      voice.
+                      End the active voice session before changing its voice.
                     </p>
                   )}
                   <div className="wake-controls">

@@ -139,3 +139,20 @@ fresh paired follow-up with both models. Keep the original score and report
 improvements in correct outcomes, truthful summaries, calls, tokens and latency.
 Do not tune only to these 24 known prompts: add independently authored held-out
 cases before calling a tool change an improvement.
+
+## Prompt placement follow-up — code inspection, September 13
+
+The backend receives all 78 tool definitions on the first request and every
+continuation. Read/UI descriptions are handwritten; command parameters come from
+Pydantic models, with a generic clear-request/committed-result description. Most
+workflow guidance is centralized in tools.instructions. GPT-Live receives that
+same operational prompt and site map but no direct tool schemas; it delegates
+record/UI work to conversation.chat with the full catalog.
+
+Candidate: put concise usage, provenance and recovery guidance beside individual
+tool definitions, and separate Live's conversation/delegation guidance from
+backend-only tool mechanics while keeping one shared personality and app map.
+This is a code-inspection finding, not a new scored eval result. Test both backend
+profiles and Live delegation against omissions, misrouting and unsupported success
+claims before claiming a quality or token-use improvement. Tool discovery or
+selective catalogs would be a separate design decision; neither is implemented.

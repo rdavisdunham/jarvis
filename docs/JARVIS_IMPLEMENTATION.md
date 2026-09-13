@@ -1050,3 +1050,25 @@ simulated; no live connected-service writes or voice evaluation occurred.
 This batch changes only evaluation scripts, tests and docs. No migration or
 container deployment is needed. Production model selection remains GPT-5.4 mini
 and development cost recording remains off.
+
+
+## September 13: GPT-Live only, Realtime paused
+
+New voice sessions use GPT-Live. voice_options.py retains both providers but
+ENABLED_PROVIDERS advertises and authorizes only live; the shared endpoint rejects
+Realtime before starting media or replacing a session. The Realtime implementation
+remains present, including the base methods used by LiveController. No mass
+commenting or removal of shared lifecycle code was needed.
+
+Settings hides the provider selector and shows only valid Live voices. Devices
+with a saved Realtime preference switch to Live on load, keep their previous Live
+voice when valid, and otherwise use Marin. Error guidance offers retry/text rather
+than the paused provider. Eri's current site map reflects this availability.
+
+Validation: 11 Live/availability backend tests, 48 Live transcript/idle/sign-off
+frontend tests, Ruff, and production build. Deployed desktop/mobile browser checks
+verify a stale Realtime preference, valid Willow retention, invalid Cedar fallback,
+Live's 13-voice list and saved selection, without creating a paid voice session.
+The deployed server rejects the paused route, and API/worker/PostgreSQL are healthy.
+HTTPS serves index-DUXj-4wa.js. No migration, model-default change or cost-accounting
+change; future real-device checks target GPT-Live only.

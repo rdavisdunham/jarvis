@@ -134,7 +134,7 @@ def test_invalid_provider_voice_is_rejected_before_provider_call(client):
     conv = client.post("/api/v1/conversations", json={"private": True}).json()
     result = client.post(
         "/api/v1/voice/sessions",
-        json={"conversation_id": conv["id"], "sdp": "synthetic", "provider": "realtime", "voice": "willow"},
+        json={"conversation_id": conv["id"], "sdp": "synthetic", "provider": "live", "voice": "cedar"},
     )
     assert result.status_code == 400
     assert result.json()["error"]["code"] == "INVALID_ARGUMENT"
@@ -183,3 +183,29 @@ async def test_close_cancels_pending_context_lookup_before_send(controller, monk
     await c.close()
     assert c.memory_task.cancelled()
     assert not any(call.args[0]["type"] == "session.thinking.append" for call in c.send.await_args_list)
+
+
+def test_realtime_is_paused_before_starting_or_replacing_a_session(client, monkeypatch):
+    from jarvis import voice
+    from jarvis.voice import VoiceInput
+
+    existing = type("Existing", (), {"device": "any", "closed": False, "close": AsyncMock()})()
+    monkeypatch.setattr(voice, "controllers", {"existing": existing})
+    result = client.post(
+        "/api/v1/voice/sessions",
+        json={
+            "conversation_id": "00000000-0000-0000-0000-000000000001",
+            "sdp": "synthetic",
+            "provider": "realtime",
+        },
+    )
+    assert result.status_code == 400
+    assert "temporarily disabled" in result.json()["error"]["message"]
+    existing.close.assert_not_awaited()
+    assert (
+        VoiceInput(conversation_id="00000000-0000-0000-0000-000000000001", sdp="synthetic").provider == "live"
+    )
+    options = client.get("/api/v1/bootstrap").json()["voice_options"]
+    assert list(options) == ["live"]
+    assert "willow" in options["live"]["voices"]
+    assert "cedar" not in options["live"]["voices"]
