@@ -821,12 +821,12 @@ export function SettingsPanel({
           </span>
           <select
             aria-label="Backend model"
-            value={boot.agent_provider}
+            value={boot.agent_profile}
             disabled={busy}
-            onChange={(e) => void onSave({ agent_provider: e.target.value })}
+            onChange={(e) => void onSave({ agent_profile: e.target.value })}
           >
             {boot.agent_options.map((model) => (
-              <option key={model.provider} value={model.provider} disabled={!model.available}>
+              <option key={model.id} value={model.id} disabled={!model.available}>
                 {model.label}{model.available ? "" : " · API key needed"}
               </option>
             ))}
@@ -837,6 +837,12 @@ export function SettingsPanel({
           is separate. Automatic memory learning and note extraction still use
           OpenAI.
         </p>
+        {boot.agent_profile === "luna" && (
+          <p className="footnote">
+            Luna uses low reasoning effort for task work, including tasks delegated
+            during GPT-Live conversations.
+          </p>
+        )}
         {boot.agent_options.some((model) => model.provider === "gemini" && !model.available) && (
           <p className="footnote">
             To try Gemini, add GEMINI_API_KEY to the server .env file, then recreate

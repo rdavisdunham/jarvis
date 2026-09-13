@@ -26,10 +26,18 @@ Jarvis remains the repository and infrastructure project name.
 - [ ] Owner tries Gemini in real text and GPT-Live conversations, then compares
       against the 5.4-mini baseline. Audio/device and connected-service behavior
       were not part of the synthetic task-loop comparison.
-- [ ] Evaluate Luna with reasoning through Responses, then decide whether to expose
-      a production Luna model profile. Current Chat Completions only accepts Luna
-      function tools with reasoning none. Default remains 5.4-mini; automatic
-      memory/note extraction and embeddings remain OpenAI.
+- [x] Add reasoning-enabled Luna through Responses and expose it in Settings.
+      Low reasoning, stateless encrypted reasoning continuity, existing tool
+      safeguards and receipts. Both OpenAI profiles use the existing API key.
+      No schema migration; older provider-only preferences remain compatible.
+- [x] Luna Responses verification: 12 workflows completed without tool errors,
+      470 reasoning tokens confirmed; one valid-offset string-grader mismatch
+      corrected and a fresh timed-task check passed. 232 backend tests, 76 frontend
+      tests, desktop/mobile model selection and Gemini handshake passed.
+      See [LUNA_SETUP.md](LUNA_SETUP.md) and the retained eval evidence.
+- [ ] Owner compares reasoning-enabled Luna, Gemini and the 5.4-mini baseline during
+      real text/GPT-Live use. The default remains 5.4-mini; automatic memory/note
+      extraction and embeddings remain OpenAI.
 
 ## Database backups
 

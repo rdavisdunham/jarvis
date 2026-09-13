@@ -205,6 +205,8 @@ def bootstrap(user: User):
         return {
             "name": prefs["preferred_name"],
             "agent_model": agent.model,
+            "agent_profile": agent.profile_id,
+            "agent_reasoning": agent.reasoning_effort,
             "agent_provider": agent.provider,
             "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,

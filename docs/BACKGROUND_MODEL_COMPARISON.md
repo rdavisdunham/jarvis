@@ -3,7 +3,8 @@
 Checked September 12, 2026 against official model and pricing documentation.
 Update September 13: Gemini 3.8 Flash is integrated as an optional task agent in
 Settings; GPT-5.4 mini remains the default. See [GEMINI_SETUP.md](GEMINI_SETUP.md).
-Real Gemini and Luna checks completed September 13. The Gemini key is loaded
+Real Gemini and Luna checks completed September 13. Reasoning-enabled Luna is
+now also integrated and selectable; see [LUNA_SETUP.md](LUNA_SETUP.md). The Gemini key is loaded
 in API/worker; production still defaults to GPT-5.4 mini.
 
 Standard text prices, USD per million tokens, uncached input / output:
@@ -115,3 +116,23 @@ occurred in the final corrected run and remains recorded; it was not rerun away.
 API/worker are healthy with the Gemini key loaded. The live agent is still
 gpt-5.4-mini; no production model switch occurred. Existing task/memory and
 historical cost-ledger counts remained unchanged.
+
+
+## Follow-up: Luna with reasoning on Responses
+
+The subsequent integration uses the native Responses API with low reasoning.
+All 12 synthetic workflows completed without tool errors; the API reported 470
+reasoning tokens. Mean workflow time was 7.12 seconds. This small sequential run
+is not enough to conclude a general quality or latency advantage.
+
+The original grader flagged one valid equivalent deadline because it compared
+strings: 14:00-06:00 is 2 PM Chicago on the requested January date. That was a
+grader issue, not a model mistake. The original raw grade is retained, the grader
+now compares resolved instants, and an additional fresh timed-task/reminder check
+passed.
+
+[Reasoning-enabled results](evals/luna-reasoning-2026-09-13.json) include the
+original run and follow-up. The earlier Luna reasoning-none comparison above is
+historical evidence; it has not been replaced. Luna with reasoning is now
+available in Settings for real-use comparison. The production default remains
+GPT-5.4 mini.

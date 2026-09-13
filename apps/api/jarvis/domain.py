@@ -154,6 +154,7 @@ class NotificationAction(Args):
 
 
 class SettingsUpdate(Args):
+    agent_profile: Literal["openai", "luna", "gemini", "groq"] | None = None
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
@@ -222,11 +223,11 @@ def advisory(db, key):
 
 
 def preferences(db, owner):
-    from .agent_models import default_provider
+    from .agent_models import default_provider, selected
 
     settings = get_settings()
     row = db.get(OwnerSettings, owner)
-    return {
+    values = {
         "agent_provider": default_provider(),
         "preferred_name": settings.owner_name,
         "history_enabled": True,
@@ -239,6 +240,8 @@ def preferences(db, owner):
         "detailed_notifications": False,
         **(row.values if row else {}),
     }
+    agent = selected(values)
+    return {**values, "agent_profile": agent.profile_id, "agent_provider": agent.provider}
 
 
 def zone(name):
@@ -767,10 +770,18 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "settings.update":
         advisory(db, f"budget:{owner}")
         values = args.model_dump(exclude_none=True)
-        if "agent_provider" in values:
+        if "agent_profile" in values or "agent_provider" in values:
             from .agent_models import selected
 
-            selected(values, require_key=True)
+            agent = selected(values, require_key=True)
+            if (
+                "agent_profile" in values
+                and "agent_provider" in values
+                and agent.provider != values["agent_provider"]
+            ):
+                raise DomainError("INVALID_ARGUMENT", "The selected model and provider do not match.")
+            # Older clients can still select a provider; new clients select a model profile.
+            values.update(agent_profile=agent.profile_id, agent_provider=agent.provider)
         if "timezone" in values:
             zone(values["timezone"])
         row = db.get(OwnerSettings, owner)

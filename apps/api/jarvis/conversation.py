@@ -54,6 +54,7 @@ async def chat(
                 "request_hash": key,
                 "conversation_id": conv.id,
                 "provider": agent.provider,
+                "profile": agent.profile_id,
                 "model": model,
             },
         )
@@ -118,7 +119,9 @@ async def chat(
     cancelled, provider_pending = False, False
     tool_errors = []
     try:
-        async with httpx.AsyncClient(timeout=60 if agent.provider == "gemini" else 35) as client:
+        async with httpx.AsyncClient(
+            timeout=60 if agent.provider == "gemini" or agent.api == "responses" else 35
+        ) as client:
             for step in range(settings.max_model_rounds_per_request + 1):
                 final_round = step == settings.max_model_rounds_per_request
                 if final_round or tool_index >= settings.max_tool_calls_per_request:
@@ -136,13 +139,12 @@ async def chat(
                         "LIMIT_EXCEEDED",
                         "This request needs a narrower scope. Saved actions remain available.",
                     )
-                rates = agent.rates()
                 with session_scope() as db:
                     budget.ensure_room(
                         db,
                         owner,
                         turn_id,
-                        (input_bound * rates[0] + agent.max_output_tokens * rates[1]) / 1_000_000,
+                        agent.reserve_cost(input_bound),
                     )
                 provider_pending = True
                 response = await client.post(
@@ -153,7 +155,7 @@ async def chat(
                 if 400 <= response.status_code < 500 and response.status_code != 408:
                     provider_pending = False  # Explicit rejection, not an unknown timeout.
                 response.raise_for_status()
-                data = response.json()
+                data = agent.normalize(response.json())
                 usage = data.get("usage")
                 if (
                     not isinstance(usage, dict)
@@ -161,16 +163,13 @@ async def chat(
                     or "completion_tokens" not in usage
                 ):
                     raise ValueError("Provider response omitted usage")
-                rates = agent.rates()
-                cost = (
-                    usage.get("prompt_tokens", 0) * rates[0] + usage.get("completion_tokens", 0) * rates[1]
-                ) / 1_000_000
+                cost = agent.usage_cost(usage)
                 with session_scope() as db:
                     budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost)
                 provider_pending = False
                 msg = data["choices"][0]["message"]
-                # Preserve Gemini's opaque thought signatures (including nested tool-call
-                # extra_content) exactly, in memory only, across all steps in this turn.
+                # Keep native Responses items and Gemini thought signatures intact in
+                # request memory only. Neither becomes another transcript store.
                 fields = {"role", "content", "tool_calls", "extra_content"}
                 messages.append({k: v for k, v in msg.items() if k in fields})
                 calls = msg.get("tool_calls") or []
@@ -247,6 +246,7 @@ async def chat(
         reply = "I could not finish this batch. Previously saved changes remain; some requested work is unfinished."
         limited = True
     result = {
+        "profile": agent.profile_id,
         "provider": agent.provider,
         "model": model,
         "turn_id": turn_id,

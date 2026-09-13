@@ -12,8 +12,14 @@ try {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const selector = page.getByLabel("Backend model", { exact: true });
   await expect(selector).toHaveValue("openai");
+  await selector.selectOption("luna");
+  await expect.poll(async () => (await boot()).agent_profile).toBe("luna");
+  await expect(page.getByText("Luna uses low reasoning effort", { exact: false })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(selector).toHaveValue("luna");
   await selector.selectOption("gemini");
-  await expect.poll(async () => (await boot()).agent_provider).toBe("gemini");
+  await expect.poll(async () => (await boot()).agent_profile).toBe("gemini");
   await expect(selector).toBeEnabled();
   await page.reload();
   if (page.viewportSize().width < 768) await page.getByRole("button", { name: "Open navigation", exact: true }).click();
@@ -24,6 +30,13 @@ try {
   await section.scrollIntoViewIfNeeded();
   await section.screenshot({ path: "../../.runtime/gemini-settings-mobile.png" });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await selector.selectOption("luna");
+  await expect.poll(async () => (await boot()).agent_profile).toBe("luna");
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: "../../.runtime/luna-settings-mobile.png" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await selector.selectOption("gemini");
+  await expect.poll(async () => (await boot()).agent_profile).toBe("gemini");
   // Simulate credentials becoming unavailable after the next server reload.
   await page.route("**/api/v1/bootstrap", async route => {
     const upstream = await route.fetch();
@@ -38,7 +51,7 @@ try {
   await expect(selector.locator('option[value="gemini"]')).toHaveJSProperty("disabled", true);
   await expect(page.getByText("To try Gemini,", { exact: false })).toBeVisible();
   await selector.selectOption("openai");
-  await expect.poll(async () => (await boot()).agent_provider).toBe("openai");
+  await expect.poll(async () => (await boot()).agent_profile).toBe("openai");
   expect(errors).toEqual([]);
   console.log("Agent Settings: desktop/mobile selection, persistence, unavailable-key guidance, and switching back passed.");
 } finally {

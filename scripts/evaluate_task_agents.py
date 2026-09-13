@@ -19,7 +19,7 @@ import httpx
 from jarvis import agent_models, conversation
 from jarvis.config import get_settings
 from jarvis.db import engine, session_scope
-from jarvis.domain import DomainError, execute
+from jarvis.domain import DomainError, execute, parse_when
 from jarvis.models import (
     Base,
     Conversation,
@@ -70,6 +70,7 @@ def command(tool, **args):
 
 
 def seed():
+    assert make_url(get_settings().database_url).database.startswith("jarvis_model_eval_")
     # This function is called only after verifying the randomly named disposable DB.
     with engine().begin() as db:
         for table in reversed(Base.metadata.sorted_tables):
@@ -122,11 +123,15 @@ def grade(case, fixture, result, calls):
         new_tasks = [t for t in tasks if t.id not in before_ids]
         if case == "timed_task":
             checks["exactly_one_new_task"] = len(new_tasks) == 1 and new_tasks[0].title == "Send proposal"
-            checks["correct_deadline"] = len(new_tasks) == 1 and (
-                str(new_tasks[0].due_date),
-                new_tasks[0].due_time,
-                new_tasks[0].due_timezone,
-            ) == ("2030-01-15", "14:00", "America/Chicago")
+            checks["correct_deadline"] = (
+                len(new_tasks) == 1
+                and new_tasks[0].due_timezone == "America/Chicago"
+                and parse_when(
+                    f"{new_tasks[0].due_date}T{new_tasks[0].due_time}",
+                    new_tasks[0].due_timezone,
+                )
+                == datetime(2030, 1, 15, 20, tzinfo=UTC)
+            )
             schedules = list(db.scalars(select(Schedule)))
             checks["alert_on_same_task_at_correct_time"] = (
                 len(schedules) == 1
@@ -182,7 +187,7 @@ def grade(case, fixture, result, calls):
     return checks
 
 
-async def run(repeats, output, models):
+async def run(repeats, output, models, luna_api="responses", cases=None):
     original = get_settings().database_url
     profiles = {
         "gpt-5.6-luna": replace(
@@ -193,6 +198,8 @@ async def run(repeats, output, models):
         ),
         "gemini-3.8-flash": agent_models.catalog()["gemini"],
     }
+    if luna_api == "responses":
+        profiles["gpt-5.6-luna"] = agent_models.catalog()["luna"]
     profiles = {model: profiles[model] for model in models}
     if not all(p.available for p in profiles.values()):
         raise SystemExit("The selected models need their API keys; no credentials are printed.")
@@ -230,6 +237,8 @@ async def run(repeats, output, models):
                 profile = profiles[model_id]
                 unavailable = False
                 for case, prompt in CASES.items():
+                    if cases and case not in cases:
+                        continue
                     if unavailable:
                         break
                     fixture, provider_calls, tool_calls = seed(), [], []
@@ -237,7 +246,9 @@ async def run(repeats, output, models):
                         "model": model_id,
                         "repeat": repeat,
                         "case": case,
-                        "reasoning_effort": "none" if model_id == "gpt-5.6-luna" else "low",
+                        "reasoning_effort": profile.reasoning_effort
+                        or ("none" if model_id == "gpt-5.6-luna" else "low"),
+                        "api": profile.api,
                     }
 
                     class MeteredClient(real_client):
@@ -282,7 +293,7 @@ async def run(repeats, output, models):
 
                     def request(agent, messages, tools, limited=False):
                         body = real_request(agent, messages, tools, limited)
-                        if agent.model == "gpt-5.6-luna":
+                        if agent.model == "gpt-5.6-luna" and agent.api == "chat_completions":
                             body["reasoning_effort"] = "none"
                         return body
 
@@ -303,6 +314,7 @@ async def run(repeats, output, models):
                         checks=grade(case, fixture, result, tool_calls),
                         response=result["message"],
                         status=result["status"],
+                        tool_errors=result["tool_errors"],
                         tools=tool_calls,
                         provider_calls=provider_calls,
                     )
@@ -346,5 +358,7 @@ if __name__ == "__main__":
         choices=["gpt-5.6-luna", "gemini-3.8-flash"],
         default=["gpt-5.6-luna", "gemini-3.8-flash"],
     )
+    parser.add_argument("--luna-api", choices=["responses", "chat_completions"], default="responses")
+    parser.add_argument("--cases", nargs="+", choices=list(CASES))
     args = parser.parse_args()
-    asyncio.run(run(args.repeats, args.output, args.models))
+    asyncio.run(run(args.repeats, args.output, args.models, args.luna_api, args.cases))

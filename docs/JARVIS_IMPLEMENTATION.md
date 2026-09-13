@@ -995,3 +995,32 @@ Results, caveats and traces are in docs/BACKGROUND_MODEL_COMPARISON.md and
 docs/evals/task-agents-2026-09-13.json. Production remains gpt-5.4-mini, accounting
 off; task/memory and historical ledger counts are unchanged. Gemini is available
 for owner selection in Settings.
+
+
+## September 13: Luna reasoning through Responses
+
+Added a stateless Responses adapter for the Luna profile. Native reasoning and
+function items are replayed intact, with function_call_output correlated by
+call_id; no previous_response_id or provider response storage is required.
+The existing durable tool loop handles authorization, revisions, receipts,
+cancellation and limits. Incomplete outputs cannot trigger tool execution.
+Native reasoning data stays in active request memory and out of sources/jobs.
+
+Profiles now distinguish GPT-5.4 mini and Luna from their shared OpenAI provider,
+while old provider-only settings remain compatible. Luna uses low reasoning,
+8192 generated tokens and the existing OpenAI key. The shared Settings selector
+works on desktop/mobile, applies on the next request and keeps active turns
+pinned. Development accounting remains disabled; Luna's optional accounting uses
+its own cached-input/cache-write/output rates and includes reasoning usage once.
+
+232 backend tests (one optional skip), 76 frontend tests, build, Ruff and browser
+Settings acceptance passed. Actual Luna Responses produced 470 reasoning tokens
+over 12 completed synthetic workflows with no tool errors. An equivalent-offset
+deadline grader was fixed; its original result and passing follow-up are saved.
+Gemini's updated real tool handshake passed. See docs/LUNA_SETUP.md.
+
+Deployment: rebuilt jarvis-core:local and recreated API/worker. Both services
+are healthy; authenticated bootstrap exposes the available Luna reasoning profile
+while gpt-5.4-mini remains selected. HTTPS returns 200 and serves
+index-Cnils54F.js. Task, project, goal, note, memory, usage-event and reservation
+counts match the pre-deployment baseline. The encrypted backup remains current.
