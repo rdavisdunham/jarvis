@@ -23,6 +23,7 @@ View = Literal[
 
 
 class EditorContext(BaseModel):
+    mode: Literal["detail", "edit"] = "edit"
     model_config = ConfigDict(extra="forbid")
     kind: Literal["task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
     record_id: str | None = Field(default=None, max_length=36)
@@ -104,12 +105,21 @@ states = {}
 pending = {}
 
 APP_MAP = """Site map:
-Today, Inbox (unclassified) and This week (next seven days) are presets of Work.
-Work (all): one task store with list, status/project/assignee boards, and dated timelines.
+Tasks is one page with Today (today), Inbox (inbox), Next 7 days (week), and All (all) tabs.
+These legacy view IDs select tabs; Work is now named Tasks / All. The same task can appear in several tabs.
+Today includes planned/due through today; week includes planned/due through today+6; both include overdue work.
+Inbox is unfiled: no project, space or area. All means all non-archived work; search/status filters still apply.
+Tabs preserve current search/filter/layout. Tasks has list, status/project/assignee boards and dated timelines.
+Drag a task across board columns to change that grouping field; sort determines within-column order.
+Task reminders are alerts linked to a task; creating one with no task creates the task. They are not a second task store.
 Projects & goals (organize): Projects list/board/start-target timeline; separate Goals, Areas,
 Spaces and People & agents tabs. Goal metrics are outcomes, project counts are task completion.
 Calendar: month/week/day, task planned/deadline markers, alerts, local appointments/work blocks and Google events.
 A planned date/deadline does not reserve time; timeline task markers are not duration bars.
+Calendar entries show Task, Task reminder, Repeating task, Work block, or Event/Google event.
+Clicking opens saved details with Edit at the top right. Task completion is distinct from calendar events.
+ui_calendar with entity_id/date/open_details=true opens that saved detail card. ui_editor read reports mode=detail
+there; use ui_form to open an editable draft. A work block has a linked task, not its own completion.
 Notes: authored content, home project, related goals/projects/notes, backlinks and task evidence.
 Memory: learned facts and review questions. Notifications: delivered task alerts.
 Settings sections: profile (name/reminder defaults/density), voice (Live voice/wake word),

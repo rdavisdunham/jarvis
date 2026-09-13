@@ -22,6 +22,7 @@ export type EditorKind =
   | "bulk"
   | "memory";
 export type EditorSummary = {
+  mode: "detail" | "edit";
   kind: EditorKind;
   record_id: string | null;
   dirty: boolean;
@@ -29,6 +30,7 @@ export type EditorSummary = {
   fields: string[];
 };
 type Editor = {
+  mode?: "detail" | "edit";
   kind: EditorKind;
   record_id?: string | null;
   dirty: boolean;
@@ -65,6 +67,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     current.current = editor;
     const next = editor
       ? {
+          mode: editor.mode ?? "edit",
           kind: editor.kind,
           record_id: editor.record_id ?? null,
           dirty: editor.dirty,
@@ -112,15 +115,19 @@ export function useEditorBridge() {
       const operation = action.operation ?? "read";
       if (operation === "read")
         return {
-          outcome: "draft",
+          outcome: editor.mode === "detail" ? "detail" : "draft",
+          mode: editor.mode ?? "edit",
           editor: editor.kind,
           record_id: editor.record_id ?? null,
           dirty: editor.dirty,
           busy: !!editor.busy,
           fields: z.toJSONSchema(editor.schema.partial()),
           values: editor.values,
-          saved: false,
-          note: "These are device-local draft values. Reading or filling them does not save.",
+          saved: editor.mode === "detail",
+          note:
+            editor.mode === "detail"
+              ? "Saved record details. Use ui_form for this record to open an editable draft."
+              : "These are device-local draft values. Reading or filling them does not save.",
         };
       if (editor.busy)
         throw new Error(

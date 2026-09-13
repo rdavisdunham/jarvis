@@ -348,7 +348,7 @@ DESCRIPTIONS = {
     "Use the matching view (all for tasks, notes for notes, organize for goals/projects, reminders for schedules, memory for facts). "
     "For a request to show/open a specific record, pass its entity_id; opening only the page is incomplete. "
     "Wait for displayed acknowledgement; queued/refused is not displayed. Never discard an unsaved edit.",
-    "ui_calendar": "Open month/week/day at a date and optionally highlight its saved event/task. "
+    "ui_calendar": "Use open_details=true with a record ID/date to open a saved detail card. Use ui_form to edit it. Open month/week/day at a date and optionally highlight its saved event/task. "
     "Calendar facts come from calendar_list. Navigation may refuse if an editor has unsaved changes.",
     "ui_chat": "Open/close chat without ending voice. Auto closes the overlay on mobile and opens it on desktop. "
     "For showing mobile records, keep chat from covering the requested content.",

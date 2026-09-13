@@ -1,3 +1,4 @@
+import { matchesTaskTab } from "./task-presets";
 import {
   matchesOrganization,
   type Organization,
@@ -138,22 +139,7 @@ export function Workspace(p: Props) {
         .toLocaleLowerCase()
         .includes(query));
   const matchedTasks = p.tasks
-    .filter((t) => !t.archived)
-    .filter((t) =>
-      p.preset === "inbox"
-        ? !t.project_id && !t.space_id && !t.area_id
-        : p.preset === "today"
-          ? !!(
-              (t.planned_date && t.planned_date <= p.today) ||
-              (t.due_date && t.due_date <= p.today)
-            )
-          : p.preset === "week"
-            ? !!(
-                (t.planned_date && t.planned_date <= shiftDate(p.today, 6)) ||
-                (t.due_date && t.due_date <= shiftDate(p.today, 6))
-              )
-            : true,
-    )
+    .filter((t) => matchesTaskTab(t, p.preset ?? "all", p.today))
     .filter((t) => matchesOrganization(t, p.organizationFilter, p.organization))
     .filter(
       (t) =>
@@ -237,26 +223,7 @@ export function Workspace(p: Props) {
     () => p.onVisible(visibleKey ? visibleKey.split(",") : []),
     [visibleKey, p.onVisible],
   );
-  const openEntry = (e: CalendarEntry) => {
-    if (["google", "event", "block"].includes(e.kind)) {
-      p.onGoogleEvent(e);
-      return;
-    }
-    if (e.kind === "routine" && e.notification_id && e.task_id) {
-      const task = p.tasks.find((t) => t.id === e.task_id);
-      if (task) {
-        p.onTask(task);
-        return;
-      }
-    }
-    if (e.kind === "task") {
-      const task = p.tasks.find((t) => t.id === e.entity_id);
-      if (task) p.onTask(task);
-    } else {
-      const schedule = p.schedules.find((s) => s.id === e.entity_id);
-      if (schedule) p.onSchedule(schedule);
-    }
-  };
+  const openEntry = (e: CalendarEntry) => p.onGoogleEvent(e);
   const reminderRow = (s: Schedule, linked = false) => {
     const outstanding = p.notices.find(
       (n) => n.schedule_id === s.id && !n.completed_at,
@@ -323,7 +290,12 @@ export function Workspace(p: Props) {
   return (
     <section
       className="work-space-panel"
-      aria-label={p.calendar ? "Calendar workspace" : "Work workspace"}
+      aria-label={p.calendar ? "Calendar workspace" : "Tasks workspace"}
+      id={p.calendar ? undefined : "task-workspace"}
+      role={p.calendar ? undefined : "tabpanel"}
+      aria-labelledby={
+        p.calendar ? undefined : "task-tab-" + (p.preset ?? "all")
+      }
     >
       <div className="workspace-actions">
         {p.calendar ? (
@@ -358,7 +330,7 @@ export function Workspace(p: Props) {
             onClick={() => p.createReminder(p.calendar ? p.day : undefined)}
           >
             <Clock3 size={15} />
-            Reminder
+            Task reminder
           </button>
           <button
             className="primary compact"
@@ -437,6 +409,21 @@ export function Workspace(p: Props) {
           group={p.group}
           onOpen={p.onTask}
           highlight={p.highlight}
+          onMove={(task, key) =>
+            p.mutate(
+              "task.update",
+              {
+                task_id: task.id,
+                expected_revision: task.revision,
+                ...(p.group === "status"
+                  ? { status: key }
+                  : p.group === "project"
+                    ? { project_id: key || null }
+                    : { assignee_id: key }),
+              },
+              "Task moved",
+            )
+          }
           onStatus={(task, status) =>
             p.mutate(
               "task.update",

@@ -208,6 +208,12 @@ export function ScheduleDialog({
             {error}
           </p>
         )}
+        {!schedule && (
+          <p className="integration-hint">
+            A reminder alerts you about a task. Choose an existing task below,
+            or create a task with this alert.
+          </p>
+        )}
         <label>
           Reminder
           <input

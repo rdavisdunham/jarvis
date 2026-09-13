@@ -1,3 +1,6 @@
+import { CalendarDetails } from "./CalendarDetails";
+import { TaskTabs } from "./TaskTabs";
+import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
 import { MemoryEditor } from "./MemoryEditor";
 import { useEditorBridge } from "./editor-control";
@@ -94,10 +97,7 @@ import {
   SettingsPanel,
 } from "./components";
 const nav: { id: View; label: string; icon: typeof Sun }[] = [
-  { id: "today", label: "Today", icon: Sun },
-  { id: "inbox", label: "Inbox", icon: Inbox },
-  { id: "week", label: "This week", icon: CalendarDays },
-  { id: "all", label: "Work", icon: ListTodo },
+  { id: "all", label: "Tasks", icon: ListTodo },
   { id: "organize", label: "Goals & projects", icon: ListTodo },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "notes", label: "Notes", icon: FileText },
@@ -141,13 +141,23 @@ export default function App() {
   }, [density]);
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [loading, setLoading] = useState(true);
-  const [view, setView] = useState<View>(
-    new URLSearchParams(location.search).get("view") === "notifications"
-      ? "notifications"
-      : new URLSearchParams(location.search).get("view") === "settings"
-        ? "settings"
-        : "today",
+  const [view, setView] = useState<View>(() => initialView(location.search));
+  const lastTaskTab = useRef<TaskTab>(isTaskTab(view) ? view : "today");
+  useEffect(() => {
+    if (isTaskTab(view)) lastTaskTab.current = view;
+    const url = new URL(location.href);
+    url.searchParams.set("view", isTaskTab(view) ? "tasks" : view);
+    if (isTaskTab(view)) url.searchParams.set("tab", view);
+    else url.searchParams.delete("tab");
+    history.replaceState(null, "", url);
+  }, [view]);
+  const [calendarDetail, setCalendarDetail] = useState<CalendarEntry | null>(
+    null,
   );
+  function openCalendarEntry(entry: CalendarEntry) {
+    if (entry.kind === "google") setGoogleEvent(entry);
+    else setCalendarDetail(entry);
+  }
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
@@ -678,7 +688,7 @@ export default function App() {
       return;
     }
     if (
-      editors.current() ||
+      (editors.current() && editors.current()?.mode !== "detail") ||
       selected ||
       reminder ||
       scheduleEditor ||
@@ -691,6 +701,7 @@ export default function App() {
       throw new Error(
         "An editor is open. Save or close it before changing pages.",
       );
+    setCalendarDetail(null);
     if (kind === "workspace") {
       const target = action.view ?? view;
       if (
@@ -698,7 +709,7 @@ export default function App() {
         !["all", "inbox", "today", "week", "organize"].includes(target)
       )
         throw new Error(
-          "List, board and timeline layouts are available in Work and Projects.",
+          "List, board and timeline layouts are available in Tasks and Projects.",
         );
       if (action.organization_tab && target !== "organize")
         throw new Error("Organization tabs belong to Projects.");
@@ -766,6 +777,24 @@ export default function App() {
       setOrganizationFilter(emptyFilter);
       setTaskFilters(emptyTaskFilters);
       setWorkKind("all");
+      if (action.open_details && action.entity_id) {
+        const data = await api<{ items: CalendarEntry[] }>(
+          "/calendar?start=" +
+            day +
+            "&end=" +
+            new Date(Date.parse(day + "T12:00:00Z") + 86400000)
+              .toISOString()
+              .slice(0, 10) +
+            "&timezone=" +
+            encodeURIComponent(boot?.preferences.timezone ?? "America/Chicago"),
+        );
+        const entry = data.items.find((e) => e.entity_id === action.entity_id);
+        if (!entry)
+          throw new Error(
+            "That item is not in this calendar day. Check its date before opening details.",
+          );
+        openCalendarEntry(entry);
+      }
     } else if (kind === "search") {
       setQuery(action.query ?? "");
       setTaskStatus("all");
@@ -943,7 +972,7 @@ export default function App() {
         )
       )
         throw new Error(
-          "Choose Work, Projects & goals, Notes, Task alerts or Memory to open a record.",
+          "Choose Tasks, Projects & goals, Notes, Task alerts or Memory to open a record.",
         );
       setQuery("");
       setTaskStatus("all");
@@ -1282,14 +1311,14 @@ export default function App() {
   async function enablePush() {
     if (!("PushManager" in window)) {
       setError(
-        "This browser does not support notifications. Your Inbox still works.",
+        "This browser does not support notifications. Notifications still work.",
       );
       return;
     }
     try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setToast("Notifications are off. Reminders stay in your Inbox.");
+        setToast("Notifications are off. Reminders stay in Notifications.");
         return;
       }
       const registration = await navigator.serviceWorker.ready;
@@ -1384,7 +1413,8 @@ export default function App() {
       .filter((id) => tasks.some((t) => t.id === id))
       .slice(0, 100),
     selected_calendar_event_id:
-      googleEvent?.kind === "google" ? googleEvent.entity_id : null,
+      calendarDetail?.entity_id ??
+      (googleEvent?.kind === "google" ? googleEvent.entity_id : null),
     selected_note_id:
       noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
@@ -1427,10 +1457,10 @@ export default function App() {
   };
   const titles: Record<View, string> = {
     organize: "Projects & goals",
-    today: "Today",
-    inbox: "Inbox",
-    week: "Next 7 days",
-    all: "Work",
+    today: "Tasks",
+    inbox: "Tasks",
+    week: "Tasks",
+    all: "Tasks",
     reminders: "Task alerts",
     calendar: "Calendar",
     notes: "Notes",
@@ -1541,26 +1571,19 @@ export default function App() {
             <button
               key={item.id}
               aria-label={item.label}
-              className={view === item.id ? "nav-item active" : "nav-item"}
+              className={
+                (item.id === "all" ? isTaskTab(view) : view === item.id)
+                  ? "nav-item active"
+                  : "nav-item"
+              }
               onClick={() => {
-                setView(item.id);
+                setView(item.id === "all" ? lastTaskTab.current : item.id);
                 setQuery("");
                 setSidebar(false);
               }}
             >
               <item.icon size={18} />
               <span>{item.label}</span>
-              {item.id === "inbox" &&
-                open.filter((t) => !t.project_id && !t.space_id && !t.area_id)
-                  .length > 0 && (
-                  <span className="count">
-                    {
-                      open.filter(
-                        (t) => !t.project_id && !t.space_id && !t.area_id,
-                      ).length
-                    }
-                  </span>
-                )}
             </button>
           ))}
         </nav>
@@ -1680,18 +1703,9 @@ export default function App() {
         <div className="workspace">
           <main className="content">
             <div className="page-heading">
-              {view === "today" && (
-                <p className="eyebrow">
-                  {new Intl.DateTimeFormat(undefined, {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                    timeZone: boot.preferences.timezone,
-                  }).format(new Date())}
-                </p>
-              )}
               <h1>{titles[view]}</h1>
             </div>
+            {isTaskTab(view) && <TaskTabs value={view} onChange={setView} />}
             {[
               "today",
               "inbox",
@@ -1970,7 +1984,7 @@ export default function App() {
                   timelineSpan={timelineSpan}
                   onTimelineDate={setTimelineDate}
                   onTimelineSpan={setTimelineSpan}
-                  onGoogleEvent={setGoogleEvent}
+                  onGoogleEvent={openCalendarEntry}
                   organization={organization}
                   organizationFilter={organizationFilter}
                   calendar={view === "calendar"}
@@ -2040,7 +2054,7 @@ export default function App() {
               <>
                 <div className="section-head">
                   <h2>
-                    Your Inbox<span>{pendingNotices.length}</span>
+                    Notifications<span>{pendingNotices.length}</span>
                   </h2>
                   <button
                     className="text-button"
@@ -2904,6 +2918,43 @@ export default function App() {
               "Task archived",
             );
             if (result) setSelected(null);
+          }}
+        />
+      )}
+      {calendarDetail && (
+        <CalendarDetails
+          key={calendarDetail.id}
+          event={calendarDetail}
+          allTasks={tasks}
+          allSchedules={schedules}
+          organization={organization}
+          zone={boot.preferences.timezone}
+          onClose={() => setCalendarDetail(null)}
+          onTask={(task) => {
+            setCalendarDetail(null);
+            setSelected(task);
+          }}
+          onNote={(id) => {
+            setCalendarDetail(null);
+            void openNote(id);
+          }}
+          onComplete={async (task) =>
+            mutate(
+              "task.update",
+              {
+                task_id: task.id,
+                expected_revision: task.revision,
+                status: task.status === "completed" ? "open" : "completed",
+              },
+              task.status === "completed" ? "Task reopened" : "Task completed",
+            )
+          }
+          onEdit={(entry, task, schedule) => {
+            setCalendarDetail(null);
+            if (entry.kind === "event" || entry.kind === "block")
+              setGoogleEvent(entry);
+            else if (entry.kind === "task" && task) setSelected(task);
+            else if (schedule) setScheduleEditor({ schedule });
           }}
         />
       )}

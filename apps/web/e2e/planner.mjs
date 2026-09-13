@@ -26,7 +26,7 @@ try {
   await page.goto(process.env.JARVIS_PLANNER_TEST_URL);
   await page.getByLabel("Pairing code").fill("planner-fixture");
   await page.locator(".login-card button.primary").click();
-  await expect(page.getByRole("heading",{name:"Today",exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
   const org=await request("/organization");
   const business=org.spaces.find(s=>s.name==="Business"),personal=org.spaces.find(s=>s.name==="Personal");
   const goal=await cmd("goal.create",{name:"Launch the planner",space_id:business.id,metric_target:100,metric_current:35});
@@ -34,7 +34,7 @@ try {
   await cmd("project.create",{name:"Home renovation",space_id:personal.id,status:"planned"});
   for(let i=0;i<9;i++)await cmd("task.create",{title:["Review mobile layout","Fix timezone issue","Write release notes","Verify calendar sync","Link research notes","Test microphone recovery","Plan launch","Review privacy settings","Undated follow-up"][i],project_id:project.id,
     planned_date:i<8?"2030-01-"+String(i+3).padStart(2,"0"):null,due_date:i<8?"2030-01-"+String(i+5).padStart(2,"0"):null,priority:i%4,tags:i%2?["launch"]:["mobile"],work_type:"product"});
-  await page.reload();await expect(page.getByRole("heading",{name:"Today",exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
   const all=(await request("/tasks?limit=200")).items;
   const task=all.find(t=>t.title==="Review mobile layout");
   await ui("ui_filter",{view:"all",project_id:project.id,status:"active"});

@@ -91,12 +91,25 @@ try {
     .getByRole("button", { name: "Check availability", exact: true })
     .click();
   await expect(page.locator(".available-times")).toContainText("10:00");
+  // Exercise cached details before the fresh response: their raw Google date
+  // objects must never be passed to the normalized time formatter.
+  await page.route("**/api/v1/calendar/event-detail", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await route.continue();
+  });
   await page.locator(".agenda-row").filter({ hasText: "Dentist" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+
+  await expect(
+    page.getByText("Loading current event…", { exact: true }),
+  ).toHaveCount(0, { timeout: 15000 });
   await expect(page.getByRole("dialog")).toContainText("Main office");
   await expect(
     page.getByRole("link", { name: "Join meeting", exact: true }),
   ).toBeVisible();
-  await page.getByText("Guests (1)", { exact: true }).click();
+  await expect(
+    page.locator("details").filter({ hasText: "Guests (1)" }),
+  ).toHaveAttribute("open", "");
   await expect(page.getByRole("dialog")).toContainText("Fixture guest");
   await expect(
     page.getByRole("link", { name: "Agenda notes", exact: true }),
@@ -104,6 +117,7 @@ try {
   await expect(
     page.getByRole("link", { name: "Open in Google Calendar" }),
   ).toHaveAttribute("rel", "noopener noreferrer");
+  await page.unroute("**/api/v1/calendar/event-detail");
   const blocked = await ui("ui_show", { view: "notes" });
   if (blocked.status !== "failed")
     throw new Error("Open calendar event did not guard navigation");
@@ -167,7 +181,7 @@ try {
   await expect(page.locator(".calendar-day-agenda")).toHaveCount(7);
   await shot("google-calendar-week-mobile.png");
   await page.getByRole("button", { name: "Month", exact: true }).click();
-  await page.locator('[data-day="2026-09-18"]').dblclick();
+  await page.locator('.calendar-number[data-day="2026-09-18"]').dblclick();
   await expect(
     page.getByRole("button", { name: "Day", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -216,6 +230,9 @@ try {
     .locator(".agenda-row")
     .filter({ hasText: "Mobile appointment" })
     .click();
+  await page
+    .getByRole("button", { name: "Edit calendar item", exact: true })
+    .click();
   await page.getByLabel("Event title").fill("Mobile appointment edited");
   await page.getByLabel("Event end").fill("2026-09-18T16:00");
   await page.getByRole("button", { name: "Save event", exact: true }).click();
@@ -228,6 +245,9 @@ try {
   await page
     .locator(".agenda-row")
     .filter({ hasText: "Mobile appointment edited" })
+    .click();
+  await page
+    .getByRole("button", { name: "Edit calendar item", exact: true })
     .click();
   await page.getByRole("button", { name: "Cancel event", exact: true }).click();
   await page
@@ -372,6 +392,17 @@ try {
   console.log(
     "Google consent/details, mobile views, 30-second scroll stability, local event publication/CRUD, lost-response retry, Linear import/publish/conflict review, task work blocks, CopilotKit and disconnect/unlink passed.",
   );
+} catch (error) {
+  console.log("Browser errors:", errors);
+  console.log(
+    "Google dialog at failure:",
+    await page
+      .getByRole("dialog")
+      .textContent()
+      .catch(() => "none"),
+  );
+  await shot("google-failure.png");
+  throw error;
 } finally {
   await browser.close();
 }

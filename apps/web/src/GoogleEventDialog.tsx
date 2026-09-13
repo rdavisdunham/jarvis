@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, Pencil, X } from "lucide-react";
 import { useDialogFocus } from "./components";
 import { api, post } from "./api";
 import { localDateTime, shiftDate } from "./workspace";
@@ -63,7 +63,9 @@ export function GoogleEventDialog({
     };
   }, []);
   const [connection, setConnection] = useState<GoogleStatus | null>(null);
-  const [cached, setCached] = useState<Partial<Detail> | null>(null);
+  const [cached, setCached] = useState<Partial<
+    Omit<Detail, "start" | "end" | "all_day" | "busy">
+  > | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [calendar, setCalendar] = useState("");
   const [scope, setScope] = useState(event.recurring ? "occurrence" : "event");
@@ -112,7 +114,9 @@ export function GoogleEventDialog({
     setEditing(false);
     setDeleting(false);
     setJob(null);
-    api<Partial<Detail>>("/calendar/events/" + event.entity_id)
+    api<Partial<Omit<Detail, "start" | "end" | "all_day" | "busy">>>(
+      "/calendar/events/" + event.entity_id,
+    )
       .then((d) => {
         if (current) setCached(d);
       })
@@ -324,8 +328,20 @@ export function GoogleEventDialog({
               ? "New calendar event"
               : editing
                 ? "Edit calendar event"
-                : event.title}
+                : (shown?.title ?? event.title)}
           </h2>
+          {!fresh && !editing && (
+            <button
+              className="icon-button detail-edit"
+              aria-label="Edit event"
+              title={detail?.read_only_reason || "Edit event"}
+              disabled={!canEdit || busy || !!pending || blocked}
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={18} />
+              <span>Edit</span>
+            </button>
+          )}
           <button
             className="icon-button"
             aria-label="Close calendar event"
@@ -334,6 +350,11 @@ export function GoogleEventDialog({
             <X size={20} />
           </button>
         </div>
+        {!editing && (
+          <p className="calendar-type-badge google">
+            Google event · no task completion
+          </p>
+        )}
         {!fresh && event.recurring && (
           <label className="calendar-scope">
             Apply to
@@ -527,22 +548,26 @@ export function GoogleEventDialog({
           !fresh && (
             <>
               <p>
-                {event.all_day
-                  ? "All day · " + event.date
-                  : event.at
-                    ? fmt(event.at) +
-                      (event.end_at ? " – " + fmt(event.end_at) : "")
+                {(detail?.all_day ?? event.all_day)
+                  ? "All day · " +
+                    (detail?.start ?? event.date) +
+                    (detail?.end ? " – " + shiftDate(detail.end, -1) : "")
+                  : (detail?.start ?? event.at)
+                    ? fmt((detail?.start ?? event.at)!) +
+                      ((detail?.end ?? event.end_at)
+                        ? " – " + fmt((detail?.end ?? event.end_at)!)
+                        : "")
                     : event.date}
               </p>
               <p className="footnote">
                 {event.calendar_title} · {timezone}
               </p>
-              {(shown?.location || event.location) && (
-                <p>{shown?.location || event.location}</p>
+              {(shown?.location ?? event.location) && (
+                <p>{shown?.location ?? event.location}</p>
               )}
-              {(shown?.description || event.description) && (
+              {(shown?.description ?? event.description) && (
                 <p className="event-description">
-                  {shown?.description || event.description}
+                  {shown?.description ?? event.description}
                 </p>
               )}
               {!detail && cached && (
@@ -565,7 +590,7 @@ export function GoogleEventDialog({
                 </p>
               )}
               {!!shown?.attendees?.length && (
-                <details>
+                <details open>
                   <summary>
                     Guests ({shown.attendees.length}
                     {shown.attendees_omitted ? "+" : ""})
@@ -587,18 +612,11 @@ export function GoogleEventDialog({
                     </a>
                   </p>
                 ))}
-              {!event.busy && (
+              {(detail?.busy ?? event.busy) === false && (
                 <p className="footnote">This event is marked as free time.</p>
               )}
               {detail?.editable && !deleting && (
                 <div className="event-editor-actions">
-                  <button
-                    className="primary"
-                    disabled={busy || !!pending || blocked}
-                    onClick={() => setEditing(true)}
-                  >
-                    Edit event
-                  </button>
                   <button
                     className="text-button danger"
                     disabled={busy || !!pending || blocked}

@@ -17,7 +17,7 @@ type Fields = {
   description: string;
   busy: boolean;
 };
-type Record = {
+export type PlanningRecord = {
   id: string;
   revision: number;
   kind: "event" | "block";
@@ -47,7 +47,7 @@ export function PlanningDialog({
   useDialogFocus();
   const fresh = event.entity_id === "new",
     task = tasks.find((t) => t.id === event.task_id);
-  const [record, setRecord] = useState<Record | null>(null),
+  const [record, setRecord] = useState<PlanningRecord | null>(null),
     [connection, setConnection] = useState<GoogleStatus | null>(null);
   const [form, setForm] = useState<Fields>({
     title: task ? "Work on " + task.title : "",
@@ -82,7 +82,7 @@ export function PlanningDialog({
       })
       .catch(() => {});
     if (!fresh)
-      api<Record>("/planning/" + event.entity_id)
+      api<PlanningRecord>("/planning/" + event.entity_id)
         .then((d) => {
           if (!live) return;
           setRecord(d);

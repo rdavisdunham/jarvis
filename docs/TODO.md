@@ -3,7 +3,27 @@
 Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: conversational planner workspace — deployed
+## Current batch: task tabs, calendar cards and touch boards — deployed
+
+- [x] Combine Today, Inbox, Next 7 days and All (formerly Work) into one Tasks
+      page. Preserve search, filters and layout; keep legacy links working.
+- [x] Label calendar item types and open saved details from month chips and
+      agenda rows. Put Edit at the upper right; include task relationships,
+      reminders, notes and saved appointment fields.
+- [x] Make task boards work with mouse, touch and keyboard grips, including
+      edge scrolling and empty status columns. Moves save canonical status,
+      project or assignee; sort continues to determine card order.
+- [x] Explain task versus alert in the reminder form and
+      [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md). Tasks own completion;
+      events and work blocks reserve time. No database migration.
+- [x] Give Eri an acknowledged open-details action and distinguish read-only
+      record cards from unsaved editable drafts.
+- [x] Validate and deploy: 447 backend / 78 frontend tests pass; real browser
+      checks cover touch/mouse/keyboard moves, saved details and the existing
+      planner/Google/Linear flows. Healthy services, exact source hashes and
+      unchanged saved records. [Validation](CALENDAR_TASKS_VALIDATION.md).
+
+## Previous batch: conversational planner workspace — deployed
 
 - [x] Complete typed, acknowledged conversational controls for pages, search,
       filters, sort, grouping, layouts, calendar ranges, selection, organization,

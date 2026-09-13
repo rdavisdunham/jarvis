@@ -1,5 +1,7 @@
+import { calendarKind } from "./calendar-presentation";
 import { useRef } from "react";
 import {
+  CheckSquare,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -144,6 +146,17 @@ export function CalendarView(p: Props) {
           Loading calendar…
         </p>
       )}
+      <div className="calendar-type-legend" aria-label="Calendar item types">
+        <span>
+          <CheckSquare size={14} /> Task
+        </span>
+        <span>
+          <Clock3 size={14} /> Task reminder
+        </span>
+        <span>
+          <CalendarDays size={14} /> Event / work block
+        </span>
+      </div>
       {p.mode === "month" && (
         <div className="calendar-grid" aria-label="Month dates">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -154,11 +167,9 @@ export function CalendarView(p: Props) {
           {p.days.map((day) => {
             const entries = p.events.filter((e) => e.date === day);
             return (
-              <button
+              <div
                 key={day}
                 data-day={day}
-                aria-label={day + ", " + entries.length + " items"}
-                aria-pressed={day === p.day}
                 className={
                   "calendar-day " +
                   (day === p.day ? "selected " : "") +
@@ -187,7 +198,7 @@ export function CalendarView(p: Props) {
                       () =>
                         document
                           .querySelector<HTMLButtonElement>(
-                            '[data-day="' + next + '"]',
+                            '.calendar-number[data-day="' + next + '"]',
                           )
                           ?.focus(),
                       0,
@@ -195,19 +206,40 @@ export function CalendarView(p: Props) {
                   }
                 }}
               >
-                <span className="calendar-number">{Number(day.slice(-2))}</span>
+                <button
+                  className="calendar-number"
+                  data-day={day}
+                  aria-label={day + ", " + entries.length + " items"}
+                  aria-pressed={day === p.day}
+                >
+                  {Number(day.slice(-2))}
+                </button>
                 <span className="calendar-labels">
                   {entries.slice(0, 2).map((e) => (
-                    <span
+                    <button
                       key={e.id}
+                      type="button"
+                      aria-label={calendarKind(e).label + ": " + e.title}
+                      title={calendarKind(e).label + ": " + e.title}
+                      onClick={(click) => {
+                        click.stopPropagation();
+                        p.onEntry(e);
+                      }}
                       className={
                         "calendar-chip " +
                         e.kind +
                         (e.status === "completed" ? " completed" : "")
                       }
                     >
-                      {e.title}
-                    </span>
+                      {e.kind === "task" ? (
+                        <CheckSquare size={12} />
+                      ) : e.kind === "reminder" || e.kind === "routine" ? (
+                        <Clock3 size={12} />
+                      ) : (
+                        <CalendarDays size={12} />
+                      )}
+                      <span className="calendar-chip-name">{e.title}</span>
+                    </button>
                   ))}
                   {entries.length > 2 && (
                     <small>+{entries.length - 2} more</small>
@@ -219,7 +251,7 @@ export function CalendarView(p: Props) {
                   ))}
                   {entries.length > 3 && <small>+{entries.length - 3}</small>}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -308,7 +340,7 @@ export function CalendarView(p: Props) {
                 >
                   <span className={"agenda-kind " + e.kind}>
                     {e.kind === "task" ? (
-                      <CalendarDays size={17} />
+                      <CheckSquare size={17} />
                     ) : e.kind === "routine" ? (
                       <Repeat2 size={17} />
                     ) : (
@@ -326,18 +358,11 @@ export function CalendarView(p: Props) {
                   </span>
                   <span className="grow">
                     <strong>{e.title}</strong>
+                    <span className={"calendar-type-badge " + e.kind}>
+                      {calendarKind(e).label}
+                    </span>
                     <small>
-                      {e.kind === "google"
-                        ? e.calendar_title + " · Google"
-                        : e.kind === "event"
-                          ? "Appointment"
-                          : e.kind === "block"
-                            ? "Work block"
-                            : e.kind === "task"
-                              ? e.timing === "planned" ? "Planned task" : "Task deadline"
-                              : e.kind === "routine"
-                                ? "Repeating task"
-                                : "Reminder"}
+                      {e.kind === "google" ? e.calendar_title : ""}
                       {e.projected && e.kind !== "google" ? " · Upcoming" : ""}
                       {!!e.conflicts?.length &&
                         " · Deadline during " + e.conflicts.join(", ")}

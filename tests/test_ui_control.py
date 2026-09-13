@@ -63,3 +63,26 @@ def test_oversized_editor_ack_is_rejected_before_transport():
     from pydantic import ValidationError
     with pytest.raises(ValidationError):
         UISync(context=UIContext(), results=[{"id": "large", "status": "displayed", "data": {"value": "x" * 150001}}])
+
+
+async def test_calendar_detail_requires_a_record_and_preserves_detail_mode():
+    from jarvis.domain import DomainError
+    from pydantic import ValidationError
+
+    with pytest.raises(DomainError, match="saved calendar item"):
+        await call_tool("owner", "turn", 0, "ui_calendar", {"date": "2026-09-13", "open_details": True})
+    context = UIContext(editor={"kind": "task", "record_id": "task-id", "mode": "detail",
+                                "dirty": False, "busy": False, "fields": []})
+    action = asyncio.create_task(dispatch("owner", "phone", {
+        "id": "details", "kind": "editor", "operation": "read"
+    }))
+    await asyncio.sleep(0)
+    sync("owner", "phone", UISync(context=context, results=[{
+        "id": "details", "status": "displayed",
+        "data": {"mode": "detail", "saved": True, "values": {"title": "Saved task"}}
+    }]))
+    result = await action
+    assert result["data"]["saved"] is True
+    assert result["data"]["mode"] == "detail"
+    with pytest.raises(ValidationError):
+        UIContext(editor={"kind": "task", "mode": "javascript"})

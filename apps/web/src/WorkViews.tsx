@@ -1,4 +1,7 @@
+import { createPortal } from "react-dom";
+import { useBoardDrag } from "./use-board-drag";
 import {
+  GripVertical,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -53,113 +56,179 @@ type TaskProps = {
   busy: boolean;
   onOpen: (t: Task) => void;
   onStatus: (t: Task, status: string) => Promise<unknown>;
+  onMove: (t: Task, key: string) => Promise<unknown>;
   highlight?: string | null;
   group: WorkGroup;
 };
 export function TaskBoard(p: TaskProps) {
   const groups = groupedTasks(p.tasks, p.group);
+  const keyFor = (task: Task) =>
+    p.group === "status"
+      ? task.status
+      : p.group === "project"
+        ? (task.project_id ?? "")
+        : (task.assignee_id ?? task.assignee);
+  const move = (task: Task, key: string) =>
+    keyFor(task) === key
+      ? Promise.resolve({ unchanged: true })
+      : p.onMove(task, key);
+  const { root, drag, handle, message, saving } = useBoardDrag({
+    items: p.tasks,
+    keys: groups.map((g) => g.key),
+    disabled: p.busy,
+    move,
+  });
   return (
-    <div className="board-scroll" aria-label="Task board" tabIndex={0}>
-      <div className="task-board">
-        {groups.map((group) => (
-          <section
-            className="board-column"
-            key={group.key}
-            onDragOver={(e) => {
-              if (p.group === "status" && !p.busy) e.preventDefault();
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (p.group !== "status" || p.busy) return;
-              const task = p.tasks.find(
-                (t) =>
-                  t.id === e.dataTransfer.getData("application/eridani-task"),
-              );
-              if (task && task.status !== group.key)
-                void p.onStatus(task, group.key);
-            }}
-          >
-            <h3>
-              {group.label}
-              <span>{group.tasks.length}</span>
-            </h3>
-            {group.tasks.map((task) => (
-              <article
-                className={
-                  "board-card " +
-                  (p.highlight === task.id ? "record-highlight" : "")
-                }
-                id={"record-" + task.id}
-                key={task.id}
-                draggable={!p.busy && p.group === "status" && !task.is_template}
-                onDragStart={(e) =>
-                  e.dataTransfer.setData("application/eridani-task", task.id)
-                }
-              >
-                <button className="board-title" onClick={() => p.onOpen(task)}>
-                  {task.title}
-                </button>
-                <div className="board-meta">
-                  {task.project && <span>{task.project}</span>}
-                  {task.priority > 0 && (
-                    <span className={"priority p" + task.priority}>
-                      {"!".repeat(task.priority)}
-                    </span>
-                  )}
-                  {task.assignee !== "owner" && <span>{task.assignee}</span>}
-                  {task.due_date && (
-                    <span
-                      title={
-                        "Deadline" +
-                        (task.due_timezone ? " · " + task.due_timezone : "")
-                      }
-                    >
-                      <CalendarDays size={12} />
-                      {task.due_date.slice(5)}
-                      {task.due_time ? " " + task.due_time.slice(0, 5) : ""}
-                    </span>
-                  )}
-                  {task.planned_date && (
-                    <span>Plan {task.planned_date.slice(5)}</span>
-                  )}
-                  {task.parent_task_id && (
-                    <span
-                      title={
-                        p.allTasks.find((t) => t.id === task.parent_task_id)
-                          ?.title
-                      }
-                    >
-                      ↳ Subtask
-                    </span>
-                  )}
-                  {!!task.tags.length && (
-                    <span>
-                      {task.tags
-                        .slice(0, 3)
-                        .map((t) => "#" + t)
-                        .join(" ")}
-                    </span>
-                  )}
-                </div>
-                <select
-                  aria-label={"Status for " + task.title}
-                  value={task.status}
-                  disabled={p.busy || task.is_template}
-                  onChange={(e) => void p.onStatus(task, e.target.value)}
+    <>
+      <p className="board-drag-help" id="board-drag-help">
+        Drag the grip to change {p.group}. Keyboard: Space, left/right, Space.
+        Your sort sets card order.
+      </p>
+      <p className="sr-only" role="status" aria-live="polite">
+        {message}
+      </p>
+      <div
+        ref={root}
+        className="board-scroll"
+        aria-label="Task board"
+        tabIndex={0}
+      >
+        <div className="task-board">
+          {groups.map((group) => (
+            <section
+              className={
+                "board-column " +
+                (drag?.over === group.key ? "board-drop-target" : "")
+              }
+              data-board-key={group.key}
+              data-board-label={group.label}
+              key={group.key}
+              onDragOver={(e) => {
+                if (!p.busy && !saving) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (p.busy || saving) return;
+                const task = p.tasks.find(
+                  (t) =>
+                    t.id === e.dataTransfer.getData("application/eridani-task"),
+                );
+                if (task && !task.is_template && keyFor(task) !== group.key)
+                  void move(task, group.key);
+              }}
+            >
+              <h3>
+                {group.label}
+                <span>{group.tasks.length}</span>
+              </h3>
+              {group.tasks.map((task) => (
+                <article
+                  className={
+                    "board-card " +
+                    (p.highlight === task.id ? "record-highlight " : "") +
+                    (drag?.id === task.id ? "board-card-dragging" : "")
+                  }
+                  id={"record-" + task.id}
+                  key={task.id}
+                  draggable={!p.busy && !saving && !task.is_template}
+                  onDragStart={(e) =>
+                    e.dataTransfer.setData("application/eridani-task", task.id)
+                  }
                 >
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </select>
-              </article>
-            ))}
-            {!group.tasks.length && <p className="board-empty">No tasks</p>}
-          </section>
-        ))}
+                  <div className="board-card-heading">
+                    <button
+                      className="board-title"
+                      onClick={() => p.onOpen(task)}
+                    >
+                      {task.title}
+                    </button>
+                    {!task.is_template && (
+                      <button
+                        type="button"
+                        className="board-drag-handle"
+                        {...handle(task, group.key)}
+                        onDragStart={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <GripVertical size={17} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="board-meta">
+                    {task.project && <span>{task.project}</span>}
+                    {task.priority > 0 && (
+                      <span className={"priority p" + task.priority}>
+                        {"!".repeat(task.priority)}
+                      </span>
+                    )}
+                    {task.assignee !== "owner" && <span>{task.assignee}</span>}
+                    {task.due_date && (
+                      <span
+                        title={
+                          "Deadline" +
+                          (task.due_timezone ? " · " + task.due_timezone : "")
+                        }
+                      >
+                        <CalendarDays size={12} />
+                        {task.due_date.slice(5)}
+                        {task.due_time ? " " + task.due_time.slice(0, 5) : ""}
+                      </span>
+                    )}
+                    {task.planned_date && (
+                      <span>Plan {task.planned_date.slice(5)}</span>
+                    )}
+                    {task.parent_task_id && (
+                      <span
+                        title={
+                          p.allTasks.find((t) => t.id === task.parent_task_id)
+                            ?.title
+                        }
+                      >
+                        ↳ Subtask
+                      </span>
+                    )}
+                    {!!task.tags.length && (
+                      <span>
+                        {task.tags
+                          .slice(0, 3)
+                          .map((t) => "#" + t)
+                          .join(" ")}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    aria-label={"Status for " + task.title}
+                    value={task.status}
+                    disabled={p.busy || saving || task.is_template}
+                    onChange={(e) => void p.onStatus(task, e.target.value)}
+                  >
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </article>
+              ))}
+              {!group.tasks.length && <p className="board-empty">No tasks</p>}
+            </section>
+          ))}
+        </div>
       </div>
-    </div>
+      {drag &&
+        !drag.keyboard &&
+        createPortal(
+          <div
+            className="board-drag-preview"
+            style={{ left: drag.x + 12, top: drag.y + 12 }}
+          >
+            {drag.title}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 export type TimelineItem = {

@@ -67,6 +67,7 @@ READ_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
+                "open_details": {"type": "boolean", "description": "Open saved detail card for entity_id on the requested date; false only focuses the calendar."},
                 "calendar_view": {"type": "string", "enum": ["month", "week", "day"]},
                 "date": {"type": "string", "format": "date"},
                 "entity_id": {"type": "string", "maxLength": 36},
@@ -97,7 +98,7 @@ READ_TOOLS = {
         },
     },
     "ui_filter": {
-        "description": "Filter the Work workspace by status, project name and task/reminder kind. Empty project clears the project filter.",
+        "description": "Filter the Tasks workspace by status, project name and task/reminder kind. Empty project clears the project filter.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -624,6 +625,8 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
             jsonschema.validate(arguments, READ_TOOLS[name]["parameters"])
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Invalid site control arguments.")
+        if name == "ui_calendar" and arguments.get("open_details") and not arguments.get("entity_id"):
+            raise DomainError("INVALID_ARGUMENT", "Choose a saved calendar item to open its details.")
         if name == "ui_calendar" and arguments.get("entity_id"):
             from .google_calendar import event_detail
 
