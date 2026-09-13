@@ -5,11 +5,16 @@ from sqlalchemy import select
 from .db import session_scope
 from .domain import COMMANDS, DomainError, execute, owned, serial
 from .memory_service import semantic_search
-from .models import Note, Notification, Occurrence, Project, Schedule, Task
+from .models import Memory, Note, Notification, Occurrence, Project, Schedule, Task
+from .planner_schema import PlanRequest
 from .ui_control import dispatch, get_context
 
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
+    "planning_suggest": {
+        "description": "Propose a verified local work-block plan for up to eight active tasks. Supply exact requested durations, release/deadline windows and dependencies; the server computes earliest finish against fresh availability. Returns an unsaved proposal and a short plan_token reference, or explicit infeasibility/unknown availability. local_only requires the owner to choose Eridani-only availability. Never claim saved before planning_commit succeeds.",
+        "parameters": PlanRequest.model_json_schema(),
+    },
     "calendar_connection": {
         "description": "Read Google connection, selected calendars, revisions, sync freshness and errors. Never exposes credentials.",
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -142,7 +147,7 @@ READ_TOOLS = {
                 },
                 "entity_id": {
                     "type": "string",
-                    "description": "Saved record UUID: task for all; schedule for reminders; note for notes; goal/project/space/area/actor for organize. Required to show a specific record. Other views are page-only; use ui_calendar for dated record focus. Omit only for a page-only request.",
+                    "description": "Saved record UUID: task for all; schedule for reminders; note for notes; memory for memory; goal/project/space/area/actor for organize. Required to show a specific record. Other views are page-only; use ui_calendar for dated record focus. Omit only for a page-only request.",
                 },
             },
             "required": ["view"],
@@ -311,7 +316,27 @@ for tool_name in ("task_list", "note_search"):
     for field in ("space_id", "area_id", "goal_id"):
         READ_TOOLS[tool_name]["parameters"]["properties"][field] = {"type": "string", "maxLength": 36}
 
+from .ui_contracts import EDITOR_KINDS, UI_TOOLS, VIEWS
+
+READ_TOOLS.update(UI_TOOLS)
+READ_TOOLS["ui_filter"]["parameters"]["properties"].update({
+    "project_id": {"type": "string", "maxLength": 36},
+    "assignee": {"type": "string", "maxLength": 100},
+    "work_type": {"type": "string", "maxLength": 80},
+    "tag": {"type": "string", "maxLength": 40},
+    "due_from": {"type": "string", "maxLength": 10},
+    "due_through": {"type": "string", "maxLength": 10},
+})
+READ_TOOLS["ui_filter"]["parameters"]["properties"]["status"]["enum"].append("active")
+READ_TOOLS["ui_filter"]["parameters"]["properties"]["view"]["enum"] = ["all", "today", "inbox", "week", "calendar", "reminders", "notes", "organize"]
+READ_TOOLS["ui_search"]["parameters"]["properties"]["view"]["enum"] = VIEWS
+READ_TOOLS["ui_form"]["parameters"]["properties"].update({
+    "form": {"type": "string", "enum": EDITOR_KINDS},
+    "entity_id": {"type": "string", "maxLength": 36},
+})
+
 VOICE_MUTATIONS = {
+    "planning.commit",
     "calendar.create",
     "calendar.update",
     "calendar.delete",
@@ -439,6 +464,13 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
                 "MALFORMED_ID",
                 "Copy the complete 36-character UUID from a fresh lookup and retry. A malformed ID does not mean the record was deleted.",
             ) from None
+    if name == "ui_state":
+        context = get_context(owner, device)
+        return {"status": "available" if context else "unavailable", "screen": context}
+    if name == "planning_suggest":
+        from .planner import propose
+
+        return await __import__("asyncio").to_thread(propose, owner, arguments)
     if name == "time_resolve":
         from .time_tools import resolve_time
 
@@ -584,7 +616,7 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
             if len(result["tasks"]) == 1:
                 remember(db, owner, conversation_id, [result["tasks"][0]["id"]])
             return result
-    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select"}:
+    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device"}:
         # Validate against the fixed registry before crossing the browser boundary.
         import jsonschema
 
@@ -607,6 +639,20 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
                     owned(db, Schedule, arguments["entity_id"], owner)
                 else:
                     event_detail(db, owner, arguments["entity_id"])
+        if name == "ui_form" and arguments.get("entity_id"):
+            from .models import Actor, Area, Goal, PlanningEntry, Space
+
+            model = {"task": Task, "reminder": Schedule, "note": Note, "memory": Memory,
+                     "goal": Goal, "project": Project, "area": Area, "space": Space, "actor": Actor,
+                     "event": PlanningEntry}.get(arguments["form"])
+            with session_scope() as db:
+                if model:
+                    owned(db, model, arguments["entity_id"], owner)
+                elif arguments["form"] == "google_event":
+                    from .google_calendar import event_detail
+                    event_detail(db, owner, arguments["entity_id"])
+                else:
+                    raise DomainError("INVALID_ARGUMENT", "This form does not take a record ID.")
         if name == "ui_select":
             with session_scope() as db:
                 for tid in arguments["task_ids"]:
@@ -632,7 +678,7 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
         }:
             raise DomainError("INVALID_ARGUMENT", "Unknown app page.")
         if entity_id:
-            model = {"all": Task, "reminders": Schedule, "notes": Note}.get(view)
+            model = {"all": Task, "reminders": Schedule, "notes": Note, "memory": Memory}.get(view)
             if view == "organize":
                 from .models import Actor, Area, Goal, Space
 

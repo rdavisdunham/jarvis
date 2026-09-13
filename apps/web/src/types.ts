@@ -191,10 +191,12 @@ export interface Bootstrap {
     push: boolean;
     worker: boolean;
   };
-  voice_options: Partial<Record<
-    VoiceProvider,
-    { label: string; voices: string[]; default_voice: string }
-  >>;
+  voice_options: Partial<
+    Record<
+      VoiceProvider,
+      { label: string; voices: string[]; default_voice: string }
+    >
+  >;
   last_backup_at: string | null;
   vapid_public_key: string;
   event_cursor: number;
@@ -219,33 +221,35 @@ export interface ChatMessage {
 }
 
 export type VoiceProvider = "realtime" | "live";
-export interface UIAction {
-  space_id?: string;
-  area_id?: string;
-  goal_id?: string;
-  calendar_view?: "month" | "week" | "day";
-  id: string;
-  kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar" | "select";
-  date?: string;
-  work_kind?: "all" | "task" | "reminder";
-  view?: View;
-  mode?: "open" | "close" | "auto";
-  query?: string;
-  status?:
-    | "all"
-    | "open"
-    | "in_progress"
-    | "waiting"
-    | "deferred"
-    | "completed"
-    | "cancelled";
-  project?: string;
-  form?: "task" | "reminder" | "note";
-  task_ids?: string[];
-  entity_id?: string | null;
-}
+export type UIAction = import("zod").input<
+  typeof import("./site-actions").actionSchema
+>;
 
 export interface UIContext {
+  layout?: "list" | "board" | "timeline";
+  sort?: string;
+  group_by?: string;
+  timeline_date?: string;
+  timeline_span?: number;
+  organization_tab?: string;
+  settings_section?: string;
+  notes_mode?: string;
+  show_archived?: boolean;
+  assignee?: string;
+  work_type?: string;
+  tag?: string;
+  due_from?: string;
+  due_through?: string;
+  editor?: import("./editor-control").EditorSummary | null;
+  device_preferences?: {
+    voice: string;
+    voices: string[];
+    wake_enabled: boolean;
+    wake_supported: boolean;
+    density: string;
+    private_chat: boolean;
+  };
+
   space_id?: string;
   area_id?: string;
   goal_id?: string;
@@ -264,6 +268,7 @@ export interface UIContext {
   selected_note_id?: string | null;
   visible_ids: string[];
   task_status:
+    | "active"
     | "all"
     | "open"
     | "in_progress"

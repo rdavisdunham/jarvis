@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .google_schema import EventFields
+from .planner_schema import PlanCommit
 
 
 class PlanningCreate(EventFields):
@@ -33,6 +34,7 @@ class PlanningResolve(PlanningChange):
 
 
 PLANNING_COMMANDS = {
+    "planning.commit": PlanCommit,
     "planning.create": PlanningCreate,
     "planning.update": PlanningUpdate,
     "planning.delete": PlanningChange,

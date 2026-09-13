@@ -1,0 +1,2 @@
+# Evaluation evidence is byte-exact, including its original line endings.
+docs/evals/* -text

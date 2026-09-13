@@ -321,6 +321,7 @@ def related_notes(db, owner, kind, entity_id):
 
 def note_links(db, row):
     result = {}
+
     for key, link, model, col in (
         ("goals", NoteGoalLink, Goal, "goal_id"),
         ("projects", NoteProjectLink, Project, "project_id"),
@@ -342,7 +343,8 @@ def note_links(db, row):
 
 
 def save_note_links(db, owner, row, values):
-    from .domain import DomainError, emit, owned
+    from .domain import DomainError, emit
+    from .record_references import reference
 
     for key, link, model, col in (
         ("goal_ids", NoteGoalLink, Goal, "goal_id"),
@@ -354,7 +356,7 @@ def save_note_links(db, owner, row, values):
         ids = set(values[key])
         previous = set(db.scalars(select(getattr(link, col)).where(link.note_id == row.id)))
         for rid in ids:
-            target = owned(db, model, rid, owner)
+            target = reference(db, owner, model, rid, key)
             if model is Note and rid == row.id:
                 raise DomainError("INVALID_ARGUMENT", "A note cannot link to itself.")
             if target.archived and rid not in previous:

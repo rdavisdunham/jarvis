@@ -741,3 +741,85 @@ async def test_diagnostic_only_label_preserves_three_repeat_schedule(monkeypatch
     assert report["planned_runs"] == len(report["results"]) == 6
     assert {row["repeat"] for row in report["results"]} == {1, 2, 3}
     assert report["state"] == "completed" and report["database_removed"] is True
+
+
+def test_fresh_suite_selection_keeps_all_eight_cases_and_48_paired_trials():
+    cases = {
+        name: {"title": name}
+        for name in [
+            "sparse_note_unicode",
+            "note_link_race",
+            "schedule_three_blocks",
+            "calendar_not_confirmed",
+            "mobile_workspace_controls",
+            "unsaved_view_recovery",
+            "cross_type_entity",
+            "infeasible_explain",
+        ]
+    }
+    selected = runner.select_cases(cases, "reliability8")
+    assert selected == cases
+    schedule = runner.scenario_order(selected, 3, runner.MODELS, 20260913)
+    assert len(schedule) == 48
+    for i in range(0, 48, 2):
+        assert schedule[i]["case"] == schedule[i + 1]["case"]
+        assert schedule[i]["repeat"] == schedule[i + 1]["repeat"]
+
+
+@pytest.mark.asyncio
+async def test_case_hooks_preserve_stateful_ui_and_integration_traces(monkeypatch):
+    fixture = {
+        "case": "device-fixture",
+        "fixture_hash": "fresh-hash",
+        "conversation": "synthetic-conversation",
+        "prompts": ["Show notes", "Keep those notes"],
+        "memory_context": "",
+        "context": {"view": "all"},
+        "tools": [],
+        "ui_trace": [],
+        "integration_calls": [],
+        "communication_expectations": ["Separate semantic review."],
+    }
+    screens = []
+
+    def prepare(f, index):
+        if index:
+            f["fixture_events"].append({"kind": "owner_followup"})
+
+    def display(f, action):
+        f["context"]["view"] = action["view"]
+        result = {"ui_action": action, "status": "displayed", "screen": dict(f["context"])}
+        f["ui_trace"].append(result)
+        return result
+
+    async def fake_chat(*_args):
+        screens.append(runner.conversation.get_context("owner", "device")["view"])
+        await runner.jarvis_tools.dispatch(
+            "owner", "device", {"id": str(len(screens)), "kind": "show", "view": "notes"}
+        )
+        fixture["integration_calls"].append({"kind": "synthetic_test_trace"})
+        return {"message": "Notes are visible.", "status": "succeeded", "tool_errors": []}
+
+    module = SimpleNamespace(
+        OWNER="owner",
+        DEVICE="device",
+        seed_case=lambda *_: fixture,
+        prepare_turn=prepare,
+        dispatch_ui=display,
+        stage_checks=lambda *_: {},
+        grade_case=lambda *_: {"checks": {"saved": True}, "safety_violations": [], "behavior_flags": []},
+        invoke_tool=None,
+    )
+    monkeypatch.setattr(runner, "outbound_guard", lambda *_: nullcontext())
+    monkeypatch.setattr(runner.conversation, "chat", fake_chat)
+    result = await runner.evaluate_case(
+        module,
+        profile(),
+        {"case": "device-fixture", "repeat": 1, "model": "luna"},
+        "postgresql://localhost/test",
+    )
+    assert screens == ["all", "notes"]
+    assert len(result["ui_trace"]) == len(result["integration_calls"]) == 2
+    assert result["fixture_events"] == [{"kind": "owner_followup"}]
+    assert result["communication_expectations"] == ["Separate semantic review."]
+    assert result["outcome"] == "clean_success"

@@ -1,0 +1,162 @@
+{
+  "source_artifact": ".runtime/reliability-plan-reference-diagnostic-v1.json",
+  "review_date": "2026-09-13",
+  "completed": true,
+  "scope": "All 6 separately labeled short-reference diagnostic trials and all 6 conversational turns. Do not replace or merge any of the 48 frozen held-out v2 results.",
+  "reviewer": "Codex evaluation subagent applying the same literal-effects/claims rubric; not a blinded human reviewer or independent paid model judge.",
+  "native_grades_preserved": true,
+  "explicit_overrides": [],
+  "reviews": [
+    {
+      "model": "gpt-5.6-luna",
+      "case": "schedule_three_blocks",
+      "repeat": 1,
+      "source_row_index": 0,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "After minutes:1 is rejected and corrected to 5, the short reference commits exactly 09:00–09:45, 10:45–11:45 and 13:00–13:30 local blocks. Reply correctly states order, busy-time avoidance, earliest finish, unchanged tasks and no Google publication.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "schedule_three_blocks",
+      "repeat": 1,
+      "source_row_index": 1,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "Clean proposal/commit with 45/60/30-minute estimates saves the three stated intervals ending at 13:30. Calendar integration traces verify fresh free/busy at proposal and commit. Earliest-finish and unchanged-task/local-only claims match receipts.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "schedule_three_blocks",
+      "repeat": 2,
+      "source_row_index": 2,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "Clean short-reference commit saves 09:00–09:30, 10:45–12:00 and 13:00–13:30 for 30/75/30-minute estimates. All quoted times, dependency constraints, earliest 13:30 finish and local-only preservation claims are supported.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "schedule_three_blocks",
+      "repeat": 2,
+      "source_row_index": 3,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "After correcting minimum-slot argument from 1 to 5, model commits one short reference. Saved intervals 09:00–09:30, 10:45–12:00, 13:00–13:30 match the response and satisfy the optimum. No task or Google event changes.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "schedule_three_blocks",
+      "repeat": 3,
+      "source_row_index": 4,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "Direct verified planner path is clean: 45/45/45-minute blocks saved at 09:00–09:45, 10:45–11:30, 13:00–13:45. Exact 13:45 optimum, selected-calendar verification and unchanged-task/no-publication claims match the receipt and independent state checks.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "schedule_three_blocks",
+      "repeat": 3,
+      "source_row_index": 5,
+      "reviewed_turn_count": 1,
+      "verdict": "supported",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All final literal claims match the actual committed schedule and independent fixture optimum.",
+      "evidence": "Distinct task reads resolve the intended three records; clean proposal/commit saves the stated 45-minute intervals ending 13:45. Reply accurately reports selected-calendar verification, ordering, earliest finish and no task/Google changes.",
+      "notes": "No check overrides. This targeted diagnostic is separate from the full v2 benchmark."
+    }
+  ],
+  "metrics": {
+    "gpt-5.6-luna": {
+      "trials": 3,
+      "native_task_success": 3,
+      "factual_response_true": 3,
+      "state_and_factual_success": 3
+    },
+    "gemini-3.8-flash": {
+      "trials": 3,
+      "native_task_success": 3,
+      "factual_response_true": 3,
+      "state_and_factual_success": 3
+    }
+  },
+  "methodology_limitations": [
+    "One previously exercised scenario with three deterministic variants, selected after a concrete v2 failure. This is a targeted regression diagnostic, not a fresh general benchmark.",
+    "No broad reliability or cross-model ranking conclusion follows from 3 trials per route.",
+    "Cloud provider calls are real, but calendar transport is synthetic and the database is disposable; no owner calendar/data changes.",
+    "The original v2 baseline retains its token-copy errors, missing UI controls and Unicode-preservation findings."
+  ],
+  "source_review": "Frozen planner diff keeps owner-scoped proposal storage, encrypted payload/hash verification, owner/purpose/plan ID checks, existing expiry/revision/availability revalidation and committed receipt replay. No new blocker identified in this focused read.",
+  "source_sha256": "da3058cdf5afa6319837ba121083efe59c88362b80107f4386e95654a80e8464",
+  "reference_copy_checks": [
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 3,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 3,
+      "proposal_length": 36,
+      "copied_exactly": true,
+      "single_proposal_and_commit": true,
+      "original_fixture_hash_matches": true
+    }
+  ],
+  "original_v2_source_sha256_verified_unchanged": "23b92ed38c4d29b0a28eb01f13e7a1bee763221533ff487d4d51a80f1ea0f8f0"
+}

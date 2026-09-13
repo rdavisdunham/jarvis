@@ -1,0 +1,149 @@
+{
+  "artifact": ".runtime/reliability-heldout-v2.json",
+  "raw_sha256": "23b92ed38c4d29b0a28eb01f13e7a1bee763221533ff487d4d51a80f1ea0f8f0",
+  "checks": {
+    "completed_48_unique_trials": true,
+    "all_66_conversation_turns_attempted": true,
+    "none_skipped": true,
+    "database_removed": true,
+    "no_active_run": true,
+    "seed_hashes_match_export": true,
+    "user_questions_match_export": true,
+    "no_unexpected_egress": true,
+    "all_provider_http_responses_200": true,
+    "no_hidden_provider_switch": true,
+    "source_manifest_matches_archive": true,
+    "source_still_frozen": true,
+    "archived_source_contents_match": true,
+    "no_native_reasoning_payloads": true
+  },
+  "all_integrity_checks_pass": true,
+  "source_archive": ".runtime/reliability-heldout-v2-sources.json.gz",
+  "fixture_archive": ".runtime/reliability-heldout-fixtures-v2.json.gz",
+  "models": {
+    "gemini-3.8-flash": {
+      "rows": 24,
+      "native_state_successes": 22,
+      "outcomes": {
+        "clean_success": 19,
+        "recovered_success": 3,
+        "task_failure": 2
+      },
+      "provider_requests": 155,
+      "reported_usage": {
+        "input_tokens": 1596988,
+        "output_tokens": 12250,
+        "cached_input_tokens": 104747
+      },
+      "response_finish_reasons": {
+        "tool_calls": 122,
+        "stop": 33
+      },
+      "usage_field_present_requests": {
+        "input_tokens": 155,
+        "output_tokens": 155,
+        "cached_input_tokens": 23
+      },
+      "provider_seconds": 260.8675,
+      "task_seconds": 269.5541,
+      "median_task_seconds": 9.07245,
+      "mean_task_seconds": 11.231420833333333,
+      "tool_executions": 125,
+      "discovery_calls": 32,
+      "failed_rows": [
+        {
+          "case": "calendar_not_confirmed",
+          "repeat": 2,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "no_blocked_tools"
+          ]
+        },
+        {
+          "case": "sparse_note_unicode",
+          "repeat": 3,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "exact_sparse_note_edit"
+          ]
+        }
+      ]
+    },
+    "gpt-5.6-luna": {
+      "rows": 24,
+      "native_state_successes": 19,
+      "outcomes": {
+        "clean_success": 10,
+        "recovered_success": 9,
+        "task_failure": 5
+      },
+      "provider_requests": 154,
+      "reported_usage": {
+        "input_tokens": 1153893,
+        "output_tokens": 24288,
+        "reasoning_tokens": 2880,
+        "cached_input_tokens": 761513
+      },
+      "response_finish_reasons": {
+        "completed": 153,
+        "incomplete": 1
+      },
+      "usage_field_present_requests": {
+        "input_tokens": 154,
+        "output_tokens": 154,
+        "reasoning_tokens": 154,
+        "cached_input_tokens": 154
+      },
+      "provider_seconds": 406.2103,
+      "task_seconds": 415.168,
+      "median_task_seconds": 12.39825,
+      "mean_task_seconds": 17.298666666666666,
+      "tool_executions": 126,
+      "discovery_calls": 33,
+      "failed_rows": [
+        {
+          "case": "unsaved_view_recovery",
+          "repeat": 2,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "turn_1.navigation_refused"
+          ]
+        },
+        {
+          "case": "schedule_three_blocks",
+          "repeat": 2,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "turn_1.provider_completed",
+            "three_exact_linked_blocks"
+          ]
+        },
+        {
+          "case": "cross_type_entity",
+          "repeat": 2,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "correct_project_timeline"
+          ]
+        },
+        {
+          "case": "cross_type_entity",
+          "repeat": 3,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "correct_project_timeline"
+          ]
+        },
+        {
+          "case": "mobile_workspace_controls",
+          "repeat": 3,
+          "outcome": "task_failure",
+          "failed_checks": [
+            "first_open_project_search",
+            "second_preserves_project_query"
+          ]
+        }
+      ]
+    }
+  }
+}

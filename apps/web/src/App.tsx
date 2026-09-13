@@ -1,5 +1,24 @@
+import { validateSiteAction } from "./site-validation";
+import { MemoryEditor } from "./MemoryEditor";
+import { useEditorBridge } from "./editor-control";
+import {
+  emptyTaskFilters,
+  matchesTaskFilters,
+  sortTasks,
+  type WorkLayout,
+  type WorkSort,
+  type WorkGroup,
+  type TimelineSpan,
+} from "./work-views";
+import { LayoutSwitch } from "./WorkViews";
 import { ProductivityPage, OrganizationFilters } from "./Productivity";
-import { emptyOrganization, emptyFilter, matchesOrganization, scheduledBy, type Organization } from "./productivity";
+import {
+  emptyOrganization,
+  emptyFilter,
+  matchesOrganization,
+  scheduledBy,
+  type Organization,
+} from "./productivity";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -85,6 +104,41 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "memory", label: "Memory", icon: Brain },
 ];
 export default function App() {
+  const editors = useEditorBridge();
+  const [workLayout, setWorkLayout] = useState<WorkLayout>("list");
+  const [workSort, setWorkSort] = useState<WorkSort>("priority");
+  const [workGroup, setWorkGroup] = useState<WorkGroup>("status");
+  const [taskFilters, setTaskFilters] = useState(emptyTaskFilters);
+  const [timelineDate, setTimelineDate] = useState("");
+  const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>(30);
+  const [organizationTab, setOrganizationTab] = useState<
+    "goal" | "project" | "area" | "space" | "actor"
+  >("project");
+  const [organizationLayout, setOrganizationLayout] =
+    useState<WorkLayout>("list");
+  const [organizationVisible, setOrganizationVisible] = useState<string[]>([]);
+  const [organizationEditor, setOrganizationEditor] = useState<{
+    kind: "goal" | "project" | "area" | "space" | "actor";
+    id?: string;
+    sequence: number;
+  } | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
+  const [settingsSection, setSettingsSection] = useState<
+    "profile" | "voice" | "integrations" | "privacy" | "system"
+  >(() =>
+    new URLSearchParams(location.search).has("google")
+      ? "integrations"
+      : "profile",
+  );
+  const [density, setDensity] = useState<"compact" | "comfortable">(() =>
+    localStorage.getItem("eri-density") === "comfortable"
+      ? "comfortable"
+      : "compact",
+  );
+  useEffect(() => {
+    localStorage.setItem("eri-density", density);
+  }, [density]);
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [loading, setLoading] = useState(true);
   const [view, setView] = useState<View>(
@@ -108,7 +162,8 @@ export default function App() {
   const [selectionRequest, setSelectionRequest] = useState(0);
   const [bulkEditor, setBulkEditor] = useState<Task[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [organization, setOrganization] = useState<Organization>(emptyOrganization);
+  const [organization, setOrganization] =
+    useState<Organization>(emptyOrganization);
   const [organizationFilter, setOrganizationFilter] = useState(emptyFilter);
   const [organizationEditing, setOrganizationEditing] = useState(false);
   const [calendarDay, setCalendarDay] = useState("");
@@ -161,13 +216,14 @@ export default function App() {
   }, []);
   const [taskStatus, setTaskStatus] = useState<
     | "all"
+    | "active"
     | "open"
     | "in_progress"
     | "waiting"
     | "deferred"
     | "completed"
     | "cancelled"
-  >("all");
+  >("active");
   const [projectFilter, setProjectFilter] = useState("");
   const [memoryStatus, setMemoryStatus] = useState({
     enabled: true,
@@ -178,9 +234,9 @@ export default function App() {
   const [memoryRevision, setMemoryRevision] = useState(0);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [mobile, setMobile] = useState(() => window.innerWidth <= 1000);
-  const uiResults = useRef<{ id: string; status: string; message?: string }[]>(
-    [],
-  );
+  const uiResults = useRef<
+    { id: string; status: string; message?: string; data?: unknown }[]
+  >([]);
   const syncUIRef = useRef<() => Promise<void>>(async () => {});
   const [highlight, setHighlight] = useState<string | null>(null);
   const [wakeEnabled, setWakeEnabled] = useState(false);
@@ -223,14 +279,14 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
-    const [taskData, scheduleData, noticeData, projectData] = await Promise.all(
-      [
+    const [taskData, scheduleData, noticeData, projectData, preferences] =
+      await Promise.all([
         api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
         api<{ items: Schedule[]; next_cursor?: string | null }>("/schedules"),
         api<{ items: Notice[] }>("/notifications"),
         api<Organization>("/organization"),
-      ],
-    );
+        api<Bootstrap>("/bootstrap"),
+      ]);
     let items = taskData.items,
       cursor = taskData.next_cursor;
     while (cursor) {
@@ -240,6 +296,7 @@ export default function App() {
       items = [...items, ...page.items];
       cursor = page.next_cursor;
     }
+    setBoot(preferences);
     setTasks(items);
     let scheduleItems = scheduleData.items,
       scheduleCursor = scheduleData.next_cursor;
@@ -422,17 +479,8 @@ export default function App() {
             ? "One of these tasks changed. Close this editor and reopen the selection to review its latest values."
             : err.message,
         );
-        if (
-          err.code === "REVISION_CONFLICT" &&
-          err.data &&
-          typeof err.data === "object" &&
-          "id" in err.data
-        ) {
-          if (tool.startsWith("task.") && tool !== "task.batch")
-            setSelected(err.data as Task);
-          else if (tool.startsWith("schedule."))
-            setScheduleEditor({ schedule: err.data as Schedule });
-        }
+        // Keep the authored draft intact on revision conflict. Replacing the record
+        // prop here used to silently reset task/reminder fields to the remote copy.
         if (err.code === "NETWORK")
           retryRef.current = async () => {
             await send();
@@ -465,8 +513,17 @@ export default function App() {
     if (!quick.trim() || busy) return;
     const result = await mutate<Task>(
       "task.create",
-      { title: quick.trim() },
-      "Added to your Inbox",
+      {
+        title: quick.trim(),
+        project_id:
+          view === "inbox"
+            ? null
+            : (projects.find((p) => p.name === projectFilter)?.id ?? null),
+        space_id: view === "inbox" ? null : organizationFilter.space || null,
+        area_id: view === "inbox" ? null : organizationFilter.area || null,
+        planned_date: ["today", "week"].includes(view) ? today : null,
+      },
+      "Task added",
     );
     if (result) setQuick("");
   }
@@ -580,14 +637,49 @@ export default function App() {
     selectionRequest,
   ]);
 
-  async function applyAction(action: UIAction) {
+  async function applyAction(
+    action: UIAction,
+  ): Promise<Record<string, unknown> | void> {
+    validateSiteAction(action, view, organization, organizationTab);
+    if (action.kind === "editor") return editors.act(action);
+    if (action.kind === "device") {
+      if (
+        action.voice !== undefined &&
+        (!boot?.voice_options.live?.voices.includes(action.voice) ||
+          (!!voiceState && !voiceState.closed))
+      )
+        throw new Error(
+          "Choose an available Live voice after the current voice session ends.",
+        );
+      if (action.wake_enabled && !recognitionType())
+        throw new Error("Wake word is unavailable in this browser.");
+      if (
+        action.private_chat !== undefined &&
+        (voice.current || conversationRef.current)
+      )
+        throw new Error(
+          "Privacy is fixed for an existing conversation. Start a new chat before changing it.",
+        );
+      if (action.voice !== undefined) {
+        setVoiceName(action.voice);
+        localStorage.setItem("eri-voice-live", action.voice);
+      }
+      if (action.wake_enabled !== undefined) {
+        setWakeEnabled(action.wake_enabled);
+        setWakeStatus("");
+      }
+      if (action.density !== undefined) setDensity(action.density);
+      if (action.private_chat !== undefined) setPrivate(action.private_chat);
+      return { outcome: "device_preferences_updated", saved: true };
+    }
     const kind = action.kind ?? "show";
     if (kind === "chat") {
       setCompanion(action.mode === "auto" ? !mobile : action.mode === "open");
       return;
     }
     if (
-      (selected && selected.id !== action.entity_id) ||
+      editors.current() ||
+      selected ||
       reminder ||
       scheduleEditor ||
       organizationEditing ||
@@ -599,9 +691,36 @@ export default function App() {
       throw new Error(
         "An editor is open. Save or close it before changing pages.",
       );
-    setSidebar(false);
-    if (mobile) setCompanion(false);
-    if (kind === "select") {
+    if (kind === "workspace") {
+      const target = action.view ?? view;
+      if (
+        action.layout &&
+        !["all", "inbox", "today", "week", "organize"].includes(target)
+      )
+        throw new Error(
+          "List, board and timeline layouts are available in Work and Projects.",
+        );
+      if (action.organization_tab && target !== "organize")
+        throw new Error("Organization tabs belong to Projects.");
+      if (action.notes_mode && target !== "notes")
+        throw new Error("Choose Notes for note search mode.");
+      if (action.settings_section && target !== "settings")
+        throw new Error("Choose Settings for that section.");
+      if (action.layout)
+        (target === "organize" ? setOrganizationLayout : setWorkLayout)(
+          action.layout,
+        );
+      if (action.sort) setWorkSort(action.sort);
+      if (action.group_by) setWorkGroup(action.group_by);
+      if (action.timeline_date) setTimelineDate(action.timeline_date);
+      if (action.timeline_span) setTimelineSpan(action.timeline_span);
+      if (action.organization_tab) setOrganizationTab(action.organization_tab);
+      if (action.show_archived !== undefined)
+        setShowArchived(action.show_archived);
+      if (action.notes_mode) setNotesMode(action.notes_mode);
+      if (action.settings_section) setSettingsSection(action.settings_section);
+      setView(target);
+    } else if (kind === "select") {
       const ids = action.task_ids ?? [];
       if (ids.some((id) => !tasks.some((t) => t.id === id)))
         throw new Error(
@@ -612,7 +731,9 @@ export default function App() {
       setTaskStatus("all");
       setProjectFilter("");
       setOrganizationFilter(emptyFilter);
+      setTaskFilters(emptyTaskFilters);
       setWorkKind("task");
+      setWorkLayout("list");
       pendingSelection.current = ids;
       setSelectionRequest((n) => n + 1);
     } else if (kind === "calendar") {
@@ -623,8 +744,17 @@ export default function App() {
         new Date(day + "T12:00:00Z").toISOString().slice(0, 10) !== day
       )
         throw new Error("Choose a valid calendar date.");
-      if (action.entity_id)
-        await api("/calendar/events/" + encodeURIComponent(action.entity_id));
+      if (
+        action.entity_id &&
+        !tasks.some((t) => t.id === action.entity_id) &&
+        !schedules.some((s) => s.id === action.entity_id)
+      ) {
+        try {
+          await api("/planning/" + encodeURIComponent(action.entity_id));
+        } catch {
+          await api("/calendar/events/" + encodeURIComponent(action.entity_id));
+        }
+      }
       setHighlight(action.entity_id ?? null);
       setCalendarDay(day);
       if (action.calendar_view || action.entity_id)
@@ -634,37 +764,192 @@ export default function App() {
       setTaskStatus("all");
       setProjectFilter("");
       setOrganizationFilter(emptyFilter);
+      setTaskFilters(emptyTaskFilters);
       setWorkKind("all");
     } else if (kind === "search") {
       setQuery(action.query ?? "");
       setTaskStatus("all");
       setProjectFilter("");
       setOrganizationFilter(emptyFilter);
+      setTaskFilters(emptyTaskFilters);
       setWorkKind("all");
-      setView(action.view ?? "all");
+      const target = action.view ?? "all";
+      if (target === "settings") {
+        const phrase = (action.query ?? "").toLowerCase();
+        setSettingsSection(
+          /voice|wake|sound/.test(phrase)
+            ? "voice"
+            : /google|calendar|linear|integration/.test(phrase)
+              ? "integrations"
+              : /memory|history|privacy|learning/.test(phrase)
+                ? "privacy"
+                : /model|agent|backup|export|budget|cost|system/.test(phrase)
+                  ? "system"
+                  : "profile",
+        );
+      }
+      setView(target);
     } else if (kind === "filter") {
+      const from = action.due_from ?? taskFilters.due_from,
+        through = action.due_through ?? taskFilters.due_through;
+      if (from && through && from > through)
+        throw new Error("Due-from must be on or before due-through.");
       setView(
         action.view ??
-          (["all", "calendar", "reminders"].includes(view) ? view : "all"),
+          ([
+            "all",
+            "calendar",
+            "reminders",
+            "today",
+            "inbox",
+            "week",
+            "notes",
+            "organize",
+          ].includes(view)
+            ? view
+            : "all"),
       );
       if (action.status !== undefined) setTaskStatus(action.status);
-      if (action.space_id !== undefined || action.area_id !== undefined || action.goal_id !== undefined) setOrganizationFilter(current => ({ space: action.space_id ?? current.space, area: action.area_id ?? current.area, goal: action.goal_id ?? current.goal }));
-      if (action.project !== undefined) setProjectFilter(action.project);
+      if (
+        action.space_id !== undefined ||
+        action.area_id !== undefined ||
+        action.goal_id !== undefined
+      )
+        setOrganizationFilter((current) => ({
+          space: action.space_id ?? current.space,
+          area: action.area_id ?? current.area,
+          goal: action.goal_id ?? current.goal,
+        }));
+      if (action.project_id !== undefined) {
+        const project = projects.find((p) => p.id === action.project_id);
+        if (action.project_id && !project)
+          throw new Error(
+            "That project is unavailable. Read current organization records.",
+          );
+        setProjectFilter(project?.name ?? "");
+      } else if (action.project !== undefined) {
+        if (action.project && !projects.some((p) => p.name === action.project))
+          throw new Error("That project is unavailable.");
+        setProjectFilter(action.project);
+      }
+      setTaskFilters((current) => ({
+        assignee: action.assignee ?? current.assignee,
+        work_type: action.work_type ?? current.work_type,
+        tag: action.tag ?? current.tag,
+        due_from: action.due_from ?? current.due_from,
+        due_through: action.due_through ?? current.due_through,
+      }));
       if (action.work_kind !== undefined) setWorkKind(action.work_kind);
     } else if (kind === "form") {
-      if (action.form === "reminder") setScheduleEditor({ schedule: null });
-      else if (action.form === "note") {
+      if (
+        ["goal", "project", "space", "area", "actor"].includes(
+          action.form ?? "",
+        )
+      ) {
+        setView("organize");
+        setOrganizationEditor({
+          kind: action.form as "goal" | "project" | "space" | "area" | "actor",
+          id: action.entity_id ?? undefined,
+          sequence: Date.now(),
+        });
+      } else if (action.form === "reminder") {
+        setScheduleEditor({
+          schedule: action.entity_id
+            ? await api<Schedule>(
+                "/schedules/" + encodeURIComponent(action.entity_id),
+              )
+            : null,
+        });
+      } else if (action.form === "note") {
         setView("notes");
-        setNoteEditor(blankNote());
+        setNoteEditor(
+          action.entity_id
+            ? await api<NoteRecord>(
+                "/notes/" + encodeURIComponent(action.entity_id),
+              )
+            : blankNote(),
+        );
+      } else if (action.form === "event" || action.form === "google_event") {
+        if (action.entity_id) {
+          const detail = await api<Record<string, unknown>>(
+            (action.form === "event" ? "/planning/" : "/calendar/events/") +
+              encodeURIComponent(action.entity_id),
+          );
+          const fields = (detail.fields ?? detail) as Record<string, unknown>;
+          setGoogleEvent({
+            id: action.entity_id,
+            entity_id: action.entity_id,
+            kind:
+              action.form === "google_event"
+                ? "google"
+                : detail.kind === "block"
+                  ? "block"
+                  : "event",
+            title: String(fields.title ?? fields.summary ?? ""),
+            date: calendarDay || today,
+            at: null,
+            status: "active",
+            project_id: null,
+            task_id: typeof detail.task_id === "string" ? detail.task_id : null,
+            revision: Number(detail.revision ?? 1),
+            projected: false,
+            notification_id: null,
+            recurring: !!detail.recurring,
+            occurrence_start:
+              typeof detail.occurrence_start === "string"
+                ? detail.occurrence_start
+                : undefined,
+          });
+        } else
+          setGoogleEvent({
+            id: "new",
+            entity_id: "new",
+            kind: action.form === "google_event" ? "google" : "event",
+            title: "",
+            date: calendarDay || today,
+            at: null,
+            status: "active",
+            project_id: null,
+            task_id: null,
+            revision: 1,
+            projected: false,
+            notification_id: null,
+          });
+      } else if (action.form === "bulk") {
+        const chosen = tasks.filter((t) => selectedTaskIds.includes(t.id));
+        if (!chosen.length)
+          throw new Error("Select tasks before opening their bulk editor.");
+        setBulkEditor(chosen);
+      } else if (action.form === "memory") {
+        const memory = memories.find((m) => m.id === action.entity_id);
+        if (!memory)
+          throw new Error(
+            "Open Memory and choose a visible memory before correcting it.",
+          );
+        setEditingMemory(memory);
       } else {
         setView("all");
-        createTask();
+        if (action.entity_id)
+          setSelected(
+            await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
+          );
+        else createTask();
       }
     } else {
+      if (
+        action.entity_id &&
+        !["all", "organize", "notes", "reminders", "memory"].includes(
+          action.view ?? "",
+        )
+      )
+        throw new Error(
+          "Choose Work, Projects & goals, Notes, Task alerts or Memory to open a record.",
+        );
       setQuery("");
       setTaskStatus("all");
       setProjectFilter("");
       setOrganizationFilter(emptyFilter);
+      setTaskFilters(emptyTaskFilters);
       setWorkKind("all");
       setView(action.view ?? "today");
       if (action.entity_id && action.view === "all") {
@@ -673,7 +958,15 @@ export default function App() {
         );
       } else if (action.entity_id && action.view === "organize") {
         const current = await api<Organization>("/organization");
-        if (![...current.spaces, ...current.areas, ...current.goals, ...current.projects, ...current.actors].some(row => row.id === action.entity_id))
+        if (
+          ![
+            ...current.spaces,
+            ...current.areas,
+            ...current.goals,
+            ...current.projects,
+            ...current.actors,
+          ].some((row) => row.id === action.entity_id)
+        )
           throw new Error("That organization record is no longer available.");
         setOrganization(current);
         setProjects(current.projects);
@@ -685,6 +978,13 @@ export default function App() {
             "/notes/" + encodeURIComponent(action.entity_id),
           ),
         );
+      } else if (action.entity_id && action.view === "memory") {
+        const data = await api<{ items: Memory[] }>("/memory?q=");
+        const found = data.items.find((m) => m.id === action.entity_id);
+        if (!found)
+          throw new Error("That memory is unavailable. Search Memory first.");
+        setMemories(data.items);
+        setEditingMemory(found);
       } else if (action.entity_id && action.view === "reminders") {
         const record = await api<Schedule>(
           "/schedules/" + encodeURIComponent(action.entity_id),
@@ -696,14 +996,23 @@ export default function App() {
         setHighlight(record.id);
       }
     }
+    setError("");
+    setSidebar(false);
+    if (mobile) setCompanion(false);
   }
   async function showActions(actions: UIAction[] = []) {
     for (const action of actions) {
       if (displayedActions.current.has(action.id)) continue;
       displayedActions.current.add(action.id);
       try {
-        await runSiteControl(action);
-        uiResults.current.push({ id: action.id, status: "displayed" });
+        const result = (await runSiteControl(action)) as
+          | { data?: unknown }
+          | undefined;
+        uiResults.current.push({
+          id: action.id,
+          status: "displayed",
+          data: result?.data,
+        });
       } catch (e) {
         const message = (e as Error).message;
         uiResults.current.push({ id: action.id, status: "failed", message });
@@ -1016,9 +1325,16 @@ export default function App() {
         !t.project?.toLowerCase().includes(query.toLowerCase())
       )
         return false;
-      if (taskStatus !== "all" && t.status !== taskStatus) return false;
+      if (
+        taskStatus === "active"
+          ? ["completed", "cancelled"].includes(t.status)
+          : taskStatus !== "all" && t.status !== taskStatus
+      )
+        return false;
+      if (!matchesTaskFilters(t, taskFilters)) return false;
       if (projectFilter && t.project !== projectFilter) return false;
-      if (!matchesOrganization(t, organizationFilter, organization)) return false;
+      if (!matchesOrganization(t, organizationFilter, organization))
+        return false;
       if (view === "today") return scheduledBy(t, today);
       if (view === "week") return scheduledBy(t, weekEnd);
       if (view === "inbox") return !t.project_id && !t.area_id && !t.space_id;
@@ -1037,6 +1353,26 @@ export default function App() {
     done = filtered.filter((t) => t.status === "completed"),
     unread = notices.filter((n) => !n.read_at).length;
   const uiContext: UIContext = {
+    layout: view === "organize" ? organizationLayout : workLayout,
+    sort: workSort,
+    group_by: workGroup,
+    timeline_date: timelineDate || today,
+    timeline_span: timelineSpan,
+    organization_tab: organizationTab,
+    settings_section: settingsSection,
+    notes_mode: notesMode,
+    show_archived: showArchived,
+    ...taskFilters,
+    editor: editors.summary,
+    device_preferences: {
+      voice: voiceName,
+      voices: boot?.voice_options.live?.voices ?? [],
+      wake_enabled: wakeEnabled,
+      wake_supported: !!recognitionType(),
+      density,
+      private_chat: effectivePrivate,
+    },
+
     view,
     chat_open: companion,
     mobile,
@@ -1058,18 +1394,22 @@ export default function App() {
     goal_id: organizationFilter.goal,
     work_kind: view === "reminders" ? "reminder" : workKind,
     visible_ids:
-      view === "notes"
-        ? noteVisible
-        : ["all", "calendar", "reminders"].includes(view)
-          ? workVisible
-          : (view === "reminders"
-              ? schedules
-              : view === "memory"
-                ? memories
-                : filtered
-            )
-              .slice(0, 60)
-              .map((item) => item.id),
+      view === "organize"
+        ? organizationVisible
+        : view === "notes"
+          ? noteVisible
+          : ["all", "calendar", "reminders", "today", "inbox", "week"].includes(
+                view,
+              )
+            ? workVisible
+            : (view === "reminders"
+                ? schedules
+                : view === "memory"
+                  ? memories
+                  : filtered
+              )
+                .slice(0, 60)
+                .map((item) => item.id),
     task_status: taskStatus,
     project: projectFilter,
   };
@@ -1086,17 +1426,17 @@ export default function App() {
     await showActions(response.actions);
   };
   const titles: Record<View, string> = {
-    organize: "Outcomes, connected to your work.",
-    today: "A little space for your day.",
-    inbox: "Catch it. Clear your head.",
-    week: "A look at the week ahead.",
-    all: "Everything, in one place.",
-    reminders: "The things worth a nudge.",
-    calendar: "Make room for what matters.",
-    notes: "Thoughts, connected to your work.",
-    memory: "A companion that remembers.",
-    notifications: "Your reminders are here.",
-    settings: "Make yourself at home.",
+    organize: "Projects & goals",
+    today: "Today",
+    inbox: "Inbox",
+    week: "Next 7 days",
+    all: "Work",
+    reminders: "Task alerts",
+    calendar: "Calendar",
+    notes: "Notes",
+    memory: "Memory",
+    notifications: "Notifications",
+    settings: "Settings",
   };
   if (loading)
     return (
@@ -1167,7 +1507,10 @@ export default function App() {
   return (
     <div
       className={
-        "app-shell " + (voiceState && !voiceState.closed ? "voice-active" : "")
+        "app-shell density-" +
+        density +
+        " " +
+        (voiceState && !voiceState.closed ? "voice-active" : "")
       }
     >
       {sidebar && (
@@ -1208,9 +1551,14 @@ export default function App() {
               <item.icon size={18} />
               <span>{item.label}</span>
               {item.id === "inbox" &&
-                open.filter((t) => !t.project).length > 0 && (
+                open.filter((t) => !t.project_id && !t.space_id && !t.area_id)
+                  .length > 0 && (
                   <span className="count">
-                    {open.filter((t) => !t.project).length}
+                    {
+                      open.filter(
+                        (t) => !t.project_id && !t.space_id && !t.area_id,
+                      ).length
+                    }
                   </span>
                 )}
             </button>
@@ -1332,35 +1680,17 @@ export default function App() {
         <div className="workspace">
           <main className="content">
             <div className="page-heading">
-              <p className="eyebrow">
-                {view === "today"
-                  ? new Intl.DateTimeFormat(undefined, {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                      timeZone: boot.preferences.timezone,
-                    }).format(new Date())
-                  : "YOUR PERSONAL SPACE"}
-              </p>
-              <h1>
-                {view === "today"
-                  ? "Good " +
-                    (new Date().getHours() < 12
-                      ? "morning"
-                      : new Date().getHours() < 18
-                        ? "afternoon"
-                        : "evening") +
-                    ", " +
-                    boot.name +
-                    "."
-                  : (nav.find((n) => n.id === view)?.label ??
-                    (view === "settings"
-                      ? "Settings"
-                      : view === "reminders"
-                        ? "Reminders"
-                        : "Notifications"))}
-              </h1>
-              <p>{titles[view]}</p>
+              {view === "today" && (
+                <p className="eyebrow">
+                  {new Intl.DateTimeFormat(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    timeZone: boot.preferences.timezone,
+                  }).format(new Date())}
+                </p>
+              )}
+              <h1>{titles[view]}</h1>
             </div>
             {[
               "today",
@@ -1370,65 +1700,276 @@ export default function App() {
               "calendar",
               "reminders",
             ].includes(view) && (
-              <div className="task-filters">
-                <OrganizationFilters organization={organization} value={organizationFilter} onChange={setOrganizationFilter} />
-                <label>
-                  Status
-                  <select
-                    aria-label="Task status filter"
-                    value={taskStatus}
-                    onChange={(e) =>
-                      setTaskStatus(e.target.value as typeof taskStatus)
+              <details className="filter-panel">
+                <summary>
+                  Filters & sort{" "}
+                  <span>
+                    {
+                      [
+                        taskStatus !== "active",
+                        !!projectFilter,
+                        ...Object.values(organizationFilter).map(Boolean),
+                        ...Object.values(taskFilters).map(Boolean),
+                        workKind !== "all",
+                      ].filter(Boolean).length
                     }
-                  >
-                    <option value="all">All</option>
-                    <option value="open">Open</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="waiting">Waiting</option>
-                    <option value="deferred">Deferred</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </label>
-                <label>
-                  Project
-                  <select
-                    aria-label="Project filter"
-                    value={projectFilter}
-                    onChange={(e) => setProjectFilter(e.target.value)}
-                  >
-                    <option value="">All projects</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name}
-                        {p.archived ? " (archived)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {["all", "calendar", "reminders"].includes(view) && (
+                  </span>
+                </summary>
+                <div className="task-filters">
+                  <OrganizationFilters
+                    organization={organization}
+                    value={organizationFilter}
+                    onChange={setOrganizationFilter}
+                  />
                   <label>
-                    Kind
+                    Status
                     <select
-                      aria-label="Work kind filter"
-                      value={workKind}
+                      aria-label="Task status filter"
+                      value={taskStatus}
                       onChange={(e) =>
-                        setWorkKind(e.target.value as typeof workKind)
+                        setTaskStatus(e.target.value as typeof taskStatus)
                       }
                     >
-                      <option value="all">
-                        {view === "calendar" ? "All items" : "All tasks"}
-                      </option>
-                      <option value="task">Tasks</option>
-                      <option value="reminder">Reminders</option>
+                      <option value="active">Active</option>
+                      <option value="all">All</option>
+                      <option value="open">Open</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="waiting">Waiting</option>
+                      <option value="deferred">Deferred</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="completed">Completed</option>
                     </select>
                   </label>
-                )}
+                  <label>
+                    Project
+                    <select
+                      aria-label="Project filter"
+                      value={projectFilter}
+                      onChange={(e) => setProjectFilter(e.target.value)}
+                    >
+                      <option value="">All projects</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                          {p.archived ? " (archived)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Assignee
+                    <select
+                      aria-label="Assignee filter"
+                      value={taskFilters.assignee}
+                      onChange={(e) =>
+                        setTaskFilters({
+                          ...taskFilters,
+                          assignee: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Everyone</option>
+                      {organization.actors.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Work type
+                    <input
+                      aria-label="Work type filter"
+                      value={taskFilters.work_type}
+                      onChange={(e) =>
+                        setTaskFilters({
+                          ...taskFilters,
+                          work_type: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Tag
+                    <input
+                      aria-label="Tag filter"
+                      value={taskFilters.tag}
+                      onChange={(e) =>
+                        setTaskFilters({ ...taskFilters, tag: e.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Due from
+                    <input
+                      aria-label="Due from filter"
+                      type="date"
+                      value={taskFilters.due_from}
+                      onChange={(e) =>
+                        setTaskFilters({
+                          ...taskFilters,
+                          due_from: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Due through
+                    <input
+                      aria-label="Due through filter"
+                      type="date"
+                      value={taskFilters.due_through}
+                      onChange={(e) =>
+                        setTaskFilters({
+                          ...taskFilters,
+                          due_through: e.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Sort
+                    <select
+                      aria-label="Sort work"
+                      value={workSort}
+                      onChange={(e) => setWorkSort(e.target.value as WorkSort)}
+                    >
+                      {["priority", "due", "planned", "title", "updated"].map(
+                        (v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    Group board
+                    <select
+                      aria-label="Group work"
+                      value={workGroup}
+                      onChange={(e) =>
+                        setWorkGroup(e.target.value as WorkGroup)
+                      }
+                    >
+                      {["status", "project", "assignee"].map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {["all", "calendar", "reminders"].includes(view) && (
+                    <label>
+                      Kind
+                      <select
+                        aria-label="Work kind filter"
+                        value={workKind}
+                        onChange={(e) =>
+                          setWorkKind(e.target.value as typeof workKind)
+                        }
+                      >
+                        <option value="all">
+                          {view === "calendar" ? "All items" : "All tasks"}
+                        </option>
+                        <option value="task">Tasks</option>
+                        <option value="reminder">Reminders</option>
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setTaskStatus("active");
+                      setProjectFilter("");
+                      setOrganizationFilter(emptyFilter);
+                      setTaskFilters(emptyTaskFilters);
+                      setWorkKind("all");
+                      setQuery("");
+                    }}
+                  >
+                    Reset filters
+                  </button>
+                </div>
+              </details>
+            )}
+            {[
+              "today",
+              "inbox",
+              "week",
+              "all",
+              "calendar",
+              "reminders",
+            ].includes(view) && (
+              <div className="active-filters">
+                {[
+                  projectFilter,
+                  organization.spaces.find(
+                    (s) => s.id === organizationFilter.space,
+                  )?.name,
+                  organization.areas.find(
+                    (a) => a.id === organizationFilter.area,
+                  )?.name,
+                  organization.goals.find(
+                    (g) => g.id === organizationFilter.goal,
+                  )?.name,
+                  taskStatus !== "active"
+                    ? "Status: " + taskStatus.replaceAll("_", " ")
+                    : "",
+                  taskFilters.assignee
+                    ? "Assignee: " +
+                      (organization.actors.find(
+                        (a) => a.id === taskFilters.assignee,
+                      )?.name ?? taskFilters.assignee)
+                    : "",
+                  taskFilters.work_type,
+                  taskFilters.tag ? "#" + taskFilters.tag : "",
+                  taskFilters.due_from ? "Due ≥ " + taskFilters.due_from : "",
+                  taskFilters.due_through
+                    ? "Due ≤ " + taskFilters.due_through
+                    : "",
+                  workKind !== "all" ? workKind : "",
+                ]
+                  .filter(Boolean)
+                  .map((label, i) => (
+                    <span key={i}>{label}</span>
+                  ))}
               </div>
             )}
-            {["all", "calendar", "reminders"].includes(view) && (
+            {[
+              "all",
+              "calendar",
+              "reminders",
+              "today",
+              "inbox",
+              "week",
+            ].includes(view) && (
               <>
+                {["today", "inbox", "week", "all"].includes(view) && (
+                  <form className="quick-add compact-capture" onSubmit={add}>
+                    <Plus size={17} />
+                    <input
+                      value={quick}
+                      onChange={(e) => setQuick(e.target.value)}
+                      aria-label="New task"
+                      placeholder="Add a task…"
+                      maxLength={500}
+                    />
+                    <button disabled={!quick.trim() || busy} type="submit">
+                      Add<span>↵</span>
+                    </button>
+                  </form>
+                )}
                 <Workspace
+                  layout={workLayout}
+                  onLayout={setWorkLayout}
+                  sort={workSort}
+                  group={workGroup}
+                  taskFilters={taskFilters}
+                  timelineDate={timelineDate || today}
+                  timelineSpan={timelineSpan}
+                  onTimelineDate={setTimelineDate}
+                  onTimelineSpan={setTimelineSpan}
                   onGoogleEvent={setGoogleEvent}
                   organization={organization}
                   organizationFilter={organizationFilter}
@@ -1454,6 +1995,11 @@ export default function App() {
                   day={calendarDay || today}
                   onDay={setCalendarDay}
                   today={today}
+                  preset={
+                    ["today", "inbox", "week"].includes(view)
+                      ? (view as "today" | "inbox" | "week")
+                      : "all"
+                  }
                   tasks={tasks}
                   schedules={schedules}
                   notices={notices}
@@ -1488,139 +2034,6 @@ export default function App() {
                     );
                   }}
                 />
-
-              </>
-            )}
-            {["today", "inbox", "week"].includes(view) && (
-              <>
-                <form className="quick-add" onSubmit={add}>
-                  <Plus size={21} />
-                  <input
-                    value={quick}
-                    onChange={(e) => setQuick(e.target.value)}
-                    aria-label="New task"
-                    placeholder="What's on your mind? Add a task…"
-                    maxLength={500}
-                  />
-                  <button disabled={!quick.trim() || busy} type="submit">
-                    {busy ? "Saving…" : "Add task"}
-                    <span>↵</span>
-                  </button>
-                </form>
-                <div className="section-head">
-                  <h2>
-                    {view === "today"
-                      ? "Your focus"
-                      : view === "week"
-                        ? "Coming up"
-                        : "Tasks"}
-                    <span>{active.length}</span>
-                  </h2>
-                  <button
-                    className="text-button"
-                    onClick={() => setReminder(true)}
-                  >
-                    <Clock3 size={15} />
-                    Set a reminder
-                  </button>
-                </div>
-                {active.length ? (
-                  <div className="task-list">
-                    {active.map((task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        today={today}
-                        busy={busy}
-                        onToggle={() => void toggle(task)}
-                        onOpen={() => setSelected(task)}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <div className="empty-symbol">
-                      <Check size={27} />
-                    </div>
-                    <h3>
-                      {query
-                        ? "Nothing matches that search."
-                        : view === "today"
-                          ? "A clear day ahead."
-                          : "Room for what matters."}
-                    </h3>
-                    <p>
-                      {query
-                        ? "Try another word or check All tasks."
-                        : view === "today"
-                          ? "Add a task, give it a due date, or ask Eridani to help plan your day."
-                          : "Capture a thought above, or tell Eridani what you need to do."}
-                    </p>
-                    {view === "today" && open.length > 0 && (
-                      <button
-                        className="text-button"
-                        onClick={() => setView("inbox")}
-                      >
-                        See your Inbox
-                        <ChevronRight size={15} />
-                      </button>
-                    )}
-                  </div>
-                )}
-                {done.length > 0 && (
-                  <details className="completed">
-                    <summary>
-                      <ChevronRight size={14} />
-                      Completed<span>{done.length}</span>
-                    </summary>
-                    {done.map((task) => (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        today={today}
-                        busy={busy}
-                        onToggle={() => void toggle(task)}
-                        onOpen={() => setSelected(task)}
-                      />
-                    ))}
-                  </details>
-                )}
-                {view === "today" &&
-                  schedules.some((s) => s.status === "active") && (
-                    <section className="up-next">
-                      <div className="section-head">
-                        <h2>Next reminder</h2>
-                        <button
-                          className="text-button"
-                          onClick={() => setView("reminders")}
-                        >
-                          View all
-                          <ChevronRight size={14} />
-                        </button>
-                      </div>
-                      {schedules
-                        .filter((s) => s.status === "active" && s.next_run_at)
-                        .sort((a, b) =>
-                          a.next_run_at!.localeCompare(b.next_run_at!),
-                        )
-                        .slice(0, 1)
-                        .map((s) => (
-                          <div key={s.id} className="next-reminder">
-                            <Clock3 size={19} />
-                            <div>
-                              <strong>{s.title}</strong>
-                              <span>
-                                {timeLabel(
-                                  s.next_run_at!,
-                                  boot.preferences.timezone,
-                                )}
-                              </span>
-                            </div>
-                            {s.recurrence && <Repeat2 size={16} />}
-                          </div>
-                        ))}
-                    </section>
-                  )}
               </>
             )}
             {view === "notifications" && (
@@ -1637,58 +2050,64 @@ export default function App() {
                     Enable notifications
                   </button>
                 </div>
-                {pendingNotices.map((n) => (
-                  <article
-                    className={"notice " + (!n.read_at ? "unread" : "")}
-                    key={n.id}
-                  >
-                    <div className="notice-heading">
-                      <Bell size={17} />
-                      <strong>{n.title}</strong>
-                      <span>
-                        {timeLabel(n.scheduled_at, boot.preferences.timezone)}
-                      </span>
-                    </div>
-                    {n.body && <p>{n.body}</p>}
-                    <div className="notice-actions">
-                      <button
-                        onClick={() =>
-                          void mutate(
-                            "notification.complete",
-                            { notification_id: n.id },
-                            "Reminder completed",
-                          )
-                        }
-                      >
-                        <Check size={14} />
-                        Complete
-                      </button>
-                      <button
-                        onClick={() =>
-                          void mutate(
-                            "notification.snooze",
-                            { notification_id: n.id, minutes: 10 },
-                            "Snoozed for 10 minutes",
-                          )
-                        }
-                      >
-                        <Clock3 size={14} />
-                        10 min
-                      </button>
-                      <button
-                        onClick={() =>
-                          void mutate(
-                            "notification.dismiss",
-                            { notification_id: n.id },
-                            "Dismissed",
-                          )
-                        }
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                {pendingNotices
+                  .filter((n) =>
+                    JSON.stringify(n)
+                      .toLowerCase()
+                      .includes(query.toLowerCase()),
+                  )
+                  .map((n) => (
+                    <article
+                      className={"notice " + (!n.read_at ? "unread" : "")}
+                      key={n.id}
+                    >
+                      <div className="notice-heading">
+                        <Bell size={17} />
+                        <strong>{n.title}</strong>
+                        <span>
+                          {timeLabel(n.scheduled_at, boot.preferences.timezone)}
+                        </span>
+                      </div>
+                      {n.body && <p>{n.body}</p>}
+                      <div className="notice-actions">
+                        <button
+                          onClick={() =>
+                            void mutate(
+                              "notification.complete",
+                              { notification_id: n.id },
+                              "Reminder completed",
+                            )
+                          }
+                        >
+                          <Check size={14} />
+                          Complete
+                        </button>
+                        <button
+                          onClick={() =>
+                            void mutate(
+                              "notification.snooze",
+                              { notification_id: n.id, minutes: 10 },
+                              "Snoozed for 10 minutes",
+                            )
+                          }
+                        >
+                          <Clock3 size={14} />
+                          10 min
+                        </button>
+                        <button
+                          onClick={() =>
+                            void mutate(
+                              "notification.dismiss",
+                              { notification_id: n.id },
+                              "Dismissed",
+                            )
+                          }
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </article>
+                  ))}
                 {!pendingNotices.length && (
                   <div className="empty-state">
                     <Bell size={30} />
@@ -1699,14 +2118,48 @@ export default function App() {
               </>
             )}
             {view === "organize" && (
-              <ProductivityPage organization={organization} busy={busy} mutate={mutate} query={query} highlight={highlight}
+              <ProductivityPage
+                organization={organization}
+                busy={busy}
+                mutate={mutate}
+                query={query}
+                highlight={highlight}
                 onEditing={setOrganizationEditing}
-                onProject={(p) => { setProjectFilter(p.name); setOrganizationFilter(emptyFilter); setQuery(""); setView("all"); }}
-                onNote={(id) => { void openNote(id); }}
+                tab={organizationTab}
+                onTab={setOrganizationTab}
+                layout={organizationLayout}
+                onLayout={setOrganizationLayout}
+                archived={showArchived}
+                onArchived={setShowArchived}
+                space={organizationFilter.space}
+                onSpace={(space) =>
+                  setOrganizationFilter({ ...emptyFilter, space })
+                }
+                editorRequest={organizationEditor}
+                onEditorRequestHandled={() => setOrganizationEditor(null)}
+                onVisible={setOrganizationVisible}
+                today={today}
+                timelineDate={timelineDate || today}
+                timelineSpan={timelineSpan}
+                onTimelineDate={setTimelineDate}
+                onTimelineSpan={setTimelineSpan}
+                onProject={(p) => {
+                  setProjectFilter(p.name);
+                  setOrganizationFilter(emptyFilter);
+                  setQuery("");
+                  setView("all");
+                }}
+                onNote={(id) => {
+                  void openNote(id);
+                }}
               />
             )}
             {view === "notes" && (
               <NotesPage
+                archived={showArchived}
+                onArchived={setShowArchived}
+                mode={notesMode}
+                onMode={setNotesMode}
                 organization={organization}
                 organizationFilter={organizationFilter}
                 onOrganizationFilter={setOrganizationFilter}
@@ -1926,107 +2379,157 @@ export default function App() {
             )}
             {view === "settings" && (
               <>
-                <section className="voice-settings settings-sections">
-                  <h2>Voice & conversation</h2>
-                  <p>
-                    Choose how Eri sounds on this device. Changes apply to the
-                    next voice session. Voice ends after 15 quiet seconds
-                    following the last response.
-                  </p>
-                  <div className="voice-options">
-                    {Object.keys(boot.voice_options).length > 1 && (
+                <div
+                  className="settings-tabs"
+                  role="tablist"
+                  aria-label="Settings sections"
+                >
+                  {(
+                    [
+                      "profile",
+                      "voice",
+                      "integrations",
+                      "privacy",
+                      "system",
+                    ] as const
+                  ).map((section) => (
+                    <button
+                      key={section}
+                      role="tab"
+                      aria-selected={settingsSection === section}
+                      onClick={() => setSettingsSection(section)}
+                    >
+                      {section.charAt(0).toUpperCase() + section.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {settingsSection === "profile" && (
+                  <section className="density-setting">
+                    <label>
+                      Display density
+                      <select
+                        aria-label="Display density"
+                        value={density}
+                        onChange={(e) =>
+                          setDensity(e.target.value as typeof density)
+                        }
+                      >
+                        <option value="compact">Compact</option>
+                        <option value="comfortable">Comfortable</option>
+                      </select>
+                    </label>
+                  </section>
+                )}
+                {settingsSection === "voice" && (
+                  <section className="voice-settings settings-sections">
+                    <h2>Voice & conversation</h2>
+                    <p>
+                      Choose how Eri sounds on this device. Changes apply to the
+                      next voice session. Voice ends after 15 quiet seconds
+                      following the last response.
+                    </p>
+                    <div className="voice-options">
+                      {Object.keys(boot.voice_options).length > 1 && (
+                        <label>
+                          Voice mode
+                          <select
+                            aria-label="Voice provider"
+                            value={voiceProvider}
+                            disabled={!!voiceState && !voiceState.closed}
+                            onChange={(e) =>
+                              chooseProvider(e.target.value as VoiceProvider)
+                            }
+                          >
+                            {Object.entries(boot.voice_options).map(
+                              ([provider, option]) => (
+                                <option key={provider} value={provider}>
+                                  {option.label}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        </label>
+                      )}
                       <label>
-                        Voice mode
+                        Voice
                         <select
-                          aria-label="Voice provider"
-                          value={voiceProvider}
+                          aria-label="Voice"
+                          value={voiceName}
                           disabled={!!voiceState && !voiceState.closed}
-                          onChange={(e) =>
-                            chooseProvider(e.target.value as VoiceProvider)
-                          }
+                          onChange={(e) => {
+                            setVoiceName(e.target.value);
+                            localStorage.setItem(
+                              "eri-voice-" + voiceProvider,
+                              e.target.value,
+                            );
+                          }}
                         >
-                          {Object.entries(boot.voice_options).map(([provider, option]) => (
-                            <option key={provider} value={provider}>
-                              {option.label}
+                          {(
+                            boot.voice_options?.[voiceProvider]?.voices ?? [
+                              "marin",
+                            ]
+                          ).map((name) => (
+                            <option key={name} value={name}>
+                              {name.charAt(0).toUpperCase() + name.slice(1)}
                             </option>
                           ))}
                         </select>
                       </label>
-                    )}
-                    <label>
-                      Voice
-                      <select
-                        aria-label="Voice"
-                        value={voiceName}
-                        disabled={!!voiceState && !voiceState.closed}
-                        onChange={(e) => {
-                          setVoiceName(e.target.value);
-                          localStorage.setItem(
-                            "eri-voice-" + voiceProvider,
-                            e.target.value,
-                          );
-                        }}
-                      >
-                        {(
-                          boot.voice_options?.[voiceProvider]?.voices ?? [
-                            "marin",
-                          ]
-                        ).map((name) => (
-                          <option key={name} value={name}>
-                            {name.charAt(0).toUpperCase() + name.slice(1)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                    </div>
 
-                  <p className="voice-model-note">
-                    {voiceProvider === "live"
-                      ? "GPT-Live · natural, simultaneous listening and speaking · $0.05 per connected minute, plus task work."
-                      : "Realtime · the existing turn-based voice experience."}
-                  </p>
-                  <p className="voice-model-note">
-                    Task agent: {boot.agent_model || "gpt-5.6-luna"}. GPT-Live
-                    delegates task work to this agent using your saved records
-                    and tools.
-                  </p>
-                  {voiceState && !voiceState.closed && (
                     <p className="voice-model-note">
-                      End the active voice session before changing its voice.
+                      {voiceProvider === "live"
+                        ? "GPT-Live · natural, simultaneous listening and speaking · $0.05 per connected minute, plus task work."
+                        : "Realtime · the existing turn-based voice experience."}
                     </p>
-                  )}
-                  <div className="wake-controls">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={wakeEnabled}
-                        disabled={!recognitionType()}
-                        onChange={(e) => {
-                          setWakeEnabled(e.target.checked);
-                          if (!e.target.checked) setWakeStatus("");
-                        }}
-                      />
-                      “Eri” or “Hey, Eri”
-                    </label>
-                    <span>
-                      {wakeEnabled
-                        ? voiceState && !voiceState.closed
-                          ? "Paused during voice"
-                          : wakeStatus
-                        : wakeStatus ||
-                          (recognitionType()
-                            ? "Opt in · browser speech service · page open"
-                            : "Unavailable in this browser")}
-                    </span>
-                  </div>
-                </section>
-                <LinearSettings revision={noteRevision} mutate={mutate} />
-                <GoogleSettings
-                  revision={noteRevision}
-                  voiceActive={!!voiceState && !voiceState.closed}
-                  mutate={mutate}
-                />
+                    <p className="voice-model-note">
+                      Task agent: {boot.agent_model || "gpt-5.6-luna"}. GPT-Live
+                      delegates task work to this agent using your saved records
+                      and tools.
+                    </p>
+                    {voiceState && !voiceState.closed && (
+                      <p className="voice-model-note">
+                        End the active voice session before changing its voice.
+                      </p>
+                    )}
+                    <div className="wake-controls">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={wakeEnabled}
+                          disabled={!recognitionType()}
+                          onChange={(e) => {
+                            setWakeEnabled(e.target.checked);
+                            if (!e.target.checked) setWakeStatus("");
+                          }}
+                        />
+                        “Eri” or “Hey, Eri”
+                      </label>
+                      <span>
+                        {wakeEnabled
+                          ? voiceState && !voiceState.closed
+                            ? "Paused during voice"
+                            : wakeStatus
+                          : wakeStatus ||
+                            (recognitionType()
+                              ? "Opt in · browser speech service · page open"
+                              : "Unavailable in this browser")}
+                      </span>
+                    </div>
+                  </section>
+                )}
+                {settingsSection === "integrations" && (
+                  <>
+                    <LinearSettings revision={noteRevision} mutate={mutate} />
+                    <GoogleSettings
+                      revision={noteRevision}
+                      voiceActive={!!voiceState && !voiceState.closed}
+                      mutate={mutate}
+                    />
+                  </>
+                )}
                 <SettingsPanel
+                  section={settingsSection}
                   boot={boot}
                   busy={busy}
                   onSave={async (args) => {
@@ -2071,6 +2574,7 @@ export default function App() {
                 title="Voice settings"
                 onClick={() => {
                   setView("settings");
+                  setSettingsSection("voice");
                   setCompanion(false);
                 }}
               >
@@ -2288,49 +2792,13 @@ export default function App() {
         </div>
       )}
       {editingMemory && (
-        <div className="modal-backdrop">
-          <form
-            className="dialog"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const content = String(
-                new FormData(e.currentTarget).get("content"),
-              ).trim();
-              if (
-                content &&
-                (await mutate(
-                  "memory.correct",
-                  { memory_id: editingMemory.id, content },
-                  "Memory corrected",
-                ))
-              )
-                setEditingMemory(null);
-            }}
-          >
-            <div className="dialog-heading">
-              <h2>Correct memory</h2>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Close memory editor"
-                onClick={() => setEditingMemory(null)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <textarea
-              name="content"
-              aria-label="Memory correction"
-              defaultValue={editingMemory.content}
-              required
-              maxLength={20000}
-              rows={5}
-            />
-            <button className="primary" disabled={busy}>
-              Save correction
-            </button>
-          </form>
-        </div>
+        <MemoryEditor
+          key={editingMemory.id}
+          memory={editingMemory}
+          busy={busy}
+          mutate={mutate}
+          onClose={() => setEditingMemory(null)}
+        />
       )}
       {toast && (
         <div className="toast" role="status">
@@ -2411,6 +2879,10 @@ export default function App() {
             if (selected.id === "new") {
               delete values.task_id;
               delete values.expected_revision;
+              if (values.status !== "open")
+                throw new Error(
+                  "Save the new task before changing its status.",
+                );
               delete values.status;
             }
             const result = await mutate<Task>(
@@ -2419,6 +2891,7 @@ export default function App() {
               "Task saved",
             );
             if (result) setSelected(null);
+            return result;
           }}
           onArchive={async () => {
             const result = await mutate(
@@ -2461,6 +2934,7 @@ export default function App() {
           onSettings={() => {
             setGoogleEvent(null);
             setView("settings");
+            setSettingsSection("integrations");
           }}
           onSaved={() => {
             setGoogleEvent(null);
@@ -2476,7 +2950,9 @@ export default function App() {
       {noteEditor && (
         <NoteEditor
           organization={organization}
-          onOpenNote={(id) => { void openNote(id); }}
+          onOpenNote={(id) => {
+            void openNote(id);
+          }}
           key={
             noteEditor.id +
             ":" +
@@ -2520,6 +2996,7 @@ export default function App() {
               setSelectedTaskIds([]);
               setSelectingTasks(false);
             }
+            return result;
           }}
         />
       )}

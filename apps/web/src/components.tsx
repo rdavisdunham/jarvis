@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
 import { emptyOrganization, type Organization } from "./productivity";
 import { BudgetHolds } from "./BudgetHolds";
@@ -159,7 +161,11 @@ export function TaskRow({
           {"!".repeat(task.priority)}
         </span>
       )}
-      {task.planned_date && <span className="due">Planned {relativeDate(task.planned_date, today)}</span>}
+      {task.planned_date && (
+        <span className="due">
+          Planned {relativeDate(task.planned_date, today)}
+        </span>
+      )}
       {task.due_date && (
         <button
           className={"due " + (task.due_date < today && !done ? "overdue" : "")}
@@ -213,12 +219,92 @@ export function TaskDialog({
   task: Task;
   busy: boolean;
   onClose: () => void;
-  onSave: (args: unknown) => Promise<void>;
+  onSave: (args: unknown) => Promise<unknown>;
   onArchive: () => Promise<void>;
 }) {
   useDialogFocus();
   const [draft, setDraft] = useState(task);
   useEffect(() => setDraft(task), [task]);
+  async function save() {
+    if (!draft.title.trim()) return;
+    return onSave({
+      task_id: task.id,
+      expected_revision: task.revision,
+      title: draft.title,
+      notes: draft.notes,
+      project_id: draft.project_id || null,
+      parent_task_id: draft.parent_task_id || null,
+      assignee: draft.assignee || "owner",
+      work_type: draft.work_type || "",
+      tags: draft.tags ?? [],
+      space_id: draft.project_id ? undefined : draft.space_id || null,
+      area_id: draft.project_id ? undefined : draft.area_id || null,
+      planned_date: draft.planned_date || null,
+      estimate_minutes: draft.estimate_minutes ?? null,
+      due_date: draft.due_date || null,
+      due_time: draft.due_date ? draft.due_time || null : null,
+      due_timezone:
+        draft.due_date && draft.due_time
+          ? draft.due_timezone || timezone
+          : null,
+      priority: draft.priority,
+      status: draft.status,
+    });
+  }
+  const editorSchema = z.object({
+    title: z.string().min(1).max(500),
+    notes: z.string().max(10000),
+    priority: z.number().int().min(0).max(3),
+    status: choice(
+      task.id === "new"
+        ? ["open"]
+        : [
+            "open",
+            "in_progress",
+            "waiting",
+            "deferred",
+            "completed",
+            "cancelled",
+          ],
+    ),
+    project_id: nullableId(projects.map((p) => p.id)),
+    parent_task_id: nullableId(
+      tasks.filter((t) => t.id !== task.id).map((t) => t.id),
+    ),
+    space_id: nullableId(organization.spaces.map((s) => s.id)),
+    area_id: nullableId(organization.areas.map((a) => a.id)),
+    assignee: choice([
+      "owner",
+      ...organization.actors.map((a) => a.name),
+      task.assignee,
+    ]),
+    work_type: z.string().max(80),
+    tags: tagsField,
+    planned_date: z.string().date().or(z.literal("")).nullable(),
+    due_date: z.string().date().or(z.literal("")).nullable(),
+    due_time: z
+      .string()
+      .regex(/^$|^\\d{2}:\\d{2}(:\\d{2})?$/)
+      .nullable(),
+    due_timezone: z.string().max(100).nullable(),
+    estimate_minutes: z.number().int().min(1).max(100000).nullable(),
+  });
+  useEditor({
+    kind: "task",
+    record_id: task.id === "new" ? null : task.id,
+    dirty: JSON.stringify(draft) !== JSON.stringify(task),
+    busy,
+    schema: editorSchema,
+    values: Object.fromEntries(
+      Object.keys(editorSchema.shape).map((k) => [
+        k,
+        draft[k as keyof Task] ?? null,
+      ]),
+    ),
+    patch: (v) => setDraft((d) => ({ ...d, ...v })),
+    save,
+    close: onClose,
+  });
   return (
     <div
       className="modal-backdrop"
@@ -233,29 +319,7 @@ export function TaskDialog({
         aria-labelledby="task-dialog-title"
         onSubmit={(e) => {
           e.preventDefault();
-          void onSave({
-            task_id: task.id,
-            expected_revision: task.revision,
-            title: draft.title,
-            notes: draft.notes,
-            project_id: draft.project_id || null,
-            parent_task_id: draft.parent_task_id || null,
-            assignee: draft.assignee || "owner",
-            work_type: draft.work_type || "",
-            tags: draft.tags ?? [],
-            space_id: draft.project_id ? undefined : draft.space_id || null,
-            area_id: draft.project_id ? undefined : draft.area_id || null,
-            planned_date: draft.planned_date || null,
-            estimate_minutes: draft.estimate_minutes ?? null,
-            due_date: draft.due_date || null,
-            due_time: draft.due_date ? draft.due_time || null : null,
-            due_timezone:
-              draft.due_date && draft.due_time
-                ? draft.due_timezone || timezone
-                : null,
-            priority: draft.priority,
-            status: draft.status,
-          });
+          void save();
         }}
       >
         <div className="dialog-heading">
@@ -293,12 +357,40 @@ export function TaskDialog({
             placeholder="A little more context…"
           />
         </label>
-        <HomeFields organization={organization} disabled={!!draft.project_id}
-          value={projects.find(p => p.id === draft.project_id) ?? draft}
-          onChange={(home) => setDraft({ ...draft, ...home })} />
+        <HomeFields
+          organization={organization}
+          disabled={!!draft.project_id}
+          value={projects.find((p) => p.id === draft.project_id) ?? draft}
+          onChange={(home) => setDraft({ ...draft, ...home })}
+        />
         <div className="form-grid">
-          <label>Planned date<input type="date" value={draft.planned_date ?? ""} onChange={e => setDraft({ ...draft, planned_date: e.target.value || null })} /></label>
-          <label>Estimate (minutes)<input type="number" min={1} max={100000} value={draft.estimate_minutes ?? ""} onChange={e => setDraft({ ...draft, estimate_minutes: e.target.value ? Number(e.target.value) : null })} /></label>
+          <label>
+            Planned date
+            <input
+              type="date"
+              value={draft.planned_date ?? ""}
+              onChange={(e) =>
+                setDraft({ ...draft, planned_date: e.target.value || null })
+              }
+            />
+          </label>
+          <label>
+            Estimate (minutes)
+            <input
+              type="number"
+              min={1}
+              max={100000}
+              value={draft.estimate_minutes ?? ""}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  estimate_minutes: e.target.value
+                    ? Number(e.target.value)
+                    : null,
+                })
+              }
+            />
+          </label>
           <label>
             Due date
             <input
@@ -392,7 +484,16 @@ export function TaskDialog({
               list="assignee-options"
             />
             <datalist id="assignee-options">
-              {organization.actors.length ? organization.actors.filter(a => !a.archived).map(a => <option key={a.id} value={a.name} />) : <><option value="owner" /><option value="Eri" /></>}
+              {organization.actors.length ? (
+                organization.actors
+                  .filter((a) => !a.archived)
+                  .map((a) => <option key={a.id} value={a.name} />)
+              ) : (
+                <>
+                  <option value="owner" />
+                  <option value="Eri" />
+                </>
+              )}
             </datalist>
           </label>
           <label>
@@ -658,7 +759,9 @@ export function SettingsPanel({
   busy,
   onSave,
   onPush,
+  section,
 }: {
+  section: "profile" | "voice" | "integrations" | "privacy" | "system";
   boot: Bootstrap;
   busy: boolean;
   onSave: (args: unknown) => Promise<void>;
@@ -667,7 +770,7 @@ export function SettingsPanel({
   const p = boot.preferences;
   return (
     <div className="settings-sections">
-      <section>
+      <section hidden={section !== "profile"}>
         <h2>Your name</h2>
         <form
           className="setting-row"
@@ -696,7 +799,7 @@ export function SettingsPanel({
           </button>
         </form>
       </section>
-      <section>
+      <section hidden={section !== "privacy"}>
         <h2>Conversation & memory</h2>
         <p>
           Choose what stays with you. New settings apply to new conversations.
@@ -766,7 +869,7 @@ export function SettingsPanel({
           </p>
         </div>
       </section>
-      <section>
+      <section hidden={section !== "profile"}>
         <h2>Reminders</h2>
         <label className="setting-row">
           <span>
@@ -812,7 +915,7 @@ export function SettingsPanel({
         </label>
         <p className="footnote">Home time zone: {p.timezone}</p>
       </section>
-      <section>
+      <section hidden={section !== "system"}>
         <h2>Task agent</h2>
         <label className="setting-row">
           <span>
@@ -826,8 +929,13 @@ export function SettingsPanel({
             onChange={(e) => void onSave({ agent_profile: e.target.value })}
           >
             {boot.agent_options.map((model) => (
-              <option key={model.id} value={model.id} disabled={!model.available}>
-                {model.label}{model.available ? "" : " · API key needed"}
+              <option
+                key={model.id}
+                value={model.id}
+                disabled={!model.available}
+              >
+                {model.label}
+                {model.available ? "" : " · API key needed"}
               </option>
             ))}
           </select>
@@ -839,18 +947,20 @@ export function SettingsPanel({
         </p>
         {boot.agent_profile === "luna" && (
           <p className="footnote">
-            Luna uses low reasoning effort for task work, including tasks delegated
-            during GPT-Live conversations.
+            Luna uses low reasoning effort for task work, including tasks
+            delegated during GPT-Live conversations.
           </p>
         )}
-        {boot.agent_options.some((model) => model.provider === "gemini" && !model.available) && (
+        {boot.agent_options.some(
+          (model) => model.provider === "gemini" && !model.available,
+        ) && (
           <p className="footnote">
-            To try Gemini, add GEMINI_API_KEY to the server .env file, then recreate
-            the API and worker containers.
+            To try Gemini, add GEMINI_API_KEY to the server .env file, then
+            recreate the API and worker containers.
           </p>
         )}
       </section>
-      <section>
+      <section hidden={section !== "system"}>
         <h2>Model usage</h2>
         {boot.budget.tracking_enabled === false ? (
           <p className="footnote">
@@ -864,7 +974,11 @@ export function SettingsPanel({
               OpenAI Usage
             </a>{" "}
             and{" "}
-            <a href="https://aistudio.google.com/usage" target="_blank" rel="noreferrer">
+            <a
+              href="https://aistudio.google.com/usage"
+              target="_blank"
+              rel="noreferrer"
+            >
               Google AI Studio
             </a>
             .
@@ -935,7 +1049,7 @@ export function SettingsPanel({
           </>
         )}
       </section>
-      <section>
+      <section hidden={section !== "system"}>
         <h2>Your data</h2>
         <p className="footnote">
           {boot.last_backup_at

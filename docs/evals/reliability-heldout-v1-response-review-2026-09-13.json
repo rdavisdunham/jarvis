@@ -1,0 +1,138 @@
+{
+  "source_artifact": ".runtime/reliability-heldout-v1.json",
+  "review_date": "2026-09-13",
+  "completed": true,
+  "scope": "All10 completed trials and16 conversational turns from stoppedv1, preserved as exploratory evidence only; not a completed48-trial benchmark.",
+  "excluded_from_final_scores": true,
+  "native_grades_preserved": true,
+  "reviewer": "Codex evaluation subagent; not independent human or blinded judge.",
+  "rubric": "Literal factual claims separately from instruction fulfillment. Truthful partial effects can pass factual review and fail semantic completion. Explicit suggested overrides annotate harness errors or valid alternative tool paths; raw source checks never changed.",
+  "stop_reason": "Fixture allowlist wrongly blocked production calendar_connection read; fresh run will retain a distinct source/result path.",
+  "reviews": [
+    {
+      "model": "gpt-5.6-luna",
+      "case": "cross_type_entity",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "True task omission: opens correct project in a list, but does not switch to requested timeline. Literal final wording accurately describes the organization view and avoids a false timeline claim.",
+      "evidence": "ui_show organize correct entity returns layout=list; no ui_workspace call. correct_project_timeline=false.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": false,
+      "reason": "True task omission: opens correct project in a list, but does not switch to requested timeline. Literal final wording accurately describes the organization view and avoids a false timeline claim."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "cross_type_entity",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "Accurately reports project timeline focused on the correct Cedar Harbor project, avoiding note/task decoys.",
+      "evidence": "organization_list then ui_show correct ID, ui_workspace organize/project/timeline acknowledged; chat closed/voice on.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Accurately reports project timeline focused on the correct Cedar Harbor project, avoiding note/task decoys."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "calendar_not_confirmed",
+      "repeat": 1,
+      "verdict": "harness_false_negative",
+      "notes": "Correctly checks availability and changes nothing, explaining failed confirmation. Raw failure caused only by erroneous allowlist blocking legitimate calendar_connection read.",
+      "evidence": "calendar_connection EVAL_BLOCKED from fixture; calendar_availability actual synthetic freeBusy fails; no scheduling.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Correctly checks availability and changes nothing, explaining failed confirmation. Raw failure caused only by erroneous allowlist blocking legitimate calendar_connection read.",
+      "suggested_check_overrides": {
+        "no_blocked_tools": true
+      }
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "calendar_not_confirmed",
+      "repeat": 1,
+      "verdict": "harness_false_negative",
+      "notes": "Truthfully reports unconfirmed availability and leaves calendar untouched; legitimate connection read blocked by harness.",
+      "evidence": "calendar_connection EVAL_BLOCKED then calendar_availability unavailable; connected provider fixture consulted; no mutations.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Truthfully reports unconfirmed availability and leaves calendar untouched; legitimate connection read blocked by harness.",
+      "suggested_check_overrides": {
+        "no_blocked_tools": true
+      }
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "unsaved_view_recovery",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "Both turns accurate: unsaved editor refuses first navigation, then owner-saved state allows acknowledged Woodwind timeline with chat closed.",
+      "evidence": "First ui_workspace failed dirty editor; fixture owner save event; second ui_show correct project and timeline workspace displayed.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Both turns accurate: unsaved editor refuses first navigation, then owner-saved state allows acknowledged Woodwind timeline with chat closed."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "unsaved_view_recovery",
+      "repeat": 1,
+      "verdict": "grader_false_negative",
+      "notes": "Valid proactive restraint: reads dirty editor and asks permission before any navigation/save/discard. After owner saves, requested project timeline opens. Native navigation_refused requires an attempted rejected action unnecessarily.",
+      "evidence": "ui_editor read confirms dirty Draft field report; note_read confirms saved baseline differs. No first-turn state change. Second-turn ui_show/project timeline acknowledged. Suggested override means semantically valid handling, not inventing a failed action.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Valid proactive restraint: reads dirty editor and asks permission before any navigation/save/discard. After owner saves, requested project timeline opens. Native navigation_refused requires an attempted rejected action unnecessarily.",
+      "suggested_check_overrides": {
+        "turn_1.navigation_refused": true
+      }
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "infeasible_explain",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "Accurate explanation:80+65=145min exceeds120min window;09:30–10:00 busy leaves30/60min slots and neither task fits.",
+      "evidence": "Both saved estimates read; actual calendar availability/freeBusy and event projection support all times; no writes.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Accurate explanation:80+65=145min exceeds120min window;09:30–10:00 busy leaves30/60min slots and neither task fits."
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "infeasible_explain",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "Correctly explains145min required vs90free split30/60 and leaves state unchanged after argument recovery.",
+      "evidence": "Initial minutes1 rejected with detailed minimum5; corrected5 returns09:30–10busy, actualfreeBusy consulted; no writes.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "Correctly explains145min required vs90free split30/60 and leaves state unchanged after argument recovery."
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "case": "mobile_workspace_controls",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "All three replies match final turn screens: open+project+prototype/chatclosed/voiceon, then completed, then cleared search+completed Woodwind board/chatopen.",
+      "evidence": "After final search reset it reapplies project/status and reopens chat after filter auto-closes; exact visible-ID checks pass each turn.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All three replies match final turn screens: open+project+prototype/chatclosed/voiceon, then completed, then cleared search+completed Woodwind board/chatopen."
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "case": "mobile_workspace_controls",
+      "repeat": 1,
+      "verdict": "supported",
+      "notes": "All three turn summaries accurately describe acknowledged filters, search, board and chat/voice state.",
+      "evidence": "Search then exactopenprojectfilter, completedpreservingquery, clearsearch/reapplycompletedproject/board/chatopen; all stage/final checks pass.",
+      "factual_response_pass": true,
+      "semantic_completion_pass": true,
+      "reason": "All three turn summaries accurately describe acknowledged filters, search, board and chat/voice state."
+    }
+  ],
+  "methodology_limitations": [
+    "Stateful device acknowledgments do not render React or test browser permissions.",
+    "Lexical note retrieval substitutes for semantic retrieval.",
+    "Historical suites have different inputs and are not paired with these cases.",
+    "Partialv1 exposed these first scenario outputs before restart; distinguish fresh benchmark question design from wholly unseen rerun evidence."
+  ]
+}

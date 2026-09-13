@@ -8,54 +8,9 @@ import {
   useFrontendTool,
   useAgentContext,
 } from "@copilotkit/react-core/v2/headless";
-import { z } from "zod";
+import { actionSchema } from "./site-actions";
 import type { UIAction, UIContext } from "./types";
-
-const views = [
-  "organize",
-  "today",
-  "inbox",
-  "week",
-  "all",
-  "reminders",
-  "calendar",
-  "notes",
-  "memory",
-  "notifications",
-  "settings",
-] as const;
-const actionSchema = z.object({
-  id: z.string().max(150),
-  kind: z
-    .enum(["show", "chat", "search", "filter", "form", "calendar", "select"])
-    .default("show"),
-  view: z.enum(views).optional(),
-  entity_id: z.string().nullable().optional(),
-  mode: z.enum(["open", "close", "auto"]).optional(),
-  query: z.string().max(300).optional(),
-  status: z
-    .enum([
-      "all",
-      "open",
-      "in_progress",
-      "waiting",
-      "deferred",
-      "completed",
-      "cancelled",
-    ])
-    .optional(),
-  project: z.string().max(200).optional(),
-  space_id: z.string().max(36).optional(),
-  area_id: z.string().max(36).optional(),
-  goal_id: z.string().max(36).optional(),
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  work_kind: z.enum(["all", "task", "reminder"]).optional(),
-  task_ids: z.array(z.string()).max(100).optional(),
-  form: z.enum(["task", "reminder", "note"]).optional(),
-});
+import { EditorProvider } from "./editor-control";
 
 // The existing authenticated chat/voice transports deliver tool calls. CopilotKit owns
 // the browser registry and handler lifecycle; no second model runtime or cloud service.
@@ -67,13 +22,13 @@ export function SiteCopilot({ children }: { children: ReactNode }) {
   );
   return (
     <CopilotKitContext.Provider value={value}>
-      {children}
+      <EditorProvider>{children}</EditorProvider>
     </CopilotKitContext.Provider>
   );
 }
 export function useSiteControl(
   context: UIContext,
-  apply: (action: UIAction) => Promise<void>,
+  apply: (action: UIAction) => Promise<Record<string, unknown> | void>,
   enabled: boolean,
 ) {
   const { copilotkit } = useCopilotKit();
@@ -88,12 +43,12 @@ export function useSiteControl(
     {
       name: "eri_site_control",
       description:
-        "Open pages and records, control chat, search and filter tasks, and open task/reminder forms.",
+        "Use typed page, chat, filter, layout, editor and device-preference actions. Draft patches do not save; server commands and remote receipts establish saved outcomes.",
       parameters: actionSchema,
       available: enabled,
       handler: async (args) => {
-        await applyRef.current(args as UIAction);
-        return { status: "displayed" };
+        const data = await applyRef.current(args as UIAction);
+        return { status: "displayed", data };
       },
     },
     [enabled],
@@ -104,7 +59,7 @@ export function useSiteControl(
       throw new Error("Site controls are unavailable.");
     const args = actionSchema.parse(action);
     // These calls arrive over our server-owned voice/text transport, not an AG-UI run.
-    await tool.handler(args, {
+    return await tool.handler(args, {
       toolCall: {
         id: action.id,
         type: "function",

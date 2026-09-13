@@ -1,0 +1,100 @@
+{
+  "artifact": ".runtime/reliability-plan-reference-diagnostic-v1.json",
+  "raw_sha256": "da3058cdf5afa6319837ba121083efe59c88362b80107f4386e95654a80e8464",
+  "checks": {
+    "completed_6_unique_trials": true,
+    "all_6_conversation_turns_attempted": true,
+    "separately_labeled_diagnostic": true,
+    "none_skipped": true,
+    "database_removed": true,
+    "no_active_run": true,
+    "seed_hashes_match_export": true,
+    "user_questions_match_export": true,
+    "no_unexpected_egress": true,
+    "all_provider_http_responses_200": true,
+    "no_hidden_provider_switch": true,
+    "source_manifest_matches_archive": true,
+    "source_still_frozen": true,
+    "archived_source_contents_match": true,
+    "no_native_reasoning_payloads": true
+  },
+  "all_integrity_checks_pass": true,
+  "source_archive": ".runtime/reliability-plan-reference-diagnostic-v1-sources.json.gz",
+  "fixture_archive": ".runtime/reliability-heldout-fixtures-v2.json.gz",
+  "models": {
+    "gemini-3.8-flash": {
+      "rows": 3,
+      "native_state_successes": 3,
+      "outcomes": {
+        "clean_success": 3
+      },
+      "provider_requests": 15,
+      "reported_usage": {
+        "input_tokens": 154643,
+        "output_tokens": 1955
+      },
+      "response_finish_reasons": {
+        "tool_calls": 12,
+        "stop": 3
+      },
+      "usage_field_present_requests": {
+        "input_tokens": 15,
+        "output_tokens": 15
+      },
+      "provider_seconds": 27.3796,
+      "task_seconds": 28.7287,
+      "median_task_seconds": 7.0924,
+      "mean_task_seconds": 9.576233333333333,
+      "proposal_reference_lengths": [
+        36,
+        36,
+        36
+      ],
+      "tool_error_codes": [],
+      "tool_executions": 15,
+      "discovery_calls": 3,
+      "failed_rows": []
+    },
+    "gpt-5.6-luna": {
+      "rows": 3,
+      "native_state_successes": 3,
+      "outcomes": {
+        "recovered_success": 2,
+        "clean_success": 1
+      },
+      "provider_requests": 19,
+      "reported_usage": {
+        "input_tokens": 140522,
+        "output_tokens": 2287,
+        "reasoning_tokens": 443,
+        "cached_input_tokens": 99675
+      },
+      "response_finish_reasons": {
+        "completed": 19
+      },
+      "usage_field_present_requests": {
+        "input_tokens": 19,
+        "output_tokens": 19,
+        "reasoning_tokens": 19,
+        "cached_input_tokens": 19
+      },
+      "provider_seconds": 39.1856,
+      "task_seconds": 41.2144,
+      "median_task_seconds": 14.7212,
+      "mean_task_seconds": 13.738133333333334,
+      "proposal_reference_lengths": [
+        36,
+        36,
+        36
+      ],
+      "tool_error_codes": [
+        "INVALID_ARGUMENT",
+        "INVALID_ARGUMENT"
+      ],
+      "tool_executions": 21,
+      "discovery_calls": 5,
+      "failed_rows": []
+    }
+  },
+  "baseline_artifact": ".runtime/reliability-heldout-v2.json"
+}

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { useEditor, nullableId, choice } from "./editor-control";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
@@ -130,12 +132,99 @@ export function PlanningDialog({
         setError(
           "The request did not finish. Retry the same change to check its saved receipt.",
         );
+      return saved;
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
+  async function save() {
+    if (
+      !form.title.trim() ||
+      !form.start ||
+      !form.end ||
+      (!fresh && !record) ||
+      pending ||
+      review
+    )
+      return;
+    return act(fresh ? "planning.create" : "planning.update", {
+      ...form,
+      end: form.all_day ? shiftDate(form.end, 1) : form.end,
+      task_id: taskId || null,
+      ...(fresh ? { kind, google_calendar_id: calendar || null } : {}),
+    });
+  }
+  const baseForm = record
+    ? {
+        ...record.fields,
+        start: record.fields.all_day
+          ? record.fields.start
+          : localDateTime(record.fields.start, record.fields.timezone),
+        end: record.fields.all_day
+          ? shiftDate(record.fields.end, -1)
+          : localDateTime(record.fields.end, record.fields.timezone),
+      }
+    : {
+        title: task ? "Work on " + task.title : "",
+        start: event.date + "T09:00",
+        end: event.date + "T10:00",
+        timezone,
+        all_day: false,
+        location: "",
+        description: "",
+        busy: true,
+      };
+  const editorSchema = z.object({
+    title: z.string().min(1).max(500),
+    start: z.string().min(1).max(80),
+    end: z.string().min(1).max(80),
+    timezone: z.string().min(1).max(100),
+    all_day: z.boolean(),
+    location: z.string().max(1000),
+    description: z.string().max(10000),
+    busy: z.boolean(),
+    task_id: nullableId(
+      tasks.filter((t) => !t.archived && !t.is_template).map((t) => t.id),
+    ),
+    ...(fresh
+      ? {
+          kind: choice(["event", "block"]),
+          google_calendar_id: nullableId(
+            (connection?.calendars ?? [])
+              .filter((c) => c.writable)
+              .map((c) => c.id),
+          ),
+        }
+      : {}),
+  });
+  useEditor({
+    kind: "event",
+    record_id: fresh ? null : event.entity_id,
+    dirty:
+      JSON.stringify(form) !== JSON.stringify(baseForm) ||
+      taskId !== (record?.task_id ?? event.task_id ?? "") ||
+      !!calendar ||
+      (fresh && kind !== event.kind),
+    busy: busy || (!fresh && !record) || !!pending || !!review,
+    schema: editorSchema,
+    values: {
+      ...form,
+      task_id: taskId || null,
+      ...(fresh ? { kind, google_calendar_id: calendar || null } : {}),
+    },
+    save,
+    close: onClose,
+    patch: (v) => {
+      const { task_id, kind: entryKind, google_calendar_id, ...fields } = v;
+      setForm((f) => ({ ...f, ...fields }));
+      if ("task_id" in v) setTaskId((task_id as string) || "");
+      if ("kind" in v) setKind(entryKind as "event" | "block");
+      if ("google_calendar_id" in v)
+        setCalendar((google_calendar_id as string) || "");
+    },
+  });
   return (
     <div
       className="modal-backdrop"
@@ -194,14 +283,7 @@ export function PlanningDialog({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void act(fresh ? "planning.create" : "planning.update", {
-                  ...form,
-                  end: form.all_day ? shiftDate(form.end, 1) : form.end,
-                  task_id: taskId || null,
-                  ...(fresh
-                    ? { kind, google_calendar_id: calendar || null }
-                    : {}),
-                });
+                void save();
               }}
             >
               <fieldset disabled={busy || !!pending || !!review}>

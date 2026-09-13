@@ -101,3 +101,19 @@ Shared workspace membership, invitations and scoped retrieval need a dedicated
 authorization design before enabling collaboration. Independent agent execution
 jobs remain distinct from task assignment. Saved views, richer metric check-ins,
 dependencies and notification policy can extend this foundation.
+
+
+## Planner workspace projections (September 13)
+
+Boards and timelines reuse Task and Project records; they introduce no tables.
+Task planned/deadline markers are separate from project lifecycle bars and
+PlanningEntry work blocks. The deterministic planner checks up to eight tasks
+within seven days, then atomically commits verified local blocks.
+
+Short proposal references use owner-scoped internal Command receipt storage.
+The encrypted proposal expires after fifteen minutes; subsequent proposals prune
+expired proposal rows. Committed plan receipts are retained independently for
+idempotent retries. A proposal is not a saved work block or a Google publication.
+
+The full schema/UX review, including intentional boundaries and later candidates,
+is in [PLANNER_UX_ARCHITECTURE_REVIEW.md](PLANNER_UX_ARCHITECTURE_REVIEW.md).

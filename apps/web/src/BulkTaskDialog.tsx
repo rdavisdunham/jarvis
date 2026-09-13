@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { useEditor, choice } from "./editor-control";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useDialogFocus } from "./components";
@@ -16,7 +18,7 @@ export function BulkTaskDialog({
   busy: boolean;
   error: string;
   onClose: () => void;
-  onSave: (items: Record<string, unknown>[]) => Promise<void>;
+  onSave: (items: Record<string, unknown>[]) => Promise<unknown>;
 }) {
   useDialogFocus();
   const [status, setStatus] = useState(""),
@@ -31,6 +33,61 @@ export function BulkTaskDialog({
     setDate ||
     !!assignee.trim() ||
     !!priority;
+  async function save() {
+    if (!hasChanges || !tasks.length) return;
+    const changes: Record<string, unknown> = {};
+    if (status) changes.status = status;
+    if (project !== "unchanged") changes.project_id = project || null;
+    if (setDate) changes.due_date = date || null;
+    if (assignee.trim()) changes.assignee = assignee.trim();
+    if (priority) changes.priority = Number(priority);
+    return onSave(
+      tasks.map((t) => ({
+        task_id: t.id,
+        expected_revision: t.revision,
+        ...changes,
+      })),
+    );
+  }
+  useEditor({
+    kind: "bulk",
+    dirty: hasChanges,
+    busy,
+    schema: z.object({
+      status: choice([
+        "",
+        "open",
+        "in_progress",
+        "waiting",
+        "deferred",
+        "completed",
+        "cancelled",
+      ]),
+      project_id: choice(["unchanged", "", ...projects.map((p) => p.id)]),
+      change_due_date: z.boolean(),
+      due_date: z.string().date().or(z.literal("")),
+      assignee: z.string().max(100),
+      priority: choice(["", "0", "1", "2", "3"]),
+    }),
+    values: {
+      status,
+      project_id: project,
+      change_due_date: setDate,
+      due_date: date,
+      assignee,
+      priority,
+    },
+    save,
+    close: onClose,
+    patch: (v) => {
+      if ("status" in v) setStatus(v.status as string);
+      if ("project_id" in v) setProject(v.project_id as string);
+      if ("change_due_date" in v) changeDate(v.change_due_date as boolean);
+      if ("due_date" in v) changeDay(v.due_date as string);
+      if ("assignee" in v) setAssignee(v.assignee as string);
+      if ("priority" in v) setPriority(v.priority as string);
+    },
+  });
   return (
     <div className="modal-backdrop">
       <form
@@ -40,19 +97,7 @@ export function BulkTaskDialog({
         aria-labelledby="bulk-title"
         onSubmit={(e) => {
           e.preventDefault();
-          const changes: Record<string, unknown> = {};
-          if (status) changes.status = status;
-          if (project !== "unchanged") changes.project_id = project || null;
-          if (setDate) changes.due_date = date || null;
-          if (assignee.trim()) changes.assignee = assignee.trim();
-          if (priority) changes.priority = Number(priority);
-          void onSave(
-            tasks.map((t) => ({
-              task_id: t.id,
-              expected_revision: t.revision,
-              ...changes,
-            })),
-          );
+          void save();
         }}
       >
         <div className="dialog-heading">

@@ -3,7 +3,74 @@
 Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: tool design and paired regression
+## Current batch: conversational planner workspace — deployed
+
+- [x] Complete typed, acknowledged conversational controls for pages, search,
+      filters, sort, grouping, layouts, calendar ranges, selection, organization,
+      Settings sections and device voice/wake/density preferences.
+- [x] Give Eri read/patch/save/close/discard access to task, alert, note,
+      organization, appointment, Google event, bulk-task and memory editors.
+      Drafts remain unsaved until save; navigation cannot silently discard them.
+      OAuth consent, browser permissions and credential entry remain owner actions.
+- [x] Add shared task list/boards/timelines to Work, Today, Inbox and This week.
+      Add project status boards and start/target timelines. Accessible status
+      selectors accompany drag and drop; undated work remains discoverable.
+- [x] Review and apply compact UX: collapsed filters with visible applied chips,
+      quick task capture, denser notes/organization rows, expandable relationship
+      detail and five focused Settings sections. Google consent returns directly
+      to Integrations. Review: [PLANNER_UX_ARCHITECTURE_REVIEW.md](PLANNER_UX_ARCHITECTURE_REVIEW.md).
+- [x] Update the backend tool schemas, tool-local instructions and Live's delegated
+      site context to the final website. No second agent runtime is required.
+- [x] Preserve exact authored note whitespace and sparse updates; return precise,
+      owner-scoped relationship errors without exposing foreign records.
+- [x] Add verified scheduling for up to eight tasks/seven days, including time
+      windows, dependencies, busy periods and proven earliest finish. Commit
+      rechecks availability/revisions and saves all local blocks atomically.
+      Short, owner-bound references replace model-copied encrypted payloads.
+- [x] Review schema and architecture: retain canonical Task, authored Note,
+      learned Memory, outcome Goal and finite Project. Alerts and work blocks
+      stay distinct projections/attention records. No migration or new service.
+- [x] Complete fresh 8 × 3 × 2 backend eval and audit every reply; keep the
+      interrupted attempt, native scores, explicit grader corrections and the
+      separate six-trial short-reference diagnostic visible.
+      [Results](RELIABILITY_HELDOUT_RESULTS.md).
+- [x] Verify real GPT-Live audio/delegation, captions, quiet timeout, global mobile
+      voice dock, fresh-session restart and media cleanup in a disposable database
+      with generated speech. Clarification, stale-input protection, interruption,
+      backend failure recovery and receipts also have deterministic protocol tests.
+- [x] Validation: 446 backend tests pass (one optional skip; paused Realtime
+      module excluded), 75 frontend tests pass (one retained Realtime case skipped),
+      build and application/changed-script Ruff pass. Real rendered acceptance:
+      85 acknowledged controls, desktop/mobile density and overflow, Google/Linear
+      consent, details, write/retry/conflict flows and 30-second scroll stability.
+      See [PLANNER_VALIDATION.md](PLANNER_VALIDATION.md).
+- [x] Deploy and verify: API/worker/PostgreSQL healthy; all 52 backend module
+      hashes match the running container. HTTPS serves index-C5suLihr.js.
+      Fifteen checked table hashes are unchanged, including all 55 existing tasks;
+      cost tracking remains off.
+
+### Immediate follow-ups from this release
+
+- [ ] Add revision-guarded note append and exact anchored replacement so the model
+      does not retranscribe unchanged body text. A Gemini trial changed Unicode
+      characters into literal escape text; full-content writes remain an exposed risk.
+- [ ] Resolve assignees to canonical actor IDs before filtering. Preferred profile
+      name is not always the stored actor label; show/acknowledge empty results.
+- [ ] Verify requested layout and visible results before claiming a timeline or
+      filtered tasks are on screen. Keep UI acknowledgement as the authority.
+- [ ] Distinguish model output truncation, malformed tool arguments, transport
+      errors and remote application errors in user messages.
+- [ ] Extend the eval's deliberately unmodeled calendar-sync worker path;
+      current unavailable-calendar trial remains uncredited, not assumed successful.
+- [ ] Add saved/persistent views and deep view links, then extract App.tsx's view
+      and voice controllers; generate/parity-check shared API/browser contracts.
+- [ ] Consider persistent task dependencies/blocked reasons, direct goal-to-task
+      links and metric history when concrete use requires them.
+- [ ] Browser/provider acceptance does not replace physical-phone microphone,
+      background/wake and network-recovery testing. Keep the seven-day usage pilot
+      after the agreed expansion and device/operation checks.
+
+## Previous batch: tool design and paired regression — deployed
 
 - [x] Research official OpenAI/Google guidance and implement a short global policy,
       detailed tool-local schemas and portable capability loading. Eighteen tools are
@@ -34,20 +101,20 @@ Jarvis remains the repository and infrastructure project name.
 
 ### New evidence to harden next
 
-- [ ] Return field/reference-kind-specific errors for invalid note links; teach
+- [x] Return field/reference-kind-specific errors for invalid note links; teach
       sparse edits to avoid copying unchanged IDs. Luna once mistyped an existing
       goal ID and safely failed the note edit.
 - [x] Align synthetic read validation with production errors and separately
       audit six scheduling trials. Preserve the original 120 scores and sources.
-- [ ] Align simulated calendar-list/availability connection state and remote
+- [x] Align simulated calendar-list/availability connection state and remote
       polling behavior; never silently merge follow-up scores.
 
-- [ ] Add calendar planning preflight that checks a proposed block set against
+- [x] Add calendar planning preflight that checks a proposed block set against
       confirmed busy/free windows and dependencies. Normalize availability into
       the requested time zone while retaining exact UTC instants. One Luna
       diagnostic scheduled across a known busy interval; the tool stored the
       requested timestamps faithfully, so agent reasoning still needs a guard.
-- [ ] Add held-out agent scenarios for entity-type discovery (authored notes
+- [x] Add held-out agent scenarios for entity-type discovery (authored notes
       versus tasks) and valid natural-language explanations of infeasibility.
       Keep deterministic domain tests and a literal-effects reply audit.
 - [ ] Complete real-device GPT-Live delegation/recovery and connected Google/
@@ -94,7 +161,7 @@ Jarvis remains the repository and infrastructure project name.
       [AGENT_TOOL_IMPROVEMENTS.md](AGENT_TOOL_IMPROVEMENTS.md).
 - [x] Re-evaluate both models on the twenty fixed regression scenarios after tool
       improvements; retain the original baseline and explicit grader corrections.
-- [ ] Add fresh held-out scenarios before claiming broader reliability gains.
+- [x] Add fresh held-out scenarios before claiming broader reliability gains.
 
 ## Previous batch: Gemini task-agent trial — deployed
 

@@ -82,8 +82,7 @@ afterEach(() => {
 
 test("brief disconnection recovers without ending the voice session", async () => {
   const changed = vi.fn();
-  const voice = new Voice(changed);
-  await voice.start("conversation");
+  const voice = await startVoice("live", changed);
   Peer.current.change("disconnected");
   await vi.advanceTimersByTimeAsync(3000);
   expect(stopped).not.toHaveBeenCalled();
@@ -96,8 +95,7 @@ test("brief disconnection recovers without ending the voice session", async () =
 
 test("persistent disconnection releases microphone and ends the server session", async () => {
   const changed = vi.fn();
-  const voice = new Voice(changed);
-  await voice.start("conversation");
+  const voice = await startVoice("live", changed);
   Peer.current.change("disconnected");
   await vi.advanceTimersByTimeAsync(5000);
   expect(stopped).toHaveBeenCalledOnce();
@@ -105,7 +103,10 @@ test("persistent disconnection releases microphone and ends the server session",
   expect(changed).toHaveBeenCalledWith(
     expect.objectContaining({ state: "disconnected", closed: true }),
   );
-  expect(post).toHaveBeenCalledWith("/voice/sessions/test-session/stop");
+  expect(api).toHaveBeenCalledWith(
+    "/voice/sessions/test-session/stop",
+    expect.objectContaining({ method: "POST" }),
+  );
 });
 
 test("capture and listening wait for the provider data channel", async () => {
@@ -128,6 +129,9 @@ test("capture and listening wait for the provider data channel", async () => {
   expect(api).not.toHaveBeenCalled();
   Peer.current.channel.readyState = "open";
   Peer.current.channel.dispatchEvent(new Event("open"));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stream.getTracks()[0].enabled).toBe(false);
+  event({ type: "session.started" });
   await starting;
   expect(stream.getTracks()[0].enabled).toBe(true);
   expect(api).toHaveBeenCalled();
@@ -142,8 +146,7 @@ test("a late status response from a stopped session cannot update the UI", async
     }),
   );
   const changed = vi.fn();
-  const voice = new Voice(changed);
-  await voice.start("conversation");
+  const voice = await startVoice("live", changed);
   await voice.stop();
   resolveStatus({
     state: "unresolved",
@@ -159,8 +162,7 @@ test("a late status response from a stopped session cannot update the UI", async
 test("one failed status poll recovers without stopping working audio", async () => {
   const changed = vi.fn();
   vi.mocked(api).mockRejectedValueOnce(new Error("temporary 502"));
-  const voice = new Voice(changed);
-  await voice.start("conversation");
+  const voice = await startVoice("live", changed);
   await vi.advanceTimersByTimeAsync(801);
   expect(stopped).not.toHaveBeenCalled();
   expect(changed).toHaveBeenCalledWith(
@@ -222,7 +224,7 @@ test("GPT-Live keeps its peer open while the server collects final usage", async
   expect(Peer.current.close).toHaveBeenCalled();
 });
 
-test.each(["realtime", "live"] as const)(
+test.each(["live"] as const)(
   "spoken thanks ends %s, releases the mic and allows a fresh session",
   async (provider) => {
     const changed = vi.fn();
@@ -260,14 +262,13 @@ test.each(["realtime", "live"] as const)(
     expect(changed).toHaveBeenCalledWith(
       expect.objectContaining({ state: "ended", closed: true, error: null }),
     );
-    const next = new Voice(vi.fn());
-    await next.start("fresh");
+    const next = await startVoice("live");
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
     await next.stop();
   },
 );
 
-test("a new speech start cancels a pending spoken ending", async () => {
+test.skip("paused Realtime: a new speech start cancels a pending spoken ending", async () => {
   const voice = new Voice(vi.fn());
   await voice.start("conversation");
   Peer.current.channel.dispatchEvent(
@@ -354,7 +355,7 @@ function userReply(provider: "live" | "realtime", reply: string, id = "reply") {
   );
 }
 
-test.each(["live", "realtime"] as const)(
+test.each(["live"] as const)(
   "%s closes after a contextual confirmation and preserves provider cleanup",
   async (provider) => {
     const changed = vi.fn();
@@ -379,7 +380,7 @@ test.each(["live", "realtime"] as const)(
   },
 );
 
-test.each(["live", "realtime"] as const)(
+test.each(["live"] as const)(
   "%s keeps listening when the answer requests more help",
   async (provider) => {
     const voice = await startVoice(provider);
@@ -391,7 +392,7 @@ test.each(["live", "realtime"] as const)(
   },
 );
 
-test.each(["live", "realtime"] as const)(
+test.each(["live"] as const)(
   "%s cancels an agreed ending when the user continues",
   async (provider) => {
     const voice = await startVoice(provider);

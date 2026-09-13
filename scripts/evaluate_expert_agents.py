@@ -116,9 +116,9 @@ def requested_functions(data, api):
 
 
 def select_cases(all_cases, suite, requested=None):
-    if suite not in {"expert24", "tool-refinement20"}:
+    if suite not in {"expert24", "tool-refinement20", "reliability8"}:
         raise ValueError("Unknown evaluation suite")
-    names = list(all_cases) if suite == "expert24" else list(TOOL_REFINEMENT_CASES)
+    names = list(TOOL_REFINEMENT_CASES) if suite == "tool-refinement20" else list(all_cases)
     if requested:
         if set(requested) - set(names):
             raise ValueError("Requested case is outside this fixed evaluation suite")
@@ -192,6 +192,26 @@ def source_manifest(profiles, settings, cases, repeats, seed):
     source_paths = [
         "scripts/evaluate_expert_agents.py",
         "scripts/expert_eval_cases.py",
+        "scripts/eval_integrations.py",
+        "scripts/reliability_eval_cases.py",
+        "scripts/eval_ui.py",
+        "scripts/export_reliability_fixtures.py",
+        "apps/api/jarvis/planner.py",
+        "apps/api/jarvis/planner_schema.py",
+        "apps/api/jarvis/note_schema.py",
+        "apps/api/jarvis/record_references.py",
+        "apps/api/jarvis/ui_contracts.py",
+        "apps/web/src/site-actions.ts",
+        "apps/web/src/site-validation.ts",
+        "apps/web/src/editor-control.tsx",
+        "apps/web/src/App.tsx",
+        "apps/web/src/Notes.tsx",
+        "apps/web/src/Workspace.tsx",
+        "apps/web/src/Productivity.tsx",
+        "apps/web/src/work-views.ts",
+        "apps/web/src/workspace.ts",
+        "apps/web/src/productivity.ts",
+        "apps/web/src/copilot.tsx",
         "apps/api/jarvis/conversation.py",
         "apps/api/jarvis/tools.py",
         "apps/api/jarvis/tool_catalog.py",
@@ -212,6 +232,9 @@ def source_manifest(profiles, settings, cases, repeats, seed):
         "apps/api/jarvis/models.py",
         "apps/api/jarvis/config.py",
     ]
+    source_paths = sorted(
+        set(source_paths) | {str(path.relative_to(ROOT)) for path in (ROOT / "apps/api/jarvis").glob("*.py")}
+    )
     try:
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL
@@ -515,6 +538,12 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
     try:
         fixture = cases_module.seed_case(run_spec["case"], run_spec["repeat"])
         current["tools"] = fixture["tools"]
+        current["integration_calls"] = fixture.get("integration_calls", [])
+        current["integration_fixture"] = copy.deepcopy(fixture.get("calendar_fixture"))
+        current["ui_trace"] = fixture.get("ui_trace", [])
+        current["communication_expectations"] = fixture.get("communication_expectations", [])
+        fixture.setdefault("fixture_events", [])
+        current["fixture_events"] = fixture["fixture_events"]
         current["fixture_hash"] = fixture["fixture_hash"]
         current["fixture_prompts_sha256"] = hashlib.sha256(
             json.dumps(fixture["prompts"], ensure_ascii=False).encode()
@@ -559,6 +588,9 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
             return copy.deepcopy(fixture["context"])
 
         async def displayed(_owner, _device, action):
+            custom = getattr(cases_module, "dispatch_ui", None)
+            if custom:
+                return custom(fixture, action)
             if fixture["case"] == "ui_refusal":
                 return {
                     "ui_action": action,
@@ -583,6 +615,9 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
             patch.object(conversation, "ToolSession", ObservedToolSession),
         ):
             for turn_index, prompt in enumerate(fixture["prompts"]):
+                prepare = getattr(cases_module, "prepare_turn", None)
+                if prepare:
+                    prepare(fixture, turn_index)
                 turn_started = time.perf_counter()
                 first_call = len(provider_calls)
                 first_discovery = len(discovery_calls)
@@ -626,6 +661,8 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
     except Exception as exc:  # noqa: BLE001 - preserve each failed trial without hiding or retrying it
         exception = safe_exception(exc, secrets)
     if fixture is not None:
+        if fixture.get("harness_errors"):
+            exception = {"type": "UnsupportedFixtureTransition", "details": fixture["harness_errors"]}
         try:
             grading = cases_module.grade_case(fixture, turns)
         except Exception as exc:  # noqa: BLE001 - a grader failure is an explicit infrastructure error
@@ -673,7 +710,9 @@ async def run(
     stop_file = Path(stop_file) if stop_file else Path(output).with_suffix(".stop")
     if stop_file.exists():
         raise ValueError("A stop file already exists for this output; use a fresh output path.")
-    cases_module = importlib.import_module("expert_eval_cases")
+    cases_module = importlib.import_module(
+        "reliability_eval_cases" if suite == "reliability8" else "expert_eval_cases"
+    )
     selected_cases = select_cases(cases_module.CASES, suite, cases)
     catalog = agent_models.catalog()
     profiles = {key: catalog["luna" if key == "gpt-5.6-luna" else "gemini"] for key in models}
@@ -684,7 +723,7 @@ async def run(
 
     if preflight:
         repeats = 1
-        if not cases:
+        if not cases and suite != "reliability8":
             selected_cases = {
                 name: selected_cases[name] for name in ("selected_not_visible", "ambiguous_followup")
             }
@@ -759,7 +798,7 @@ async def run(
                     ),
                     flush=True,
                 )
-                if reason and suite == "tool-refinement20":
+                if reason and suite in {"tool-refinement20", "reliability8"}:
                     report["state"] = "provider_blocked"
                     report["halt_reason"] = {"model": spec["model"], "reason": reason}
                     for remaining in schedule[run_index + 1 :]:
@@ -828,7 +867,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, choices=range(1, 11), default=3)
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--suite", choices=["expert24", "tool-refinement20"], default="expert24")
+    parser.add_argument(
+        "--suite", choices=["expert24", "tool-refinement20", "reliability8"], default="expert24"
+    )
     parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
     parser.add_argument("--cases", nargs="+")
     parser.add_argument("--seed", type=int, default=20260913)
@@ -845,6 +886,8 @@ def main():
     output = args.output or Path(
         ".runtime/tool-refinement-evaluation.json"
         if args.suite == "tool-refinement20"
+        else ".runtime/reliability-heldout.json"
+        if args.suite == "reliability8"
         else ".runtime/expert-evaluation.json"
     )
     asyncio.run(

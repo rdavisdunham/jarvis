@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { useEditor, nullableId } from "./editor-control";
 import { useState } from "react";
 import { X, Check, Clock3 } from "lucide-react";
 import { useDialogFocus } from "./components";
@@ -56,8 +58,121 @@ export function ScheduleDialog({
     (n) => n.schedule_id === schedule?.id && !n.completed_at,
   );
   const run = async (tool: string, args: unknown, message: string) => {
-    if (await mutate(tool, args, message)) onClose();
+    const result = await mutate(tool, args, message);
+    if (result) onClose();
+    return result;
   };
+  async function save() {
+    if (!title.trim() || !when) return;
+    if (inactive)
+      return run(
+        "schedule.reschedule",
+        {
+          schedule_id: schedule!.id,
+          expected_revision: schedule!.revision,
+          when,
+        },
+        "Reminder rescheduled",
+      );
+    else {
+      const values: Record<string, unknown> = {
+        title,
+        when,
+        timezone,
+        recurrence: repeat || null,
+        task_id: taskId || null,
+        project_id: projectId || null,
+      };
+      if (schedule) {
+        if (
+          timezone === schedule.timezone &&
+          when ===
+            localDateTime(
+              schedule.next_run_at ?? schedule.anchor_at,
+              schedule.timezone,
+            )
+        ) {
+          delete values.when;
+          delete values.timezone;
+        }
+        if (repeat === (schedule.recurrence ?? "")) delete values.recurrence;
+        if (taskId === (schedule.task_id ?? "")) delete values.task_id;
+        if (projectId === (schedule.project_id ?? "")) delete values.project_id;
+      }
+      return run(
+        schedule ? "schedule.update" : "schedule.create",
+        {
+          ...(schedule
+            ? {
+                schedule_id: schedule.id,
+                expected_revision: schedule.revision,
+              }
+            : { kind }),
+          ...values,
+        },
+        "Reminder saved",
+      );
+    }
+  }
+  const values = {
+    title,
+    when,
+    timezone,
+    recurrence: repeat || null,
+    task_id: taskId || null,
+    project_id: projectId || null,
+  };
+  const initial = {
+    title: schedule?.title ?? linkedTask?.title ?? "",
+    when: schedule
+      ? localDateTime(
+          schedule.next_run_at ?? schedule.anchor_at,
+          schedule.timezone,
+        )
+      : initialDate
+        ? initialDate + "T10:00"
+        : "",
+    timezone: schedule?.timezone ?? zone,
+    recurrence: schedule?.recurrence ?? null,
+    task_id: schedule?.task_id ?? linkedTask?.id ?? null,
+    project_id: schedule?.project_id ?? linkedTask?.project_id ?? null,
+  };
+  const shape = {
+    title: z.string().min(1).max(500),
+    when: z.string().min(1).max(80),
+    timezone: z.string().min(1).max(100),
+    recurrence: z.string().max(500).nullable(),
+    task_id: nullableId(tasks.map((t) => t.id)),
+    project_id: nullableId(projects.map((p) => p.id)),
+  };
+  const schema = inactive
+    ? z.object({ when: shape.when })
+    : kind === "recurring_task"
+      ? z.object(shape).omit({ task_id: true })
+      : z.object(shape);
+  useEditor({
+    kind: "reminder",
+    record_id: schedule?.id,
+    dirty: JSON.stringify(values) !== JSON.stringify(initial),
+    busy,
+    schema,
+    values: Object.fromEntries(
+      Object.keys(schema.shape).map((k) => [
+        k,
+        values[k as keyof typeof values],
+      ]),
+    ),
+    save,
+    close: onClose,
+    patch: (v) => {
+      if ("title" in v) setTitle(v.title as string);
+      if ("when" in v) setWhen(v.when as string);
+      if ("timezone" in v) setZone(v.timezone as string);
+      if ("recurrence" in v) setRepeat((v.recurrence as string) || "");
+      if ("task_id" in v) setTaskId((v.task_id as string) || "");
+      if ("project_id" in v) setProjectId((v.project_id as string) || "");
+    },
+  });
   return (
     <div
       className="modal-backdrop"
@@ -72,57 +187,7 @@ export function ScheduleDialog({
         aria-labelledby="schedule-heading"
         onSubmit={(e) => {
           e.preventDefault();
-          if (inactive)
-            void run(
-              "schedule.reschedule",
-              {
-                schedule_id: schedule!.id,
-                expected_revision: schedule!.revision,
-                when,
-              },
-              "Reminder rescheduled",
-            );
-          else {
-            const values: Record<string, unknown> = {
-              title,
-              when,
-              timezone,
-              recurrence: repeat || null,
-              task_id: taskId || null,
-              project_id: projectId || null,
-            };
-            if (schedule) {
-              if (
-                timezone === schedule.timezone &&
-                when ===
-                  localDateTime(
-                    schedule.next_run_at ?? schedule.anchor_at,
-                    schedule.timezone,
-                  )
-              ) {
-                delete values.when;
-                delete values.timezone;
-              }
-              if (repeat === (schedule.recurrence ?? ""))
-                delete values.recurrence;
-              if (taskId === (schedule.task_id ?? "")) delete values.task_id;
-              if (projectId === (schedule.project_id ?? ""))
-                delete values.project_id;
-            }
-            void run(
-              schedule ? "schedule.update" : "schedule.create",
-              {
-                ...(schedule
-                  ? {
-                      schedule_id: schedule.id,
-                      expected_revision: schedule.revision,
-                    }
-                  : { kind }),
-                ...values,
-              },
-              "Reminder saved",
-            );
-          }
+          void save();
         }}
       >
         <div className="dialog-heading">

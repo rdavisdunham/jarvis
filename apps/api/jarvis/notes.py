@@ -43,6 +43,7 @@ def note_data(db, row, *, preview=False):
 def mutate_note(db, owner, tool, args):
     from .domain import DomainError, TaskCreate, check_revision, emit, enqueue_job, mutate, owned
     from .productivity import home_changes, save_note_links
+    from .record_references import reference
 
     link_keys = {"goal_ids", "project_ids", "related_note_ids"}
     link_values = args.model_dump(exclude_unset=True, include=link_keys)
@@ -136,7 +137,7 @@ def mutate_note(db, owner, tool, args):
             setattr(row, k, v)
         row.revision += 1
     if row.project_id:
-        project = owned(db, Project, row.project_id, owner)
+        project = reference(db, owner, Project, row.project_id, "project_id")
         if project.archived and row.project_id != previous_project:
             raise DomainError("INVALID_ARGUMENT", "Choose an active project.")
     if row.project_id:
@@ -145,14 +146,14 @@ def mutate_note(db, owner, tool, args):
         home = home_changes(db, owner, {}, row)
         row.space_id, row.area_id = home["space_id"], home["area_id"]
     if row.conversation_id:
-        owned(db, Conversation, row.conversation_id, owner)
+        reference(db, owner, Conversation, row.conversation_id, "conversation_id")
     row.tags = list(dict.fromkeys(t.strip() for t in row.tags if t.strip()))
     row.updated_at = now()
     db.add(row)
     db.flush()
     save_note_links(db, owner, row, link_values)
     if task_ids is not None:
-        tasks = {tid: owned(db, Task, tid, owner) for tid in set(task_ids)}
+        tasks = {tid: reference(db, owner, Task, tid, "task_ids") for tid in set(task_ids)}
         links = {l.task_id: l for l in db.scalars(select(NoteTaskLink).where(NoteTaskLink.note_id == row.id))}
         for tid, link in links.items():
             link.linked = tid in tasks

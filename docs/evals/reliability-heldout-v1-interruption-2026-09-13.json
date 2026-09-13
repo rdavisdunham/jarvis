@@ -1,0 +1,46 @@
+{
+  "artifact": ".runtime/reliability-heldout-v1.json",
+  "raw_sha256": "9a3c363abd5bb2b3b7de8e6cbeef5447ba0c730e93137822756415042c688401",
+  "state": "stopped",
+  "reason": "Fixture omitted production calendar_connection read; stopped at a completed pair.",
+  "completed_rows": 10,
+  "remaining_unattempted": 38,
+  "database_removed": true,
+  "raw_grades_unchanged": true,
+  "source_archive": ".runtime/reliability-heldout-v1-sources.json.gz",
+  "models": {
+    "gemini-3.8-flash": {
+      "rows": 5,
+      "provider_requests": 35,
+      "usage": {
+        "input_tokens": 353948,
+        "output_tokens": 1422,
+        "reasoning_tokens": 0,
+        "cached_input_tokens": 4035
+      },
+      "raw_outcomes": {
+        "clean_success": 3,
+        "task_failure": 2
+      },
+      "task_seconds": 55.2727,
+      "provider_seconds": 53.36
+    },
+    "gpt-5.6-luna": {
+      "rows": 5,
+      "provider_requests": 32,
+      "usage": {
+        "input_tokens": 223369,
+        "output_tokens": 1798,
+        "reasoning_tokens": 585,
+        "cached_input_tokens": 117681
+      },
+      "raw_outcomes": {
+        "task_failure": 2,
+        "clean_success": 2,
+        "recovered_success": 1
+      },
+      "task_seconds": 65.672,
+      "provider_seconds": 63.9508
+    }
+  }
+}

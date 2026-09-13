@@ -20,7 +20,7 @@ export function shiftMonth(selected: string, amount: number) {
 export function matchesStatus(status: string, filter: string) {
   return (
     filter === "all" ||
-    (filter === "open"
+    (filter === "active"
       ? !["completed", "cancelled", "superseded", "suppressed"].includes(status)
       : status === filter)
   );

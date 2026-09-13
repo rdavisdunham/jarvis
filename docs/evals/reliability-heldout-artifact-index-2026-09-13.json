@@ -1,0 +1,129 @@
+{
+  "date": "2026-09-13",
+  "provider_calls": 0,
+  "raw_results_preserved": true,
+  "artifacts": [
+    {
+      "source": ".runtime/reliability-heldout-v1.json",
+      "archive": "docs/evals/reliability-heldout-aborted-v1-2026-09-13.json.gz",
+      "source_sha256": "9a3c363abd5bb2b3b7de8e6cbeef5447ba0c730e93137822756415042c688401",
+      "archive_sha256": "7000d770df30d92635900cec7c94806c0041a22030c146f05289430599c8cdc2",
+      "json_payload_sha256": "9a3c363abd5bb2b3b7de8e6cbeef5447ba0c730e93137822756415042c688401",
+      "bytes": 35225
+    },
+    {
+      "source": ".runtime/reliability-heldout-v1-interruption.json",
+      "archive": "docs/evals/reliability-heldout-v1-interruption-2026-09-13.json",
+      "source_sha256": "f38148c897dae6b93e77fa218a28d166d0c039a1be15d2da9315d212a3083fb1",
+      "archive_sha256": "f38148c897dae6b93e77fa218a28d166d0c039a1be15d2da9315d212a3083fb1",
+      "json_payload_sha256": "f38148c897dae6b93e77fa218a28d166d0c039a1be15d2da9315d212a3083fb1",
+      "bytes": 1270
+    },
+    {
+      "source": ".runtime/reliability-heldout-v1-manual-review.json",
+      "archive": "docs/evals/reliability-heldout-v1-response-review-2026-09-13.json",
+      "source_sha256": "b69d9680303d4e7e30a8cd44637e7f33f429fe6f687e3b00cfdc346eb6d504ee",
+      "archive_sha256": "b69d9680303d4e7e30a8cd44637e7f33f429fe6f687e3b00cfdc346eb6d504ee",
+      "json_payload_sha256": "b69d9680303d4e7e30a8cd44637e7f33f429fe6f687e3b00cfdc346eb6d504ee",
+      "bytes": 8682
+    },
+    {
+      "source": ".runtime/reliability-heldout-v1-sources.json.gz",
+      "archive": "docs/evals/reliability-heldout-v1-frozen-sources-2026-09-13.json.gz",
+      "source_sha256": "b93f04a591129139d0cd8193c85982625eb6c4655f8d59e09333d10963d76d3b",
+      "archive_sha256": "b93f04a591129139d0cd8193c85982625eb6c4655f8d59e09333d10963d76d3b",
+      "json_payload_sha256": "f4e3c4a9bab826f29c6b1c9f98ebbb5849566d740454ee201b970e8d1e717c2c",
+      "bytes": 209762
+    },
+    {
+      "source": ".runtime/reliability-heldout-fixtures-v1.json.gz",
+      "archive": "docs/evals/reliability-heldout-v1-fixtures-2026-09-13.json.gz",
+      "source_sha256": "155d71d1fe1e118d607940fed6b9ff532bb8429c2f36ce70d995caa89e714f71",
+      "archive_sha256": "155d71d1fe1e118d607940fed6b9ff532bb8429c2f36ce70d995caa89e714f71",
+      "json_payload_sha256": "50ce58b02b50d907d05dfe03fbc33c645abe02a5ab3ce9cb6712b57e01229143",
+      "bytes": 20252
+    },
+    {
+      "source": ".runtime/reliability-heldout-v2.json",
+      "archive": "docs/evals/reliability-heldout-agents-2026-09-13.json.gz",
+      "source_sha256": "23b92ed38c4d29b0a28eb01f13e7a1bee763221533ff487d4d51a80f1ea0f8f0",
+      "archive_sha256": "4082d2326d679833544e710ce763cef43574d254dc784ce6288c71c6a3bf6cd5",
+      "json_payload_sha256": "23b92ed38c4d29b0a28eb01f13e7a1bee763221533ff487d4d51a80f1ea0f8f0",
+      "bytes": 156316
+    },
+    {
+      "source": ".runtime/reliability-heldout-v2-integrity.json",
+      "archive": "docs/evals/reliability-heldout-integrity-2026-09-13.json",
+      "source_sha256": "87844d145e58e33e4f87f3a4994ce9ae3e18a378b04535f278072c26ff0185b4",
+      "archive_sha256": "87844d145e58e33e4f87f3a4994ce9ae3e18a378b04535f278072c26ff0185b4",
+      "json_payload_sha256": "87844d145e58e33e4f87f3a4994ce9ae3e18a378b04535f278072c26ff0185b4",
+      "bytes": 4155
+    },
+    {
+      "source": ".runtime/reliability-heldout-v2-manual-review.json",
+      "archive": "docs/evals/reliability-heldout-response-review-2026-09-13.json",
+      "source_sha256": "b26e3febfeb5c31e1902c0b868ffe7a618b828ba6b1c7b092a7d132ecf0e77c9",
+      "archive_sha256": "b26e3febfeb5c31e1902c0b868ffe7a618b828ba6b1c7b092a7d132ecf0e77c9",
+      "json_payload_sha256": "b26e3febfeb5c31e1902c0b868ffe7a618b828ba6b1c7b092a7d132ecf0e77c9",
+      "bytes": 48398
+    },
+    {
+      "source": ".runtime/reliability-heldout-v2-sources.json.gz",
+      "archive": "docs/evals/reliability-heldout-frozen-sources-2026-09-13.json.gz",
+      "source_sha256": "16ab43fa6d823455f00503a1005c0ab60a584f59804df16f30c025fc9db647cd",
+      "archive_sha256": "16ab43fa6d823455f00503a1005c0ab60a584f59804df16f30c025fc9db647cd",
+      "json_payload_sha256": "0e82939892f03323a80754f3a017531219e73397888f0d5e1b297eab5529e937",
+      "bytes": 212068
+    },
+    {
+      "source": ".runtime/reliability-heldout-fixtures-v2.json.gz",
+      "archive": "docs/evals/reliability-heldout-fixtures-2026-09-13.json.gz",
+      "source_sha256": "cca534ab3c0594dd198e77b6826f9b8f432a395b8a122fcfb0d3fe85cb623eda",
+      "archive_sha256": "cca534ab3c0594dd198e77b6826f9b8f432a395b8a122fcfb0d3fe85cb623eda",
+      "json_payload_sha256": "cc5513d7d7b7a6f19b2cbe71a0b6ab3eff289ca2fa5de73a4c34a79094e95615",
+      "bytes": 20243
+    },
+    {
+      "source": ".runtime/reliability-plan-reference-diagnostic-v1.json",
+      "archive": "docs/evals/reliability-plan-reference-diagnostic-2026-09-13.json.gz",
+      "source_sha256": "da3058cdf5afa6319837ba121083efe59c88362b80107f4386e95654a80e8464",
+      "archive_sha256": "5d9f98e4d830d1905457033815a747b2724facc0e7dc25184abfc2f0b9aed26c",
+      "json_payload_sha256": "da3058cdf5afa6319837ba121083efe59c88362b80107f4386e95654a80e8464",
+      "bytes": 23472
+    },
+    {
+      "source": ".runtime/reliability-plan-reference-diagnostic-v1-integrity.json",
+      "archive": "docs/evals/reliability-plan-reference-integrity-2026-09-13.json",
+      "source_sha256": "e3f5ec60fe7ba2993fada71f2be61639580a480cfa6a4dba039dc11d7315f590",
+      "archive_sha256": "e3f5ec60fe7ba2993fada71f2be61639580a480cfa6a4dba039dc11d7315f590",
+      "json_payload_sha256": "e3f5ec60fe7ba2993fada71f2be61639580a480cfa6a4dba039dc11d7315f590",
+      "bytes": 2848
+    },
+    {
+      "source": ".runtime/reliability-plan-reference-diagnostic-v1-manual-review.json",
+      "archive": "docs/evals/reliability-plan-reference-response-review-2026-09-13.json",
+      "source_sha256": "be31f46a2dc3c0ac4a174b48b20db45c41c36a23e631c122ae6b711ec3a359ae",
+      "archive_sha256": "be31f46a2dc3c0ac4a174b48b20db45c41c36a23e631c122ae6b711ec3a359ae",
+      "json_payload_sha256": "be31f46a2dc3c0ac4a174b48b20db45c41c36a23e631c122ae6b711ec3a359ae",
+      "bytes": 7711
+    },
+    {
+      "source": ".runtime/reliability-plan-reference-diagnostic-v1-sources.json.gz",
+      "archive": "docs/evals/reliability-plan-reference-frozen-sources-2026-09-13.json.gz",
+      "source_sha256": "afb1779e2775c2327b5f17f560ef873004ea263bcbcfa28edbb3e0fe4c768915",
+      "archive_sha256": "afb1779e2775c2327b5f17f560ef873004ea263bcbcfa28edbb3e0fe4c768915",
+      "json_payload_sha256": "ff4f3617abb17e0f6ae5b62e4d7ee6026ae8947ec5ca4c55dbc3d29c01bec5af",
+      "bytes": 212342
+    }
+  ],
+  "after_diagnostic_source_changes": [
+    {
+      "path": "apps/api/jarvis/note_schema.py",
+      "python_ast_identical": true,
+      "current_sha256": "8c2ce3828fecf9755dd2b5d7c8ba96f752146f4d676f61a314cde6f9118302bf"
+    }
+  ],
+  "note": "Archives preserve runtime paths inside original metadata. Use this index to resolve their immutable repository copies. Source text is retained exactly as evaluated.",
+  "credential_scan": "Configured long provider/secret values absent; no values printed.",
+  "native_reasoning_scan": "No forbidden native reasoning/continuation payload keys; numerical usage details retained."
+}

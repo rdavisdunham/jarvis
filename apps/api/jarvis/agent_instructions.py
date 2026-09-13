@@ -10,7 +10,8 @@ from .personality import SYSTEM_PROMPT, VOICE_CONVERSATION_STYLE
 CAPABILITIES = (
     "The app manages personal/business spaces, areas, goals and projects; tasks and task alerts; "
     "authored notes and learned memory; local appointments/work blocks; Google Calendar and Linear "
-    "when connected; notifications, profile settings, and navigation/search/filter/chat controls. "
+    "when connected; notifications, profile settings, and conversational page/search/filter/chat controls, "
+    "typed editor drafts, task/project boards and timelines, and verified constrained scheduling. "
     "Goals track outcomes; projects organize work. A deadline, planned work date, alert and reserved "
     "calendar block are different. Assigning work to an agent does not launch one. "
     "Only registered tools can act; this app has no email-sending, general web-search or shell tool."

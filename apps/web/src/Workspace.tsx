@@ -1,6 +1,20 @@
-import { matchesOrganization, type Organization, type OrganizationFilter } from "./productivity";
+import {
+  matchesOrganization,
+  type Organization,
+  type OrganizationFilter,
+} from "./productivity";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Clock3, Plus, Repeat2, Check } from "lucide-react";
+import { LayoutSwitch, TaskBoard, Timeline } from "./WorkViews";
+import {
+  matchesTaskFilters,
+  sortTasks,
+  type TaskFilters,
+  type WorkLayout,
+  type WorkSort,
+  type WorkGroup,
+  type TimelineSpan,
+} from "./work-views";
 import { CalendarView } from "./CalendarView";
 import type { GoogleStatus } from "./GoogleSettings";
 import { api } from "./api";
@@ -10,10 +24,22 @@ import {
   type CalendarMode,
   matchesStatus,
   scheduleProject,
+  shiftDate,
 } from "./workspace";
 import type { Task, Schedule, Notice, Project, CalendarEntry } from "./types";
 
 type Props = {
+  preset?: "all" | "today" | "inbox" | "week";
+  layout: WorkLayout;
+  onLayout: (layout: WorkLayout) => void;
+  sort: WorkSort;
+  group: WorkGroup;
+  taskFilters: TaskFilters;
+  timelineDate: string;
+  timelineSpan: TimelineSpan;
+  onTimelineDate: (date: string) => void;
+  onTimelineSpan: (span: TimelineSpan) => void;
+
   organization: Organization;
   organizationFilter: OrganizationFilter;
   onGoogleEvent: (event: CalendarEntry) => void;
@@ -103,6 +129,7 @@ export function Workspace(p: Props) {
     (project) => project.name === p.project,
   )?.id;
   const taskMatches = (t: Task) =>
+    matchesTaskFilters(t, p.taskFilters) &&
     matchesStatus(t.status, p.status) &&
     (!p.project || t.project === p.project) &&
     (!query ||
@@ -110,12 +137,29 @@ export function Workspace(p: Props) {
         .join(" ")
         .toLocaleLowerCase()
         .includes(query));
-  const tasks = p.tasks
-    .filter(t => matchesOrganization(t, p.organizationFilter, p.organization))
+  const matchedTasks = p.tasks
+    .filter((t) => !t.archived)
+    .filter((t) =>
+      p.preset === "inbox"
+        ? !t.project_id && !t.space_id && !t.area_id
+        : p.preset === "today"
+          ? !!(
+              (t.planned_date && t.planned_date <= p.today) ||
+              (t.due_date && t.due_date <= p.today)
+            )
+          : p.preset === "week"
+            ? !!(
+                (t.planned_date && t.planned_date <= shiftDate(p.today, 6)) ||
+                (t.due_date && t.due_date <= shiftDate(p.today, 6))
+              )
+            : true,
+    )
+    .filter((t) => matchesOrganization(t, p.organizationFilter, p.organization))
     .filter(
       (t) =>
         taskMatches(t) ||
         (p.kind === "all" &&
+          matchesTaskFilters(t, p.taskFilters) &&
           matchesStatus(t.status, p.status) &&
           (!p.project || t.project === p.project) &&
           !!query &&
@@ -123,16 +167,25 @@ export function Workspace(p: Props) {
             (s) =>
               s.task_id === t.id && s.title.toLocaleLowerCase().includes(query),
           )),
-    )
-    .sort(
-      (a, b) =>
-        b.priority - a.priority ||
-        (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") ||
-        (a.due_time ?? "").localeCompare(b.due_time ?? "") ||
-        a.title.localeCompare(b.title),
     );
+  const tasks = sortTasks(matchedTasks, p.sort);
+  const hasTaskFilters = Object.values(p.taskFilters).some(Boolean);
   const reminders = p.schedules
-    .filter(s => matchesOrganization(p.tasks.find(t => t.id === s.task_id) ?? { project_id: s.project_id }, p.organizationFilter, p.organization))
+    .filter(
+      (s) =>
+        (!p.preset || p.preset === "all") &&
+        (!hasTaskFilters ||
+          !!p.tasks.find(
+            (t) => t.id === s.task_id && matchesTaskFilters(t, p.taskFilters),
+          )),
+    )
+    .filter((s) =>
+      matchesOrganization(
+        p.tasks.find((t) => t.id === s.task_id) ?? { project_id: s.project_id },
+        p.organizationFilter,
+        p.organization,
+      ),
+    )
     .filter(
       (s) =>
         (!s.task_id || p.kind === "reminder") &&
@@ -151,7 +204,18 @@ export function Workspace(p: Props) {
     );
   const events = (currentData?.items ?? []).filter(
     (e) =>
-      matchesOrganization(p.tasks.find(t => t.id === e.task_id) ?? e, p.organizationFilter, p.organization) &&
+      (!hasTaskFilters ||
+        !!p.tasks.find(
+          (t) =>
+            (t.id === e.task_id ||
+              (e.kind === "task" && t.id === e.entity_id)) &&
+            matchesTaskFilters(t, p.taskFilters),
+        )) &&
+      matchesOrganization(
+        p.tasks.find((t) => t.id === e.task_id) ?? e,
+        p.organizationFilter,
+        p.organization,
+      ) &&
       matchesStatus(e.status, p.status) &&
       (p.kind === "all" ||
         (p.kind === "task"
@@ -262,11 +326,13 @@ export function Workspace(p: Props) {
       aria-label={p.calendar ? "Calendar workspace" : "Work workspace"}
     >
       <div className="workspace-actions">
-        <div className="record-tabs">
-          <span className="footnote">
-            {p.calendar ? "Your calendar" : "Tasks and alerts"}
-          </span>
-        </div>
+        {p.calendar ? (
+          <span className="footnote">Calendar</span>
+        ) : p.kind === "reminder" ? (
+          <span className="footnote">Task alerts</span>
+        ) : (
+          <LayoutSwitch value={p.layout} onChange={p.onLayout} />
+        )}
         <div className="workspace-add">
           {p.calendar && (
             <button
@@ -279,7 +345,10 @@ export function Workspace(p: Props) {
           {!p.calendar && p.kind !== "reminder" && (
             <button
               className="text-button"
-              onClick={() => p.onSelecting(!p.selecting)}
+              onClick={() => {
+                if (!p.selecting) p.onLayout("list");
+                p.onSelecting(!p.selecting);
+              }}
             >
               {p.selecting ? "Done selecting" : "Select tasks"}
             </button>
@@ -345,11 +414,55 @@ export function Workspace(p: Props) {
           google={currentData?.google}
           error={error}
           highlight={p.highlight}
-          filtered={!!(query || p.project)}
+          filtered={
+            !!(
+              query ||
+              p.project ||
+              hasTaskFilters ||
+              Object.values(p.organizationFilter).some(Boolean) ||
+              p.status !== "all" ||
+              p.kind !== "all"
+            )
+          }
           onDay={p.onDay}
           onMode={p.onCalendarMode}
           onEntry={openEntry}
           onRetry={() => setRetry((n) => n + 1)}
+        />
+      ) : p.layout === "board" && p.kind !== "reminder" ? (
+        <TaskBoard
+          tasks={tasks}
+          allTasks={p.tasks}
+          busy={p.busy}
+          group={p.group}
+          onOpen={p.onTask}
+          highlight={p.highlight}
+          onStatus={(task, status) =>
+            p.mutate(
+              "task.update",
+              { task_id: task.id, expected_revision: task.revision, status },
+              "Task status updated",
+            )
+          }
+        />
+      ) : p.layout === "timeline" && p.kind !== "reminder" ? (
+        <Timeline
+          items={tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            start: t.planned_date ?? null,
+            end: t.due_date,
+            subtitle: t.project ?? t.status.replaceAll("_", " "),
+          }))}
+          start={p.timelineDate}
+          span={p.timelineSpan}
+          onStart={p.onTimelineDate}
+          onSpan={p.onTimelineSpan}
+          today={p.today}
+          onOpen={(id) => {
+            const task = tasks.find((t) => t.id === id);
+            if (task) p.onTask(task);
+          }}
         />
       ) : (
         <>

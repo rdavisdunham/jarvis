@@ -209,3 +209,46 @@ def test_realtime_is_paused_before_starting_or_replacing_a_session(client, monke
     assert list(options) == ["live"]
     assert "willow" in options["live"]["voices"]
     assert "cedar" not in options["live"]["voices"]
+
+
+async def test_clarification_and_answer_keep_context_without_claiming_early_save(controller, monkeypatch):
+    c = controller
+    backend = AsyncMock(side_effect=[
+        {"message": "Which project should I use?", "actions": [], "ui_actions": []},
+        {"message": "Saved in Home.", "actions": [{"command_id": "saved-home"}], "ui_actions": []},
+    ])
+    monkeypatch.setattr(live_voice, "chat", backend)
+    c.groups = [{"role": "user", "content": "Add this to my project.", "saved": True}]
+    c.input_revision = 1
+    await c.delegate("clarify")
+    assert c.receipts == []
+    assert c.send.await_args.args[0]["content"] == "Which project should I use?"
+    c.groups.append({"role": "user", "content": "Home, please.", "saved": True})
+    c.input_revision += 1
+    await c.delegate("answer")
+    context = backend.await_args.kwargs["live_context"]
+    assert any("Which project" in row["content"] for row in context)
+    assert any("Home, please." in row["content"] for row in context)
+    assert c.receipts == ["saved-home"] and c.state == "listening"
+    await c.close()
+
+
+async def test_failed_delegation_can_recover_in_same_live_session(controller, monkeypatch):
+    c = controller
+    c.receipts = ["previously-confirmed"]
+    backend = AsyncMock(side_effect=[
+        RuntimeError("Synthetic unavailable backend"),
+        {"message": "Found your saved task.", "actions": [], "ui_actions": []},
+    ])
+    monkeypatch.setattr(live_voice, "chat", backend)
+    c.groups = [{"role": "user", "content": "Find my task.", "saved": True}]
+    c.input_revision = 1
+    await c.delegate("failed")
+    assert c.error and not c.closed and c.receipts == ["previously-confirmed"]
+    assert "do not claim further success" in c.send.await_args.args[0]["content"]
+    c.input_revision += 1
+    await c.delegate("recovered")
+    assert c.error is None and c.state == "listening"
+    assert c.receipts == ["previously-confirmed"]
+    assert c.send.await_args.args[0]["content"] == "Found your saved task."
+    await c.close()

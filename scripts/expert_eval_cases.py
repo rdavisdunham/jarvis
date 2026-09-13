@@ -251,6 +251,7 @@ def seed_case(case, repeat):
                 db.execute(table.update().where(table.c.completed_at.is_not(None)).values(completed_at=CLOCK))
     f["before"] = snapshot()
     f["fixture_hash"] = fingerprint(f["before"])
+    seed_calendar_for_case(f)
     return f
 
 
@@ -953,7 +954,32 @@ def _validate(name, args):
         raise DomainError("INVALID_ARGUMENT", "Synthetic adapter rejected invalid tool arguments.") from exc
 
 
+def seed_calendar_for_case(f):
+    if f["case"] not in {"pending_remote", "calendar_unknown", "constraint_schedule", "impossible_schedule"}:
+        return
+    from eval_integrations import seed_calendar
+
+    begin = "2030-01-15T00:00:00-06:00"
+    end = "2030-01-16T00:00:00-06:00"
+    busy = (
+        availability_fixture(f, {"start": begin, "end": end, "minutes": 5})["busy"]
+        if f["case"] in {"constraint_schedule", "impossible_schedule"}
+        else []
+    )
+    seed_calendar(
+        f, OWNER, CLOCK, coverage_start=begin, coverage_end=end,
+        busy=busy, unavailable=f["case"] == "calendar_unknown",
+    )
+
+
 async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kwargs):
+    from eval_integrations import calendar_transport
+
+    with calendar_transport(f, owner, name):
+        return await _invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kwargs)
+
+
+async def _invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kwargs):
     entry = {"name": name, "arguments": copy.deepcopy(arguments), "turn_id": turn_id, "index": index}
     f["tools"].append(entry)
     try:
@@ -973,60 +999,9 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
             entry["blocked"] = True
             raise DomainError("EVAL_BLOCKED", "External publication is not part of this synthetic case.")
         _validate(name, arguments)
-        if special:
-            if name == "calendar_connection":
-                result = {
-                    "configured": True,
-                    "linked": True,
-                    "status": "connected",
-                    "calendar_enabled": True,
-                    "calendar_write_enabled": True,
-                    "syncing": False,
-                    "stale": False,
-                    "error": "",
-                    "last_sync_at": CLOCK.isoformat(),
-                    "calendars": [
-                        {
-                            "id": f["remote_calendar"],
-                            "title": "Work",
-                            "timezone": "America/Chicago",
-                            "selected": True,
-                            "available": True,
-                            "access_role": "owner",
-                            "primary": True,
-                            "writable": True,
-                            "revision": 1,
-                        }
-                    ],
-                }
-            elif name == "calendar_create":
-                if arguments["calendar_id"] != f["remote_calendar"]:
-                    raise DomainError("NOT_FOUND", "Choose the listed writable calendar.")
-                result = {
-                    "job_id": f["remote_job"],
-                    "status": "queued",
-                    "operation": "create",
-                    "created_at": CLOCK.isoformat(),
-                    "result": None,
-                }
-            else:
-                if arguments["job_id"] != f["remote_job"]:
-                    raise DomainError("NOT_FOUND", "Unknown synthetic write job.")
-                result = {
-                    "job_id": f["remote_job"],
-                    "status": "retrying",
-                    "result": None,
-                    "operation": "create",
-                    "created_at": CLOCK.isoformat(),
-                }
-            if name in {"calendar_create", "calendar_write_status"}:
-                from jarvis.remote_status import retry_metadata
-
-                result.update(retry_metadata(result["status"], result.get("result")))
-            entry["simulation"] = "remote_queue"
-        elif name == "calendar_availability":
-            result = availability_fixture(f, arguments)
-            entry["simulation"] = "availability"
+        if special or name == "calendar_availability":
+            result = await real_tool(owner, turn_id, index, name, arguments, **kwargs)
+            entry["simulation"] = "production_calendar_with_synthetic_transport"
         elif name == "memory_search":
             with session_scope() as db:
                 result = {

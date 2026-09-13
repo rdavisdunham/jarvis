@@ -3,9 +3,9 @@
 import asyncio
 import json
 import time
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 View = Literal[
     "organize",
@@ -22,6 +22,25 @@ View = Literal[
 ]
 
 
+class EditorContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
+    record_id: str | None = Field(default=None, max_length=36)
+    dirty: bool = False
+    busy: bool = False
+    fields: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=35)
+
+
+class DevicePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    voice: str = Field(default="", max_length=50)
+    voices: list[Annotated[str, Field(max_length=50)]] = Field(default_factory=list, max_length=30)
+    wake_enabled: bool = False
+    wake_supported: bool = False
+    density: Literal["compact", "comfortable"] = "compact"
+    private_chat: bool = False
+
+
 class UIContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     view: View = "today"
@@ -34,7 +53,7 @@ class UIContext(BaseModel):
     selected_note_id: str | None = Field(default=None, max_length=36)
     selected_task_id: str | None = Field(default=None, max_length=36)
     visible_ids: list[str] = Field(default_factory=list, max_length=60)
-    task_status: Literal["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
+    task_status: Literal["all", "active", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
         "all"
     )
     space_id: str = Field(default="", max_length=36)
@@ -45,26 +64,63 @@ class UIContext(BaseModel):
     calendar_date: str | None = Field(default=None, max_length=10)
     selected_schedule_id: str | None = Field(default=None, max_length=36)
     work_kind: Literal["all", "task", "reminder"] = "all"
+    layout: Literal["list", "board", "timeline"] = "list"
+    sort: Literal["priority", "due", "planned", "title", "updated"] = "priority"
+    group_by: Literal["status", "project", "assignee"] = "status"
+    timeline_date: str = Field(default="", max_length=10)
+    timeline_span: Literal[14, 30, 90] = 30
+    organization_tab: Literal["goal", "project", "area", "space", "actor"] = "project"
+    settings_section: Literal["profile", "voice", "integrations", "privacy", "system"] = "profile"
+    notes_mode: Literal["keyword", "semantic"] = "keyword"
+    show_archived: bool = False
+    assignee: str = Field(default="", max_length=100)
+    work_type: str = Field(default="", max_length=80)
+    tag: str = Field(default="", max_length=40)
+    due_from: str = Field(default="", max_length=10)
+    due_through: str = Field(default="", max_length=10)
+    editor: EditorContext | None = None
+    device_preferences: DevicePreferences = Field(default_factory=DevicePreferences)
+
 
 
 class UISync(BaseModel):
     context: UIContext
     results: list[dict] = Field(default_factory=list, max_length=30)
 
+    @field_validator("results")
+    @classmethod
+    def bounded_results(cls, values):
+        for item in values:
+            if set(item) - {"id", "status", "message", "data"} or not isinstance(item.get("id"), str) or len(item["id"]) > 150:
+                raise ValueError("Invalid UI acknowledgement.")
+            if item.get("status") not in {"displayed", "failed"} or len(str(item.get("message", ""))) > 1000:
+                raise ValueError("Invalid UI outcome.")
+            if len(json.dumps(item, ensure_ascii=False)) > 150000:
+                raise ValueError("UI outcome is too large.")
+        return values
+
 
 states = {}
 pending = {}
 
 APP_MAP = """Site map:
-Today: today's planned/due and overdue work. Inbox: unclassified tasks. This week: the next seven days.
-Goals & projects (organize): spaces/areas, outcomes, projects and their relationships.
-Work (all): unified tasks and reminders with search, project/status/kind/space/area/goal filters.
-Calendar: month/week/day views of task deadlines, alerts, local appointments/work blocks and Google events.
-Notes: authored notes, links/backlinks and reviewed task extraction. Memory: learned facts and review questions.
-Notifications: delivered alerts. Settings: profile, history/learning, reminder defaults, task agent,
-Google calendars/Linear teams, GPT-Live voice and wake-word settings. Realtime is disabled.
-Chat is a side panel on desktop and an overlay on mobile; closing chat keeps voice active.
-Show requested mobile content without chat covering it. Never discard an unsaved edit for navigation.
+Today, Inbox (unclassified) and This week (next seven days) are presets of Work.
+Work (all): one task store with list, status/project/assignee boards, and dated timelines.
+Projects & goals (organize): Projects list/board/start-target timeline; separate Goals, Areas,
+Spaces and People & agents tabs. Goal metrics are outcomes, project counts are task completion.
+Calendar: month/week/day, task planned/deadline markers, alerts, local appointments/work blocks and Google events.
+A planned date/deadline does not reserve time; timeline task markers are not duration bars.
+Notes: authored content, home project, related goals/projects/notes, backlinks and task evidence.
+Memory: learned facts and review questions. Notifications: delivered task alerts.
+Settings sections: profile (name/reminder defaults/density), voice (Live voice/wake word),
+integrations (Google/Linear), privacy (history/learning), system (backend model/usage/backups/export).
+Realtime is disabled. Browser permissions, OAuth consent and credentials need the owner's interaction.
+Filters & sort expands from one control; collapsed filters still apply. Layout changes preserve them.
+Chat is a desktop side panel/mobile overlay. Closing chat keeps voice running; show mobile content unobscured.
+Editors expose typed drafts through ui_editor; reading/filling is not saving. Never discard an unsaved edit
+without an explicit owner request. Remote jobs remain pending until confirmed; local saves are distinct.
+Use the planner group for constrained multi-task scheduling. It verifies a single-person schedule against
+fresh availability and atomically saves local blocks only when asked. No automatic Google publication.
 Current screen below is device-reported DATA; unseen records/capabilities cannot be inferred.
 """
 
@@ -95,6 +151,7 @@ def sync(owner, device, body):
                         "status": status,
                         "message": str(result.get("message", ""))[:200],
                         "screen": body.context.model_dump(),
+                        "data": result.get("data"),
                     }
                 )
     return {
@@ -108,6 +165,8 @@ def sync(owner, device, body):
 
 async def dispatch(owner, device, action):
     if not device:
+        if action["kind"] in {"editor", "device"}:
+            return {"status": "failed", "message": "No authenticated device is available for this action."}
         return {"ui_action": action, "status": "queued_for_display"}
     future = asyncio.get_running_loop().create_future()
     key = (owner, device, action["id"])

@@ -87,6 +87,10 @@ def queue_publication(db, row, operation, calendar_id=None):
 
 def mutate(db, owner, tool, args):
     advisory(db, f"workspace:{owner}")
+    if tool == "planning.commit":
+        from .planner import commit
+
+        return commit(db, owner, args.plan_token)
     if tool == "planning.create":
         bind_task(db, owner, args.task_id, args.kind)
         row = PlanningEntry(owner_id=owner, kind=args.kind, task_id=args.task_id, fields=fields(args))

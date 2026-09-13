@@ -2,7 +2,9 @@
 
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+AuthoredText = Annotated[str, StringConstraints(strip_whitespace=False)]
 
 
 class NoteArgs(BaseModel):
@@ -11,7 +13,7 @@ class NoteArgs(BaseModel):
 
 class NoteCreate(NoteArgs):
     title: str = Field(min_length=1, max_length=200)
-    content: str = Field(default="", max_length=30000)
+    content: AuthoredText = Field(default="", max_length=30000)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
     space_id: str | None = None
     area_id: str | None = None
@@ -27,7 +29,7 @@ class NoteUpdate(NoteArgs):
     note_id: str
     expected_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    content: str | None = Field(default=None, max_length=30000)
+    content: AuthoredText | None = Field(default=None, max_length=30000)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
     space_id: str | None = None
     area_id: str | None = None
@@ -42,7 +44,7 @@ class NoteUpdate(NoteArgs):
 
 class NoteTaskDraft(NoteArgs):
     title: str = Field(min_length=1, max_length=500)
-    evidence: str = Field(min_length=1, max_length=2000)
+    evidence: AuthoredText = Field(min_length=1, max_length=2000)
 
 
 class NoteTasks(NoteArgs):

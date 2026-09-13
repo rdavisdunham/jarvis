@@ -22,10 +22,12 @@ describe("calendar boundaries", () => {
       "2026-11-01T02:30",
     );
   });
-  it("open includes pending work but excludes completion and cancellation", () => {
-    expect(matchesStatus("in_progress", "open")).toBe(true);
-    expect(matchesStatus("finished", "open")).toBe(true);
-    expect(matchesStatus("completed", "open")).toBe(false);
-    expect(matchesStatus("cancelled", "open")).toBe(false);
+  it("active includes pending work; open selects its exact status", () => {
+    expect(matchesStatus("open", "open")).toBe(true);
+    expect(matchesStatus("in_progress", "open")).toBe(false);
+    expect(matchesStatus("in_progress", "active")).toBe(true);
+    expect(matchesStatus("finished", "active")).toBe(true);
+    expect(matchesStatus("completed", "active")).toBe(false);
+    expect(matchesStatus("cancelled", "active")).toBe(false);
   });
 });

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { useEditor, choice } from "./editor-control";
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, X } from "lucide-react";
 import { useDialogFocus } from "./components";
@@ -173,7 +175,7 @@ export function GoogleEventDialog({
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
-  async function submit(remove = false) {
+  async function submit(remove = false, waitForRemote = true) {
     setBusy(true);
     setError("");
     try {
@@ -202,7 +204,18 @@ export function GoogleEventDialog({
       }
       setJob(accepted);
       window.dispatchEvent(new Event("eri-calendar-write"));
-      await checkJob(accepted.job_id);
+      if (waitForRemote) await checkJob(accepted.job_id);
+      else
+        void checkJob(accepted.job_id).catch((e) => {
+          if (alive.current) setError((e as Error).message);
+        });
+      return {
+        outcome: "queued",
+        saved: false,
+        job_id: accepted.job_id,
+        status: accepted.status,
+        note: "Google has accepted a job. Use calendar_write_status to confirm the remote result.",
+      };
     } catch (e) {
       if (alive.current) setError((e as Error).message);
     } finally {
@@ -213,6 +226,84 @@ export function GoogleEventDialog({
   const canEdit = fresh ? canCreate : !!detail?.editable;
   const pending = job && !terminal(job.status);
   const blocked = !!job && terminal(job.status) && job.status !== "succeeded";
+  const baseForm = detail
+    ? {
+        title: detail.title,
+        start: detail.all_day
+          ? detail.start
+          : localDateTime(detail.start, detail.timezone),
+        end: detail.all_day
+          ? shiftDate(detail.end, -1)
+          : localDateTime(detail.end, detail.timezone),
+        all_day: detail.all_day,
+        timezone: detail.timezone,
+        location: detail.location,
+        description: detail.description,
+        busy: detail.busy,
+      }
+    : {
+        title: "",
+        start: event.date + "T09:00",
+        end: event.date + "T10:00",
+        all_day: false,
+        timezone,
+        location: "",
+        description: "",
+        busy: true,
+      };
+  const comparable = Object.fromEntries(
+    Object.keys(baseForm).map((k) => [k, form[k as keyof EventFields]]),
+  );
+  const schema = z.object({
+    title: z.string().min(1).max(500),
+    start: z.string().min(1).max(80),
+    end: z.string().min(1).max(80),
+    all_day: z.boolean(),
+    timezone: z.string().min(1).max(100),
+    location: z.string().max(1000),
+    description: z.string().max(10000),
+    busy: z.boolean(),
+    ...(fresh
+      ? {
+          calendar_id: choice(
+            (connection?.calendars ?? [])
+              .filter((c) => c.writable)
+              .map((c) => c.id),
+          ),
+          repeat: choice(["none", "daily", "weekdays", "weekly", "monthly"]),
+        }
+      : {}),
+  });
+  useEditor({
+    kind: "google_event",
+    record_id: fresh ? null : event.entity_id,
+    dirty:
+      JSON.stringify(comparable) !== JSON.stringify(baseForm) ||
+      repeat !== "none",
+    busy: busy || !!pending || !!blocked || !canEdit,
+    schema,
+    values: {
+      ...comparable,
+      ...(fresh ? { calendar_id: calendar, repeat } : {}),
+      scope,
+    },
+    patch: (v) => {
+      if (!canEdit)
+        throw new Error(
+          detail?.read_only_reason || "Calendar writes are unavailable.",
+        );
+      setEditing(true);
+      const { calendar_id, repeat: nextRepeat, ...fields } = v;
+      setForm((f) => ({ ...f, ...fields }));
+      if ("calendar_id" in v) setCalendar(calendar_id as string);
+      if ("repeat" in v) setRepeat(nextRepeat as string);
+    },
+    save: async () => {
+      if (!canEdit || !form.title.trim()) return;
+      return submit(false, false);
+    },
+    close: onClose,
+  });
   const fmt = (value: string) =>
     new Intl.DateTimeFormat(undefined, {
       timeZone: timezone,

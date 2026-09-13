@@ -32,6 +32,17 @@ Google account sign-in already requested by the owner.
 - Internal cost recording and budget enforcement are disabled during development. The owner monitors OpenAI Usage. The optional accounting system retains its historical ledger and reservations; reconcile those before re-enabling it.
 - Canonical facts and embeddings live in PostgreSQL and link to retained sources. The legacy Qdrant bridge was retired at the owner's request on September 11; the planned later vector index is pgvector/HNSW.
 
+## Planner workspace update
+
+Work/Today/Inbox/This week share list, board and timeline projections. Projects
+have status boards and lifecycle timelines; filters and record detail expand on
+demand. Settings is separated into Profile, Voice, Integrations, Privacy and System.
+Eri can use typed, acknowledged screen actions and read/patch/save editor drafts.
+Constrained scheduling uses a server planner with short proposal references and
+atomic, revalidated local saving. No additional service or schema migration.
+See [PLANNER_UX_ARCHITECTURE_REVIEW.md](PLANNER_UX_ARCHITECTURE_REVIEW.md)
+and [PLANNER_VALIDATION.md](PLANNER_VALIDATION.md).
+
 ## What is implemented
 
 Tasks support capture, notes, priorities, projects, dates and optional due times, status changes, completion/reopening, archive, search, Inbox/Today/Week/All views, and JSON/CSV export. Stable command IDs prevent duplicate effects after a retry; revision conflicts expose the current record.

@@ -242,7 +242,10 @@ try {
     page.getByText("Confirmed by Google", { exact: true }),
   ).toHaveCount(3);
   // Linear uses the real app connection/command surfaces with a synthetic GraphQL provider.
-  await ui("ui_show", { view: "settings" });
+  await ui("ui_workspace", {
+    view: "settings",
+    settings_section: "integrations",
+  });
   await page.getByLabel("Linear API key").fill("fixture-key-browser");
   await page
     .getByRole("button", { name: "Connect Linear", exact: true })
@@ -322,7 +325,10 @@ try {
     .getByRole("dialog")
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await ui("ui_show", { view: "settings" });
+  await ui("ui_workspace", {
+    view: "settings",
+    settings_section: "integrations",
+  });
   await shot("google-settings-mobile.png");
   if (
     await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)
