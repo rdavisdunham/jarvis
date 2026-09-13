@@ -978,3 +978,20 @@ The rebuilt API/worker are healthy; authenticated bootstrap identifies the defau
 gpt-5.4-mini route and the Gemini option waiting for its key. HTTPS serves
 index-CjYJ0is5.js. Task, project, goal, note, memory and historical cost-ledger
 counts match before/after deployment. No real Gemini call has run yet.
+
+
+## September 13: real Gemini/Luna acceptance
+
+Loaded the owner's Gemini key by recreating API/worker; both are healthy.
+The real Gemini tool-catalog/continuation handshake passed. The reusable
+scripts/evaluate_task_agents.py runs actual cloud models against a disposable
+PostgreSQL fixture with local-only tool authorization and no workers. Final
+comparison: Gemini low reasoning 12/12 clean passes; Luna reasoning none 11/12
+clean, with a project-ID typo rejected and then corrected. Both produced correct
+final records in every case. Responses-enabled Luna reasoning remains a later
+test; Chat Completions rejects Luna tools plus reasoning low.
+
+Results, caveats and traces are in docs/BACKGROUND_MODEL_COMPARISON.md and
+docs/evals/task-agents-2026-09-13.json. Production remains gpt-5.4-mini, accounting
+off; task/memory and historical ledger counts are unchanged. Gemini is available
+for owner selection in Settings.

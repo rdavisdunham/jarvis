@@ -1,0 +1,2339 @@
+{
+  "recorded_at": "2026-09-13T06:32:27.130310+00:00",
+  "purpose": "Real-provider task acceptance; synthetic data, disposable database, no external writes.",
+  "method": "Six workflows, two repetitions each. Actual conversation/tool/domain loop. Full catalog, local operations allowlist. Synthetic injected memory plus canonical lexical lookup. UI acknowledgements simulated. Twelve-round/thirty-tool per-turn limits, 8192 generated-token cap for both models.",
+  "compatibility": "Luna low reasoning was rejected by Chat Completions with function tools. Final Luna runs use none. Gemini uses low. Reasoning-enabled Luna through Responses was not tested.",
+  "harness_corrections": "Diagnostic runs excluded: Luna incompatible reasoning setting, and a fixture that blocked legitimate memory_search. Final dataset seeds canonical synthetic memory and permits lexical lookup. Final rerun included both models and all cases.",
+  "cost_note": "Uncached-rate equivalent is only a normalized comparison: it ignores cache discounts and cache-write premiums, and is not an invoice or production cost ledger. Failed diagnostic requests and preliminary checks are excluded.",
+  "summary": [
+    {
+      "model": "gpt-5.6-luna",
+      "reasoning_effort": "none",
+      "clean_passes": 11,
+      "workflows": 12,
+      "correct_final_records": 12,
+      "mean_seconds": 5.7,
+      "median_seconds": 5.82,
+      "range_seconds": [
+        3.161,
+        8.153
+      ],
+      "provider_calls": 35,
+      "input_tokens": 421336,
+      "output_tokens": 1954,
+      "cached_input_tokens": 270464,
+      "cache_write_tokens": 150767,
+      "uncached_rate_equivalent_usd": 0.0866,
+      "response_models": [
+        "gpt-5.6-luna"
+      ],
+      "exceptions": [
+        {
+          "repeat": 1,
+          "case": "linked_note",
+          "checks": {
+            "no_unrequested_tasks": true,
+            "existing_tasks_untouched": true,
+            "note_content": true,
+            "note_project_links": true,
+            "note_goal_link": true,
+            "no_forbidden_tools": true,
+            "agent_reports_success": false
+          },
+          "response": "Created the note **Launch brief** with the exact content:\n\n> Launch review is January 15.\n\nLinked to **Website**, **Referrals**, and the **Five clients** goal. No tasks created.",
+          "tools": [
+            {
+              "name": "organization_list",
+              "arguments": {},
+              "allowed": true
+            },
+            {
+              "name": "note_create",
+              "arguments": {
+                "title": "Launch brief",
+                "content": "Launch review is January 15.",
+                "goal_ids": [
+                  "7c5884af-c015-4a89-959f-e4269ab5397b"
+                ],
+                "project_ids": [
+                  "58e151d6-a5c3-4872-83fa-3fcbf488b83",
+                  "64eb1c44-bea3-47d0-b263-72f385444b83"
+                ]
+              },
+              "allowed": true
+            },
+            {
+              "name": "note_create",
+              "arguments": {
+                "title": "Launch brief",
+                "content": "Launch review is January 15.",
+                "goal_ids": [
+                  "7c5884af-c015-4a89-959f-e4269ab5397b"
+                ],
+                "project_ids": [
+                  "58e151d6-a5c3-4872-83fa-3fcbf488b691",
+                  "64eb1c44-bea3-47d0-b263-72f385444b83"
+                ]
+              },
+              "allowed": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "reasoning_effort": "low",
+      "clean_passes": 12,
+      "workflows": 12,
+      "correct_final_records": 12,
+      "mean_seconds": 6.77,
+      "median_seconds": 6.68,
+      "range_seconds": [
+        2.013,
+        12.044
+      ],
+      "provider_calls": 39,
+      "input_tokens": 718313,
+      "output_tokens": 2088,
+      "cached_input_tokens": 377086,
+      "cache_write_tokens": 0,
+      "uncached_rate_equivalent_usd": 0.5466,
+      "response_models": [
+        "gemini-3.8-flash"
+      ],
+      "exceptions": []
+    }
+  ],
+  "results": [
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "timed_task",
+      "reasoning_effort": "none",
+      "seconds": 6.295,
+      "checks": {
+        "exactly_one_new_task": true,
+        "correct_deadline": true,
+        "alert_on_same_task_at_correct_time": true,
+        "existing_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Created:\n\n- **Task:** Send proposal\n- **Due:** January 15, 2030 at 2:00 PM America/Chicago\n- **Reminder:** January 15, 2030 at 1:30 PM America/Chicago\n\nNo calendar event was created.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_create",
+          "arguments": {
+            "title": "Send proposal",
+            "due_date": "2030-01-15",
+            "due_time": "14:00",
+            "due_timezone": "America/Chicago"
+          },
+          "allowed": true
+        },
+        {
+          "name": "schedule_create",
+          "arguments": {
+            "title": "Send proposal",
+            "when": "2030-01-15T13:30:00-06:00",
+            "timezone": "America/Chicago",
+            "task_id": "0881ee27-fa3d-4af3-891a-c684129641e8",
+            "kind": "reminder",
+            "original_words": "Remind me about the task \u201cSend proposal\u201d at 1:30 PM on January 15, 2030."
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.861,
+          "usage": {
+            "prompt_tokens": 11373,
+            "completion_tokens": 42,
+            "total_tokens": 11415,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11370,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.226,
+          "usage": {
+            "prompt_tokens": 11743,
+            "completion_tokens": 101,
+            "total_tokens": 11844,
+            "prompt_tokens_details": {
+              "cached_tokens": 11370,
+              "cache_write_tokens": 370,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.1,
+          "usage": {
+            "prompt_tokens": 12132,
+            "completion_tokens": 60,
+            "total_tokens": 12192,
+            "prompt_tokens_details": {
+              "cached_tokens": 11740,
+              "cache_write_tokens": 389,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "bulk_edit",
+      "reasoning_effort": "none",
+      "seconds": 5.424,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "all_three_completed": true,
+        "other_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Completed all three open tasks tagged **batch** in the **Website** project:\n\n- Website batch 0\n- Website batch 1\n- Website batch 2\n\nThe unrelated Personal batch task was left unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "batch",
+            "limit": 100
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_batch",
+          "arguments": {
+            "items": [
+              {
+                "task_id": "ec2fe4a1-5f09-47eb-a303-3a07daed9448",
+                "expected_revision": 1,
+                "status": "completed"
+              },
+              {
+                "task_id": "99779b68-dce1-455d-bb43-b713ce7b9f2e",
+                "expected_revision": 1,
+                "status": "completed"
+              },
+              {
+                "task_id": "be7d67c0-dbe3-4abc-909e-ac03a562f7b1",
+                "expected_revision": 1,
+                "status": "completed"
+              }
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.466,
+          "usage": {
+            "prompt_tokens": 11343,
+            "completion_tokens": 21,
+            "total_tokens": 11364,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11340,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.198,
+          "usage": {
+            "prompt_tokens": 12446,
+            "completion_tokens": 124,
+            "total_tokens": 12570,
+            "prompt_tokens_details": {
+              "cached_tokens": 11340,
+              "cache_write_tokens": 1103,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.521,
+          "usage": {
+            "prompt_tokens": 13525,
+            "completion_tokens": 46,
+            "total_tokens": 13571,
+            "prompt_tokens_details": {
+              "cached_tokens": 12443,
+              "cache_write_tokens": 1079,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "goal_links",
+      "reasoning_effort": "none",
+      "seconds": 6.15,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "many_to_many_preserves_existing_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Linked **Referrals** to both goals:\n\n- **Five clients**\n- **Less admin**\n\n**Website\u2019s existing link to Five clients was preserved.** No goal progress or task completion was changed.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "project_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "project_update",
+          "arguments": {
+            "project_id": "d6c48193-d70c-4332-89ec-80820c9b030f",
+            "expected_revision": 1,
+            "goal_ids": [
+              "73636c37-0645-45b1-b2e3-fcbb4c5344b7",
+              "b1fc970e-d2cf-408d-a7d3-c57590702713"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 2.081,
+          "usage": {
+            "prompt_tokens": 11358,
+            "completion_tokens": 42,
+            "total_tokens": 11400,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11355,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.129,
+          "usage": {
+            "prompt_tokens": 12646,
+            "completion_tokens": 94,
+            "total_tokens": 12740,
+            "prompt_tokens_details": {
+              "cached_tokens": 11355,
+              "cache_write_tokens": 1288,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.817,
+          "usage": {
+            "prompt_tokens": 13032,
+            "completion_tokens": 43,
+            "total_tokens": 13075,
+            "prompt_tokens_details": {
+              "cached_tokens": 12643,
+              "cache_write_tokens": 386,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "linked_note",
+      "reasoning_effort": "none",
+      "seconds": 8.153,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "note_content": true,
+        "note_project_links": true,
+        "note_goal_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": false
+      },
+      "response": "Created the note **Launch brief** with the exact content:\n\n> Launch review is January 15.\n\nLinked to **Website**, **Referrals**, and the **Five clients** goal. No tasks created.",
+      "status": "partial",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "note_create",
+          "arguments": {
+            "title": "Launch brief",
+            "content": "Launch review is January 15.",
+            "goal_ids": [
+              "7c5884af-c015-4a89-959f-e4269ab5397b"
+            ],
+            "project_ids": [
+              "58e151d6-a5c3-4872-83fa-3fcbf488b83",
+              "64eb1c44-bea3-47d0-b263-72f385444b83"
+            ]
+          },
+          "allowed": true
+        },
+        {
+          "name": "note_create",
+          "arguments": {
+            "title": "Launch brief",
+            "content": "Launch review is January 15.",
+            "goal_ids": [
+              "7c5884af-c015-4a89-959f-e4269ab5397b"
+            ],
+            "project_ids": [
+              "58e151d6-a5c3-4872-83fa-3fcbf488b691",
+              "64eb1c44-bea3-47d0-b263-72f385444b83"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.563,
+          "usage": {
+            "prompt_tokens": 11366,
+            "completion_tokens": 13,
+            "total_tokens": 11379,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11363,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.15,
+          "usage": {
+            "prompt_tokens": 12254,
+            "completion_tokens": 103,
+            "total_tokens": 12357,
+            "prompt_tokens_details": {
+              "cached_tokens": 11363,
+              "cache_write_tokens": 888,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.387,
+          "usage": {
+            "prompt_tokens": 12391,
+            "completion_tokens": 103,
+            "total_tokens": 12494,
+            "prompt_tokens_details": {
+              "cached_tokens": 12251,
+              "cache_write_tokens": 137,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.9,
+          "usage": {
+            "prompt_tokens": 12869,
+            "completion_tokens": 44,
+            "total_tokens": 12913,
+            "prompt_tokens_details": {
+              "cached_tokens": 12388,
+              "cache_write_tokens": 478,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": false
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "ambiguous_task",
+      "reasoning_effort": "none",
+      "seconds": 3.161,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "asks_before_guessing": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I found two open tasks named \u201cSubmit report\u201d:\n\n- **Referrals**\n- **Website**\n\nWhich one should I mark complete?",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_resolve",
+          "arguments": {
+            "scope": "search",
+            "query": "Submit report"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.518,
+          "usage": {
+            "prompt_tokens": 11332,
+            "completion_tokens": 23,
+            "total_tokens": 11355,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11329,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.572,
+          "usage": {
+            "prompt_tokens": 11914,
+            "completion_tokens": 30,
+            "total_tokens": 11944,
+            "prompt_tokens_details": {
+              "cached_tokens": 11329,
+              "cache_write_tokens": 582,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 1,
+      "case": "memory_and_navigation",
+      "reasoning_effort": "none",
+      "seconds": 6.743,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "uses_injected_memory": true,
+        "opens_exact_task": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Your cat\u2019s name is **Zinnia**.\n\nI displayed the **\u201cArchive tax records\u201d** task. No records were changed.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "memory_search",
+          "arguments": {
+            "query": "cat name"
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "Archive tax records",
+            "limit": 100
+          },
+          "allowed": true
+        },
+        {
+          "name": "ui_show",
+          "arguments": {
+            "view": "all",
+            "entity_id": "89e0f3c7-92e7-4d59-bd80-aa8382cd5e57"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.778,
+          "usage": {
+            "prompt_tokens": 11352,
+            "completion_tokens": 54,
+            "total_tokens": 11406,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11349,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.844,
+          "usage": {
+            "prompt_tokens": 11852,
+            "completion_tokens": 46,
+            "total_tokens": 11898,
+            "prompt_tokens_details": {
+              "cached_tokens": 11349,
+              "cache_write_tokens": 500,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.991,
+          "usage": {
+            "prompt_tokens": 12003,
+            "completion_tokens": 31,
+            "total_tokens": 12034,
+            "prompt_tokens_details": {
+              "cached_tokens": 11849,
+              "cache_write_tokens": 151,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "timed_task",
+      "reasoning_effort": "low",
+      "seconds": 5.745,
+      "checks": {
+        "exactly_one_new_task": true,
+        "correct_deadline": true,
+        "alert_on_same_task_at_correct_time": true,
+        "existing_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have created the task and set the reminder:\n\n* **Task:** Send proposal\n* **Due:** January 15, 2030, at 2:00 PM America/Chicago\n* **Reminder:** January 15, 2030, at 1:30 PM America/Chicago",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_create",
+          "arguments": {
+            "due_timezone": "America/Chicago",
+            "title": "Send proposal",
+            "due_time": "14:00",
+            "due_date": "2030-01-15"
+          },
+          "allowed": true
+        },
+        {
+          "name": "schedule_create",
+          "arguments": {
+            "timezone": "America/Chicago",
+            "task_id": "370ae7ef-5d96-4182-9c3c-242754a56399",
+            "when": "2030-01-15 13:30:00",
+            "title": "Send proposal"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 2.685,
+          "usage": {
+            "completion_tokens": 56,
+            "prompt_tokens": 17066,
+            "total_tokens": 17426
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.844,
+          "usage": {
+            "completion_tokens": 90,
+            "prompt_tokens": 17851,
+            "prompt_tokens_details": {
+              "cached_tokens": 12046
+            },
+            "total_tokens": 18248
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.119,
+          "usage": {
+            "completion_tokens": 69,
+            "prompt_tokens": 18595,
+            "prompt_tokens_details": {
+              "cached_tokens": 16066
+            },
+            "total_tokens": 18755
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "bulk_edit",
+      "reasoning_effort": "low",
+      "seconds": 11.021,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "all_three_completed": true,
+        "other_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have completed all tasks tagged `batch` in the **Website** project:\n\n- **Website batch 0**\n- **Website batch 1**\n- **Website batch 2**\n\nAll other tasks remain unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "project_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "task_list",
+          "arguments": {
+            "limit": 100
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "expected_revision": 1,
+            "task_id": "8a118641-1720-4876-aed2-ae0599c7d44b"
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "expected_revision": 1,
+            "task_id": "a6593cc0-70f1-465b-91c6-e1e30547df49"
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "task_id": "dec9d312-fa2f-47a1-9402-5463b2841d93",
+            "expected_revision": 1
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 0.838,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 17032,
+            "total_tokens": 17042
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 0.935,
+          "usage": {
+            "completion_tokens": 16,
+            "prompt_tokens": 17522,
+            "prompt_tokens_details": {
+              "cached_tokens": 12041
+            },
+            "total_tokens": 17538
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.342,
+          "usage": {
+            "completion_tokens": 57,
+            "prompt_tokens": 19910,
+            "prompt_tokens_details": {
+              "cached_tokens": 16014
+            },
+            "total_tokens": 19967
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.433,
+          "usage": {
+            "completion_tokens": 57,
+            "prompt_tokens": 20446,
+            "prompt_tokens_details": {
+              "cached_tokens": 16016
+            },
+            "total_tokens": 20503
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 3.452,
+          "usage": {
+            "completion_tokens": 56,
+            "prompt_tokens": 20982,
+            "prompt_tokens_details": {
+              "cached_tokens": 16018
+            },
+            "total_tokens": 21038
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.882,
+          "usage": {
+            "completion_tokens": 47,
+            "prompt_tokens": 21516,
+            "prompt_tokens_details": {
+              "cached_tokens": 16019
+            },
+            "total_tokens": 21563
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "goal_links",
+      "reasoning_effort": "low",
+      "seconds": 8.496,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "many_to_many_preserves_existing_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "The **Referrals** project has been linked to both **Five clients** and **Less admin**.\n\n**Website**\u2019s link to **Five clients** remains intact, and no goal progress, statuses, or completions were altered.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "project_update",
+          "arguments": {
+            "goal_ids": [
+              "968b4540-7c28-4ab2-96d6-49207f8c78ed",
+              "bf8c5c13-7d89-4479-a1e3-743656345616"
+            ],
+            "project_id": "2e22b27f-1173-455b-b690-55fc136b7a06",
+            "expected_revision": 1
+          },
+          "allowed": true
+        },
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.1,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 17048,
+            "total_tokens": 17142
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 3.312,
+          "usage": {
+            "completion_tokens": 137,
+            "prompt_tokens": 18262,
+            "total_tokens": 19347
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.355,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 19741,
+            "prompt_tokens_details": {
+              "cached_tokens": 16084
+            },
+            "total_tokens": 19785
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.601,
+          "usage": {
+            "completion_tokens": 47,
+            "prompt_tokens": 21050,
+            "prompt_tokens_details": {
+              "cached_tokens": 16094
+            },
+            "total_tokens": 21323
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "linked_note",
+      "reasoning_effort": "low",
+      "seconds": 3.421,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "note_content": true,
+        "note_project_links": true,
+        "note_goal_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have created the note **Launch brief** with the requested content and linked it to the **Website** and **Referrals** projects, as well as the **Five clients** goal. No tasks were created.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "note_create",
+          "arguments": {
+            "content": "Launch review is January 15.",
+            "title": "Launch brief",
+            "goal_ids": [
+              "f337d3d0-40b0-4cf9-bc81-94bf1f350061"
+            ],
+            "project_ids": [
+              "b55fa579-83d6-4b4c-97c8-1a363cd76cfb",
+              "714c9b15-19ef-4c04-8d6f-fe1620cec641"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 0.881,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 17056,
+            "total_tokens": 17066
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.358,
+          "usage": {
+            "completion_tokens": 145,
+            "prompt_tokens": 18178,
+            "prompt_tokens_details": {
+              "cached_tokens": 16067
+            },
+            "total_tokens": 18323
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.065,
+          "usage": {
+            "completion_tokens": 43,
+            "prompt_tokens": 18797,
+            "prompt_tokens_details": {
+              "cached_tokens": 16069
+            },
+            "total_tokens": 18840
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "ambiguous_task",
+      "reasoning_effort": "low",
+      "seconds": 2.013,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "asks_before_guessing": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "You have two open tasks titled **\"Submit report\"**:\n\n1. **Referrals** project\n2. **Website** project\n\nWhich one would you like me to mark complete, or should I complete both?",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "Submit report"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 0.881,
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 17021,
+            "total_tokens": 17038
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.061,
+          "usage": {
+            "completion_tokens": 44,
+            "prompt_tokens": 17745,
+            "prompt_tokens_details": {
+              "cached_tokens": 12044
+            },
+            "total_tokens": 17789
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 1,
+      "case": "memory_and_navigation",
+      "reasoning_effort": "low",
+      "seconds": 5.553,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "uses_injected_memory": true,
+        "opens_exact_task": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Your cat's name is **Zinnia**.\n\nI have displayed the **Archive tax records** task on your screen and left all records unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "Archive tax records"
+          },
+          "allowed": true
+        },
+        {
+          "name": "ui_show",
+          "arguments": {
+            "view": "all",
+            "entity_id": "77a7e7fe-b522-4323-b34b-0205bb4a5b75"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.716,
+          "usage": {
+            "completion_tokens": 18,
+            "prompt_tokens": 17042,
+            "total_tokens": 17278
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.062,
+          "usage": {
+            "completion_tokens": 57,
+            "prompt_tokens": 17635,
+            "prompt_tokens_details": {
+              "cached_tokens": 11982
+            },
+            "total_tokens": 17802
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.701,
+          "usage": {
+            "completion_tokens": 31,
+            "prompt_tokens": 17928,
+            "prompt_tokens_details": {
+              "cached_tokens": 13978
+            },
+            "total_tokens": 18000
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "timed_task",
+      "reasoning_effort": "low",
+      "seconds": 6.151,
+      "checks": {
+        "exactly_one_new_task": true,
+        "correct_deadline": true,
+        "alert_on_same_task_at_correct_time": true,
+        "existing_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have created the task and attached reminder:\n\n- **Task:** Send proposal\n- **Due Date:** January 15, 2030, at 2:00 PM America/Chicago\n- **Reminder:** January 15, 2030, at 1:30 PM America/Chicago\n\nNo calendar event was created.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_create",
+          "arguments": {
+            "due_time": "14:00",
+            "title": "Send proposal",
+            "due_timezone": "America/Chicago",
+            "due_date": "2030-01-15"
+          },
+          "allowed": true
+        },
+        {
+          "name": "schedule_create",
+          "arguments": {
+            "title": "Send proposal",
+            "kind": "reminder",
+            "timezone": "America/Chicago",
+            "when": "2030-01-15 13:30",
+            "task_id": "9447d39a-c183-43be-b873-540baae610f4"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.762,
+          "usage": {
+            "completion_tokens": 56,
+            "prompt_tokens": 17066,
+            "total_tokens": 17335
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.434,
+          "usage": {
+            "completion_tokens": 92,
+            "prompt_tokens": 17759,
+            "prompt_tokens_details": {
+              "cached_tokens": 12045
+            },
+            "total_tokens": 17975
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.861,
+          "usage": {
+            "completion_tokens": 76,
+            "prompt_tokens": 18320,
+            "prompt_tokens_details": {
+              "cached_tokens": 16061
+            },
+            "total_tokens": 18546
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "bulk_edit",
+      "reasoning_effort": "low",
+      "seconds": 12.044,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "all_three_completed": true,
+        "other_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have completed the tasks tagged **batch** in the **Website** project:\n\n- **Website batch 0**\n- **Website batch 1**\n- **Website batch 2**\n\nAll other tasks remain unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "project_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "task_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "task_id": "c4ac8c4c-ceb6-486f-a11e-22c2a630e868",
+            "expected_revision": 1
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "expected_revision": 1,
+            "task_id": "862f4279-8297-4105-923b-335913561139"
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_complete",
+          "arguments": {
+            "expected_revision": 1,
+            "task_id": "632f449c-2952-4179-9f2f-3b934b71d567"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 2.728,
+          "usage": {
+            "completion_tokens": 20,
+            "prompt_tokens": 17032,
+            "total_tokens": 17126
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 7.497,
+          "usage": {
+            "completion_tokens": 175,
+            "prompt_tokens": 19969,
+            "prompt_tokens_details": {
+              "cached_tokens": 8009
+            },
+            "total_tokens": 20758
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.663,
+          "usage": {
+            "completion_tokens": 47,
+            "prompt_tokens": 22197,
+            "prompt_tokens_details": {
+              "cached_tokens": 18041
+            },
+            "total_tokens": 22265
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "goal_links",
+      "reasoning_effort": "low",
+      "seconds": 7.703,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "many_to_many_preserves_existing_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "The **Referrals** project has been linked to both **Five clients** and **Less admin**.\n\n- **Five clients** is now linked to both **Referrals** and **Website** (with its progress preserved at 1/5).\n- **Less admin** is now linked to **Referrals**.\n- No progress metrics were modified, and no projects or goals were marked complete.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "project_update",
+          "arguments": {
+            "expected_revision": 1,
+            "project_id": "3a112b54-1151-4e13-b343-f83717e1745a",
+            "goal_ids": [
+              "e0332912-e729-4040-994b-3712a9d988dd",
+              "5f9027fd-e872-401d-bbad-f03ad8e1b467"
+            ]
+          },
+          "allowed": true
+        },
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 2.362,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 17048,
+            "total_tokens": 17126
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.794,
+          "usage": {
+            "completion_tokens": 136,
+            "prompt_tokens": 18243,
+            "prompt_tokens_details": {
+              "cached_tokens": 16068
+            },
+            "total_tokens": 19148
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 0.741,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 19540,
+            "prompt_tokens_details": {
+              "cached_tokens": 16081
+            },
+            "total_tokens": 19576
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.673,
+          "usage": {
+            "completion_tokens": 81,
+            "prompt_tokens": 20838,
+            "prompt_tokens_details": {
+              "cached_tokens": 16092
+            },
+            "total_tokens": 21276
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "linked_note",
+      "reasoning_effort": "low",
+      "seconds": 9.116,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "note_content": true,
+        "note_project_links": true,
+        "note_goal_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I have created the note **Launch brief** with the specified content and linked it to the **Website** and **Referrals** projects, as well as the **Five clients** goal. No tasks were created.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "note_create",
+          "arguments": {
+            "content": "Launch review is January 15.",
+            "title": "Launch brief",
+            "goal_ids": [
+              "6f2b56f7-2eac-476f-9beb-b59ef7a7ea43"
+            ],
+            "project_ids": [
+              "3460b865-8dd9-4b27-930c-cea366235349",
+              "d39b848a-da62-4860-90f3-ae2f54c9880e"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 3.301,
+          "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 17056,
+            "total_tokens": 17158
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.291,
+          "usage": {
+            "completion_tokens": 145,
+            "prompt_tokens": 18265,
+            "prompt_tokens_details": {
+              "cached_tokens": 16069
+            },
+            "total_tokens": 18885
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 3.393,
+          "usage": {
+            "completion_tokens": 43,
+            "prompt_tokens": 19363,
+            "prompt_tokens_details": {
+              "cached_tokens": 16078
+            },
+            "total_tokens": 19444
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "ambiguous_task",
+      "reasoning_effort": "low",
+      "seconds": 2.742,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "asks_before_guessing": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "You have two open tasks titled \"Submit report\"\u2014one under **Referrals** and one under **Website**. \n\nWhich one would you like to mark complete, or should I complete both?",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "Submit report"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.172,
+          "usage": {
+            "completion_tokens": 17,
+            "prompt_tokens": 17021,
+            "total_tokens": 17085
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 1.497,
+          "usage": {
+            "completion_tokens": 39,
+            "prompt_tokens": 17787,
+            "prompt_tokens_details": {
+              "cached_tokens": 12045
+            },
+            "total_tokens": 18008
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "repeat": 2,
+      "case": "memory_and_navigation",
+      "reasoning_effort": "low",
+      "seconds": 7.213,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "uses_injected_memory": true,
+        "opens_exact_task": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Your cat's name is Zinnia.\n\nI have opened the \"Archive tax records\" task on your screen and left all records unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "Archive tax records"
+          },
+          "allowed": true
+        },
+        {
+          "name": "ui_show",
+          "arguments": {
+            "view": "all",
+            "entity_id": "9e1f6d44-ce6c-4fdc-a262-97e8ca44e127"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.068,
+          "usage": {
+            "completion_tokens": 18,
+            "prompt_tokens": 17042,
+            "total_tokens": 17162
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 3.54,
+          "usage": {
+            "completion_tokens": 56,
+            "prompt_tokens": 17517,
+            "prompt_tokens_details": {
+              "cached_tokens": 11980
+            },
+            "total_tokens": 17705
+          },
+          "response_model": "gemini-3.8-flash"
+        },
+        {
+          "status": 200,
+          "seconds": 2.528,
+          "usage": {
+            "completion_tokens": 30,
+            "prompt_tokens": 17827,
+            "prompt_tokens_details": {
+              "cached_tokens": 11979
+            },
+            "total_tokens": 17887
+          },
+          "response_model": "gemini-3.8-flash"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "timed_task",
+      "reasoning_effort": "none",
+      "seconds": 5.814,
+      "checks": {
+        "exactly_one_new_task": true,
+        "correct_deadline": true,
+        "alert_on_same_task_at_correct_time": true,
+        "existing_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Created:\n\n- **Task:** Send proposal\n- **Due:** January 15, 2030 at **2:00 PM CST** (America/Chicago)\n- **Reminder:** January 15, 2030 at **1:30 PM CST**\n- **Calendar event:** Not created",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_create",
+          "arguments": {
+            "title": "Send proposal",
+            "due_date": "2030-01-15",
+            "due_time": "14:00",
+            "due_timezone": "America/Chicago"
+          },
+          "allowed": true
+        },
+        {
+          "name": "schedule_create",
+          "arguments": {
+            "title": "Send proposal",
+            "when": "2030-01-15T13:30:00-06:00",
+            "timezone": "America/Chicago",
+            "task_id": "9abbda1b-1704-4285-b942-316248606054",
+            "kind": "reminder",
+            "original_words": "Remind me about the task Send proposal at 1:30 PM on January 15, 2030."
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.855,
+          "usage": {
+            "prompt_tokens": 11373,
+            "completion_tokens": 42,
+            "total_tokens": 11415,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11370,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.175,
+          "usage": {
+            "prompt_tokens": 11738,
+            "completion_tokens": 97,
+            "total_tokens": 11835,
+            "prompt_tokens_details": {
+              "cached_tokens": 11370,
+              "cache_write_tokens": 365,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.692,
+          "usage": {
+            "prompt_tokens": 12116,
+            "completion_tokens": 62,
+            "total_tokens": 12178,
+            "prompt_tokens_details": {
+              "cached_tokens": 11735,
+              "cache_write_tokens": 378,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "bulk_edit",
+      "reasoning_effort": "none",
+      "seconds": 5.825,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "all_three_completed": true,
+        "other_tasks_untouched": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Completed the 3 open tasks tagged **batch** in the **Website** project:\n\n- Website batch 0\n- Website batch 1\n- Website batch 2\n\nAll other tasks were left unchanged.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_list",
+          "arguments": {
+            "query": "batch",
+            "limit": 100
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_batch",
+          "arguments": {
+            "items": [
+              {
+                "task_id": "88d486c9-6b48-4b77-b700-34b4a09d876c",
+                "expected_revision": 1,
+                "status": "completed"
+              },
+              {
+                "task_id": "b1eb345c-9984-4b81-835b-fc3be7634dce",
+                "expected_revision": 1,
+                "status": "completed"
+              },
+              {
+                "task_id": "d3b0c137-e84c-4617-a79a-59229fc705a1",
+                "expected_revision": 1,
+                "status": "completed"
+              }
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.363,
+          "usage": {
+            "prompt_tokens": 11343,
+            "completion_tokens": 21,
+            "total_tokens": 11364,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11340,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.094,
+          "usage": {
+            "prompt_tokens": 12424,
+            "completion_tokens": 125,
+            "total_tokens": 12549,
+            "prompt_tokens_details": {
+              "cached_tokens": 11340,
+              "cache_write_tokens": 1081,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.255,
+          "usage": {
+            "prompt_tokens": 13485,
+            "completion_tokens": 45,
+            "total_tokens": 13530,
+            "prompt_tokens_details": {
+              "cached_tokens": 12421,
+              "cache_write_tokens": 1061,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "goal_links",
+      "reasoning_effort": "none",
+      "seconds": 5.172,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "many_to_many_preserves_existing_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Linked **Referrals** to both goals:\n\n- **Five clients**\n- **Less admin**\n\nThe existing **Website \u2192 Five clients** link was preserved. No goal progress or task status was changed.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "project_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "project_update",
+          "arguments": {
+            "project_id": "99326568-ca6a-4720-b9f0-9e0b1c27f6b9",
+            "expected_revision": 1,
+            "goal_ids": [
+              "69dd4db0-6f86-4d74-a4a9-4aa1300f0c7c",
+              "87d89f63-51fa-434d-ba9d-dce658542325"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.697,
+          "usage": {
+            "prompt_tokens": 11358,
+            "completion_tokens": 42,
+            "total_tokens": 11400,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11355,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.819,
+          "usage": {
+            "prompt_tokens": 12671,
+            "completion_tokens": 99,
+            "total_tokens": 12770,
+            "prompt_tokens_details": {
+              "cached_tokens": 11355,
+              "cache_write_tokens": 1313,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.54,
+          "usage": {
+            "prompt_tokens": 13066,
+            "completion_tokens": 43,
+            "total_tokens": 13109,
+            "prompt_tokens_details": {
+              "cached_tokens": 12668,
+              "cache_write_tokens": 395,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "linked_note",
+      "reasoning_effort": "none",
+      "seconds": 5.72,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "note_content": true,
+        "note_project_links": true,
+        "note_goal_link": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Created the note **\u201cLaunch brief\u201d** with the exact content:\n\n> Launch review is January 15.\n\nLinked to the **Website** and **Referrals** projects, and the **Five clients** goal. No tasks were created.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "organization_list",
+          "arguments": {},
+          "allowed": true
+        },
+        {
+          "name": "note_create",
+          "arguments": {
+            "title": "Launch brief",
+            "content": "Launch review is January 15.",
+            "project_ids": [
+              "665af48d-645f-4522-9d4b-efe89c8c0ccc",
+              "90bd97a4-6732-4117-8b1c-f2f358cc2ef0"
+            ],
+            "goal_ids": [
+              "eec0c5cf-1477-4c71-a16a-bdafd91ddca3"
+            ]
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.744,
+          "usage": {
+            "prompt_tokens": 11366,
+            "completion_tokens": 13,
+            "total_tokens": 11379,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11363,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.129,
+          "usage": {
+            "prompt_tokens": 12258,
+            "completion_tokens": 108,
+            "total_tokens": 12366,
+            "prompt_tokens_details": {
+              "cached_tokens": 11363,
+              "cache_write_tokens": 892,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.734,
+          "usage": {
+            "prompt_tokens": 12745,
+            "completion_tokens": 51,
+            "total_tokens": 12796,
+            "prompt_tokens_details": {
+              "cached_tokens": 12255,
+              "cache_write_tokens": 487,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "ambiguous_task",
+      "reasoning_effort": "none",
+      "seconds": 3.642,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "asks_before_guessing": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "I found two open tasks named **\u201cSubmit report\u201d**\u2014one in **Referrals** and one in **Website**. Which one should I mark complete?",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "task_resolve",
+          "arguments": {
+            "scope": "search",
+            "query": "Submit report"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 1.992,
+          "usage": {
+            "prompt_tokens": 11332,
+            "completion_tokens": 23,
+            "total_tokens": 11355,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11329,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.576,
+          "usage": {
+            "prompt_tokens": 11914,
+            "completion_tokens": 36,
+            "total_tokens": 11950,
+            "prompt_tokens_details": {
+              "cached_tokens": 11329,
+              "cache_write_tokens": 582,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "repeat": 2,
+      "case": "memory_and_navigation",
+      "reasoning_effort": "none",
+      "seconds": 6.259,
+      "checks": {
+        "no_unrequested_tasks": true,
+        "existing_tasks_untouched": true,
+        "uses_injected_memory": true,
+        "opens_exact_task": true,
+        "no_forbidden_tools": true,
+        "agent_reports_success": true
+      },
+      "response": "Your cat\u2019s name is **Zinnia**.\n\nI displayed the **\u201cArchive tax records\u201d** task without changing any records.",
+      "status": "succeeded",
+      "tools": [
+        {
+          "name": "memory_search",
+          "arguments": {
+            "query": "cat name"
+          },
+          "allowed": true
+        },
+        {
+          "name": "task_resolve",
+          "arguments": {
+            "scope": "search",
+            "query": "Archive tax records"
+          },
+          "allowed": true
+        },
+        {
+          "name": "ui_show",
+          "arguments": {
+            "view": "all",
+            "entity_id": "240b8362-465d-406b-acfc-20c15276a7a6"
+          },
+          "allowed": true
+        }
+      ],
+      "provider_calls": [
+        {
+          "status": 200,
+          "seconds": 2.219,
+          "usage": {
+            "prompt_tokens": 11352,
+            "completion_tokens": 55,
+            "total_tokens": 11407,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 11349,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 1.937,
+          "usage": {
+            "prompt_tokens": 11862,
+            "completion_tokens": 42,
+            "total_tokens": 11904,
+            "prompt_tokens_details": {
+              "cached_tokens": 11349,
+              "cache_write_tokens": 510,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        },
+        {
+          "status": 200,
+          "seconds": 2.018,
+          "usage": {
+            "prompt_tokens": 12002,
+            "completion_tokens": 30,
+            "total_tokens": 12032,
+            "prompt_tokens_details": {
+              "cached_tokens": 11859,
+              "cache_write_tokens": 140,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "response_model": "gpt-5.6-luna"
+        }
+      ],
+      "passed": true
+    }
+  ]
+}

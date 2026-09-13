@@ -19,9 +19,17 @@ Jarvis remains the repository and infrastructure project name.
       API/worker/PostgreSQL are healthy; authenticated deployed bootstrap and HTTPS
       bundle index-CjYJ0is5.js verified. Task/memory counts and historical cost ledger
       are unchanged. The backup service is active.
-- [ ] Owner supplies the Gemini key; recreate API/worker, run the synthetic
-      handshake, then compare real text and GPT-Live task workflows against
-      GPT-5.4 mini. Automatic memory/note extraction and embeddings remain OpenAI.
+- [x] Owner supplied Gemini key; API/worker recreated and healthy. Real synthetic
+      handshake passed. Final task-loop comparison: Gemini 12/12 clean passes;
+      Luna 11/12 clean, with one rejected ID typo corrected successfully. Final
+      records correct in all 12 cases for each. See the model comparison/eval trace.
+- [ ] Owner tries Gemini in real text and GPT-Live conversations, then compares
+      against the 5.4-mini baseline. Audio/device and connected-service behavior
+      were not part of the synthetic task-loop comparison.
+- [ ] Evaluate Luna with reasoning through Responses, then decide whether to expose
+      a production Luna model profile. Current Chat Completions only accepts Luna
+      function tools with reasoning none. Default remains 5.4-mini; automatic
+      memory/note extraction and embeddings remain OpenAI.
 
 ## Database backups
 
@@ -70,8 +78,8 @@ Jarvis remains the repository and infrastructure project name.
       organize current work into Personal/Business areas. Shared membership remains
       a later feature.
 - [ ] Model comparison recorded in [BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
-      Evaluate Luna against the 5.4-mini baseline on representative workflows;
-      compare Flash using the new Settings option, and Terra where needed.
+      Initial Luna/Flash task acceptance is recorded; compare the candidates with
+      the 5.4-mini baseline during real use, and Terra where needed.
       The default model and disabled cost tracking remain unchanged.
 - [ ] Shared space membership, richer outcome check-ins and independently managed
       agent jobs remain later expansions. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).
