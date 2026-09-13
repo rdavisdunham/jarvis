@@ -237,12 +237,23 @@ def command_status(command_id: str, user: User):
         return row.result
 
 
+@app.get("/api/v1/organization")
+def organization(user: User):
+    from .productivity import defaults, snapshot
+
+    with session_scope() as db:
+        defaults(db, user.owner_id)
+        return snapshot(db, user.owner_id)
+
+
 @app.get("/api/v1/projects")
 def projects(user: User):
+    from .productivity import data
+
     with session_scope() as db:
         return {
             "items": [
-                serial(p)
+                data(db, p)
                 for p in db.scalars(
                     select(Project).where(Project.owner_id == user.owner_id).order_by(Project.name)
                 )
@@ -262,6 +273,9 @@ def calendar_items(user: User, start: date, end: date, timezone: str | None = No
 def notes(
     user: User,
     q: str = Query(default="", max_length=300),
+    space_id: str | None = None,
+    area_id: str | None = None,
+    goal_id: str | None = None,
     project_id: str | None = None,
     task_id: str | None = None,
     archived: bool = False,
@@ -271,19 +285,26 @@ def notes(
     from .notes import list_notes
 
     with session_scope() as db:
-        return list_notes(db, user.owner_id, q, project_id, task_id, archived, limit, offset)
+        return list_notes(
+            db, user.owner_id, q, project_id, task_id, archived, limit, offset, space_id, area_id, goal_id
+        )
 
 
 @app.get("/api/v1/notes/search")
 async def notes_search(
     user: User,
     q: str = Query(min_length=1, max_length=500),
+    space_id: str | None = None,
+    area_id: str | None = None,
+    goal_id: str | None = None,
     project_id: str | None = None,
     task_id: str | None = None,
 ):
     from .notes import search_notes
 
-    return await asyncio.to_thread(search_notes, user.owner_id, q, project_id, task_id)
+    return await asyncio.to_thread(
+        search_notes, user.owner_id, q, project_id, task_id, space_id, area_id, goal_id
+    )
 
 
 @app.get("/api/v1/notes/{note_id}")
@@ -587,12 +608,27 @@ async def events(request: Request, user: User, after: int = 0):
 
 @app.get("/api/v1/export")
 def export(user: User, format: str = "json"):
+    from .models import Actor, Area, Goal, GoalProjectLink, NoteGoalLink, NoteNoteLink, NoteProjectLink, Space
+
     with session_scope() as db:
         data = {
             model.__tablename__: [
                 serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))
             ]
-            for model in (Task, Project, Schedule, Notification, Memory, Source, MemoryReview, Note)
+            for model in (
+                Task,
+                Project,
+                Schedule,
+                Notification,
+                Memory,
+                Source,
+                MemoryReview,
+                Note,
+                Space,
+                Area,
+                Goal,
+                Actor,
+            )
         }
         data["note_task_links"] = [
             serial(link)
@@ -602,6 +638,20 @@ def export(user: User, format: str = "json"):
                 .where(Note.owner_id == user.owner_id)
             )
         ]
+        for link, model, field in (
+            (GoalProjectLink, Goal, "goal_id"),
+            (NoteGoalLink, Note, "note_id"),
+            (NoteProjectLink, Note, "note_id"),
+            (NoteNoteLink, Note, "note_id"),
+        ):
+            data[link.__tablename__] = [
+                serial(r)
+                for r in db.scalars(
+                    select(link)
+                    .join(model, model.id == getattr(link, field))
+                    .where(model.owner_id == user.owner_id)
+                )
+            ]
     if format == "csv":
         buffer = io.StringIO()
         writer = csv.DictWriter(
@@ -610,6 +660,11 @@ def export(user: User, format: str = "json"):
                 "id",
                 "title",
                 "status",
+                "space_id",
+                "area_id",
+                "planned_date",
+                "estimate_minutes",
+                "assignee_id",
                 "due_date",
                 "due_time",
                 "due_timezone",

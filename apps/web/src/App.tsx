@@ -1,3 +1,5 @@
+import { ProductivityPage, OrganizationFilters } from "./Productivity";
+import { emptyOrganization, emptyFilter, matchesOrganization, scheduledBy, type Organization } from "./productivity";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
@@ -44,7 +46,6 @@ import type { CalendarEntry } from "./types";
 import { BulkTaskDialog } from "./BulkTaskDialog";
 import { Workspace } from "./Workspace";
 import { ScheduleDialog } from "./ScheduleDialog";
-import { ProjectManager } from "./ProjectManager";
 import type { Project } from "./types";
 import { MemoryReviewCard } from "./MemoryReviewCard";
 import { WakeWord, recognitionType } from "./wake-word";
@@ -78,6 +79,7 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "week", label: "This week", icon: CalendarDays },
   { id: "all", label: "Work", icon: ListTodo },
+  { id: "organize", label: "Goals & projects", icon: ListTodo },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "notes", label: "Notes", icon: FileText },
   { id: "memory", label: "Memory", icon: Brain },
@@ -106,6 +108,9 @@ export default function App() {
   const [selectionRequest, setSelectionRequest] = useState(0);
   const [bulkEditor, setBulkEditor] = useState<Task[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [organization, setOrganization] = useState<Organization>(emptyOrganization);
+  const [organizationFilter, setOrganizationFilter] = useState(emptyFilter);
+  const [organizationEditing, setOrganizationEditing] = useState(false);
   const [calendarDay, setCalendarDay] = useState("");
   const [calendarMode, setCalendarMode] = useState<"month" | "week" | "day">(
     () => {
@@ -227,7 +232,7 @@ export default function App() {
         api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
         api<{ items: Schedule[]; next_cursor?: string | null }>("/schedules"),
         api<{ items: Notice[] }>("/notifications"),
-        api<{ items: Project[] }>("/projects"),
+        api<Organization>("/organization"),
       ],
     );
     let items = taskData.items,
@@ -251,7 +256,8 @@ export default function App() {
       scheduleCursor = page.next_cursor;
     }
     setSchedules(scheduleItems);
-    setProjects(projectData.items);
+    setProjects(projectData.projects);
+    setOrganization(projectData);
     setNotices(noticeData.items);
     setNoteRevision((n) => n + 1);
   }, []);
@@ -507,7 +513,10 @@ export default function App() {
       assignee: "owner",
       work_type: "",
       tags: [],
-      due_date: date ?? null,
+      space_id: organizationFilter.space || null,
+      area_id: organizationFilter.area || null,
+      planned_date: date ?? null,
+      due_date: null,
       due_time: null,
       due_timezone: null,
       revision: 1,
@@ -584,6 +593,7 @@ export default function App() {
       (selected && selected.id !== action.entity_id) ||
       reminder ||
       scheduleEditor ||
+      organizationEditing ||
       editingMemory ||
       noteEditor ||
       googleEvent ||
@@ -604,6 +614,7 @@ export default function App() {
       setQuery("");
       setTaskStatus("all");
       setProjectFilter("");
+      setOrganizationFilter(emptyFilter);
       setWorkKind("task");
       pendingSelection.current = ids;
       setSelectionRequest((n) => n + 1);
@@ -625,11 +636,13 @@ export default function App() {
       setQuery("");
       setTaskStatus("all");
       setProjectFilter("");
+      setOrganizationFilter(emptyFilter);
       setWorkKind("all");
     } else if (kind === "search") {
       setQuery(action.query ?? "");
       setTaskStatus("all");
       setProjectFilter("");
+      setOrganizationFilter(emptyFilter);
       setWorkKind("all");
       setView(action.view ?? "all");
     } else if (kind === "filter") {
@@ -638,6 +651,7 @@ export default function App() {
           (["all", "calendar", "reminders"].includes(view) ? view : "all"),
       );
       if (action.status !== undefined) setTaskStatus(action.status);
+      if (action.space_id !== undefined || action.area_id !== undefined || action.goal_id !== undefined) setOrganizationFilter(current => ({ space: action.space_id ?? current.space, area: action.area_id ?? current.area, goal: action.goal_id ?? current.goal }));
       if (action.project !== undefined) setProjectFilter(action.project);
       if (action.work_kind !== undefined) setWorkKind(action.work_kind);
     } else if (kind === "form") {
@@ -653,12 +667,20 @@ export default function App() {
       setQuery("");
       setTaskStatus("all");
       setProjectFilter("");
+      setOrganizationFilter(emptyFilter);
       setWorkKind("all");
       setView(action.view ?? "today");
       if (action.entity_id && action.view === "all") {
         setSelected(
           await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
         );
+      } else if (action.entity_id && action.view === "organize") {
+        const current = await api<Organization>("/organization");
+        if (![...current.spaces, ...current.areas, ...current.goals, ...current.projects, ...current.actors].some(row => row.id === action.entity_id))
+          throw new Error("That organization record is no longer available.");
+        setOrganization(current);
+        setProjects(current.projects);
+        setHighlight(action.entity_id);
       } else if (action.entity_id && action.view === "notes") {
         // Fetch directly so failures are acknowledged as failed site actions.
         setNoteEditor(
@@ -998,9 +1020,10 @@ export default function App() {
         return false;
       if (taskStatus !== "all" && t.status !== taskStatus) return false;
       if (projectFilter && t.project !== projectFilter) return false;
-      if (view === "today") return !!t.due_date && t.due_date <= today;
-      if (view === "week") return !!t.due_date && t.due_date <= weekEnd;
-      if (view === "inbox") return !t.project;
+      if (!matchesOrganization(t, organizationFilter, organization)) return false;
+      if (view === "today") return scheduledBy(t, today);
+      if (view === "week") return scheduledBy(t, weekEnd);
+      if (view === "inbox") return !t.project_id && !t.area_id && !t.space_id;
       return true;
     })
     .sort(
@@ -1032,6 +1055,9 @@ export default function App() {
       noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
     calendar_view: calendarMode,
+    space_id: organizationFilter.space,
+    area_id: organizationFilter.area,
+    goal_id: organizationFilter.goal,
     work_kind: view === "reminders" ? "reminder" : workKind,
     visible_ids:
       view === "notes"
@@ -1062,6 +1088,7 @@ export default function App() {
     await showActions(response.actions);
   };
   const titles: Record<View, string> = {
+    organize: "Outcomes, connected to your work.",
     today: "A little space for your day.",
     inbox: "Catch it. Clear your head.",
     week: "A look at the week ahead.",
@@ -1346,6 +1373,7 @@ export default function App() {
               "reminders",
             ].includes(view) && (
               <div className="task-filters">
+                <OrganizationFilters organization={organization} value={organizationFilter} onChange={setOrganizationFilter} />
                 <label>
                   Status
                   <select
@@ -1404,6 +1432,8 @@ export default function App() {
               <>
                 <Workspace
                   onGoogleEvent={setGoogleEvent}
+                  organization={organization}
+                  organizationFilter={organizationFilter}
                   calendar={view === "calendar"}
                   calendarMode={calendarMode}
                   onCalendarMode={setCalendarMode}
@@ -1460,13 +1490,7 @@ export default function App() {
                     );
                   }}
                 />
-                {view === "all" && (
-                  <ProjectManager
-                    projects={projects}
-                    busy={busy}
-                    mutate={mutate}
-                  />
-                )}
+
               </>
             )}
             {["today", "inbox", "week"].includes(view) && (
@@ -1676,8 +1700,18 @@ export default function App() {
                 )}
               </>
             )}
+            {view === "organize" && (
+              <ProductivityPage organization={organization} busy={busy} mutate={mutate} query={query} highlight={highlight}
+                onEditing={setOrganizationEditing}
+                onProject={(p) => { setProjectFilter(p.name); setOrganizationFilter(emptyFilter); setQuery(""); setView("all"); }}
+                onNote={(id) => { void openNote(id); }}
+              />
+            )}
             {view === "notes" && (
               <NotesPage
+                organization={organization}
+                organizationFilter={organizationFilter}
+                onOrganizationFilter={setOrganizationFilter}
                 query={query}
                 projects={projects}
                 project={projectFilter}
@@ -2303,6 +2337,7 @@ export default function App() {
       )}
       {selected && (
         <TaskDialog
+          organization={organization}
           timezone={boot.preferences.timezone}
           error={error}
           projects={projects}
@@ -2437,6 +2472,8 @@ export default function App() {
       )}
       {noteEditor && (
         <NoteEditor
+          organization={organization}
+          onOpenNote={(id) => { void openNote(id); }}
           key={
             noteEditor.id +
             ":" +

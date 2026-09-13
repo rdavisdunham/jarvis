@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { UIAction, UIContext } from "./types";
 
 const views = [
+  "organize",
   "today",
   "inbox",
   "week",
@@ -44,6 +45,9 @@ const actionSchema = z.object({
     ])
     .optional(),
   project: z.string().max(200).optional(),
+  space_id: z.string().max(36).optional(),
+  area_id: z.string().max(36).optional(),
+  goal_id: z.string().max(36).optional(),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)

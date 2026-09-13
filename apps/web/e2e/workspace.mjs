@@ -7,13 +7,13 @@ try {
   await page.goto(process.env.JARVIS_WORKSPACE_TEST_URL);
   await page.getByLabel("Pairing code").fill("workspace-fixture");
   await page.locator(".login-card button.primary").click();
+  await page.getByRole("button", { name: "Goals & projects", exact: true }).click();
+  await page.getByRole("tab", { name: "Projects", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Name", { exact: true }).fill("Workspace verification");
+  await page.getByRole("button", { name: "Save project", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("button", { name: "Work", exact: true }).click();
-  await page.locator(".project-manager summary").click();
-  await page.getByLabel("New project name").fill("Workspace verification");
-  await page
-    .getByRole("button", { name: "Create project", exact: true })
-    .click();
-  await expect(page.getByLabel("New project name")).toHaveValue("");
   const today = await page.evaluate(async () => {
     const boot = await (await fetch("/api/v1/bootstrap")).json();
     return new Intl.DateTimeFormat("en-CA", {

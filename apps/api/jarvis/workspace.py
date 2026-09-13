@@ -18,6 +18,25 @@ def calendar(db, owner, start: date, end: date, timezone: str):
     task_map = {t.id: t for t in tasks}
     events = []
     for task in tasks:
+        if task.planned_date and not task.is_template and start <= task.planned_date < end:
+            events.append(
+                {
+                    "id": "planned:" + task.id,
+                    "entity_id": task.id,
+                    "kind": "task",
+                    "timing": "planned",
+                    "title": "Planned: " + task.title,
+                    "date": task.planned_date.isoformat(),
+                    "at": None,
+                    "busy": False,
+                    "status": task.status,
+                    "project_id": task.project_id,
+                    "task_id": task.id,
+                    "revision": task.revision,
+                    "projected": False,
+                    "notification_id": None,
+                }
+            )
         if not task.due_date or task.is_template:
             continue
         if task.occurrence_id and not task.due_time:
@@ -36,6 +55,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
         events.append(
             {
                 "id": "task:" + task.id,
+                "timing": "deadline",
                 "entity_id": task.id,
                 "kind": "task",
                 "title": task.title,

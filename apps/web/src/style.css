@@ -2996,3 +2996,48 @@ progress::-webkit-progress-value {
 .sync-comparison h4 {
   margin: 0;
 }
+
+/* Outcomes, projects and their connections share the existing quiet workspace. */
+.productivity-page { display: grid; gap: 18px; min-width: 0; }
+.organization-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); }
+.organization-tabs button { padding: 12px 15px; color: var(--muted); border-bottom: 2px solid transparent; }
+.organization-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.organization-list { display: grid; gap: 0; min-width: 0; }
+.organization-row { padding: 22px 4px; border-bottom: 1px solid var(--border); min-width: 0; }
+.organization-row.highlighted { background: var(--accent-dark); }
+.organization-row-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.organization-title { display: flex; align-items: center; gap: 12px; text-align: left; min-width: 0; padding: 0; }
+.organization-title strong { overflow-wrap: anywhere; font-size: 17px; }
+.organization-title svg { color: var(--accent); }
+.organization-row p { color: var(--soft); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0; }
+.organization-row .eyebrow { margin-top: 10px; font-size: 11px; }
+.record-status { color: var(--muted); font-size: 12px; white-space: nowrap; text-transform: capitalize; }
+.organization-row-actions, .organization-links { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 14px; }
+.organization-links .text-button { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); }
+.organization-row-actions .text-button { display: inline-flex; align-items: center; gap: 6px; }
+.goal-metric { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; color: var(--accent); font-size: 13px; }
+.goal-metric progress { accent-color: var(--accent); max-width: 200px; height: 7px; }
+.relationship-picker { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; min-width: 0; }
+.relationship-picker legend { font-size: 13px; color: var(--soft); padding: 0 6px; }
+.relationship-picker > input { width: 100%; margin-bottom: 10px; }
+.relationship-options { max-height: 190px; overflow: auto; display: grid; gap: 4px; }
+.relationship-options label { display: flex; flex-direction: row; align-items: center; gap: 10px; padding: 7px 0; font-size: 13px; overflow-wrap: anywhere; }
+.relationship-options input { width: 16px; height: 16px; flex: 0 0 16px; }
+.organization-editor { width: min(620px, calc(100vw - 24px)); }
+.organization-editor .metric-editor summary { padding: 12px 0; color: var(--soft); cursor: pointer; }
+.inline-check { display: inline-flex; align-items: center; gap: 8px; flex-direction: row; }
+.inline-check input { width: 16px; height: 16px; }
+.note-backlinks { display: grid; gap: 10px; margin: 12px 0; }
+.note-backlinks strong { font-size: 13px; color: var(--muted); }
+.note-backlinks button { text-align: left; display: inline-flex; gap: 8px; align-items: center; }
+.task-filters, .note-filters { flex-wrap: wrap; }
+@media (max-width: 600px) {
+  .organization-tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .organization-tabs button { flex: 0 0 auto; padding: 12px 10px; font-size: 13px; }
+  .organization-row-heading { align-items: flex-start; gap: 8px; }
+  .organization-title strong { font-size: 16px; }
+  .organization-row { padding: 20px 0; }
+  .organization-editor .form-grid { grid-template-columns: 1fr; }
+  .task-filters > label, .note-filters > label { flex: 1 1 130px; min-width: 0; }
+  .task-filters select, .note-filters select { width: 100%; min-width: 0; }
+}

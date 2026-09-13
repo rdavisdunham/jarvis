@@ -1,3 +1,5 @@
+import { HomeFields } from "./Productivity";
+import { emptyOrganization, type Organization } from "./productivity";
 import { BudgetHolds } from "./BudgetHolds";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -157,6 +159,7 @@ export function TaskRow({
           {"!".repeat(task.priority)}
         </span>
       )}
+      {task.planned_date && <span className="due">Planned {relativeDate(task.planned_date, today)}</span>}
       {task.due_date && (
         <button
           className={"due " + (task.due_date < today && !done ? "overdue" : "")}
@@ -183,6 +186,7 @@ export function TaskRow({
   );
 }
 export function TaskDialog({
+  organization = emptyOrganization,
   linkedNotes,
   timezone,
   projects,
@@ -197,6 +201,7 @@ export function TaskDialog({
   onSave,
   onArchive,
 }: {
+  organization?: Organization;
   linkedNotes?: ReactNode;
   timezone: string;
   projects: Project[];
@@ -238,6 +243,10 @@ export function TaskDialog({
             assignee: draft.assignee || "owner",
             work_type: draft.work_type || "",
             tags: draft.tags ?? [],
+            space_id: draft.project_id ? undefined : draft.space_id || null,
+            area_id: draft.project_id ? undefined : draft.area_id || null,
+            planned_date: draft.planned_date || null,
+            estimate_minutes: draft.estimate_minutes ?? null,
             due_date: draft.due_date || null,
             due_time: draft.due_date ? draft.due_time || null : null,
             due_timezone:
@@ -284,7 +293,12 @@ export function TaskDialog({
             placeholder="A little more context…"
           />
         </label>
+        <HomeFields organization={organization} disabled={!!draft.project_id}
+          value={projects.find(p => p.id === draft.project_id) ?? draft}
+          onChange={(home) => setDraft({ ...draft, ...home })} />
         <div className="form-grid">
+          <label>Planned date<input type="date" value={draft.planned_date ?? ""} onChange={e => setDraft({ ...draft, planned_date: e.target.value || null })} /></label>
+          <label>Estimate (minutes)<input type="number" min={1} max={100000} value={draft.estimate_minutes ?? ""} onChange={e => setDraft({ ...draft, estimate_minutes: e.target.value ? Number(e.target.value) : null })} /></label>
           <label>
             Due date
             <input
@@ -378,8 +392,7 @@ export function TaskDialog({
               list="assignee-options"
             />
             <datalist id="assignee-options">
-              <option value="owner" />
-              <option value="Eri" />
+              {organization.actors.length ? organization.actors.filter(a => !a.archived).map(a => <option key={a.id} value={a.name} />) : <><option value="owner" /><option value="Eri" /></>}
             </datalist>
           </label>
           <label>
@@ -387,7 +400,7 @@ export function TaskDialog({
             <input
               value={draft.work_type ?? ""}
               maxLength={80}
-              placeholder="Personal, research, admin…"
+              placeholder="Research, admin, development…"
               onChange={(e) =>
                 setDraft({ ...draft, work_type: e.target.value })
               }

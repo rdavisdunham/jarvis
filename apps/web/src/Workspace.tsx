@@ -1,3 +1,4 @@
+import { matchesOrganization, type Organization, type OrganizationFilter } from "./productivity";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, Clock3, Plus, Repeat2, Check } from "lucide-react";
 import { CalendarView } from "./CalendarView";
@@ -13,6 +14,8 @@ import {
 import type { Task, Schedule, Notice, Project, CalendarEntry } from "./types";
 
 type Props = {
+  organization: Organization;
+  organizationFilter: OrganizationFilter;
   onGoogleEvent: (event: CalendarEntry) => void;
   selecting: boolean;
   selectedIds: string[];
@@ -108,6 +111,7 @@ export function Workspace(p: Props) {
         .toLocaleLowerCase()
         .includes(query));
   const tasks = p.tasks
+    .filter(t => matchesOrganization(t, p.organizationFilter, p.organization))
     .filter(
       (t) =>
         taskMatches(t) ||
@@ -128,6 +132,7 @@ export function Workspace(p: Props) {
         a.title.localeCompare(b.title),
     );
   const reminders = p.schedules
+    .filter(s => matchesOrganization(p.tasks.find(t => t.id === s.task_id) ?? { project_id: s.project_id }, p.organizationFilter, p.organization))
     .filter(
       (s) =>
         (!s.task_id || p.kind === "reminder") &&
@@ -146,6 +151,7 @@ export function Workspace(p: Props) {
     );
   const events = (currentData?.items ?? []).filter(
     (e) =>
+      matchesOrganization(p.tasks.find(t => t.id === e.task_id) ?? e, p.organizationFilter, p.organization) &&
       matchesStatus(e.status, p.status) &&
       (p.kind === "all" ||
         (p.kind === "task"

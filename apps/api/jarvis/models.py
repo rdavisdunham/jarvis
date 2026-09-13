@@ -45,9 +45,9 @@ class OwnerSettings(Base):
     values: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
-class Project(Base):
-    __tablename__ = "projects"
-    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_project_owner_name"),)
+class Space(Base):
+    __tablename__ = "spaces"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_space_owner_name"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(200))
@@ -57,10 +57,81 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class Area(Base):
+    __tablename__ = "areas"
+    __table_args__ = (UniqueConstraint("space_id", "name", name="uq_area_space_name"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    space_id: Mapped[str] = mapped_column(ForeignKey("spaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)
+    area_id: Mapped[str | None] = mapped_column(ForeignKey("areas.id"), index=True)
+    parent_goal_id: Mapped[str | None] = mapped_column(ForeignKey("goals.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    success_criteria: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="planned")
+    horizon: Mapped[str] = mapped_column(String(20), default="unspecified")
+    target_date: Mapped[datetime | None] = mapped_column(Date)
+    metric_unit: Mapped[str] = mapped_column(String(80), default="")
+    metric_baseline: Mapped[float] = mapped_column(Numeric, default=0)
+    metric_current: Mapped[float | None] = mapped_column(Numeric)
+    metric_target: Mapped[float | None] = mapped_column(Numeric)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Actor(Base):
+    __tablename__ = "actors"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_actor_owner_name"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(20), default="person")
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_project_owner_name"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)
+    area_id: Mapped[str | None] = mapped_column(ForeignKey("areas.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(30), default="planned")
+    success_criteria: Mapped[str] = mapped_column(Text, default="")
+    start_date: Mapped[datetime | None] = mapped_column(Date)
+    target_date: Mapped[datetime | None] = mapped_column(Date)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class Task(Base):
     __tablename__ = "tasks"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)
+    area_id: Mapped[str | None] = mapped_column(ForeignKey("areas.id"), index=True)
     title: Mapped[str] = mapped_column(String(500))
     notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="open")
@@ -71,6 +142,9 @@ class Task(Base):
     assignee: Mapped[str] = mapped_column(String(100), default="owner")
     work_type: Mapped[str] = mapped_column(String(80), default="")
     tags: Mapped[list] = mapped_column(JSONB, default=list)
+    planned_date: Mapped[datetime | None] = mapped_column(Date, index=True)
+    estimate_minutes: Mapped[int | None] = mapped_column(Integer)
+    assignee_id: Mapped[str | None] = mapped_column(ForeignKey("actors.id"), index=True)
     due_date: Mapped[datetime | None] = mapped_column(Date)
     due_time: Mapped[str | None] = mapped_column(String(14))
     due_timezone: Mapped[str | None] = mapped_column(String(100))
@@ -289,6 +363,8 @@ class Note(Base):
     __tablename__ = "notes"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)
+    area_id: Mapped[str | None] = mapped_column(ForeignKey("areas.id"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list] = mapped_column(JSONB, default=list)
@@ -435,3 +511,27 @@ class LinearIssue(Base):
     pending_job_id: Mapped[str | None] = mapped_column(String(36))
     sync_state: Mapped[str] = mapped_column(String(30), default="synced")
     latest_remote: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class GoalProjectLink(Base):
+    __tablename__ = "goal_project_links"
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id"), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+
+
+class NoteGoalLink(Base):
+    __tablename__ = "note_goal_links"
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+    goal_id: Mapped[str] = mapped_column(ForeignKey("goals.id"), primary_key=True)
+
+
+class NoteProjectLink(Base):
+    __tablename__ = "note_project_links"
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+
+
+class NoteNoteLink(Base):
+    __tablename__ = "note_note_links"
+    note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+    related_note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)

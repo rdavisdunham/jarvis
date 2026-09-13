@@ -1,3 +1,5 @@
+import { HomeFields, LinkPicker, OrganizationFilters } from "./Productivity";
+import { emptyOrganization, type Organization, type Home, type OrganizationFilter } from "./productivity";
 import { useEffect, useRef, useState } from "react";
 import { Archive, ArrowRight, FileText, Plus, Sparkles, X } from "lucide-react";
 import { api, post } from "./api";
@@ -5,6 +7,12 @@ import { useDialogFocus } from "./components";
 import type { Project, Task } from "./types";
 
 export type NoteRecord = {
+  space_id?: string | null;
+  area_id?: string | null;
+  goals?: { id: string; name: string; archived?: boolean }[];
+  projects?: { id: string; name: string; archived?: boolean }[];
+  related_notes?: { id: string; title: string; archived?: boolean }[];
+  backlinks?: { id: string; title: string; archived?: boolean }[];
   id: string;
   title: string;
   content?: string;
@@ -61,6 +69,9 @@ export function blankNote(
 }
 
 export function NotesPage({
+  organization,
+  organizationFilter,
+  onOrganizationFilter,
   query,
   projects,
   project,
@@ -70,6 +81,9 @@ export function NotesPage({
   onOpen,
   onNew,
 }: {
+  organization: Organization;
+  organizationFilter: OrganizationFilter;
+  onOrganizationFilter: (value: OrganizationFilter) => void;
   query: string;
   projects: Project[];
   project: string;
@@ -89,7 +103,7 @@ export function NotesPage({
   const [hint, setHint] = useState("");
   const [refresh, setRefresh] = useState(0);
   const projectId = projects.find((p) => p.name === project)?.id;
-  const searchKey = JSON.stringify([query, projectId, archived]);
+  const searchKey = JSON.stringify([query, projectId, archived, organizationFilter]);
   const meaning = meaningKey === searchKey;
   useEffect(() => {
     let active = true;
@@ -101,6 +115,9 @@ export function NotesPage({
       q: query,
       archived: String(archived),
     });
+    if (organizationFilter.space) params.set("space_id", organizationFilter.space);
+    if (organizationFilter.area) params.set("area_id", organizationFilter.area);
+    if (organizationFilter.goal) params.set("goal_id", organizationFilter.goal);
     if (projectId) params.set("project_id", projectId);
     api<{
       items: NoteRecord[];
@@ -133,7 +150,7 @@ export function NotesPage({
       active = false;
       generation.current++;
     };
-  }, [query, projectId, archived, meaning, revision, refresh]);
+  }, [query, projectId, archived, meaning, revision, refresh, organizationFilter]);
   const visibleKey = items
     .slice(0, 60)
     .map((n) => n.id)
@@ -152,7 +169,10 @@ export function NotesPage({
         archived: String(archived),
         offset: String(offset),
       });
-      if (projectId) params.set("project_id", projectId);
+      if (organizationFilter.space) params.set("space_id", organizationFilter.space);
+    if (organizationFilter.area) params.set("area_id", organizationFilter.area);
+    if (organizationFilter.goal) params.set("goal_id", organizationFilter.goal);
+    if (projectId) params.set("project_id", projectId);
       const data = await api<{
         items: NoteRecord[];
         next_offset: number | null;
@@ -171,6 +191,7 @@ export function NotesPage({
     <section className="notes-workspace" aria-label="Notes workspace">
       <div className="workspace-actions">
         <div className="note-filters">
+          <OrganizationFilters organization={organization} value={organizationFilter} onChange={onOrganizationFilter} />
           <label>
             Project
             <select
@@ -286,6 +307,8 @@ export function NotesPage({
 }
 
 export function NoteEditor({
+  organization = emptyOrganization,
+  onOpenNote,
   note,
   projects,
   tasks,
@@ -297,6 +320,8 @@ export function NoteEditor({
   onTask,
   onConversation,
 }: {
+  organization?: Organization;
+  onOpenNote?: (id: string) => void;
   note: NoteRecord;
   projects: Project[];
   tasks: Task[];
@@ -309,6 +334,26 @@ export function NoteEditor({
   onConversation: (id: string) => void;
 }) {
   useDialogFocus();
+  const [home, setHome] = useState<Home>({ space_id: note.space_id, area_id: note.area_id });
+  const [goalIds, setGoalIds] = useState((note.goals ?? []).map(g => g.id));
+  const [projectIds, setProjectIds] = useState((note.projects ?? []).map(p => p.id));
+  const [noteIds, setNoteIds] = useState((note.related_notes ?? []).map(n => n.id));
+  const [noteChoices, setNoteChoices] = useState<{ id: string; name: string; archived?: boolean }[]>((note.related_notes ?? []).map(n => ({ ...n, name: n.title })));
+  useEffect(() => {
+    let current = true;
+    async function load() {
+      let offset: number | null = 0;
+      const choices = new Map<string, { id: string; name: string; archived?: boolean }>((note.related_notes ?? []).map(n => [n.id, { id: n.id, name: n.title, archived: n.archived }]));
+      while (offset !== null && current) {
+        const result: { items: NoteRecord[]; next_offset: number | null } = await api("/notes?limit=100&offset=" + offset);
+        for (const n of result.items) if (n.id !== note.id) choices.set(n.id, { id: n.id, name: n.title, archived: n.archived });
+        offset = result.next_offset;
+      }
+      if (current) setNoteChoices([...choices.values()]);
+    }
+    void load().catch(() => { if (current) setLocalError("Could not load notes to link. Existing links are preserved."); });
+    return () => { current = false; };
+  }, [note.id]);
   const [title, setTitle] = useState(note.title),
     [content, setContent] = useState(note.content ?? "");
   const [tags, setTags] = useState(note.tags.join(", ")),
@@ -327,6 +372,11 @@ export function NoteEditor({
   >([]);
   const [proposalRevision, setProposalRevision] = useState(0);
   const dirty =
+    (home.space_id ?? null) !== (note.space_id ?? null) ||
+    (home.area_id ?? null) !== (note.area_id ?? null) ||
+    goalIds.join(",") !== (note.goals ?? []).map(g => g.id).join(",") ||
+    projectIds.join(",") !== (note.projects ?? []).map(p => p.id).join(",") ||
+    noteIds.join(",") !== (note.related_notes ?? []).map(n => n.id).join(",") ||
     title !== note.title ||
     content !== (note.content ?? "") ||
     tags !== note.tags.join(", ") ||
@@ -340,6 +390,11 @@ export function NoteEditor({
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean),
+      space_id: project ? undefined : home.space_id || null,
+      area_id: project ? undefined : home.area_id || null,
+      goal_ids: goalIds,
+      project_ids: projectIds,
+      related_note_ids: noteIds,
       project_id: project || null,
       task_ids: linked,
       conversation_id: note.conversation_id,
@@ -468,6 +523,17 @@ export function NoteEditor({
             />
           </label>
         </div>
+        <HomeFields organization={organization} value={projects.find(p => p.id === project) ?? home} onChange={setHome} disabled={!!project} />
+        <details className="note-links">
+          <summary>Connected goals, projects and notes</summary>
+          <LinkPicker label="Goals" items={organization.goals} selected={goalIds} onChange={setGoalIds} />
+          <LinkPicker label="Projects" items={projects} selected={projectIds} onChange={setProjectIds} />
+          <LinkPicker label="Notes" items={noteChoices} selected={noteIds} onChange={setNoteIds} />
+        </details>
+        {!!((note.related_notes?.length ?? 0) + (note.backlinks?.length ?? 0)) && <div className="note-backlinks">
+          <strong>Connected notes & backlinks</strong>
+          {[...new Map([...(note.related_notes ?? []), ...(note.backlinks ?? [])].map(n => [n.id, n])).values()].map(n => <button key={n.id} type="button" className="text-button" disabled={dirty || busy} onClick={() => onOpenNote?.(n.id)}>{n.title}<ArrowRight size={14} /></button>)}
+        </div>}
         <details className="note-links">
           <summary>Linked tasks · {linked.length}</summary>
           <input

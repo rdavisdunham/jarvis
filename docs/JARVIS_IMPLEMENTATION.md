@@ -924,3 +924,25 @@ provider's conditional-write limitation.
 
 Langfuse remains deferred. The external bot API/MCP and notification expansion
 remain separate future work.
+
+
+## Productivity graph — September 12, 2026
+
+Schema 0011 adds private spaces, areas, goals, project lifecycle, many-to-many
+goal/project relationships, note backlinks and multi-record links, planned task
+dates and stable assignee IDs. Goals & projects is the new management page.
+Every command is available through the shared Eri registry; filters and navigation
+use the existing CopilotKit bridge. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md)
+for relationship and completion semantics.
+
+Validated with 213 backend tests (one optional skipped), 76 frontend tests, production
+build, Ruff, migration/legacy preservation, desktop/mobile productivity acceptance,
+and the existing Google/Linear browser suite. Deployment preserved old data in
+16 tables, including all 55 tasks, integrations and the disabled cost ledger.
+The HTTPS bundle is index-GZSDsE7r.js. Pre/post encrypted backups restored successfully;
+the post-upgrade snapshot is jarvis-20260913T042040Z.pgdump.enc.
+
+Background model selection is discussed in
+[BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
+The running agent remains gpt-5.4-mini. Comparative provider evaluation and
+Langfuse remain future work; no model switch was made.

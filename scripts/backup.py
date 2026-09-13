@@ -27,6 +27,14 @@ def cipher():
 
 def counts(database):
     names = [
+        "spaces",
+        "areas",
+        "goals",
+        "actors",
+        "goal_project_links",
+        "note_goal_links",
+        "note_project_links",
+        "note_note_links",
         "tasks",
         "projects",
         "google_identities",

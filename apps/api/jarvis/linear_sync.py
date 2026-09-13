@@ -191,6 +191,9 @@ def apply_remote(db, conn, link, remote):
         else (remote.get("assignee") or {}).get("name", "unassigned"),
         "archived": bool(remote.get("archivedAt")) or bool((task.external or {}).get("local_archived")),
     }
+    from .productivity import task_home
+
+    changes = task_home(db, conn.owner_id, changes, task)
     changed = any(getattr(task, k) != v for k, v in changes.items())
     if changes["due_date"] is None:
         changes.update(due_time=None, due_timezone=None)

@@ -8,7 +8,17 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 View = Literal[
-    "today", "inbox", "week", "all", "reminders", "calendar", "notes", "memory", "notifications", "settings"
+    "organize",
+    "today",
+    "inbox",
+    "week",
+    "all",
+    "reminders",
+    "calendar",
+    "notes",
+    "memory",
+    "notifications",
+    "settings",
 ]
 
 
@@ -27,6 +37,9 @@ class UIContext(BaseModel):
     task_status: Literal["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
         "all"
     )
+    space_id: str = Field(default="", max_length=36)
+    area_id: str = Field(default="", max_length=36)
+    goal_id: str = Field(default="", max_length=36)
     project: str = Field(default="", max_length=200)
     calendar_view: Literal["month", "week", "day"] = "month"
     calendar_date: str | None = Field(default=None, max_length=10)
@@ -43,7 +56,8 @@ states = {}
 pending = {}
 
 APP_MAP = """Site map and available controls:
-Today: tasks due today or overdue. Inbox: tasks without a project. This week: dated tasks through the next 6 days.
+Today: planned or due tasks today or overdue. Inbox: unclassified tasks. This week: planned or due tasks through the next 6 days.
+Goals & projects (organize): manage private Personal/Business spaces, ongoing areas, goals (outcomes), projects (finite work), many-to-many goal/project links and linked notes. organization_list reads current IDs/revisions. Goals may have parent goals, horizons and optional metrics. Completing a project never automatically achieves a goal. Assignment to Eri labels responsibility; it does not launch an agent job. A task planned_date is distinct from its deadline, reminder and calendar work blocks. Notes support multiple goal/project links and note-to-note backlinks.
 Work (all): unified tasks and reminders, searchable with status, project and kind filters. Linked reminders appear with their task. Task details include project, parent, tags, assignee and work type.
 Calendar: Month, Week and dedicated Day views; double-tap a date to open Day. Google event editing is available after separate consent. ui_calendar accepts calendar_view month/week/day. The calendar shows task deadlines, task alerts, local appointments/work blocks and synced Google events. Settings links Google, selects calendars and connects Linear with selectable teams. Linear issue writes and conflict review are in task details. Reserve time in task details creates a work block; New event on Calendar creates a local appointment with an optional Google copy; availability checks Google live. Event details open a source link. Never treat cached or unavailable results as confirmed free time. ui_calendar selects a date. Projected occurrences are previews, not delivered notifications.
 Notes: authored notes with project/task/conversation links, tags, keyword/semantic search, archive/restore and reviewed to-do extraction. Notes are distinct from learned facts.

@@ -31,6 +31,9 @@ def note_data(db, row, *, preview=False):
         }
         for link, t in links
     ]
+    from .productivity import note_links
+
+    data.update(note_links(db, row))
     data["excerpt"] = row.content[:240]
     if preview:
         data.pop("content")
@@ -39,10 +42,13 @@ def note_data(db, row, *, preview=False):
 
 def mutate_note(db, owner, tool, args):
     from .domain import DomainError, TaskCreate, check_revision, emit, enqueue_job, mutate, owned
+    from .productivity import home_changes, save_note_links
 
+    link_keys = {"goal_ids", "project_ids", "related_note_ids"}
+    link_values = args.model_dump(exclude_unset=True, include=link_keys)
     previous_project = None
     if tool == "note.create":
-        values = args.model_dump(exclude={"task_ids"})
+        values = args.model_dump(exclude={"task_ids"} | link_keys)
         row = Note(owner_id=owner, **values)
         task_ids = args.task_ids
     else:
@@ -72,7 +78,16 @@ def mutate_note(db, owner, tool, args):
                     )
                     continue
                 task = mutate(
-                    db, owner, "task.create", TaskCreate(title=item.title, project_id=row.project_id), "note"
+                    db,
+                    owner,
+                    "task.create",
+                    TaskCreate(
+                        title=item.title,
+                        project_id=row.project_id,
+                        space_id=row.space_id,
+                        area_id=row.area_id,
+                    ),
+                    "note",
                 )
                 db.add(
                     NoteTaskLink(
@@ -87,10 +102,13 @@ def mutate_note(db, owner, tool, args):
                 results.append({**task, "existing": False})
             emit(db, owner, "note.changed", row.id, row.revision)
             return {"note_id": row.id, "tasks": results}
-        values = args.model_dump(exclude_unset=True, exclude={"note_id", "expected_revision", "task_ids"})
+        values = args.model_dump(
+            exclude_unset=True, exclude={"note_id", "expected_revision", "task_ids"} | link_keys
+        )
         if any(values.get(k) is None for k in ("title", "content", "tags", "archived") if k in values):
             raise DomainError("INVALID_ARGUMENT", "Title, content, tags and archive state cannot be null.")
         task_ids = args.task_ids if "task_ids" in args.model_fields_set else None
+        values = home_changes(db, owner, values, row)
         for k, v in values.items():
             setattr(row, k, v)
         row.revision += 1
@@ -98,12 +116,18 @@ def mutate_note(db, owner, tool, args):
         project = owned(db, Project, row.project_id, owner)
         if project.archived and row.project_id != previous_project:
             raise DomainError("INVALID_ARGUMENT", "Choose an active project.")
+    if row.project_id:
+        row.space_id, row.area_id = project.space_id, project.area_id
+    else:
+        home = home_changes(db, owner, {}, row)
+        row.space_id, row.area_id = home["space_id"], home["area_id"]
     if row.conversation_id:
         owned(db, Conversation, row.conversation_id, owner)
     row.tags = list(dict.fromkeys(t.strip() for t in row.tags if t.strip()))
     row.updated_at = now()
     db.add(row)
     db.flush()
+    save_note_links(db, owner, row, link_values)
     if task_ids is not None:
         tasks = {tid: owned(db, Task, tid, owner) for tid in set(task_ids)}
         links = {l.task_id: l for l in db.scalars(select(NoteTaskLink).where(NoteTaskLink.note_id == row.id))}
@@ -179,10 +203,54 @@ def index_note(job_id):
         raise
 
 
-def list_notes(db, owner, query="", project_id=None, task_id=None, archived=False, limit=50, offset=0):
-    q = select(Note).where(Note.owner_id == owner, Note.archived == archived)
+def scope_notes(q, space_id=None, area_id=None, goal_id=None):
+    from sqlalchemy import or_
+
+    from .models import GoalProjectLink, NoteGoalLink, NoteProjectLink
+
+    if space_id:
+        q = q.where(Note.space_id == space_id)
+    if area_id:
+        q = q.where(Note.area_id == area_id)
+    if goal_id:
+        projects = select(GoalProjectLink.project_id).where(GoalProjectLink.goal_id == goal_id)
+        q = q.where(
+            or_(
+                Note.id.in_(select(NoteGoalLink.note_id).where(NoteGoalLink.goal_id == goal_id)),
+                Note.project_id.in_(projects),
+                Note.id.in_(select(NoteProjectLink.note_id).where(NoteProjectLink.project_id.in_(projects))),
+            )
+        )
+    return q
+
+
+def list_notes(
+    db,
+    owner,
+    query="",
+    project_id=None,
+    task_id=None,
+    archived=False,
+    limit=50,
+    offset=0,
+    space_id=None,
+    area_id=None,
+    goal_id=None,
+):
+    q = scope_notes(
+        select(Note).where(Note.owner_id == owner, Note.archived == archived), space_id, area_id, goal_id
+    )
     if project_id:
-        q = q.where(Note.project_id == project_id)
+        from sqlalchemy import or_
+
+        from .models import NoteProjectLink
+
+        q = q.where(
+            or_(
+                Note.project_id == project_id,
+                Note.id.in_(select(NoteProjectLink.note_id).where(NoteProjectLink.project_id == project_id)),
+            )
+        )
     if task_id:
         q = q.join(NoteTaskLink).where(NoteTaskLink.task_id == task_id, NoteTaskLink.linked.is_(True))
     if query:
@@ -204,7 +272,7 @@ def list_notes(db, owner, query="", project_id=None, task_id=None, archived=Fals
     }
 
 
-def search_notes(owner, query, project_id=None, task_id=None):
+def search_notes(owner, query, project_id=None, task_id=None, space_id=None, area_id=None, goal_id=None):
     vector, fallback = None, False
     try:
         vector = embeddings(owner, [query[:500]])[0]
@@ -213,9 +281,22 @@ def search_notes(owner, query, project_id=None, task_id=None):
     with session_scope() as db:
         # Read current note revisions after the cloud query finishes. Old/deleted
         # chunks can never win a race with an edit/archive during that request.
-        q = select(Note).where(Note.owner_id == owner, Note.archived.is_(False))
+        q = scope_notes(
+            select(Note).where(Note.owner_id == owner, Note.archived.is_(False)), space_id, area_id, goal_id
+        )
         if project_id:
-            q = q.where(Note.project_id == project_id)
+            from sqlalchemy import or_
+
+            from .models import NoteProjectLink
+
+            q = q.where(
+                or_(
+                    Note.project_id == project_id,
+                    Note.id.in_(
+                        select(NoteProjectLink.note_id).where(NoteProjectLink.project_id == project_id)
+                    ),
+                )
+            )
         if task_id:
             q = q.join(NoteTaskLink).where(NoteTaskLink.task_id == task_id, NoteTaskLink.linked.is_(True))
         notes = list(db.scalars(q.order_by(Note.updated_at.desc()).limit(1001)))

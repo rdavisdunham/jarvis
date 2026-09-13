@@ -16,6 +16,10 @@ def new_task(db, owner, title, project_id=None, *, template=False):
         project=db.get(Project, project_id).name if project_id else None,
         is_template=template,
     )
+    from .productivity import task_home
+
+    for key, value in task_home(db, owner, {"project_id": project_id, "assignee": "owner"}).items():
+        setattr(row, key, value)
     db.add(row)
     db.flush()
     emit(db, owner, "task.changed", row.id, row.revision)

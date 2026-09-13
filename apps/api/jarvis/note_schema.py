@@ -13,6 +13,11 @@ class NoteCreate(NoteArgs):
     title: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=30000)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
+    space_id: str | None = None
+    area_id: str | None = None
+    goal_ids: list[str] = Field(default_factory=list, max_length=200)
+    project_ids: list[str] = Field(default_factory=list, max_length=200)
+    related_note_ids: list[str] = Field(default_factory=list, max_length=200)
     project_id: str | None = None
     conversation_id: str | None = None
     task_ids: list[str] = Field(default_factory=list, max_length=100)
@@ -24,6 +29,11 @@ class NoteUpdate(NoteArgs):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     content: str | None = Field(default=None, max_length=30000)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
+    space_id: str | None = None
+    area_id: str | None = None
+    goal_ids: list[str] = Field(default_factory=list, max_length=200)
+    project_ids: list[str] = Field(default_factory=list, max_length=200)
+    related_note_ids: list[str] = Field(default_factory=list, max_length=200)
     project_id: str | None = None
     conversation_id: str | None = None
     task_ids: list[str] = Field(default_factory=list, max_length=100)

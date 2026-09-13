@@ -3,7 +3,45 @@
 Updated September 12, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: unified tasks, calendar details and Linear — deployed
+## Current batch: productivity graph — deployed
+
+- [x] Private Personal/Business spaces and ongoing areas, with optional organization
+      for standalone tasks. Existing work stays unclassified until assigned.
+- [x] Goals with success criteria, parent goals, short/long horizons and optional
+      outcome metrics. Projects gain lifecycle and start/target dates.
+- [x] Many-to-many goals/projects, editable from either side. Outcome progress stays
+      independent of task/project completion; revision checks protect linked edits.
+- [x] Connected notes: multiple goals/projects, note-to-note links and backlinks,
+      related notes on goal/project details, and scoped keyword/meaning search.
+- [x] Planned task dates distinct from deadlines, reminders and time blocks;
+      Today/This week/Calendar display planned work. Stable local assignee IDs.
+- [x] Goals & projects page, mobile forms, space/area/goal filters, Eri commands,
+      site navigation/highlighting and organization context.
+- [x] Existing scheduler retains unified task completion and independently
+      completable recurring occurrences. Assignment remains separate from agent execution.
+- [x] Release validation: 213 backend tests (one optional test skipped), 76 frontend
+      tests, production build and Ruff. Desktop/mobile browser checks cover
+      many-to-many links, notes/backlinks, planned dates, scope filters, unsaved
+      edits across refresh and Eri's navigation/highlighting. Existing Google/Linear
+      acceptance also passes, including 30-second scroll stability and write recovery.
+- [x] Deployed schema 0011 with healthy API/worker/PostgreSQL and HTTPS bundle
+      index-GZSDsE7r.js. All 55 existing tasks and the old columns/data in 16 tables
+      match their pre-migration hashes. Two private spaces are seeded; existing
+      projects/tasks remain unclassified. The configured agent is still gpt-5.4-mini
+      and cost tracking remains off.
+- [x] Encrypted backups before and after the upgrade restored into isolated
+      databases without workers. Verified post-upgrade backup:
+      jarvis-20260913T042040Z.pgdump.enc, including every new graph table.
+- [ ] Owner: try a real goal with two supporting projects, connect a note, and
+      organize current work into Personal/Business areas. Shared membership remains
+      a later feature.
+- [ ] Model comparison recorded in [BACKGROUND_MODEL_COMPARISON.md](BACKGROUND_MODEL_COMPARISON.md).
+      Evaluate Luna against the 5.4-mini baseline on representative workflows;
+      compare Flash and Terra where needed. No model switch or cost-tracking change.
+- [ ] Shared space membership, richer outcome check-ins and independently managed
+      agent jobs remain later expansions. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).
+
+## Previous batch: unified tasks, calendar details and Linear — deployed
 
 - [x] Tasks own completion. Reminders are alerts on a task; new standalone alerts
       create their task automatically. Migration carries old schedules, delivered
@@ -468,7 +506,7 @@ actions into the web interface and Eri's tools with each release.
       tasks and alerts while preserving schedules, delivery records
       and completion history. Schema 0010 gives every alert a task and repeating routines a template. Real projects, work types, subtasks, assignee labels,
       tags, priorities and status filters are implemented. Tasks sort by priority
-      and deadline; reminders sort by scheduled time. Existing project labels are
+      and deadline; planned dates are separate and visible in day/week/calendar views. Reminders sort by scheduled time. Existing project labels are
       migrated. Scheduled agent execution and additional sort modes remain later.
 - [x] **Contextual task editing, first release.** Resolve selected, visible and
       recently discussed task references within a conversation, re-read current
@@ -485,7 +523,7 @@ actions into the web interface and Eri's tools with each release.
       tags, Eri-readable source content, and to-do extraction with provenance and
       duplicate prevention. Cloud embeddings and hybrid semantic/keyword search
       use PostgreSQL JSONB chunks; keyword lookup remains available during provider
-      failures. Authored notes stay separate from personal memory assertions.
+      failures. Goals/projects and note-to-note links with backlinks are now available. Authored notes stay separate from personal memory assertions.
 - [ ] Measure note retrieval and extraction quality on real owner content before
       the later pgvector migration. Add richer source lifecycle and note-to-memory
       review only if the owner wants authored notes to supply learned facts.
@@ -528,11 +566,11 @@ actions into the web interface and Eri's tools with each release.
 - [x] **Notes and memory:** share source links, tags and retrieval infrastructure,
       but retain authored notes as editable source records and personal memory as
       derived assertions. Define revisions, back-links, deletion and reindexing.
-      Owner accepted this direction. The authored-notes model is not yet implemented.
+      Owner accepted this direction. Authored notes, evidence-linked tasks and semantic search are implemented; richer graph links are covered by the productivity batch above.
 - [x] **Tasks, reminders and agent work:** owner accepted one work-item interface with
       owner/agent assignment, optional schedules and notifications. Keep due dates,
       recurring schedules, execution attempts, delivery and completion as distinct
-      concepts underneath. Preserve standalone reminders and existing history.
+      concepts underneath. Preserve quick standalone reminder capture (which creates a linked task) and existing history.
       Do not delete the reminder system merely to reduce the number of UI sections.
 - [ ] **Agent assignees:** define execution scope, allowed actions, running/failed/
       completed status and result references before assignments launch automation.

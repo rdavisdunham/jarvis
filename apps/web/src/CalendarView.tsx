@@ -334,7 +334,7 @@ export function CalendarView(p: Props) {
                           : e.kind === "block"
                             ? "Work block"
                             : e.kind === "task"
-                              ? "Task deadline"
+                              ? e.timing === "planned" ? "Planned task" : "Task deadline"
                               : e.kind === "routine"
                                 ? "Repeating task"
                                 : "Reminder"}

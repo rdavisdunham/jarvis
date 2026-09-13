@@ -2,7 +2,7 @@
 
 from sqlalchemy import select
 
-from .models import Project, Task, now
+from .models import Project, Task
 
 
 def project_changes(db, owner, changes, task=None):
@@ -45,40 +45,6 @@ def project_changes(db, owner, changes, task=None):
             if parent.archived:
                 raise DomainError("INVALID_ARGUMENT", "Choose an unarchived parent task.")
             parent_id = parent.parent_task_id
-    return changes
+    from .productivity import task_home
 
-
-def mutate_project(db, owner, tool, args):
-    from .domain import DomainError, check_revision, emit, owned, serial
-
-    if tool == "project.create":
-        changes = args.model_dump()
-        row = Project(owner_id=owner, **changes)
-    else:
-        row = owned(db, Project, args.project_id, owner, lock=True)
-        check_revision(row, args.expected_revision)
-        changes = args.model_dump(exclude_unset=True, exclude={"project_id", "expected_revision"})
-        if any(v is None for v in changes.values()):
-            raise DomainError("INVALID_ARGUMENT", "Project fields cannot be null.")
-    name = changes.get("name", row.name)
-    duplicate = db.scalar(
-        select(Project).where(Project.owner_id == owner, Project.name == name, Project.id != (row.id or ""))
-    )
-    if duplicate:
-        raise DomainError("REVISION_CONFLICT", "A project with this name already exists.", 409)
-    old_name = row.name
-    for k, v in changes.items():
-        setattr(row, k, v)
-    if tool == "project.create":
-        db.add(row)
-    else:
-        row.revision += 1
-    db.flush()
-    if old_name != row.name:
-        for task in db.scalars(select(Task).where(Task.owner_id == owner, Task.project_id == row.id)):
-            task.project = row.name
-            task.revision += 1
-            task.updated_at = now()
-            emit(db, owner, "task.changed", task.id, task.revision)
-    emit(db, owner, "project.changed", row.id, row.revision)
-    return serial(row)
+    return task_home(db, owner, changes, task)

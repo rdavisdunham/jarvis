@@ -48,6 +48,11 @@ class TaskCreate(Args):
     assignee: str = Field(default="owner", min_length=1, max_length=100)
     work_type: str = Field(default="", max_length=80)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
+    space_id: str | None = None
+    area_id: str | None = None
+    assignee_id: str | None = None
+    planned_date: date | None = None
+    estimate_minutes: int | None = Field(default=None, ge=1, le=100000)
     due_date: date | None = None
     due_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
@@ -67,6 +72,11 @@ class TaskUpdate(Args):
     assignee: str = Field(default="owner", min_length=1, max_length=100)
     work_type: str = Field(default="", max_length=80)
     tags: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list, max_length=20)
+    space_id: str | None = None
+    area_id: str | None = None
+    assignee_id: str | None = None
+    planned_date: date | None = None
+    estimate_minutes: int | None = Field(default=None, ge=1, le=100000)
     due_date: date | None = None
     due_time: str | None = Field(
         default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d(?:[+-](?:[01]\d|2[0-3]):[0-5]\d)?$"
@@ -97,17 +107,7 @@ class ScheduleCreate(Args):
     project_id: str | None = None
 
 
-class ProjectCreate(Args):
-    name: str = Field(min_length=1, max_length=200)
-    description: str = Field(default="", max_length=10000)
-
-
-class ProjectUpdate(Args):
-    project_id: str
-    expected_revision: int = Field(ge=1)
-    name: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=10000)
-    archived: bool | None = None
+from .productivity_schema import ProjectCreate, ProjectUpdate
 
 
 class ScheduleUpdate(Args):
@@ -407,7 +407,9 @@ def execute(db, owner, command_id, tool, arguments):
         )
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
-    if tool.startswith(("task.", "project.", "schedule.", "notification.", "note.")):
+    if tool.startswith(
+        ("task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.")
+    ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
     data = mutate(db, owner, tool, args, command_id)
@@ -449,7 +451,7 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
-    from .organization import mutate_project, project_changes
+    from .organization import project_changes
 
     if tool.startswith("linear."):
         from .linear_commands import mutate as linear_mutate
@@ -478,8 +480,10 @@ def mutate(db, owner, tool, args, command_id):
         for item in args.items:
             check_revision(owned(db, Task, item.task_id, owner, lock=True), item.expected_revision)
         return {"tasks": [mutate(db, owner, "task.update", item, command_id) for item in args.items]}
-    if tool.startswith("project."):
-        return mutate_project(db, owner, tool, args)
+    if tool.startswith(("project.", "space.", "area.", "goal.", "actor.")):
+        from .productivity import mutate as productivity_mutate
+
+        return productivity_mutate(db, owner, tool, args)
     if tool == "task.create":
         task = Task(
             owner_id=owner,
@@ -812,6 +816,10 @@ def deliver_occurrence(db, job):
             owner_id=job.owner_id,
             title=template.title if template else schedule.title,
             notes=template.notes if template else "",
+            space_id=template.space_id if template else None,
+            area_id=template.area_id if template else None,
+            assignee_id=template.assignee_id if template else None,
+            estimate_minutes=template.estimate_minutes if template else None,
             assignee=template.assignee if template else "owner",
             priority=template.priority if template else 0,
             tags=template.tags if template else [],
@@ -864,3 +872,7 @@ COMMANDS.update(PLANNING_COMMANDS)
 from .linear_schema import LINEAR_COMMANDS
 
 COMMANDS.update(LINEAR_COMMANDS)
+
+from .productivity_schema import PRODUCTIVITY_COMMANDS
+
+COMMANDS.update(PRODUCTIVITY_COMMANDS)

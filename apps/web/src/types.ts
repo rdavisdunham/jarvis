@@ -1,4 +1,9 @@
 export interface Task {
+  space_id?: string | null;
+  area_id?: string | null;
+  planned_date?: string | null;
+  estimate_minutes?: number | null;
+  assignee_id?: string | null;
   id: string;
   title: string;
   notes: string;
@@ -33,6 +38,16 @@ export interface Task {
   };
 }
 export interface Project {
+  space_id?: string | null;
+  area_id?: string | null;
+  status?: string;
+  success_criteria?: string;
+  start_date?: string | null;
+  target_date?: string | null;
+  goal_ids?: string[];
+  task_count?: number;
+  completed_task_count?: number;
+  notes?: { id: string; title: string; archived?: boolean }[];
   id: string;
   name: string;
   description: string;
@@ -40,6 +55,9 @@ export interface Project {
   revision: number;
 }
 export interface CalendarEntry {
+  timing?: "planned" | "deadline";
+  space_id?: string | null;
+  area_id?: string | null;
   id: string;
   entity_id: string;
   kind: "task" | "reminder" | "routine" | "google" | "event" | "block";
@@ -167,6 +185,7 @@ export interface Bootstrap {
   event_cursor: number;
 }
 export type View =
+  | "organize"
   | "today"
   | "inbox"
   | "week"
@@ -186,6 +205,9 @@ export interface ChatMessage {
 
 export type VoiceProvider = "realtime" | "live";
 export interface UIAction {
+  space_id?: string;
+  area_id?: string;
+  goal_id?: string;
   calendar_view?: "month" | "week" | "day";
   id: string;
   kind?: "show" | "chat" | "search" | "filter" | "form" | "calendar" | "select";
@@ -209,6 +231,9 @@ export interface UIAction {
 }
 
 export interface UIContext {
+  space_id?: string;
+  area_id?: string;
+  goal_id?: string;
   view: View;
   calendar_date?: string;
   calendar_view?: "month" | "week" | "day";
