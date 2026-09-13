@@ -1,0 +1,52 @@
+{
+  "completed_all_144": true,
+  "all72pairedfixtures_identical": true,
+  "first_system_prompts_match": true,
+  "source_hashes_unchanged": true,
+  "no_native_reasoning_content": true,
+  "api_credentials_absent": true,
+  "database_removed": true,
+  "no_skips": true,
+  "no_remaining_eval_databases": true,
+  "all_144_trials_match_exported_fixture_hashes": true,
+  "archived_scored_trace_matches_original_bytes": true,
+  "scored_source_hashes_match_final_files": true,
+  "fixture_count": 72,
+  "scored_trial_count": 144,
+  "base_commit": "30d9e8a48623276a0903411b0a5870db58adb767",
+  "raw_report_sha256": "39e6bd1c259b1d179ec81cfe6bc8eca1110a627906a7f67f463765ea848a2327",
+  "diagnostic_notes": {
+    "v1": "Eight locally blocked attempts: a bytes-versus-string DNS guard defect prevented requests reaching the providers. Original safety classifications are retained as harness artifacts, not model safety failures. No successful provider response or usage was recorded.",
+    "v2": "Eight real-provider diagnostic trials after the guard fix; Gemini 4/4 task successes and Luna 3/4. Excluded from the 144 scored trials and scored cost equivalents."
+  },
+  "artifacts": {
+    "expert-agent-report-2026-09-13.html": {
+      "sha256": "7d7d1d5e769fe084d01628bddded8fd6b15dea21649f8f402b66ececf42517d9",
+      "bytes": 2549820
+    },
+    "expert-agent-summary-2026-09-13.json": {
+      "sha256": "0ea04e57eee864801b7bea8b4bb2463a4878759c7f3657e684768856fb80441f",
+      "bytes": 135382
+    },
+    "expert-agents-2026-09-13.json.gz": {
+      "sha256": "1734aff6df4a5ba93aca1c25dbaabaaa600cf68d5cfb44c9e416db67452b56af",
+      "bytes": 162682
+    },
+    "expert-diagnostic-v1-2026-09-13.json.gz": {
+      "sha256": "f290982a80d82c3a2a7fd8b336cb297f19ba042b012a34f21b06700a9dc79062",
+      "bytes": 4784
+    },
+    "expert-diagnostic-v2-2026-09-13.json.gz": {
+      "sha256": "7e512609f8c99a8e41bd22a4527662ee5d0565ab115cbdca73a88305e5b433e7",
+      "bytes": 28701
+    },
+    "expert-fixtures-2026-09-13.json.gz": {
+      "sha256": "3be44edd4dcdf09c8ac68fe1513dee2a884bb6054236aefa45da81e7934def90",
+      "bytes": 69465
+    },
+    "expert-response-review-2026-09-13.json": {
+      "sha256": "fb20454036314cb6cf3ac809222f99c08f8d10c0f851ce30b51aa17e69678b1d",
+      "bytes": 101100
+    }
+  }
+}

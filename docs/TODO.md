@@ -3,7 +3,32 @@
 Updated September 13, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: Gemini task-agent trial — deployed
+## Current batch: expert task-agent evaluation — complete
+
+- [x] Build 24 difficult scenarios with deterministic state/scope graders and
+      paired synthetic fixtures. Include multi-turn clarification, date edge
+      cases, graph/note preservation, planning, untrusted content and injected
+      recovery failures. See [EXPERT_AGENT_EVALUATION.md](EXPERT_AGENT_EVALUATION.md).
+- [x] Preserve complete observable tool context for improvement work: arguments,
+      outcomes, receipts, errors, conversation turns and timing. Keep native
+      reasoning and credentials out of the artifacts.
+- [x] Complete all 144 scored trials (24 × 3 repetitions × 2 models) and audit
+      every reply. Gemini completed 71/72 workflows; Luna 69/72, with no unintended
+      saved changes. Retain all traces, expected fixtures, diagnostics and review
+      notes. Results, costs and limits: [EXPERT_AGENT_RESULTS.md](EXPERT_AGENT_RESULTS.md).
+- [x] Verify 115 evaluation tests, fixture/prompt pairing, artifact integrity,
+      cleanup, and desktop/mobile report behavior. Production selection remains
+      GPT-5.4 mini; no deployment or production tool changes in this batch.
+- [ ] Sharpen the tools using the retained evidence: structured task filtering
+      and selection counts, robust record references and lookup recovery,
+      explicit batch receipts, read-only DST validation, clear remote retry
+      semantics, affected relationship revisions and source-note provenance.
+      Candidates and validation requirements are in
+      [AGENT_TOOL_IMPROVEMENTS.md](AGENT_TOOL_IMPROVEMENTS.md).
+- [ ] Re-evaluate both models after tool improvements, including fresh held-out
+      scenarios; retain the original baseline and report any grader corrections.
+
+## Previous batch: Gemini task-agent trial — deployed
 
 - [x] Add Gemini 3.8 Flash alongside the existing OpenAI task agent, selected in
       Settings. Persist the owner's choice across devices and pin each active turn

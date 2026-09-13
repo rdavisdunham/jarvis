@@ -1024,3 +1024,29 @@ are healthy; authenticated bootstrap exposes the available Luna reasoning profil
 while gpt-5.4-mini remains selected. HTTPS returns 200 and serves
 index-Cnils54F.js. Task, project, goal, note, memory, usage-event and reservation
 counts match the pre-deployment baseline. The encrypted backup remains current.
+
+
+## September 13: expert evaluation and tool-improvement evidence
+
+Added a reproducible 24-scenario stress suite using real Luna Responses and
+Gemini model calls against isolated synthetic PostgreSQL data. A delegated run
+completed 144 trials; deterministic state/scope oracles recorded Gemini 71/72
+and Luna 69/72 correct workflows, without unintended saved changes. A separate
+Codex subagent reviewed every conversation for factual replies and tool-design
+issues. That unblinded model review remains separate from automatic scores.
+
+The report retains complete observable traces, 72 paired expected-state
+fixtures, provider usage/timing, diagnostics and review rationale. Seven tool
+improvement candidates include exact task filters, reliable references, batch
+counts, DST resolution, retry semantics, peer revisions and note provenance.
+See [EXPERT_AGENT_RESULTS.md](EXPERT_AGENT_RESULTS.md) and
+[AGENT_TOOL_IMPROVEMENTS.md](AGENT_TOOL_IMPROVEMENTS.md).
+
+Verification: 115 evaluation tests across scenario/oracle, runner and summary
+suites; Ruff; paired fixture/system-prompt hashes; cleanup and artifact integrity;
+responsive report filters/layout on desktop and mobile. Google/UI adapters were
+simulated; no live connected-service writes or voice evaluation occurred.
+
+This batch changes only evaluation scripts, tests and docs. No migration or
+container deployment is needed. Production model selection remains GPT-5.4 mini
+and development cost recording remains off.

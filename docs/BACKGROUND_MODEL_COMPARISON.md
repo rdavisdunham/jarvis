@@ -136,3 +136,24 @@ original run and follow-up. The earlier Luna reasoning-none comparison above is
 historical evidence; it has not been replaced. Luna with reasoning is now
 available in Settings for real-use comparison. The production default remains
 GPT-5.4 mini.
+
+
+## Expert task-agent suite — September 13, 2026
+
+The later 144-trial paired comparison uses 24 hard scenarios, three repetitions
+per model, and low reasoning for both (Luna through Responses). Gemini completed
+71/72 workflows, Luna 69/72, with no unintended saved changes. Mean workflow times
+were 6.65 and 10.17 seconds respectively. Published uncached-rate equivalents
+were $3.66 and $0.68 across 72 trials each; these are not billed costs.
+
+Gemini had the stronger task-completion result and faster measured responses;
+Luna retains a substantial price advantage. An additional unblinded Codex review
+found 68/72 trials per model with both correct saved state and confirmed factual
+replies. The small authored suite does not establish a universal quality winner.
+I lean toward Gemini for the next primary-agent trial, followed by paired
+validation after the documented tool improvements. No production choice changed.
+
+[Full expert results](EXPERT_AGENT_RESULTS.md) explain failures, uncertainty,
+pricing assumptions and qualitative-review limits. The linked report preserves
+every scored conversation/tool trace, all paired fixtures and separate diagnostic
+runs. Earlier acceptance results above remain historical evidence.
