@@ -51,6 +51,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind in {"linear_write", "linear_sync"}:
+        from .linear_sync import process_sync, process_write
+
+        return (process_write if kind == "linear_write" else process_sync)(job_id)
     if kind == "google_write":
         from .google_writes import process_write
 
@@ -97,7 +101,9 @@ def dispatch_outbox(client):
             client.enqueue(
                 {
                     "workflow_name": "jarvis_job_v1",
-                    "queue_name": "jarvis-google"
+                    "queue_name": "jarvis-linear"
+                    if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write"}
+                    else "jarvis-google"
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
@@ -117,6 +123,7 @@ def prepare_deliveries():
             select(Notification).where(
                 Notification.created_at > now() - timedelta(days=1),
                 Notification.dismissed_at.is_(None),
+                Notification.completed_at.is_(None),
                 Notification.read_at.is_(None),
             )
         ).all()
@@ -161,6 +168,7 @@ def send_deliveries():
                 not subscription.active
                 or notification.read_at
                 or notification.dismissed_at
+                or notification.completed_at
                 or notification.created_at < now() - timedelta(days=1)
             ):
                 row.status = "expired"
@@ -277,6 +285,7 @@ def main():
     Queue("jarvis", concurrency=1, worker_concurrency=1)
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
+    Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
     DBOS.launch()
     client = DBOSClient(system_database_url=settings.database_url)
     running = True
@@ -301,6 +310,9 @@ def main():
                 from .google_calendar import queue_sync
 
                 queue_sync(db, settings.owner_id)
+                from .linear_sync import queue_sync as linear_queue_sync
+
+                linear_queue_sync(db, settings.owner_id)
                 health = db.get(WorkerHealth, "worker")
                 if health:
                     health.last_scan_at = now()

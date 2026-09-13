@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from dateutil.rrule import rrulestr
 from sqlalchemy import select
 
+from .calendar_details import normalized_recurrence
 from .domain import DomainError, zone
 from .models import GoogleCalendar, GoogleCalendarEvent, GoogleIdentity
 
@@ -38,13 +39,20 @@ def original_key(value, timezone):
     return point.date().isoformat() if all_day else point.astimezone(UTC).isoformat()
 
 
-def project(db, owner, start, end, timezone):
+def project(db, owner, start, end, timezone, warnings=None):
     account = db.get(GoogleIdentity, owner)
     if not account or not account.calendar_enabled:
         return [], False
     local = zone(timezone)
     begin, until = datetime.combine(start, time.min, local), datetime.combine(end, time.min, local)
     output, incomplete = [], False
+
+    def warning(source, reason):
+        if warnings is not None:
+            item = {"calendar": source.title, "reason": reason}
+            if item not in warnings:
+                warnings.append(item)
+
     sources = db.scalars(
         select(GoogleCalendar).where(
             GoogleCalendar.owner_id == owner,
@@ -95,6 +103,7 @@ def project(db, owner, start, end, timezone):
                     {
                         "id": "google:" + row.id + ":" + point.isoformat() + ":" + day.isoformat(),
                         "entity_id": row.id,
+                        "provider_id": row.provider_id,
                         "kind": "google",
                         "title": item.get("summary") or "Busy",
                         "date": day.isoformat(),
@@ -112,10 +121,20 @@ def project(db, owner, start, end, timezone):
                         "calendar_title": source.title,
                         "url": safe_link(item.get("htmlLink")),
                         "location": item.get("location", ""),
+                        "description": item.get("description", ""),
+                        "meeting_url": item.get("meeting_url"),
                         "busy": item.get("transparency") != "transparent",
-                        "read_only": not (account.calendar_write_enabled and source.access_role in {"owner", "writer"}),
+                        "read_only": not (
+                            account.calendar_write_enabled and source.access_role in {"owner", "writer"}
+                        ),
                         "recurring": bool(item.get("recurrence") or item.get("recurringEventId")),
-                        "occurrence_start": (item.get("originalStartTime", {}).get("date") or item.get("originalStartTime", {}).get("dateTime") or (point.date().isoformat() if all_day else point.isoformat())) if item.get("recurrence") or item.get("recurringEventId") else None,
+                        "occurrence_start": (
+                            item.get("originalStartTime", {}).get("date")
+                            or item.get("originalStartTime", {}).get("dateTime")
+                            or (point.date().isoformat() if all_day else point.isoformat())
+                        )
+                        if item.get("recurrence") or item.get("recurringEventId")
+                        else None,
                     }
                 )
                 day += timedelta(days=1)
@@ -133,9 +152,10 @@ def project(db, owner, start, end, timezone):
                 if not item.get("recurrence"):
                     append(row, point, finish, all_day)
                     continue
-                rules = "\n".join(item["recurrence"])
+                rules = normalized_recurrence(item["recurrence"], all_day, source.timezone)
                 if any(freq in rules for freq in ["FREQ=SECONDLY", "FREQ=MINUTELY", "FREQ=HOURLY"]):
                     incomplete = True
+                    warning(source, "A recurrence frequency is not supported in this view.")
                     continue
                 series_start = point.replace(tzinfo=None) if all_day else point
                 lower = begin.replace(tzinfo=None) if all_day else begin
@@ -153,6 +173,7 @@ def project(db, owner, start, end, timezone):
                         append(row, occurrence, occurrence + duration, all_day)
             except (DomainError, ValueError, KeyError, TypeError, OverflowError):
                 incomplete = True
+                warning(source, "An event has dates or recurrence data that could not be read.")
         # Moved instances can enter this window even if their original slot was outside it.
         for row in overrides.values():
             if (
@@ -166,4 +187,5 @@ def project(db, owner, start, end, timezone):
                 append(row, point, finish, all_day)
             except (ValueError, KeyError, TypeError):
                 incomplete = True
+                warning(source, "A moved occurrence has unreadable dates.")
     return output, incomplete

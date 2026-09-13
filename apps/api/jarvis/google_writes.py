@@ -159,13 +159,30 @@ def read_event(owner, args):
                     "etag": remote.get("etag"),
                     "scope": args.scope,
                     "expires_at": (now() + timedelta(minutes=30)).isoformat(),
-                    "base_event": clean_event(remote),
+                    "event_fields": {
+                        "title": remote.get("summary") or "Busy",
+                        "start": remote["start"].get("date") or remote["start"].get("dateTime"),
+                        "end": remote["end"].get("date") or remote["end"].get("dateTime"),
+                        "all_day": "date" in remote["start"],
+                        "timezone": remote["start"].get("timeZone") or timezone,
+                        "location": remote.get("location", ""),
+                        "description": remote.get("description", ""),
+                        "busy": remote.get("transparency") != "transparent",
+                    },
+                    "base_event": {
+                        k: v
+                        for k, v in clean_event(remote).items()
+                        if k not in {"description", "attendees", "attachments", "organizer"}
+                    },
                 }
             )
             if editable
             else None
         )
+        from .calendar_details import details
+
         return {
+            **details(remote),
             "event_id": args.event_id,
             "calendar_id": source_id,
             "calendar_title": title,
@@ -286,6 +303,9 @@ def completed(job_id, remote):
             source.revision += 1  # Reject sync snapshots taken before this write.
             account.next_sync_at = now()
             emit(db, owner, "google.changed", owner)
+        from .planning import publication_completed
+
+        publication_completed(db, job, clean_event(remote))
         job.status, job.finished_at = "succeeded", now()
         job.result = {
             "operation": payload["operation"],

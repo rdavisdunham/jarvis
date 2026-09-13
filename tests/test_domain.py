@@ -150,7 +150,7 @@ def test_late_repeat_coalesces_and_creates_independent_tasks():
         job = db.scalar(select(Job))
         deliver_occurrence(db, job)
         assert deliver_occurrence(db, job)["status"] == "delivered"
-        task = db.scalar(select(Task))
+        task = db.scalar(select(Task).where(Task.is_template.is_(False)))
         task_id = task.id
         assert db.scalar(select(func.count(Notification.id))) == 1
     run("task.complete", {"task_id": task_id, "expected_revision": 1})
@@ -161,7 +161,7 @@ def test_late_repeat_coalesces_and_creates_independent_tasks():
         db.flush()
         job = db.scalars(select(Job).order_by(Job.created_at.desc())).first()
         deliver_occurrence(db, job)
-        assert db.scalar(select(func.count(Task.id))) == 2
+        assert db.scalar(select(func.count(Task.id)).where(Task.is_template.is_(False))) == 2
 
 
 def test_linked_reminder_suppressed_after_task_completion():
@@ -174,7 +174,8 @@ def test_linked_reminder_suppressed_after_task_completion():
     with session_scope() as db:
         scan_schedules(db)
         db.flush()
-        assert deliver_occurrence(db, db.scalar(select(Job)))["status"] == "suppressed"
+        assert db.scalar(select(Job)) is None
+        assert db.scalar(select(Schedule)).status == "completed"
 
 
 def test_private_conversation_keeps_only_explicit_capture():

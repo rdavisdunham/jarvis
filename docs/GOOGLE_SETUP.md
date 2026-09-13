@@ -134,3 +134,22 @@ create fixtures on the owner's calendar.
 The sign-in button uses Google's unmodified neutral rectangular PNG from the
 [official branding assets](https://developers.google.com/identity/branding-guidelines),
 stored at apps/web/public/google-sign-in.png and displayed at its original aspect ratio.
+
+
+## Local appointments and work blocks
+
+**Calendar → New event** creates a local Eridani appointment. Keep the Google copy
+set to “Eridani only” or choose a writable selected calendar. **Reserve time for
+this task** in task details creates a work block. Neither action changes task
+deadlines or reminder times.
+
+A published entry shows its Google state. Pending means the local record is saved
+but Google has not confirmed it. Subsequent edits update the linked copy with
+conditional writes. If Google changes independently, compare the copies and choose
+which version to keep, or unlink them. Unlinking keeps both records; cancelling
+a linked local entry also deletes its Google copy. The task itself remains.
+
+Google-origin events still open their own editor, including occurrence/series
+selection for repeats. Guests and special event types remain managed in Google.
+Descriptions, meeting links, organizer, guest responses and attachment links now
+sync locally; the first refresh after schema 0010 backfills those details.

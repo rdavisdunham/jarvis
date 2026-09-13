@@ -44,7 +44,7 @@ export function ScheduleDialog({
         : "",
   );
   const [repeat, setRepeat] = useState(schedule?.recurrence ?? "");
-  const [kind, setKind] = useState(schedule?.kind ?? "reminder");
+  const kind = schedule?.kind ?? "reminder";
   const [taskId, setTaskId] = useState(
     schedule?.task_id ?? linkedTask?.id ?? "",
   );
@@ -187,7 +187,6 @@ export function ScheduleDialog({
               disabled={inactive}
               onChange={(e) => {
                 setRepeat(e.target.value);
-                if (!e.target.value) setKind("reminder");
               }}
             >
               <option value="">Just once</option>
@@ -212,7 +211,9 @@ export function ScheduleDialog({
               disabled={inactive || kind === "recurring_task"}
               onChange={(e) => setTaskId(e.target.value)}
             >
-              <option value="">Standalone reminder</option>
+              {!schedule && (
+                <option value="">Create a task with this alert</option>
+              )}
               {tasks
                 .filter((t) => !t.archived)
                 .map((t) => (
@@ -243,22 +244,12 @@ export function ScheduleDialog({
             </label>
           )}
         </div>
-        {!schedule && repeat && !taskId && (
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={kind === "recurring_task"}
-              onChange={(e) =>
-                setKind(e.target.checked ? "recurring_task" : "reminder")
-              }
-            />
-            Create a task for each occurrence
-          </label>
-        )}
         <p className="footnote">
           {taskId
-            ? "Completing the linked task suppresses its future notifications."
-            : "A reminder keeps its own notification and completion history."}
+            ? "Completing this task closes its alerts. Repeat alerts on an existing task stop when it is done."
+            : repeat
+              ? "Each occurrence creates a task with its own completion history."
+              : "This creates one task with an alert. The alert time is separate from its deadline."}
         </p>
         <div className="dialog-actions">
           {schedule &&

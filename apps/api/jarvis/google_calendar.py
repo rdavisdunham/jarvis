@@ -208,6 +208,9 @@ def clean_event(event):
         ]
         if key in event
     }
+    from .calendar_details import details
+
+    data.update(details(event))
     data["has_guests"] = bool(event.get("attendees"))
     data["declined"] = any(
         a.get("self") and a.get("responseStatus") == "declined" for a in event.get("attendees", [])
@@ -229,7 +232,7 @@ def process(job_id):
             row.provider_id: {
                 "id": row.id,
                 "selected": row.selected,
-                "sync_token": row.sync_token,
+                "sync_token": row.sync_token if row.details_version >= 1 else None,
                 "revision": row.revision,
             }
             for row in db.scalars(select(GoogleCalendar).where(GoogleCalendar.owner_id == owner))
@@ -312,7 +315,13 @@ def process(job_id):
                     account.next_sync_at = now()
                     continue
                 if update["full"]:
-                    db.execute(delete(GoogleCalendarEvent).where(GoogleCalendarEvent.calendar_id == row.id))
+                    incoming = {e["id"] for e in update["events"]}
+                    db.execute(
+                        delete(GoogleCalendarEvent).where(
+                            GoogleCalendarEvent.calendar_id == row.id,
+                            GoogleCalendarEvent.provider_id.notin_(incoming),
+                        )
+                    )
                 current = {
                     event.provider_id: event
                     for event in db.scalars(
@@ -327,7 +336,10 @@ def process(job_id):
                         event = GoogleCalendarEvent(calendar_id=row.id, provider_id=item["id"], payload=item)
                         current[item["id"]] = event
                         db.add(event)
-                row.sync_token, row.last_sync_at = update["token"], now()
+                from .planning import reconcile
+
+                reconcile(db, owner, row.id, update["events"], update["full"])
+                row.sync_token, row.last_sync_at, row.details_version = update["token"], now(), 1
             account.status, account.error, account.last_sync_at = "ready", "", now()
             job.status, job.finished_at, job.result = "succeeded", now(), {"synced": True}
             emit(db, owner, "google.changed", owner)
@@ -366,6 +378,10 @@ def availability(owner, start, end, minutes=30):
         )
     with session_scope() as db:
         account = db.get(GoogleIdentity, owner)
+        if not account or not account.calendar_enabled:
+            from .planning import local_availability
+
+            return local_availability(owner, begin, until, minutes)
         if (
             not configured()
             or not account
@@ -429,6 +445,9 @@ def availability(owner, start, end, minutes=30):
                 a, b = max(begin, a), min(until, b)
                 if b > a:
                     busy.append((a, b))
+        from .planning import busy_intervals
+
+        busy.extend(busy_intervals(owner, begin, until))
         merged = []
         for a, b in sorted(busy):
             if merged and a <= merged[-1][1]:
@@ -448,7 +467,7 @@ def availability(owner, start, end, minutes=30):
             "free": free,
             "busy": [{"start": a.isoformat(), "end": b.isoformat()} for a, b in merged],
             "calendar_count": len(identifiers),
-            "source": "google_freebusy",
+            "source": "google_freebusy_and_eridani",
             "note": "Task deadlines and reminders are not reserved time blocks.",
         }
     except (SyncFailure, DomainError, ValueError, KeyError):
@@ -478,4 +497,12 @@ def event_detail(db, owner, event_id):
     ).first()
     if not row or row[0].payload.get("status") == "cancelled":
         raise DomainError("NOT_FOUND", "Calendar event is no longer available.", 404)
-    return {"id": row[0].id, "calendar_id": row[1].id, "title": row[0].payload.get("summary", "Busy")}
+    return {
+        **row[0].payload,
+        "provider_id": row[0].provider_id,
+        "title": row[0].payload.get("summary", "Untitled event"),
+        "id": row[0].id,
+        "calendar_id": row[1].id,
+        "calendar_title": row[1].title,
+        "last_sync_at": row[1].last_sync_at,
+    }

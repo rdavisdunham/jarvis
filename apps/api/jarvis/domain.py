@@ -451,6 +451,14 @@ def task_timing(db, owner, changes, task=None):
 def mutate(db, owner, tool, args, command_id):
     from .organization import mutate_project, project_changes
 
+    if tool.startswith("linear."):
+        from .linear_commands import mutate as linear_mutate
+
+        return linear_mutate(db, owner, tool, args)
+    if tool.startswith("planning."):
+        from .planning import mutate as planning_mutate
+
+        return planning_mutate(db, owner, tool, args)
     if tool in {"calendar.create", "calendar.update", "calendar.delete"}:
         from .google_writes import queue_write
 
@@ -504,13 +512,21 @@ def mutate(db, owner, tool, args, command_id):
         if any(key in changes for key in ("due_date", "due_time", "due_timezone")):
             changes = task_timing(db, owner, changes, task)
         changes = project_changes(db, owner, changes, task)
+        from .linear_sync import before_task_update
+
+        before_task_update(db, owner, task, changes)
         for key, value in changes.items():
             setattr(task, key, value)
         if "status" in changes:
             task.completed_at = (task.completed_at or now()) if task.status == "completed" else None
-        task.revision += 1
-        task.updated_at = now()
-        emit(db, owner, "task.changed", task.id, task.revision)
+        if task.status in {"completed", "cancelled"} or task.archived:
+            from .task_alerts import finish_task
+
+            finish_task(db, task, task.status, sync_external=False)
+        else:
+            task.revision += 1
+            task.updated_at = now()
+            emit(db, owner, "task.changed", task.id, task.revision)
         return serial(task)
     if tool == "schedule.create":
         if args.kind not in {"reminder", "recurring_task"}:
@@ -523,6 +539,13 @@ def mutate(db, owner, tool, args, command_id):
             raise DomainError(
                 "INVALID_ARGUMENT", "A recurring task needs a recurrence and creates its own tasks."
             )
+        from .task_alerts import new_task
+
+        linked = owned(db, Task, args.task_id, owner, lock=True) if args.task_id else None
+        if linked and (linked.status in {"completed", "cancelled"} or linked.archived):
+            raise DomainError("INVALID_ARGUMENT", "Reopen the task before adding another alert.")
+        if not linked:
+            linked = new_task(db, owner, args.title, args.project_id, template=bool(args.recurrence))
         p = preferences(db, owner)
         instant = parse_when(args.when, args.timezone, p["default_reminder_hour"])
         row = Schedule(
@@ -531,9 +554,9 @@ def mutate(db, owner, tool, args, command_id):
             timezone=args.timezone,
             anchor_at=instant,
             next_run_at=instant,
-            task_id=args.task_id,
+            task_id=linked.id,
             project_id=args.project_id,
-            kind=args.kind,
+            kind="recurring_task" if linked.is_template else "reminder",
             recurrence=validate_recurrence(args.recurrence),
             original_words=args.original_words,
         )
@@ -559,8 +582,13 @@ def mutate(db, owner, tool, args, command_id):
                 owned(db, Task, changes["task_id"], owner)
             if changes.get("project_id"):
                 owned(db, Project, changes["project_id"], owner)
+            if "task_id" in changes and changes["task_id"] is None:
+                raise DomainError(
+                    "INVALID_ARGUMENT", "Alerts belong to a task. Choose a task instead of unlinking."
+                )
             if row.kind == "recurring_task" and (
-                changes.get("task_id", row.task_id) or not changes.get("recurrence", row.recurrence)
+                changes.get("task_id", row.task_id) != row.task_id
+                or not changes.get("recurrence", row.recurrence)
             ):
                 raise DomainError(
                     "INVALID_ARGUMENT", "A recurring task needs a recurrence and creates its own tasks."
@@ -579,6 +607,11 @@ def mutate(db, owner, tool, args, command_id):
                 row.anchor_at = parse_when(
                     when, row.timezone, preferences(db, owner)["default_reminder_hour"]
                 )
+            if row.kind == "recurring_task" and row.task_id and "title" in changes:
+                template = owned(db, Task, row.task_id, owner, lock=True)
+                template.title = row.title
+                template.revision += 1
+                emit(db, owner, "task.changed", template.id, template.revision)
             if timing:
                 row.next_run_at = first_occurrence(row)
                 if not when and row.next_run_at < now() and row.recurrence:
@@ -590,6 +623,10 @@ def mutate(db, owner, tool, args, command_id):
                     "Complete a delivered occurrence with notification.complete; the routine will keep running.",
                 )
             row.status, row.next_run_at, row.completed_at = "completed", None, now()
+            if row.task_id:
+                from .task_alerts import finish_task
+
+                finish_task(db, owned(db, Task, row.task_id, owner, lock=True))
             for notice in db.scalars(
                 select(Notification)
                 .join(Occurrence, Notification.occurrence_id == Occurrence.id)
@@ -600,11 +637,25 @@ def mutate(db, owner, tool, args, command_id):
                 emit(db, owner, "notification.changed", notice.id)
         elif tool == "schedule.cancel":
             row.status, row.next_run_at = "cancelled", None
+            if row.task_id:
+                template = owned(db, Task, row.task_id, owner, lock=True)
+                if template.is_template:
+                    from .task_alerts import finish_task
+
+                    finish_task(db, template, "cancelled")
         else:
             if not args.when:
                 raise DomainError("INVALID_ARGUMENT", "A new time is required.")
             instant = parse_when(args.when, row.timezone, preferences(db, owner)["default_reminder_hour"])
             row.anchor_at, row.status, row.completed_at = instant, "active", None
+            if row.task_id:
+                task = owned(db, Task, row.task_id, owner, lock=True)
+                from .linear_sync import before_task_update
+
+                before_task_update(db, owner, task, {"status": "open"})
+                task.status, task.completed_at, task.archived = "open", None, False
+                task.revision += 1
+                emit(db, owner, "task.changed", task.id, task.revision)
             row.next_run_at = first_occurrence(row)
         previous_revision = row.revision
         row.revision += 1
@@ -665,6 +716,10 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("notification."):
         item = owned(db, Notification, args.notification_id, owner, lock=True)
         if tool == "notification.complete":
+            if item.task_id:
+                from .task_alerts import finish_task
+
+                finish_task(db, owned(db, Task, item.task_id, owner, lock=True))
             item.completed_at = item.completed_at or now()
             if item.occurrence_id:
                 occurrence = db.get(Occurrence, item.occurrence_id)
@@ -677,6 +732,10 @@ def mutate(db, owner, tool, args, command_id):
         elif tool == "notification.snooze":
             if item.completed_at:
                 raise DomainError("INVALID_ARGUMENT", "This reminder is already completed.")
+            if item.task_id:
+                task = owned(db, Task, item.task_id, owner, lock=True)
+                if task.status in {"completed", "cancelled"} or task.archived:
+                    raise DomainError("INVALID_ARGUMENT", "Reopen this task before snoozing its alert.")
             instant = now() + timedelta(minutes=args.minutes)
             row = Schedule(
                 owner_id=owner,
@@ -686,6 +745,10 @@ def mutate(db, owner, tool, args, command_id):
                 next_run_at=instant,
                 task_id=item.task_id,
             )
+            if not row.task_id:
+                from .task_alerts import new_task
+
+                row.task_id = new_task(db, owner, item.title).id
             db.add(row)
             item.dismissed_at = now()
         elif tool == "notification.dismiss":
@@ -744,12 +807,21 @@ def deliver_occurrence(db, job):
         occurrence.status = "suppressed"
         return {"status": "suppressed"}
     if schedule.kind == "recurring_task":
+        template = task
         task = Task(
             owner_id=job.owner_id,
-            title=schedule.title,
+            title=template.title if template else schedule.title,
+            notes=template.notes if template else "",
+            assignee=template.assignee if template else "owner",
+            priority=template.priority if template else 0,
+            tags=template.tags if template else [],
+            work_type=template.work_type if template else "",
+            parent_task_id=template.id if template else None,
             occurrence_id=occurrence.id,
-            project_id=schedule.project_id,
-            project=db.get(Project, schedule.project_id).name if schedule.project_id else None,
+            project_id=template.project_id if template else schedule.project_id,
+            project=template.project
+            if template
+            else (db.get(Project, schedule.project_id).name if schedule.project_id else None),
             due_date=occurrence.scheduled_at.astimezone(zone(schedule.timezone)).date(),
         )
         db.add(task)
@@ -758,7 +830,7 @@ def deliver_occurrence(db, job):
     notification = Notification(
         owner_id=job.owner_id,
         occurrence_id=occurrence.id,
-        title=schedule.title,
+        title=task.title if task and schedule.kind == "recurring_task" else schedule.title,
         task_id=task.id if task else None,
         scheduled_at=occurrence.scheduled_at,
         body="Delivered after its scheduled time."
@@ -784,3 +856,11 @@ from .google_schema import CalendarCreate, CalendarDelete, CalendarUpdate
 COMMANDS.update(
     {"calendar.create": CalendarCreate, "calendar.update": CalendarUpdate, "calendar.delete": CalendarDelete}
 )
+
+from .planning_schema import PLANNING_COMMANDS
+
+COMMANDS.update(PLANNING_COMMANDS)
+
+from .linear_schema import LINEAR_COMMANDS
+
+COMMANDS.update(LINEAR_COMMANDS)

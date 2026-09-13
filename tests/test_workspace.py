@@ -112,11 +112,9 @@ def test_schedule_edit_stale_revision_and_occurrence_completion(client):
     )
     assert stale.status_code == 409
     command(client, "schedule.complete", schedule_id=schedule["id"], expected_revision=2)
-    assert client.get("/api/v1/tasks/" + task["id"]).json()["status"] == "open"
-    assert (
-        client.get("/api/v1/calendar?start=2030-04-01&end=2030-04-03").json()["items"][0]["status"]
-        == "completed"
-    )
+    assert client.get("/api/v1/tasks/" + task["id"]).json()["status"] == "completed"
+    # Completing early clears the future alert; it does not invent a delivered occurrence.
+    assert client.get("/api/v1/calendar?start=2030-04-01&end=2030-04-03").json()["items"] == []
 
 
 def test_recurring_completion_keeps_series_and_calendar_history(client):

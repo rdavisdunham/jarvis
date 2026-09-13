@@ -3,7 +3,57 @@
 Updated September 12, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
-## Current batch: mobile Calendar and Google editing — deployed
+## Current batch: unified tasks, calendar details and Linear — deployed
+
+- [x] Tasks own completion. Reminders are alerts on a task; new standalone alerts
+      create their task automatically. Migration carries old schedules, delivered
+      notices and completion history forward. Repeating routines have a template
+      and separately completable occurrences. Completing a task closes its alerts.
+- [x] Local appointments and task work blocks, editable on mobile and through
+      Eri's tools. A block reserves time without changing the task deadline.
+      Calendar availability includes local busy entries and connected Google calendars.
+- [x] Optional Google publication for selected appointments/blocks. Durable writes,
+      stable IDs, no duplicate display of a linked copy, explicit conflict review,
+      and unlinking that preserves both records. A remote deletion leaves local
+      work available; it does not delete the task or its appointment.
+- [x] Rich Google cache: descriptions, location, meeting links, organizer, guest
+      responses and attachment links. Cache-first details remain readable when
+      the fresh provider read fails. Historical recurrence UNTIL compatibility
+      fixes the misleading incomplete-range warning; real issues identify a source.
+- [x] Linear API integration: encrypted personal key in Settings, selectable teams,
+      optional “assigned to me” scope, five-minute incremental polling and daily
+      full reconciliation. Issues/projects/parent links import into local work.
+- [x] Linear writes through task edits, explicit Publish to Linear, exact workflow
+      controls and Eri's shared tools. Stable create IDs, durable receipts,
+      pre-write conflict detection and owner-directed resolution. Local annotations
+      and work are retained when remote access changes. See [LINEAR_SETUP.md](LINEAR_SETUP.md).
+- [x] Release validation: 204 backend tests (one optional test skipped), 74 frontend tests, production build,
+      mobile browser flows, real 30-second scroll stability, lost-response retry,
+      Google/Linear conflict handling and migration round-trip with legacy reminders.
+      Provider writes in acceptance use synthetic fixtures, not owner calendars/issues.
+- [x] Deployed schema 0010 with healthy API/worker/PostgreSQL and verified HTTPS
+      bundle index-CFF8CMib.js. Preserved all 47 original tasks; eight legacy
+      standalone schedules gained tasks (55 total), with delivery history retained.
+      All 2,680 cached Google events were enriched, including 267 descriptions,
+      403 meeting links and 542 events with guests. September's projection reports
+      no incomplete range or warnings. Credentials, selections and cost ledger match
+      their pre-upgrade hashes; cost tracking remains off.
+- [x] Encrypted backups before and after the migration restored into isolated
+      databases. Latest verified backup: jarvis-20260913T025905Z.pgdump.enc,
+      including planning/Linear tables, credentials, selections and record counts.
+- [ ] Owner: connect a Linear key in Settings, choose teams, then try a real issue
+      import/edit. No real Linear account is connected by automated acceptance.
+- [ ] Owner: verify real Google editing consent and a personal published work block;
+      confirm shared-calendar availability and richer event details on mobile.
+- [ ] Later: native repeating appointments, more Linear project/label/cycle controls,
+      OAuth/webhooks if needed, and Eri as an agent inside Linear. Public Linear
+      updates have no conditional revision parameter; the documented preflight
+      check cannot eliminate the narrow read/write race.
+- [ ] Langfuse/evals integration remains deferred until this functionality is hardened.
+      Smarter notifications and scoped external bot API/MCP remain the next larger
+      expansions. Real-use voice recovery/device checks precede the seven-day pilot.
+
+## Previous batch: mobile Calendar and Google editing — deployed
 
 - [x] Owner confirmed real Google Calendar sync works on mobile.
 - [x] Fixed the roughly 30-second scroll jump: background refresh retains the
@@ -415,8 +465,8 @@ Build these as small successive batches in the listed order, carrying the same
 actions into the web interface and Eri's tools with each release.
 
 - [x] **Unified work-item experience and organization, first release.** Work combines
-      tasks and standalone reminders while preserving schedules, delivery records
-      and completion history. Real projects, work types, subtasks, assignee labels,
+      tasks and alerts while preserving schedules, delivery records
+      and completion history. Schema 0010 gives every alert a task and repeating routines a template. Real projects, work types, subtasks, assignee labels,
       tags, priorities and status filters are implemented. Tasks sort by priority
       and deadline; reminders sort by scheduled time. Existing project labels are
       migrated. Scheduled agent execution and additional sort modes remain later.
@@ -444,8 +494,8 @@ actions into the web interface and Eri's tools with each release.
       source links/freshness and private-host-compatible polling are deployed.
       Supported recurring exceptions, deletions and invalid cursors are covered.
       Pairing remains a recovery route.
-- [ ] Configure the real Google client and complete first account-link/sync checks.
-      Add Google event edits only after read/sync behavior is proven.
+- [x] Configure the real Google client and complete first account-link/sync checks.
+      Optional Google event edits and selective local-entry publication are implemented.
 - [ ] **Smarter notifications.** Flexible/natural-language snoozing, bundling or
       digests, priority levels and preferences. Extend the existing simple snooze
       while preserving delivery/completion history and recurring behavior.

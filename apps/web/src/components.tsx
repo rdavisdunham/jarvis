@@ -108,13 +108,25 @@ export function TaskRow({
       <button
         className="task-check"
         disabled={busy}
-        aria-label={(done ? "Reopen " : "Complete ") + task.title}
-        onClick={onToggle}
+        aria-label={
+          (task.is_template
+            ? "Open routine "
+            : done
+              ? "Reopen "
+              : "Complete ") + task.title
+        }
+        onClick={task.is_template ? onOpen : onToggle}
       >
-        {done ? <Check size={15} /> : null}
+        {task.is_template ? "↻" : done ? <Check size={15} /> : null}
       </button>
       <button className="task-info" onClick={onOpen}>
-        <span className="task-title">{task.title}</span>
+        <span className="task-title">
+          {task.title}
+          {task.external?.identifier && (
+            <small> · {task.external.identifier}</small>
+          )}
+          {task.is_template && <small> · Routine</small>}
+        </span>
         {(task.notes ||
           task.project ||
           task.assignee !== "owner" ||

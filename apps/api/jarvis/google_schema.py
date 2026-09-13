@@ -29,14 +29,14 @@ class CalendarCreate(EventFields):
 
 class CalendarUpdate(EventFields):
     edit_token: str = Field(
-        max_length=12000,
+        max_length=60000,
         description="Use the fresh edit token from calendar_event_read for the exact event/occurrence/series.",
     )
 
 
 class CalendarDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    edit_token: str = Field(max_length=12000)
+    edit_token: str = Field(max_length=60000)
 
 
 class CalendarRead(BaseModel):

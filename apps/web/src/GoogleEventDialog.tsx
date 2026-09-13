@@ -23,6 +23,15 @@ type Detail = EventFields & {
   calendar_title: string;
   recurring: boolean;
   scope: string;
+  meeting_url?: string;
+  organizer?: { displayName?: string; email?: string };
+  attendees?: {
+    displayName?: string;
+    email?: string;
+    responseStatus?: string;
+  }[];
+  attendees_omitted?: boolean;
+  attachments?: { title: string; url: string }[];
 };
 type Write = { job_id: string; status: string; result?: { message?: string } };
 const terminal = (status: string) =>
@@ -52,6 +61,7 @@ export function GoogleEventDialog({
     };
   }, []);
   const [connection, setConnection] = useState<GoogleStatus | null>(null);
+  const [cached, setCached] = useState<Partial<Detail> | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [calendar, setCalendar] = useState("");
   const [scope, setScope] = useState(event.recurring ? "occurrence" : "event");
@@ -100,6 +110,11 @@ export function GoogleEventDialog({
     setEditing(false);
     setDeleting(false);
     setJob(null);
+    api<Partial<Detail>>("/calendar/events/" + event.entity_id)
+      .then((d) => {
+        if (current) setCached(d);
+      })
+      .catch(() => {});
     post<Detail>("/calendar/event-detail", {
       event_id: event.entity_id,
       scope,
@@ -127,6 +142,8 @@ export function GoogleEventDialog({
       current = false;
     };
   }, [fresh, event.entity_id, event.occurrence_start, scope, refresh]);
+  const shown = detail ?? cached;
+  const safeLink = (url: string) => /^https?:\/\//i.test(url);
   const set = <K extends keyof EventFields>(key: K, value: EventFields[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   const fields = () => ({
@@ -429,12 +446,56 @@ export function GoogleEventDialog({
               <p className="footnote">
                 {event.calendar_title} · {timezone}
               </p>
-              {(detail?.location || event.location) && (
-                <p>{detail?.location || event.location}</p>
+              {(shown?.location || event.location) && (
+                <p>{shown?.location || event.location}</p>
               )}
-              {detail?.description && (
-                <p className="event-description">{detail.description}</p>
+              {(shown?.description || event.description) && (
+                <p className="event-description">
+                  {shown?.description || event.description}
+                </p>
               )}
+              {!detail && cached && (
+                <p className="footnote">
+                  Showing synced details while the current Google copy is
+                  unavailable.
+                </p>
+              )}
+              {shown?.meeting_url && safeLink(shown.meeting_url) && (
+                <p>
+                  <a href={shown.meeting_url} target="_blank" rel="noreferrer">
+                    Join meeting
+                  </a>
+                </p>
+              )}
+              {shown?.organizer && (
+                <p className="footnote">
+                  Organizer:{" "}
+                  {shown.organizer.displayName || shown.organizer.email}
+                </p>
+              )}
+              {!!shown?.attendees?.length && (
+                <details>
+                  <summary>
+                    Guests ({shown.attendees.length}
+                    {shown.attendees_omitted ? "+" : ""})
+                  </summary>
+                  {shown.attendees.map((a, i) => (
+                    <p key={i}>
+                      {a.displayName || a.email} ·{" "}
+                      {a.responseStatus ?? "No response"}
+                    </p>
+                  ))}
+                </details>
+              )}
+              {shown?.attachments
+                ?.filter((a) => safeLink(a.url))
+                .map((a, i) => (
+                  <p key={i}>
+                    <a href={a.url} target="_blank" rel="noreferrer">
+                      {a.title || "Attachment"}
+                    </a>
+                  </p>
+                ))}
               {!event.busy && (
                 <p className="footnote">This event is marked as free time.</p>
               )}

@@ -2932,3 +2932,67 @@ progress::-webkit-progress-value {
     min-height: 44px;
   }
 }
+
+/* First-party planning and integration review surfaces. */
+.planning-actions,
+.sync-comparison {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.sync-comparison {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.plain-details,
+.event-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.linear-task details {
+  margin-block: 0.75rem;
+}
+.linear-task button,
+.planning-actions button {
+  margin: 0.25rem;
+}
+.calendar-dots .event,
+.calendar-event.event,
+.agenda-kind.event {
+  background: #d6c2e8;
+  color: #51376d;
+}
+.calendar-dots .block,
+.calendar-event.block,
+.agenda-kind.block {
+  background: #bce1d9;
+  color: #1f5d55;
+}
+.linear-task fieldset,
+.google-settings fieldset {
+  min-width: 0;
+}
+
+.google-settings .event-checkbox {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+}
+.google-settings .event-checkbox input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+.linear-task fieldset,
+.google-settings fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.sync-comparison h3,
+.sync-comparison h4 {
+  margin: 0;
+}

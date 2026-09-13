@@ -59,6 +59,9 @@ async def lifespan(app):
 
 app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
 app.include_router(google_router)
+from .integration_routes import router as integration_router
+
+app.include_router(integration_router)
 User = Annotated[Identity, Depends(authenticate)]
 login_attempts = defaultdict(deque)
 
@@ -273,7 +276,9 @@ def notes(
 
 @app.get("/api/v1/notes/search")
 async def notes_search(
-    user: User, q: str = Query(min_length=1, max_length=500), project_id: str | None = None,
+    user: User,
+    q: str = Query(min_length=1, max_length=500),
+    project_id: str | None = None,
     task_id: str | None = None,
 ):
     from .notes import search_notes

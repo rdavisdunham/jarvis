@@ -94,6 +94,14 @@ try {
   await page.locator(".agenda-row").filter({ hasText: "Dentist" }).click();
   await expect(page.getByRole("dialog")).toContainText("Main office");
   await expect(
+    page.getByRole("link", { name: "Join meeting", exact: true }),
+  ).toBeVisible();
+  await page.getByText("Guests (1)", { exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Fixture guest");
+  await expect(
+    page.getByRole("link", { name: "Agenda notes", exact: true }),
+  ).toBeVisible();
+  await expect(
     page.getByRole("link", { name: "Open in Google Calendar" }),
   ).toHaveAttribute("rel", "noopener noreferrer");
   const blocked = await ui("ui_show", { view: "notes" });
@@ -175,6 +183,7 @@ try {
   await page.getByLabel("Event start").fill("2026-09-18T15:00");
   await page.getByLabel("Event end").fill("2026-09-18T15:45");
   await page.getByLabel("Event location").fill("Home office");
+  await page.getByLabel("Google copy").selectOption({ label: "Personal" });
   await shot("google-calendar-editor-mobile.png");
   if (
     await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)
@@ -184,20 +193,20 @@ try {
   let lost = false;
   await page.route("**/api/v1/commands", async (route) => {
     const body = route.request().postDataJSON();
-    if (!lost && body.tool === "calendar.create") {
+    if (!lost && body.tool === "planning.create") {
       lost = true;
       await route.fetch();
       await route.abort("connectionreset");
     } else await route.continue();
   });
-  await page.getByRole("button", { name: "Create event", exact: true }).click();
+  await page.getByRole("button", { name: "Save event", exact: true }).click();
   await expect(
     page.getByText(
       "The request did not finish. Retry the same change to check its saved receipt.",
       { exact: true },
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Create event", exact: true }).click();
+  await page.getByRole("button", { name: "Save event", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.unroute("**/api/v1/commands");
   await expect(
@@ -207,7 +216,6 @@ try {
     .locator(".agenda-row")
     .filter({ hasText: "Mobile appointment" })
     .click();
-  await page.getByRole("button", { name: "Edit event", exact: true }).click();
   await page.getByLabel("Event title").fill("Mobile appointment edited");
   await page.getByLabel("Event end").fill("2026-09-18T16:00");
   await page.getByRole("button", { name: "Save event", exact: true }).click();
@@ -221,9 +229,9 @@ try {
     .locator(".agenda-row")
     .filter({ hasText: "Mobile appointment edited" })
     .click();
-  await page.getByRole("button", { name: "Delete event", exact: true }).click();
+  await page.getByRole("button", { name: "Cancel event", exact: true }).click();
   await page
-    .getByRole("button", { name: "Confirm delete", exact: true })
+    .getByRole("button", { name: "Confirm cancellation", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
@@ -233,6 +241,87 @@ try {
   await expect(
     page.getByText("Confirmed by Google", { exact: true }),
   ).toHaveCount(3);
+  // Linear uses the real app connection/command surfaces with a synthetic GraphQL provider.
+  await ui("ui_show", { view: "settings" });
+  await page.getByLabel("Linear API key").fill("fixture-key-browser");
+  await page
+    .getByRole("button", { name: "Connect Linear", exact: true })
+    .click();
+  await expect(page.getByText("Teams to sync", { exact: true })).toBeVisible();
+  await page.getByLabel("Team", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Save sync scope", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save sync scope", exact: true }),
+  ).toBeEnabled();
+  await ui("ui_show", { view: "all" });
+  await page
+    .getByRole("button", { name: "Edit Shared task", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("ERI-1");
+  await request("/__test_linear_change");
+  await page
+    .getByRole("dialog")
+    .getByLabel("Task", { exact: true })
+    .fill("Local conflict version");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Edit Local conflict version", exact: true })
+    .click();
+  await expect(page.locator(".linear-task")).toContainText("conflict");
+  await page
+    .getByRole("button", { name: "Review Linear copy", exact: true })
+    .click();
+  await expect(page.locator(".sync-comparison")).toContainText(
+    "Linear conflict version",
+  );
+  await shot("linear-conflict-mobile.png");
+  await page
+    .getByRole("button", { name: "Use Linear version", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Edit Linear conflict version", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Reserve time for this task", exact: true })
+    .click();
+  await page.getByLabel("Event start").fill("2026-09-18T17:00");
+  await page.getByLabel("Event end").fill("2026-09-18T18:00");
+  await shot("planning-block-mobile.png");
+  await page.getByRole("button", { name: "Save event", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await ui("ui_calendar", { date: "2026-09-18", calendar_view: "day" });
+  await expect(
+    page
+      .locator(".agenda-row")
+      .filter({ hasText: "Work on Linear conflict version" }),
+  ).toHaveCount(1);
+  await ui("ui_show", { view: "all" });
+  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel("Task", { exact: true })
+    .fill("Publish browser task");
+  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Edit Publish browser task", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Publish to Linear", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Edit Publish browser task", exact: true })
+    .click();
+  await expect(page.locator(".linear-task")).toContainText("synced");
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await ui("ui_show", { view: "settings" });
   await shot("google-settings-mobile.png");
   if (
@@ -275,7 +364,7 @@ try {
   ).toHaveCount(0);
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(
-    "Google consent/read/write, mobile views, 30-second scroll stability, lost-response save retry, event CRUD, CopilotKit and disconnect/unlink passed.",
+    "Google consent/details, mobile views, 30-second scroll stability, local event publication/CRUD, lost-response retry, Linear import/publish/conflict review, task work blocks, CopilotKit and disconnect/unlink passed.",
   );
 } finally {
   await browser.close();

@@ -3,12 +3,21 @@
 import asyncio
 import copy
 import json
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import ClassVar
 from urllib.parse import unquote
 from uuid import uuid4
 
-from jarvis import google_auth, google_calendar
+from jarvis import google_auth, google_calendar, linear_commands, linear_sync
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from test_linear import Fake
+
+linear_fixture = Fake()
+linear_sync.LinearClient = lambda *_: linear_fixture
+linear_commands.LinearClient = lambda *_: linear_fixture
 from jarvis.api import User, app
 from jarvis.db import session_scope
 from jarvis.google_writes import process_write
@@ -27,6 +36,13 @@ def seed(title, event_id):
         "end": {"dateTime": "2026-09-18T10:00:00-05:00", "timeZone": "America/Chicago"},
         "htmlLink": "https://calendar.google.com/calendar/event?eid=fixture",
         "location": "Main office",
+        "description": "Review the proposed milestones.",
+        "hangoutLink": "https://meet.google.com/fixture",
+        "attendees": [
+            {"displayName": "Fixture guest", "email": "guest@example.test", "responseStatus": "accepted"}
+        ],
+        "organizer": {"email": "owner@example.test", "self": True},
+        "attachments": [{"title": "Agenda notes", "fileUrl": "https://docs.google.com/document/d/fixture"}],
     }
 
 
@@ -138,6 +154,18 @@ async def fixture_worker(request, call_next):
             ids = list(db.scalars(select(Job.id).where(Job.kind == "google_write", Job.status == "queued")))
         for job in ids:
             await asyncio.to_thread(process_write, job)
+        with session_scope() as db:
+            rows = list(
+                db.execute(
+                    select(Job.id, Job.kind).where(
+                        Job.kind.in_(["linear_sync", "linear_write"]), Job.status == "queued"
+                    )
+                )
+            )
+        for jid, kind in rows:
+            await asyncio.to_thread(
+                linear_sync.process_sync if kind == "linear_sync" else linear_sync.process_write, jid
+            )
     return response
 
 
@@ -166,3 +194,10 @@ def dense_fixture(user: User):
         event["end"]["dateTime"] = (point + timedelta(minutes=15)).isoformat()
         GoogleFixture.events["owner@example.test"][event["id"]] = event
     return sync_fixture(user)
+
+
+@app.post("/api/v1/__test_linear_change")
+def linear_change(user: User):
+    linear_fixture.rows["remote"]["title"] = "Linear conflict version"
+    linear_fixture.rows["remote"]["updatedAt"] = "2026-09-12T10:30:00Z"
+    return {"done": True}

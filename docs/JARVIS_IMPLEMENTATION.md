@@ -26,7 +26,7 @@ Google account sign-in already requested by the owner.
 - Python/FastAPI owns the domain API; PostgreSQL owns tasks, reminders, sources, sessions, receipts and usage. A separate DBOS worker performs durable work.
 - React/TypeScript/Vite provides a responsive, installable web app at the same origin. Text, voice and buttons use the same validated commands.
 - Task deadlines support a date with an optional local due time and IANA timezone. Date-only tasks remain supported; time changes do not create notifications. Reminders have explicit IANA time zones and resolved instants. The default is America/Chicago at 10 AM when only a date is supplied.
-- Repeated routines create independent task occurrences. Completing one occurrence does not cancel the series. Independent recurring reminders also remain independent of task completion.
+- Repeated routines create independent task occurrences. Completing one occurrence does not cancel the series. All reminders are task alerts. Repeated alerts on a single task stop when it is completed; routine templates generate independently completable tasks.
 - History and conservative memory learning start enabled. Private sessions do not retain transcripts. Explicitly requested tasks and saved memories still persist. Jarvis does not record raw audio.
 - The default voice candidate is GPT-Realtime-2.1. The server controls response creation, silence, waiting, interruption and tool execution. Audible confirmations are requested only after commands commit.
 - Internal cost recording and budget enforcement are disabled during development. The owner monitors OpenAI Usage. The optional accounting system retains its historical ledger and reservations; reconcile those before re-enabling it.
@@ -897,3 +897,30 @@ including encrypted credentials, selections/access roles and 2,680 Google events
 The restored snapshot also contains 47 tasks, 2 projects, 8 schedules, 3 notifications,
 238 sources, 11 memory assertions, 1 memory review and 146 command receipts.
 Neither restore started a worker; both temporary databases were removed.
+
+
+## Unified planning and Linear (schema 0010)
+
+A Task stores the work and completion state. Schedule stores its alert timing or
+routine recurrence; Occurrence and Notification retain delivery/completion history.
+Legacy standalone schedules gain tasks without converting alert times into
+deadlines. A repeating template creates one task per delivered occurrence.
+Completing a task also closes its remaining alerts and delivered notices.
+
+PlanningEntry stores local appointments and task work blocks with an optional
+Google publication link, last shared snapshot and durable write job. Google is an
+optional copy destination. External edits require review; a missing Google copy
+does not delete local work. Calendar projection suppresses the duplicate linked
+copy and availability merges local busy intervals with live Google free/busy.
+Google cache backfill adds rich details while preserving stable local event IDs.
+
+LinearConnection holds an encrypted personal key, selected teams, member/workspace
+identity, cursor and directory. LinearIssue maps the stable provider UUID to one
+Task and stores shared/pending/conflicting snapshots. Polling and writes use a
+dedicated DBOS queue, the existing transactional outbox and shared domain commands.
+Eri and UI task edits use the same write path. No Slack relay or second MCP writer
+is introduced. Read [LINEAR_SETUP.md](LINEAR_SETUP.md) for setup, mappings and the
+provider's conditional-write limitation.
+
+Langfuse remains deferred. The external bot API/MCP and notification expansion
+remain separate future work.

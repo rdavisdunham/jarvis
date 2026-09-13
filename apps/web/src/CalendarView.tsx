@@ -26,6 +26,7 @@ type Props = {
   events: CalendarEntry[];
   loaded: boolean;
   truncated: boolean;
+  warnings?: { calendar: string; reason: string }[];
   error: string;
   google?: GoogleStatus;
   highlight?: string | null;
@@ -246,8 +247,12 @@ export function CalendarView(p: Props) {
       )}
       {p.truncated && (
         <p role="status">
-          Some items could not be shown. Try Day or Week, or check Google
-          Calendar for the complete schedule.
+          {p.warnings?.length
+            ? "A calendar source needs attention: " +
+              p.warnings
+                .map((w) => w.calendar + " — " + w.reason.replaceAll("_", " "))
+                .join("; ")
+            : "This range contains more items than can be displayed. Switch to Day or Week to see a smaller range."}
         </p>
       )}
       <CalendarWriteActivity />
@@ -286,7 +291,7 @@ export function CalendarView(p: Props) {
                 key={day + ":" + p.zone}
                 day={day}
                 timezone={p.zone}
-                enabled={!!p.google?.calendar_enabled}
+                enabled={p.loaded}
               />
             )}
             <div className="calendar-agenda">
@@ -324,26 +329,32 @@ export function CalendarView(p: Props) {
                     <small>
                       {e.kind === "google"
                         ? e.calendar_title + " · Google"
-                        : e.kind === "task"
-                          ? "Task deadline"
-                          : e.kind === "routine"
-                            ? "Repeating task"
-                            : "Reminder"}
+                        : e.kind === "event"
+                          ? "Appointment"
+                          : e.kind === "block"
+                            ? "Work block"
+                            : e.kind === "task"
+                              ? "Task deadline"
+                              : e.kind === "routine"
+                                ? "Repeating task"
+                                : "Reminder"}
                       {e.projected && e.kind !== "google" ? " · Upcoming" : ""}
                       {!!e.conflicts?.length &&
                         " · Deadline during " + e.conflicts.join(", ")}
                       {e.status === "completed" ? " · Completed" : ""}
                     </small>
-                    {e.kind === "google" && e.at && e.end_at && (
-                      <small>
-                        Until{" "}
-                        {new Intl.DateTimeFormat(undefined, {
-                          timeZone: p.zone,
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }).format(new Date(e.end_at))}
-                      </small>
-                    )}
+                    {["google", "event", "block"].includes(e.kind) &&
+                      e.at &&
+                      e.end_at && (
+                        <small>
+                          Until{" "}
+                          {new Intl.DateTimeFormat(undefined, {
+                            timeZone: p.zone,
+                            hour: "numeric",
+                            minute: "2-digit",
+                          }).format(new Date(e.end_at))}
+                        </small>
+                      )}
                   </span>
                   <ChevronRight size={15} />
                 </button>

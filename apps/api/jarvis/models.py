@@ -80,6 +80,8 @@ class Task(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     occurrence_id: Mapped[str | None] = mapped_column(String(36), unique=True)
+    is_template: Mapped[bool] = mapped_column(Boolean, default=False)
+    external: Mapped[dict] = mapped_column(JSONB, default=dict)
 
 
 class Command(Base):
@@ -363,6 +365,7 @@ class GoogleCalendar(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey("google_identities.owner_id"), index=True)
     provider_id: Mapped[str] = mapped_column(String(1024))
     access_role: Mapped[str] = mapped_column(String(40), default="reader")
+    details_version: Mapped[int] = mapped_column(Integer, default=1)
     title: Mapped[str] = mapped_column(String(500))
     timezone: Mapped[str] = mapped_column(String(100), default="UTC")
     selected: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -380,3 +383,55 @@ class GoogleCalendarEvent(Base):
     calendar_id: Mapped[str] = mapped_column(ForeignKey("google_calendars.id"), index=True)
     provider_id: Mapped[str] = mapped_column(String(1024))
     payload: Mapped[dict] = mapped_column(JSONB)
+
+
+class PlanningEntry(Base):
+    __tablename__ = "planning_entries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="event")
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), index=True)
+    fields: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    google_calendar_id: Mapped[str | None] = mapped_column(String(36))
+    google_event_id: Mapped[str | None] = mapped_column(String(1024))
+    google_snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    google_job_id: Mapped[str | None] = mapped_column(String(36))
+    google_state: Mapped[str] = mapped_column(String(30), default="local")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LinearConnection(Base):
+    __tablename__ = "linear_connections"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    credentials: Mapped[str | None] = mapped_column(Text)
+    workspace_id: Mapped[str] = mapped_column(String(100))
+    workspace_name: Mapped[str] = mapped_column(String(250))
+    viewer_id: Mapped[str] = mapped_column(String(100))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    generation: Mapped[int] = mapped_column(Integer, default=1)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    team_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    only_mine: Mapped[bool] = mapped_column(Boolean, default=True)
+    directory: Mapped[dict] = mapped_column(JSONB, default=dict)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    full_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30), default="ready")
+    error: Mapped[str] = mapped_column(String(200), default="")
+
+
+class LinearIssue(Base):
+    __tablename__ = "linear_issues"
+    __table_args__ = (UniqueConstraint("owner_id", "workspace_id", "remote_id", name="uq_linear_issue"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    workspace_id: Mapped[str] = mapped_column(String(100))
+    remote_id: Mapped[str] = mapped_column(String(100))
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), unique=True)
+    snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
+    pending_job_id: Mapped[str | None] = mapped_column(String(36))
+    sync_state: Mapped[str] = mapped_column(String(30), default="synced")
+    latest_remote: Mapped[dict | None] = mapped_column(JSONB)

@@ -4,6 +4,8 @@ import { post } from "./api";
 
 type Result = {
   status: string;
+  source?: string;
+  note?: string;
   reason?: string;
   checked_at?: string;
   free: { start: string; end: string }[];
@@ -65,8 +67,8 @@ export function Availability({
         Find an open time
       </summary>
       <p className="footnote">
-        Check your selected Google calendars. Task deadlines and reminders don’t
-        reserve time.
+        Check Eridani appointments, work blocks and connected Google calendars.
+        Task deadlines and reminders don’t reserve time.
       </p>
       <div className="availability-controls">
         <label>
@@ -130,7 +132,13 @@ export function Availability({
           ) : (
             <>
               <p className="footnote">
-                Checked with Google at {fmt(result.checked_at!)} · {timezone}
+                {result.source === "eridani_only"
+                  ? "Eridani only"
+                  : "Google and Eridani"}{" "}
+                · Checked {fmt(result.checked_at!)} · {timezone}
+                {result.source === "eridani_only"
+                  ? " · Google is not connected."
+                  : ""}
               </p>
               {result.free.length ? (
                 <ul className="available-times">

@@ -18,8 +18,13 @@ def calendar(db, owner, start: date, end: date, timezone: str):
     task_map = {t.id: t for t in tasks}
     events = []
     for task in tasks:
-        if not task.due_date:
+        if not task.due_date or task.is_template:
             continue
+        if task.occurrence_id and not task.due_time:
+            occurrence = db.get(Occurrence, task.occurrence_id)
+            routine = db.get(Schedule, occurrence.schedule_id) if occurrence else None
+            if routine and task.due_date == occurrence.scheduled_at.astimezone(zone(routine.timezone)).date():
+                continue
         instant = (
             parse_when(f"{task.due_date.isoformat()}T{task.due_time}", task.due_timezone or timezone)
             if task.due_time
@@ -58,6 +63,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
             status,
             projected,
             notification_id=None,
+            occurrence_task_id=None,
             *,
             seen=seen,
             schedule=schedule,
@@ -77,7 +83,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                     "at": key,
                     "status": status,
                     "project_id": project_id,
-                    "task_id": schedule.task_id,
+                    "task_id": occurrence_task_id or schedule.task_id,
                     "revision": schedule.revision,
                     "projected": projected,
                     "notification_id": notification_id,
@@ -102,6 +108,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                 "completed" if notice and notice.completed_at else occurrence.status,
                 False,
                 notice.id if notice else None,
+                notice.task_id if notice else None,
             )
         if (
             schedule.status == "active"
@@ -117,14 +124,28 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                     truncated = True
                     break
                 candidate = next_occurrence(schedule, candidate)
-        elif schedule.status != "active" and not rows and not schedule.recurrence:
+        elif schedule.status != "active" and not rows and not schedule.recurrence and not linked:
             add(schedule.anchor_at, schedule.status, False)
         if truncated:
             break
     from .google_calendar import connection_status
     from .google_projection import project
 
-    google_events, incomplete = project(db, owner, start, end, timezone)
+    warnings = []
+    google_events, incomplete = project(db, owner, start, end, timezone, warnings)
+    from .models import PlanningEntry
+    from .planning import project as local_project
+
+    mirrored = {
+        (r.google_calendar_id, r.google_event_id)
+        for r in db.scalars(
+            select(PlanningEntry).where(
+                PlanningEntry.owner_id == owner, PlanningEntry.google_calendar_id.is_not(None)
+            )
+        )
+    }
+    google_events = [e for e in google_events if (e["calendar_id"], e["provider_id"]) not in mirrored]
+    local_events = local_project(db, owner, start, end, timezone)
     # A deadline is an instant, not an assumed-duration booking.
     for event in events:
         if event["kind"] == "task" and event["at"]:
@@ -132,12 +153,12 @@ def calendar(db, owner, start: date, end: date, timezone: str):
             event["conflicts"] = list(
                 dict.fromkeys(
                     g["title"]
-                    for g in google_events
+                    for g in google_events + local_events
                     if g["busy"]
                     and datetime.fromisoformat(g["busy_start"]) <= at < datetime.fromisoformat(g["end_at"])
                 )
             )
-    events.extend(google_events)
+    events.extend(google_events + local_events)
     truncated = truncated or incomplete or len(events) > 2000
     events.sort(key=lambda e: (e["date"], e["at"] or "", e["title"], e["id"]))
     return {
@@ -146,5 +167,6 @@ def calendar(db, owner, start: date, end: date, timezone: str):
         "end": end.isoformat(),
         "timezone": timezone,
         "truncated": truncated,
+        "warnings": warnings,
         "google": connection_status(db, owner),
     }

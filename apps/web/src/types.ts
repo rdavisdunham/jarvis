@@ -19,6 +19,18 @@ export interface Task {
   completed_at: string | null;
   archived: boolean;
   occurrence_id: string | null;
+  is_template?: boolean;
+  external?: {
+    provider?: string;
+    identifier?: string;
+    url?: string;
+    team_id?: string;
+    state?: string;
+    state_id?: string;
+    priority?: number;
+    sync_state?: string;
+    job_id?: string;
+  };
 }
 export interface Project {
   id: string;
@@ -30,7 +42,9 @@ export interface Project {
 export interface CalendarEntry {
   id: string;
   entity_id: string;
-  kind: "task" | "reminder" | "routine" | "google";
+  kind: "task" | "reminder" | "routine" | "google" | "event" | "block";
+  description?: string;
+  meeting_url?: string;
   end_at?: string;
   all_day?: boolean;
   recurring?: boolean;

@@ -57,7 +57,55 @@ def main():
                 text("""INSERT INTO notes (id,owner_id,title,content)
                 VALUES ('preserved-note','davin','Existing note','Preserve this through migration')""")
             )
+        with engine().begin() as db:
+            db.execute(
+                text("""
+                INSERT INTO schedules (id,owner_id,title,timezone,anchor_at,next_run_at,kind,status,revision,original_words,created_at,recurrence,completed_at)
+                VALUES ('migration-once','migration-owner','Legacy completed alert','America/Chicago','2030-01-01T15:00Z',null,'reminder','completed',1,'',now(),null,'2030-01-01T16:00Z'),
+                       ('migration-routine','migration-owner','Legacy recurring alert','America/Chicago','2030-01-01T15:00Z','2030-01-02T15:00Z','reminder','active',1,'',now(),'FREQ=DAILY',null)
+            """)
+            )
+            db.execute(
+                text("""
+                INSERT INTO schedule_occurrences (id,schedule_id,revision,scheduled_at,status)
+                VALUES ('migration-occurrence','migration-routine',1,'2030-01-01T15:00Z','completed')
+            """)
+            )
+            db.execute(
+                text("""
+                INSERT INTO notifications (id,owner_id,occurrence_id,title,body,scheduled_at,created_at,completed_at)
+                VALUES ('migration-notice','migration-owner','migration-occurrence','Legacy recurring alert','','2030-01-01T15:00Z',now(),'2030-01-01T16:00Z')
+            """)
+            )
         migrate("upgrade", "head")
+        with engine().connect() as db:
+            assert (
+                db.execute(text("SELECT count(*) FROM tasks WHERE owner_id='migration-owner'")).scalar() == 3
+            )
+            assert (
+                db.execute(
+                    text(
+                        "SELECT t.is_template FROM tasks t JOIN schedules s ON s.task_id=t.id WHERE s.id='migration-routine'"
+                    )
+                ).scalar()
+                is True
+            )
+            assert (
+                db.execute(
+                    text(
+                        "SELECT t.status FROM tasks t JOIN notifications n ON n.task_id=t.id WHERE n.id='migration-notice'"
+                    )
+                ).scalar()
+                == "completed"
+            )
+            assert (
+                db.execute(
+                    text(
+                        "SELECT t.due_date FROM tasks t JOIN schedules s ON s.task_id=t.id WHERE s.id='migration-once'"
+                    )
+                ).scalar()
+                is None
+            )
         with engine().connect() as db:
             assert (
                 db.execute(
@@ -71,6 +119,18 @@ def main():
             assert (
                 db.execute(text("SELECT content FROM notes WHERE id='preserved-note'")).scalar()
                 == "Preserve this through migration"
+            )
+        with engine().connect() as db:
+            assert (
+                db.execute(text("SELECT count(*) FROM tasks WHERE owner_id='migration-owner'")).scalar() == 3
+            )
+            assert (
+                db.execute(
+                    text(
+                        "SELECT t.is_template FROM tasks t JOIN schedules s ON s.task_id=t.id WHERE s.id='migration-routine'"
+                    )
+                ).scalar()
+                is True
             )
         # Preserve an existing read-only Google connection through the additive write upgrade.
         migrate("downgrade", "0008_google_calendar")
@@ -168,7 +228,7 @@ def main():
                 check=True,
             )
         print(
-            "Google migration round-trip preserved existing notes/sessions; isolated browser acceptance passed."
+            "Migration round-trip preserved notes/sessions and legacy reminder completion/task links; isolated Google/Linear/planning browser acceptance passed."
         )
     finally:
         if server:

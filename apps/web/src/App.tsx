@@ -38,6 +38,8 @@ import {
 } from "./Notes";
 import { GoogleSettings, startGoogle } from "./GoogleSettings";
 import { GoogleEventDialog } from "./GoogleEventDialog";
+import { PlanningDialog } from "./PlanningDialog";
+import { LinearSettings, LinearTask } from "./Linear";
 import type { CalendarEntry } from "./types";
 import { BulkTaskDialog } from "./BulkTaskDialog";
 import { Workspace } from "./Workspace";
@@ -1024,7 +1026,8 @@ export default function App() {
     selected_task_ids: selectedTaskIds
       .filter((id) => tasks.some((t) => t.id === id))
       .slice(0, 100),
-    selected_calendar_event_id: googleEvent?.entity_id ?? null,
+    selected_calendar_event_id:
+      googleEvent?.kind === "google" ? googleEvent.entity_id : null,
     selected_note_id:
       noteEditor?.id === "new" ? null : (noteEditor?.id ?? null),
     calendar_date: calendarDay || undefined,
@@ -1388,9 +1391,7 @@ export default function App() {
                       }
                     >
                       <option value="all">
-                        {view === "calendar"
-                          ? "All items"
-                          : "Tasks & reminders"}
+                        {view === "calendar" ? "All items" : "All tasks"}
                       </option>
                       <option value="task">Tasks</option>
                       <option value="reminder">Reminders</option>
@@ -1410,7 +1411,7 @@ export default function App() {
                     setGoogleEvent({
                       id: "new",
                       entity_id: "new",
-                      kind: "google",
+                      kind: "event",
                       title: "New event",
                       date: day,
                       at: null,
@@ -1982,6 +1983,7 @@ export default function App() {
                     </span>
                   </div>
                 </section>
+                <LinearSettings revision={noteRevision} mutate={mutate} />
                 <GoogleSettings
                   revision={noteRevision}
                   voiceActive={!!voiceState && !voiceState.closed}
@@ -2316,16 +2318,51 @@ export default function App() {
           }}
           linkedNotes={
             selected.id !== "new" ? (
-              <TaskNotes
-                taskId={selected.id}
-                revision={noteRevision}
-                onOpen={(id) => void openNote(id)}
-                onNew={() => {
-                  setNoteEditor(blankNote(selected));
-                  setSelected(null);
-                  setError("");
-                }}
-              />
+              <>
+                <LinearTask
+                  task={selected}
+                  mutate={mutate}
+                  onChanged={() => {
+                    setSelected(null);
+                    void load();
+                  }}
+                />
+                {!selected.is_template && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setGoogleEvent({
+                        id: "new",
+                        entity_id: "new",
+                        kind: "block",
+                        title: "Work block",
+                        date: selected.due_date ?? today,
+                        at: null,
+                        status: "active",
+                        project_id: selected.project_id,
+                        task_id: selected.id,
+                        revision: 1,
+                        projected: false,
+                        notification_id: null,
+                      });
+                      setSelected(null);
+                    }}
+                  >
+                    Reserve time for this task
+                  </button>
+                )}
+                <TaskNotes
+                  taskId={selected.id}
+                  revision={noteRevision}
+                  onOpen={(id) => void openNote(id)}
+                  onNew={() => {
+                    setNoteEditor(blankNote(selected));
+                    setSelected(null);
+                    setError("");
+                  }}
+                />
+              </>
             ) : null
           }
           task={selected}
@@ -2359,7 +2396,21 @@ export default function App() {
           }}
         />
       )}
-      {googleEvent && (
+      {googleEvent && googleEvent.kind !== "google" && (
+        <PlanningDialog
+          key={googleEvent.entity_id}
+          event={googleEvent}
+          tasks={tasks}
+          timezone={boot.preferences.timezone}
+          mutate={mutate}
+          onClose={() => setGoogleEvent(null)}
+          onSaved={() => {
+            setGoogleEvent(null);
+            void load();
+          }}
+        />
+      )}
+      {googleEvent && googleEvent.kind === "google" && (
         <GoogleEventDialog
           key={
             googleEvent.entity_id +

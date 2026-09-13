@@ -51,6 +51,7 @@ export function Workspace(p: Props) {
     items: CalendarEntry[];
     truncated: boolean;
     google?: GoogleStatus;
+    warnings?: { calendar: string; reason: string }[];
   } | null>(null);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -167,9 +168,16 @@ export function Workspace(p: Props) {
     [visibleKey, p.onVisible],
   );
   const openEntry = (e: CalendarEntry) => {
-    if (e.kind === "google") {
+    if (["google", "event", "block"].includes(e.kind)) {
       p.onGoogleEvent(e);
       return;
+    }
+    if (e.kind === "routine" && e.notification_id && e.task_id) {
+      const task = p.tasks.find((t) => t.id === e.task_id);
+      if (task) {
+        p.onTask(task);
+        return;
+      }
     }
     if (e.kind === "task") {
       const task = p.tasks.find((t) => t.id === e.entity_id);
@@ -250,7 +258,7 @@ export function Workspace(p: Props) {
       <div className="workspace-actions">
         <div className="record-tabs">
           <span className="footnote">
-            {p.calendar ? "Your calendar" : "Tasks & reminders"}
+            {p.calendar ? "Your calendar" : "Tasks and alerts"}
           </span>
         </div>
         <div className="workspace-add">
@@ -327,6 +335,7 @@ export function Workspace(p: Props) {
           events={events}
           loaded={!!currentData}
           truncated={!!currentData?.truncated}
+          warnings={currentData?.warnings}
           google={currentData?.google}
           error={error}
           highlight={p.highlight}
