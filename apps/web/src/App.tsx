@@ -5,6 +5,7 @@ import {
   type ViewState as SavedViewState,
   type SavedView,
 } from "./saved-views";
+import { AccountSwitcher, SharingSettings } from "./Accounts";
 import { TaskDetails } from "./TaskDetails";
 import { CalendarDetails } from "./CalendarDetails";
 import { TaskTabs } from "./TaskTabs";
@@ -58,7 +59,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { api, ApiError, command, post, setCsrf } from "./api";
+import { api, ApiError, command, post, setCsrf, setDevice } from "./api";
 import { Voice, type VoiceState } from "./voice";
 import { subscribeEvents } from "./events";
 import {
@@ -154,11 +155,13 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [settingsSection, setSettingsSection] = useState<
-    "profile" | "voice" | "integrations" | "privacy" | "system"
+    "profile" | "voice" | "integrations" | "privacy" | "system" | "sharing"
   >(() =>
-    new URLSearchParams(location.search).has("google")
-      ? "integrations"
-      : "profile",
+    new URLSearchParams(location.search).has("sharing")
+      ? "sharing"
+      : new URLSearchParams(location.search).has("google")
+        ? "integrations"
+        : "profile",
   );
   const [density, setDensity] = useState<"compact" | "comfortable">(() =>
     localStorage.getItem("eri-density") === "comfortable"
@@ -391,6 +394,32 @@ export default function App() {
           "Google sign-in could not finish. Start again from Settings.",
       );
   }, []);
+  const workspaceSwitching = useRef(false);
+  useEffect(() => {
+    let recovering = false;
+    const recover = (event: Event) => {
+      if (recovering || workspaceSwitching.current) return;
+      recovering = true;
+      setTasks([]);
+      setProjects([]);
+      setMemories([]);
+      setMessages([]);
+      setCalendarDetail(null);
+      setBoot(null);
+      void (async () => {
+        try {
+          await voice.current?.stop();
+          if ((event as CustomEvent).detail !== "WORKSPACE_CHANGED")
+            await post("/accounts/switch", { workspace_id: null });
+        } finally {
+          sessionStorage.removeItem("jarvis-conversation");
+          location.assign("/?view=tasks");
+        }
+      })();
+    };
+    window.addEventListener("eri-access-ended", recover);
+    return () => window.removeEventListener("eri-access-ended", recover);
+  }, []);
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   const load = useCallback(async () => {
@@ -433,6 +462,7 @@ export default function App() {
     try {
       const info = await api<Bootstrap>("/bootstrap");
       setCsrf(info.csrf);
+      setDevice(info.device_id);
       setBoot(info);
       setCalendarDay((day) => day || dayInZone(info.preferences.timezone));
       const saved = sessionStorage.getItem("jarvis-conversation");
@@ -942,15 +972,17 @@ export default function App() {
       if (target === "settings") {
         const phrase = (action.query ?? "").toLowerCase();
         setSettingsSection(
-          /voice|wake|sound/.test(phrase)
-            ? "voice"
-            : /google|calendar|linear|integration/.test(phrase)
-              ? "integrations"
-              : /memory|history|privacy|learning/.test(phrase)
-                ? "privacy"
-                : /model|agent|backup|export|budget|cost|system/.test(phrase)
-                  ? "system"
-                  : "profile",
+          /shar|invit|member|account|permission/.test(phrase)
+            ? "sharing"
+            : /voice|wake|sound/.test(phrase)
+              ? "voice"
+              : /google|calendar|linear|integration/.test(phrase)
+                ? "integrations"
+                : /memory|history|privacy|learning/.test(phrase)
+                  ? "privacy"
+                  : /model|agent|backup|export|budget|cost|system/.test(phrase)
+                    ? "system"
+                    : "profile",
         );
       }
       setView(target);
@@ -1630,7 +1662,7 @@ export default function App() {
           <p>
             Your day, with Eri.
             <br />
-            Pair this device to get started.
+            Sign in with Google, or pair an owner device.
           </p>
           {googleLogin && (
             <button
@@ -1671,7 +1703,10 @@ export default function App() {
               {error}
             </p>
           )}
-          <small>The pairing code is stored on your home server.</small>
+          <small>
+            The pairing code opens the owner account. Invited people use Google
+            sign-in.
+          </small>
         </form>
       </div>
     );
@@ -1704,29 +1739,62 @@ export default function App() {
             E<span>·</span>
           </span>
           <span>eridani</span>
-          <span className="brand-caption">PERSONAL</span>
+          <span className="brand-caption">
+            {boot.workspace?.id ? "SHARED" : "PERSONAL"}
+          </span>
         </a>
-        <div className="nav-label">YOUR SPACE</div>
+        <AccountSwitcher
+          onSharing={() => {
+            setView("settings");
+            setSettingsSection("sharing");
+            setSidebar(false);
+          }}
+          onSwitch={async (id) => {
+            const active = editors.current();
+            if (active?.auto_save) await active.beforeLeave?.();
+            else if (active?.dirty)
+              throw new Error(
+                "Finish or discard the current form before switching workspaces.",
+              );
+            await voice.current?.stop();
+            workspaceSwitching.current = true;
+            try {
+              await post("/accounts/switch", { workspace_id: id });
+            } catch (e) {
+              workspaceSwitching.current = false;
+              throw e;
+            }
+            sessionStorage.removeItem("jarvis-conversation");
+            location.assign("/?view=tasks");
+          }}
+        />
+        <div className="nav-label">
+          {boot.workspace?.id
+            ? boot.workspace.name + " · " + boot.workspace.role
+            : "YOUR SPACE"}
+        </div>
         <nav>
-          {nav.map((item) => (
-            <button
-              key={item.id}
-              aria-label={item.label}
-              className={
-                (item.id === "all" ? isTaskTab(view) : view === item.id)
-                  ? "nav-item active"
-                  : "nav-item"
-              }
-              onClick={() => {
-                setView(item.id === "all" ? lastTaskTab.current : item.id);
-                setQuery("");
-                setSidebar(false);
-              }}
-            >
-              <item.icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {nav
+            .filter((item) => !boot.workspace?.id || item.id !== "memory")
+            .map((item) => (
+              <button
+                key={item.id}
+                aria-label={item.label}
+                className={
+                  (item.id === "all" ? isTaskTab(view) : view === item.id)
+                    ? "nav-item active"
+                    : "nav-item"
+                }
+                onClick={() => {
+                  setView(item.id === "all" ? lastTaskTab.current : item.id);
+                  setQuery("");
+                  setSidebar(false);
+                }}
+              >
+                <item.icon size={18} />
+                <span>{item.label}</span>
+              </button>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           <button
@@ -2555,6 +2623,7 @@ export default function App() {
                       "integrations",
                       "privacy",
                       "system",
+                      "sharing",
                     ] as const
                   ).map((section) => (
                     <button
@@ -2567,6 +2636,16 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+                {settingsSection === "sharing" && <SharingSettings />}
+                {boot.workspace?.id &&
+                  ["profile", "privacy", "system", "integrations"].includes(
+                    settingsSection,
+                  ) && (
+                    <p className="footnote">
+                      Switch to Personal to manage your profile, memory,
+                      notifications and connected accounts.
+                    </p>
+                  )}
                 {settingsSection === "profile" && (
                   <section className="density-setting">
                     <label>
@@ -2682,7 +2761,7 @@ export default function App() {
                     </div>
                   </section>
                 )}
-                {settingsSection === "integrations" && (
+                {settingsSection === "integrations" && !boot.workspace?.id && (
                   <>
                     <LinearSettings revision={noteRevision} mutate={mutate} />
                     <GoogleSettings
@@ -2692,17 +2771,23 @@ export default function App() {
                     />
                   </>
                 )}
-                <SettingsPanel
-                  section={settingsSection}
-                  boot={boot}
-                  busy={busy}
-                  onSave={async (args) => {
-                    await mutate("settings.update", args, "Preferences saved");
-                    const data = await api<Bootstrap>("/bootstrap");
-                    setBoot(data);
-                  }}
-                  onPush={enablePush}
-                />
+                {settingsSection !== "sharing" && !boot.workspace?.id && (
+                  <SettingsPanel
+                    section={settingsSection}
+                    boot={boot}
+                    busy={busy}
+                    onSave={async (args) => {
+                      await mutate(
+                        "settings.update",
+                        args,
+                        "Preferences saved",
+                      );
+                      const data = await api<Bootstrap>("/bootstrap");
+                      setBoot(data);
+                    }}
+                    onPush={enablePush}
+                  />
+                )}
               </>
             )}
             <footer className="page-footer">
@@ -3075,6 +3160,7 @@ export default function App() {
         <TaskDetails
           key={calendarDetail.entity_id}
           id={calendarDetail.entity_id}
+          canEdit={boot.workspace?.role !== "viewer"}
           onNewNote={(task) => {
             setNoteEditor(blankNote(task));
             setCalendarDetail(null);

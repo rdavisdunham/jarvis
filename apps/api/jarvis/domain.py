@@ -250,7 +250,8 @@ def preferences(db, owner):
         **(row.values if row else {}),
     }
     agent = selected(values)
-    return {**values, "agent_profile": agent.profile_id, "agent_provider": agent.provider}
+    from .access import shared_preferences
+    return shared_preferences(db, owner, {**values, "agent_profile": agent.profile_id, "agent_provider": agent.provider})
 
 
 def zone(name):
@@ -400,6 +401,9 @@ def enqueue_job(db, owner, kind, payload):
 
 
 def execute(db, owner, command_id, tool, arguments):
+    from .access import command_access
+    arguments=dict(arguments)
+    command_access(db,owner,tool,arguments)
     if not command_id or len(command_id) > 100:
         raise DomainError("INVALID_ARGUMENT", "A stable command ID is required.")
     if tool not in COMMANDS:
@@ -435,7 +439,11 @@ def execute(db, owner, command_id, tool, arguments):
         "data": data,
         "committed_at": now().isoformat(),
     }
-    db.add(Command(owner_id=owner, id=command_id, request_hash=request_hash, result=result))
+    from .access import principal
+    from .models import AuthSession
+    session=db.get(AuthSession,principal.get()) if principal.get() else None
+    db.add(Command(owner_id=owner, id=command_id, request_hash=request_hash, result=result,
+                   account_id=session.owner_id if session else owner))
     db.flush()
     return result
 

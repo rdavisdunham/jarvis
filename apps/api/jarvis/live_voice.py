@@ -79,7 +79,9 @@ class LiveController(Controller):
                     }
                     for s in reversed(rows)
                 ]
-        self.memory_context = await prompt_context(self.owner)
+        self.memory_context = "" if self.preferences.get("shared_workspace") else await prompt_context(self.owner)
+        from .access import assert_current
+        assert_current(self.owner,self.device)
         session = {
             "model": self.model,
             "store": False,
@@ -265,6 +267,7 @@ class LiveController(Controller):
 
     async def refresh_memory_context(self, revision):
         """Debounced factual context; never an instruction to speak or execute tools."""
+        if self.preferences.get("shared_workspace"):return
         try:
             await asyncio.sleep(1)
             if self.closed or self.closing or revision != self.input_revision:
@@ -401,6 +404,13 @@ class LiveController(Controller):
     async def watch(self):
         while not self.closed and not self.closing:
             await asyncio.sleep(1)
+            from .access import assert_current
+            try:
+                assert_current(self.owner,self.device)
+            except DomainError as exc:
+                self.error=exc.message
+                await self.close()
+                return
             for group in self.groups:
                 if not group["saved"] and time.monotonic() - group.get("received_at", time.monotonic()) > 3:
                     self.save_group(group)

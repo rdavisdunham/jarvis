@@ -119,9 +119,12 @@ def successful_exchange(monkeypatch, nonce, subject="google-subject", **tokens):
     )
 
 
-def test_google_link_requires_pairing_and_login_cannot_claim_first_account(client):
-    assert client.get("/api/v1/auth/options").json()["google"] is False
-    assert client.post("/api/v1/auth/google/start", json={"purpose": "login"}).status_code == 401
+def test_google_link_requires_pairing_and_login_cannot_claim_first_account(client, monkeypatch):
+    assert client.get("/api/v1/auth/options").json()["google"] is True
+    state,browser,nonce,_=start(client,"login")
+    successful_exchange(monkeypatch,nonce)
+    with pytest.raises(DomainError,match="invitation"):
+        auth.finish(state,browser,"code")
     client.cookies.clear()
     assert client.post("/api/v1/auth/google/start", json={"purpose": "link"}).status_code == 401
 
@@ -152,7 +155,7 @@ def test_oauth_binding_is_one_use_and_uses_subject_not_email(client, monkeypatch
         assert row.subject == "google-subject" and not row.calendar_enabled and row.credentials is None
     state, browser, nonce, _ = start(client, "login")
     successful_exchange(monkeypatch, nonce, subject="other-account-same-email")
-    with pytest.raises(DomainError, match="already linked"):
+    with pytest.raises(DomainError, match="invitation"):
         auth.finish(state, browser, "code")
 
 
@@ -680,3 +683,24 @@ def test_oauth_link_and_session_issuance_commit_atomically(client, monkeypatch):
     with session_scope() as db:
         assert db.get(GoogleIdentity, "davin") is None
         assert not db.scalars(select(AuthSession).where(AuthSession.auth_method == "google")).all()
+
+
+def test_invited_google_account_gets_private_identity_and_cannot_claim_owner(client,monkeypatch):
+    workspace=client.post("/api/v1/accounts/workspaces",json={"name":"Team","kind":"space"}).json()
+    invitation=client.post("/api/v1/accounts/invitations",json={"workspace_id":workspace["id"],"email":"guest@example.test","role":"editor"}).json()
+    state,browser,nonce,_=start(client,"login")
+    successful_exchange(monkeypatch,nonce,subject="guest-subject")
+    monkeypatch.setattr(auth,"verify_identity",lambda _:{"sub":"guest-subject","email":"guest@example.test","email_verified":True,"nonce":nonce})
+    token,csrf=auth.finish(state,browser,"code")
+    with session_scope() as db:
+        guest=db.get(AuthSession,auth.digest(token))
+        assert guest.owner_id!="davin" and guest.workspace_id is None
+        account=db.get(GoogleIdentity,guest.owner_id)
+        assert account.subject=="guest-subject" and account.credentials is None
+    client.cookies.clear()
+    client.cookies.set("jarvis_session",token)
+    client.headers["X-CSRF-Token"]=csrf
+    assert client.get("/api/v1/tasks").json()["items"]==[]
+    result=client.post("/api/v1/accounts/accept",json={"invite_id":invitation["id"]})
+    assert result.status_code==200
+    assert client.post("/api/v1/accounts/switch",json={"workspace_id":workspace["id"]}).status_code==200

@@ -31,13 +31,13 @@ restore faithfully, and Eri reports the browser/domain result accurately.
 
 ### Batch 2 — multi-user foundation
 
-- [ ] Support separate signed-in accounts, sessions, profiles and private records,
+- [x] Support separate signed-in accounts, sessions, profiles and private records,
       preserving the existing owner's records and integration links.
-- [ ] Add invitations, shared space/project membership, roles and revocation;
+- [x] Add invitations, shared space/project membership, roles and revocation;
       distinguish an assignee from a user who actually has access.
-- [ ] Enforce membership and ownership consistently in reads, writes, search,
+- [x] Enforce membership and ownership consistently in reads, writes, search,
       embeddings, Eri context/tools, notifications and background jobs.
-- [ ] Keep learned personal memory and integration credentials private by default;
+- [x] Keep learned personal memory and integration credentials private by default;
       make access to shared notes/tasks and calendar information explicit.
 
 Exit: two accounts can use private and intentionally shared work; tests prove
@@ -82,7 +82,22 @@ failures fixed before expanding the execution surface.
 - [ ] Revisit Langfuse if tracing/evaluation gaps justify it. Additional providers,
       Home Assistant, finance and richer goal/dependency features remain later.
 
-## Current batch: task tabs, calendar cards and touch boards — deployed
+## Current release: inline task workflows and invited accounts
+
+- Batch 1 shipped as cee4ca8; [daily workflow validation](BATCH1_VALIDATION.md).
+- Batch 2 is deployed; [release validation](BATCH2_VALIDATION.md). It adds invited Google accounts, private Personal scopes, shared space/
+  project workspaces, owner/editor/viewer roles, private saved views and
+  revocation across requests, Eri tools, Live sessions and semantic retrieval.
+- Shared workspaces start empty. Personal memory and connected accounts stay
+  private; shared chats are temporary. Local shared calendar/alert records are
+  explicit. [Account guide and boundaries](ACCOUNTS_AND_SHARING.md).
+- Follow-ups: intentional private-to-shared record moves with a relationship
+  preview, combined workspace views, per-member shared push delivery and an
+  account recovery method before allowing non-owner Google unlink.
+- Task cards have no Edit/Save buttons: click individual values; valid changes
+  save on blur/Enter and Escape cancels the pending field.
+
+## Previous release: task tabs, calendar cards and touch boards — deployed
 
 - [x] Combine Today, Inbox, Next 7 days and All (formerly Work) into one Tasks
       page. Preserve search, filters and layout; keep legacy links working.
@@ -107,7 +122,7 @@ failures fixed before expanding the execution surface.
 - [x] **Inline task detail cards.** Supersedes the initial Edit-button request:
       existing task cards have individually editable, automatically saved fields.
       Keep creation forms explicit and protect other unsaved form drafts.
-- [ ] **Multi-user support.** Add separate user accounts, private data and
+- [x] **Multi-user support.** Add separate user accounts, private data and
       preferences, plus invited membership in shared spaces/projects with clear
       roles and permissions. Scope tasks, notes, memory, integrations and Eri's
       retrieval/actions to the current user's access.

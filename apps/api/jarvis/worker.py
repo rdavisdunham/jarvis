@@ -211,45 +211,11 @@ def send_deliveries():
 
 
 def housekeeping():
-    settings = get_settings()
+    from .models import OwnerSettings
     with session_scope() as db:
-        prefs = preferences(db, settings.owner_id)
-        days = prefs["history_days"]
-        if days:
-            for source in db.scalars(
-                select(Source)
-                .where(
-                    Source.owner_id == settings.owner_id,
-                    Source.explicit.is_(False),
-                    Source.deleted_at.is_(None),
-                    Source.created_at < now() - timedelta(days=days),
-                )
-                .limit(500)
-            ):
-                delete_source(db, source)
-        budget.expire_abandoned(db, settings.owner_id)
-        # Finished DBOS invocations are never replayed under the same workflow ID.
-        # Resume intentionally deferred memory work as a new durable job once funds allow.
-        if budget.summary(db, settings.owner_id)["budget_mode"] not in {"defer_optional", "paused"}:
-            from .domain import enqueue_job
-
-            for deferred in db.scalars(
-                select(Job)
-                .where(
-                    Job.owner_id == settings.owner_id,
-                    Job.status == "deferred_budget",
-                    Job.kind.in_(["extract_memory", "embed_memory", "embed_note"]),
-                )
-                .with_for_update()
-                .limit(20)
-            ):
-                resumed = enqueue_job(
-                    db,
-                    deferred.owner_id,
-                    deferred.kind,
-                    {k: v for k, v in deferred.payload.items() if k != "attempts"},
-                )
-                deferred.status, deferred.result = "cancelled", {"resumed_as": resumed.id}
+        owners=set(db.scalars(select(OwnerSettings.owner_id)))|set(db.scalars(select(Source.owner_id).distinct()))|{get_settings().owner_id}
+        for owner in owners:
+            housekeeping_owner(db,owner)
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
             select(Job).where(
@@ -269,6 +235,46 @@ def housekeeping():
                 "message": "The connection ended before a reply was saved. Check your saved tasks before repeating the request.",
             }
             budget.close(db, job.owner_id, job.id, uncertain=True)
+
+
+def housekeeping_owner(db, owner):
+    prefs = preferences(db, owner)
+    days = prefs["history_days"]
+    if days:
+        for source in db.scalars(
+            select(Source)
+            .where(
+                Source.owner_id == owner,
+                Source.explicit.is_(False),
+                Source.deleted_at.is_(None),
+                Source.created_at < now() - timedelta(days=days),
+            )
+            .limit(500)
+        ):
+            delete_source(db, source)
+    budget.expire_abandoned(db, owner)
+    # Finished DBOS invocations are never replayed under the same workflow ID.
+    # Resume intentionally deferred memory work as a new durable job once funds allow.
+    if budget.summary(db, owner)["budget_mode"] not in {"defer_optional", "paused"}:
+        from .domain import enqueue_job
+
+        for deferred in db.scalars(
+            select(Job)
+            .where(
+                Job.owner_id == owner,
+                Job.status == "deferred_budget",
+                Job.kind.in_(["extract_memory", "embed_memory", "embed_note"]),
+            )
+            .with_for_update()
+            .limit(20)
+        ):
+            resumed = enqueue_job(
+                db,
+                deferred.owner_id,
+                deferred.kind,
+                {k: v for k, v in deferred.payload.items() if k != "attempts"},
+            )
+            deferred.status, deferred.result = "cancelled", {"resumed_as": resumed.id}
 
 
 def main():
@@ -308,11 +314,13 @@ def main():
 
                 queue_due_reviews(db)
                 from .google_calendar import queue_sync
-
-                queue_sync(db, settings.owner_id)
+                from .models import GoogleIdentity, LinearConnection
+                for account in db.scalars(select(GoogleIdentity.owner_id)):
+                    queue_sync(db, account)
                 from .linear_sync import queue_sync as linear_queue_sync
 
-                linear_queue_sync(db, settings.owner_id)
+                for account in db.scalars(select(LinearConnection.owner_id)):
+                    linear_queue_sync(db, account)
                 health = db.get(WorkerHealth, "worker")
                 if health:
                     health.last_scan_at = now()

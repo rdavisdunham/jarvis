@@ -1,4 +1,8 @@
 let csrf = "";
+let device = "";
+export function setDevice(value: string) {
+  device = value;
+}
 export function setCsrf(value: string) {
   csrf = value;
 }
@@ -23,6 +27,7 @@ export async function api<T>(
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrf,
+        ...(device ? { "X-Device-Id": device } : {}),
         ...options.headers,
       },
     });
@@ -39,6 +44,14 @@ export async function api<T>(
     throw new ApiError(
       "NETWORK",
       "Eridani is reconnecting. Retry the same request to check whether it saved.",
+    );
+  }
+  if (
+    !response.ok &&
+    ["ACCESS_REVOKED", "WORKSPACE_CHANGED"].includes(value.error?.code)
+  ) {
+    window.dispatchEvent(
+      new CustomEvent("eri-access-ended", { detail: value.error.code }),
     );
   }
   if (!response.ok)

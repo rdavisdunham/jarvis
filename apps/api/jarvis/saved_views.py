@@ -108,16 +108,16 @@ User = Annotated[Identity, Depends(authenticate)]
 @router.get("/api/v1/task-views")
 def list_views(user: User):
     with session_scope() as db:
-        return {"items": collection(db, user.owner_id)}
+        return {"items": collection(db, (user.account_id + ":" + user.owner_id) if user.account_id and user.account_id != user.owner_id else user.owner_id)}
 
 
 @router.post("/api/v1/task-views")
 def put_view(args: SaveView, user: User):
     with session_scope() as db:
-        return save_view(db, user.owner_id, args)
+        return save_view(db, (user.account_id + ":" + user.owner_id) if user.account_id and user.account_id != user.owner_id else user.owner_id, args)
 
 
 @router.post("/api/v1/task-views/remove")
 def remove_view(args: RemoveView, user: User):
     with session_scope() as db:
-        return save_view(db, user.owner_id, args, True)
+        return save_view(db, (user.account_id + ":" + user.owner_id) if user.account_id and user.account_id != user.owner_id else user.owner_id, args, True)

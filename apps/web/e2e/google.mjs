@@ -391,7 +391,7 @@ try {
   await expect(page.getByLabel("Pairing code")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Sign in with Google", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(
     "Google consent/details, mobile views, 30-second scroll stability, local event publication/CRUD, lost-response retry, Linear import/publish/conflict review, task work blocks, CopilotKit and disconnect/unlink passed.",

@@ -37,6 +37,8 @@ def identity_context(prefs):
                 "preferred_name": prefs.get("preferred_name", get_settings().owner_name),
                 "timezone": prefs["timezone"],
                 "date_only_reminder_hour": prefs["default_reminder_hour"],
+                "workspace":prefs.get("shared_workspace","Personal"),
+                "access_role":prefs.get("shared_role","owner"),
             }
         )
         + "\nCurrent time: "
@@ -50,6 +52,7 @@ def backend_instructions(prefs, focus=None, ui_context=None):
     return "\n".join(
         [
             SYSTEM_PROMPT,
+            ("You are in a shared workspace. Only records in this workspace are accessible. Personal memory and connected accounts stay private; shared conversations are not retained. Membership, not assignment, grants access. Manage invitations and switch workspaces through Settings > Sharing; never claim a cross-workspace change." if prefs.get("shared_workspace") else "You are in the user\'s personal workspace. Sharing another workspace does not expose these records."),
             identity_context(prefs),
             CAPABILITIES,
             POLICY,
@@ -71,6 +74,7 @@ def live_instructions(prefs, focus=None, ui_context=None):
     return "\n".join(
         [
             SYSTEM_PROMPT,
+            ("You are in a shared workspace. Only records in this workspace are accessible. Personal memory and connected accounts stay private; shared conversations are not retained. Membership, not assignment, grants access. Manage invitations and switch workspaces through Settings > Sharing; never claim a cross-workspace change." if prefs.get("shared_workspace") else "You are in the user\'s personal workspace. Sharing another workspace does not expose these records."),
             identity_context(prefs),
             VOICE_CONVERSATION_STYLE,
             "Backchannel policy: Acknowledge naturally and moderately without competing with the speaker.",

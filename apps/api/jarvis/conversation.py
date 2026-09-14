@@ -23,6 +23,8 @@ def turn_hash(conversation_id, message, focus):
 async def chat(
     owner, device, turn_id, conversation_id, message, focus=None, *, live_context=None, tool_guard=None
 ):
+    from .access import assert_current
+    assert_current(owner,device)
     settings = get_settings()
     with session_scope() as db:
         conv = owned(db, Conversation, conversation_id, owner)
@@ -40,7 +42,8 @@ async def chat(
             raise DomainError(
                 "IN_PROGRESS", "This request is still being resolved. Its saved actions remain visible.", 409
             )
-        prefs = preferences(db, owner)
+        from .access import person_preferences
+        prefs = person_preferences(db,owner,device,preferences(db, owner))
         private = private or not prefs["history_enabled"]
         # Pin the route for this entire turn, even if Settings changes during a tool call.
         agent = agent_models.selected(prefs, require_key=True)
@@ -89,7 +92,8 @@ async def chat(
         else " ".join(m["content"] for m in live_context if m["role"] == "user")[-1500:]
     )
     try:
-        memory_context = await prompt_context(owner, memory_query)
+        memory_context = "" if prefs.get("shared_workspace") else await prompt_context(owner, memory_query)
+        assert_current(owner,device)
     except asyncio.CancelledError:
         with session_scope() as db:
             job = db.get(Job, turn_id)
@@ -122,6 +126,7 @@ async def chat(
             timeout=60 if agent.provider == "gemini" or agent.api == "responses" else 35
         ) as client:
             for step in range(settings.max_model_rounds_per_request + 1):
+                assert_current(owner,device)
                 final_round = step == settings.max_model_rounds_per_request
                 if final_round or tool_index >= settings.max_tool_calls_per_request:
                     messages.append(
@@ -159,6 +164,7 @@ async def chat(
                 if 400 <= response.status_code < 500 and response.status_code != 408:
                     provider_pending = False  # Explicit rejection, not an unknown timeout.
                 response.raise_for_status()
+                assert_current(owner,device)
                 data = agent.normalize(response.json())
                 usage = data.get("usage")
                 if (

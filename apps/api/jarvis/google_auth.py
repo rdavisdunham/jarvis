@@ -1,4 +1,4 @@
-"""Google identity is linked from an existing owner session, never claimed by first login."""
+"""Verified Google identities: existing links or explicit email-bound invitations."""
 
 import json
 import secrets
@@ -91,12 +91,8 @@ def begin(purpose, session_hash=None):
             session = db.get(AuthSession, session_hash)
             if not session or session.expires_at <= now():
                 raise DomainError("NOT_AUTHORIZED", "Pair this device before linking Google.", 401)
-        elif not db.get(GoogleIdentity, get_settings().owner_id):
-            raise DomainError(
-                "NOT_AUTHORIZED", "Pair this device and link your account in Settings first.", 401
-            )
         db.execute(delete(GoogleOAuthAttempt).where(GoogleOAuthAttempt.expires_at < now()))
-        account = db.get(GoogleIdentity, get_settings().owner_id)
+        account = db.get(GoogleIdentity, session.owner_id) if purpose != "login" else None
         db.add(
             GoogleOAuthAttempt(
                 state_hash=digest(state),
@@ -185,11 +181,34 @@ def finish(state, browser, code=None, error=None):
         or not secrets.compare_digest(str(claims.get("nonce", "")), values["nonce"])
     ):
         raise DomainError("GOOGLE_IDENTITY", "Google could not verify this account.", 401)
-    owner = get_settings().owner_id
     with session_scope() as db:
+        from .accounts import ensure_account
+        from .models import WorkspaceInvite, uid
+        purpose=values["purpose"]
+        # Serialize a verified subject through first-account creation and linking.
+        advisory(db,f"google-subject:{subject}")
+        linked=db.scalar(select(GoogleIdentity).where(GoogleIdentity.subject==subject))
+        if purpose=="login":
+            if linked:
+                owner=linked.owner_id
+            else:
+                invited=db.scalar(select(WorkspaceInvite).where(
+                    WorkspaceInvite.email==email.casefold(),WorkspaceInvite.status=="pending",WorkspaceInvite.expires_at>now()))
+                if not invited:
+                    raise DomainError("GOOGLE_ACCOUNT","This Google account needs an invitation to Eridani.",403)
+                owner=uid()
+                ensure_account(db,owner,email.split("@")[0])
+        else:
+            session=db.get(AuthSession,values["session_hash"])
+            if not session or session.expires_at<=now():
+                raise DomainError("NOT_AUTHORIZED","Sign in and start the connection again.",401)
+            owner=session.owner_id
+            if session.workspace_id:
+                raise DomainError("PERSONAL_WORKSPACE","Connect Google from your personal workspace.",403)
+            if linked and linked.owner_id!=owner:
+                raise DomainError("GOOGLE_ACCOUNT","That Google account is already linked to another user.",403)
         advisory(db, f"google:{owner}")
         identity = db.get(GoogleIdentity, owner)
-        purpose = values["purpose"]
         if purpose != "login":
             session = db.get(AuthSession, values["session_hash"])
             if not session or session.owner_id != owner or session.expires_at <= now():
@@ -203,8 +222,6 @@ def finish(state, browser, code=None, error=None):
         if identity and identity.subject != subject:
             raise DomainError("GOOGLE_ACCOUNT", "Use the Google account already linked to Eridani.", 403)
         if not identity:
-            if purpose == "login":
-                raise DomainError("GOOGLE_ACCOUNT", "This Google account is not linked to Eridani.", 403)
             identity = GoogleIdentity(owner_id=owner, subject=subject, email=email)
             db.add(identity)
             db.flush()
@@ -269,7 +286,8 @@ def disconnect_calendar(owner, *, unlink=False):
             db.execute(
                 delete(AuthSession).where(AuthSession.owner_id == owner, AuthSession.auth_method == "google")
             )
-            db.execute(delete(GoogleOAuthAttempt))
+            hashes=select(AuthSession.token_hash).where(AuthSession.owner_id==owner)
+            db.execute(delete(GoogleOAuthAttempt).where(GoogleOAuthAttempt.session_hash.in_(hashes)))
             db.delete(identity)
         emit(db, owner, "google.changed", owner)
     revoked = True
@@ -283,4 +301,6 @@ def disconnect_calendar(owner, *, unlink=False):
 
 
 def unlink_google(owner):
+    if owner!=get_settings().owner_id:
+        raise DomainError("LOGIN_REQUIRED","Google is your sign-in method. Disconnect Calendar instead to keep account access.",409)
     return {**disconnect_calendar(owner, unlink=True), "unlinked": True}

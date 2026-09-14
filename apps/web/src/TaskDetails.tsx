@@ -10,6 +10,7 @@ import type { Organization } from "./productivity";
 import type { NoteRecord } from "./Notes";
 type Props = {
   id: string;
+  canEdit?: boolean;
   organization: Organization;
   tasks: Task[];
   schedules: Schedule[];
@@ -86,6 +87,8 @@ export function TaskDetails(p: Props) {
     }
   }, [p.tasks, p.id]);
   async function save(changes: Record<string, unknown>) {
+    if (p.canEdit === false)
+      throw new Error("You have view access to this workspace.");
     if (flight.current) await flight.current;
     const t = current.current;
     if (!t) throw new Error("Task details are still loading.");
@@ -296,7 +299,7 @@ export function TaskDetails(p: Props) {
           <button
             className={"inline-value " + (!shown ? "empty" : "")}
             aria-label={"Change " + label}
-            disabled={busy}
+            disabled={busy || p.canEdit === false}
             onClick={() =>
               void leave(() => {
                 setEditing(field);
@@ -322,7 +325,7 @@ export function TaskDetails(p: Props) {
       <select
         aria-label={label}
         value={String(task?.[field] ?? "")}
-        disabled={busy || disabled}
+        disabled={busy || disabled || p.canEdit === false}
         onChange={(e) => {
           const value = e.target.value;
           void leave(() => {
@@ -375,7 +378,9 @@ export function TaskDetails(p: Props) {
               ? "Saving…"
               : error
                 ? "Change needs attention"
-                : "Changes save automatically"}
+                : p.canEdit === false
+                  ? "View only"
+                  : "Changes save automatically"}
           </span>
           <button
             className="icon-button"
@@ -476,7 +481,7 @@ export function TaskDetails(p: Props) {
                     {!task.is_template && (
                       <button
                         className="secondary compact"
-                        disabled={busy}
+                        disabled={busy || p.canEdit === false}
                         onClick={() =>
                           void leave(() => p.onBlock(current.current!))
                         }
@@ -487,7 +492,7 @@ export function TaskDetails(p: Props) {
                     {!task.is_template && (
                       <button
                         className="secondary compact"
-                        disabled={busy}
+                        disabled={busy || p.canEdit === false}
                         onClick={() =>
                           void leave(() => {
                             void save({
@@ -514,7 +519,7 @@ export function TaskDetails(p: Props) {
                     </h3>
                     <button
                       className="secondary compact"
-                      disabled={busy}
+                      disabled={busy || p.canEdit === false}
                       onClick={() =>
                         void leave(() => p.onNewNote(current.current!))
                       }
@@ -545,7 +550,7 @@ export function TaskDetails(p: Props) {
                     </h3>
                     <button
                       className="secondary compact"
-                      disabled={busy}
+                      disabled={busy || p.canEdit === false}
                       onClick={() =>
                         void leave(() => p.onReminder(null, current.current!))
                       }
@@ -651,7 +656,7 @@ export function TaskDetails(p: Props) {
               {text("tags", "Tags")}
               <button
                 className="text-button"
-                disabled={busy}
+                disabled={busy || p.canEdit === false}
                 onClick={() =>
                   void leave(() => {
                     void save({ archived: !task.archived })

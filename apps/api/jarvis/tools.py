@@ -444,6 +444,19 @@ def instructions(owner_prefs, focus=None, ui_context=None):
 
 
 async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conversation_id=None):
+    from .access import check_device, principal, tool_access
+    authorization=check_device(owner,device)
+    token=principal.set(authorization[0]) if authorization else None
+    try:
+        with session_scope() as db:tool_access(db,owner,name)
+        result=await _call_tool(owner,turn_id,index,name,arguments,device=device,conversation_id=conversation_id)
+        check_device(owner,device)
+        return result
+    finally:
+        if token is not None:principal.reset(token)
+
+
+async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, conversation_id=None):
     from .task_context import remember, resolve
 
     if name in READ_TOOLS:

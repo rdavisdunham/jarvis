@@ -98,7 +98,14 @@ export const actionSchema = z
       .enum(["goal", "project", "area", "space", "actor"])
       .optional(),
     settings_section: z
-      .enum(["profile", "voice", "integrations", "privacy", "system"])
+      .enum([
+        "profile",
+        "voice",
+        "integrations",
+        "privacy",
+        "system",
+        "sharing",
+      ])
       .optional(),
     notes_mode: z.enum(["keyword", "semantic"]).optional(),
     show_archived: z.boolean().optional(),

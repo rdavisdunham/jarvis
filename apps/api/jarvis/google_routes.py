@@ -17,7 +17,7 @@ from .google_auth import CALLBACK_PATH, COOKIE, begin, callback_uri, configured,
 from .google_calendar import availability, connection_status, queue_sync
 from .google_schema import CalendarRead
 from .google_writes import read_event, write_status
-from .models import GoogleIdentity, Job
+from .models import Job
 
 
 class OAuthLogFilter(logging.Filter):
@@ -54,11 +54,7 @@ class AvailabilityRequest(BaseModel):
 
 @router.get("/api/v1/auth/options")
 def options():
-    with session_scope() as db:
-        return {
-            "google": configured() and bool(db.get(GoogleIdentity, get_settings().owner_id)),
-            "pairing": True,
-        }
+    return {"google": configured(), "pairing": True}
 
 
 @router.post("/api/v1/auth/google/start")

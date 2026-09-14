@@ -155,6 +155,12 @@ export interface Preferences {
   detailed_notifications: boolean;
 }
 export interface Bootstrap {
+  account_id?: string;
+  workspace?: {
+    id: string | null;
+    name: string;
+    role: "owner" | "editor" | "viewer";
+  };
   agent_profile: AgentProfile;
   agent_reasoning: string | null;
   agent_provider: AgentProvider;

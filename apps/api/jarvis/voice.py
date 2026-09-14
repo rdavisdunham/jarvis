@@ -561,7 +561,8 @@ async def start(body: VoiceInput, user: User):
         conv = owned(db, Conversation, str(body.conversation_id), user.owner_id)
         if conv.device_id != user.device_id:
             raise DomainError("NOT_AUTHORIZED", "Conversation belongs to another device.", 403)
-        prefs = preferences(db, user.owner_id)
+        from .access import person_preferences
+        prefs = person_preferences(db,user.owner_id,user.device_id,preferences(db, user.owner_id))
         if body.provider == "live":
             from .live_voice import LiveController
 

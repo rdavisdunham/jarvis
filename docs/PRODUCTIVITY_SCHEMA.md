@@ -1,11 +1,11 @@
 # Eridani productivity schema
 
-Status: deployed as schema 0011; release and backup validation are recorded in TODO.md.
+Status: deployed as schema 0012; release and backup validation are recorded in TODO.md.
 
 ## Organization and outcomes
 
 - **Space** is a private organizational context, initially Personal and Business.
-  Existing owner authorization still controls every record. Spaces do not yet
+  Personal and shared workspace scopes control record access. Legacy spaces do not automatically
   provide shared membership or collaboration permissions.
 - **Area** is an ongoing responsibility within a space, such as Health or
   Operations. It has no completion state; it can be archived.
@@ -97,10 +97,11 @@ are seeded once. Backup restore verification includes all new graph tables.
 
 ## Later decisions
 
-Shared workspace membership, invitations and scoped retrieval need a dedicated
-authorization design before enabling collaboration. Independent agent execution
-jobs remain distinct from task assignment. Saved views, richer metric check-ins,
-dependencies and notification policy can extend this foundation.
+Shared workspace membership, invitations, scoped retrieval and saved task views
+are implemented. Private-to-shared record moves and combined workspace views
+remain extensions. Independent agent execution jobs remain distinct from task
+assignment. Richer metric check-ins, dependencies and notification policy can
+extend this foundation.
 
 
 ## Planner workspace projections (September 13)
@@ -153,3 +154,12 @@ Eri uses the same controls and domain commands. ui_calendar accepts
 open_details=true with a date and entity_id. ui_editor.read identifies local
 saved detail cards as mode=detail; ui_form opens an editable draft. Navigation
 can leave a saved detail card, while unsaved forms retain their existing guard.
+
+
+## Invited accounts and shared workspaces (September 14, 2026)
+
+See [Accounts and sharing](ACCOUNTS_AND_SHARING.md) for the current access model.
+A shared space/project is a distinct record namespace with explicit membership;
+existing personal records are not made shared by assigning them to another actor.
+Personal memory and integration credentials remain separate. Command receipts
+record the acting account. This supersedes the earlier single-owner limitations.

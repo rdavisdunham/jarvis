@@ -17,24 +17,42 @@ class Identity:
     owner_id: str
     device_id: str
     csrf: str
+    account_id: str | None = None
+    role: str = "owner"
 
 
 def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def authenticate(request: Request):
+def _authenticate(request: Request, personal=False):
     token = request.cookies.get("jarvis_session", "")
     with session_scope() as db:
         row = db.get(AuthSession, digest(token)) if token else None
         if row is None or row.expires_at <= now():
             raise DomainError("NOT_AUTHORIZED", "Sign in to Eridani.", 401)
-        identity = Identity(row.owner_id, row.device_id, row.csrf)
+        from .access import identity as resolve
+        from .access import request_access
+        namespace, permission = resolve(db,row,personal=personal)
+        identity = Identity(namespace,row.device_id,row.csrf,row.owner_id,permission)
+        if not personal:
+            request_access(request,namespace,permission,row.owner_id)
+            device=request.headers.get("X-Device-Id")
+            if device and device!=row.device_id:
+                raise DomainError("WORKSPACE_CHANGED","Workspace changed in another tab. Reload to continue.",409)
     if request.method not in {"GET", "HEAD", "OPTIONS"} and not secrets.compare_digest(
         request.headers.get("X-CSRF-Token", ""), identity.csrf
     ):
         raise DomainError("NOT_AUTHORIZED", "Refresh this page before trying again.", 403)
     return identity
+
+
+def authenticate(request: Request):
+    return _authenticate(request)
+
+
+def authenticate_personal(request: Request):
+    return _authenticate(request,personal=True)
 
 
 def sign_in(token):
@@ -50,6 +68,8 @@ def new_session(owner, method="pairing", *, db=None):
     if db is None:
         with session_scope() as session:
             return new_session(owner, method, db=session)
+    from .accounts import ensure_account
+    ensure_account(db,owner)
     db.execute(delete(AuthSession).where(AuthSession.expires_at < now()))
     db.add(
         AuthSession(

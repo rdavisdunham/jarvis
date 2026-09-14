@@ -72,7 +72,7 @@ class UIContext(BaseModel):
     timeline_date: str = Field(default="", max_length=10)
     timeline_span: Literal[14, 30, 90] = 30
     organization_tab: Literal["goal", "project", "area", "space", "actor"] = "project"
-    settings_section: Literal["profile", "voice", "integrations", "privacy", "system"] = "profile"
+    settings_section: Literal["profile", "voice", "integrations", "privacy", "system", "sharing"] = "profile"
     notes_mode: Literal["keyword", "semantic"] = "keyword"
     show_archived: bool = False
     assignee: str = Field(default="", max_length=100)
@@ -118,17 +118,21 @@ Spaces and People & agents tabs. Goal metrics are outcomes, project counts are t
 Calendar: month/week/day, task planned/deadline markers, alerts, local appointments/work blocks and Google events.
 A planned date/deadline does not reserve time; timeline task markers are not duration bars.
 Calendar entries show Task, Task reminder, Repeating task, Work block, or Event/Google event.
-Task cards open as inline-editable details with description/dates in the center and properties on the right. No Edit/Save buttons.\nInline task ui_editor patches save immediately and return receipts; ordinary new-record and non-task editors remain drafts.\nTask cards can be left freely; pending field edits finish before navigation. Task completion is distinct from calendar events.
+Task cards open as inline-editable details with description/dates in the center and properties on the right. No Edit/Save buttons.
+Inline task ui_editor patches save immediately and return receipts; ordinary new-record and non-task editors remain drafts.
+Task cards can be left freely; pending field edits finish before navigation. Task completion is distinct from calendar events.
 ui_calendar with entity_id/date/open_details=true opens that saved detail card. ui_editor read reports mode=detail
 there; task cards report auto_save=true, while other saved cards use ui_form for drafts. A work block has a linked task, not its own completion.
 Notes: authored content, home project, related goals/projects/notes, backlinks and task evidence.
 Memory: learned facts and review questions. Notifications: delivered task alerts.
-Settings sections: profile (name/reminder defaults/density), voice (Live voice/wake word),
+Shared workspaces have isolated records. Workspace switching and membership changes are explicit user controls in Sharing; assignment never grants access. Personal memory and integration credentials are unavailable in a shared workspace.
+Settings sections: sharing (invitations, memberships and access roles), profile (name/reminder defaults/density), voice (Live voice/wake word),
 integrations (Google/Linear), privacy (history/learning), system (backend model/usage/backups/export).
 Realtime is disabled. Browser permissions, OAuth consent and credentials need the owner's interaction.
 Filters & sort expands from one control; collapsed filters still apply. Layout changes preserve them.
 Chat is a desktop side panel/mobile overlay. Closing chat keeps voice running; show mobile content unobscured.
-ui_saved_view manages account-private named task views. Use acknowledged observed layout/visible IDs; explicitly report zero results.\nEditors expose typed fields through ui_editor: auto_save=true patches save; other editors expose unsaved drafts. Never discard an unsaved edit
+ui_saved_view manages account-private named task views. Use acknowledged observed layout/visible IDs; explicitly report zero results.
+Editors expose typed fields through ui_editor: auto_save=true patches save; other editors expose unsaved drafts. Never discard an unsaved edit
 without an explicit owner request. Remote jobs remain pending until confirmed; local saves are distinct.
 Use the planner group for constrained multi-task scheduling. It verifies a single-person schedule against
 fresh availability and atomically saves local blocks only when asked. No automatic Google publication.

@@ -62,6 +62,9 @@ app.include_router(google_router)
 from .saved_views import router as saved_views_router
 
 app.include_router(saved_views_router)
+from .accounts import router as accounts_router
+
+app.include_router(accounts_router)
 from .integration_routes import router as integration_router
 
 app.include_router(integration_router)
@@ -102,7 +105,18 @@ async def security(request, call_next):
         return JSONResponse(
             {"error": {"code": "INVALID_ARGUMENT", "message": "Request is too large."}}, status_code=413
         )
-    response = await call_next(request)
+    from .access import principal
+    token = principal.set(digest(request.cookies.get("jarvis_session","")) or None)
+    try:
+        response = await call_next(request)
+        # A long retrieval cannot return shared data after access was revoked.
+        if request.url.path.startswith("/api/v1/") and not request.url.path.startswith(("/api/v1/accounts","/api/v1/auth","/api/v1/integrations/google/unlink")) and response.status_code < 400:
+            try:
+                authenticate(request)
+            except DomainError as exc:
+                return JSONResponse({"error":{"code":exc.code,"message":exc.message}},status_code=exc.status)
+    finally:
+        principal.reset(token)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
@@ -200,13 +214,17 @@ def logout(request: Request, user: User):
 def bootstrap(user: User):
     settings = get_settings()
     with session_scope() as db:
-        prefs = preferences(db, user.owner_id)
+        from .access import person_preferences
+        prefs = person_preferences(db,user.owner_id,user.device_id,preferences(db, user.owner_id))
         health = db.get(WorkerHealth, "worker")
         worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
         backup_health = db.get(WorkerHealth, "backup")
         agent = agent_models.selected(prefs)
         return {
-            "name": prefs["preferred_name"],
+            "name": preferences(db,user.account_id or user.owner_id)["preferred_name"],
+            "account_id":user.account_id or user.owner_id,
+            "workspace": {"id":user.owner_id if user.account_id and user.account_id!=user.owner_id else None,
+                          "name":prefs.get("shared_workspace","Personal"),"role":user.role},
             "agent_model": agent.model,
             "agent_profile": agent.profile_id,
             "agent_reasoning": agent.reasoning_effort,
@@ -219,12 +237,12 @@ def bootstrap(user: User):
             "capabilities": {
                 "voice": bool(settings.openai_api_key),
                 "chat": agent.available,
-                "push": bool(settings.vapid_public_key),
+                "push": bool(settings.vapid_public_key) and not prefs.get("shared_workspace"),
                 "worker": worker_healthy,
             },
             "voice_options": available_options(),
             "last_backup_at": backup_health.last_scan_at.isoformat() if backup_health else None,
-            "vapid_public_key": settings.vapid_public_key,
+            "vapid_public_key": settings.vapid_public_key if not prefs.get("shared_workspace") else None,
             "event_cursor": db.scalar(select(func.max(Event.id)).where(Event.owner_id == user.owner_id)) or 0,
         }
 
@@ -588,6 +606,15 @@ async def events(request: Request, user: User, after: int = 0):
             with session_scope() as db:
                 session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
                 if not session or session.expires_at <= now():
+                    return
+                from .access import identity as resolve_identity
+                try:
+                    namespace,_=resolve_identity(db,session)
+                    if namespace!=user.owner_id or session.device_id!=user.device_id:
+                        yield 'event: access_revoked\ndata: {"code":"WORKSPACE_CHANGED"}\n\n'
+                        return
+                except DomainError:
+                    yield "event: access_revoked\ndata: {}\n\n"
                     return
                 events = list(
                     db.scalars(

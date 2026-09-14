@@ -35,6 +35,7 @@ class AuthSession(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     device_id: Mapped[str] = mapped_column(String(36))
     csrf: Mapped[str] = mapped_column(String(64))
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     auth_method: Mapped[str] = mapped_column(String(20), default="pairing")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -160,6 +161,7 @@ class Task(Base):
 
 class Command(Base):
     __tablename__ = "commands"
+    account_id: Mapped[str | None] = mapped_column(String(100))
     owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     request_hash: Mapped[str] = mapped_column(String(64))
@@ -535,3 +537,41 @@ class NoteNoteLink(Base):
     __tablename__ = "note_note_links"
     note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
     related_note_id: Mapped[str] = mapped_column(ForeignKey("notes.id"), primary_key=True)
+
+class UserAccount(Base):
+    __tablename__ = "user_accounts"
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class SharedWorkspace(Base):
+    __tablename__ = "shared_workspaces"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20))
+    creator_id: Mapped[str] = mapped_column(ForeignKey("user_accounts.id"))
+    root_id: Mapped[str | None] = mapped_column(String(36))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("shared_workspaces.id"), primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("user_accounts.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("actors.id"))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class WorkspaceInvite(Base):
+    __tablename__ = "workspace_invites"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    workspace_id: Mapped[str | None] = mapped_column(ForeignKey("shared_workspaces.id"))
+    inviter_id: Mapped[str] = mapped_column(ForeignKey("user_accounts.id"))
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    role: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_by: Mapped[str | None] = mapped_column(ForeignKey("user_accounts.id"))

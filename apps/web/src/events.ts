@@ -24,10 +24,26 @@ export function subscribeEvents(
       if (!active()) return;
       const received = Number(event.lastEventId);
       if (Number.isSafeInteger(received)) cursor = Math.max(cursor, received);
+      try {
+        if(JSON.parse(event.data || "{}").kind==="membership.changed")
+          window.dispatchEvent(new Event("eri-accounts-changed"));
+      } catch { /* reconnect refresh still runs for malformed event payloads */ }
       refresh();
     };
     current.addEventListener("refresh", () => {
       if (active()) refresh();
+    });
+    current.addEventListener("access_revoked", (event) => {
+      if (!active()) return;
+      current.close();
+      stopped = true;
+      window.dispatchEvent(
+        new CustomEvent("eri-access-ended", {
+          detail:
+            JSON.parse((event as MessageEvent).data || "{}").code ||
+            "ACCESS_REVOKED",
+        }),
+      );
     });
     current.onerror = () => {
       if (!active()) return;

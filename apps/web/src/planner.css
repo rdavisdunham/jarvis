@@ -1132,10 +1132,94 @@
   gap: 8px;
   margin: 0;
 }
-.task-detail-properties { gap: 10px; }
-.task-detail-main .inline-field { margin: 0; }
-.task-detail-main .secondary.compact { margin: 4px 8px 4px 0; }
-.task-detail-properties .attribution-chip { grid-column: 2; }
+.task-detail-properties {
+  gap: 10px;
+}
+.task-detail-main .inline-field {
+  margin: 0;
+}
+.task-detail-main .secondary.compact {
+  margin: 4px 8px 4px 0;
+}
+.task-detail-properties .attribution-chip {
+  grid-column: 2;
+}
 @media (max-width: 680px) {
-  .task-detail-properties .inline-field { display:flex; align-items:stretch; gap:6px; }
+  .task-detail-properties .inline-field {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+  }
+}
+
+.account-switcher {
+  padding: 0 12px 12px;
+  color: var(--muted);
+}
+.account-switcher label {
+  margin: 0;
+}
+.account-switcher select {
+  width: 100%;
+  max-width: 100%;
+  font-size: 12px;
+  background: transparent;
+}
+.account-switcher p {
+  font-size: 11px;
+}
+.sharing-settings {
+  max-width: 850px;
+}
+.sharing-settings section,
+.sharing-settings > form {
+  margin: 28px 0;
+}
+.sharing-settings h3 {
+  font-size: 14px;
+}
+.sharing-fields {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.sharing-fields label {
+  flex: 1;
+  min-width: 130px;
+  margin: 0;
+}
+.sharing-fields button {
+  margin-bottom: 4px;
+}
+.sharing-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+.sharing-row > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sharing-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
+}
+.sharing-row select {
+  width: auto;
+  max-width: 110px;
+}
+@media (max-width: 680px) {
+  .sharing-row {
+    flex-wrap: wrap;
+  }
+  .sharing-fields {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }

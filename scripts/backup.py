@@ -27,6 +27,7 @@ def cipher():
 
 def counts(database):
     names = [
+        "user_accounts", "shared_workspaces", "workspace_members", "workspace_invites",
         "spaces",
         "areas",
         "goals",
