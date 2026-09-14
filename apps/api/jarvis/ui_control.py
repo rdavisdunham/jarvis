@@ -24,6 +24,7 @@ View = Literal[
 
 class EditorContext(BaseModel):
     mode: Literal["detail", "edit"] = "edit"
+    auto_save: bool = False
     model_config = ConfigDict(extra="forbid")
     kind: Literal["task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
     record_id: str | None = Field(default=None, max_length=36)
@@ -117,9 +118,9 @@ Spaces and People & agents tabs. Goal metrics are outcomes, project counts are t
 Calendar: month/week/day, task planned/deadline markers, alerts, local appointments/work blocks and Google events.
 A planned date/deadline does not reserve time; timeline task markers are not duration bars.
 Calendar entries show Task, Task reminder, Repeating task, Work block, or Event/Google event.
-Clicking opens saved details with Edit at the top right. Task completion is distinct from calendar events.
+Task cards open as inline-editable details with description/dates in the center and properties on the right. No Edit/Save buttons.\nInline task ui_editor patches save immediately and return receipts; ordinary new-record and non-task editors remain drafts.\nTask cards can be left freely; pending field edits finish before navigation. Task completion is distinct from calendar events.
 ui_calendar with entity_id/date/open_details=true opens that saved detail card. ui_editor read reports mode=detail
-there; use ui_form to open an editable draft. A work block has a linked task, not its own completion.
+there; task cards report auto_save=true, while other saved cards use ui_form for drafts. A work block has a linked task, not its own completion.
 Notes: authored content, home project, related goals/projects/notes, backlinks and task evidence.
 Memory: learned facts and review questions. Notifications: delivered task alerts.
 Settings sections: profile (name/reminder defaults/density), voice (Live voice/wake word),
@@ -127,7 +128,7 @@ integrations (Google/Linear), privacy (history/learning), system (backend model/
 Realtime is disabled. Browser permissions, OAuth consent and credentials need the owner's interaction.
 Filters & sort expands from one control; collapsed filters still apply. Layout changes preserve them.
 Chat is a desktop side panel/mobile overlay. Closing chat keeps voice running; show mobile content unobscured.
-Editors expose typed drafts through ui_editor; reading/filling is not saving. Never discard an unsaved edit
+ui_saved_view manages account-private named task views. Use acknowledged observed layout/visible IDs; explicitly report zero results.\nEditors expose typed fields through ui_editor: auto_save=true patches save; other editors expose unsaved drafts. Never discard an unsaved edit
 without an explicit owner request. Remote jobs remain pending until confirmed; local saves are distinct.
 Use the planner group for constrained multi-task scheduling. It verifies a single-person schedule against
 fresh availability and atomically saves local blocks only when asked. No automatic Google publication.

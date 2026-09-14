@@ -45,6 +45,22 @@ def mutate_note(db, owner, tool, args):
     from .productivity import home_changes, save_note_links
     from .record_references import reference
 
+    if tool in {"note.append", "note.replace"}:
+        from .note_schema import NoteUpdate
+        row = owned(db, Note, args.note_id, owner, lock=True)
+        check_revision(row, args.expected_revision)
+        if tool == "note.append":
+            content = row.content + args.text
+        else:
+            count = row.content.count(args.old_text)
+            if count != 1:
+                raise DomainError("ANCHOR_MISMATCH",
+                    "The exact text must occur once in the current note. Read it again and use a unique anchor.", 409)
+            content = row.content.replace(args.old_text, args.new_text, 1)
+        if len(content) > 30000:
+            raise DomainError("INVALID_ARGUMENT", "The resulting note exceeds 30000 characters.")
+        return mutate_note(db, owner, "note.update",
+                           NoteUpdate(note_id=row.id, expected_revision=row.revision, content=content))
     link_keys = {"goal_ids", "project_ids", "related_note_ids"}
     link_values = args.model_dump(exclude_unset=True, include=link_keys)
     previous_project = None

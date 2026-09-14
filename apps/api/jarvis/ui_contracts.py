@@ -14,6 +14,10 @@ def definition(description, properties, required=()):
 
 
 UI_TOOLS = {
+    "ui_saved_view": definition(
+        "List, save, load or delete account-private named task views. Save the current Tasks tab/filter/sort/layout; list first to get exact IDs for load/delete. Never delete without a user request.",
+        {"view_operation": enum(["list","save","load","delete"]), "view_name":{"type":"string","maxLength":80}, "saved_view_id":{"type":"string","maxLength":36}}, ["view_operation"]),
+
     "ui_state": definition("Read the current device's actual page, view options, filters, selected/visible records, editor and non-secret device preferences. Context is ephemeral; no connected device means no verified screen.", {}),
     "ui_workspace": definition(
         "Configure the current site's list/board/timeline, sorting/grouping, timeline dates, organization tab, notes mode/archive filter or Settings section. UI-only; does not edit records or dates. Read ui_state first when preserving other view choices matters.",
@@ -25,7 +29,7 @@ UI_TOOLS = {
          "settings_section": enum(["profile", "voice", "integrations", "privacy", "system"]),
          "notes_mode": enum(["keyword", "semantic"]), "show_archived": {"type": "boolean"}}),
     "ui_editor": definition(
-        "Read, fill, save or close the currently open editor. Read first for its exact editable field schemas and current draft values. Patch only requested fields; filling a draft is NOT saving. Save awaits the normal validated application command. Close refuses unsaved changes; discard is only for an explicit owner request to abandon them. Use normal domain tools for direct record changes when no form is being edited.",
+        "Read or change the open record. Read first for exact field schemas and auto_save. Existing task cards auto-save each patch: a saved receipt needs no save step, and close/navigation flushes pending fields. Other forms hold drafts until save, and close refuses unsaved changes. Patch only requested fields. Discard requires an explicit user request and cancels only uncommitted fields; it cannot undo saved changes. Use domain tools when no card/form is open.",
         {"operation": enum(["read", "patch", "save", "close", "discard"]),
          "changes": {"type": "object", "maxProperties": 35, "additionalProperties": {"anyOf": [
              {"type": "string", "maxLength": 30000}, {"type": "number"}, {"type": "boolean"}, {"type": "null"},

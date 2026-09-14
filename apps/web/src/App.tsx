@@ -1,3 +1,11 @@
+import { SavedViews } from "./SavedViews";
+import {
+  readView,
+  viewLink,
+  type ViewState as SavedViewState,
+  type SavedView,
+} from "./saved-views";
+import { TaskDetails } from "./TaskDetails";
 import { CalendarDetails } from "./CalendarDetails";
 import { TaskTabs } from "./TaskTabs";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
@@ -105,12 +113,33 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
 ];
 export default function App() {
   const editors = useEditorBridge();
-  const [workLayout, setWorkLayout] = useState<WorkLayout>("list");
-  const [workSort, setWorkSort] = useState<WorkSort>("priority");
-  const [workGroup, setWorkGroup] = useState<WorkGroup>("status");
-  const [taskFilters, setTaskFilters] = useState(emptyTaskFilters);
-  const [timelineDate, setTimelineDate] = useState("");
-  const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>(30);
+  const initialSavedView = useRef(readView(location.search)).current;
+  const [workLayout, setWorkLayout] = useState<WorkLayout>(
+    initialSavedView?.layout ?? "list",
+  );
+  const [workSort, setWorkSort] = useState<WorkSort>(
+    initialSavedView?.sort ?? "priority",
+  );
+  const [workGroup, setWorkGroup] = useState<WorkGroup>(
+    initialSavedView?.group ?? "status",
+  );
+  const [taskFilters, setTaskFilters] = useState(
+    initialSavedView
+      ? {
+          assignee: initialSavedView.assignee,
+          work_type: initialSavedView.work_type,
+          tag: initialSavedView.tag,
+          due_from: initialSavedView.due_from,
+          due_through: initialSavedView.due_through,
+        }
+      : emptyTaskFilters,
+  );
+  const [timelineDate, setTimelineDate] = useState(
+    initialSavedView?.timeline_date ?? "",
+  );
+  const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>(
+    initialSavedView?.timeline_span ?? 30,
+  );
   const [organizationTab, setOrganizationTab] = useState<
     "goal" | "project" | "area" | "space" | "actor"
   >("project");
@@ -141,19 +170,33 @@ export default function App() {
   }, [density]);
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [loading, setLoading] = useState(true);
-  const [view, setView] = useState<View>(() => initialView(location.search));
+  const [view, setView] = useState<View>(
+    () => initialSavedView?.tab ?? initialView(location.search),
+  );
   const lastTaskTab = useRef<TaskTab>(isTaskTab(view) ? view : "today");
   useEffect(() => {
     if (isTaskTab(view)) lastTaskTab.current = view;
-    const url = new URL(location.href);
-    url.searchParams.set("view", isTaskTab(view) ? "tasks" : view);
-    if (isTaskTab(view)) url.searchParams.set("tab", view);
-    else url.searchParams.delete("tab");
-    history.replaceState(null, "", url);
   }, [view]);
   const [calendarDetail, setCalendarDetail] = useState<CalendarEntry | null>(
     null,
   );
+  function openTaskCard(task: Task) {
+    setSelected(null);
+    setCalendarDetail({
+      id: "task-detail:" + task.id,
+      entity_id: task.id,
+      kind: "task",
+      title: task.title,
+      date: task.due_date ?? task.planned_date ?? "",
+      at: null,
+      status: task.status,
+      project_id: task.project_id,
+      task_id: task.id,
+      revision: task.revision,
+      projected: false,
+      notification_id: null,
+    });
+  }
   function openCalendarEntry(entry: CalendarEntry) {
     if (entry.kind === "google") setGoogleEvent(entry);
     else setCalendarDetail(entry);
@@ -174,7 +217,15 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [organization, setOrganization] =
     useState<Organization>(emptyOrganization);
-  const [organizationFilter, setOrganizationFilter] = useState(emptyFilter);
+  const [organizationFilter, setOrganizationFilter] = useState(
+    initialSavedView
+      ? {
+          space: initialSavedView.space,
+          area: initialSavedView.area,
+          goal: initialSavedView.goal,
+        }
+      : emptyFilter,
+  );
   const [organizationEditing, setOrganizationEditing] = useState(false);
   const [calendarDay, setCalendarDay] = useState("");
   const [calendarMode, setCalendarMode] = useState<"month" | "week" | "day">(
@@ -187,7 +238,9 @@ export default function App() {
     () => localStorage.setItem("eri-calendar-view", calendarMode),
     [calendarMode],
   );
-  const [workKind, setWorkKind] = useState<"all" | "task" | "reminder">("all");
+  const [workKind, setWorkKind] = useState<"all" | "task" | "reminder">(
+    initialSavedView?.kind ?? "all",
+  );
   const [workVisible, setWorkVisible] = useState<string[]>([]);
   const [scheduleEditor, setScheduleEditor] = useState<{
     schedule: Schedule | null;
@@ -200,7 +253,7 @@ export default function App() {
   const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(
     null,
   );
-  const [query, setQuery] = useState(""),
+  const [query, setQuery] = useState(initialSavedView?.query ?? ""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
   const [error, setError] = useState(""),
@@ -233,8 +286,60 @@ export default function App() {
     | "deferred"
     | "completed"
     | "cancelled"
-  >("active");
-  const [projectFilter, setProjectFilter] = useState("");
+  >(initialSavedView?.status ?? "active");
+  const [projectFilter, setProjectFilter] = useState(
+    initialSavedView?.project ?? "",
+  );
+  const [savedViewRevision, setSavedViewRevision] = useState(0);
+  const savedViewState: SavedViewState = {
+    tab: isTaskTab(view) ? view : "all",
+    query,
+    status: taskStatus,
+    project: projectFilter,
+    ...organizationFilter,
+    ...taskFilters,
+    kind: workKind,
+    layout: workLayout,
+    sort: workSort,
+    group: workGroup,
+    timeline_date: timelineDate,
+    timeline_span: timelineSpan,
+  };
+  function applySavedView(value: SavedViewState) {
+    setView(value.tab);
+    setQuery(value.query);
+    setTaskStatus(value.status);
+    setProjectFilter(value.project);
+    setOrganizationFilter({
+      space: value.space,
+      area: value.area,
+      goal: value.goal,
+    });
+    setTaskFilters({
+      assignee: value.assignee,
+      work_type: value.work_type,
+      tag: value.tag,
+      due_from: value.due_from,
+      due_through: value.due_through,
+    });
+    setWorkKind(value.kind);
+    setWorkLayout(value.layout);
+    setWorkSort(value.sort);
+    setWorkGroup(value.group);
+    setTimelineDate(value.timeline_date);
+    setTimelineSpan(value.timeline_span);
+  }
+  useEffect(() => {
+    const url = isTaskTab(view)
+      ? viewLink(savedViewState)
+      : new URL(location.href);
+    if (!isTaskTab(view)) {
+      url.searchParams.set("view", view);
+      url.searchParams.delete("tab");
+      url.searchParams.delete("state");
+    }
+    history.replaceState(null, "", url);
+  }, [view, JSON.stringify(savedViewState)]);
   const [memoryStatus, setMemoryStatus] = useState({
     enabled: true,
     pending: 0,
@@ -606,7 +711,7 @@ export default function App() {
       const task = await api<Task>("/tasks/" + encodeURIComponent(id));
       setError("");
       setNoteEditor(null);
-      setSelected(task);
+      openTaskCard(task);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -687,6 +792,7 @@ export default function App() {
       setCompanion(action.mode === "auto" ? !mobile : action.mode === "open");
       return;
     }
+    if (editors.current()?.auto_save) await editors.current()?.beforeLeave?.();
     if (
       (editors.current() && editors.current()?.mode !== "detail") ||
       selected ||
@@ -702,7 +808,37 @@ export default function App() {
         "An editor is open. Save or close it before changing pages.",
       );
     setCalendarDetail(null);
-    if (kind === "workspace") {
+    if (kind === "saved_view") {
+      const collection = await api<{ items: SavedView[] }>("/task-views");
+      if (action.view_operation === "list") return { items: collection.items };
+      const saved = collection.items.find((v) => v.id === action.saved_view_id);
+      if (action.view_operation === "load") {
+        if (!saved) throw new Error("That saved view is unavailable.");
+        applySavedView(saved.state);
+        return { outcome: "view_loaded", name: saved.name };
+      }
+      if (action.view_operation === "delete") {
+        if (!saved) throw new Error("That saved view is unavailable.");
+        const result = await post("/task-views/remove", {
+          id: saved.id,
+          expected_revision: saved.revision,
+        });
+        setSavedViewRevision((n) => n + 1);
+        return { outcome: "view_deleted", result };
+      }
+      if (!isTaskTab(view))
+        throw new Error("Open Tasks before saving a task view.");
+      if (!action.view_name?.trim())
+        throw new Error("Give the saved view a name.");
+      const result = await post("/task-views", {
+        id: action.id.slice(-36),
+        name: action.view_name,
+        expected_revision: 0,
+        state: savedViewState,
+      });
+      setSavedViewRevision((n) => n + 1);
+      return { outcome: "view_saved", result };
+    } else if (kind === "workspace") {
       const target = action.view ?? view;
       if (
         action.layout &&
@@ -959,7 +1095,7 @@ export default function App() {
       } else {
         setView("all");
         if (action.entity_id)
-          setSelected(
+          openTaskCard(
             await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
           );
         else createTask();
@@ -982,7 +1118,7 @@ export default function App() {
       setWorkKind("all");
       setView(action.view ?? "today");
       if (action.entity_id && action.view === "all") {
-        setSelected(
+        openTaskCard(
           await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
         );
       } else if (action.entity_id && action.view === "organize") {
@@ -1407,7 +1543,12 @@ export default function App() {
     mobile,
     voice_active: !!voiceState && !voiceState.closed,
     query: query.slice(0, 300),
-    selected_task_id: selected?.id === "new" ? null : (selected?.id ?? null),
+    selected_task_id:
+      calendarDetail?.kind === "task"
+        ? calendarDetail.entity_id
+        : selected?.id === "new"
+          ? null
+          : (selected?.id ?? null),
     selected_schedule_id: scheduleEditor?.schedule?.id ?? null,
     selected_task_ids: selectedTaskIds
       .filter((id) => tasks.some((t) => t.id === id))
@@ -1705,7 +1846,16 @@ export default function App() {
             <div className="page-heading">
               <h1>{titles[view]}</h1>
             </div>
-            {isTaskTab(view) && <TaskTabs value={view} onChange={setView} />}
+            {isTaskTab(view) && (
+              <>
+                <TaskTabs value={view} onChange={setView} />
+                <SavedViews
+                  key={savedViewRevision}
+                  state={savedViewState}
+                  onApply={applySavedView}
+                />
+              </>
+            )}
             {[
               "today",
               "inbox",
@@ -2025,7 +2175,7 @@ export default function App() {
                   kind={view === "reminders" ? "reminder" : workKind}
                   highlight={highlight}
                   busy={busy}
-                  onTask={setSelected}
+                  onTask={openTaskCard}
                   onSchedule={(schedule) => setScheduleEditor({ schedule })}
                   toggle={(task) => void toggle(task)}
                   createTask={createTask}
@@ -2921,7 +3071,50 @@ export default function App() {
           }}
         />
       )}
-      {calendarDetail && (
+      {calendarDetail?.kind === "task" && (
+        <TaskDetails
+          key={calendarDetail.entity_id}
+          id={calendarDetail.entity_id}
+          onNewNote={(task) => {
+            setNoteEditor(blankNote(task));
+            setCalendarDetail(null);
+            setError("");
+          }}
+          onReminder={(schedule, task) => {
+            setScheduleEditor({ schedule, task });
+            setCalendarDetail(null);
+          }}
+          onBlock={(task) => {
+            setGoogleEvent({
+              id: "new",
+              entity_id: "new",
+              kind: "block",
+              title: "Work block",
+              date: task.due_date ?? today,
+              at: null,
+              status: "active",
+              project_id: task.project_id,
+              task_id: task.id,
+              revision: 1,
+              projected: false,
+              notification_id: null,
+            });
+            setCalendarDetail(null);
+          }}
+          organization={organization}
+          tasks={tasks}
+          schedules={schedules}
+          zone={boot.preferences.timezone}
+          mutate={mutate}
+          onClose={() => setCalendarDetail(null)}
+          onTask={openTaskCard}
+          onNote={(id) => {
+            setCalendarDetail(null);
+            void openNote(id);
+          }}
+        />
+      )}
+      {calendarDetail && calendarDetail.kind !== "task" && (
         <CalendarDetails
           key={calendarDetail.id}
           event={calendarDetail}
@@ -2932,7 +3125,7 @@ export default function App() {
           onClose={() => setCalendarDetail(null)}
           onTask={(task) => {
             setCalendarDetail(null);
-            setSelected(task);
+            openTaskCard(task);
           }}
           onNote={(id) => {
             setCalendarDetail(null);
@@ -2953,7 +3146,7 @@ export default function App() {
             setCalendarDetail(null);
             if (entry.kind === "event" || entry.kind === "block")
               setGoogleEvent(entry);
-            else if (entry.kind === "task" && task) setSelected(task);
+            else if (entry.kind === "task" && task) openTaskCard(task);
             else if (schedule) setScheduleEditor({ schedule });
           }}
         />

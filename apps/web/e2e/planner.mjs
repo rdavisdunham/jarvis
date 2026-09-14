@@ -71,19 +71,14 @@ try {
   const persisted=await request("/notes/"+note.id);
   if(persisted.content!==exact || !persisted.goals.some(g=>g.id===goal.id) || !persisted.tasks.some(t=>t.id===task.id))throw new Error("Sparse note save lost fields");
   await close();
+  // Existing tasks are inline detail cards: patches save, then navigation is free.
   await ui("ui_form",{form:"task",entity_id:task.id});
-  await ui("ui_editor",{operation:"patch",changes:{title:"Discarded title"}});
-  await ui("ui_editor",{operation:"discard"});
-  if((await request("/tasks/"+task.id)).title!=="Review mobile layout")throw new Error("Discard saved changes");
-  // Concurrent server edits must not erase the user's draft.
-  await ui("ui_form",{form:"task",entity_id:task.id});
-  await ui("ui_editor",{operation:"patch",changes:{notes:"Keep this unsaved context"}});
-  const current=await request("/tasks/"+task.id);
-  await cmd("task.update",{task_id:task.id,expected_revision:current.revision,priority:2});
-  await ui("ui_editor",{operation:"save"},"failed");
-  draft=await ui("ui_editor",{operation:"read"});
-  if(draft.data.values.notes!=="Keep this unsaved context" || !draft.data.dirty)throw new Error("Conflict erased the draft");
-  await ui("ui_editor",{operation:"discard"});
+  let inline=await ui("ui_editor",{operation:"read"});
+  if(!inline.data.auto_save)throw new Error("Task is not an inline card");
+  await ui("ui_editor",{operation:"patch",changes:{notes:"Inline context"}});
+  if((await request("/tasks/"+task.id)).notes!=="Inline context")throw new Error("Inline patch not saved");
+  await ui("ui_show",{view:"notes"});
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await ui("ui_workspace",{view:"today",layout:"list"});
   await page.getByLabel("New task",{exact:true}).fill("Quick capture today");
   await page.locator(".compact-capture button").click();

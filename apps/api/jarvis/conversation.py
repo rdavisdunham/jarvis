@@ -176,10 +176,11 @@ async def chat(
                 # request memory only. Neither becomes another transcript store.
                 fields = {"role", "content", "tool_calls", "extra_content"}
                 messages.append({k: v for k, v in msg.items() if k in fields})
+                if data["choices"][0].get("finish_reason") == "length":
+                    raise DomainError("OUTPUT_TRUNCATED",
+                        "The task model ran out of output space before finishing. Already saved changes remain; this unfinished response was not executed.")
                 calls = msg.get("tool_calls") or []
                 if not calls:
-                    if data["choices"][0].get("finish_reason") == "length":
-                        limited = True
                     reply = msg.get("content")
                     if not isinstance(reply, str) or not reply.strip():
                         raise ValueError("Provider returned no answer or tool call")
@@ -194,7 +195,13 @@ async def chat(
                                 "LIMIT_EXCEEDED",
                                 f"This request reached its allowance of {settings.max_tool_calls_per_request} tool calls or {settings.max_model_rounds_per_request} model rounds. Saved changes remain; report any unfinished work.",
                             )
-                        args = json.loads(fn["arguments"])
+                        try:
+                            args = json.loads(fn["arguments"])
+                            if not isinstance(args, dict):
+                                raise TypeError("Tool arguments must be an object")
+                        except (ValueError, TypeError):
+                            raise DomainError("MALFORMED_TOOL_ARGUMENTS",
+                                "The model returned malformed tool arguments. No action was executed for this call; retry with valid JSON.") from None
                         if tool_guard:
                             changed = batch_guard_error or tool_guard()
                             if changed:
@@ -247,7 +254,11 @@ async def chat(
         limited = True
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
         failed = True
-        reply = f"I lost the {agent.label} connection. Any changes already saved are still in your task list; I haven't repeated them."
+        reply = (
+            f"The connection to {agent.label} failed before a usable response arrived. Already saved changes remain; check their receipts before retrying."
+            if isinstance(exc, httpx.HTTPError)
+            else f"{agent.label} returned an invalid response format. Already saved changes remain; this is a response-format error, not a lost connection."
+        )
         if isinstance(exc, httpx.HTTPStatusError):
             code = exc.response.status_code
             if code in {401, 403, 404}:

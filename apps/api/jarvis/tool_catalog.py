@@ -36,6 +36,8 @@ GROUPS = {
             "note_read",
             "note_create",
             "note_update",
+            "note_append",
+            "note_replace",
             "note_extract",
             "note_tasks",
         ],
@@ -152,8 +154,9 @@ GROUPS = {
             "ui_state",
         ],
     ),
+    "saved_views": ("Save and restore named task views with filters and layout.", ["ui_state", "ui_workspace", "ui_saved_view"]),
     "editors": (
-        "Inspect, fill, save and safely close device-local editor drafts.",
+        "Inspect and change inline task cards or device-local form drafts.",
         ["ui_state", "ui_form", "ui_editor"],
     ),
     "settings": (
@@ -255,7 +258,9 @@ DESCRIPTIONS = {
     "Reading does not display it on screen; use ui_show(view=notes, entity_id=note_id) for an open/show request. "
     "A malformed reference needs a fresh search and exact copy, not a claim the note disappeared.",
     "note_create": "Create an authored note with requested content and links. " + NOTE_LINKS,
-    "note_update": "Edit an existing authored note at its current revision. " + NOTE_LINKS,
+    "note_update": "Edit requested note metadata/links at its current revision. Prefer note_append or note_replace for body edits; use content only for an explicitly requested full rewrite. " + NOTE_LINKS,
+    "note_append": "Append exact text to the current note at expected_revision. Include any desired newline separator in text; untouched content and links are preserved. Read first. Never reconstruct the old body.",
+    "note_replace": "Replace one exact, unique old_text anchor with new_text at expected_revision. Whitespace and Unicode are literal. Missing/duplicate anchors fail without changes; read again and choose a unique longer anchor. Empty new_text deletes the anchor.",
     "note_extract": "Propose to-dos from a note using the separate extractor; this does NOT create tasks. "
     "Read/review the proposals and use note_tasks for explicitly requested creation.",
     "note_tasks": "Create SOURCE-LINKED tasks from commitments in a note. This is the required path for note-derived "

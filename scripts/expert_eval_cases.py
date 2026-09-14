@@ -162,6 +162,8 @@ LOCAL_TOOLS = {
     "note_read",
     "note_create",
     "note_update",
+    "note_append",
+    "note_replace",
     "note_tasks",
     "memory_search",
     "memory_capture",
@@ -984,7 +986,7 @@ async def _invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **k
     f["tools"].append(entry)
     try:
         calendar_cases = {"pending_remote", "calendar_unknown", "constraint_schedule", "impossible_schedule"}
-        special = (f["case"] in calendar_cases and name == "calendar_connection") or (
+        special = (f["case"] in calendar_cases and name in {"calendar_connection", "calendar_sync"}) or (
             f["case"] == "pending_remote" and name in {"calendar_create", "calendar_write_status"}
         )
         if special:
@@ -1002,6 +1004,9 @@ async def _invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **k
         if special or name == "calendar_availability":
             result = await real_tool(owner, turn_id, index, name, arguments, **kwargs)
             entry["simulation"] = "production_calendar_with_synthetic_transport"
+            if name == "calendar_sync":
+                from eval_integrations import run_calendar_sync
+                run_calendar_sync(f, owner, result)
         elif name == "memory_search":
             with session_scope() as db:
                 result = {

@@ -117,7 +117,7 @@ READ_TOOLS = {
         },
     },
     "ui_form": {
-        "description": "Open the new-task entry, reminder form or note editor for the user to fill in.",
+        "description": "Open a new record form or an existing record. Existing tasks use an inline detail card: ui_editor read reports auto_save=true, and patches save immediately. Other forms retain drafts until saved.",
         "parameters": {
             "type": "object",
             "properties": {"form": {"type": "string", "enum": ["task", "reminder", "note"]}},
@@ -313,6 +313,8 @@ for name, description, key in [
         },
     }
 
+READ_TOOLS["note_search"]["parameters"]["properties"]["archived"] = {"type":"boolean","description":"True searches archived notes by keyword; false searches active notes."}
+
 for tool_name in ("task_list", "note_search"):
     for field in ("space_id", "area_id", "goal_id"):
         READ_TOOLS[tool_name]["parameters"]["properties"][field] = {"type": "string", "maxLength": 36}
@@ -346,6 +348,8 @@ VOICE_MUTATIONS = {
     "task.selection_update",
     "note.create",
     "note.update",
+    "note.append",
+    "note.replace",
     "note.tasks",
     "project.create",
     "project.update",
@@ -574,7 +578,7 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
         if name == "note_search":
             from .notes import list_notes, search_notes
 
-            if arguments.get("semantic") and arguments.get("query"):
+            if arguments.get("semantic") and arguments.get("query") and not arguments.get("archived"):
                 return await __import__("asyncio").to_thread(
                     search_notes,
                     owner,
@@ -593,6 +597,7 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
                     arguments.get("project_id"),
                     arguments.get("task_id"),
                     offset=arguments.get("offset", 0),
+                    archived=arguments.get("archived", False),
                     space_id=arguments.get("space_id"),
                     area_id=arguments.get("area_id"),
                     goal_id=arguments.get("goal_id"),
@@ -617,7 +622,7 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
             if len(result["tasks"]) == 1:
                 remember(db, owner, conversation_id, [result["tasks"][0]["id"]])
             return result
-    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device"}:
+    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device", "ui_saved_view"}:
         # Validate against the fixed registry before crossing the browser boundary.
         import jsonschema
 
@@ -625,6 +630,10 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
             jsonschema.validate(arguments, READ_TOOLS[name]["parameters"])
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Invalid site control arguments.")
+        if name == "ui_filter" and arguments.get("assignee"):
+            from .assignees import resolve_assignee
+            with session_scope() as db:
+                arguments = {**arguments, "assignee": resolve_assignee(db, owner, arguments["assignee"])}
         if name == "ui_calendar" and arguments.get("open_details") and not arguments.get("entity_id"):
             raise DomainError("INVALID_ARGUMENT", "Choose a saved calendar item to open its details.")
         if name == "ui_calendar" and arguments.get("entity_id"):

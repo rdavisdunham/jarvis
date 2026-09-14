@@ -271,64 +271,16 @@ try {
   await expect(page.getByRole("dialog")).toContainText(
     "Keep the original notes.",
   );
-  const info = await ui("ui_editor", { operation: "read" });
-  if (info.data.mode !== "detail" || info.data.saved !== true)
-    throw new Error("Saved details misreported as draft");
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Task reference", exact: true }),
-  ).toBeVisible();
-
-  const refused = await request("/__test_ui", {
-    name: "ui_editor",
-    arguments: { operation: "patch", changes: { title: "Must not save" } },
-  });
-  if (refused.status !== "failed")
-    throw new Error("Read-only details accepted a patch");
-  if ((await request("/tasks/" + a.id)).title !== a.title)
-    throw new Error("Detail patch changed data");
-  // Eri can switch from a saved detail card to the proper editable form.
-  await ui("ui_form", { form: "task", entity_id: a.id });
-  await expect(
-    page.getByRole("dialog").getByLabel("Task", { exact: true }),
-  ).toHaveValue(a.title);
-  await ui("ui_editor", { operation: "close" });
-  await ui("ui_calendar", { date: today, entity_id: a.id, open_details: true });
-  const complete = page.getByRole("button", {
-    name: "Complete task",
-    exact: true,
-  });
-  await expect(complete).toBeVisible();
-  const before = await request("/tasks/" + a.id);
-  await page
-    .getByRole("button", { name: "Edit calendar item", exact: true })
-    .click();
-  await expect(page.getByRole("dialog").locator("input").first()).toBeVisible();
-  await ui("ui_editor", {
-    operation: "patch",
-    changes: { title: "Touch task edited from calendar" },
-  });
-  await ui("ui_editor", { operation: "save" });
-  await expect
-    .poll(async () => (await request("/tasks/" + a.id)).title)
-    .toBe("Touch task edited from calendar");
-  const after = await request("/tasks/" + a.id);
-  if (
-    after.notes !== before.notes ||
-    JSON.stringify(after.tags) !== JSON.stringify(before.tags)
-  )
-    throw new Error("Task details edit damaged unrelated fields");
-  await ui("ui_calendar", { date: today, entity_id: a.id, open_details: true });
-  await page
-    .getByRole("button", { name: "Complete task", exact: true })
-    .click();
-  await expect
-    .poll(async () => (await request("/tasks/" + a.id)).status)
-    .toBe("completed");
-  await expect
-    .poll(async () => (await request("/schedules/" + alert.id)).status)
-    .toBe("completed");
+  const info = await ui("ui_editor", {operation:"read"});
+  if(!info.data.auto_save || !info.data.saved) throw new Error("Task is not a saved inline card");
+  const before = await request("/tasks/"+a.id);
+  await ui("ui_editor",{operation:"patch",changes:{title:"Touch task edited from calendar"}});
+  const after = await request("/tasks/"+a.id);
+  if(after.notes!==before.notes || JSON.stringify(after.tags)!==JSON.stringify(before.tags))throw new Error("Sparse task edit lost fields");
+  await page.getByRole("button",{name:"Complete task",exact:true}).click();
+  await expect.poll(async()=>(await request("/tasks/"+a.id)).status).toBe("completed");
+  await expect.poll(async()=>(await request("/schedules/"+alert.id)).status).toBe("completed");
+  await ui("ui_show",{view:"calendar"});
   checks.push(
     "Task calendar details, sparse Edit, task completion closes its alert",
   );

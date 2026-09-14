@@ -284,11 +284,16 @@ try {
     .click();
   await expect(page.getByRole("dialog")).toContainText("ERI-1");
   await request("/__test_linear_change");
+  await page.getByRole("button", { name: "Change Task", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByLabel("Task", { exact: true })
     .fill("Local conflict version");
-  await page.getByRole("button", { name: "Save task", exact: true }).click();
+  await page.getByLabel("Task", { exact: true }).press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Change Task", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Close task details" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Edit Local conflict version", exact: true })
@@ -304,7 +309,10 @@ try {
   await page
     .getByRole("button", { name: "Use Linear version", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Change Task", exact: true }),
+  ).toContainText("Linear conflict version");
+  await page.getByRole("button", { name: "Close task details" }).click();
   await page
     .getByRole("button", { name: "Edit Linear conflict version", exact: true })
     .click();
@@ -336,14 +344,10 @@ try {
   await page
     .getByRole("button", { name: "Publish to Linear", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Edit Publish browser task", exact: true })
-    .click();
   await expect(page.locator(".linear-task")).toContainText("synced");
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Close", exact: true })
+    .getByRole("button", { name: "Close task details", exact: true })
     .click();
   await ui("ui_workspace", {
     view: "settings",

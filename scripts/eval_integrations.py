@@ -9,6 +9,7 @@ import copy
 from contextlib import ExitStack, contextmanager
 from datetime import datetime
 from unittest.mock import patch
+from urllib.parse import quote
 from uuid import NAMESPACE_URL, uuid5
 
 from jarvis import google_calendar, google_writes
@@ -102,6 +103,13 @@ def calendar_transport(fixture, owner, tool_name):
         def request(self, path, params=None, *, body=None, **kwargs):
             trace = {"kind": "provider_fixture", "tool": tool_name, "path": path, "body": copy.deepcopy(body)}
             traces.append(trace)
+            if tool_name == "calendar_sync" and not body and not kwargs:
+                if state["unavailable"]:
+                    raise google_calendar.SyncFailure("synthetic_unavailable")
+                if path == "users/me/calendarList":
+                    return {"items":[{"id":state["provider_id"],"summary":"Work","timeZone":"America/Chicago","primary":True,"accessRole":"owner"}]}
+                if path == "calendars/" + quote(state["provider_id"], safe="") + "/events":
+                    return {"items":[{"id":f"fixture-busy-{i}","summary":f"Reserved time {i+1}","status":"confirmed","start":{"dateTime":b["start"]},"end":{"dateTime":b["end"]}} for i,b in enumerate(state["busy"])],"nextSyncToken":"fixture-sync-token"}
             if path != "freeBusy" or kwargs or params:
                 trace["blocked"] = True
                 raise DomainError("EVAL_BLOCKED", "Only synthetic freebusy transport is available.")
@@ -159,3 +167,16 @@ def calendar_transport(fixture, owner, tool_name):
         stack.enter_context(patch.object(google_writes, "queue_write", queue))
         stack.enter_context(patch.object(google_writes, "write_status", status))
         yield
+
+
+def run_calendar_sync(fixture, owner, result):
+    """Run only the declared fixture's queued job, while synthetic transport is active."""
+    job_id = result.get("job_id")
+    with session_scope() as db:
+        job = db.get(Job, job_id)
+        if not fixture.get("calendar_fixture") or not job or job.owner_id != owner or job.kind != "google_sync":
+            raise DomainError("EVAL_BLOCKED", "Only the fixture calendar sync job can run.")
+    google_calendar.process(job_id)
+    with session_scope() as db:
+        job = db.get(Job, job_id)
+        fixture["integration_calls"].append({"kind":"sync_worker_fixture","job_id":job_id,"status":job.status,"result":copy.deepcopy(job.result)})

@@ -32,6 +32,8 @@ export function useSiteControl(
   enabled: boolean,
 ) {
   const { copilotkit } = useCopilotKit();
+  const contextRef = useRef(context);
+  contextRef.current = context;
   const applyRef = useRef(apply);
   applyRef.current = apply;
   useAgentContext({
@@ -48,7 +50,24 @@ export function useSiteControl(
       available: enabled,
       handler: async (args) => {
         const data = await applyRef.current(args as UIAction);
-        return { status: "displayed", data };
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        const observed = contextRef.current;
+        return {
+          status: "displayed",
+          data: {
+            ...data,
+            observed: {
+              view: observed.view,
+              layout: observed.layout,
+              visible_ids: observed.visible_ids,
+              reported_visible_count: observed.visible_ids.length,
+              query: observed.query,
+              assignee: observed.assignee,
+            },
+          },
+        };
       },
     },
     [enabled],

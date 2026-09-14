@@ -454,3 +454,20 @@ async def test_fresh_connection_read_is_allowed_and_matches_calendar_projection(
     assert connection["calendars"][0]["id"] == fixture["remote_calendar"]
     assert connection["calendars"][0]["selected"]
     assert not any(t.get("blocked") for t in fixture["tools"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unavailable",[False,True])
+async def test_calendar_sync_runs_real_worker_without_changing_unknown_to_free(unavailable):
+    fixture=cases.seed_case("calendar_not_confirmed",1)
+    fixture["calendar_fixture"]["unavailable"]=unavailable
+    result=await invoke(fixture,"calendar_sync",{})
+    assert result["status"]=="queued"
+    worker=next(x for x in fixture["integration_calls"] if x["kind"]=="sync_worker_fixture")
+    assert worker["status"]==("failed" if unavailable else "succeeded")
+    state=fixture["calendar_fixture"]
+    availability=await invoke(fixture,"calendar_availability",{"start":state["coverage_start"],"end":state["coverage_end"],"minutes":30},1)
+    if unavailable:
+        assert availability["status"]=="unavailable" and availability["free"]==[]
+    else:
+        assert availability["status"]!="unavailable"

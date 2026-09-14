@@ -1,7 +1,86 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 13, 2026. Eridani (Eri) is the assistant's name.
+Updated September 14, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
+
+## Ordered delivery batches — next work
+
+This order supersedes the older thematic priority lists below. Each implementation
+batch includes the website, Eri's corresponding tools/context, focused regression
+checks and release notes. Completed features are evidence, not new work.
+
+### Batch 1 — finish daily task workflows and Eri reliability
+
+- [x] Open existing tasks as inline detail cards from lists, boards, timelines,
+      calendar and linked records. Click individual fields to change them; save on
+      blur/Enter, Escape cancels a pending field. No Edit/Save buttons or edit mode.
+      Main details sit beside compact property/assignment/project/goal attribution.
+      Eri can navigate away after pending changes save; conflicts retain the field.
+- [x] Save named task views with their tab, filters, grouping, sort and layout;
+      extend current tab links to restore the complete view.
+- [x] Add revision-guarded note append and exact anchored replacement, preserving
+      untouched text, Unicode and source links.
+- [x] Resolve assignee names to canonical actors before filtering. Acknowledge
+      the actual layout and visible/empty results before claiming success.
+- [x] Distinguish output truncation, malformed arguments, transport failures and
+      remote application failures. Cover the missing calendar-sync worker path
+      in the regression fixtures and finish archived-note filter parity.
+
+Exit: task browsing is consistent, edits preserve unrelated content, saved views
+restore faithfully, and Eri reports the browser/domain result accurately.
+
+### Batch 2 — multi-user foundation
+
+- [ ] Support separate signed-in accounts, sessions, profiles and private records,
+      preserving the existing owner's records and integration links.
+- [ ] Add invitations, shared space/project membership, roles and revocation;
+      distinguish an assignee from a user who actually has access.
+- [ ] Enforce membership and ownership consistently in reads, writes, search,
+      embeddings, Eri context/tools, notifications and background jobs.
+- [ ] Keep learned personal memory and integration credentials private by default;
+      make access to shared notes/tasks and calendar information explicit.
+
+Exit: two accounts can use private and intentionally shared work; tests prove
+isolation and immediate revocation across the UI, API, agent and retrieval paths.
+
+### Batch 3 — connected workflows
+
+- [ ] Add scoped, revocable external bot API access through the existing command
+      service, then an MCP adapter. Preserve actor attribution, idempotency,
+      revisions and the multi-user access rules from Batch 2.
+- [ ] Expand notifications with natural-language snoozing, priority, quiet-time
+      preferences and optional digests/bundling. Keep task completion and alert
+      delivery history distinct.
+- [ ] Document and test these contracts for Eri and future Android clients.
+
+Exit: external bots and Eri follow the same rules, and notification preferences
+produce predictable delivery without duplicate task effects.
+
+### Batch 4 — device/operations checks, then the seven-day pilot
+
+- [ ] Verify GPT-Live recovery, interruption, late corrections, voice ending,
+      wake words and 15-second handoff on the actual phone and desktop.
+      Realtime remains paused.
+- [ ] Verify locked-phone Web Push, network gaps and actual Windows reboot
+      startup. Automate isolated restore drills and stale/failed-backup alerts;
+      retain a separately protected recovery copy off this PC.
+- [ ] After those checks pass, run the seven-day PRD pilot with at least 50
+      successful task/reminder interactions and record reliability, delivery and
+      voice-quality results. Development cost tracking stays off; provider usage
+      can be reviewed separately.
+
+Exit: recorded device/operation evidence and a pilot findings list, with material
+failures fixed before expanding the execution surface.
+
+### Batch 5 — larger expansions after the foundation is proven
+
+- [ ] Add bounded durable agent jobs with explicit scope, progress, cancellation
+      and saved results before agent assignments launch autonomous work.
+- [ ] Build native Android against the established account/action contracts.
+- [ ] Upgrade memory/note retrieval with measured quality checks and pgvector;
+      improve deep-sleep entity reconciliation and clarification follow-through.
+- [ ] Revisit Langfuse if tracing/evaluation gaps justify it. Additional providers,
+      Home Assistant, finance and richer goal/dependency features remain later.
 
 ## Current batch: task tabs, calendar cards and touch boards — deployed
 
@@ -22,6 +101,16 @@ Jarvis remains the repository and infrastructure project name.
       checks cover touch/mouse/keyboard moves, saved details and the existing
       planner/Google/Linear flows. Healthy services, exact source hashes and
       unchanged saved records. [Validation](CALENDAR_TASKS_VALIDATION.md).
+
+### Requested follow-ups
+
+- [x] **Inline task detail cards.** Supersedes the initial Edit-button request:
+      existing task cards have individually editable, automatically saved fields.
+      Keep creation forms explicit and protect other unsaved form drafts.
+- [ ] **Multi-user support.** Add separate user accounts, private data and
+      preferences, plus invited membership in shared spaces/projects with clear
+      roles and permissions. Scope tasks, notes, memory, integrations and Eri's
+      retrieval/actions to the current user's access.
 
 ## Previous batch: conversational planner workspace — deployed
 
@@ -269,8 +358,9 @@ Jarvis remains the repository and infrastructure project name.
       Initial Luna/Flash task acceptance is recorded; compare the candidates with
       Luna/Gemini during real use, with a stronger planner considered where needed.
       The default model and disabled cost tracking remain unchanged.
-- [ ] Shared space membership, richer outcome check-ins and independently managed
-      agent jobs remain later expansions. See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).
+- [ ] Richer outcome check-ins and independently managed agent jobs remain later
+      expansions. Multi-user support is scoped in the requested follow-ups above.
+      See [PRODUCTIVITY_SCHEMA.md](PRODUCTIVITY_SCHEMA.md).
 
 ## Previous batch: unified tasks, calendar details and Linear — deployed
 
@@ -611,7 +701,8 @@ Synthetic task fixtures were archived; no test memories were added to the live o
 Owner-requested feature expansions are also recorded in the app's “Eridani
 roadmap” project. The code-review findings and release gates added here on
 September 11 are tracked in this document; they have not been copied into new
-app tasks. This order takes precedence over the older thematic lists below.
+app tasks. The ordered delivery batches at the top now set the work order;
+this section retains detailed requirements and historical evidence.
 The first hardening implementation batch is now deployed; remaining acceptance and expansion work stays open.
 
 ### Completed: current experience
@@ -679,8 +770,8 @@ device acceptance items are outstanding checks, not claims of observed failures.
       for unconfirmed sessions. Do not treat held amounts as confirmed charges.
       Retain them until provider evidence supports settlement. Complete the
       provider-price/transcription accounting audit. The seven-day comparison moves to the post-expansion pilot.
-- [ ] **Finish voice and site-control recovery acceptance.** Exercise both voice
-      providers through long conversations/provider session endings, interruptions,
+- [ ] **Finish voice and site-control recovery acceptance.** Exercise GPT-Live
+      through long conversations/provider session endings, interruptions,
       a correction arriving during a pending action, close/reopen, network loss and
       API restart. Confirm receipts restore committed outcomes without replaying
       actions. Check standalone Eri, 15-second mic handoff, current selection,
@@ -743,13 +834,16 @@ actions into the web interface and Eri's tools with each release.
       recently discussed task references within a conversation, re-read current
       records, preserve ambiguity and revision checks, and edit groups atomically.
       The web selection/bulk editor and shared Eri tools use the same commands.
-- [ ] **Full field/settings control and richer references.** Extend CopilotKit to
-      every editor field, setting and multi-step workflow; measure reference quality
-      with real conversations. Archived-note filter controls still need UI parity.
+- [x] **Typed editor and settings controls.** Deployed in the conversational
+      planner release with 85 acknowledged browser actions.
+- [ ] **Remaining reference/control quality.** Measure references in real use,
+      finish archived-note filter parity and update controls for new detail cards.
+      These follow-ups are included in Batch 1 above.
 - [x] **Calendar and day agenda.** Tasks and reminder occurrences share a month
       calendar, selected-day agenda, filters and conversational controls without
       requiring Google sync.
-- [ ] **Project board and timeline views.** Follow the calendar/workspace release.
+- [x] **Project board and timeline views.** Deployed in the conversational
+      planner release; see [PLANNER_VALIDATION.md](PLANNER_VALIDATION.md).
 - [x] **Linked notes, first release.** Editable notes linked to tasks/projects and conversations,
       tags, Eri-readable source content, and to-do extraction with provenance and
       duplicate prevention. Cloud embeddings and hybrid semantic/keyword search

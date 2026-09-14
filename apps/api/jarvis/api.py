@@ -59,6 +59,9 @@ async def lifespan(app):
 
 app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
 app.include_router(google_router)
+from .saved_views import router as saved_views_router
+
+app.include_router(saved_views_router)
 from .integration_routes import router as integration_router
 
 app.include_router(integration_router)

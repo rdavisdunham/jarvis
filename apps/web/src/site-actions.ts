@@ -60,9 +60,13 @@ export const actionSchema = z
         "workspace",
         "editor",
         "device",
+        "saved_view",
       ])
       .default("show"),
     view: z.enum(views).optional(),
+    view_operation: z.enum(["list", "save", "load", "delete"]).optional(),
+    view_name: z.string().max(80).optional(),
+    saved_view_id: z.string().max(36).optional(),
     entity_id: z.string().nullable().optional(),
     mode: z.enum(["open", "close", "auto"]).optional(),
     query: z.string().max(300).optional(),

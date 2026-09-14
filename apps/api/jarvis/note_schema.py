@@ -57,4 +57,18 @@ class Suggestions(NoteArgs):
     items: list[NoteTaskDraft] = Field(max_length=20)
 
 
-NOTE_COMMANDS = {"note.create": NoteCreate, "note.update": NoteUpdate, "note.tasks": NoteTasks}
+class NoteAppend(NoteArgs):
+    note_id: str
+    expected_revision: int = Field(ge=1)
+    text: AuthoredText = Field(min_length=1, max_length=30000)
+
+
+class NoteReplace(NoteArgs):
+    note_id: str
+    expected_revision: int = Field(ge=1)
+    old_text: AuthoredText = Field(min_length=1, max_length=30000)
+    new_text: AuthoredText = Field(max_length=30000)
+
+
+NOTE_COMMANDS = {"note.create": NoteCreate, "note.update": NoteUpdate, "note.tasks": NoteTasks,
+                 "note.append": NoteAppend, "note.replace": NoteReplace}

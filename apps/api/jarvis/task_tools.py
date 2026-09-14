@@ -55,6 +55,13 @@ def selection(owner, selection_id):
 
 
 def list_tasks(db, owner, args):
+    if args.get("assignee"):
+        from .assignees import resolve_assignee
+        resolved = resolve_assignee(db, owner, args["assignee"])
+        if args.get("assignee_id") and args["assignee_id"] != resolved:
+            raise DomainError("INVALID_ARGUMENT", "Assignee name and ID refer to different actors.")
+        args = {k:v for k,v in args.items() if k != "assignee"}
+        args["assignee_id"] = resolved
     limit, offset = args.get("limit", 30), args.get("offset", 0)
     if args.get("selection_id"):
         if any(k not in {"selection_id", "limit", "offset", "detail"} for k in args):

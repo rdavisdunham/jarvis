@@ -3,6 +3,7 @@ import type { Organization } from "./productivity";
 
 const fields: Record<string, string[]> = {
   show: ["view", "entity_id"],
+  saved_view: ["view_operation", "view_name", "saved_view_id"],
   chat: ["mode"],
   search: ["query", "view"],
   filter: [

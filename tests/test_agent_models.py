@@ -287,3 +287,28 @@ async def test_empty_or_malformed_provider_reply_finishes_job(keys, monkeypatch,
     with session_scope() as db:
         assert db.get(Job, turn).status == "failed"
         assert db.get(BudgetReservation, turn).state == "closed"
+
+
+async def test_truncated_call_is_not_executed(keys, monkeypatch):
+    select_provider("gemini")
+    data=response(tool("task_create",{"title":"Never execute truncated output"}))
+    data["finish_reason"]="length"
+    cid,_=fake_provider(monkeypatch,[data])
+    result=await conversation.chat("davin","test",str(uuid4()),cid,"Create a task")
+    assert result["status"]=="partial"
+    assert "output space" in result["message"]
+    with session_scope() as db:
+        assert list(db.scalars(select(Task)))==[]
+
+
+@pytest.mark.parametrize("raw",["{broken", "[]"])
+async def test_malformed_tool_arguments_are_reported_without_execution(keys,monkeypatch,raw):
+    select_provider("gemini")
+    call=tool("task_create",{})
+    call["function"]["arguments"]=raw
+    cid,_sent=fake_provider(monkeypatch,[response(call),response(content="That call could not be completed.")])
+    result=await conversation.chat("davin","test",str(uuid4()),cid,"Create a task")
+    assert result["status"]=="partial"
+    assert result["tool_errors"][0]["error"]=="MALFORMED_TOOL_ARGUMENTS"
+    with session_scope() as db:
+        assert list(db.scalars(select(Task)))==[]
