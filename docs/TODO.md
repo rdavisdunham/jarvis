@@ -1,7 +1,104 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 14, 2026. Eridani (Eri) is the assistant's name.
+Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
+
+## Task routing — specified, parked until after cloud migration
+
+- [x] Inspect current backend memory injection, task organization and learning.
+      Write [Task routing PRD](TASK_ROUTING_PRD.md) with agreed product decisions,
+      implementation proposal, correction lifecycle and acceptance cases.
+- [x] Confirm automatic strong matches with uncertain fields left unassigned;
+      customizable classification fields; one client per project and standalone
+      client tasks.
+- [ ] After migration, implement the PRD in stages: classification fields and
+      canonical inheritance, separate task-routing knowledge, evidence/corrections,
+      historical preview, shadow evaluation, then automatic routing.
+- [ ] At implementation, rename Davis's Business space to Work in place; configure
+      Client = ABC and the Andi / Transcript Intelligence project relationships.
+      These are planned setup requirements; no records have been changed for them.
+- [ ] Add editable work windows as weak context and an independent routing-memory
+      section. Do not mix personal-memory facts with routing rules or reinforce
+      Eri's unconfirmed guesses.
+
+## Backlog status — September 15
+
+- [x] Add Backlog to new-task creation, inline task details, bulk edits, board
+      drag/drop, status filters, saved views/links and Eri's task/site tools.
+      New tasks still default to Open. Backlog means work captured for later;
+      Open means ready to start; Deferred means previously planned work postponed.
+- [x] Map Linear Backlog to Eridani Backlog in both directions, including publish.
+      Existing Deferred-to-Linear-Backlog compatibility remains.
+- [x] Preserve existing task statuses, dates and reminder behavior. Active still
+      includes unfinished Backlog tasks; due/planned Backlog work stays visible in
+      matching calendar/day views. No database migration or bulk rewrite needed.
+- [x] Validate the exact local release: 84 backend tests, 101 frontend tests
+      (one existing Realtime skip), production build and healthy API/worker.
+      Deploy alongside the 30-second voice/end-conversation fix; cloud migration
+      preparation remains undeployed.
+
+## Voice shutdown update — September 15
+
+- [x] Increase the quiet voice timeout to **30 seconds**, measured after actual
+      speech/playout and task work, with activity resetting the window.
+- [x] Replace conflicting instructions that prohibited farewell delegation.
+      Live now delegates closing intent to the backend's session-bound
+      `voice_end` tool. It accepts no account/device/session IDs, stops further
+      calls in the turn, preserves committed task receipts, and closes provider
+      media before releasing the microphone.
+- [x] Harden browser fallback for natural farewells and same-bubble Live captions;
+      preserve negation, added requests and contextual yes/no meaning.
+- [x] Verify the backend tool/close path and browser timeout, cleanup and fresh
+      session behavior with automated checks.
+- [ ] Confirm natural spoken endings on the actual phone/desktop after refresh.
+      Automated tests do not measure the Live model's real-world recognition rate.
+
+## Cloud migration
+
+Decision: retain point-in-time recovery alongside independent daily backups.
+Decision: prepare the Railway migration now, with Google-only public sign-in.
+Cloud preview provisioning is complete; private data transfer and cutover remain pending. See the
+[migration runbook and owner checklist](CLOUD_MIGRATION.md).
+
+- [x] Compare Railway, managed PostgreSQL options, Cloudflare and a VPS against
+      the actual workload and Brainforge's deployment patterns. See the
+      [hosting plan](CLOUD_HOSTING_PLAN.md) and
+      [interactive cost comparison](cloud-hosting-plan.html).
+- [x] Prepare Railway API/worker/backup service configuration, PostgreSQL 16
+      image candidate with pgvector and inherited Railway recovery tooling,
+      serialized migrations, bounded connection pools and a worker overlap lock.
+- [x] Add Google-only cloud sign-in, revocation of old pairing sessions, safe
+      staging pause flags, maintenance mode, schema readiness and private
+      credential handoff/preflight. Existing local configuration is unchanged.
+- [x] Add encrypted R2-compatible daily/weekly exports, scoped retention,
+      authenticated downloads and atomic new/empty-database restores. Isolated
+      S3-compatible rehearsal preserved all 55 public/DBOS tables and integration
+      encryption; populated-target restore was refused.
+- [x] Configure Railway project, API/worker, `app.eridani.app`, Google callback,
+      private database references and PostgreSQL **16.15**, matching development.
+      Use `.railway/railway.ts`; the old per-service JSON mechanism is rejected
+      for new services. Explicit image pins prevent the import default selecting 18.
+- [x] Deploy the source-only cloud preview against separate `eridani_preview`.
+      HTTPS/readiness/authentication checks pass; Google-only login is configured.
+      Worker and provider actions stay paused; the PC app remains active.
+- [x] Enable native PITR; verify the initial full backup and continuous archive
+      success with zero observed failures.
+- [x] Verify native PITR timestamp restore: the sibling contains the synthetic
+      `before` marker and the source retains `after`, on PostgreSQL 16.15.
+      Desktop/mobile cloud login-page browser checks also pass.
+- [ ] Approve and perform the full private database transfer. Automatic approval
+      review requires explicit consent for records/encrypted credentials going to
+      the user's Railway project. The encrypted local export is ready; no private
+      records have moved. Then compare all 55 table counts and credential decryption.
+- [ ] Complete real OAuth login, streaming, Android permissions/notifications and
+      controlled integration checks. Freeze the source, take a final export and
+      enable only the cloud worker after verification; retain the stopped rollback
+      copy and test with the PC offline.
+- [ ] Deferred by owner: supply R2 bucket-scoped S3 credentials, deploy the daily
+      backup job and verify export/download/restore. `eridani-backups` exists.
+- [ ] Retire the unused PostgreSQL 18 service after confirming it holds no needed
+      data. Remove migration-only public database access after cutover.
+- [ ] Automate periodic isolated recovery drills and stale/failed-backup alerts.
 
 ## Ordered delivery batches — next work
 
@@ -59,7 +156,7 @@ produce predictable delivery without duplicate task effects.
 ### Batch 4 — device/operations checks, then the seven-day pilot
 
 - [ ] Verify GPT-Live recovery, interruption, late corrections, voice ending,
-      wake words and 15-second handoff on the actual phone and desktop.
+      wake words and 30-second handoff on the actual phone and desktop.
       Realtime remains paused.
 - [ ] Verify locked-phone Web Push, network gaps and actual Windows reboot
       startup. Automate isolated restore drills and stale/failed-backup alerts;
@@ -585,7 +682,7 @@ the original sequence. Current implementation and owner feedback change that ord
 
 Later owner decisions supersede the PRD's local GPU/legacy-memory migration
 proposals: use cloud inference, retire the active legacy Qdrant bridge, and consider
-pgvector after base hardening. Keep the host awake, retain the 15-second quiet
+pgvector after base hardening. Keep the host awake, retain the 30-second quiet
 timeout without the old total-session caps, and use the configured fixed pairing
 PIN until Google sign-in. GPT-Live, full conversational app control, linked notes,
 unified work items and weekly memory review extend the original PRD.
@@ -615,7 +712,7 @@ are deferred until base hardening; do not treat missing development costs as zer
       This is the initial typed UI tool, not the full CopilotKit expansion below.
 - [x] Foreground wake phrases “Eri,” “Eridani,” and “Hey, Eri” using browser
       recognition. Owner confirmed the existing Hey Eri behavior works.
-- [x] A 15-second quiet window after responses, paused/reset by speech and task work.
+- [x] A 30-second quiet window after responses, paused/reset by speech and task work.
       Actual audio playout extends the window beyond early transcript arrival.
       Wake-word listening resumes after voice has fully closed.
 - [x] Global iridescent voice glow and a mobile/desktop voice dock outside chat.
@@ -662,7 +759,7 @@ are deferred until base hardening; do not treat missing development costs as zer
       Remove the old JARVIS_SYSTEM_PROMPT entry from environment configuration.
 - [x] Remove the old five-minute and twenty-turn voice session caps.
       Keep browser-disconnect cleanup, provider failure handling, explicit End
-      voice, and the existing budget controls. The new owner-requested 15-second
+      voice, and the existing budget controls. The new owner-requested 30-second
       quiet timeout is separate from the removed total-session limits.
 
 ## Latest validation
@@ -722,7 +819,7 @@ The first hardening implementation batch is now deployed; remaining acceptance a
 
 ### Completed: current experience
 
-- [x] Preserve working Hey Eri behavior; add standalone Eri and the 15-second timeout.
+- [x] Preserve working Hey Eri behavior; add standalone Eri and the 30-second timeout.
 - [x] CopilotKit chat-panel controls, mobile behavior and current app context.
 - [x] Page/capability map, selected/visible IDs, search/filter state and UI acknowledgements.
 - [x] Global voice glow and controls while chat is closed.
@@ -789,7 +886,7 @@ device acceptance items are outstanding checks, not claims of observed failures.
       through long conversations/provider session endings, interruptions,
       a correction arriving during a pending action, close/reopen, network loss and
       API restart. Confirm receipts restore committed outcomes without replaying
-      actions. Check standalone Eri, 15-second mic handoff, current selection,
+      actions. Check standalone Eri, 30-second mic handoff, current selection,
       browser action acknowledgments and recovery on the actual mobile device.
       Extend existing record editors/settings coverage after these paths are sound;
       search, filters, navigation and chat control already exist.
@@ -973,7 +1070,7 @@ pre-response context. Saved counts and processing counts are reported separately
       delivery, opening the notice, and recovery after a connection gap.
 - [ ] Validate long conversations on the actual device, varied speech, pauses,
       and interruption timing. Provider/network interruptions remain possible
-      with no total-duration/turn cap and the new 15-second quiet timeout.
+      with no total-duration/turn cap and the new 30-second quiet timeout.
 - [ ] After expansion and voice/device/operations acceptance, run the seven-day usage/cost and voice-quality pilot; record issues and
       tune the gate and personality from actual use.
 - [ ] Test startup after an actual Windows reboot.

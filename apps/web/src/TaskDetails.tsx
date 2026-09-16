@@ -192,6 +192,7 @@ export function TaskDetails(p: Props) {
     title: z.string().min(1).max(500),
     notes: z.string().max(10000),
     status: choice([
+      "backlog",
       "open",
       "in_progress",
       "waiting",
@@ -593,6 +594,7 @@ export function TaskDetails(p: Props) {
                 "status",
                 "Status",
                 [
+                  "backlog",
                   "open",
                   "in_progress",
                   "waiting",

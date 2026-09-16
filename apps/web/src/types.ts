@@ -276,6 +276,7 @@ export interface UIContext {
   task_status:
     | "active"
     | "all"
+    | "backlog"
     | "open"
     | "in_progress"
     | "waiting"

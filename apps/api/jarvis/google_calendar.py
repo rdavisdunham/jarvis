@@ -26,6 +26,8 @@ class SyncFailure(Exception):
 class CalendarClient:
     def __init__(self, credentials):
         settings = get_settings()
+        from .config import require_external_services
+        require_external_services()
         token = Credentials(
             None,
             refresh_token=credentials["refresh_token"],

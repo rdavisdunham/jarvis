@@ -223,3 +223,42 @@ def test_luna_cache_and_reasoning_accounting():
     # includes 20 reasoning tokens already, so do not count those twice.
     assert agent.usage_cost(usage) == pytest.approx((40 * 0.2 + 40 * 0.02 + 20 * 0.25 + 30 * 1.2) / 1e6)
     assert agent.reserve_cost(100) == pytest.approx((100 * 0.25 + 8192 * 1.2) / 1e6)
+
+
+async def test_voice_end_is_session_bound_and_stops_the_rest_of_the_tool_batch(monkeypatch):
+    from unittest.mock import Mock
+    cid, sent = setup(monkeypatch, [packet(
+        function("task_create", {"title": "Requested final task"}, "save"),
+        function("voice_end", {}, "end"),
+        function("task_create", {"title": "Must not run after goodbye"}, "late"),
+    )])
+    end = Mock(return_value={"status": "closing"})
+    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Save the task then end voice.", end_voice=end)
+    end.assert_called_once_with()
+    assert result["voice_ended"] and result["tool_calls"] == 2
+    assert len(result["actions"]) == 1 and len(sent) == 1
+    with session_scope() as db:
+        assert list(db.scalars(select(Task.title))) == ["Requested final task"]
+    definition = next(t for t in sent[0]["body"]["tools"] if t["name"] == "voice_end")
+    assert definition["parameters"]["properties"] == {}
+    assert definition["parameters"]["additionalProperties"] is False
+
+
+async def test_text_chat_cannot_invent_voice_end_and_voice_tool_rejects_target_ids(monkeypatch):
+    from unittest.mock import Mock
+    cid, sent = setup(monkeypatch, [
+        packet(function("voice_end", {}, "not-loaded")),
+        packet(answer("No active voice session.")),
+    ])
+    result = await conversation.chat("davin", "test", str(uuid4()), cid, "End voice")
+    assert not result["voice_ended"]
+    assert result["tool_errors"][0]["error"] == "TOOL_NOT_LOADED"
+    assert "voice_end" not in [t["name"] for t in sent[0]["body"]["tools"]]
+    cid, _ = setup(monkeypatch, [
+        packet(function("voice_end", {"session_id": "another-session"}, "bad")),
+        packet(answer("I could not apply that control.")),
+    ])
+    end = Mock(return_value={"status": "closing"})
+    result = await conversation.chat("davin", "test", str(uuid4()), cid, "End voice", end_voice=end)
+    end.assert_not_called()
+    assert result["tool_errors"][0]["error"] == "INVALID_ARGUMENT"

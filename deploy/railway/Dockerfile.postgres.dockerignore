@@ -1,0 +1,4 @@
+**
+!deploy
+!deploy/railway
+!deploy/railway/Dockerfile.postgres

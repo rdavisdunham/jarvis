@@ -13,6 +13,7 @@ from .models import Job, LinearConnection, LinearIssue, Project, Task, now
 
 TERMINAL = {"succeeded", "failed", "cancelled", "unconfirmed", "conflict"}
 STATE_TYPES = {
+    "backlog": "backlog",
     "open": "unstarted",
     "in_progress": "started",
     "completed": "completed",
@@ -180,7 +181,7 @@ def apply_remote(db, conn, link, remote):
             "completed": "completed",
             "canceled": "cancelled",
             "duplicate": "cancelled",
-            "backlog": "deferred",
+            "backlog": "backlog",
         }.get(state, "open"),
         "priority": {0: 0, 1: 3, 2: 3, 3: 2, 4: 1}.get(remote.get("priority"), 0),
         "due_date": date.fromisoformat(remote["dueDate"]) if remote.get("dueDate") else None,

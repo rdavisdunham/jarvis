@@ -55,7 +55,7 @@ class UIContext(BaseModel):
     selected_note_id: str | None = Field(default=None, max_length=36)
     selected_task_id: str | None = Field(default=None, max_length=36)
     visible_ids: list[str] = Field(default_factory=list, max_length=60)
-    task_status: Literal["all", "active", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
+    task_status: Literal["all", "active", "backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] = (
         "all"
     )
     space_id: str = Field(default="", max_length=36)

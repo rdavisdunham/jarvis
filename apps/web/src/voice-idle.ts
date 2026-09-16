@@ -4,7 +4,7 @@ export class VoiceIdle {
   private active = false;
   private busy = false;
   private speaking = false;
-  constructor(private timeout = 15000) {}
+  constructor(private timeout = 30000) {}
   start(now: number) {
     this.active = true;
     this.touch(now);

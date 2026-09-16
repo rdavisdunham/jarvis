@@ -252,3 +252,42 @@ async def test_failed_delegation_can_recover_in_same_live_session(controller, mo
     assert c.receipts == ["previously-confirmed"]
     assert c.send.await_args.args[0]["content"] == "Found your saved task."
     await c.close()
+
+
+async def test_delegated_voice_end_closes_provider_after_preserving_saved_receipts(controller, monkeypatch):
+    c = controller
+    c.groups = [{"role": "user", "content": "I'm done talking for now.", "saved": True}]
+    c.input_revision = 1
+    c.session_created = True
+    c.ws = type("Socket", (), {"close": AsyncMock()})()
+
+    async def send(event):
+        if event["type"] == "session.close":
+            await c.event({"type": "session.closed", "reason": "client_requested", "usage": {"seconds": 15}})
+    c.send = AsyncMock(side_effect=send)
+
+    async def backend(*args, **kwargs):
+        outcome = kwargs["end_voice"]()
+        assert outcome["status"] == "closing"
+        assert kwargs["tool_guard"]()
+        return {"message": "Voice conversation ended.", "actions": [{"command_id": "already-saved"}], "ui_actions": []}
+    monkeypatch.setattr(live_voice, "chat", backend)
+    await c.delegate("finish")
+    assert c.closed and c.finalized.is_set() and c.error is None
+    assert c.receipts == ["already-saved"]
+    assert [call.args[0]["type"] for call in c.send.await_args_list] == ["session.close"]
+    c.ws.close.assert_awaited_once()
+    await c.close()
+    c.ws.close.assert_awaited_once()
+
+
+async def test_voice_end_still_closes_if_result_persistence_fails(controller, monkeypatch):
+    c = controller
+    c.groups = [{"role": "user", "content": "That's it for now.", "saved": True}]
+    c.input_revision = 1
+    async def backend(*args, **kwargs):
+        kwargs["end_voice"]()
+        raise RuntimeError("Synthetic persistence failure after shutdown request")
+    monkeypatch.setattr(live_voice, "chat", backend)
+    await c.delegate("finish")
+    assert c.closed

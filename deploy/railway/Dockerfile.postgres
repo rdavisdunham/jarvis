@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Major tag preserves Railway's current TLS + pgBackRest entrypoint and recovery contract.
+FROM ghcr.io/railwayapp-templates/postgres-ssl:16
+USER root
+ADD https://github.com/pgvector/pgvector.git#v0.8.6 /tmp/pgvector
+RUN apt-get update \
+    && apt-mark hold locales \
+    && apt-get install -y --no-install-recommends build-essential postgresql-server-dev-16 \
+    && cd /tmp/pgvector \
+    && make clean && make OPTFLAGS="" && make install \
+    && mkdir -p /usr/share/doc/pgvector \
+    && cp LICENSE README.md /usr/share/doc/pgvector/ \
+    && rm -rf /tmp/pgvector \
+    && apt-get remove -y build-essential postgresql-server-dev-16 \
+    && apt-get autoremove -y \
+    && apt-mark unhold locales \
+    && rm -rf /var/lib/apt/lists/*
+# Deliberately inherit ENTRYPOINT/CMD and PGDATA. Never replace Railway's wrapper.
+# The extension is available; schema/index creation remains an explicit migration.

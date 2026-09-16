@@ -54,7 +54,8 @@ class AvailabilityRequest(BaseModel):
 
 @router.get("/api/v1/auth/options")
 def options():
-    return {"google": configured(), "pairing": True}
+    settings = get_settings()
+    return {"google": configured(), "pairing": settings.pairing_enabled and bool(settings.owner_token)}
 
 
 @router.post("/api/v1/auth/google/start")

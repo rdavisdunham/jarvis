@@ -1,0 +1,6 @@
+**
+!deploy
+!deploy/railway
+!deploy/railway/Dockerfile.backup
+!scripts
+!scripts/backup.py

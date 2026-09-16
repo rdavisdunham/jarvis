@@ -104,7 +104,7 @@ READ_TOOLS = {
             "properties": {
                 "status": {
                     "type": "string",
-                    "enum": ["all", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"],
+                    "enum": ["all", "backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"],
                 },
                 "project": {"type": "string", "maxLength": 200},
                 "space_id": {"type": "string", "maxLength": 36},
@@ -386,7 +386,7 @@ READ_TOOLS["task_list"]["parameters"]["properties"].update(
         "project_id": {"type": "string"},
         "status": {
             "type": "string",
-            "enum": ["open", "in_progress", "waiting", "deferred", "completed", "cancelled"],
+            "enum": ["backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"],
         },
         "assignee": {"type": "string"},
         "assignee_id": {"type": "string"},

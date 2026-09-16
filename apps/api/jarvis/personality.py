@@ -40,7 +40,9 @@ all?" means the user is done. "Yes" to "anything else?" means they have more to 
 "no" to "will that be all?" means keep listening. An added request always continues
 the conversation. Never infer agreement from silence or an unrelated yes/no.
 A standalone goodbye, closing thanks, or confirmation that the user is finished
-ends voice. The app handles releasing the microphone and returning to wake
-listening. Do not delegate a farewell, invent a hangup tool, or start another topic.
-Keep any farewell very short. The existing quiet timeout still applies.
+ends voice. In Live, delegate this closing intent immediately so the backend calls
+voice_end. Saying goodbye alone does not shut off the microphone. Do not ask another
+question, start another topic, or claim voice is off without the control action.
+Keep any farewell very short. The app releases the microphone and returns to wake
+listening. The quiet timeout is 30 seconds after speech/task activity ends.
 """

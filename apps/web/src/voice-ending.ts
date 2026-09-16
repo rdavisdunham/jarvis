@@ -15,10 +15,10 @@ function normalize(text: string): string {
 
 // Complete standalone endings only; never close on quoted words or an added request.
 export function isVoiceEnding(text: string): boolean {
-  const value = normalize(text);
-  return /^(?:(?:okay|ok|alright|yes|yeah|yep|no|nope) )?(?:goodbye|good bye|bye|bye bye|thank you|thanks|thank you very much|thanks so much|thats all|that is all|thats all thank you|thank you thats all|(?:im|i am|were|we are) (?:done|finished)(?: for (?:now|today))?|thats (?:all|everything)(?: for (?:now|today))?|end (?:the )?(?:conversation|voice chat|voice session)|stop listening)$/.test(
-    value,
-  );
+  const value = normalize(text)
+    .replace(/^(?:(?:okay|ok|alright|yes|yeah|yep|no|nope|please)\s+)+/, "")
+    .replace(/\s+(?:please|thanks|thank you)(?:\s+(?:very much|so much))?$/, "");
+  return /^(?:goodbye|good bye|bye|bye bye|goodnight|good night|see you later|talk to you later|thank you|thanks|thank you very much|thanks so much|thanks for (?:your|the) help|(?:i think )?(?:thats|that is) (?:all|everything|it)(?: for (?:now|today|me))?|that(?:ll| will| would) (?:be all|do)(?: for (?:now|today))?|(?:im|i am|were|we are) (?:done|finished)(?: (?:talking|chatting|with (?:this|the|our) (?:conversation|chat)))?(?: for (?:now|today))?|(?:im|i am|were|we are) (?:all set|good)(?: for (?:now|today))|i dont need anything else|nothing else(?: for (?:now|today))?|(?:you can |lets )?(?:end|stop|close)(?: (?:the|this|our))? (?:conversation|voice chat|voice session|voice mode)|(?:you can )?stop listening(?: now)?)$/.test(value);
 }
 
 export function closingQuestion(text: string): ClosingQuestion | null {
@@ -91,6 +91,7 @@ export class VoiceEnding {
     kind: ClosingQuestion | null;
   } | null = null;
   private lastUser = { id: "", content: "" };
+  private lastUserFinal = false;
   private lastAssistant = { id: "", content: "" };
   private assistantBoundary = { id: "", content: "" };
   private assistantSinceUser = false;
@@ -126,6 +127,11 @@ export class VoiceEnding {
       (id !== this.lastUser.id || content !== this.lastUser.content)
     ) {
       this.assistantBoundary = { ...this.lastAssistant };
+      // A new spoken reply can extend the same display bubble. Strip the completed
+      // prior utterance even when the assistant did not ask a closing question.
+      if (this.lastUserFinal && id === this.lastUser.id && content.startsWith(this.lastUser.content)) {
+        this.answer = { id, prefix: this.lastUser.content, kind: null };
+      }
       this.assistantSinceUser = false;
     }
     if (
@@ -139,13 +145,14 @@ export class VoiceEnding {
       this.answer = {
         id,
         prefix,
-        kind: now - this.offer.at <= 30_000 ? this.offer.kind : null,
+        kind: now - this.offer.at <= 60_000 ? this.offer.kind : null,
       };
       this.offer = null;
     } else if (id !== this.answer?.id) {
       this.answer = { id, prefix: "", kind: null };
     }
     this.lastUser = { id, content };
+    this.lastUserFinal = !message.pending;
     if (message.pending) return false;
     const reply = content.startsWith(this.answer?.prefix ?? "")
       ? content.slice(this.answer?.prefix.length ?? 0)

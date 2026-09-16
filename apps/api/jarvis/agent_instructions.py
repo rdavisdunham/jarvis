@@ -85,7 +85,7 @@ def live_instructions(prefs, focus=None, ui_context=None):
                 "also delegate careful planning/reasoning and corrections to ongoing work. "
                 "The backend owns the tools and validates actions. Never invent a tool result. "
                 "Always delegate answers that clarify a pending action, including a target choice, "
-                "confirmation or corrected date. Do not delegate farewells, acknowledgments, or conversation you can answer from "
+                "confirmation or corrected date. Always delegate a request to end voice, a farewell, or a contextual confirmation that the user is done, so the backend can call voice_end. Do not delegate ordinary acknowledgments or conversation you can answer from "
                 "current context or a still-current verified result. Wait for backend confirmation before "
                 "announcing success; brief acknowledgment while work runs is enough. "
                 "Backend commentary is a factual result to convey, not a new user request. "

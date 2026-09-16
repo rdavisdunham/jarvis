@@ -411,3 +411,27 @@ test.each(["live"] as const)(
     await voice.stop();
   },
 );
+
+
+test("the default idle window keeps listening for 30 seconds then releases the microphone", async () => {
+  const changed = vi.fn();
+  await startVoice("live", changed);
+  await vi.advanceTimersByTimeAsync(29999);
+  expect(stopped).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(251);
+  expect(stopped).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenCalledWith(expect.objectContaining({state:"idle_timeout",closed:true}));
+});
+
+test("a server-side voice_end closes media and allows a fresh wake session", async () => {
+  const changed = vi.fn();
+  await startVoice("live", changed);
+  vi.mocked(api).mockResolvedValue({state:"closed",closed:true,error:null,text:"",receipts:["saved"]});
+  await vi.advanceTimersByTimeAsync(500);
+  expect(stopped).toHaveBeenCalledOnce();
+  expect(Peer.current.close).toHaveBeenCalledOnce();
+  vi.mocked(api).mockResolvedValue({state:"listening",closed:false,error:null,text:"",receipts:[]});
+  const next = await startVoice("live");
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
+  await next.stop();
+});

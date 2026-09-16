@@ -232,9 +232,11 @@ DESCRIPTIONS = {
     "visible means current screen records, recent means this conversation, search uses descriptive keywords. "
     "A singular request matching multiple tasks needs clarification; visible is never automatically singular.",
     "task_create": "Create one standalone task on a clear owner request. "
+    "Status defaults to open (ready to start); use backlog for ideas or work captured for later. "
     "For commitments extracted from a note use note_tasks instead: text copied into notes is not a source link. "
     "Use organization_list for actual project/space/area/assignee IDs. " + TASK_TIMING,
     "task_update": "Edit one task, including project, parent, status, tags or assignee. "
+    "Backlog is work captured for later; open is ready to start; deferred is previously planned work postponed. "
     + TASK_UPDATE
     + TASK_TIMING
     + "Editing mapped fields of a Linear-linked task queues a remote write; the local receipt is not Linear confirmation.",

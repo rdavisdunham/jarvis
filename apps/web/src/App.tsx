@@ -208,6 +208,7 @@ export default function App() {
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [notices, setNotices] = useState<Notice[]>([]);
   const [googleLogin, setGoogleLogin] = useState(false);
+  const [pairingLogin, setPairingLogin] = useState(false);
   const [googleEvent, setGoogleEvent] = useState<CalendarEntry | null>(null);
   const [noteEditor, setNoteEditor] = useState<NoteRecord | null>(null);
   const [noteRevision, setNoteRevision] = useState(0);
@@ -283,6 +284,7 @@ export default function App() {
   const [taskStatus, setTaskStatus] = useState<
     | "all"
     | "active"
+    | "backlog"
     | "open"
     | "in_progress"
     | "waiting"
@@ -373,8 +375,8 @@ export default function App() {
   );
   useEffect(() => {
     if (!boot)
-      api<{ google: boolean }>("/auth/options")
-        .then((d) => setGoogleLogin(d.google))
+      api<{ google: boolean; pairing: boolean }>("/auth/options")
+        .then((d) => { setGoogleLogin(d.google); setPairingLogin(d.pairing); })
         .catch(() => {});
   }, [!!boot]);
   useEffect(() => {
@@ -1662,7 +1664,7 @@ export default function App() {
           <p>
             Your day, with Eri.
             <br />
-            Sign in with Google, or pair an owner device.
+            {pairingLogin ? "Sign in with Google, or pair an owner device." : "Sign in with your linked or invited Google account."}
           </p>
           {googleLogin && (
             <button
@@ -1683,6 +1685,7 @@ export default function App() {
               <img src="/google-sign-in.png" alt="Sign in with Google" />
             </button>
           )}
+          {pairingLogin && <>
           <label>
             Pairing code
             <input
@@ -1698,15 +1701,15 @@ export default function App() {
             {busy ? "Connecting…" : "Connect to Eridani"}
             <ChevronRight size={17} />
           </button>
+          </>}
           {error && (
             <p role="alert" className="error-text">
               {error}
             </p>
           )}
-          <small>
-            The pairing code opens the owner account. Invited people use Google
-            sign-in.
-          </small>
+          {pairingLogin && <small>
+            The pairing code opens the owner account. Invited people use Google sign-in.
+          </small>}
         </form>
       </div>
     );
@@ -1964,6 +1967,7 @@ export default function App() {
                     >
                       <option value="active">Active</option>
                       <option value="all">All</option>
+                      <option value="backlog">Backlog</option>
                       <option value="open">Open</option>
                       <option value="in_progress">In progress</option>
                       <option value="waiting">Waiting</option>
@@ -3128,11 +3132,6 @@ export default function App() {
             if (selected.id === "new") {
               delete values.task_id;
               delete values.expected_revision;
-              if (values.status !== "open")
-                throw new Error(
-                  "Save the new task before changing its status.",
-                );
-              delete values.status;
             }
             const result = await mutate<Task>(
               selected.id === "new" ? "task.create" : "task.update",

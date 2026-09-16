@@ -16,7 +16,7 @@ class ViewState(BaseModel):
     tab: Literal["today", "inbox", "week", "all"] = "all"
     query: str = Field(default="", max_length=300)
     status: Literal[
-        "all", "active", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"
+        "all", "active", "backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"
     ] = "active"
     project: str = Field(default="", max_length=200)
     space: str = Field(default="", max_length=36)

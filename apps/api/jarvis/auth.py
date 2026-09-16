@@ -29,7 +29,7 @@ def _authenticate(request: Request, personal=False):
     token = request.cookies.get("jarvis_session", "")
     with session_scope() as db:
         row = db.get(AuthSession, digest(token)) if token else None
-        if row is None or row.expires_at <= now():
+        if row is None or row.expires_at <= now() or (row.auth_method == "pairing" and not get_settings().pairing_enabled):
             raise DomainError("NOT_AUTHORIZED", "Sign in to Eridani.", 401)
         from .access import identity as resolve
         from .access import request_access
@@ -57,7 +57,7 @@ def authenticate_personal(request: Request):
 
 def sign_in(token):
     settings = get_settings()
-    if not settings.owner_token or not secrets.compare_digest(token, settings.owner_token):
+    if not settings.pairing_enabled or not settings.owner_token or not secrets.compare_digest(token, settings.owner_token):
         raise DomainError("NOT_AUTHORIZED", "That pairing code is not valid.", 401)
     return new_session(settings.owner_id)
 

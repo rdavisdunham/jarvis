@@ -30,6 +30,7 @@ export const editorKinds = [
 export const taskStates = [
   "all",
   "active",
+  "backlog",
   "open",
   "in_progress",
   "waiting",

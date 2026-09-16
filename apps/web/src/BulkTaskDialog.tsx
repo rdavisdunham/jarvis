@@ -56,6 +56,7 @@ export function BulkTaskDialog({
     schema: z.object({
       status: choice([
         "",
+        "backlog",
         "open",
         "in_progress",
         "waiting",
@@ -133,6 +134,7 @@ export function BulkTaskDialog({
             >
               <option value="">Keep current</option>
               {[
+                "backlog",
                 "open",
                 "in_progress",
                 "waiting",

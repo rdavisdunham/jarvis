@@ -2,14 +2,12 @@
 
 import json
 import logging
-import signal
-import time
 from datetime import timedelta
 from urllib.parse import urlsplit
 
 from dbos import DBOS, DBOSClient, Queue
 from pywebpush import WebPushException, webpush
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 
 from . import budget
 from .config import get_settings
@@ -212,10 +210,15 @@ def send_deliveries():
 
 def housekeeping():
     from .models import OwnerSettings
+
     with session_scope() as db:
-        owners=set(db.scalars(select(OwnerSettings.owner_id)))|set(db.scalars(select(Source.owner_id).distinct()))|{get_settings().owner_id}
+        owners = (
+            set(db.scalars(select(OwnerSettings.owner_id)))
+            | set(db.scalars(select(Source.owner_id).distinct()))
+            | {get_settings().owner_id}
+        )
         for owner in owners:
-            housekeeping_owner(db,owner)
+            housekeeping_owner(db, owner)
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
             select(Job).where(
@@ -278,6 +281,22 @@ def housekeeping_owner(db, owner):
 
 
 def main():
+    from .deploy import stop_event, validate_deployment, worker_lease
+
+    settings = get_settings()
+    validate_deployment(settings)
+    stop = stop_event()
+    logging.basicConfig(level=logging.INFO)
+    if not settings.worker_enabled:
+        logger.info("Worker is paused; no jobs or external effects will run.")
+        stop.wait()
+        return
+    with worker_lease(stop) as lease:
+        if lease is not None:
+            run_supervisor(stop, lease)
+
+
+def run_supervisor(stop, lease):
     settings = get_settings()
     logging.basicConfig(level=logging.INFO)
     DBOS(
@@ -286,6 +305,7 @@ def main():
             "system_database_url": settings.database_url,
             "application_version": "jarvis-v1",
             "run_admin_server": False,
+            "sys_db_pool_size": settings.dbos_pool_size,
         }
     )
     Queue("jarvis", concurrency=1, worker_concurrency=1)
@@ -293,49 +313,53 @@ def main():
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
     DBOS.launch()
-    client = DBOSClient(system_database_url=settings.database_url)
-    running = True
-
-    def stop(*_):
-        nonlocal running
-        running = False
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
+    client = DBOSClient(
+        system_database_url=settings.database_url, system_database_pool_size=settings.dbos_client_pool_size
+    )
+    lease_pid = lease.scalar(text("SELECT pg_backend_pid()"))
+    lease.commit()
     iteration = 0
-    while running:
-        try:
-            with session_scope() as db:
-                scan_schedules(db)
-                from .memory_learning import queue_backfill
+    try:
+        while not stop.is_set():
+            # A lost lease must stop the supervisor, not silently reconnect without its lock.
+            if lease.invalidated or lease.scalar(text("SELECT pg_backend_pid()")) != lease_pid:
+                raise RuntimeError("Worker lease was lost.")
+            lease.commit()
+            try:
+                with session_scope() as db:
+                    scan_schedules(db)
+                    from .memory_learning import queue_backfill
 
-                queue_backfill(db)
-                from .memory_review import queue_due_reviews
+                    queue_backfill(db)
+                    from .memory_review import queue_due_reviews
 
-                queue_due_reviews(db)
-                from .google_calendar import queue_sync
-                from .models import GoogleIdentity, LinearConnection
-                for account in db.scalars(select(GoogleIdentity.owner_id)):
-                    queue_sync(db, account)
-                from .linear_sync import queue_sync as linear_queue_sync
+                    queue_due_reviews(db)
+                    from .google_calendar import queue_sync
+                    from .models import GoogleIdentity, LinearConnection
 
-                for account in db.scalars(select(LinearConnection.owner_id)):
-                    linear_queue_sync(db, account)
-                health = db.get(WorkerHealth, "worker")
-                if health:
-                    health.last_scan_at = now()
-                else:
-                    db.add(WorkerHealth(id="worker", last_scan_at=now()))
-            dispatch_outbox(client)
-            prepare_deliveries()
-            send_deliveries()
-            if iteration % 12 == 0:
-                housekeeping()
-            iteration += 1
-        except Exception:
-            logger.exception("Worker cycle failed; will retry")
-        time.sleep(settings.worker_interval_seconds)
-    DBOS.destroy(workflow_completion_timeout_sec=10)
+                    for account in db.scalars(select(GoogleIdentity.owner_id)):
+                        queue_sync(db, account)
+                    from .linear_sync import queue_sync as linear_queue_sync
+
+                    for account in db.scalars(select(LinearConnection.owner_id)):
+                        linear_queue_sync(db, account)
+                    health = db.get(WorkerHealth, "worker")
+                    if health:
+                        health.last_scan_at = now()
+                    else:
+                        db.add(WorkerHealth(id="worker", last_scan_at=now()))
+                dispatch_outbox(client)
+                prepare_deliveries()
+                send_deliveries()
+                if iteration % 12 == 0:
+                    housekeeping()
+                iteration += 1
+            except Exception:
+                logger.exception("Worker cycle failed; will retry")
+            stop.wait(settings.worker_interval_seconds)
+    finally:
+        client.destroy()
+        DBOS.destroy(workflow_completion_timeout_sec=10)
 
 
 if __name__ == "__main__":

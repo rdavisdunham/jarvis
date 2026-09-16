@@ -78,6 +78,9 @@ def make_flow(purpose, state, verifier):
 
 
 def begin(purpose, session_hash=None):
+    if purpose != "login":
+        from .config import require_external_services
+        require_external_services()
     if not configured():
         raise DomainError("INTEGRATION_UNAVAILABLE", "Google connection needs server setup.", 503)
     parsed = urlsplit(callback_uri())
@@ -115,6 +118,9 @@ def begin(purpose, session_hash=None):
 
 
 def exchange(purpose, state, verifier, code):
+    if purpose != "login":
+        from .config import require_external_services
+        require_external_services()
     flow = make_flow(purpose, state, verifier)
     # This session is local to one exchange; partial/incremental grants are checked explicitly below.
     flow.oauth2session._client.scope = None
@@ -291,7 +297,7 @@ def disconnect_calendar(owner, *, unlink=False):
             db.delete(identity)
         emit(db, owner, "google.changed", owner)
     revoked = True
-    if token:
+    if token and get_settings().external_services_enabled:
         try:
             result = httpx.post("https://oauth2.googleapis.com/revoke", data={"token": token}, timeout=15)
             revoked = result.status_code in {200, 400}

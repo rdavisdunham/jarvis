@@ -1,13 +1,42 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=(".env", ".env.upgrade"), extra="ignore", env_prefix="JARVIS_")
-    database_url: str = "postgresql+psycopg://jarvis:jarvis@127.0.0.1:54329/jarvis"
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.upgrade"),
+        extra="ignore",
+        env_prefix="JARVIS_",
+        hide_input_in_errors=True,
+        populate_by_name=True,
+    )
+    database_url: str = Field(
+        default="postgresql+psycopg://jarvis:jarvis@127.0.0.1:54329/jarvis",
+        validation_alias=AliasChoices("JARVIS_DATABASE_URL", "DATABASE_URL"),
+    )
+    deployment_environment: Literal["local", "staging", "production"] = "local"
+    pairing_enabled: bool = True
+    worker_enabled: bool = True
+    external_services_enabled: bool = True
+    maintenance_mode: bool = False
+    database_pool_size: int = Field(default=10, ge=1, le=50)
+    database_max_overflow: int = Field(default=10, ge=0, le=50)
+    dbos_pool_size: int = Field(default=10, ge=5, le=50)
+    dbos_client_pool_size: int = Field(default=5, ge=5, le=20)
+
+    @field_validator("database_url")
+    @classmethod
+    def normalize_database_url(cls, value):
+        # Railway supplies a libpq URL. Use our installed psycopg v3 driver.
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
+
     owner_id: str = "davin"
     owner_name: str = "Davin"
     owner_token: str = ""
@@ -51,9 +80,28 @@ def get_settings():
 
     from dotenv import dotenv_values
 
-    legacy = {**dotenv_values(".env"), **os.environ}
-    settings = Settings()
+    env_override = os.environ.get("JARVIS_ENV_FILE")
+    if env_override is None:
+        legacy = {**dotenv_values(".env"), **os.environ}
+        settings = Settings()
+    else:
+        # An explicit empty value disables local file fallback for cloud preflight.
+        legacy = {**(dotenv_values(env_override) if env_override else {}), **os.environ}
+        settings = Settings(_env_file=env_override or None)
     settings.openai_api_key = settings.openai_api_key or legacy.get("OPENAI_API_KEY", "") or ""
     settings.groq_api_key = settings.groq_api_key or legacy.get("GROQ_API_KEY", "") or ""
     settings.gemini_api_key = settings.gemini_api_key or legacy.get("GEMINI_API_KEY", "") or ""
+    if not settings.external_services_enabled:
+        # A restored staging database must not spend money or send device notifications.
+        settings.openai_api_key = settings.groq_api_key = settings.gemini_api_key = ""
+        settings.vapid_private_key = settings.home_assistant_token = ""
     return settings
+
+
+def require_external_services():
+    if not get_settings().external_services_enabled:
+        from .domain import DomainError
+
+        raise DomainError(
+            "EXTERNAL_SERVICES_DISABLED", "External services are paused in this environment.", 503
+        )

@@ -1,0 +1,211 @@
+{
+  "checked": "2026-09-14",
+  "currency": "USD",
+  "hoursPerMonth": 730,
+  "assumptions": {
+    "appRamGB": 0.6,
+    "appAvgVcpu": 0.05,
+    "outgoingGB": 20,
+    "railDbRamGB": 0.25,
+    "railDbAvgVcpu": 0.03,
+    "railVolumeGB": 5,
+    "railArchiveUploadGB": 20,
+    "railArchiveStoredGBMonth": 20,
+    "backupCompute": 1,
+    "externalDbRequestGB": 5,
+    "dbGB": 1,
+    "dbResponseGB": 100,
+    "neonAvgCU": 0.25,
+    "neonHistoryGBMonth": 2,
+    "r2GB": 2
+  },
+  "rates": {
+    "railRamGBMonth": 10,
+    "railVcpuMonth": 20,
+    "railEgressGB": 0.05,
+    "railVolumeGBMonth": 0.15,
+    "railBucketGBMonth": 0.015,
+    "railHobbyMinimum": 5,
+    "railProMinimum": 20,
+    "neonCUHour": 0.106,
+    "neonDataGBMonth": 0.35,
+    "neonHistoryGBMonth": 0.2,
+    "neonIncludedEgressGB": 500,
+    "neonEgressGB": 0.1,
+    "supabaseOrg": 25,
+    "supabaseComputeCredit": 10,
+    "supabaseMicro": 10,
+    "supabaseIncludedDiskGB": 8,
+    "supabaseDiskGB": 0.125,
+    "supabaseIncludedEgressGB": 250,
+    "supabaseEgressGB": 0.09
+  },
+  "exclusions": [
+    "AI API usage",
+    "domain",
+    "tax",
+    "labor",
+    "temporary staging and restore copies",
+    "paid support",
+    "email/SMS",
+    "extra R2 use above assumed free allowance"
+  ],
+  "sources": [
+    [
+      "Railway",
+      "Pricing",
+      "https://docs.railway.com/pricing"
+    ],
+    [
+      "Railway",
+      "Plan limits",
+      "https://docs.railway.com/pricing/plans"
+    ],
+    [
+      "Railway",
+      "PostgreSQL responsibilities and extensions",
+      "https://docs.railway.com/databases/postgresql"
+    ],
+    [
+      "Railway",
+      "Point-in-time recovery",
+      "https://docs.railway.com/volumes/point-in-time-recovery"
+    ],
+    [
+      "Railway",
+      "Bucket billing",
+      "https://docs.railway.com/storage-buckets/billing"
+    ],
+    [
+      "Railway",
+      "Volume limitations",
+      "https://docs.railway.com/volumes/reference"
+    ],
+    [
+      "Railway",
+      "Public networking limits",
+      "https://docs.railway.com/networking/public-networking/specs-and-limits"
+    ],
+    [
+      "Railway",
+      "Private networking",
+      "https://docs.railway.com/networking/private-networking/how-it-works"
+    ],
+    [
+      "Railway",
+      "Outbound networking",
+      "https://docs.railway.com/networking/outbound-networking"
+    ],
+    [
+      "Railway",
+      "Cost control",
+      "https://docs.railway.com/pricing/cost-control"
+    ],
+    [
+      "Railway",
+      "Regions",
+      "https://docs.railway.com/deployments/regions"
+    ],
+    [
+      "Neon",
+      "Pricing",
+      "https://neon.com/pricing"
+    ],
+    [
+      "Neon",
+      "Scale to zero",
+      "https://neon.com/docs/introduction/scale-to-zero"
+    ],
+    [
+      "Neon",
+      "Connection pooling",
+      "https://neon.com/docs/connect/connection-pooling"
+    ],
+    [
+      "Neon",
+      "Backup and restore",
+      "https://neon.com/docs/manage/backups"
+    ],
+    [
+      "Supabase",
+      "Pricing",
+      "https://supabase.com/pricing"
+    ],
+    [
+      "Supabase",
+      "Database backups",
+      "https://supabase.com/docs/guides/platform/backups"
+    ],
+    [
+      "Supabase",
+      "Connecting to Postgres",
+      "https://supabase.com/docs/guides/database/connecting-to-postgres"
+    ],
+    [
+      "Supabase",
+      "Hardening Supabase",
+      "https://supabase.com/blog/hardening-supabase"
+    ],
+    [
+      "Supabase",
+      "Security changes in 2025",
+      "https://supabase.com/blog/supabase-security-2025-retro"
+    ],
+    [
+      "DBOS",
+      "Production checklist",
+      "https://docs.dbos.dev/production/checklist"
+    ],
+    [
+      "DBOS",
+      "Supabase integration",
+      "https://docs.dbos.dev/integrations/supabase"
+    ],
+    [
+      "DBOS",
+      "FAQ and pool configuration",
+      "https://docs.dbos.dev/faq"
+    ],
+    [
+      "Render",
+      "Pricing",
+      "https://render.com/pricing"
+    ],
+    [
+      "Render",
+      "Postgres backups",
+      "https://render.com/docs/postgresql-backups"
+    ],
+    [
+      "Render",
+      "Postgres creation and storage",
+      "https://render.com/docs/postgresql-creating-connecting"
+    ],
+    [
+      "Cloudflare",
+      "Container pricing",
+      "https://developers.cloudflare.com/containers/platform/pricing/"
+    ],
+    [
+      "Cloudflare",
+      "Container architecture",
+      "https://developers.cloudflare.com/containers/concepts/architecture/"
+    ],
+    [
+      "Cloudflare",
+      "R2 pricing",
+      "https://developers.cloudflare.com/r2/pricing/"
+    ],
+    [
+      "DigitalOcean",
+      "Droplet pricing",
+      "https://www.digitalocean.com/pricing/droplets"
+    ]
+  ],
+  "formulas": {
+    "railway": "max(plan_min, app_ram*10 + app_vcpu*20 + db_ram*10 + db_vcpu*20 + outgoing_gb*.05 + volume_gb*.15 + archive_upload_gb*.05 + ceil(archive_stored_gb)*.015 + backup_compute)",
+    "externalRailway": "max(plan_min, app_ram*10 + app_vcpu*20 + (outgoing_gb + db_request_gb)*.05 + backup_compute)",
+    "neon": "avg_cu*730*.106 + data_gb*.35 + history_gb*.20 + max(0,db_response_gb-500)*.10",
+    "supabase": "25 + compute_price - 10 + max(0,data_gb-8)*.125 + max(0,db_response_gb-250)*.09"
+  }
+}

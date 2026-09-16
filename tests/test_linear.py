@@ -61,6 +61,7 @@ class Fake:
             "states": [
                 {"id": "todo", "name": "Todo", "type": "unstarted", "team": {"id": "team"}},
                 {"id": "done", "name": "Done", "type": "completed", "team": {"id": "team"}},
+                {"id": "backlog", "name": "Backlog", "type": "backlog", "team": {"id": "team"}},
             ],
             "users": [{"id": "me", "name": "Owner", "active": True}],
         }
@@ -89,8 +90,8 @@ class Fake:
                     (
                         {
                             "id": value,
-                            "name": "Done" if value == "done" else "Todo",
-                            "type": "completed" if value == "done" else "unstarted",
+                            "name": {"done": "Done", "backlog": "Backlog"}.get(value, "Todo"),
+                            "type": {"done": "completed", "backlog": "backlog"}.get(value, "unstarted"),
                         }
                         if field == "state"
                         else {"id": value, "name": "Owner"}
@@ -312,3 +313,29 @@ def test_graphql_partial_or_malformed_response_is_never_success():
         with pytest.raises(LinearFailure):
             client.query("mutation Example { issueUpdate { success } }")
         client.close()
+
+def test_backlog_round_trips_and_imports_as_backlog(linear):
+    tid, rev = imported()
+    saved = run("task.update", task_id=tid, expected_revision=rev, status="backlog")
+    sync.process_write(saved["external"]["job_id"])
+    assert linear.writes[-1][1] == {"stateId": "backlog"}
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.status == "backlog" and task.completed_at is None
+    linear.rows["another"] = issue("another")
+    linear.rows["another"]["state"] = {"id": "backlog", "name": "Backlog", "type": "backlog"}
+    with session_scope() as db:
+        jid = sync.queue_sync(db, "davin", force=True)
+    sync.process_sync(jid)
+    with session_scope() as db:
+        link = db.scalar(select(LinearIssue).where(LinearIssue.remote_id == "another"))
+        assert db.get(Task, link.task_id).status == "backlog"
+
+
+def test_publish_backlog_chooses_matching_linear_state(linear):
+    task = run("task.create", title="Future work", status="backlog")
+    queued = run("linear.publish", task_id=task["id"], expected_revision=1, team_id="team")
+    sync.process_write(queued["job_id"])
+    assert linear.writes[-1][1]["stateId"] == "backlog"
+    with session_scope() as db:
+        assert db.get(Task, task["id"]).status == "backlog"

@@ -40,6 +40,7 @@ class Args(BaseModel):
 
 
 class TaskCreate(Args):
+    status: Literal["open", "backlog"] = "open"
     title: str = Field(min_length=1, max_length=500)
     notes: str = Field(default="", max_length=20000)
     project: str | None = Field(default=None, max_length=200)
@@ -81,7 +82,7 @@ class TaskChanges(Args):
     )
     due_timezone: str | None = Field(default=None, max_length=100)
     priority: int | None = Field(default=None, ge=0, le=3)
-    status: str | None = None
+    status: Literal["backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] | None = None
     archived: bool | None = None
 
 
@@ -548,6 +549,7 @@ def mutate(db, owner, tool, args, command_id):
         elif tool == "task.reopen":
             changes = {"status": "open"}
         if "status" in changes and changes["status"] not in {
+            "backlog",
             "open",
             "in_progress",
             "waiting",

@@ -81,7 +81,7 @@ test("expired offers and a fresh session do not interpret an ordinary yes/no as 
   expect(
     ending.user(
       { id: "u", role: "user", content: "Yes.", pending: false },
-      30001,
+      60001,
     ),
   ).toBe(false);
   expect(
@@ -170,4 +170,36 @@ test("earlier questions in one Live display bubble do not hide a later closing o
       300,
     ),
   ).toBe(true);
+});
+
+
+test.each([
+  "I'm done talking", "Okay, I'm done with this conversation, thank you.",
+  "That's it for now, Eri.", "Nope, that'll do for now, thanks.",
+  "You can stop listening now.", "Please end our conversation.",
+  "We're good for now.", "I don't need anything else.", "Good night.",
+])("recognizes natural completed farewells: %s", text => {
+  expect(isVoiceEnding(text)).toBe(true);
+});
+
+test.each([
+  "I'm done with the task", "Stop the task", "I'm done talking about that, show my calendar",
+  "Don't end our conversation", "Thanks, but I have another question", "Say goodbye",
+  "Can you explain the end conversation tool?", "I think that's all, but check tomorrow first",
+])("does not confuse task completion, negation or another request with hangup: %s", text => {
+  expect(isVoiceEnding(text)).toBe(false);
+});
+
+test("standalone farewell works when a Live caption bubble also contains the previous request", () => {
+  const ending = new VoiceEnding();
+  ending.user({id:"u",role:"user",content:"Show today.",pending:false},0);
+  ending.assistant("a","Here is today.",100);
+  ending.user({id:"u",role:"user",content:"Show today. I'm done",pending:true},200);
+  expect(ending.user({id:"u",role:"user",content:"Show today. I'm done talking.",pending:false},1000)).toBe(true);
+});
+
+test("a closing answer is valid after a long spoken reply and the 30-second window", () => {
+  const ending = new VoiceEnding();
+  ending.assistant("a","Will that be all?",0);
+  expect(ending.user({id:"u",role:"user",content:"Yes.",pending:false},45000)).toBe(true);
 });

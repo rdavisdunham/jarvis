@@ -62,3 +62,13 @@ backend/wheels/flash_attn-2.8.3-cp311-cp311-linux_x86_64.whl
 *.tsbuildinfo
 apps/web/test-results/
 apps/web/playwright-report/
+
+# Cloud credentials and local connection profiles
+.env.cloud
+.env.cloud.*
+!.env.cloud.example
+
+# Local Cloudflare state and Railway plans
+.wrangler/
+.railway/*.plan.json
+.railway/*.lock.json

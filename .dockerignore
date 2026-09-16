@@ -64,3 +64,21 @@ outputs
 README.md
 .env.example
 docker-compose.yml
+
+# Cloud builds must never send local secrets, records, or agent attachments.
+.env*
+**/.env*
+.runtime
+.codex
+.claude
+.codex-remote-attachments
+.agents
+assets
+backups
+**/*.pgdump*
+**/*.dump
+**/*.sqlite*
+**/*.pem
+**/*.key
+.pytest_cache
+.ruff_cache

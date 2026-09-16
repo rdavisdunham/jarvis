@@ -257,8 +257,9 @@ export function TaskDialog({
     priority: z.number().int().min(0).max(3),
     status: choice(
       task.id === "new"
-        ? ["open"]
+        ? ["open", "backlog"]
         : [
+            "backlog",
             "open",
             "in_progress",
             "waiting",
@@ -525,18 +526,21 @@ export function TaskDialog({
             Status
             <select
               aria-label="Status"
-              disabled={task.id === "new"}
               value={draft.status}
               onChange={(e) => setDraft({ ...draft, status: e.target.value })}
             >
-              {[
-                "open",
-                "in_progress",
-                "waiting",
-                "deferred",
-                "completed",
-                "cancelled",
-              ].map((s) => (
+              {(task.id === "new"
+                ? ["open", "backlog"]
+                : [
+                    "backlog",
+                    "open",
+                    "in_progress",
+                    "waiting",
+                    "deferred",
+                    "completed",
+                    "cancelled",
+                  ]
+              ).map((s) => (
                 <option key={s} value={s}>
                   {s.replace("_", " ")}
                 </option>

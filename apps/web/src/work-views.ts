@@ -6,6 +6,7 @@ export type WorkSort = "priority" | "due" | "planned" | "title" | "updated";
 export type WorkGroup = "status" | "project" | "assignee";
 export type TimelineSpan = 14 | 30 | 90;
 export const statuses = [
+  "backlog",
   "open",
   "in_progress",
   "waiting",

@@ -21,7 +21,7 @@ def turn_hash(conversation_id, message, focus):
 
 
 async def chat(
-    owner, device, turn_id, conversation_id, message, focus=None, *, live_context=None, tool_guard=None
+    owner, device, turn_id, conversation_id, message, focus=None, *, live_context=None, tool_guard=None, end_voice=None
 ):
     from .access import assert_current
     assert_current(owner,device)
@@ -116,6 +116,13 @@ async def chat(
         {"role": "user", "content": message},
     ]
     tool_session = ToolSession(registry())
+    voice_ended = False
+    if end_voice is not None:
+        from .voice_control import VOICE_END_POLICY, VOICE_END_TOOL
+
+        messages[0]["content"] += "\n" + VOICE_END_POLICY
+        tool_session.catalog["voice_end"] = VOICE_END_TOOL
+        tool_session.names.append("voice_end")
     actions, tool_index = [], 0
     ui_actions = []
     reply, failed, limited = "", False, False
@@ -218,7 +225,13 @@ async def chat(
                                 "TOOL_NOT_LOADED",
                                 "Load the matching group with tools_load before calling this tool.",
                             )
-                        if fn["name"] == "tools_load":
+                        if fn["name"] == "voice_end" and end_voice is not None:
+                            if args:
+                                raise DomainError("INVALID_ARGUMENT", "voice_end takes no arguments.")
+                            assert_current(owner, device)
+                            outcome = end_voice()
+                            voice_ended = True
+                        elif fn["name"] == "tools_load":
                             outcome = tool_session.load(args)
                         else:
                             outcome = await call_tool(
@@ -252,6 +265,11 @@ async def chat(
                             "content": json.dumps(outcome),
                         }
                     )
+                    if voice_ended:
+                        reply = "Voice conversation ended."
+                        break
+                if voice_ended:
+                    break
     except asyncio.CancelledError:
         cancelled = True
         reply = "Voice ended. Already saved actions remain; no further actions were started."
@@ -289,6 +307,7 @@ async def chat(
         else "partial"
         if limited or tool_errors
         else "succeeded",
+        "voice_ended": voice_ended,
         "tool_calls": tool_index,
         "tool_errors": tool_errors,
         "limits": {

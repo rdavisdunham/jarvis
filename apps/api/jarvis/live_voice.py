@@ -39,6 +39,7 @@ class LiveController(Controller):
         self.provider, self.model = "live", get_settings().live_model
         self.finalized, self.attached = asyncio.Event(), asyncio.Event()
         self.closing = False
+        self.end_requested = False
         self.close_lock, self.delegation_lock = asyncio.Lock(), asyncio.Lock()
         self.delegations, self.work = set(), set()
         self.fragments, self.groups, self.history, self.backend_results = [], [], [], []
@@ -54,6 +55,12 @@ class LiveController(Controller):
         self.memory_task = None
         self.context_signature = None
         self.context_pending = set()
+
+    def request_end(self):
+        # Bound by the controller that delegated this turn; the model supplies no IDs.
+        self.end_requested = True
+        self.state, self.error = "closing", None
+        return {"status": "closing"}
 
     def can_submit(self):
         # GPT-Live decides when to respond; Realtime's response.create is not a Live command.
@@ -341,7 +348,7 @@ class LiveController(Controller):
 
                     def guard():
                         nonlocal observed
-                        if self.closed or self.closing:
+                        if self.closed or self.closing or self.end_requested:
                             return "The voice session is closing. Do not start any more actions."
                         if self.input_revision != observed:
                             observed = self.input_revision
@@ -361,12 +368,15 @@ class LiveController(Controller):
                         self.focus,
                         live_context=context,
                         tool_guard=guard,
+                        end_voice=self.request_end,
                     )
                     content = result["message"][:1800]
                     self.receipts.extend(a["command_id"] for a in result["actions"])
                     self.ui_actions.extend(result.get("ui_actions", []))
                     self.backend_results.append(content)
                     self.last_handled_revision, self.last_result = observed, content
+                if self.end_requested:
+                    return
                 if not self.closing and not self.closed:
                     await self.send(
                         {
@@ -389,6 +399,10 @@ class LiveController(Controller):
                         "content": "The backend could not finish this request. Previously confirmed changes remain saved; do not claim further success.",
                     }
                 )
+
+        finally:
+            if self.end_requested and not self.closed and not self.closing:
+                await self.close()
 
     async def interrupt(self):
         self.error = None

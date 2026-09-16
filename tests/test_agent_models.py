@@ -312,3 +312,22 @@ async def test_malformed_tool_arguments_are_reported_without_execution(keys,monk
     assert result["tool_errors"][0]["error"]=="MALFORMED_TOOL_ARGUMENTS"
     with session_scope() as db:
         assert list(db.scalars(select(Task)))==[]
+
+
+async def test_gemini_can_end_voice_with_the_same_session_bound_tool(keys, monkeypatch):
+    from unittest.mock import Mock
+
+    select_provider("gemini")
+    cid, sent = fake_provider(monkeypatch, [response(
+        tool("voice_end", {}),
+        tool("task_create", {"title": "Must not run after hangup"}),
+    )])
+    end = Mock(return_value={"status": "closing"})
+    result = await conversation.chat(
+        "davin", "test", str(uuid4()), cid, "We're finished talking.", end_voice=end,
+    )
+    end.assert_called_once_with()
+    assert result["voice_ended"] and result["tool_calls"] == 1
+    assert len(sent) == 1 and not result["actions"]
+    definition = next(t["function"] for t in sent[0]["body"]["tools"] if t["function"]["name"] == "voice_end")
+    assert definition["parameters"]["properties"] == {}

@@ -7,6 +7,7 @@ export const viewStateSchema = z
       .enum([
         "all",
         "active",
+        "backlog",
         "open",
         "in_progress",
         "waiting",

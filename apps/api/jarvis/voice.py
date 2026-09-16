@@ -535,6 +535,9 @@ def control(session_id, user):
 
 @router.post("/voice/sessions")
 async def start(body: VoiceInput, user: User):
+    from .config import require_external_services
+
+    require_external_services()
     if body.provider not in ENABLED_PROVIDERS:
         raise DomainError(
             "INVALID_ARGUMENT",

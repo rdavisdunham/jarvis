@@ -32,6 +32,8 @@ UPDATE_QUERY = (
 
 class LinearClient:
     def __init__(self, key):
+        from .config import require_external_services
+        require_external_services()
         self.http = httpx.Client(
             base_url="https://api.linear.app", headers={"Authorization": key}, timeout=25
         )

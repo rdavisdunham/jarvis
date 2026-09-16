@@ -8,7 +8,15 @@ from .config import get_settings
 
 @lru_cache
 def engine():
-    return create_engine(get_settings().database_url, pool_pre_ping=True, pool_size=10, max_overflow=10)
+    settings = get_settings()
+    return create_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=15,
+        connect_args={"connect_timeout": 10},
+    )
 
 
 def session_factory():

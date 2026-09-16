@@ -51,6 +51,8 @@ from .worker import valid_push_endpoint
 
 @asynccontextmanager
 async def lifespan(app):
+    from .deploy import validate_deployment
+    validate_deployment(get_settings())
     yield
     from .voice import controllers
 
@@ -83,6 +85,11 @@ async def domain_error(request, exc):
 @app.middleware("http")
 async def security(request, call_next):
     settings = get_settings()
+    if settings.maintenance_mode and request.url.path.startswith("/api/"):
+        return JSONResponse(
+            {"error": {"code": "MAINTENANCE", "message": "Eridani is being updated. Please try again shortly."}},
+            status_code=503, headers={"Retry-After": "60"},
+        )
     origin = request.headers.get("origin")
     if request.url.path.startswith("/api/") and request.method not in {"GET", "HEAD", "OPTIONS"}:
         if origin and origin.rstrip("/") != settings.origin.rstrip("/"):
@@ -170,6 +177,9 @@ def ready():
     try:
         with session_scope() as db:
             db.execute(text("SELECT 1"))
+            if get_settings().deployment_environment != "local":
+                from .deploy import check_schema
+                check_schema(db)
         return {"status": "ready"}
     except Exception:  # noqa: BLE001 - isolate provider/process failures without exposing personal data
         return JSONResponse({"status": "unavailable"}, status_code=503)
@@ -482,6 +492,8 @@ async def ui_sync(body: UISync, user: User):
 
 @app.post("/api/v1/chat")
 async def chat_endpoint(body: ChatInput, user: User):
+    from .config import require_external_services
+    require_external_services()
     return await chat(
         user.owner_id, user.device_id, str(body.turn_id), str(body.conversation_id), body.message, body.focus
     )
