@@ -3059,3 +3059,12 @@ progress::-webkit-progress-value {
 .work-revert-note {display:block;color:var(--muted,#aab4be);font-size:10px;line-height:1.4;margin-top:4px}.work-error {color:#ffc2bb;line-height:1.5}
 .work-revision {display:grid;gap:8px;margin-top:10px}.work-revision label {font-size:12px;display:grid;gap:6px}.work-revision textarea {width:100%;min-height:80px;box-sizing:border-box}.work-revision button {justify-self:end}
 @media(max-width:600px) {.activity-toggle>span {display:none}.activity-toggle {min-width:40px;padding:8px}.activity-backdrop {padding:6px}.activity-panel {border-radius:12px}.work-card-actions button {min-height:44px}.work-change dl>div {grid-template-columns:80px 1fr}}
+
+.work-original {margin-top:10px;color:var(--muted);font-size:12px}
+.work-original summary {cursor:pointer;padding:6px 0}
+.work-original p {white-space:pre-wrap;line-height:1.5;margin:6px 0}
+.work-related {font-size:11px;color:var(--muted);margin:6px 0}
+.work-reverted {display:flex;gap:5px;align-items:center;color:var(--muted);margin-top:6px}
+.work-change>div:first-child {align-items:flex-start}
+
+.work-change-preview {font-size:12px;color:var(--muted);margin:6px 0;line-height:1.5}

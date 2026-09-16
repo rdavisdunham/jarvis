@@ -2,6 +2,33 @@
 
 Released to production September 16, 2026. Implementation commit: `e5d9234`.
 
+## Direct-execution correction — September 16
+
+Final broad check: **559 backend tests passed**, one existing skip; **113 frontend
+tests passed**, one intentionally paused Realtime test skipped. Production build and
+Ruff passed. An additional focused regression verifies that read-only backend results
+still reach Live even when they do not create action cards.
+
+- Removed the exact-quote intake gate after owner screenshots showed natural speech
+  being rejected before the task agent ran. Separate requests now execute directly.
+- New regressions cover concurrent creation, pending/completed follow-ups, failed
+  predecessors, record reservations, unknown scopes, account isolation, legacy
+  intake retry, original-input preservation, past/future conversation isolation,
+  voice_end, and follow-up-only reversal.
+- Initial real-model probes exposed an unnecessary dependency and replay of earlier
+  speech. Tightened the follow-up contract and changed earlier conversation to
+  reference data; each run has only its own active user instruction.
+- Both Luna and Gemini passed synthetic Alex/milk/early-correction flows, timed
+  natural speech with repetitions, follow-up reversal, and backend voice_end.
+  These checks used real providers with disposable local databases and synthetic
+  records. No production tasks or connected-service writes were used.
+- Six browser states at desktop/mobile sizes verified outcome-first cards, collapsed
+  speech, Edit to the correct record, Revert of the due-date change, optional failure
+  dismissal without retry, and chat. No browser exceptions or page-width overflow.
+- Local ignored evidence: `.runtime/direct-work/`. Remaining owner microphone and
+  production-connected-service acceptance still applies. Earlier failed requests
+  are not automatically replayed; Retry uses direct execution while input is retained.
+
 ## Automated evidence
 
 - **550 backend tests passed**, one pre-existing skip. Includes account/workspace
@@ -49,9 +76,13 @@ with its 76 screenshots and explicit production-login versus synthetic-app limit
 
 ## Operational boundaries and follow-ups
 
-- Actual phone/desktop audio, wake recognition, browser backgrounding and production
-  interruption/recovery still need a real-device pass. Automated media mocks and
-  provider text checks do not establish microphone performance.
+- Owner reports basic phone voice is working well (September 16). This is
+  owner-reported real-device feedback; wake words and the updated goodbye sequence
+  were explicitly not tested.
+- Desktop audio, phone/desktop wake recognition and updated goodbye, rapid requests,
+  late corrections, browser backgrounding and production interruption/reconnect
+  still need a real-device pass. Automated media mocks and provider text checks
+  do not establish microphone performance.
 - Production Google/Linear writes and a second person's Google invitation were
   not exercised in this batch. Backend contracts and synthetic account separation
   were tested. Google consent verification remains an owner-operated process.

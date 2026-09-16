@@ -93,44 +93,6 @@ def test_acceptance_is_idempotent_and_input_encrypted(client):
 
 
 @pytest.mark.asyncio
-async def test_independent_intake_preserves_both_requests(client, monkeypatch):
-    work, _ = accept(client, "Add Alpha. Also add Beta.")
-    plan = {
-        "items": [
-            {"kind": "request", "source_text": quote, "target_id": None, "independent": True, "message": ""}
-            for quote in ("Add Alpha.", "Also add Beta.")
-        ]
-    }
-
-    async def model(*args, **kwargs):
-        return response([("route_requests", plan)])
-
-    monkeypatch.setattr(work_intake, "request_model", model)
-    await work_intake.run(work["id"])
-    result = client.get("/api/v1/work/" + work["id"]).json()
-    assert len(result["children"]) == 2
-    with session_scope() as db:
-        children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == work["id"])))
-        assert {unseal(c.input_ciphertext)["message"] for c in children} == {"Add Alpha.", "Also add Beta."}
-        assert all(not c.dependencies for c in children)
-    responder(
-        monkeypatch,
-        [
-            response([("task_create", {"title": "Alpha"})]),
-            response(message="Added Alpha."),
-            response([("task_create", {"title": "Beta"})]),
-            response(message="Added Beta."),
-        ],
-    )
-    for child in children:
-        await work_runner.run(child.id)
-    with session_scope() as db:
-        assert sorted(t.title for t in db.scalars(select(Task))) == ["Alpha", "Beta"]
-    result = client.get("/api/v1/work/" + work["id"]).json()
-    assert result["status"] == "succeeded"
-
-
-@pytest.mark.asyncio
 async def test_crash_after_commit_replays_same_command_once(client, monkeypatch):
     work = action(client)
     responder(monkeypatch, [response([("task_create", {"title": "Alpha"})])])
@@ -268,7 +230,12 @@ def test_voice_capture_survives_close_and_deduplicates(client):
             work_intake.append_voice(db, sid, event_id, "user", delta, start, start + 1000)
         captured = work_intake.claim_voice(db, inbox, close=True)
         assert "Alpha" in unseal(captured.input_ciphertext)["message"]
-        assert unseal(captured.input_ciphertext)["message"].count("Beta") == 1
+        turns = list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == sid)))
+        assert sorted(unseal(t.input_ciphertext)["message"] for t in turns) == [
+            "Add Alpha.",
+            "Also add Beta.",
+        ]
+        assert all(db.get(Job, t.id).kind == "agent_action" for t in turns)
         assert work_intake.claim_voice(db, inbox) is None
         assert db.get(VoiceInbox, sid).closed
         assert db.get(Outbox, captured.id)
@@ -307,87 +274,6 @@ def test_execution_survives_cookie_expiry_but_checks_account_scope(client):
         assert len(list(db.scalars(select(Task)))) == 1
 
 
-def test_ambiguous_target_and_invented_quote_are_not_executed():
-    plan = {"items": [{"kind": "cancel", "source_text": "cancel that", "target_id": "invented"}]}
-    assert work_intake.validate_plan(plan, "cancel that", [])["items"][0]["kind"] == "clarify"
-    with pytest.raises(DomainError):
-        work_intake.validate_plan(
-            {"items": [{"kind": "request", "source_text": "delete everything"}]}, "add a task", []
-        )
-
-
-@pytest.mark.asyncio
-async def test_intake_correction_during_provider_does_not_replay_old_plan(client, monkeypatch):
-    work, _ = accept(client)
-
-    def corrected(*args):
-        result = client.post(
-            "/api/v1/work/" + work["id"] + "/revise",
-            json={"message": "Call it Beta instead", "expected_revision": 1},
-        )
-        assert result.status_code == 200
-        return response(
-            [
-                (
-                    "route_requests",
-                    {
-                        "items": [
-                            {
-                                "kind": "request",
-                                "source_text": "Add Alpha",
-                                "target_id": None,
-                                "independent": True,
-                                "message": "",
-                            }
-                        ]
-                    },
-                )
-            ]
-        )
-
-    async def first(*args):
-        return corrected()
-
-    monkeypatch.setattr(work_intake, "request_model", first)
-    await work_intake.run(work["id"])
-    with session_scope() as db:
-        row = db.get(AgentWork, work["id"])
-        assert db.get(Job, row.id).status == "queued"
-        assert not row.checkpoint_ciphertext
-
-    async def second(agent, messages, definitions):
-        assert "Call it Beta instead" in messages[-1]["content"]
-        return response(
-            [
-                (
-                    "route_requests",
-                    {
-                        "items": [
-                            {
-                                "kind": "request",
-                                "source_text": "Add Alpha\nCall it Beta instead",
-                                "target_id": None,
-                                "independent": True,
-                                "message": "",
-                            }
-                        ]
-                    },
-                )
-            ]
-        )
-
-    monkeypatch.setattr(work_intake, "request_model", second)
-    await work_intake.run(work["id"])
-    result = client.get("/api/v1/work/" + work["id"]).json()
-    assert len(result["children"]) == 1 and "Beta" in result["children"][0]["request"]
-
-
-def test_router_cannot_drop_a_second_request_or_numeric_constraint():
-    for full, quote in [("Add Alpha and delete Beta", "Add Alpha"), ("Add task due 27", "Add task due")]:
-        with pytest.raises(DomainError, match="not accounted"):
-            work_intake.validate_plan({"items": [{"kind": "request", "source_text": quote}]}, full, [])
-
-
 def test_voice_preserves_long_input_and_clears_closed_capture(client):
     work, _ = accept(client)
     text = "Add a task with notes " + ("exact words " * 2500) + " END"
@@ -408,76 +294,7 @@ def test_voice_preserves_long_input_and_clears_closed_capture(client):
 
 
 @pytest.mark.asyncio
-async def test_parent_preserves_question_and_revises_only_unresolved_part(client, monkeypatch):
-    work, _ = accept(client, "Add Alpha. Cancel that other thing.")
-
-    async def first(*args):
-        return response(
-            [
-                (
-                    "route_requests",
-                    {
-                        "items": [
-                            {
-                                "kind": "request",
-                                "source_text": "Add Alpha.",
-                                "target_id": None,
-                                "independent": True,
-                                "message": "",
-                            },
-                            {
-                                "kind": "clarify",
-                                "source_text": "Cancel that other thing.",
-                                "target_id": None,
-                                "independent": False,
-                                "message": "Which request?",
-                            },
-                        ]
-                    },
-                )
-            ]
-        )
-
-    monkeypatch.setattr(work_intake, "request_model", first)
-    await work_intake.run(work["id"])
-    result = client.get("/api/v1/work/" + work["id"]).json()
-    assert result["status"] == "needs_input" and result["message"] == "Which request?"
-    child = result["children"][0]["id"]
-    revised = client.post(
-        "/api/v1/work/" + work["id"] + "/revise", json={"message": "I mean Alpha", "expected_revision": 1}
-    )
-    assert revised.status_code == 200, revised.text
-
-    async def second(agent, messages, definitions):
-        new = messages[-1]["content"].split("NEW USER INPUT: ")[1]
-        assert new == "Cancel that other thing.\nI mean Alpha"
-        return response(
-            [
-                (
-                    "route_requests",
-                    {
-                        "items": [
-                            {
-                                "kind": "cancel",
-                                "source_text": new,
-                                "target_id": child,
-                                "independent": False,
-                                "message": "",
-                            }
-                        ]
-                    },
-                )
-            ]
-        )
-
-    monkeypatch.setattr(work_intake, "request_model", second)
-    await work_intake.run(work["id"])
-    result = client.get("/api/v1/work/" + work["id"]).json()
-    assert len(result["children"]) == 1 and result["children"][0]["status"] == "cancelled"
-
-
-@pytest.mark.asyncio
-async def test_pending_dependency_waits_and_cancelled_dependency_requires_decision(client):
+async def test_pending_dependency_waits_then_backend_receives_cancelled_outcome(client):
     first = action(client)
     second = action(client, "Rename Alpha")
     with session_scope() as db:
@@ -486,10 +303,8 @@ async def test_pending_dependency_waits_and_cancelled_dependency_requires_decisi
         job = db.get(Job, second["id"])
         assert not agent_work.eligible(db, job)
         agent_work.cancel(db, db.get(AgentWork, first["id"]))
-        assert not agent_work.eligible(db, job)
-        assert job.status == "needs_input"
-        agent_work.revise(db, row, "", continue_work=True)
         assert agent_work.eligible(db, job)
+        assert job.status == "queued"
 
 
 def test_per_account_capacity_leaves_other_accounts_eligible(client):
@@ -679,18 +494,6 @@ runpy.run_module("jarvis.worker",run_name="__main__")
                     process.wait()
 
 
-def test_explicit_followup_with_known_request_target_stays_ordered():
-    item = {
-        "kind": "request",
-        "source_text": "Rename Alpha to Beta",
-        "target_id": "known",
-        "independent": True,
-    }
-    result = work_intake.validate_plan({"items": [item]}, item["source_text"], [{"id": "known"}])
-    assert result["items"][0]["kind"] == "request"
-    assert result["items"][0]["target_id"] is None and not result["items"][0]["independent"]
-
-
 @pytest.mark.asyncio
 async def test_recovered_argument_error_does_not_report_partial_success(client, monkeypatch):
     work = action(client)
@@ -727,3 +530,337 @@ async def test_browser_saved_receipt_is_linked_to_work_card(client, monkeypatch)
     card = client.get("/api/v1/work/" + work["id"]).json()
     assert card["status"] == "succeeded"
     assert [a["title"] for a in card["actions"] if a["kind"] == "task"] == ["Saved through inline card"]
+
+
+@pytest.mark.asyncio
+async def test_natural_speech_runs_directly_without_an_intake_model(client, monkeypatch):
+    speech = "Okay, um, add a task to call Alex.\nAlso, at 10 p.m., write down a visit to Hayden."
+    work, _ = accept(client, speech)
+    calls = []
+
+    async def model(agent, messages, definitions, **kwargs):
+        calls.append(messages)
+        assert all(t["name"] != "route_requests" for t in definitions)
+        if len(calls) == 1:
+            assert messages[-1]["content"] == speech
+            return response(
+                [
+                    ("task_create", {"title": "Call Alex"}),
+                    (
+                        "task_create",
+                        {
+                            "title": "Visit Hayden",
+                            "due_date": "2026-09-16",
+                            "due_time": "22:00",
+                            "due_timezone": "America/Chicago",
+                        },
+                    ),
+                ]
+            )
+        return response(message="Added both.")
+
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(work["id"])
+    assert len(calls) == 2  # One tool plan and its confirmation; no routing round.
+    result = client.get("/api/v1/work/" + work["id"]).json()
+    assert result["status"] == "succeeded" and len(result["actions"]) == 2
+    assert not result["children"]
+
+
+@pytest.mark.asyncio
+async def test_independent_backend_requests_execute_concurrently(client, monkeypatch):
+    first = action(client, "Add Call Alex")
+    second = action(client, "Add Buy milk")
+    entered = 0
+    both_entered = asyncio.Event()
+
+    async def model(agent, messages, definitions, **kwargs):
+        nonlocal entered
+        if any(m.get("role") == "tool" for m in messages):
+            return response(message="Saved.")
+        entered += 1
+        if entered == 2:
+            both_entered.set()
+        await asyncio.wait_for(both_entered.wait(), 3)
+        title = "Call Alex" if messages[-1]["content"] == "Add Call Alex" else "Buy milk"
+        return response([("task_create", {"title": title})])
+
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await asyncio.gather(work_runner.run(first["id"]), work_runner.run(second["id"]))
+    with session_scope() as db:
+        assert sorted(t.title for t in db.scalars(select(Task))) == ["Buy milk", "Call Alex"]
+        assert all(db.get(Job, identity).status == "succeeded" for identity in (first["id"], second["id"]))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("already_finished", [False, True])
+async def test_followup_uses_original_saved_task_running_or_completed(client, monkeypatch, already_finished):
+    first = action(client, "Add a task to call Alex")
+    milk = action(client, "Add Buy milk")
+    follow = action(client, "Actually make that call tomorrow")
+    if not already_finished:
+        responder(monkeypatch, [response([("work_followup", {"request_id": first["id"]})])])
+        await work_runner.run(follow["id"])
+        with session_scope() as db:
+            row = db.get(AgentWork, follow["id"])
+            assert row.dependencies == [first["id"]]
+            assert row.result["related_request_id"] == first["id"]
+            assert db.get(Job, row.id).status == "queued"
+            assert unseal(row.checkpoint_ciphertext)["pending"][0]["function"]["name"] == "work_followup"
+            assert not agent_work.eligible(db, db.get(Job, row.id))
+            assert agent_work.eligible(db, db.get(Job, milk["id"]))
+    responder(
+        monkeypatch,
+        [response([("task_create", {"title": "Call Alex"})]), response(message="Added Call Alex.")],
+    )
+    await work_runner.run(first["id"])
+    responder(
+        monkeypatch, [response([("task_create", {"title": "Buy milk"})]), response(message="Added milk.")]
+    )
+    await work_runner.run(milk["id"])
+
+    def edit_from_receipt(agent, messages, definitions, **kwargs):
+        replies = [m for m in messages if m.get("name") == "work_followup"]
+        if not replies:
+            return response([("work_followup", {"request_id": first["id"]})])
+        earlier = json.loads(replies[-1]["content"])
+        assert earlier["status"] == "succeeded"
+        record = earlier["saved_records"][0]["data"]
+        if any(m.get("name") == "task_update" for m in messages):
+            return response(message="Call Alex is due tomorrow.")
+        return response(
+            [
+                (
+                    "task_update",
+                    {
+                        "task_id": record["id"],
+                        "expected_revision": record["revision"],
+                        "due_date": "2026-09-17",
+                    },
+                )
+            ]
+        )
+
+    async def model(*args, **kwargs):
+        return edit_from_receipt(*args, **kwargs)
+
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(follow["id"])
+    result = client.get("/api/v1/work/" + follow["id"]).json()
+    assert result["status"] == "succeeded", result
+    assert result["related_request_id"] == first["id"]
+    with session_scope() as db:
+        tasks = list(db.scalars(select(Task)))
+        assert len(tasks) == 2
+        assert next(t for t in tasks if t.title == "Call Alex").due_date.isoformat() == "2026-09-17"
+    change = next(a for a in result["actions"] if a["kind"] == "task")
+    assert change["summary"] == "Updated task: Call Alex" and change["request_id"] == follow["id"]
+    reverted = client.post(
+        "/api/v1/work/actions/" + change["id"] + "/revert", json={"command_id": str(uuid4())}
+    )
+    assert reverted.status_code == 200, reverted.text
+    with session_scope() as db:
+        assert db.get(Task, change["entity_id"]).due_date is None
+    original = client.get("/api/v1/work/" + first["id"]).json()["actions"][0]
+    assert not original["can_revert"]  # Creation cannot silently erase intervening edits.
+
+
+@pytest.mark.asyncio
+async def test_failed_predecessor_is_reported_without_inventing_a_saved_record(client, monkeypatch):
+    first = action(client)
+    follow = action(client, "Make that tomorrow")
+    with session_scope() as db:
+        agent_work.finish(db, db.get(AgentWork, first["id"]), "failed", "No record was saved.")
+    responder(
+        monkeypatch,
+        [
+            response([("work_followup", {"request_id": first["id"]})]),
+            response(
+                [
+                    (
+                        "work_needs_input",
+                        {"question": "The task was not created. Should I create it for tomorrow?"},
+                    )
+                ]
+            ),
+        ],
+    )
+    await work_runner.run(follow["id"])
+    with session_scope() as db:
+        row = db.get(AgentWork, follow["id"])
+        state = unseal(row.checkpoint_ciphertext)
+        outcome = json.loads(
+            next(m["content"] for m in state["messages"] if m.get("name") == "work_followup")
+        )
+        assert outcome["status"] == "failed" and not outcome["saved_records"]
+        assert not list(db.scalars(select(Task)))
+
+
+def test_record_reservations_wait_for_conflicts_but_allow_different_records(client):
+    from jarvis import work_coordination as coordination
+
+    ids = [action(client)["id"] for _ in range(3)]
+    with session_scope() as db:
+        rows = [db.get(AgentWork, i) for i in ids]
+        for row in rows:
+            db.expunge(row)
+    coordination.reserve(rows[0], "task_update", {"task_id": "one"}, 0)
+    coordination.reserve(rows[1], "task_update", {"task_id": "two"}, 0)
+    with pytest.raises(coordination.WorkDeferred) as waiting:
+        coordination.reserve(rows[2], "task_update", {"task_id": "one"}, 0)
+    assert waiting.value.dependencies == [ids[0]]
+
+
+def test_newer_request_waits_for_unknown_older_scope_without_deadlocking_older(client):
+    from jarvis import work_coordination as coordination
+
+    first, second = action(client), action(client)
+    with session_scope() as db:
+        a, b = db.get(AgentWork, first["id"]), db.get(AgentWork, second["id"])
+        db.expunge_all()
+    with pytest.raises(coordination.WorkDeferred):
+        coordination.reserve(b, "task_update", {"task_id": "same"}, 0)
+    coordination.reserve(a, "task_update", {"task_id": "same"}, 0)
+
+
+def test_scope_expansion_cannot_overwrite_newer_reserved_work(client):
+    from jarvis import work_coordination as coordination
+
+    first, second = action(client), action(client)
+    with session_scope() as db:
+        a, b = db.get(AgentWork, first["id"]), db.get(AgentWork, second["id"])
+        db.expunge_all()
+    coordination.reserve(a, "task_update", {"task_id": "one"}, 0)
+    coordination.reserve(b, "task_update", {"task_id": "two"}, 0)
+    with pytest.raises(DomainError, match="newer request"):
+        coordination.reserve(a, "task_update", {"task_id": "two"}, 1)
+
+
+def test_followup_cannot_target_future_work_or_another_account(client):
+    from jarvis import work_coordination as coordination
+    from test_accounts import client_for
+
+    first, second = action(client), action(client)
+    other = action(client_for("other"))
+    with session_scope() as db:
+        row = db.get(AgentWork, first["id"])
+        db.expunge(row)
+    for target in (second["id"], other["id"]):
+        with pytest.raises(DomainError):
+            coordination.followup(row, {"request_id": target})
+
+
+@pytest.mark.asyncio
+async def test_legacy_intake_retry_executes_original_request_without_quote_validation(client, monkeypatch):
+    work, _ = accept(client, "Um, at 10 p.m., please add a visit.")
+    with session_scope() as db:
+        db.get(Job, work["id"]).kind = "agent_intake"
+    responder(monkeypatch, [response([("task_create", {"title": "Visit"})]), response(message="Added.")])
+    await work_intake.run(work["id"])
+    assert client.get("/api/v1/work/" + work["id"]).json()["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_direct_voice_backend_ends_voice_and_hides_conversation_only_cards(client, monkeypatch):
+    work, _ = accept(client, "That will be all, goodbye")
+    with session_scope() as db:
+        row = db.get(AgentWork, work["id"])
+        inbox = work_intake.open_voice(
+            db, str(uuid4()), row.owner_id, row.account_id, row.device_id, row.conversation_id
+        )
+        row.voice_session_id = inbox.id
+        sid = inbox.id
+    responder(monkeypatch, [response([("voice_end", {})])])
+    await work_runner.run(work["id"])
+    with session_scope() as db:
+        assert db.get(VoiceInbox, sid).end_requested
+        assert db.get(Job, work["id"]).status == "succeeded"
+        assert db.get(AgentWork, work["id"]).result["quiet"]
+    assert not client.get("/api/v1/work").json()["items"]
+
+
+@pytest.mark.asyncio
+async def test_partial_request_clarification_preserves_saved_effects(client, monkeypatch):
+    work = action(client, "Add Alpha and move that other thing")
+    responder(
+        monkeypatch,
+        [
+            response([("task_create", {"title": "Alpha"})]),
+            response([("work_needs_input", {"question": "Which other task?"})]),
+        ],
+    )
+    await work_runner.run(work["id"])
+    card = client.get("/api/v1/work/" + work["id"]).json()
+    assert card["status"] == "needs_input" and len(card["actions"]) == 1
+    assert (
+        client.post(
+            "/api/v1/work/" + work["id"] + "/revise",
+            json={"message": "Never mind the other thing", "expected_revision": 1},
+        ).status_code
+        == 200
+    )
+    responder(monkeypatch, [response(message="Alpha is saved. I left the others alone.")])
+    await work_runner.run(work["id"])
+    with session_scope() as db:
+        assert len(list(db.scalars(select(Task)))) == 1
+
+
+@pytest.mark.asyncio
+async def test_parallel_request_context_excludes_later_user_instructions(client):
+    first, payload = accept(client, "Add Call Alex")
+    later = client.post(
+        "/api/v1/work", json={**payload, "turn_id": str(uuid4()), "message": "Actually delete everything"}
+    )
+    assert later.status_code == 200
+    with session_scope() as db:
+        row = db.get(AgentWork, first["id"])
+        db.expunge(row)
+    with agent_work.principal_for(row):
+        state = await work_runner.initial_state(
+            row, __import__("jarvis.agent_models", fromlist=["catalog"]).catalog()["luna"]
+        )
+    assert not any("Actually delete everything" in m.get("content", "") for m in state["messages"])
+
+
+@pytest.mark.asyncio
+async def test_previous_turns_are_reference_data_not_replayed_user_commands(client):
+    _first, payload = accept(client, "Add Call Alex")
+    result = client.post(
+        "/api/v1/work", json={**payload, "turn_id": str(uuid4()), "message": "Also add Buy milk"}
+    ).json()
+    with session_scope() as db:
+        row = db.get(AgentWork, result["id"])
+        db.expunge(row)
+    with agent_work.principal_for(row):
+        state = await work_runner.initial_state(
+            row, __import__("jarvis.agent_models", fromlist=["catalog"]).catalog()["luna"]
+        )
+    assert [m["content"] for m in state["messages"] if m["role"] == "user"] == ["Also add Buy milk"]
+    assert any(
+        "EARLIER CONVERSATION DATA" in m["content"] and "Add Call Alex" in m["content"]
+        for m in state["messages"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_revert_creation_checks_backlinks_that_did_not_change_task_revision(client, monkeypatch):
+    from jarvis.models import Note, NoteTaskLink
+
+    work = action(client)
+    responder(monkeypatch, [response([("task_create", {"title": "Alpha"})]), response(message="Added.")])
+    await work_runner.run(work["id"])
+    card = client.get("/api/v1/work/" + work["id"]).json()["actions"][0]
+    with session_scope() as db:
+        task = db.get(Task, card["entity_id"])
+        revision = task.revision
+        note = Note(owner_id=task.owner_id, title="Later note", content="Keep this linked work")
+        db.add(note)
+        db.flush()
+        db.add(NoteTaskLink(note_id=note.id, task_id=task.id, linked=True))
+        assert task.revision == revision
+    card = client.get("/api/v1/work/" + work["id"]).json()["actions"][0]
+    assert not card["can_revert"] and "linked" in card["revert_reason"]
+    result = client.post("/api/v1/work/actions/" + card["id"] + "/revert", json={"command_id": str(uuid4())})
+    assert result.status_code == 409
+    with session_scope() as db:
+        assert not db.get(Task, card["entity_id"]).archived

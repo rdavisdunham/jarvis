@@ -329,7 +329,7 @@ class LiveController(Controller):
             if not self.closed and not self.closing:
                 await self.send({"type": "session.thinking.append", "event_id": uid(),
                     "delegation_id": delegation_id,
-                    "content": "Input accepted for background routing. Keep listening. The activity cards show progress; do not claim saved changes until a verified result arrives."
+                    "content": "Request saved for the backend. Keep listening. The activity cards show progress; do not claim saved changes until a verified result arrives."
                     if accepted else "This input is already being handled. Keep listening; do not repeat earlier actions."})
             self.state, self.error = "listening", None
         except Exception as exc:  # noqa: BLE001 - do not log speech
@@ -357,7 +357,9 @@ class LiveController(Controller):
                 stamp = (root.id, root.revision, tuple((snapshot["id"], snapshot["revision"], snapshot["status"]) for snapshot in snapshots))
                 if stamp in self.announced_work:
                     continue
-                if not children and root.result.get("route_kinds") == ["conversation"]:
+                if not children and (root.result.get("route_kinds") == ["conversation"] or (
+                    root.result.get("quiet") and not root.result.get("tool_calls")
+                )):
                     self.announced_work.add(stamp)
                     continue
                 texts = []

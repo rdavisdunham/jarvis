@@ -436,6 +436,8 @@ def execute(db, owner, command_id, tool, arguments):
     from .action_history import journal
     with journal(db, owner, command_id, tool, arguments):
         data = mutate(db, owner, tool, args, command_id)
+    from .work_coordination import record_saved_resources
+    record_saved_resources(db, owner, data)
     result = {
         "command_id": command_id,
         "status": "succeeded",

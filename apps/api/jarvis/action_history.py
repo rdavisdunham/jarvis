@@ -102,6 +102,21 @@ def journal(db, owner, command_id, tool, arguments=None):
         db.info.pop("action_journal", None)
 
 
+def has_linked_records(db, model, identity):
+    # Index/cache references are not user work. All real incoming record links
+    # must be reviewed before undoing a creation, even if they did not bump revision.
+    for table in models.Base.metadata.sorted_tables:
+        if table.name in {"task_references", "note_embeddings"}:
+            continue
+        for column in table.columns:
+            if (
+                any(fk.column.table is model.__table__ for fk in column.foreign_keys)
+                and db.scalar(select(column).where(column == identity).limit(1)) is not None
+            ):
+                return True
+    return False
+
+
 def inverse(db, change, *, lock=False):
     from .domain import COMMANDS
 
@@ -125,6 +140,8 @@ def inverse(db, change, *, lock=False):
             return None, "Open this record to cancel or remove it."
         if snapshot(row) != after:
             return None, "This record changed after it was created. Review it before archiving."
+        if has_linked_records(db, model, row.id):
+            return None, "Other records are linked to this creation. Review those links before archiving it."
         changes = {"archived": True}
     else:
         changes = {key: before.get(key) for key in after if key not in SKIP and before.get(key) != after[key]}
@@ -180,13 +197,25 @@ def public_change(db, row):
                 else None
             )
         fields[key.removesuffix("_id")] = values
+    operation = "created" if not before else "updated"
+    if before and before.get("status") != after.get("status"):
+        if after.get("status") == "completed":
+            operation = "completed"
+        elif before.get("status") == "completed":
+            operation = "reopened"
+    if before and before.get("archived") != after.get("archived"):
+        operation = "archived" if after.get("archived") else "restored"
+    title = after.get("title", after.get("name", row.entity_kind.title()))
     return {
         "id": row.id,
         "command_id": row.command_id,
         "kind": row.entity_kind,
         "entity_id": row.entity_id,
-        "title": after.get("title", after.get("name", row.entity_kind.title())),
-        "operation": "created" if not before else "updated",
+        "title": title,
+        "operation": operation,
+        "summary": f"{operation.capitalize()} {row.entity_kind}: {title}",
+        "request_id": row.command_id.split(":")[0],
+        "revert_command_id": row.reverted_by,
         "fields": fields,
         "can_revert": bool(command),
         "revert_reason": reason,

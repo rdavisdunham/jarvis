@@ -283,3 +283,24 @@ async def test_voice_end_still_closes_if_final_intake_is_rejected(controller, mo
     c.request_end()
     await c.close()
     assert c.closed
+
+
+async def test_read_only_backend_result_is_spoken_even_without_an_action_card(controller):
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from jarvis.agent_work import enqueue, finish
+    from jarvis.models import now
+    c=controller
+    with session_scope() as db:
+        # This fixture uses legacy private history; only the verified synthetic result is needed here.
+        row=enqueue(db,c.owner,c.owner,c.device,c.conversation_id,str(uuid4()),"What is due?",voice_session_id=c.id)
+        row.transient=False
+        finish(db,row,"succeeded","You have two tasks due today.",quiet=True,tool_calls=1)
+        db.get(VoiceInbox,c.id).last_input_at=now()-timedelta(seconds=5)
+    await c.report_work()
+    events=[call.args[0] for call in c.send.await_args_list]
+    assert any(e['type']=='session.commentary.append' and 'two tasks due today' in e['content'] for e in events)
+    c.send.reset_mock()
+    await c.report_work()
+    c.send.assert_not_awaited()

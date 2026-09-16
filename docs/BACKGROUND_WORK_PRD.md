@@ -1,8 +1,50 @@
 # Reliable background work and action cards
 
-Status: implemented September 16; see [release validation](BACKGROUND_WORK_VALIDATION.md)
+Status: implemented September 16; intake model replaced by direct execution September 16; see [release validation](BACKGROUND_WORK_VALIDATION.md)
 for shipped behavior, verification and remaining actual-device acceptance.
 Updated: September 16, 2026.
+
+## Current execution design — supersedes separate intake classification
+
+The owner approved removing the mandatory interpretation model after real speech
+failed exact-quote validation. Persist captured user turns unchanged and dispatch
+straight to the existing backend. No additional routing-model or summary-model call
+is required. A single accepted message can contain several tool operations; distinct
+captured turns are separate requests and may execute concurrently.
+
+The backend sees one active user instruction, with earlier conversation/recent work
+as reference data. History is cut off at acceptance time so later requests cannot
+replace an earlier one. `work_followup(request_id)` binds a clear reference to an
+older request. Database state decides whether to wait or return its outcome. An
+unfinished predecessor releases the successor's worker slot; a completed predecessor
+supplies command receipts and real record IDs for a fresh edit. Failed predecessors
+return their actual partial/empty result; a model cannot infer a successful creation.
+
+Related work forms a persistent logical thread through linked request IDs. It does
+not depend on keeping a particular process or model instance alive. In-flight tool
+arguments are not rewritten by a new spoken follow-up. Requests retain distinct
+inputs, checkpoints and receipts. Explicit Revise remains available for correcting
+or resuming an individual request, including legacy intake failures.
+
+Before mutations, the scheduler atomically reserves record scopes in request order.
+Independent creations and known disjoint scopes can overlap. Unknown/bulk scopes
+wait conservatively. Scope expansion cannot overwrite a newer reserved change.
+Newly created IDs are registered in the command's commit transaction. Existing
+workspace transaction locks, revision checks and stable command IDs remain the
+final protection. Cross-account details stay private even when shared-record writes
+must wait for another account's work.
+
+Cards are receipts, not approval forms: show confirmed change descriptions and
+important changed fields with Edit and supported Revert. Original speech is collapsed.
+Conversation-only/read-only success does not create a redundant action card. Failures
+may be dismissed from the attention count without approving, retrying or changing
+their outcome. Follow-up changes have their own receipts and a link to the original
+request; Revert targets a specific change and preserves unrelated later edits.
+Creation reversal refuses incoming user-record links even when they did not bump
+the created record's revision. General external/relationship undo remains unsupported.
+
+The sections below preserve the original batch rationale and broader requirements;
+any mention of separate classification or serial intake is superseded by this design.
 
 ## Outcome
 

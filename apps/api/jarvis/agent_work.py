@@ -45,7 +45,7 @@ def enqueue(
     request_id,
     message,
     *,
-    kind="agent_intake",
+    kind="agent_action",
     parent_id=None,
     voice_session_id=None,
     context=None,
@@ -64,6 +64,7 @@ def enqueue(
         if previous.owner_id != owner or previous.account_id != account or previous.input_hash != identity:
             raise DomainError("REVISION_CONFLICT", "This request ID already belongs to another request.", 409)
         return previous
+    advisory(db, "work-order:" + owner)
     pending = list(
         db.scalars(select(AgentWork).join(Job).where(AgentWork.account_id == account, Job.status.in_(ACTIVE)))
     )
@@ -74,16 +75,7 @@ def enqueue(
     prefs = person_preferences(db, owner, device, preferences(db, owner))
     profile = agent_models.selected(prefs, require_key=True).profile_id
     transient = conv.private or not prefs["history_enabled"]
-    # Serialize intake in a conversation; action concurrency is decided after routing.
     deps = list(dependencies or [])
-    if kind == "agent_intake":
-        deps += [
-            p.id
-            for p in pending
-            if p.owner_id == owner
-            and p.conversation_id == conversation_id
-            and db.get(Job, p.id).kind == "agent_intake"
-        ]
     job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile})
     db.add(job)
     db.flush()
@@ -146,32 +138,22 @@ def eligible(db, job):
     dependencies = [db.get(Job, identity) for identity in row.dependencies]
     if any(dep and dep.status in ACTIVE for dep in dependencies):
         return False
-    # Failed dependencies need a user decision, never an optimistic continuation.
-    if job.kind != "agent_intake" and any(
-        dep and dep.status in {"failed", "cancelled", "expired", "partial", "needs_input"}
-        for dep in dependencies
-    ):
-        job.status = "needs_input"
-        row.result = {
-            **row.result,
-            "message": "Earlier related work needs attention. Continue or revise this request.",
-        }
-        emit(db, row.owner_id, "work.changed", row.id)
-        return False
-    lane = "agent_intake" if job.kind == "agent_intake" else "agent_action"
+    # A resumed backend receives the actual predecessor outcome, including failures.
+    # Waiting releases the worker slot; no model guesses whether a predecessor finished.
+    lane = "agent_action"
     busy = list(
         db.scalars(
             select(AgentWork)
             .join(Job)
             .where(
                 AgentWork.account_id == row.account_id,
-                Job.kind == lane,
+                Job.kind.in_({lane, "agent_intake"}),
                 Job.id != row.id,
                 Job.status.in_({"running", "dispatched"}),
             )
         )
     )
-    return len(busy) < (1 if lane == "agent_intake" else get_settings().agent_account_parallelism)
+    return len(busy) < get_settings().agent_account_parallelism
 
 
 def finish(db, row, status, message, **result):
@@ -179,6 +161,7 @@ def finish(db, row, status, message, **result):
     job.status, job.finished_at = status, now()
     row.result = {**row.result, **result, "message": message}
     row.updated_at = now()
+    row.seen_at = None
     # Checkpoints contain retrieved data/native provider signatures; never retain after completion.
     if status in {"succeeded", "cancelled", "expired"}:
         row.checkpoint_ciphertext = None
@@ -188,7 +171,16 @@ def finish(db, row, status, message, **result):
         row.result = {
             key: value
             for key, value in row.result.items()
-            if key in {"actions", "tool_calls", "child_ids", "route_kinds", "quiet", "receipt_ids"}
+            if key
+            in {
+                "actions",
+                "tool_calls",
+                "child_ids",
+                "route_kinds",
+                "quiet",
+                "receipt_ids",
+                "related_request_id",
+            }
         }
         row.result["message"] = (
             "Saved changes are available in the action details."
@@ -254,6 +246,7 @@ def revise(db, row, message, *, continue_work=False):
     row.input_ciphertext = seal(data)
     row.revision += 1
     if job.kind == "agent_intake":
+        job.kind = "agent_action"
         row.checkpoint_ciphertext = None
     saved_state = unseal(row.checkpoint_ciphertext)
     if saved_state:
@@ -276,7 +269,10 @@ def revise(db, row, message, *, continue_work=False):
 def reschedule(db, row):
     job = db.get(Job, row.id)
     job.status, job.finished_at = "queued", None
-    job.payload = {**job.payload, "dispatch_revision": row.revision}
+    job.payload = {
+        **job.payload,
+        "dispatch_revision": max(row.revision, int(job.payload.get("dispatch_revision", 0)) + 1),
+    }
     outbox = db.get(Outbox, row.id)
     if outbox:
         outbox.submitted_at = None
@@ -324,6 +320,8 @@ def public(db, row, *, children=True):
     return {
         "id": row.id,
         "parent_id": row.parent_id,
+        "related_request_id": result.get("related_request_id"),
+        "waiting": bool(result.get("waiting_for")) and status == "queued",
         "conversation_id": row.conversation_id,
         "request": data.get("message", "Request"),
         "status": status,

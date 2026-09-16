@@ -3,6 +3,32 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Direct backend execution and action receipts — September 16
+
+- [x] Remove the interpretation-model call and exact-quote gate. Voice turns and
+  text requests are saved unchanged and sent directly to the selected backend.
+- [x] Keep independent requests concurrent. The backend resolves references with
+  `work_followup`; the database supplies status, dependencies and saved record IDs.
+  Waiting requests release their worker slot and resume from a saved checkpoint.
+- [x] Reserve affected records before tools act, bind new IDs when commands commit,
+  and retain short transaction locks/revision checks. Unknown and bulk scopes wait
+  conservatively; an older request cannot expand into newer reserved work.
+- [x] Keep earlier speech as reference data, exclude later speech from earlier
+  requests, and avoid replaying earlier user turns as new instructions.
+- [x] Make cards lead with verified saved changes and key fields. Collapse original
+  speech; keep Edit/Revert on saved changes. Replace Mark reviewed with optional
+  Dismiss notification for failures; this never approves or retries work.
+- [x] Link follow-up receipts to the earlier request. Guard Revert against changed
+  fields and incoming record links; record reversals without deleting history.
+- [x] Verify natural speech and early follow-ups with Luna and Gemini; verify
+  desktop/mobile Edit, Revert and notification dismissal on synthetic records.
+- [ ] Owner voice acceptance after deployment: Alex/milk/follow-up, filtering from
+  natural speech, wake words, goodbye, disconnect/reconnect and backgrounding.
+
+This supersedes the original batch's separate intake-model classification. Earlier
+failed intake cards can be retried through the direct backend; they are not replayed
+automatically because their original times or intent may no longer be current.
+
 ## Current batch — reliable background work, action cards and onboarding
 
 Deployed September 16 (implementation `e5d9234`); API, worker and public HTTPS
@@ -53,7 +79,9 @@ Design and decisions: [BACKGROUND_WORK_PRD.md](BACKGROUND_WORK_PRD.md).
   scenarios; verify exact-once command recovery by killing the actual worker.
   Full regression, build, browser and schema-upgrade evidence is in the validation
   document. Realtime stays disabled.
-- [ ] Finish actual phone/desktop microphone trials: rapid A/B requests, late
+- [x] Owner reports basic phone voice is working well (September 16). Wake words
+  and the updated goodbye sequence have not yet been tested on the phone.
+- [ ] Finish remaining phone/desktop microphone trials: rapid A/B requests, late
   correction, wake plus immediate request, goodbye, reconnect and backgrounding.
   Automated microphone simulations are not real-device acceptance.
 - [ ] Complete Google production consent verification and review the public
