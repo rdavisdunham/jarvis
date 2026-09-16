@@ -108,7 +108,7 @@ export function LinearSettings({
           <p className="footnote">
             Create a personal API key in Linear → Settings → Security & access,
             with read, create and write access for your chosen teams. Stored
-            encrypted on your home server.
+            encrypted in Eridani.
           </p>
           <button className="secondary" disabled={busy || !key}>
             Connect Linear

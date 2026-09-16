@@ -3,7 +3,8 @@
 import json
 import secrets
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
+from uuid import UUID
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -77,7 +78,30 @@ def make_flow(purpose, state, verifier):
     )
 
 
-def begin(purpose, session_hash=None):
+def return_destination(value=None, purpose="login"):
+    default = "/?view=tasks" if purpose == "login" else "/?view=settings&section=integrations"
+    if not value:
+        return default
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or parsed.path != "/" or parsed.fragment or len(value) > 1000:
+        raise DomainError("INVALID_ARGUMENT", "Choose a page within Eridani.")
+    params = dict(parse_qsl(parsed.query))
+    allowed = {"view", "tab", "state", "sharing", "invite", "section"}
+    if set(params)-allowed:
+        params = {key: val for key, val in params.items() if key in allowed}
+    if "invite" in params:
+        try:
+            params["invite"] = str(UUID(params["invite"]))
+        except ValueError:
+            raise DomainError("INVALID_ARGUMENT", "That invitation link is not valid.") from None
+        params.update(view="settings", sharing="1")
+    if not params:
+        return default
+    return "/?" + urlencode(params)
+
+
+def begin(purpose, session_hash=None, return_to=None):
+    destination = return_destination(return_to, purpose)
     if purpose != "login":
         from .config import require_external_services
         require_external_services()
@@ -93,7 +117,7 @@ def begin(purpose, session_hash=None):
         if purpose != "login":
             session = db.get(AuthSession, session_hash)
             if not session or session.expires_at <= now():
-                raise DomainError("NOT_AUTHORIZED", "Pair this device before linking Google.", 401)
+                raise DomainError("NOT_AUTHORIZED", "Sign in before linking Google.", 401)
         db.execute(delete(GoogleOAuthAttempt).where(GoogleOAuthAttempt.expires_at < now()))
         account = db.get(GoogleIdentity, session.owner_id) if purpose != "login" else None
         db.add(
@@ -101,6 +125,7 @@ def begin(purpose, session_hash=None):
                 state_hash=digest(state),
                 browser_hash=digest(browser),
                 purpose=purpose,
+                return_to=destination,
                 session_hash=session_hash,
                 account_subject=account.subject if account else None,
                 account_generation=account.generation if account else None,
@@ -218,7 +243,7 @@ def finish(state, browser, code=None, error=None):
         if purpose != "login":
             session = db.get(AuthSession, values["session_hash"])
             if not session or session.owner_id != owner or session.expires_at <= now():
-                raise DomainError("NOT_AUTHORIZED", "Your pairing session ended. Sign in and try again.", 401)
+                raise DomainError("NOT_AUTHORIZED", "Your sign-in session ended. Sign in and try again.", 401)
         if values["account_subject"] is not None and (
             not identity
             or identity.subject != values["account_subject"]

@@ -1,9 +1,13 @@
 # Connect Google to Eridani
 
-Google sign-in and Calendar sync are implemented. The owner has configured the
-Cloud client and confirmed real Calendar sync. The next optional step is
-**Enable Calendar editing** in Settings (step 4 below). Earlier setup steps are
-retained for recovery or a new deployment.
+Google sign-in and Calendar read/write sync are deployed on Railway at
+**https://app.eridani.app**. The September 16 cloud cutover preserved the owner's
+Google identity and grant; Calendar synchronized successfully from Railway.
+Invited accounts are supported; public self-service registration is not enabled.
+
+The production client already exists. See [production publishing and verification](#production-publishing-and-google-verification)
+for moving beyond Google's Testing audience. The setup steps below also describe
+recovery or a future separate development environment.
 
 ## 1. Create the Google client
 
@@ -18,58 +22,43 @@ Create an OAuth client with application type **Web application**. Add this exact
 authorized redirect URI:
 
 ```text
-https://davispc.tail957c2.ts.net:9443/api/v1/auth/google/callback
+https://app.eridani.app/api/v1/auth/google/callback
 ```
 
 The scheme, hostname, port and path must match. This is a server authorization-code
 flow; it does not need a browser JavaScript origin or a public inbound webhook.
-Your browser must have access to the Tailnet when Google redirects it back.
+The cloud callback is public HTTPS; it does not require Tailnet access.
 [Google's web-server setup guide](https://developers.google.com/identity/protocols/oauth2/web-server)
 
 The connection asks first for OpenID identity/email; Calendar is a separate grant
 using `https://www.googleapis.com/auth/calendar.readonly`. Editing is an additional,
 optional grant using `https://www.googleapis.com/auth/calendar.events`. Read-only
-sync works without it. If Google Console rejects the Tailnet hostname or requires domain ownership
-verification for your chosen publishing configuration, stop at that specific
-message and configure an owner-controlled HTTPS hostname; do not expose Jarvis
-publicly as a workaround.
+sync works without it. The production authorized domain is `eridani.app`; domain
+ownership verification for review uses Google Search Console.
 
-## 2. Save credentials locally
+## 2. Maintain production credentials
 
-The two empty rows have been added to the ignored repository `.env`:
+The existing `JARVIS_GOOGLE_CLIENT_ID`, `JARVIS_GOOGLE_CLIENT_SECRET` and
+`JARVIS_INTEGRATION_ENCRYPTION_KEY` are configured in Railway's API and worker.
+Keep the encryption key unchanged so stored Google grants remain readable.
+Do not paste secrets into chat, screenshots or Git. If credentials must change,
+update the affected Railway variables and redeploy both services through the
+[cloud runbook](CLOUD_MIGRATION.md). Do not restart the retired local production
+stack or create a new OAuth client just to publish the existing app.
 
-```dotenv
-JARVIS_GOOGLE_CLIENT_ID=
-JARVIS_GOOGLE_CLIENT_SECRET=
-```
+## 3. Sign in and connect Calendar
 
-Paste the values from your OAuth client there and save. Keep the secret out of chat,
-screenshots and Git. The separate integration encryption key was generated in
-ignored `.env.upgrade`; it should not be replaced when adding these credentials.
+1. Open https://app.eridani.app and choose **Sign in with Google**.
+2. Use the already linked owner account or an email invited through **Settings → Sharing**.
+3. In **Settings → Google**, choose **Connect Calendar** if it is not connected.
+4. Grant Calendar read access, then select the calendars Eri should use.
+5. Open Calendar; synced events appear with Eridani's own scheduled records.
+6. Optionally enable Calendar editing below. Login and Calendar consent remain separate.
 
-Recreate the API and worker so they read the updated environment. From a terminal
-in the repository, using Docker Desktop:
-
-```text
-docker compose --env-file .env.upgrade -f compose.upgrade.yml up -d --no-deps api worker
-```
-
-## 3. Link your account
-
-1. Open Eridani using your existing pairing session.
-2. In **Settings → Google**, choose **Link Google account**.
-3. Choose your account in Google and return to Eridani.
-4. Choose **Connect Calendar** and grant the read-only Calendar permission.
-5. After the first sync, select the calendars Eri should use. The primary calendar
-   is selected initially; additional calendars start off.
-6. Open Calendar. Google events appear alongside tasks and reminders.
-   **Find an open time** asks Google for current free/busy availability.
-7. Verify Google sign-in on a second tab/device before changing any pairing setup.
-   Pairing remains a recovery route in this release.
-
-Only the Google account linked from an existing authenticated owner session can
-sign in. Eridani matches Google's stable account subject, not merely an email
-address. [Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
+The cloud app disables PIN login. Google subjects are verified, and new accounts
+require a valid invitation bound to their verified email. Creating an invitation
+does not send email; share the app address with the person yourself.
+[Google OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)
 
 ## 4. Enable event editing
 
@@ -102,6 +91,47 @@ the event instead of overwriting a newer version.
 [Google event creation](https://developers.google.com/workspace/calendar/api/guides/create-events),
 [conditional updates](https://developers.google.com/workspace/calendar/api/guides/version-resources)
 
+## Production publishing and Google verification
+
+Checked against Google's current guidance on September 16, 2026. Publishing the
+OAuth audience and completing verification are separate actions.
+
+1. In **Google Cloud Console → Google Auth Platform → Audience**, keep the audience
+   External if people outside one Google Workspace organization will use it.
+   Select **Publish app** to change Testing to In production. Calendar consent
+   granted in Testing has a seven-day lifetime, including its refresh token;
+   reconnect Calendar after switching if an existing test grant expires. Production
+   does not make every token permanent or remove unverified-app warnings by itself.
+   [Audience and publishing rules](https://support.google.com/cloud/answer/15549945)
+2. Build a public explanatory homepage at `https://eridani.app`, with accessible
+   privacy and terms pages and a monitored support contact. The current login card
+   alone is insufficient for Google's homepage requirement. Disclose actual data
+   use, including any Calendar data sent to AI providers to fulfill user requests.
+   Verify `eridani.app` ownership in **Google Search Console** (the DNS TXT record
+   can be added in Cloudflare), and list it under authorized domains.
+   [Branding and domain requirements](https://support.google.com/cloud/answer/15549049)
+3. In **Branding**, provide Eridani's name, logo, support/developer emails and those
+   public URLs. Complete **Verify Branding**, then **Publish branding** when ready.
+   Current Google guidance requires published branding before data-access review.
+4. In **Data Access**, declare only the scopes used by the application:
+   `openid`, `https://www.googleapis.com/auth/userinfo.email`,
+   `https://www.googleapis.com/auth/calendar.readonly`, and
+   `https://www.googleapis.com/auth/calendar.events`. Login uses the first two;
+   Calendar read and optional event editing request the others separately. Review
+   the console's scope classifications and least-privilege justification.
+5. In **Verification Center**, submit the Calendar data-access review. Explain
+   calendar display/availability and user-directed event create/update/delete.
+   Supply an unlisted demonstration video showing the actual English sign-in and
+   consent flow and how each permission is used. Provide reviewer access through
+   the app's invitation mechanism if requested. Google may follow up by email.
+   [Sensitive-scope verification process](https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification)
+
+Google documents a personal-use exception for only you or a few people you know.
+That can allow limited use without full review, while warnings and the unverified
+user cap still apply. For a broader Eridani launch and a clean consent experience,
+complete branding and Calendar verification. Switching Google's audience to
+production does not disable Eridani's invitation requirement.
+
 ## Connection maintenance
 
 Google refresh tokens for external apps in Testing generally expire after seven
@@ -113,7 +143,8 @@ the appropriate publishing configuration for your personal app once ready.
 grant; the linked sign-in identity stays. If Google's revocation service cannot be
 reached, the UI says the local disconnect is complete and points to your Google
 account connections to finish revocation. **Unlink Google sign-in** also removes
-the identity and invalidates sessions created through Google. Pairing sessions remain.
+the identity and invalidates sessions created through Google. Public cloud login
+has no PIN fallback; the app protects accounts from removing their sole login.
 
 Encrypted database backups include encrypted refresh tokens. Keep the integration
 key with your other recovery secrets; its local recovery file is

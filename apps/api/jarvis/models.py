@@ -428,6 +428,7 @@ class GoogleOAuthAttempt(Base):
     state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     browser_hash: Mapped[str] = mapped_column(String(64))
     purpose: Mapped[str] = mapped_column(String(20))
+    return_to: Mapped[str | None] = mapped_column(String(1000))
     account_subject: Mapped[str | None] = mapped_column(String(255))
     account_generation: Mapped[int | None] = mapped_column(Integer)
     session_hash: Mapped[str | None] = mapped_column(String(64))
@@ -575,3 +576,80 @@ class WorkspaceInvite(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     accepted_by: Mapped[str | None] = mapped_column(ForeignKey("user_accounts.id"))
+
+
+class AgentWork(Base):
+    """Actor-scoped durable requests; encrypted inputs/checkpoints never enter DBOS results."""
+    __tablename__ = "agent_work"
+    id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(String(100), index=True)
+    device_id: Mapped[str] = mapped_column(String(36))
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    voice_session_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    input_hash: Mapped[str] = mapped_column(String(64))
+    input_ciphertext: Mapped[str | None] = mapped_column(Text)
+    checkpoint_ciphertext: Mapped[str | None] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    dependencies: Mapped[list] = mapped_column(JSONB, default=list)
+    resources: Mapped[list] = mapped_column(JSONB, default=list)
+    result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    transient: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VoiceInbox(Base):
+    __tablename__ = "voice_inboxes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(String(100))
+    device_id: Mapped[str] = mapped_column(String(36))
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    content_ciphertext: Mapped[str] = mapped_column(Text)
+    cursor: Mapped[int] = mapped_column(Integer, default=0)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    last_input_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    end_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class DeviceBridge(Base):
+    __tablename__ = "device_bridges"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(100))
+    context_ciphertext: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class DeviceAction(Base):
+    __tablename__ = "device_actions"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(36), index=True)
+    account_id: Mapped[str] = mapped_column(String(100))
+    action_ciphertext: Mapped[str] = mapped_column(Text)
+    result_ciphertext: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class ActionChange(Base):
+    __tablename__ = "action_changes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(String(100), index=True)
+    command_id: Mapped[str] = mapped_column(String(100), index=True)
+    tool: Mapped[str] = mapped_column(String(70))
+    entity_kind: Mapped[str] = mapped_column(String(40))
+    entity_id: Mapped[str] = mapped_column(String(100), index=True)
+    before_ciphertext: Mapped[str | None] = mapped_column(Text)
+    after_ciphertext: Mapped[str | None] = mapped_column(Text)
+    reverted_by: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

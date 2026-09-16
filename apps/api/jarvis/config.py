@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     realtime_model: str = "gpt-realtime-2.1"
     live_model: str = "gpt-live-1"
     text_model: str = "gpt-5.6-luna"  # Legacy env compatibility; routing uses agent_models.
+    agent_parallelism: int = Field(default=4, ge=1, le=16)
+    agent_account_parallelism: int = Field(default=2, ge=1, le=4)
+    agent_request_timeout_seconds: int = Field(default=600, ge=30, le=3600)
+    agent_queue_limit: int = Field(default=100, ge=10, le=1000)
     max_tool_calls_per_request: int = Field(default=100, ge=1, le=1000)
     max_model_rounds_per_request: int = Field(default=30, ge=2, le=100)
     openai_api_key: str = ""

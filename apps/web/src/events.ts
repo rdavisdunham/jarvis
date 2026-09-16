@@ -25,6 +25,10 @@ export function subscribeEvents(
       const received = Number(event.lastEventId);
       if (Number.isSafeInteger(received)) cursor = Math.max(cursor, received);
       try {
+        if (JSON.parse(event.data || "{}").kind === "work.changed") {
+          window.dispatchEvent(new Event("eri-work-changed"));
+          return;
+        }
         if(JSON.parse(event.data || "{}").kind==="membership.changed")
           window.dispatchEvent(new Event("eri-accounts-changed"));
       } catch { /* reconnect refresh still runs for malformed event payloads */ }

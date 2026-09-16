@@ -1223,3 +1223,17 @@
     flex-direction: column;
   }
 }
+/* Compact capture and comfortable touch regions. */
+.saved-view-menu {display:inline-block;position:relative;margin:0 0 10px;max-width:100%}
+.saved-view-menu>summary {display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;color:var(--soft)}
+.saved-view-menu .saved-views {position:absolute;z-index:25;top:100%;left:0;min-width:280px;max-width:calc(100vw - 48px);margin-top:5px;padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 15px 40px #0005;display:flex;flex-wrap:wrap}
+.saved-view-menu .saved-view-name {width:100%}.task-check {position:relative;width:32px;height:32px;min-width:32px;border:0;background:none!important;display:grid;place-items:center}.task-check:before {content:"";position:absolute;width:18px;height:18px;border:1px solid #637182;border-radius:5px}.task-check svg {position:relative}.task-row.done .task-check:before {background:var(--accent);border-color:var(--accent)}
+.invitation-card,.invitation-copy {padding:16px;border:1px solid var(--border);border-radius:10px;margin:16px 0;background:var(--surface)}.invitation-copy label {display:grid;gap:8px;font-size:12px}.invitation-copy textarea {width:100%;min-height:95px;resize:vertical}.invitation-copy button {margin-top:9px}
+.calendar-mobile-count {display:none}
+@media(max-width:650px) {
+ .content .page-heading {margin-bottom:12px}.content .page-heading h1 {font-size:24px}.task-tab-description {display:none}.task-tab-header {margin-bottom:10px}.task-tabs button {min-height:40px;padding:8px 12px}
+ .saved-view-menu {margin-bottom:6px}.filter-panel:not([open]) {margin-bottom:10px}.quick-add.compact-capture {margin:10px 0}.workspace-actions {gap:7px;flex-wrap:wrap;margin-bottom:10px}.board-drag-help {font-size:10px;margin:6px 0 10px}
+ .task-check {width:44px;height:44px;min-width:44px;margin-left:-8px;margin-right:-5px}.task-more,.board-drag-handle,.close-companion,.calendar-nav .icon-button {min-width:44px;min-height:44px}.task-row {min-height:54px}
+ .board-scroll {scroll-snap-type:x proximity}.board-column {scroll-snap-align:start}.task-board {grid-auto-columns:minmax(250px,82vw)}
+ .calendar-grid .calendar-day {min-height:64px;padding:0 2px 4px;gap:0}.calendar-day .calendar-number {width:100%;min-height:44px;height:44px}.calendar-day .calendar-labels {display:none!important}.calendar-mobile-count {display:block;text-align:center;font-size:9px;color:var(--muted);line-height:16px}.calendar-type-legend {gap:10px;font-size:10px}
+}

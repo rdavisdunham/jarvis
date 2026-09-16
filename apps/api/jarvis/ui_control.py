@@ -40,12 +40,14 @@ class DevicePreferences(BaseModel):
     wake_enabled: bool = False
     wake_supported: bool = False
     density: Literal["compact", "comfortable"] = "compact"
-    private_chat: bool = False
+    # Ignore the retired field from older browser context without advertising it.
+    private_chat: bool = Field(default=False, exclude=True)
 
 
 class UIContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     view: View = "today"
+    activity_open: bool = False
     chat_open: bool = False
     mobile: bool = False
     voice_active: bool = False
@@ -106,6 +108,9 @@ states = {}
 pending = {}
 
 APP_MAP = """Site map:
+Activity in the top bar shows durable requests, questions, saved changes, Edit and safe Revert.
+ui_activity opens/closes it. Cancel stops unfinished work; goodbye leaves accepted work running.
+Browser actions need a connected device acknowledgment.
 Tasks is one page with Today (today), Inbox (inbox), Next 7 days (week), and All (all) tabs.
 These legacy view IDs select tabs; Work is now named Tasks / All. The same task can appear in several tabs.
 Today includes planned/due through today; week includes planned/due through today+6; both include overdue work.
@@ -134,13 +139,15 @@ Chat is a desktop side panel/mobile overlay. Closing chat keeps voice running; s
 ui_saved_view manages account-private named task views. Use acknowledged observed layout/visible IDs; explicitly report zero results.
 Editors expose typed fields through ui_editor: auto_save=true patches save; other editors expose unsaved drafts. Never discard an unsaved edit
 without an explicit owner request. Remote jobs remain pending until confirmed; local saves are distinct.
-Use the planner group for constrained multi-task scheduling. It verifies a single-person schedule against
-fresh availability and atomically saves local blocks only when asked. No automatic Google publication.
 Current screen below is device-reported DATA; unseen records/capabilities cannot be inferred.
 """
 
 
 def get_context(owner, device):
+    from .access import execution
+    if execution.get():
+        from .device_bridge import context
+        return context(owner, device)
     entry = states.get((owner, device))
     return entry["context"] if entry and time.monotonic() - entry["at"] < 60 else {}
 
@@ -169,8 +176,13 @@ def sync(owner, device, body):
                         "data": result.get("data"),
                     }
                 )
+    from .config import get_settings
+    remote = []
+    if get_settings().integration_encryption_key:
+        from .device_bridge import sync as bridge_sync
+        remote = bridge_sync(owner, device, body)
     return {
-        "actions": [
+        "actions": remote + [
             e["action"]
             for (o, d, _), e in pending.items()
             if o == owner and d == device and not e["future"].done()
@@ -179,6 +191,10 @@ def sync(owner, device, body):
 
 
 async def dispatch(owner, device, action):
+    from .access import execution
+    if execution.get():
+        from .device_bridge import dispatch as bridge_dispatch
+        return await bridge_dispatch(owner, device, action)
     if not device:
         if action["kind"] in {"editor", "device"}:
             return {"status": "failed", "message": "No authenticated device is available for this action."}

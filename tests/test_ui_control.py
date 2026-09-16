@@ -86,3 +86,14 @@ async def test_calendar_detail_requires_a_record_and_preserves_detail_mode():
     assert result["data"]["mode"] == "detail"
     with pytest.raises(ValidationError):
         UIContext(editor={"kind": "task", "mode": "javascript"})
+
+
+async def test_private_chat_control_is_retired_but_old_context_can_sync():
+    from jarvis.domain import DomainError
+    from jarvis.ui_contracts import UI_TOOLS
+
+    assert "private_chat" not in UI_TOOLS["ui_device"]["parameters"]["properties"]
+    context = UIContext(device_preferences={"private_chat": True})
+    assert "private_chat" not in context.model_dump()["device_preferences"]
+    with pytest.raises(DomainError):
+        await call_tool("davin", "turn", 0, "ui_device", {"private_chat": True})

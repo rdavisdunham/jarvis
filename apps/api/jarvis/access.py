@@ -12,6 +12,42 @@ from sqlalchemy import select
 from .models import AuthSession, SharedWorkspace, WorkspaceMember, now
 
 principal = ContextVar("eridani_session_hash", default=None)
+execution = ContextVar("eridani_work_principal", default=None)
+
+
+def actor(db, owner):
+    grant = execution.get()
+    if grant:
+        authorize_execution(db, owner)
+        return grant["account_id"]
+    session = db.get(AuthSession, principal.get()) if principal.get() else None
+    return session.owner_id if session else owner
+
+
+def authorize_execution(db, owner, *, write=False):
+    from .domain import DomainError, advisory
+    from .models import AgentWork, UserAccount
+
+    grant = execution.get()
+    if not grant:
+        return None
+    if write:
+        advisory(db, "work:" + grant["id"])
+    row = db.get(AgentWork, grant["id"], populate_existing=True)
+    if (not row or row.owner_id != owner or row.account_id != grant["account_id"]
+            or not db.get(UserAccount, row.account_id)):
+        raise DomainError("ACCESS_REVOKED", "This request no longer has account access.", 403)
+    if row.cancel_requested:
+        raise DomainError("WORK_CANCELLED", "This request was cancelled. Saved actions remain.", 409)
+    if row.expires_at <= now():
+        raise DomainError("WORK_EXPIRED", "This request expired before completing.", 409)
+    if row.revision != grant["revision"]:
+        raise DomainError("WORK_CHANGED", "This request has a newer correction. Reload its instructions.", 409)
+    permission = role(db, owner, row.account_id, lock=write)
+    if write and permission == "viewer":
+        raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
+    return row.account_id, permission
+
 PERSONAL_TOOLS = ("memory.", "settings.", "calendar.", "linear.")
 PERSONAL_PATHS = (
     "/api/v1/memory",
@@ -54,6 +90,11 @@ def check_device(owner, device):
     from .domain import DomainError
 
     with session_scope() as db:
+        if execution.get():
+            authorize_execution(db, owner)
+            if device and device != execution.get()["device_id"]:
+                raise DomainError("ACCESS_REVOKED", "This request belongs to another device.", 403)
+            return None
         shared=db.get(SharedWorkspace,owner)
         session_hash=principal.get()
         if not shared and not session_hash:
@@ -87,7 +128,7 @@ def request_access(request, namespace, permission, account):
         permission == "viewer"
         and request.method not in {"GET", "HEAD", "OPTIONS"}
         and path not in reads
-        and not path.startswith("/api/v1/voice")
+        and not path.startswith(("/api/v1/voice", "/api/v1/work"))
     ):
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
 
@@ -95,12 +136,19 @@ def request_access(request, namespace, permission, account):
 def command_access(db, owner, tool, arguments):
     from .domain import DomainError, advisory
 
+    grant = authorize_execution(db, owner, write=True)
     workspace = db.get(SharedWorkspace, owner)
     if not workspace:
         return
     advisory(db, f"access:{owner}")
-    session = db.get(AuthSession, principal.get(), populate_existing=True) if principal.get() else None
-    namespace, permission = identity(db, session)
+    if grant:
+        from types import SimpleNamespace
+        account, permission = grant
+        session = SimpleNamespace(owner_id=account)
+        namespace = owner
+    else:
+        session = db.get(AuthSession, principal.get(), populate_existing=True) if principal.get() else None
+        namespace, permission = identity(db, session)
     if namespace != owner:
         raise DomainError("ACCESS_REVOKED", "The active workspace changed.", 403)
     if permission == "viewer":
@@ -170,15 +218,17 @@ def assert_current(owner, device):
 def person_preferences(db, owner, device, values):
     if not db.get(SharedWorkspace, owner):
         return values
-    session = db.scalar(select(AuthSession).where(AuthSession.device_id == device))
-    if not session:
+    grant = execution.get()
+    session = db.scalar(select(AuthSession).where(AuthSession.device_id == device)) if not grant else None
+    account = grant["account_id"] if grant else session.owner_id if session else None
+    if not account:
         return values
     from .domain import preferences
 
-    personal = preferences(db, session.owner_id)
+    personal = preferences(db, account)
     return {
         **values,
-        "shared_role":role(db,owner,session.owner_id),
+        "shared_role":role(db,owner,account),
         **{
             key: personal[key]
             for key in ("preferred_name", "agent_provider", "timezone", "default_reminder_hour")

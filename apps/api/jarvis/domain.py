@@ -433,18 +433,18 @@ def execute(db, owner, command_id, tool, arguments):
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
-    data = mutate(db, owner, tool, args, command_id)
+    from .action_history import journal
+    with journal(db, owner, command_id, tool, arguments):
+        data = mutate(db, owner, tool, args, command_id)
     result = {
         "command_id": command_id,
         "status": "succeeded",
         "data": data,
         "committed_at": now().isoformat(),
     }
-    from .access import principal
-    from .models import AuthSession
-    session=db.get(AuthSession,principal.get()) if principal.get() else None
+    from .access import actor
     db.add(Command(owner_id=owner, id=command_id, request_hash=request_hash, result=result,
-                   account_id=session.owner_id if session else owner))
+                   account_id=actor(db, owner)))
     db.flush()
     return result
 

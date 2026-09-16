@@ -53,6 +53,7 @@ export const actionSchema = z
       .enum([
         "show",
         "chat",
+        "activity",
         "search",
         "filter",
         "form",
@@ -115,6 +116,5 @@ export const actionSchema = z
     voice: z.string().max(50).optional(),
     wake_enabled: z.boolean().optional(),
     density: z.enum(["compact", "comfortable"]).optional(),
-    private_chat: z.boolean().optional(),
   })
   .strict();

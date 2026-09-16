@@ -140,11 +140,14 @@ async def test_new_speech_clears_error_and_finished_action_cannot_be_submitted_a
 
 @pytest.mark.parametrize("private", [True, False])
 async def test_voice_final_transcript_retention_and_deduplication(controller, client, private):
-    from jarvis.models import Source
+    from jarvis.models import Conversation, Source
     from sqlalchemy import select
 
     c = controller
-    conv = client.post("/api/v1/conversations", json={"private": private}).json()
+    conv = client.post("/api/v1/conversations", json={}).json()
+    if private:
+        with session_scope() as db:
+            db.get(Conversation, conv["id"]).private = True  # Legacy private conversation.
     c.conversation_id = conv["id"]
     await c.event({"type": "input_audio_buffer.speech_started", "item_id": "spoken"})
     event = {

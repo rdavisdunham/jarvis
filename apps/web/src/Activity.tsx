@@ -1,0 +1,130 @@
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Clock3, Pencil, RotateCcw, X } from "lucide-react";
+import { api, post } from "./api";
+import { useDialogFocus } from "./components";
+
+export type ActionChange = {
+  id: string; command_id: string; kind: string; entity_id: string | null;
+  title: string; operation: string; fields: Record<string, { before: unknown; after: unknown }>;
+  can_revert: boolean; revert_reason: string; reverted: boolean; remote_status?: string | null;
+};
+export type WorkItem = {
+  id: string; parent_id: string | null; conversation_id: string; request: string;
+  status: string; revision: number; message: string; actions: ActionChange[]; children: WorkItem[];
+  cancel_requested: boolean; seen: boolean; created_at: string; updated_at: string; can_continue: boolean;
+};
+export const workActive = (item: WorkItem) => ["queued", "dispatched", "running", "waiting_sync"].includes(item.status);
+export const workAttention = (item: WorkItem) => ["needs_input", "failed", "partial", "expired"].includes(item.status);
+const labels: Record<string, string> = {
+  queued: "Queued", dispatched: "Queued", running: "Working", needs_input: "Waiting for you",
+  succeeded: "Completed", partial: "Partly completed", failed: "Couldn't finish",
+  cancelled: "Cancelled", expired: "Expired", waiting_sync: "Syncing",
+};
+export function useWork(enabled: boolean, scope?: string) {
+  const [items, setItems] = useState<WorkItem[]>([]), [error, setError] = useState("");
+  const current = useRef(0);
+  async function refresh() {
+    const generation = current.current;
+    try {
+      const result = await api<{ items: WorkItem[] }>("/work");
+      if (generation === current.current) { setItems(result.items); setError(""); }
+    } catch (e) {
+      if (generation === current.current) setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    current.current++;
+    setItems([]);
+    if (!enabled) return;
+    void refresh();
+    const update = () => void refresh();
+    const timer = setInterval(update, 3000);
+    window.addEventListener("eri-work-changed", update);
+    return () => { current.current++; clearInterval(timer); window.removeEventListener("eri-work-changed", update); };
+  }, [enabled, scope]);
+  return { items, error, refresh };
+}
+type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; nested?: boolean };
+function text(value: unknown) {
+  if (value === null || value === undefined || value === "") return "None";
+  if (Array.isArray(value)) return value.join(", ") || "None";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value).replaceAll("_", " ");
+}
+export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState(""),
+    [editing, setEditing] = useState(false), [correction, setCorrection] = useState("");
+  const revertIds = useRef(new Map<string, string>());
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true); setError("");
+    try { await fn(); await onRefresh(); }
+    catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  const editable = new Set(["task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
+  return <article className={"work-card " + (nested ? "nested " : "") + (workAttention(item) ? "attention" : "")}>
+    <header><span className={"work-status " + item.status}>
+      {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
+      {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : labels[item.status] ?? item.status}
+    </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
+    <p className="work-request">{item.request}</p>
+    {!!item.message && (!item.children.length || item.status === "needs_input") && <p className="work-result">{item.message}</p>}
+    {item.children.map(child => <WorkCard key={child.id} item={child} onRefresh={onRefresh} onOpen={onOpen} nested/>)}
+    {item.actions.map(action => <div className="work-change" key={action.id}>
+      <div><strong>{action.title}</strong><span>{action.reverted ? "Reverted" : action.operation}
+        {action.remote_status ? " · " + (labels[action.remote_status] ?? action.remote_status) : ""}</span></div>
+      {!!Object.keys(action.fields).length && <details><summary>Changes <ChevronDown size={12}/></summary>
+        <dl>{Object.entries(action.fields).map(([field, values]) => <div key={field}><dt>{field.replaceAll("_", " ")}</dt>
+          <dd>{action.operation !== "created" && <><del>{text(values.before)}</del><span aria-hidden="true"> → </span></>}
+            <span>{text(values.after)}</span></dd></div>)}</dl></details>}
+      <div className="work-card-actions">
+        {action.entity_id && editable.has(action.kind) && <button className="text-button" disabled={busy}
+          onClick={() => void act(() => onOpen(action))}><Pencil size={13}/>Edit</button>}
+        <button className="text-button" disabled={busy || !action.can_revert} title={action.revert_reason}
+          onClick={() => void act(() => {
+            const command_id = revertIds.current.get(action.id) ?? crypto.randomUUID();
+            revertIds.current.set(action.id, command_id);
+            return post("/work/actions/"+action.id+"/revert", {command_id});
+          })}><RotateCcw size={13}/>{action.reverted ? "Reverted" : "Revert"}</button>
+      </div>
+      {!action.can_revert && !action.reverted && <small className="work-revert-note">{action.revert_reason}</small>}
+    </div>)}
+    <div className="work-card-actions">
+      {(workActive(item) || item.status === "needs_input") && <button className="text-button" disabled={busy || item.cancel_requested}
+        title="Stop unfinished work. Saved changes stay in place."
+        onClick={() => void act(() => post("/work/"+item.id+"/cancel", {}))}>Cancel work</button>}
+      {(!item.children.length || item.status === "needs_input") && (item.can_continue || workActive(item)) && <button className="text-button" disabled={busy}
+        onClick={() => setEditing(!editing)}>Revise</button>}
+      {item.can_continue && <button className="text-button" disabled={busy} onClick={() => void act(() =>
+        post("/work/"+item.id+"/revise", {message:"", expected_revision:item.revision, continue_work:true}))}>Continue</button>}
+      {!nested && !workActive(item) && !item.seen && <button className="text-button" disabled={busy}
+        onClick={() => void act(() => post("/work/"+item.id+"/seen", {}))}>Mark reviewed</button>}
+    </div>
+    {editing && <form className="work-revision" onSubmit={event => {
+      event.preventDefault(); void act(async () => {
+        await post("/work/"+item.id+"/revise", {message:correction, expected_revision:item.revision, continue_work:true});
+        setEditing(false); setCorrection("");
+      });
+    }}><label>Clarification or correction<textarea autoFocus value={correction} maxLength={12000}
+      onChange={event => setCorrection(event.target.value)}/></label>
+      <button className="primary compact" disabled={busy || !correction.trim()}>Send correction</button></form>}
+    {error && <p className="work-error" role="alert">{error}</p>}
+  </article>;
+}
+export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
+  items: WorkItem[]; error: string; onClose: () => void; onRefresh: () => Promise<void>; onOpen: Props["onOpen"];
+}) {
+  useDialogFocus();
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => { close.current?.focus(); }, []);
+  return <div className="modal-backdrop activity-backdrop" onClick={event => {if(event.target===event.currentTarget) onClose();}}>
+    <section className="activity-panel" role="dialog" aria-modal="true" aria-label="Eri activity"
+      onKeyDown={event => {if(event.key === "Escape") onClose();}}>
+      <header><div><h2>Activity</h2><p>Accepted work continues when voice ends.</p></div>
+        <button ref={close} className="icon-button" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
+      {error && <p role="alert">{error}</p>}
+      {!items.length && <p className="activity-empty">Ask Eri to do something. Its progress and saved changes will appear here.</p>}
+      <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
+    </section>
+  </div>;
+}

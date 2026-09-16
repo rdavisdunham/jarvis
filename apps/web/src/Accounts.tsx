@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, post } from "./api";
+import { startGoogle } from "./GoogleSettings";
 type Workspace = { id: string; name: string; kind: string; role: string };
 type Invite = {
   id: string;
@@ -8,6 +9,7 @@ type Invite = {
   email: string;
   role: string;
   status: string;
+  expires_at: string;
 };
 type Account = {
   account_id: string;
@@ -79,6 +81,15 @@ export function AccountSwitcher({
   );
 }
 export function SharingSettings() {
+  const inviteId = new URLSearchParams(location.search).get("invite");
+  const [focusedInvite, setFocusedInvite] = useState<Invite | null>(null), [inviteError, setInviteError] = useState("");
+  const [invitationMessage, setInvitationMessage] = useState("");
+  async function loadInvitation() {
+    if (!inviteId) return;
+    try { setFocusedInvite(await api<Invite>("/accounts/invitations/"+encodeURIComponent(inviteId))); setInviteError(""); }
+    catch (e) { setInviteError((e as Error).message); }
+  }
+  useEffect(() => { void loadInvitation(); }, [inviteId]);
   const [data, setData] = useState<Account | null>(null),
     [target, setTarget] = useState(""),
     [members, setMembers] = useState<Member[]>([]),
@@ -123,6 +134,7 @@ export function SharingSettings() {
       await fn();
       await load();
       await refreshMembers();
+      await loadInvitation();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -145,10 +157,20 @@ export function SharingSettings() {
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {!!data?.invitations.length && (
+      {inviteId && <section className="invitation-card">
+        <h3>Your invitation</h3>
+        <p className="footnote">Signed in as {data?.email ?? data?.name}.</p>
+        {inviteError ? <><p role="alert">{inviteError}</p><button onClick={() => void startGoogle("login").catch(e => setInviteError(e.message))}>Use another Google account</button></> : focusedInvite ? <>
+          <strong>{focusedInvite.workspace}</strong><p>{focusedInvite.email} · {focusedInvite.role}</p>
+          {focusedInvite.status === "pending" ? <button className="primary compact" disabled={busy} onClick={() => void act(async () => {
+            await post("/accounts/accept", {invite_id:focusedInvite.id}); setMessage("Invitation accepted. Choose your workspace in the navigation menu.");
+          })}>Accept invitation</button> : <p>{focusedInvite.status === "accepted" ? "You have already accepted this invitation. Choose the workspace in the navigation menu." : "This invitation expired or was revoked. Ask its sender for a new one."}</p>}
+        </> : <p role="status">Checking your invitation…</p>}
+      </section>}
+      {!!data?.invitations.filter(i => i.id !== inviteId).length && (
         <section>
           <h3>Invitations for you</h3>
-          {data.invitations.map((i) => (
+          {data.invitations.filter(i => i.id !== inviteId).map((i) => (
             <div className="sharing-row" key={i.id}>
               <span>
                 <strong>{i.workspace}</strong>
@@ -243,16 +265,18 @@ export function SharingSettings() {
             ))}
           </select>
         </label>
+        <p className="footnote">No email is sent. After creating an invitation, copy its message and share it with the person yourself.</p>
         <form
           className="sharing-fields"
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
-              await post<Invite>("/accounts/invitations", {
+              const created = await post<Invite>("/accounts/invitations", {
                 workspace_id: target || null,
                 email,
                 role,
               });
+              setInvitationMessage("You’re invited to " + created.workspace + " in Eridani. Sign in with " + created.email + ". " + location.origin + "/?view=settings&sharing=1&invite=" + created.id);
               setEmail("");
               setMessage(
                 "Invitation ready. Share this app’s address with them; they must sign in with that Google email. No email was sent.",
@@ -285,6 +309,9 @@ export function SharingSettings() {
             Create invitation
           </button>
         </form>
+        {invitationMessage && <div className="invitation-copy"><label>Invitation message<textarea readOnly value={invitationMessage}/></label>
+          <button className="secondary compact" onClick={() => void navigator.clipboard.writeText(invitationMessage)
+            .then(() => setMessage("Invitation message copied.")).catch(() => setMessage("Select and copy the invitation message above."))}>Copy invitation</button></div>}
         <button
           className="text-button"
           onClick={() =>
@@ -349,7 +376,7 @@ export function SharingSettings() {
           <div className="sharing-row" key={i.id}>
             <span>
               {i.email}
-              <small>Pending · {i.role} · expires in seven days</small>
+              <small>Pending · {i.role} · expires {new Date(i.expires_at).toLocaleDateString()}</small>
             </span>
             <button
               disabled={busy}

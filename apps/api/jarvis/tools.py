@@ -11,6 +11,16 @@ from .ui_control import dispatch, get_context
 
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
+    "work_list": {
+        "description": "Read this account's accepted requests and saved action cards in the current workspace. Includes exact request/action IDs, status, changed fields and safe Revert availability. Other users' jobs are never included.",
+        "parameters": {"type":"object","properties":{},"additionalProperties":False}},
+    "work_cancel": {
+        "description": "Cancel one explicitly identified accepted request and its unfinished child work. Saved effects remain. Read work_list first; clarify ambiguous references. Ending voice or stopping speech is not cancelling work.",
+        "parameters": {"type":"object","properties":{"request_id":{"type":"string","format":"uuid"}},"required":["request_id"],"additionalProperties":False}},
+    "work_revert": {
+        "description": "Explicitly reverse one saved action after work_list reports can_revert. Only on the user's request. The server refuses conflicting later edits and explains unsupported reversals. Created records are archived, not erased. Never infer this permission from Cancel or goodbye.",
+        "parameters":{"type":"object","properties":{"action_id":{"type":"string","format":"uuid"}},"required":["action_id"],"additionalProperties":False}},
+
     "planning_suggest": {
         "description": "Propose a verified local work-block plan for up to eight active tasks. Supply exact requested durations, release/deadline windows and dependencies; the server computes earliest finish against fresh availability. Returns an unsaved proposal and a short plan_token reference, or explicit infeasibility/unknown availability. local_only requires the owner to choose Eridani-only availability. Never claim saved before planning_commit succeeds.",
         "parameters": PlanRequest.model_json_schema(),
@@ -482,6 +492,18 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 "MALFORMED_ID",
                 "Copy the complete 36-character UUID from a fresh lookup and retry. A malformed ID does not mean the record was deleted.",
             ) from None
+    if name in {"work_list", "work_cancel", "work_revert"}:
+        from .access import actor, authorize_execution
+        from .action_history import revert
+        from .agent_work import cancel, list_work, require_work
+        with session_scope() as db:
+            account = actor(db, owner)
+            if name == "work_list":
+                return list_work(db, owner, account, limit=20)
+            authorize_execution(db, owner, write=True)
+            if name == "work_cancel":
+                return cancel(db, require_work(db, owner, account, arguments["request_id"]))
+            return revert(db, owner, account, arguments["action_id"], f"{turn_id}:{index}")
     if name == "ui_state":
         context = get_context(owner, device)
         return {"status": "available" if context else "unavailable", "screen": context}
@@ -635,7 +657,7 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             if len(result["tasks"]) == 1:
                 remember(db, owner, conversation_id, [result["tasks"][0]["id"]])
             return result
-    if name in {"ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device", "ui_saved_view"}:
+    if name in {"ui_activity", "ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device", "ui_saved_view"}:
         # Validate against the fixed registry before crossing the browser boundary.
         import jsonschema
 

@@ -2,22 +2,32 @@ import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
+from cryptography.fernet import Fernet
 from jarvis import budget, live_voice
+from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import preferences
 from jarvis.live_voice import LiveController
-from jarvis.models import BudgetReservation, Conversation, Source, Usage
+from jarvis.models import AgentWork, BudgetReservation, Conversation, Job, Source, Usage, VoiceInbox
+from jarvis.work_crypto import unseal
+from jarvis.work_intake import open_voice
 from sqlalchemy import select
 
 
 @pytest.fixture
-def controller():
+def controller(monkeypatch):
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic")
+    monkeypatch.setattr(get_settings(), "gemini_api_key", "synthetic")
     with session_scope() as db:
         conv = Conversation(owner_id="davin", device_id="device", private=True, learning=False)
         db.add(conv)
         db.flush()
         c = LiveController("davin", "device", conv.id, None, preferences(db, "davin"))
         budget.reserve(db, "davin", c.id, 0.1, c.model)
+        from jarvis.accounts import ensure_account
+        ensure_account(db, "davin")
+        open_voice(db, c.id, "davin", "davin", "device", conv.id)
     c.send = AsyncMock()
     return c
 
@@ -40,47 +50,38 @@ async def test_live_fragments_do_not_execute_tools_and_private_history_is_not_sa
         assert db.scalar(select(Source)) is None
 
 
-async def test_delegation_id_and_same_input_are_deduplicated(controller, monkeypatch):
+async def test_delegation_id_and_same_input_are_deduplicated(controller):
     c = controller
-    backend = AsyncMock(
-        return_value={"message": "Saved one task.", "actions": [{"command_id": "receipt"}], "ui_actions": []}
-    )
-    monkeypatch.setattr(live_voice, "chat", backend)
-    await c.event(
-        {"type": "session.input_transcript.delta", "delta": "Save one task.", "start_ms": 0, "end_ms": 1000}
-    )
+    await c.event({"type": "session.input_transcript.delta", "event_id": "request-a",
+                   "delta": "Add one task.", "start_ms": 0, "end_ms": 1000})
     event = {"type": "session.delegation.created", "delegation": {"id": "delegation", "target": "client"}}
     await c.event(event)
     await c.event(event)
     await asyncio.gather(*list(c.work))
     await c.delegate("second-delegation")
-    backend.assert_awaited_once()
-    assert c.receipts == ["receipt"]
-    assert c.send.await_args.kwargs == {}
-    assert c.send.await_args.args[0]["delegation_id"] == "second-delegation"
+    with session_scope() as db:
+        assert len(list(db.scalars(select(AgentWork)))) == 1
+    assert c.receipts == []
+    assert c.send.await_args.args[0]["type"] == "session.thinking.append"
+    await c.close()
 
 
-async def test_new_speech_guard_blocks_stale_tool_request(controller, monkeypatch):
+
+async def test_new_speech_cannot_replace_an_accepted_request(controller):
     c = controller
+    await c.event({"type": "session.input_transcript.delta", "event_id": "a",
+                   "delta": "Add Alpha.", "start_ms": 0, "end_ms": 1000})
+    await c.delegate("first")
+    await c.event({"type": "session.input_transcript.delta", "event_id": "b",
+                   "delta": "Also add Beta.", "start_ms": 3000, "end_ms": 4000})
+    await c.delegate("second")
+    with session_scope() as db:
+        rows = list(db.scalars(select(AgentWork)))
+        assert len(rows) == 2
+        assert {unseal(row.input_ciphertext)["message"] for row in rows} == {"Add Alpha.", "Also add Beta."}
+        assert not any(row.cancel_requested for row in rows)
+    await c.close()
 
-    async def backend(*args, tool_guard, **kwargs):
-        assert tool_guard() is None
-        await c.event(
-            {
-                "type": "session.input_transcript.delta",
-                "delta": "Actually, cancel that.",
-                "start_ms": 3000,
-                "end_ms": 4000,
-            }
-        )
-        assert "continued speaking" in tool_guard()
-        assert tool_guard() is None  # The next model step has received the correction.
-        c.closing = True
-        assert "closing" in tool_guard()
-        return {"message": "Nothing else changed.", "actions": []}
-
-    monkeypatch.setattr(live_voice, "chat", backend)
-    await c.delegate("delegate")
 
 
 async def test_duration_snapshots_are_cumulative_and_minimum_is_credited(controller):
@@ -131,7 +132,7 @@ async def test_uncertain_creation_keeps_budget_reservation(controller):
 
 
 def test_invalid_provider_voice_is_rejected_before_provider_call(client):
-    conv = client.post("/api/v1/conversations", json={"private": True}).json()
+    conv = client.post("/api/v1/conversations", json={}).json()
     result = client.post(
         "/api/v1/voice/sessions",
         json={"conversation_id": conv["id"], "sdp": "synthetic", "provider": "live", "voice": "cedar"},
@@ -211,83 +212,74 @@ def test_realtime_is_paused_before_starting_or_replacing_a_session(client, monke
     assert "cedar" not in options["live"]["voices"]
 
 
-async def test_clarification_and_answer_keep_context_without_claiming_early_save(controller, monkeypatch):
+async def test_late_answer_keeps_previous_speech_context_without_claiming_saved_actions(controller):
     c = controller
-    backend = AsyncMock(side_effect=[
-        {"message": "Which project should I use?", "actions": [], "ui_actions": []},
-        {"message": "Saved in Home.", "actions": [{"command_id": "saved-home"}], "ui_actions": []},
-    ])
-    monkeypatch.setattr(live_voice, "chat", backend)
-    c.groups = [{"role": "user", "content": "Add this to my project.", "saved": True}]
-    c.input_revision = 1
+    await c.event({"type": "session.input_transcript.delta", "delta": "Add this to my project.", "start_ms": 0, "end_ms": 1000})
     await c.delegate("clarify")
-    assert c.receipts == []
-    assert c.send.await_args.args[0]["content"] == "Which project should I use?"
-    c.groups.append({"role": "user", "content": "Home, please.", "saved": True})
-    c.input_revision += 1
+    await c.event({"type": "session.output_transcript.delta", "delta": "Which project?", "start_ms": 1100, "end_ms": 1800})
+    await c.event({"type": "session.input_transcript.delta", "delta": "Home, please.", "start_ms": 2200, "end_ms": 3000})
     await c.delegate("answer")
-    context = backend.await_args.kwargs["live_context"]
-    assert any("Which project" in row["content"] for row in context)
-    assert any("Home, please." in row["content"] for row in context)
-    assert c.receipts == ["saved-home"] and c.state == "listening"
+    with session_scope() as db:
+        rows = list(db.scalars(select(AgentWork).order_by(AgentWork.updated_at)))
+        assert len(rows) == 2
+        data = unseal(rows[-1].input_ciphertext)
+        assert "Home" in data["message"]
+        assert any("my project" in m["content"] for m in data["context"])
+    assert c.receipts == []
+    assert all(call.args[0]["type"] == "session.thinking.append" for call in c.send.await_args_list)
     await c.close()
 
 
-async def test_failed_delegation_can_recover_in_same_live_session(controller, monkeypatch):
+
+async def test_failed_intake_can_recover_in_same_live_session(controller, monkeypatch):
     c = controller
     c.receipts = ["previously-confirmed"]
-    backend = AsyncMock(side_effect=[
-        RuntimeError("Synthetic unavailable backend"),
-        {"message": "Found your saved task.", "actions": [], "ui_actions": []},
-    ])
-    monkeypatch.setattr(live_voice, "chat", backend)
-    c.groups = [{"role": "user", "content": "Find my task.", "saved": True}]
-    c.input_revision = 1
+    await c.event({"type": "session.input_transcript.delta", "delta": "Find my task.", "start_ms": 0, "end_ms": 1000})
+    original = live_voice.claim_voice
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("Synthetic unavailable intake")
+    monkeypatch.setattr(live_voice, "claim_voice", unavailable)
     await c.delegate("failed")
     assert c.error and not c.closed and c.receipts == ["previously-confirmed"]
-    assert "do not claim further success" in c.send.await_args.args[0]["content"]
-    c.input_revision += 1
+    monkeypatch.setattr(live_voice, "claim_voice", original)
     await c.delegate("recovered")
     assert c.error is None and c.state == "listening"
-    assert c.receipts == ["previously-confirmed"]
-    assert c.send.await_args.args[0]["content"] == "Found your saved task."
+    with session_scope() as db:
+        assert len(list(db.scalars(select(AgentWork)))) == 1
     await c.close()
 
 
-async def test_delegated_voice_end_closes_provider_after_preserving_saved_receipts(controller, monkeypatch):
+
+async def test_delegated_voice_end_preserves_accepted_work_and_closes_once(controller):
     c = controller
-    c.groups = [{"role": "user", "content": "I'm done talking for now.", "saved": True}]
-    c.input_revision = 1
+    await c.event({"type": "session.input_transcript.delta", "delta": "Add Alpha.", "start_ms": 0, "end_ms": 1000})
+    await c.delegate("save")
+    with session_scope() as db:
+        db.get(VoiceInbox, c.id).end_requested = True
+    await c.report_work()
+    assert c.end_requested
     c.session_created = True
     c.ws = type("Socket", (), {"close": AsyncMock()})()
-
     async def send(event):
         if event["type"] == "session.close":
             await c.event({"type": "session.closed", "reason": "client_requested", "usage": {"seconds": 15}})
     c.send = AsyncMock(side_effect=send)
-
-    async def backend(*args, **kwargs):
-        outcome = kwargs["end_voice"]()
-        assert outcome["status"] == "closing"
-        assert kwargs["tool_guard"]()
-        return {"message": "Voice conversation ended.", "actions": [{"command_id": "already-saved"}], "ui_actions": []}
-    monkeypatch.setattr(live_voice, "chat", backend)
-    await c.delegate("finish")
-    assert c.closed and c.finalized.is_set() and c.error is None
-    assert c.receipts == ["already-saved"]
-    assert [call.args[0]["type"] for call in c.send.await_args_list] == ["session.close"]
-    c.ws.close.assert_awaited_once()
     await c.close()
+    await c.close()
+    assert c.closed and c.finalized.is_set()
     c.ws.close.assert_awaited_once()
+    with session_scope() as db:
+        row = db.scalar(select(AgentWork))
+        assert db.get(Job, row.id).status == "queued" and not row.cancel_requested
 
 
-async def test_voice_end_still_closes_if_result_persistence_fails(controller, monkeypatch):
+
+async def test_voice_end_still_closes_if_final_intake_is_rejected(controller, monkeypatch):
     c = controller
-    c.groups = [{"role": "user", "content": "That's it for now.", "saved": True}]
-    c.input_revision = 1
-    async def backend(*args, **kwargs):
-        kwargs["end_voice"]()
-        raise RuntimeError("Synthetic persistence failure after shutdown request")
-    monkeypatch.setattr(live_voice, "chat", backend)
-    await c.delegate("finish")
+    def rejected(*args, **kwargs):
+        from jarvis.domain import DomainError
+        raise DomainError("QUEUE_FULL", "Synthetic full queue")
+    monkeypatch.setattr(live_voice, "claim_voice", rejected)
+    c.request_end()
+    await c.close()
     assert c.closed

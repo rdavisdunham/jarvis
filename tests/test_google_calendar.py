@@ -594,7 +594,7 @@ def test_callback_does_not_return_codes_or_tokens_and_access_log_redacts_query(c
     response = client.get(
         "/api/v1/auth/google/callback?state=invalid&code=private-code", follow_redirects=False
     )
-    assert response.status_code == 303 and response.headers["location"] == "/?view=settings&google=failed"
+    assert response.status_code == 303 and response.headers["location"] == "/?view=tasks&google=failed"
     record = logging.LogRecord(
         "uvicorn.access",
         logging.INFO,

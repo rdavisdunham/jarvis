@@ -264,6 +264,19 @@ def invite(body: Invite, user: User):
         return invite_public(db, row)
 
 
+@router.get("/invitations/{invite_id}")
+def invitation_detail(invite_id: str, user: User):
+    with session_scope() as db:
+        row = db.get(WorkspaceInvite, invite_id)
+        account = db.get(GoogleIdentity, user.owner_id)
+        if not row or not account or row.email != account.email.casefold():
+            raise DomainError("NOT_AUTHORIZED", "This link is unavailable for this Google account. Use the invited account or ask its sender for a new link.", 403)
+        result = invite_public(db, row)
+        if row.status == "pending" and row.expires_at <= now():
+            result["status"] = "expired"
+        return result
+
+
 @router.post("/accept")
 def accept(body: InviteAction, user: User):
     with session_scope() as db:

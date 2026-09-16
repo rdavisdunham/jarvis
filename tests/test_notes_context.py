@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 from jarvis.db import session_scope
-from jarvis.models import Job, Memory, Note, NoteEmbedding, Task, TaskReference
+from jarvis.models import Conversation, Job, Memory, Note, NoteEmbedding, Task, TaskReference
 from jarvis.notes import chunks, index_note, search_notes, suggest_tasks
 from jarvis.tools import call_tool
 from jarvis.ui_control import states
@@ -251,8 +251,11 @@ async def test_context_selected_recent_and_ambiguous_targets_keep_current_revisi
     )["tasks"] == []
 
 
-async def test_private_task_references_are_not_persisted(client):
-    conv = client.post("/api/v1/conversations", json={"private": True}).json()["id"]
+async def test_legacy_private_task_references_are_not_persisted(client):
+    conv = client.post("/api/v1/conversations", json={}).json()["id"]
+    # Retiring the creation option must not turn old private chats into history.
+    with session_scope() as db:
+        db.get(Conversation, conv).private = True
     t = task(client)
     await call_tool("davin", "private", 0, "task_get", {"task_id": t["id"]}, conversation_id=conv)
     with session_scope() as db:

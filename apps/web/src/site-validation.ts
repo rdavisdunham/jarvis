@@ -5,6 +5,7 @@ const fields: Record<string, string[]> = {
   show: ["view", "entity_id"],
   saved_view: ["view_operation", "view_name", "saved_view_id"],
   chat: ["mode"],
+  activity: ["mode"],
   search: ["query", "view"],
   filter: [
     "view",
@@ -37,7 +38,7 @@ const fields: Record<string, string[]> = {
     "show_archived",
   ],
   editor: ["operation", "changes"],
-  device: ["voice", "wake_enabled", "density", "private_chat"],
+  device: ["voice", "wake_enabled", "density"],
 };
 export function validateSiteAction(
   action: UIAction,

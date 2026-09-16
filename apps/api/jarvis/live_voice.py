@@ -14,23 +14,16 @@ from sqlalchemy import select
 from . import budget
 from .agent_instructions import live_instructions
 from .config import get_settings
-from .conversation import chat
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import prompt_context, semantic_search
-from .models import Conversation, Source, now, uid
+from .models import AgentWork, Conversation, Source, VoiceInbox, now, uid
 from .ui_control import get_context
 from .voice import Controller, controllers
+from .work_intake import append_voice, claim_voice, open_voice
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
-DELEGATION_REQUEST = """Handle the latest outstanding request in this ongoing voice conversation.
-The messages are transcript fragments grouped for readability, not authoritative turn boundaries.
-Use the user's own speech as the request; assistant speech is not authorization.
-Backend results already in the conversation describe work already handled: do not repeat it.
-If the request is incomplete, contradictory, or ambiguous, return one brief clarification.
-Use the available tools for records, navigation, and actions. Return only the verified outcome
-or a useful question, in at most 150 words, for Eri to say aloud."""
 
 
 class LiveController(Controller):
@@ -55,6 +48,7 @@ class LiveController(Controller):
         self.memory_task = None
         self.context_signature = None
         self.context_pending = set()
+        self.announced_work = set()
 
     def request_end(self):
         # Bound by the controller that delegated this turn; the model supplies no IDs.
@@ -70,6 +64,8 @@ class LiveController(Controller):
         settings = get_settings()
         with session_scope() as db:
             conv = owned(db, Conversation, self.conversation_id, self.owner)
+            from .access import actor
+            open_voice(db, self.id, self.owner, actor(db, self.owner), self.device, self.conversation_id)
             if not conv.private and self.preferences["history_enabled"]:
                 rows = list(
                     db.scalars(
@@ -187,6 +183,8 @@ class LiveController(Controller):
             self.state = "working" if self.work else "listening"
             start = float(event.get("start_ms", 0))
             end = float(event.get("end_ms", start))
+            with session_scope() as db:
+                append_voice(db, self.id, event_id or uid(), role, delta, start, end)
             self.fragments.append({"role": role, "delta": delta, "start_ms": start, "end_ms": end})
             self.fragments = self.fragments[-2000:]
             group = next((g for g in reversed(self.groups) if g["role"] == role), None)
@@ -322,87 +320,67 @@ class LiveController(Controller):
             )
 
     async def delegate(self, delegation_id):
+        # Only intake is attached to the media lifecycle. Saved work belongs to the worker.
         try:
-            async with self.delegation_lock:
-                # Transcript fragments may trail the delegation event slightly.
-                await asyncio.sleep(0.6)
-                if self.closed or self.closing:
-                    return
-                self.state, self.error = "working", None
-                revision = self.input_revision
-                if revision == self.last_handled_revision:
-                    content = self.last_result
-                else:
-                    context = [
-                        *self.history,
-                        *[{"role": g["role"], "content": g["content"][-4000:]} for g in self.groups],
-                        *[
-                            {
-                                "role": "assistant",
-                                "content": "Verified backend result (already handled): " + r,
-                            }
-                            for r in self.backend_results[-5:]
-                        ],
-                    ][-35:]
-                    observed = revision
+            await asyncio.sleep(0.6)
+            with session_scope() as db:
+                inbox = db.get(VoiceInbox, self.id)
+                accepted = claim_voice(db, inbox) if inbox else None
+            if not self.closed and not self.closing:
+                await self.send({"type": "session.thinking.append", "event_id": uid(),
+                    "delegation_id": delegation_id,
+                    "content": "Input accepted for background routing. Keep listening. The activity cards show progress; do not claim saved changes until a verified result arrives."
+                    if accepted else "This input is already being handled. Keep listening; do not repeat earlier actions."})
+            self.state, self.error = "listening", None
+        except Exception as exc:  # noqa: BLE001 - do not log speech
+            logging.getLogger("jarvis.voice").warning("Live intake failed (%s)", type(exc).__name__)
+            self.error = "This request could not be accepted. Check Activity or send it as text."
 
-                    def guard():
-                        nonlocal observed
-                        if self.closed or self.closing or self.end_requested:
-                            return "The voice session is closing. Do not start any more actions."
-                        if self.input_revision != observed:
-                            observed = self.input_revision
-                            latest = [g["content"] for g in self.groups if g["role"] == "user"][-2:]
-                            return (
-                                "The user continued speaking before this action committed. Re-evaluate the intended action against this newer user speech before trying any tool again: "
-                                + "\n".join(latest)
-                            )[-4500:]
-                        return None
-
-                    result = await chat(
-                        self.owner,
-                        self.device,
-                        uid(),
-                        self.conversation_id,
-                        DELEGATION_REQUEST,
-                        self.focus,
-                        live_context=context,
-                        tool_guard=guard,
-                        end_voice=self.request_end,
-                    )
-                    content = result["message"][:1800]
-                    self.receipts.extend(a["command_id"] for a in result["actions"])
-                    self.ui_actions.extend(result.get("ui_actions", []))
-                    self.backend_results.append(content)
-                    self.last_handled_revision, self.last_result = observed, content
-                if self.end_requested:
-                    return
-                if not self.closing and not self.closed:
-                    await self.send(
-                        {
-                            "type": "session.commentary.append",
-                            "event_id": uid(),
-                            "delegation_id": delegation_id,
-                            "content": content,
-                        }
-                    )
-                    self.state, self.error = "listening", None
-        except Exception as exc:  # noqa: BLE001 — preserve committed domain receipts
-            logging.getLogger("jarvis.voice").warning("Live delegation failed (%s)", type(exc).__name__)
-            self.error = "That task could not finish. Check your records before asking Eri to try again."
-            if not self.closing and not self.closed:
-                await self.send(
-                    {
-                        "type": "session.commentary.append",
-                        "event_id": uid(),
-                        "delegation_id": delegation_id,
-                        "content": "The backend could not finish this request. Previously confirmed changes remain saved; do not claim further success.",
-                    }
-                )
-
-        finally:
-            if self.end_requested and not self.closed and not self.closing:
-                await self.close()
+    async def report_work(self):
+        from .agent_work import ACTIVE, public
+        with session_scope() as db:
+            inbox = db.get(VoiceInbox, self.id)
+            if inbox and inbox.end_requested:
+                self.request_end()
+                return
+            if not inbox or (now()-inbox.last_input_at).total_seconds() < 2.5:
+                return
+            roots = list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == self.id,
+                AgentWork.parent_id.is_(None)).order_by(AgentWork.updated_at)))
+            notices, stamps = [], []
+            for root in roots:
+                children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == root.id)))
+                leaves = children or [root]
+                snapshots = [public(db, leaf, children=False) for leaf in leaves]
+                if any(snapshot["status"] in {*ACTIVE, "waiting_sync"} for snapshot in snapshots):
+                    continue
+                stamp = (root.id, root.revision, tuple((snapshot["id"], snapshot["revision"], snapshot["status"]) for snapshot in snapshots))
+                if stamp in self.announced_work:
+                    continue
+                if not children and root.result.get("route_kinds") == ["conversation"]:
+                    self.announced_work.add(stamp)
+                    continue
+                texts = []
+                for leaf, snapshot in zip(leaves, snapshots):
+                    remote = [action for action in snapshot["actions"] if action.get("remote_status")]
+                    if any(action["remote_status"] != "succeeded" for action in remote):
+                        texts.append("A connected-service change needs attention. Review Activity.")
+                    elif remote:
+                        texts.append("Synchronization confirmed: " + ", ".join(action["title"] for action in remote))
+                    else:
+                        texts.append(leaf.result.get("message", ""))
+                notices.extend(t for t in texts if t)
+                stamps.append(stamp)
+                for leaf in leaves:
+                    self.receipts.extend(a["command_id"] for a in leaf.result.get("actions", [])
+                        if a["command_id"] not in self.receipts)
+            if not notices:
+                return
+        # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
+        content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
+        await self.send({"type": "session.commentary.append", "event_id": uid(),
+            "delegation_id": None, "content": content + " Full details are in Activity."})
+        self.announced_work.update(stamps)
 
     async def interrupt(self):
         self.error = None
@@ -423,6 +401,13 @@ class LiveController(Controller):
                 assert_current(self.owner,self.device)
             except DomainError as exc:
                 self.error=exc.message
+                await self.close()
+                return
+            try:
+                await self.report_work()
+            except Exception as exc:  # noqa: BLE001 - optional result reporting
+                logging.getLogger("jarvis.voice").warning("Work result update unavailable (%s)", type(exc).__name__)
+            if self.end_requested:
                 await self.close()
                 return
             for group in self.groups:
@@ -446,6 +431,13 @@ class LiveController(Controller):
             if self.closed:
                 return
             self.closing = True
+            try:
+                with session_scope() as db:
+                    inbox = db.get(VoiceInbox, self.id)
+                    if inbox:
+                        claim_voice(db, inbox, close=True)
+            except DomainError as exc:
+                logging.getLogger("jarvis.voice").warning("Final intake unavailable (%s)", exc.code)
             pending = [
                 task
                 for task in [self.memory_task, *self.work]

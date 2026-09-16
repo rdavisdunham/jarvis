@@ -3,6 +3,73 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Current batch — reliable background work, action cards and onboarding
+
+Implementation completed September 16. Release checks and remaining acceptance
+work are recorded in [BACKGROUND_WORK_VALIDATION.md](BACKGROUND_WORK_VALIDATION.md).
+Design and decisions: [BACKGROUND_WORK_PRD.md](BACKGROUND_WORK_PRD.md).
+
+- [x] Complete the delegated desktop/mobile audit: **34 recommendations and
+  76 screenshots**, with production-login and synthetic authenticated coverage
+  clearly separated in [recommendations.md](../recommendations.md).
+- [x] Persist voice/text intake, queued requests, dependencies and execution
+  checkpoints in PostgreSQL. New speech cannot replace an earlier request.
+  Accepted work continues after voice ends, a browser disconnects or the worker
+  restarts. Planned writes reuse stable command IDs after a crash.
+- [x] Run up to two independent actions per account and four installation-wide;
+  intake has a separate bounded lane. Related actions wait for their dependencies.
+  Check current account/workspace access at execution and every server write.
+- [x] Support targeted corrections, clarification, cancellation and continuation.
+  Cancel stops unfinished work and preserves committed changes. A provider/browser
+  operation already dispatched may finish; its actual outcome stays visible.
+- [x] Add global Activity and compact per-request/per-record cards with progress,
+  attention, Edit, Revise, Continue, Cancel and safe Revert. Local undo checks
+  changed fields and preserves unrelated later edits. Unsupported relationship or
+  external reversals explain why the record needs review. Remote sync remains
+  pending until confirmed. Browser inline saves link back to their request.
+- [x] Restore progress after reconnect and combine verified spoken results at a
+  pause. Do not announce an unconfirmed external write as completed. Ordinary
+  voice acknowledgments do not fill Activity with completed small-talk cards.
+- [x] Apply related UX-01–10 and invitation UX-26: activity visibility, separate
+  voice/work controls, accurate connection/worker/provider status, cloud setup
+  copy, Tasks breadcrumb, clearer invitation/error states, and 30-second labels.
+  Also compact saved-view controls, enlarge mobile completion/action targets,
+  and shorten the mobile month calendar while retaining the selected-day agenda.
+- [x] Build the public landing/privacy/terms/help pages and Google entry flow.
+  Keep the planner at `app.eridani.app`, with an assets-only public site for
+  `eridani.app` and `www.eridani.app`. Preserve invited destinations through OAuth;
+  explain wrong-account, expired and revoked invitations. No automatic emails.
+- [x] Remove personal private-chat creation controls and Eri's private-mode action.
+  New conversations use account history preferences. Legacy private, history-off
+  and shared-workspace retention/isolation boundaries remain intact.
+- [x] Harden wake-plus-request capture, 30-second idle handling, contextual
+  shutdown, repeated close, and immediate microphone release. Browser wake remains
+  opt-in and foreground-only. Accepted work survives shutdown.
+- [x] Update Eri's tool catalog and site map with Activity and account-scoped work
+  listing, cancellation and supported reversal. Browser controls require a current
+  originating-device acknowledgment; expired controls cannot navigate later.
+- [x] Verify both backend profiles against synthetic create/edit/cancel/goodbye
+  scenarios; verify exact-once command recovery by killing the actual worker.
+  Full regression, build, browser and schema-upgrade evidence is in the validation
+  document. Realtime stays disabled.
+- [ ] Finish actual phone/desktop microphone trials: rapid A/B requests, late
+  correction, wake plus immediate request, goodbye, reconnect and backgrounding.
+  Automated microphone simulations are not real-device acceptance.
+- [ ] Complete Google production consent verification and review the public
+  operator/contact policy details before broad invitations. No Google approval
+  is implied by publishing the pages.
+- [ ] **R2 backup activation:** supply bucket-scoped S3 endpoint/access credentials,
+  deploy daily/weekly encrypted exports and verify download/restore from
+  `eridani-backups`. The bucket exists; credentials are still absent. Native
+  Railway PITR remains active. No second database or paid queue was added.
+
+Next focused UX batch: the remaining compact task/organization/note/settings
+recommendations (UX-11–25 and remaining UX-26–31), richer filters and organization
+clarity; then UX-32–34 polish. Keep the seven-day usage pilot after the expansion
+and real-device/operation checks. Broader notification delivery preferences,
+external API/MCP, Android, automatic task routing, vector indexing and open-ended
+research agents remain separate expansions.
+
 ## Task routing — specified, parked until after cloud migration
 
 - [x] Inspect current backend memory injection, task organization and learning.
@@ -152,7 +219,8 @@ isolation and immediate revocation across the UI, API, agent and retrieval paths
       service, then an MCP adapter. Preserve actor attribution, idempotency,
       revisions and the multi-user access rules from Batch 2.
 - [ ] Expand notifications with natural-language snoozing, priority, quiet-time
-      preferences and optional digests/bundling. Keep task completion and alert
+      preferences and optional digests/bundling. Completion/attention delivery
+      moves to the current background-work batch. Keep task completion and alert
       delivery history distinct.
 - [ ] Document and test these contracts for Eri and future Android clients.
 
@@ -163,6 +231,7 @@ produce predictable delivery without duplicate task effects.
 
 - [ ] Verify GPT-Live recovery, interruption, late corrections, voice ending,
       wake words and 30-second handoff on the actual phone and desktop.
+      These checks now ship with the current background-work batch above.
       Realtime remains paused.
 - [ ] Verify locked-phone Web Push, network gaps and actual Windows reboot
       startup. Automate isolated restore drills and stale/failed-backup alerts;
@@ -177,8 +246,8 @@ failures fixed before expanding the execution surface.
 
 ### Batch 5 — larger expansions after the foundation is proven
 
-- [ ] Add bounded durable agent jobs with explicit scope, progress, cancellation
-      and saved results before agent assignments launch autonomous work.
+- Bounded request execution, progress, cancellation and saved results are now
+  in the current batch above. Open-ended agent assignments/research remain later.
 - [ ] Build native Android against the established account/action contracts.
 - [ ] Upgrade memory/note retrieval with measured quality checks and pgvector;
       improve deep-sleep entity reconciliation and clarification follow-through.
@@ -986,9 +1055,9 @@ actions into the web interface and Eri's tools with each release.
       an MCP adapter. Share the capability contracts with Android.
       Start after the work-item contracts stabilize, so outside bots use the same
       rules and recorded results as the website and Eri.
-- [ ] **Bounded agent execution, then native Android.** Build durable jobs with
-      allowed actions, budgets, progress, cancellation and stored results before
-      an agent assignment can launch work. Reuse established app/tool contracts
+- [ ] **Bounded agent execution, then native Android.** The request execution,
+      progress, cancellation and stored-results foundation moved to the current
+      batch. Broader autonomous agent assignments remain later. Reuse established app/tool contracts
       for Android; native background wake and notifications need their own device
       acceptance. Home Assistant, finance and broader research/capture integrations
       follow the core workspace unless the owner changes priorities.

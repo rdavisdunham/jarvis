@@ -3,6 +3,7 @@
 import copy
 
 GROUPS = {
+    "activity": ("Inspect accepted work, cancel a named request, explicitly revert supported saved changes, or show Activity.", ["work_list", "work_cancel", "work_revert", "ui_activity"]),
     "tasks": (
         "Find, create, update, complete, reopen and batch-edit tasks.",
         [

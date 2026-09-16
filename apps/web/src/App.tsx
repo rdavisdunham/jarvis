@@ -1,3 +1,6 @@
+import { PublicFooter } from "./PublicPages";
+import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
+import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import { SavedViews } from "./SavedViews";
 import {
   readView,
@@ -267,11 +270,15 @@ export default function App() {
     [companion, setCompanion] = useState(false);
   const [selected, setSelected] = useState<Task | null>(null),
     [reminder, setReminder] = useState(false);
-  const [privateMode, setPrivate] = useState(false),
+  const [conversationHistoryOff, setConversationHistoryOff] = useState(false),
     [messages, setMessages] = useState<ChatMessage[]>([]),
     [chatText, setChatText] = useState(""),
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
+  const [activityOpen, setActivityOpen] = useState(false);
+  const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"));
+  const activeWork = work.items.filter(workActive).length;
+  const attentionWork = work.items.filter(item => workAttention(item) && !item.seen).length;
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
   // Realtime is paused. Old device preferences must not start a disabled session.
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("live");
@@ -362,7 +369,7 @@ export default function App() {
   const [wakeEnabled, setWakeEnabled] = useState(false);
   const [wakeStatus, setWakeStatus] = useState("");
   const wake = useRef<WakeWord | null>(null);
-  const wakeStart = useRef<() => void>(() => {});
+  const wakeStart = useRef<(request: string) => void>(() => {});
   const glowRef = useRef<HTMLDivElement>(null);
   const displayedActions = useRef(new Set<string>());
   const voiceGeneration = useRef(0);
@@ -382,7 +389,9 @@ export default function App() {
   useEffect(() => {
     const result = new URLSearchParams(location.search).get("google");
     if (!result) return;
-    history.replaceState({}, "", location.pathname + "?view=settings");
+    const cleaned = new URL(location.href);
+    cleaned.searchParams.delete("google");
+    history.replaceState({}, "", cleaned);
     if (result === "connected") setToast("Google account connected");
     else
       setError(
@@ -390,10 +399,10 @@ export default function App() {
           {
             cancelled: "Google connection cancelled.",
             permission: "Calendar permission was not granted.",
-            account: "Use the Google account already linked to Eri.",
+            account: "Use your linked or invited Google account. If the invitation expired, ask its sender for a new one.",
           } as Record<string, string>
         )[result] ??
-          "Google sign-in could not finish. Start again from Settings.",
+          "Google sign-in could not finish. Try again using your invited account.",
       );
   }, []);
   const workspaceSwitching = useRef(false);
@@ -476,7 +485,7 @@ export default function App() {
             messages: ChatMessage[];
           }>("/conversations/" + saved);
           conversationRef.current = conversation.id;
-          setPrivate(conversation.private);
+          setConversationHistoryOff(conversation.private);
           setMessages(conversation.messages);
         } catch {
           sessionStorage.removeItem("jarvis-conversation");
@@ -617,6 +626,8 @@ export default function App() {
         );
         setToast(success);
         retryRef.current = null;
+        if (result.data && typeof result.data === "object")
+          Object.defineProperty(result.data, "__command_id", {value: result.command_id, enumerable: false});
         return result.data as T;
       } catch (e) {
         const err = e as ApiError;
@@ -684,9 +695,8 @@ export default function App() {
   }
   async function ensureConversation() {
     if (conversationRef.current) return conversationRef.current;
-    const data = await post<{ id: string }>("/conversations", {
-      private: privateMode,
-    });
+    const data = await post<{ id: string; private: boolean }>("/conversations", {});
+    setConversationHistoryOff(data.private);
     conversationRef.current = data.id;
     sessionStorage.setItem("jarvis-conversation", data.id);
     return data.id;
@@ -716,7 +726,7 @@ export default function App() {
       tags: [],
       space_id: organizationFilter.space || null,
       area_id: organizationFilter.area || null,
-      planned_date: date ?? null,
+      planned_date: date ?? (["today", "week"].includes(view) ? dayInZone(boot?.preferences.timezone ?? "UTC") : null),
       due_date: null,
       due_time: null,
       due_timezone: null,
@@ -762,7 +772,7 @@ export default function App() {
       conversationRef.current = data.id;
       sessionStorage.setItem("jarvis-conversation", data.id);
       setMessages(data.messages);
-      setPrivate(data.private);
+      setConversationHistoryOff(data.private);
       setNoteEditor(null);
       setCompanion(true);
     } catch (e) {
@@ -800,13 +810,6 @@ export default function App() {
         );
       if (action.wake_enabled && !recognitionType())
         throw new Error("Wake word is unavailable in this browser.");
-      if (
-        action.private_chat !== undefined &&
-        (voice.current || conversationRef.current)
-      )
-        throw new Error(
-          "Privacy is fixed for an existing conversation. Start a new chat before changing it.",
-        );
       if (action.voice !== undefined) {
         setVoiceName(action.voice);
         localStorage.setItem("eri-voice-live", action.voice);
@@ -816,10 +819,17 @@ export default function App() {
         setWakeStatus("");
       }
       if (action.density !== undefined) setDensity(action.density);
-      if (action.private_chat !== undefined) setPrivate(action.private_chat);
       return { outcome: "device_preferences_updated", saved: true };
     }
     const kind = action.kind ?? "show";
+    if (kind === "activity") {
+      if (action.mode === "open" && editors.current()?.mode === "edit")
+        throw new Error("Finish or close the current draft before opening Activity.");
+      if (editors.current()?.auto_save) await editors.current()?.beforeLeave?.();
+      if (action.mode === "open") setCalendarDetail(null);
+      setActivityOpen(action.mode === "open");
+      return;
+    }
     if (kind === "chat") {
       setCompanion(action.mode === "auto" ? !mobile : action.mode === "open");
       return;
@@ -1278,6 +1288,7 @@ export default function App() {
     conversationRef.current = null;
     sessionStorage.removeItem("jarvis-conversation");
     retryRef.current = null;
+    setConversationHistoryOff(false);
     setMessages([]);
     setChatText("");
     setVoiceState(null);
@@ -1321,22 +1332,9 @@ export default function App() {
       setError("");
       try {
         await syncUIRef.current();
-        const result = await post<{
-          message: string;
-          status: string;
-          ui_actions?: UIAction[];
-        }>("/chat", body);
-        setMessages((m) => [
-          ...m.filter((item) => item.id !== turn_id + "-reply"),
-          {
-            id: turn_id + "-reply",
-            role: "assistant",
-            content: result.message,
-          },
-        ]);
+        await post<WorkItem>("/work", body);
         retryRef.current = null;
-        await load();
-        await showActions(result.ui_actions);
+        await work.refresh();
       } catch (e) {
         const err = e as ApiError;
         setError(err.message);
@@ -1347,6 +1345,13 @@ export default function App() {
       }
     }
     await submit();
+  }
+  async function openWorkRecord(action: ActionChange) {
+    if (!action.entity_id) return;
+    const form = action.kind === "schedule" ? "reminder" : action.kind === "planning" ? "event" : action.kind;
+    await applyAction({ id: crypto.randomUUID(), kind: "form", form, entity_id: action.entity_id } as UIAction);
+    setActivityOpen(false);
+    if (mobile) setCompanion(false);
   }
   async function startVoice() {
     if (voice.current) {
@@ -1433,8 +1438,20 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  wakeStart.current = () => {
-    if (!voice.current && !thinking) void startVoice();
+  wakeStart.current = (request) => {
+    if (voice.current || thinking) return;
+    void (async () => {
+      if (request) {
+        const id = crypto.randomUUID();
+        try {
+          const conversation_id = await ensureConversation();
+          await post("/work", {turn_id:id, conversation_id, message:request});
+          setMessages(items => [...items, {id, role:"user", content:request}]);
+          await work.refresh();
+        } catch (e) { setError((e as Error).message); return; }
+      }
+      await startVoice();
+    })();
   };
   useEffect(() => {
     if (
@@ -1454,7 +1471,7 @@ export default function App() {
         return;
       }
       listener = new WakeWord(
-        () => wakeStart.current(),
+        (request) => wakeStart.current(request),
         (message) => {
           setWakeStatus(message);
           if (!message.startsWith("Listening")) setWakeEnabled(false);
@@ -1471,13 +1488,6 @@ export default function App() {
       document.removeEventListener("visibilitychange", begin);
     };
   }, [wakeEnabled, !!boot, !!voiceState && !voiceState.closed, thinking]);
-  function changePrivacy() {
-    if (thinking || voice.current) return;
-    setPrivate(!privateMode);
-    conversationRef.current = null;
-    sessionStorage.removeItem("jarvis-conversation");
-    setMessages([]);
-  }
   async function enablePush() {
     if (!("PushManager" in window)) {
       setError(
@@ -1508,7 +1518,7 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  const effectivePrivate = privateMode || !boot?.preferences.history_enabled;
+  const historyOff = conversationHistoryOff || !boot?.preferences.history_enabled;
   const today = dayInZone(boot?.preferences.timezone ?? "America/Chicago");
   const endOfWeek = new Date(today + "T12:00:00");
   endOfWeek.setDate(endOfWeek.getDate() + 6);
@@ -1569,10 +1579,10 @@ export default function App() {
       wake_enabled: wakeEnabled,
       wake_supported: !!recognitionType(),
       density,
-      private_chat: effectivePrivate,
     },
 
     view,
+    activity_open: activityOpen,
     chat_open: companion,
     mobile,
     voice_active: !!voiceState && !voiceState.closed,
@@ -1659,8 +1669,8 @@ export default function App() {
           <div className="brand-mark">
             E<span>·</span>
           </div>
-          <p className="eyebrow">PRIVATELY YOURS</p>
-          <h1>Welcome home.</h1>
+          <p className="eyebrow">WELCOME TO ERIDANI</p>
+          <h1>A little more organized.</h1>
           <p>
             Your day, with Eri.
             <br />
@@ -1710,7 +1720,10 @@ export default function App() {
           {pairingLogin && <small>
             The pairing code opens the owner account. Invited people use Google sign-in.
           </small>}
+          {!pairingLogin && <p className="footnote">Invitation-only access. <a href="/support#access">Need an invitation?</a></p>}
+          {busy && <p role="status">Opening Google sign-in…</p>}
         </form>
+        <PublicFooter/>
       </div>
     );
   return (
@@ -1850,7 +1863,7 @@ export default function App() {
             <span>Your space</span>
             <ChevronRight size={14} />
             <strong>
-              {nav.find((n) => n.id === view)?.label ??
+              {(isTaskTab(view) ? "Tasks" : nav.find((n) => n.id === view)?.label) ??
                 (view === "settings"
                   ? "Settings"
                   : view === "reminders"
@@ -1859,6 +1872,11 @@ export default function App() {
             </strong>
           </div>
           <div className="top-actions">
+            <button className={"activity-toggle " + (attentionWork ? "needs-attention" : "")}
+              aria-label={"Eri activity, " + activeWork + " pending, " + attentionWork + " need attention"}
+              title="Eri activity" onClick={() => setActivityOpen(true)}>
+              <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
+            </button>
             <div className="search">
               <Search size={16} />
               <input
@@ -2188,7 +2206,7 @@ export default function App() {
                       value={quick}
                       onChange={(e) => setQuick(e.target.value)}
                       aria-label="New task"
-                      placeholder="Add a task…"
+                      placeholder={["today", "week"].includes(view) ? "Add a task · planned today…" : "Add a task…"}
                       maxLength={500}
                     />
                     <button disabled={!quick.trim() || busy} type="submit">
@@ -2672,7 +2690,7 @@ export default function App() {
                     <h2>Voice & conversation</h2>
                     <p>
                       Choose how Eri sounds on this device. Changes apply to the
-                      next voice session. Voice ends after 15 quiet seconds
+                      next voice session. Voice ends after {VOICE_IDLE_SECONDS} quiet seconds
                       following the last response.
                     </p>
                     <div className="voice-options">
@@ -2796,7 +2814,7 @@ export default function App() {
             )}
             <footer className="page-footer">
               <Shield size={13} />
-              <span>{syncWarning || "Up to date"}</span>
+              <span>{syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Eri has work that needs attention" : "Connected · Changes save automatically")}</span>
             </footer>
           </main>
           <aside
@@ -2834,29 +2852,6 @@ export default function App() {
                 <Settings2 size={16} />
               </button>
               <button
-                className={
-                  "icon-button privacy " + (effectivePrivate ? "on" : "")
-                }
-                aria-label={
-                  effectivePrivate
-                    ? "Private session on"
-                    : "Start a private session"
-                }
-                title={
-                  effectivePrivate
-                    ? "Private: no transcript history"
-                    : "Start a private conversation"
-                }
-                disabled={
-                  thinking ||
-                  !!voice.current ||
-                  !boot.preferences.history_enabled
-                }
-                onClick={changePrivacy}
-              >
-                <Shield size={17} />
-              </button>
-              <button
                 className="icon-button close-companion"
                 aria-label="Close conversation"
                 onClick={() => setCompanion(false)}
@@ -2864,10 +2859,10 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
-            {effectivePrivate && (
-              <div className="private-note">
+            {historyOff && (
+              <div className="history-note">
                 <Shield size={13} />
-                Private conversation · Tasks still save
+                Conversation history is off · Tasks still save
               </div>
             )}
             <div className="messages">
@@ -2893,9 +2888,11 @@ export default function App() {
               {thinking && (
                 <div className="thinking">
                   <span />
-                  Thinking and checking your saved data…
+                  Sending your request…
                 </div>
               )}
+              {work.items.filter(item => item.conversation_id === conversationRef.current).slice().reverse().map(item =>
+                <WorkCard key={item.id} item={item} onRefresh={work.refresh} onOpen={openWorkRecord}/>)}
               <div ref={messageEnd} />
             </div>
             {voiceState && !voiceState.closed && (
@@ -2974,7 +2971,7 @@ export default function App() {
                   title={
                     boot.capabilities.voice
                       ? "Start voice"
-                      : "Realtime needs an OpenAI API key"
+                      : "Voice is unavailable. Check Settings."
                   }
                 >
                   {voice.current ? <Square size={15} /> : <Mic size={17} />}
@@ -2998,11 +2995,11 @@ export default function App() {
 
             {!boot.capabilities.voice && (
               <p className="chat-footnote">
-                Voice needs an OpenAI API key. Text is ready.
+                Voice is unavailable. {boot.capabilities.chat ? "You can send a text request." : "The task model also needs to be configured."}
               </p>
             )}
             <p className="chat-footnote">
-              {effectivePrivate
+              {historyOff
                 ? "This conversation won’t be retained."
                 : "Conversation history is on."}{" "}
               Cloud models process what you send.
@@ -3010,6 +3007,8 @@ export default function App() {
           </aside>
         </div>
       </div>
+      {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
+        onRefresh={work.refresh} onOpen={openWorkRecord}/>}
       <div className="voice-glow" ref={glowRef} aria-hidden="true">
         <i />
         <i />
@@ -3387,7 +3386,7 @@ function voiceLabel(state: string) {
         disconnected: "Voice disconnected",
         closed: "Voice ended",
         ended: "Voice ended · Say Hey Eri when you need me",
-        idle_timeout: "Voice ended after 15 quiet seconds",
+        idle_timeout: `Voice ended after ${VOICE_IDLE_SECONDS} quiet seconds`,
       } as Record<string, string>
     )[state] ?? "Voice is on"
   );

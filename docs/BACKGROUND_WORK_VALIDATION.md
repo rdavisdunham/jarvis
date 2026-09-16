@@ -1,0 +1,69 @@
+# Background-work batch validation — September 16, 2026
+
+Implementation is complete. Production rollout is recorded below after deployment.
+
+## Automated evidence
+
+- **550 backend tests passed**, one pre-existing skip. Includes account/workspace
+  isolation, role revocation, encrypted intake, duplicate delivery, late corrections,
+  partial clarification, dependency waits, cancellation, safe revert conflicts,
+  OAuth destinations, invitation privacy, and current integration reconciliation.
+- **110 frontend tests passed**, one intentionally paused Realtime test skipped.
+  Voice tests cover the 30-second timeout, contextual shutdown, continued speech,
+  immediate microphone release, repeated close, reconnect and fresh session entry.
+  Wake tests preserve the request following “Eri” / “Hey Eri”.
+- Real worker-process recovery: killed the process after a task command committed
+  but before its checkpoint, restarted DBOS, and verified exactly one task and one
+  command receipt with a successful final result.
+- Production TypeScript/Vite build and Ruff checks passed. Existing warnings are
+  third-party FastAPI test-client deprecations, dependency annotation warnings,
+  and the planner bundle size warning. The public entry is separately loaded.
+- A disposable database upgraded from `0012_accounts` to `0013_agent_work` while
+  preserving an existing task. A fresh migration also started the browser fixture.
+
+## Provider checks
+
+Both configured **GPT-5.6 Luna** and **Gemini 3.8 Flash** passed five synthetic
+flows each: create two tasks without dates/projects, rename a specifically named
+task, queue another create, cancel that queued request, and route goodbye.
+No production records were used or changed. The real provider calls used the
+configured keys, a disposable local database, and no memory retrieval or connected
+calendar/Linear writes. The synthetic database was removed afterward.
+
+The first Luna run asked an unnecessary clarification when a fresh edit also
+referenced a known request. The intake contract now treats that as an ordered new
+instruction, without overwriting old input. Both profiles passed the rerun.
+This small release check is not a new comprehensive ranking of the models.
+
+## Browser evidence
+
+Thirteen states at 1440×1000 and 390×844: landing, privacy, terms, help, Activity,
+inline task Edit, Revert, task list, saved views, mobile month calendar, and chat.
+No application JavaScript errors or document-width overflow were recorded.
+Edit opened the intended record; Revert archived the unchanged creation; Cancel
+stopped the queued request. Personal private-chat controls were absent.
+
+Screenshots/results are ignored local evidence in `.runtime/batch-verify/`.
+The earlier full-site audit remains in [recommendations.md](../recommendations.md),
+with its 76 screenshots and explicit production-login versus synthetic-app limits.
+
+## Operational boundaries and follow-ups
+
+- Actual phone/desktop audio, wake recognition, browser backgrounding and production
+  interruption/recovery still need a real-device pass. Automated media mocks and
+  provider text checks do not establish microphone performance.
+- Production Google/Linear writes and a second person's Google invitation were
+  not exercised in this batch. Backend contracts and synthetic account separation
+  were tested. Google consent verification remains an owner-operated process.
+- Existing local task/note/project/goal changes support guarded Revert; relationship
+  rewrites and external calendar reversals explain that manual record review is
+  required. An already-dispatched provider/browser operation may still finish.
+- Native Railway PITR remains active. Independent R2 exports are not active: the
+  endpoint/access-key/secret-key handoff is still missing. Bucket `eridani-backups`
+  exists. Export/download/restore verification remains on the TODO.
+- Public assets have an explicit Cloudflare deployment step; Railway app/worker
+  deployment continues from GitHub main. No new paid queue or database service.
+
+## Production rollout
+
+Pending the final deployment verification for this release.

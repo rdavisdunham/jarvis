@@ -14,6 +14,7 @@ def definition(description, properties, required=()):
 
 
 UI_TOOLS = {
+    "ui_activity": definition("Open or close the current device’s Activity panel. It shows durable accepted requests, questions, saved changes, Edit and safe Revert. Closing this panel does not cancel work.", {"mode": enum(["open", "close"])}, ["mode"]),
     "ui_saved_view": definition(
         "List, save, load or delete account-private named task views. Save the current Tasks tab/filter/sort/layout; list first to get exact IDs for load/delete. Never delete without a user request.",
         {"view_operation": enum(["list","save","load","delete"]), "view_name":{"type":"string","maxLength":80}, "saved_view_id":{"type":"string","maxLength":36}}, ["view_operation"]),
@@ -36,7 +37,7 @@ UI_TOOLS = {
              {"type": "array", "items": {"type": "string", "maxLength": 1000}, "maxItems": 200}]}}},
         ["operation"]),
     "ui_device": definition(
-        "Change non-secret preferences on this device: Live voice, wake word, compact/comfortable density or current-chat privacy. Voices must match ui_state's allowed voices; changing voice during a session is refused. Browser permission prompts still require the user's browser interaction. Account-wide preferences use settings_update.",
+        "Change non-secret preferences on this device: Live voice, wake word or compact/comfortable density. Voices must match ui_state's allowed voices; changing voice during a session is refused. Browser permission prompts still require the user's browser interaction. Account-wide preferences use settings_update.",
         {"voice": {"type": "string", "maxLength": 50}, "wake_enabled": {"type": "boolean"},
-         "density": enum(["compact", "comfortable"]), "private_chat": {"type": "boolean"}}),
+         "density": enum(["compact", "comfortable"])}),
 }

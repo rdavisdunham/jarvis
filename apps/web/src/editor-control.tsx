@@ -158,7 +158,7 @@ export function useEditorBridge() {
         const result = await editor.patch(parsed.data);
         if (editor.auto_save) {
           await settled();
-          return { outcome: "saved", saved: true, editor: editor.kind, result };
+          return { outcome: "saved", saved: true, editor: editor.kind, result, command_id: (result as {__command_id?: string} | null)?.__command_id };
         }
         await settled();
         return {
@@ -193,7 +193,7 @@ export function useEditorBridge() {
           "outcome" in result
         )
           return { editor: editor.kind, ...result };
-        return { outcome: "saved", saved: true, editor: editor.kind, result };
+        return { outcome: "saved", saved: true, editor: editor.kind, result, command_id: (result as {__command_id?: string} | null)?.__command_id };
       }
       if (operation === "close" && editor.auto_save)
         await editor.beforeLeave?.();

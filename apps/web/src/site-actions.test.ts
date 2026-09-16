@@ -11,6 +11,9 @@ import {
 } from "./work-views";
 import type { Task } from "./types";
 describe("site control contract", () => {
+  it("rejects the retired private-chat control", () => {
+    expect(() => actionSchema.parse({ id: "private", kind: "device", private_chat: true })).toThrow();
+  });
   it("keeps day view and rejects invalid dates and executable extras", () => {
     expect(
       actionSchema.parse({

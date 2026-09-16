@@ -428,10 +428,10 @@ export class Voice {
     if (this.poll) clearTimeout(this.poll);
     if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
     this.disconnectTimer = null;
-    // Mute immediately, but keep Live's negotiated media track alive through finalization.
+    // Release microphone capture immediately. The transport can still receive final usage.
     this.stream?.getTracks().forEach((t) => {
       t.enabled = false;
-      if (this.provider !== "live") t.stop();
+      t.stop();
     });
     if (this.audio) {
       this.audio.pause();
@@ -452,8 +452,6 @@ export class Voice {
         /* The server lease finalizes abandoned sessions. */
       }
     }
-    if (this.provider === "live")
-      this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     if (this.pc) {
       this.pc.onconnectionstatechange = null;

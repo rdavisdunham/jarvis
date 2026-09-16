@@ -13,6 +13,7 @@ export function TaskTabs({
           <button
             key={tab.id}
             id={"task-tab-" + tab.id}
+            title={tab.description}
             role="tab"
             type="button"
             aria-selected={value === tab.id}

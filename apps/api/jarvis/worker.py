@@ -1,5 +1,6 @@
 """Single supervised DBOS executor with a transactional application outbox."""
 
+import asyncio
 import json
 import logging
 from datetime import timedelta
@@ -49,6 +50,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind in {"agent_intake", "agent_action"}:
+        from . import work_intake, work_runner
+        asyncio.run((work_intake if kind == "agent_intake" else work_runner).run(job_id))
+        return
     if kind in {"linear_write", "linear_sync"}:
         from .linear_sync import process_sync, process_write
 
@@ -92,14 +97,25 @@ def run_job(job_id):
 def dispatch_outbox(client):
     with session_scope() as db:
         rows = db.scalars(
-            select(Outbox).where(Outbox.submitted_at.is_(None)).limit(100).with_for_update(skip_locked=True)
+            select(Outbox).join(Job).where(Outbox.submitted_at.is_(None)).order_by(Job.created_at).limit(1000).with_for_update(skip_locked=True)
         ).all()
         for row in rows:
+            job = db.get(Job, row.job_id)
+            if job.kind in {"agent_intake", "agent_action"}:
+                from .agent_work import eligible
+                if not eligible(db, job):
+                    if job.status not in {"queued", "running", "dispatched"}:
+                        row.submitted_at = now()
+                    continue
+                job.status = "dispatched"
+                db.flush()
             # Enqueue identity is stable across a crash before submitted_at commits.
             client.enqueue(
                 {
                     "workflow_name": "jarvis_job_v1",
-                    "queue_name": "jarvis-linear"
+                    "queue_name": "jarvis-intake" if job.kind == "agent_intake"
+                    else "jarvis-agent" if job.kind == "agent_action"
+                    else "jarvis-linear"
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write"}
                     else "jarvis-google"
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
@@ -107,7 +123,7 @@ def dispatch_outbox(client):
                     if db.get(Job, row.job_id).kind
                     in {"extract_memory", "embed_memory", "review_memory", "embed_note"}
                     else "jarvis",
-                    "workflow_id": row.job_id,
+                    "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
                 row.job_id,
             )
@@ -312,6 +328,8 @@ def run_supervisor(stop, lease):
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
+    Queue("jarvis-intake", concurrency=4, worker_concurrency=4)
+    Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
     DBOS.launch()
     client = DBOSClient(
         system_database_url=settings.database_url, system_database_pool_size=settings.dbos_client_pool_size
@@ -327,6 +345,10 @@ def run_supervisor(stop, lease):
             lease.commit()
             try:
                 with session_scope() as db:
+                    from .device_bridge import cleanup
+                    from .work_intake import flush_voice
+                    flush_voice(db)
+                    cleanup(db)
                     scan_schedules(db)
                     from .memory_learning import queue_backfill
 

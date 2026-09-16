@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 import time
 from collections import defaultdict, deque
 from typing import Annotated
@@ -17,7 +18,7 @@ from .google_auth import CALLBACK_PATH, COOKIE, begin, callback_uri, configured,
 from .google_calendar import availability, connection_status, queue_sync
 from .google_schema import CalendarRead
 from .google_writes import read_event, write_status
-from .models import Job
+from .models import GoogleOAuthAttempt, Job
 
 
 class OAuthLogFilter(logging.Filter):
@@ -43,6 +44,7 @@ User = Annotated[Identity, Depends(authenticate)]
 class Start(BaseModel):
     model_config = ConfigDict(extra="forbid")
     purpose: str
+    return_to: str | None = Field(default=None, max_length=1000)
 
 
 class AvailabilityRequest(BaseModel):
@@ -71,7 +73,7 @@ def start(body: Start, request: Request):
     if body.purpose != "login":
         authenticate(request)
         session_hash = digest(request.cookies.get("jarvis_session", ""))
-    url, browser = begin(body.purpose, session_hash)
+    url, browser = begin(body.purpose, session_hash, body.return_to)
     response = JSONResponse({"url": url})
     response.set_cookie(
         COOKIE,
@@ -87,6 +89,14 @@ def start(body: Start, request: Request):
 
 @router.get(CALLBACK_PATH)
 async def callback(request: Request):
+    destination, purpose = "/?view=tasks", "login"
+    state, browser = request.query_params.get("state"), request.cookies.get(COOKIE)
+    if state and browser:
+        with session_scope() as db:
+            attempt = db.get(GoogleOAuthAttempt, digest(state))
+            if attempt and secrets.compare_digest(attempt.browser_hash, digest(browser)):
+                destination = attempt.return_to or "/?view=settings"
+                purpose = attempt.purpose
     try:
         token, _ = await asyncio.to_thread(
             finish,
@@ -95,7 +105,7 @@ async def callback(request: Request):
             request.query_params.get("code"),
             request.query_params.get("error"),
         )
-        response = RedirectResponse("/?view=settings&google=connected", status_code=303)
+        response = RedirectResponse(destination + (("&" if "?" in destination else "?") + "google=connected" if purpose != "login" else ""), status_code=303)
         response.set_cookie(
             "jarvis_session",
             token,
@@ -108,7 +118,7 @@ async def callback(request: Request):
         # Fixed codes only; neither Google text nor authorization parameters reach the SPA.
         known = {"GOOGLE_DENIED": "cancelled", "GOOGLE_SCOPE": "permission", "GOOGLE_ACCOUNT": "account"}
         response = RedirectResponse(
-            "/?view=settings&google=" + known.get(error.code, "failed"), status_code=303
+            destination + ("&" if "?" in destination else "?") + "google=" + known.get(error.code, "failed"), status_code=303
         )
     response.delete_cookie(COOKIE, path=CALLBACK_PATH)
     return response

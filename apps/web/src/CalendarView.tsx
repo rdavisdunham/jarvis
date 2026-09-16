@@ -214,6 +214,7 @@ export function CalendarView(p: Props) {
                 >
                   {Number(day.slice(-2))}
                 </button>
+                <span className="calendar-mobile-count" aria-hidden="true">{entries.length ? `${entries.length} item${entries.length === 1 ? "" : "s"}` : ""}</span>
                 <span className="calendar-labels">
                   {entries.slice(0, 2).map((e) => (
                     <button

@@ -1,6 +1,6 @@
 # Accounts and sharing
 
-September 14, 2026.
+Updated September 16, 2026.
 
 ## Use it
 
@@ -9,13 +9,15 @@ Google email as an editor or viewer, and share the app's address. Invitations la
 seven days and are bound to the verified email; the app does not send email.
 
 The invited person signs in with Google and accepts the invitation in Sharing.
-The workspace selector switches between Personal and shared work. People need
-access to the app's existing tailnet address. Google's consent-screen test-user
-restrictions still apply if the OAuth project is in testing.
+The workspace selector switches between Personal and shared work. Use
+https://app.eridani.app; Tailnet access is no longer required. If Google's OAuth
+project remains in Testing, connecting Calendar requires being on its test-user
+list. Basic sign-in requests only OpenID/email, for which Google documents an
+exception to the test-user restriction; Eridani still requires its own invitation.
 
 The server owner can invite a standalone account without sharing a workspace.
-The pairing PIN remains an owner access/recovery method. Invited people use
-Google sign-in and can disconnect Calendar without unlinking their only login.
+Pairing/PIN sign-in is disabled on the public cloud deployment. Invited people
+use Google sign-in and can disconnect Calendar without unlinking their only login.
 
 ## Access model
 

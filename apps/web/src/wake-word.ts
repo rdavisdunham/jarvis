@@ -4,6 +4,11 @@ export const isWakePhrase = (text: string) =>
     text.trim(),
   );
 
+export function wakeRequest(text: string): string | null {
+  const match = text.trim().match(/^(?:(?:hey|hi|okay|ok)[,\s]+)?(?:eri|erie|airy|eridani)(?=$|[.!?,\s])(?:[.!?,\s]*)(.*)$/i);
+  return match ? match[1].trim() : null;
+}
+
 type Recognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -24,7 +29,7 @@ export class WakeWord {
   private enabled = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   constructor(
-    private wake: () => void,
+    private wake: (request: string) => void,
     private status: (message: string) => void,
   ) {}
   start() {
@@ -42,12 +47,11 @@ export class WakeWord {
     if ("processLocally" in recognition) recognition.processLocally = false;
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (
-          event.results[i].isFinal &&
-          isWakePhrase(event.results[i][0].transcript)
-        ) {
+        if (!this.enabled || this.recognition !== recognition) return;
+        const request = wakeRequest(event.results[i][0].transcript);
+        if (event.results[i].isFinal && request !== null) {
           this.stop();
-          this.wake();
+          this.wake(request);
           break;
         }
       }

@@ -7,7 +7,7 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -151,7 +151,8 @@ class Mutation(Input):
 
 
 class ConversationInput(Input):
-    private: bool = False
+    # Accept older normal-chat clients, but never silently save a private request.
+    private: Literal[False] = False
 
 
 class ChatInput(Input):
@@ -460,7 +461,7 @@ def create_conversation(body: ConversationInput, user: User):
         row = Conversation(
             owner_id=user.owner_id,
             device_id=user.device_id,
-            private=body.private or not prefs["history_enabled"],
+            private=not prefs["history_enabled"],
             learning=prefs["memory_learning"],
         )
         db.add(row)
@@ -488,6 +489,82 @@ def conversation(conversation_id: str, user: User):
 @app.post("/api/v1/ui/sync")
 async def ui_sync(body: UISync, user: User):
     return sync(user.owner_id, user.device_id, body)
+
+
+class WorkRevision(Input):
+    message: str = Field(default="", max_length=12000)
+    expected_revision: int = Field(ge=1)
+    continue_work: bool = False
+
+
+class RevertInput(Input):
+    command_id: UUID
+
+
+@app.get("/api/v1/work")
+def work_list(user: User):
+    from .agent_work import list_work
+    with session_scope() as db:
+        return list_work(db, user.owner_id, user.account_id)
+
+
+@app.post("/api/v1/work")
+def work_create(body: ChatInput, user: User):
+    from .agent_work import account_for, enqueue, public
+    from .config import require_external_services
+    from .domain import capture_source, enqueue_job
+    require_external_services()
+    with session_scope() as db:
+        account = account_for(db, user.owner_id, user.device_id)
+        row = enqueue(db, user.owner_id, account, user.device_id, str(body.conversation_id),
+            str(body.turn_id), body.message, focus=body.focus)
+        conv = db.get(Conversation, row.conversation_id)
+        source = capture_source(db, user.owner_id, body.message, "work:"+row.id+":user", role="user", conversation=conv)
+        if source and conv.learning:
+            enqueue_job(db, user.owner_id, "extract_memory", {"source_id": source.id})
+        return public(db, row)
+
+
+@app.get("/api/v1/work/{request_id}")
+def work_get(request_id: str, user: User):
+    from .agent_work import public, require_work
+    with session_scope() as db:
+        return public(db, require_work(db, user.owner_id, user.account_id, request_id))
+
+
+@app.post("/api/v1/work/{request_id}/cancel")
+def work_cancel(request_id: str, user: User):
+    from .agent_work import cancel, require_work
+    with session_scope() as db:
+        return cancel(db, require_work(db, user.owner_id, user.account_id, request_id))
+
+
+@app.post("/api/v1/work/{request_id}/revise")
+def work_revise(request_id: str, body: WorkRevision, user: User):
+    from .agent_work import require_work, revise
+    from .domain import advisory
+    with session_scope() as db:
+        advisory(db, "work:"+request_id)
+        row = require_work(db, user.owner_id, user.account_id, request_id)
+        if row.revision != body.expected_revision:
+            raise DomainError("REVISION_CONFLICT", "This request changed. Refresh before revising it.", 409)
+        return revise(db, row, body.message, continue_work=body.continue_work)
+
+
+@app.post("/api/v1/work/{request_id}/seen")
+def work_seen(request_id: str, user: User):
+    from .agent_work import require_work
+    with session_scope() as db:
+        row = require_work(db, user.owner_id, user.account_id, request_id)
+        row.seen_at = now()
+        return {"status": "seen"}
+
+
+@app.post("/api/v1/work/actions/{change_id}/revert")
+def work_revert(change_id: str, body: RevertInput, user: User):
+    from .action_history import revert
+    with session_scope() as db:
+        return revert(db, user.owner_id, user.account_id, change_id, str(body.command_id))
 
 
 @app.post("/api/v1/chat")

@@ -29,7 +29,8 @@ export interface GoogleStatus {
 export async function startGoogle(
   purpose: "login" | "link" | "calendar" | "calendar_write",
 ) {
-  const result = await post<{ url: string }>("/auth/google/start", { purpose });
+  const return_to = purpose === "login" ? location.pathname + location.search : "/?view=settings&section=integrations";
+  const result = await post<{ url: string }>("/auth/google/start", { purpose, return_to });
   location.assign(result.url);
 }
 export function GoogleSettings({
@@ -101,8 +102,7 @@ export function GoogleSettings({
         <>
           {!data.configured && (
             <p className="integration-hint">
-              Google connection needs setup on your home server. Pairing still
-              works.
+              Google connection is not configured. Contact the app owner to enable it.
             </p>
           )}
           <div className="setting-row">
@@ -111,7 +111,7 @@ export function GoogleSettings({
               <small>
                 {data.linked
                   ? data.email
-                  : "Link your account from this paired device."}
+                  : "Connect your Google account to Eridani."}
               </small>
             </span>
             {data.linked ? (

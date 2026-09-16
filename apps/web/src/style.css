@@ -661,10 +661,6 @@ small {
   font-size: 10px;
   margin-top: 5px;
 }
-.privacy.on {
-  color: var(--accent);
-  background: #2b4137;
-}
 .messages {
   flex: 1;
   min-height: 0;
@@ -803,7 +799,7 @@ small {
   color: var(--muted);
   line-height: 1.7;
 }
-.private-note {
+.history-note {
   font-size: 10px;
   display: flex;
   align-items: center;
@@ -3041,3 +3037,25 @@ progress::-webkit-progress-value {
   .task-filters > label, .note-filters > label { flex: 1 1 130px; min-width: 0; }
   .task-filters select, .note-filters select { width: 100%; min-width: 0; }
 }
+
+/* Durable activity uses the same compact, quiet surfaces as task details. */
+.activity-toggle {display:flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:inherit;padding:8px 10px;min-height:40px}
+.activity-toggle b {font-size:11px;min-width:18px;border-radius:20px;background:#a8d9c8;color:#15231f;padding:2px 5px}
+.activity-toggle.needs-attention {border-color:#c49b60}
+.activity-backdrop {position:fixed;inset:0;z-index:150;background:#050912a8;display:flex;justify-content:flex-end;padding:16px}
+.activity-panel {width:min(540px,100%);height:100%;background:var(--bg,#11151c);border:1px solid var(--border,#303842);border-radius:16px;display:flex;flex-direction:column;box-shadow:0 24px 80px #0006;overflow:hidden;color:var(--text,#edf3ef)}
+.activity-panel>header {display:flex;justify-content:space-between;align-items:center;padding:20px;border-bottom:1px solid var(--border,#303842);gap:16px}
+.activity-panel h2 {margin:0 0 6px;font-size:21px}.activity-panel header p {margin:0;font-size:13px;color:var(--muted,#aab4be)}
+.activity-items {overflow-y:auto;padding:16px;overscroll-behavior:contain}.activity-empty {padding:24px;color:var(--muted)}
+.work-card {border:1px solid var(--border,#303842);border-radius:12px;padding:13px;margin:10px 0;background:var(--panel,#191f28);font-size:13px;overflow-wrap:anywhere}
+.work-card.attention {border-color:#a58757}.work-card.nested {background:transparent;margin:8px 0;padding:10px}
+.work-card>header {display:flex;justify-content:space-between;gap:8px;align-items:center}.work-card time {font-size:10px;color:var(--muted,#aab4be)}
+.work-status {display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#b1c9df}.work-status.succeeded {color:#a8d9c8}.work-status.failed,.work-status.partial,.work-status.needs_input {color:#e4bd83}
+.work-request {font-weight:600;line-height:1.5;margin:10px 0 6px}.work-result {line-height:1.6;color:var(--muted,#b6c1ca);white-space:pre-wrap;margin:6px 0}
+.work-change {border-top:1px solid var(--border,#303842);padding-top:10px;margin-top:10px}.work-change>div:first-child {display:flex;justify-content:space-between;gap:10px;align-items:baseline}.work-change strong {font-size:13px;font-weight:500}.work-change span {font-size:12px}
+.work-change summary {display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--muted,#b6c1ca);padding:7px 0;font-size:11px}
+.work-change dl {margin:0;font-size:11px}.work-change dl>div {display:grid;grid-template-columns:100px 1fr;gap:10px;padding:4px 0}.work-change dt {text-transform:capitalize;color:var(--muted)}.work-change dd {margin:0;white-space:pre-wrap}.work-change del {color:var(--muted)}
+.work-card-actions {display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}.work-card-actions button {font-size:12px;min-height:30px}
+.work-revert-note {display:block;color:var(--muted,#aab4be);font-size:10px;line-height:1.4;margin-top:4px}.work-error {color:#ffc2bb;line-height:1.5}
+.work-revision {display:grid;gap:8px;margin-top:10px}.work-revision label {font-size:12px;display:grid;gap:6px}.work-revision textarea {width:100%;min-height:80px;box-sizing:border-box}.work-revision button {justify-self:end}
+@media(max-width:600px) {.activity-toggle>span {display:none}.activity-toggle {min-width:40px;padding:8px}.activity-backdrop {padding:6px}.activity-panel {border-radius:12px}.work-card-actions button {min-height:44px}.work-change dl>div {grid-template-columns:80px 1fr}}

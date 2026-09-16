@@ -197,7 +197,7 @@ test("GPT-Live waits for session.started before enabling capture", async () => {
   await voice.stop();
 });
 
-test("GPT-Live keeps its peer open while the server collects final usage", async () => {
+test("GPT-Live releases the mic immediately while its peer collects final usage", async () => {
   const voice = new Voice(vi.fn());
   const start = voice.start("conversation", undefined, {
     provider: "live",
@@ -217,7 +217,7 @@ test("GPT-Live keeps its peer open while the server collects final usage", async
     }),
   );
   const ending = voice.stop();
-  expect(stopped).not.toHaveBeenCalled();
+  expect(stopped).toHaveBeenCalledOnce();
   expect(Peer.current.close).not.toHaveBeenCalled();
   finish({ closed: true });
   await ending;

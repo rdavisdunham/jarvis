@@ -253,7 +253,6 @@ export interface UIContext {
     wake_enabled: boolean;
     wake_supported: boolean;
     density: string;
-    private_chat: boolean;
   };
 
   space_id?: string;
@@ -264,6 +263,7 @@ export interface UIContext {
   calendar_view?: "month" | "week" | "day";
   selected_schedule_id?: string | null;
   work_kind?: "all" | "task" | "reminder";
+  activity_open?: boolean;
   chat_open: boolean;
   mobile: boolean;
   voice_active: boolean;

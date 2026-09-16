@@ -26,7 +26,7 @@ def test_receipt_export_and_device_conversation_isolation(client):
     assert one == two
     assert client.get("/api/v1/commands/" + command["command_id"]).json() == one
     assert client.get("/api/v1/export").json()["tasks"][0]["title"] == "Hello"
-    conversation = client.post("/api/v1/conversations", json={"private": True}).json()
+    conversation = client.post("/api/v1/conversations", json={}).json()
     with TestClient(app) as other:
         result = other.post("/api/v1/auth/login", json={"token": "test-owner-token"})
         other.headers["X-CSRF-Token"] = result.json()["csrf"]
@@ -44,3 +44,17 @@ def test_push_destination_restrictions():
         "https://fcm.googleapis.com:8443/send",
     ]:
         assert not valid_push_endpoint(endpoint)
+
+
+def test_private_chat_creation_is_retired_without_silently_saving_it(client):
+    rejected = client.post("/api/v1/conversations", json={"private": True})
+    assert rejected.status_code == 422
+    normal = client.post("/api/v1/conversations", json={}).json()
+    assert not normal["private"]
+    assert client.post("/api/v1/conversations", json={"private": False}).status_code == 200
+    saved = client.post("/api/v1/commands", json={
+        "command_id": str(uuid4()), "tool": "settings.update",
+        "arguments": {"history_enabled": False},
+    })
+    assert saved.status_code == 200
+    assert client.post("/api/v1/conversations", json={}).json()["private"]

@@ -867,9 +867,9 @@ export function SettingsPanel({
         <div className="privacy-callout">
           <Shield size={18} />
           <p>
-            Raw audio is never recorded by Eridani. Private sessions keep task
-            receipts, but no conversation history. Cloud processing still
-            applies.
+            Eridani does not save raw audio. Conversation history follows these
+            settings; tasks and notes save separately. Cloud models process what
+            you send.
           </p>
         </div>
       </section>

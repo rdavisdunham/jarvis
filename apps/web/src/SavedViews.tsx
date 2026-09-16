@@ -62,6 +62,7 @@ export function SavedViews({
     }
   }
   return (
+    <details className="saved-view-menu"><summary><Bookmark size={14}/> Views & links</summary>
     <div className="saved-views">
       <Bookmark size={14} />
       <select
@@ -135,6 +136,6 @@ export function SavedViews({
           {error}
         </span>
       )}
-    </div>
+    </div></details>
   );
 }
