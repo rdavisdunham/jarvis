@@ -5,7 +5,8 @@ Jarvis remains the repository and infrastructure project name.
 
 ## Current batch — reliable background work, action cards and onboarding
 
-Implementation completed September 16. Release checks and remaining acceptance
+Deployed September 16 (implementation `e5d9234`); API, worker and public HTTPS
+checks passed. Release checks and remaining acceptance
 work are recorded in [BACKGROUND_WORK_VALIDATION.md](BACKGROUND_WORK_VALIDATION.md).
 Design and decisions: [BACKGROUND_WORK_PRD.md](BACKGROUND_WORK_PRD.md).
 

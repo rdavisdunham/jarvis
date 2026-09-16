@@ -1,6 +1,6 @@
 # Background-work batch validation — September 16, 2026
 
-Implementation is complete. Production rollout is recorded below after deployment.
+Released to production September 16, 2026. Implementation commit: `e5d9234`.
 
 ## Automated evidence
 
@@ -66,4 +66,15 @@ with its 76 screenshots and explicit production-login versus synthetic-app limit
 
 ## Production rollout
 
-Pending the final deployment verification for this release.
+- GitHub main: `e5d9234db68a8109b2194440b01a5342b0894638`.
+- Railway API deployment `71f8d405-06ad-4f04-9209-1f3a737d118a`: SUCCESS.
+- Railway worker deployment `d2417095-97a3-4abe-a068-563ff3f8f10b`: SUCCESS.
+  Startup logs confirm the separate `jarvis-intake` and `jarvis-agent` queues.
+- Cloudflare public version `8f83601b-9ca3-4615-b28a-c73a85d5905d` published.
+- Apex, www, privacy, terms, help and app login all returned HTTPS 200 with no
+  browser JavaScript errors. Landing Sign in links to the authenticated app.
+- The production schema readiness endpoint returned 200/ready. OpenAPI exposes
+  the new work routes; anonymous work access returns 401. The updated Google
+  button successfully navigated to `accounts.google.com`.
+- No production authentication bypass or private-record mutation was used for
+  these public checks. The disposable browser fixture was stopped and removed.
