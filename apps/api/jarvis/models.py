@@ -588,6 +588,7 @@ class AgentWork(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
     parent_id: Mapped[str | None] = mapped_column(String(36), index=True)
     voice_session_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    credential_id: Mapped[str | None] = mapped_column(String(36), index=True)
     input_hash: Mapped[str] = mapped_column(String(64))
     input_ciphertext: Mapped[str | None] = mapped_column(Text)
     checkpoint_ciphertext: Mapped[str | None] = mapped_column(Text)
@@ -653,3 +654,21 @@ class ActionChange(Base):
     after_ciphertext: Mapped[str | None] = mapped_column(Text)
     reverted_by: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BotCredential(Base):
+    """One revocable, hashed credential bound to its creator and workspace."""
+    __tablename__ = "bot_credentials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("user_accounts.id"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(20))
+    scopes: Mapped[list] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rate_window: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    rate_count: Mapped[int] = mapped_column(Integer, default=0)

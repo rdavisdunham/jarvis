@@ -52,6 +52,7 @@ def enqueue(
     focus=None,
     dependencies=None,
     resources=None,
+    credential_id=None,
 ):
     conv = owned(db, Conversation, conversation_id, owner)
     if conv.device_id != device:
@@ -87,6 +88,7 @@ def enqueue(
         conversation_id=conversation_id,
         parent_id=parent_id,
         voice_session_id=voice_session_id,
+        credential_id=credential_id,
         input_hash=identity,
         input_ciphertext=seal({"message": message, "context": context or [], "focus": focus}),
         revision=1,
@@ -113,6 +115,7 @@ def principal_for(row):
             "account_id": row.account_id,
             "device_id": row.device_id,
             "revision": row.revision,
+            "credential_id": row.credential_id,
         }
     )
     try:
@@ -132,6 +135,9 @@ def eligible(db, job):
         return False
     try:
         role(db, row.owner_id, row.account_id)
+        if row.credential_id:
+            from .bot_access import authorize
+            authorize(db, row.owner_id, "work:run", credential_id=row.credential_id)
     except DomainError:
         finish(db, row, "failed", "Workspace access ended before this request finished.")
         return False
@@ -202,7 +208,9 @@ def checkpoint(request_id, state):
 def require_work(db, owner, account, request_id):
     role(db, owner, account)
     row = db.get(AgentWork, request_id)
-    if not row or row.owner_id != owner or row.account_id != account:
+    from .bot_access import current_id
+    if (not row or row.owner_id != owner or row.account_id != account
+            or (current_id() and row.credential_id != current_id())):
         raise DomainError("NOT_FOUND", "That request is not available.", 404)
     return row
 
@@ -229,6 +237,8 @@ def revise(db, row, message, *, continue_work=False):
     db.flush()
     db.refresh(row)
     job = db.get(Job, row.id)
+    if job.kind == "external_command":
+        raise DomainError("INVALID_ARGUMENT", "Edit the saved record to change this direct command.")
     if row.parent_id is None and row.result.get("child_ids") and job.status != "needs_input":
         children = [db.get(AgentWork, identity) for identity in row.result["child_ids"]]
         if len(children) != 1:
@@ -238,6 +248,9 @@ def revise(db, row, message, *, continue_work=False):
         raise DomainError(
             "REQUEST_EXPIRED", "Start a new request; this request's temporary input was removed.", 409
         )
+    if row.credential_id:
+        from .bot_access import authorize
+        authorize(db, row.owner_id, "work:run", credential_id=row.credential_id)
     data = unseal(row.input_ciphertext)
     corrections = list(data.get("corrections", []))
     if message:
@@ -317,8 +330,11 @@ def public(db, row, *, children=True):
         for a in actions
     ):
         status = "partial"
+    from .models import BotCredential
+    bot = db.get(BotCredential, row.credential_id) if row.credential_id else None
     return {
         "id": row.id,
+        "actor": {"type": "bot", "id": bot.id, "name": bot.name} if bot else None,
         "parent_id": row.parent_id,
         "related_request_id": result.get("related_request_id"),
         "waiting": bool(result.get("waiting_for")) and status == "queued",
@@ -333,12 +349,14 @@ def public(db, row, *, children=True):
         "seen": bool(row.seen_at),
         "created_at": job.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
-        "can_continue": status in {"needs_input", "failed", "partial"} and bool(row.input_ciphertext),
+        "can_revise": job.kind != "external_command",
+        "can_continue": job.kind != "external_command" and status in {"needs_input", "failed", "partial"} and bool(row.input_ciphertext),
     }
 
 
 def list_work(db, owner, account, *, limit=50):
     role(db, owner, account)
+    from .bot_access import current_id
     rows = list(
         db.scalars(
             select(AgentWork)
@@ -346,6 +364,7 @@ def list_work(db, owner, account, *, limit=50):
                 AgentWork.owner_id == owner,
                 AgentWork.account_id == account,
                 AgentWork.parent_id.is_(None),
+                *([AgentWork.credential_id == current_id()] if current_id() else []),
                 AgentWork.result["quiet"].as_boolean().is_not(True),
             )
             .order_by(AgentWork.updated_at.desc())

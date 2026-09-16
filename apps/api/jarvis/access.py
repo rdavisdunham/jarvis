@@ -20,6 +20,9 @@ def actor(db, owner):
     if grant:
         authorize_execution(db, owner)
         return grant["account_id"]
+    from .bot_access import authorize, current_id
+    if current_id():
+        return authorize(db, owner).account_id
     session = db.get(AuthSession, principal.get()) if principal.get() else None
     return session.owner_id if session else owner
 
@@ -43,6 +46,9 @@ def authorize_execution(db, owner, *, write=False):
         raise DomainError("WORK_EXPIRED", "This request expired before completing.", 409)
     if row.revision != grant["revision"]:
         raise DomainError("WORK_CHANGED", "This request has a newer correction. Reload its instructions.", 409)
+    from .bot_access import authorize
+    if row.credential_id:
+        authorize(db, owner, "work:run", credential_id=row.credential_id, write=write)
     permission = role(db, owner, row.account_id, lock=write)
     if write and permission == "viewer":
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
@@ -123,12 +129,13 @@ def request_access(request, namespace, permission, account):
         "/api/v1/ui/sync",
         "/api/v1/task-views",
         "/api/v1/task-views/remove",
+        "/api/v1/bot-keys",
     }
     if (
         permission == "viewer"
         and request.method not in {"GET", "HEAD", "OPTIONS"}
         and path not in reads
-        and not path.startswith(("/api/v1/voice", "/api/v1/work"))
+        and not path.startswith(("/api/v1/voice", "/api/v1/work", "/api/v1/bot-keys/"))
     ):
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
 
@@ -137,13 +144,15 @@ def command_access(db, owner, tool, arguments):
     from .domain import DomainError, advisory
 
     grant = authorize_execution(db, owner, write=True)
+    from .bot_access import check_command, current_id
+    bot = check_command(db, owner, tool, arguments) if current_id() else None
     workspace = db.get(SharedWorkspace, owner)
     if not workspace:
         return
     advisory(db, f"access:{owner}")
-    if grant:
+    if grant or bot:
         from types import SimpleNamespace
-        account, permission = grant
+        account, permission = grant or (bot.account_id, role(db, owner, bot.account_id))
         session = SimpleNamespace(owner_id=account)
         namespace = owner
     else:
@@ -177,8 +186,10 @@ def command_access(db, owner, tool, arguments):
 
 
 def tool_access(db, owner, name):
+    from .bot_access import check_tool, current_id
     from .domain import DomainError
-
+    if current_id():
+        check_tool(db, owner, name)
     if not db.get(SharedWorkspace, owner):
         return
     if name.startswith(("memory_", "linear_", "settings_")) or name in {

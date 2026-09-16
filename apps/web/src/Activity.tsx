@@ -9,9 +9,10 @@ export type ActionChange = {
   can_revert: boolean; revert_reason: string; reverted: boolean; remote_status?: string | null;
 };
 export type WorkItem = {
+  actor?: { type: "bot"; id: string; name: string } | null;
   id: string; parent_id: string | null; conversation_id: string; request: string;
   status: string; revision: number; message: string; actions: ActionChange[]; children: WorkItem[];
-  cancel_requested: boolean; seen: boolean; waiting?: boolean; related_request_id?: string | null; created_at: string; updated_at: string; can_continue: boolean;
+  cancel_requested: boolean; seen: boolean; waiting?: boolean; related_request_id?: string | null; created_at: string; updated_at: string; can_continue: boolean; can_revise?: boolean;
 };
 export const workActive = (item: WorkItem) => ["queued", "dispatched", "running", "waiting_sync"].includes(item.status);
 export const workAttention = (item: WorkItem) => ["needs_input", "failed", "partial", "expired"].includes(item.status);
@@ -72,6 +73,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
       {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : item.waiting ? "Waiting for related work" : labels[item.status] ?? item.status}
     </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
+    {item.actor && <p className="work-actor">{item.actor.name} <span>· connected agent</span></p>}
     {item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
     {!item.actions.length && !item.children.length && <p className="work-result">{
       item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
@@ -104,7 +106,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
       {(workActive(item) || item.status === "needs_input") && <button className="text-button" disabled={busy || item.cancel_requested}
         title="Stop unfinished work. Saved changes stay in place."
         onClick={() => void act(() => post("/work/"+item.id+"/cancel", {}))}>Cancel work</button>}
-      {(!item.children.length || item.status === "needs_input") && (item.can_continue || workActive(item)) && <button className="text-button" disabled={busy}
+      {item.can_revise !== false && (!item.children.length || item.status === "needs_input") && (item.can_continue || workActive(item)) && <button className="text-button" disabled={busy}
         onClick={() => setEditing(!editing)}>Revise</button>}
       {item.can_continue && <button className="text-button" disabled={busy} onClick={() => void act(() =>
         post("/work/"+item.id+"/revise", {message:"", expected_revision:item.revision, continue_work:true}))}>{item.status === "failed" ? "Retry" : "Continue"}</button>}

@@ -3,6 +3,32 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## External-agent API, MCP and backup preparation — September 16
+
+- [x] Add named, workspace-bound bot keys in Settings → Integrations, with separate
+  task/organization/note permissions, expiry, one-time reveal and immediate revocation.
+- [x] Expose typed API and official-SDK MCP tools over the existing command service.
+  Structured actions execute directly; retries share receipts across both transports.
+- [x] Preserve revisions, membership checks, bot attribution and guarded Edit/Revert
+  in Activity. Reject stale edits and mismatched idempotency keys.
+- [x] Add keyword search, linked-record lookups and a paginated cursor change feed
+  for external synchronization, including archives and permission filtering.
+- [x] Add optional scoped requests to Eri's durable queue, status, clarification and
+  cancellation. Keep personal memories/conversations and connected-account tools
+  outside bot grants; recheck revocation before each subsequent tool write.
+- [x] Verify parallel retries, conflicting edits, real MCP client interoperability,
+  mid-run revocation, permission boundaries and mobile/desktop connection controls.
+- [x] Prepare separate daily R2 cron configuration and a secret-safe, offline setup
+  check. Preserve daily/weekly retention and the existing encrypted restore tooling.
+- [ ] Activate R2 only after bucket credentials are supplied; verify a real R2
+  upload, download, isolated restore and scheduled production run. Deferred by owner.
+- [ ] Add MCP OAuth consent/discovery for clients that cannot supply Bearer headers.
+- [ ] Consider signed webhook delivery after the initial polling integrations prove useful.
+
+Connection and API contract: [EXTERNAL_AGENTS.md](EXTERNAL_AGENTS.md).
+Backup handoff: [R2_BACKUPS.md](R2_BACKUPS.md).
+Verification: [EXTERNAL_AGENTS_VALIDATION.md](EXTERNAL_AGENTS_VALIDATION.md).
+
 ## Direct backend execution and action receipts — September 16
 
 - [x] Remove the interpretation-model call and exact-quote gate. Voice turns and
@@ -244,7 +270,7 @@ isolation and immediate revocation across the UI, API, agent and retrieval paths
 
 ### Batch 3 — connected workflows
 
-- [ ] Add scoped, revocable external bot API access through the existing command
+- [x] Add scoped, revocable external bot API access through the existing command
       service, then an MCP adapter. Preserve actor attribution, idempotency,
       revisions and the multi-user access rules from Batch 2.
 - [ ] Expand notifications with natural-language snoozing, priority, quiet-time

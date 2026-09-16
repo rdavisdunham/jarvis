@@ -301,15 +301,50 @@ def restore(path, target, *, existing_empty=False):
     )
 
 
+def configuration_check():
+    """Report missing variable names without connecting, exporting, or printing secrets."""
+    missing = []
+    if not (os.environ.get("JARVIS_DATABASE_URL") or os.environ.get("DATABASE_URL") or
+            (os.environ.get("PGHOST") and os.environ.get("PGDATABASE") and os.environ.get("PGUSER"))):
+        missing.append("JARVIS_DATABASE_URL")
+    for name in ("JARVIS_BACKUP_KEY", "JARVIS_BACKUP_S3_ENDPOINT", "JARVIS_BACKUP_S3_BUCKET",
+                 "JARVIS_BACKUP_S3_ACCESS_KEY_ID", "JARVIS_BACKUP_S3_SECRET_ACCESS_KEY"):
+        if not os.environ.get(name):
+            missing.append(name)
+    invalid = []
+    if os.environ.get("JARVIS_BACKUP_KEY"):
+        try:
+            cipher()
+        except (ValueError, TypeError):
+            invalid.append("JARVIS_BACKUP_KEY")
+    endpoint = os.environ.get("JARVIS_BACKUP_S3_ENDPOINT")
+    if endpoint:
+        parsed = urlsplit(endpoint)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            invalid.append("JARVIS_BACKUP_S3_ENDPOINT")
+    if os.environ.get("JARVIS_BACKUP_REQUIRE_REMOTE", "").lower() != "true":
+        invalid.append("JARVIS_BACKUP_REQUIRE_REMOTE (must be true for cloud backups)")
+    prefix = os.environ.get("JARVIS_BACKUP_S3_PREFIX", "")
+    if not prefix or prefix.startswith("/") or ".." in prefix.split("/"):
+        invalid.append("JARVIS_BACKUP_S3_PREFIX")
+    return {"configuration_ready": not missing and not invalid, "missing": missing, "invalid": invalid,
+            "network_checked": False, "restore_verified": False,
+            "retention_days": {"daily": 30, "weekly": 84}}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "mode", choices=["once", "loop", "download", "restore", "restore-empty"], default="loop", nargs="?"
+        "mode", choices=["check", "once", "loop", "download", "restore", "restore-empty"], default="loop", nargs="?"
     )
     parser.add_argument("--file")
     parser.add_argument("--object")
     parser.add_argument("--target")
     args = parser.parse_args()
+    if args.mode == "check":
+        result = configuration_check()
+        print(json.dumps(result))
+        raise SystemExit(0 if result["configuration_ready"] else 2)
     try:
         configure_postgres()
         if args.mode == "download":

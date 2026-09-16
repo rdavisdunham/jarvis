@@ -459,8 +459,18 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
     token=principal.set(authorization[0]) if authorization else None
     try:
         with session_scope() as db:tool_access(db,owner,name)
-        result=await _call_tool(owner,turn_id,index,name,arguments,device=device,conversation_id=conversation_id)
+        from .bot_access import READ_SCOPES, current_id
+        if current_id() and name in READ_SCOPES:
+            from .external_service import backend_read
+            result = await __import__("asyncio").to_thread(backend_read, name, arguments, conversation_id)
+        else:
+            result=await _call_tool(owner,turn_id,index,name,arguments,device=device,conversation_id=conversation_id)
         check_device(owner,device)
+        if current_id():
+            from .bot_access import authorize
+            from .external_service import scrub
+            with session_scope() as db:
+                result = scrub(result, authorize(db, owner).scopes)
         return result
     finally:
         if token is not None:principal.reset(token)

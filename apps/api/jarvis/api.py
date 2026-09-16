@@ -53,7 +53,10 @@ from .worker import valid_push_endpoint
 async def lifespan(app):
     from .deploy import validate_deployment
     validate_deployment(get_settings())
-    yield
+    from .external_mcp import mount as mcp_mount
+    mcp_app = mcp_mount.build()
+    async with mcp_app.router.lifespan_context(mcp_app):
+        yield
     from .voice import controllers
 
     await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
@@ -70,6 +73,11 @@ app.include_router(accounts_router)
 from .integration_routes import router as integration_router
 
 app.include_router(integration_router)
+from .external_mcp import mount as mcp_mount
+from .external_routes import router as external_router
+
+app.include_router(external_router)
+app.mount("/api/v1/external/mcp", mcp_mount)
 User = Annotated[Identity, Depends(authenticate)]
 login_attempts = defaultdict(deque)
 
@@ -78,6 +86,8 @@ login_attempts = defaultdict(deque)
 async def domain_error(request, exc):
     return JSONResponse(
         status_code=exc.status,
+        headers=({"Retry-After": "60"} if exc.status == 429 else
+                 {"WWW-Authenticate": 'Bearer realm="Eridani bot API"'} if exc.status == 401 and request.url.path.startswith("/api/v1/external/") else {}),
         content=jsonable_encoder({"error": {"code": exc.code, "message": exc.message, "data": exc.data}}),
     )
 
@@ -91,7 +101,8 @@ async def security(request, call_next):
             status_code=503, headers={"Retry-After": "60"},
         )
     origin = request.headers.get("origin")
-    if request.url.path.startswith("/api/") and request.method not in {"GET", "HEAD", "OPTIONS"}:
+    is_external = request.url.path.startswith("/api/v1/external/")
+    if request.url.path.startswith("/api/") and (is_external or request.method not in {"GET", "HEAD", "OPTIONS"}):
         if origin and origin.rstrip("/") != settings.origin.rstrip("/"):
             return JSONResponse(
                 {"error": {"code": "NOT_AUTHORIZED", "message": "This origin is not allowed."}},
@@ -116,8 +127,16 @@ async def security(request, call_next):
     token = principal.set(digest(request.cookies.get("jarvis_session","")) or None)
     try:
         response = await call_next(request)
+        if is_external and response.status_code < 400:
+            try:
+                from starlette.concurrency import run_in_threadpool
+
+                from .bot_access import authenticate as authenticate_bot
+                await run_in_threadpool(authenticate_bot, request, touch=False)
+            except DomainError as exc:
+                return JSONResponse({"error": {"code": exc.code, "message": exc.message}}, status_code=exc.status)
         # A long retrieval cannot return shared data after access was revoked.
-        if request.url.path.startswith("/api/v1/") and not request.url.path.startswith(("/api/v1/accounts","/api/v1/auth","/api/v1/integrations/google/unlink")) and response.status_code < 400:
+        if request.url.path.startswith("/api/v1/") and not request.url.path.startswith(("/api/v1/accounts","/api/v1/auth","/api/v1/integrations/google/unlink","/api/v1/external/")) and response.status_code < 400:
             try:
                 authenticate(request)
             except DomainError as exc:

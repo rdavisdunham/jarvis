@@ -1,0 +1,10 @@
+# Use as a separate Railway backup service after its R2 credentials are configured.
+# Do not attach this config to the web/API or worker service.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/railway/Dockerfile.backup"
+
+[deploy]
+startCommand = "python3 /usr/local/bin/jarvis-backup.py once"
+cronSchedule = "0 9 * * *"
+restartPolicyType = "NEVER"

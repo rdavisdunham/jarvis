@@ -486,7 +486,7 @@ class ToolSession:
         return [self.catalog[n] for n in self.names]
 
     def load(self, arguments):
-        names = load_names(arguments)
+        names = [name for name in load_names(arguments) if name in self.catalog]
         for name in names:
             if name not in self.names:
                 self.names.append(name)

@@ -168,3 +168,25 @@ def test_cloud_handoff_preserves_keys_and_never_overwrites(tmp_path, capsys):
     prepare.prepare(tmp_path)
     assert target.read_text() == "do not overwrite"
     assert "keep-this-key" not in capsys.readouterr().out
+
+
+def test_configuration_check_reports_only_variable_names_and_does_not_connect(monkeypatch):
+    for name in list(__import__("os").environ):
+        if name.startswith(("JARVIS_BACKUP_", "PG")) or name in {"JARVIS_DATABASE_URL", "DATABASE_URL"}:
+            monkeypatch.delenv(name)
+    monkeypatch.setattr(backup, "pg", lambda *a, **kw: pytest.fail("Configuration check must not connect"))
+    result = backup.configuration_check()
+    assert not result["configuration_ready"] and not result["network_checked"]
+    assert "JARVIS_BACKUP_S3_ACCESS_KEY_ID" in result["missing"]
+    values = {"JARVIS_DATABASE_URL": "postgresql://synthetic:secret@private/db",
+        "JARVIS_BACKUP_KEY": Fernet.generate_key().decode(), "JARVIS_BACKUP_S3_ENDPOINT": "https://account.r2.cloudflarestorage.com",
+        "JARVIS_BACKUP_S3_BUCKET": "backups", "JARVIS_BACKUP_S3_ACCESS_KEY_ID": "private-access",
+        "JARVIS_BACKUP_S3_SECRET_ACCESS_KEY": "private-secret", "JARVIS_BACKUP_REQUIRE_REMOTE": "true",
+        "JARVIS_BACKUP_S3_PREFIX": "eridani/production"}
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+    result = backup.configuration_check()
+    assert result["configuration_ready"] and not result["restore_verified"]
+    assert not any(value in str(result) for value in values.values() if len(value) > 5)
+    monkeypatch.setenv("JARVIS_BACKUP_KEY", "invalid")
+    assert "JARVIS_BACKUP_KEY" in backup.configuration_check()["invalid"]

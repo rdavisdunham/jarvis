@@ -19,6 +19,7 @@ dependencies = [
   "python-multipart>=0.0.20",
   "jsonschema>=4.26.0",
   "google-auth-oauthlib>=1.2,<2",
+  "mcp>=2,<3",
 ]
 [dependency-groups]
 dev = [

@@ -1,3 +1,4 @@
+import { BotSettings } from "./BotSettings";
 import { PublicFooter } from "./PublicPages";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
@@ -159,13 +160,11 @@ export default function App() {
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [settingsSection, setSettingsSection] = useState<
     "profile" | "voice" | "integrations" | "privacy" | "system" | "sharing"
-  >(() =>
-    new URLSearchParams(location.search).has("sharing")
-      ? "sharing"
-      : new URLSearchParams(location.search).has("google")
-        ? "integrations"
-        : "profile",
-  );
+  >(() => {
+    const params = new URLSearchParams(location.search), section = params.get("section");
+    if (section === "profile" || section === "voice" || section === "integrations" || section === "privacy" || section === "system" || section === "sharing") return section;
+    return params.has("sharing") ? "sharing" : params.has("google") ? "integrations" : "profile";
+  });
   const [density, setDensity] = useState<"compact" | "comfortable">(() =>
     localStorage.getItem("eri-density") === "comfortable"
       ? "comfortable"
@@ -2783,6 +2782,7 @@ export default function App() {
                     </div>
                   </section>
                 )}
+                {settingsSection === "integrations" && <BotSettings key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
                 {settingsSection === "integrations" && !boot.workspace?.id && (
                   <>
                     <LinearSettings revision={noteRevision} mutate={mutate} />
