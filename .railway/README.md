@@ -14,9 +14,11 @@ Both PostgreSQL image majors are explicit: the SDK's default is not safe for an
 existing version-16 volume. Production candidate is Postgres16; the old Postgres
 18 service has its deployment stopped, its volume preserved, and is not connected to the app.
 
-The current services run a paused staging preview. Variable values remain managed
-in Railway so infrastructure application cannot silently promote staging or
-start duplicate workers. Only perform that switch through the cutover runbook.
+The current services run production against the private eridani database. Variable
+values remain managed in Railway. Local production writers and auto-start are
+stopped; never restart them against the stale local copy. Follow the runbook for
+future restores, staging environments and deliberate worker handoffs.
 
-GitHub autodeploy is disconnected during migration. Apply infrastructure changes
-separately from app uploads; these are different operations.
+API and worker are configured to use rdavisdunham/jarvis on main. Apply reviewed
+infrastructure changes separately from app releases; pushing app code and applying
+an infrastructure plan are different operations.

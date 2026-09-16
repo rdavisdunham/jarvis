@@ -57,7 +57,7 @@ Jarvis remains the repository and infrastructure project name.
 
 Decision: retain point-in-time recovery alongside independent daily backups.
 Decision: prepare the Railway migration now, with Google-only public sign-in.
-Cloud preview provisioning is complete; private data transfer and cutover remain pending. See the
+Cloud production cutover is complete at **https://app.eridani.app**; device acceptance and optional R2 exports remain. See the
 [migration runbook and owner checklist](CLOUD_MIGRATION.md).
 
 - [x] Compare Railway, managed PostgreSQL options, Cloudflare and a VPS against
@@ -86,20 +86,24 @@ Cloud preview provisioning is complete; private data transfer and cutover remain
 - [x] Verify native PITR timestamp restore: the sibling contains the synthetic
       `before` marker and the source retains `after`, on PostgreSQL 16.15.
       Desktop/mobile cloud login-page browser checks also pass.
-- [ ] Approve and perform the full private database transfer. Automatic approval
-      review requires explicit consent for records/encrypted credentials going to
-      the user's Railway project. The encrypted local export is ready; no private
-      records have moved. Then compare all 55 table counts and credential decryption.
-- [ ] Complete real OAuth login, streaming, Android permissions/notifications and
-      controlled integration checks. Freeze the source, take a final export and
-      enable only the cloud worker after verification; retain the stopped rollback
-      copy and test with the PC offline.
+- [x] Receive explicit transfer approval; stop local writers; take the final
+      encrypted snapshot; restore production `eridani`; compare all **55 tables /
+      11,245 rows** and verify Google linkage, DBOS, schema and credential decryption.
+- [x] Activate only the Railway worker. Confirm current heartbeat, healthy API,
+      private database connectivity and successful Google Calendar synchronization.
+      Preserve local database and encrypted snapshot for recovery.
+- [x] Remove migration-only public database access. Retire the local Windows
+      startup shortcut to `.runtime/retired-startup` so a reboot cannot resume the
+      stale local writers. Keep production independent of the PC.
+- [ ] Owner acceptance: Google browser sign-in, Live voice, Android permissions /
+      notifications, controlled integration writes and use with the PC offline.
+      Re-register microphone/notification permissions on the new origin.
 - [ ] Deferred by owner: supply R2 bucket-scoped S3 credentials, deploy the daily
       backup job and verify export/download/restore. `eridani-backups` exists.
 - [x] Stop unused PostgreSQL 18 compute while preserving its volume. Remove the
       disposable recovery service and its synthetic test volume after verification.
 - [ ] Retire the preserved PostgreSQL 18 volume after confirming it holds no needed
-      data. Remove migration-only public database access after cutover.
+      data. Keep future local development separate from the preserved production copy.
 - [ ] Automate periodic isolated recovery drills and stale/failed-backup alerts.
 
 ## Ordered delivery batches — next work

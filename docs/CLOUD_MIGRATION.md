@@ -1,17 +1,17 @@
 # Eridani cloud migration runbook
 
-Updated September 16, 2026. Railway web/API and a paused worker are deployed at **https://app.eridani.app**, against the separate empty `eridani_preview` database. PostgreSQL 16.15 matches development. Google-only login, HTTPS, readiness and authentication boundaries passed. The full local database has **not** been transferred; explicit transfer approval is pending after an automatic approval-review block. The current PC deployment remains active.
+Updated September 16, 2026. **Production is live at https://app.eridani.app.** The user approved the full private-data transfer. The final frozen source and cloud restore matched all **55 tables / 11,245 rows** before cloud workers resumed. API and worker now use the private `eridani` database on PostgreSQL 16.15. Google Calendar synchronized successfully from Railway. Local API/worker/backup containers are stopped; their database and encrypted snapshot are preserved.
 
 Use Railway for the web/API, worker and PostgreSQL, with Railway point-in-time recovery (PITR) plus independent encrypted exports to Cloudflare R2. The [hosting plan](CLOUD_HOSTING_PLAN.md) explains the cost assumptions and Neon alternative.
 
 ## Owner setup and remaining input
 
 - Railway project **Eridani**, services, the `app.eridani.app` domain and Google OAuth client are configured. The user confirmed the authorized redirect URI in Google Cloud Console; the deployed app generates exactly `https://app.eridani.app/api/v1/auth/google/callback`.
-- Approve the full transfer of the local 55-table application/DBOS database, including private records and encrypted integration credentials, into this Railway project's Postgres16 service. An encrypted local snapshot is ready. Nothing has been copied to the cloud database yet.
+- Full transfer approval was received and cutover completed. Sign in to the new site using the existing Google account. Allow microphone and notifications on the new origin; actual spoken voice behavior and phone notifications still need a device check.
 - R2 bucket `eridani-backups` exists. Its S3 access key/secret are still missing. R2 export deployment is deferred by the user's instruction; native Railway PITR remains enabled. Later, create an **Object Read & Write** token restricted to this private bucket and fill the matching fields in `.env.cloud`. [Cloudflare token instructions](https://developers.cloudflare.com/r2/api/tokens/)
 - Store recovery copies of `JARVIS_BACKUP_KEY` and `JARVIS_INTEGRATION_ENCRYPTION_KEY` in your password manager. Keep the keys separate from encrypted archives.
 
-The private handoff file is `/home/davin/jarvis/.env.cloud` in WSL. It is ignored by Git/Docker and is **not loaded by the running local app**. Its operator database URL currently uses a temporary TLS-enabled public PostgreSQL endpoint. Cloud services use private networking. Do not paste secrets into chat or pass this python-dotenv file directly to Docker's differently parsed `--env-file`.
+The private handoff file is `/home/davin/jarvis/.env.cloud` in WSL. It is ignored by Git/Docker and is **not loaded by the running local app**. Its database URL now uses Railway private networking. The migration-only public PostgreSQL endpoint was removed. Read-only database checks from the PC require a new deliberate temporary connection or execution inside Railway. Do not paste secrets into chat or pass this python-dotenv file directly to Docker's differently parsed `--env-file`.
 
 ## Prepared code
 
@@ -78,7 +78,7 @@ Share these values between API and worker:
 - `JARVIS_DATABASE_POOL_SIZE=5`, `JARVIS_DATABASE_MAX_OVERFLOW=2`
 - `JARVIS_DBOS_POOL_SIZE=10`, `JARVIS_DBOS_CLIENT_POOL_SIZE=5`
 
-Initial staging values:
+Rehearsal-only values (production now enables worker/provider actions):
 
 ```dotenv
 JARVIS_DEPLOYMENT_ENVIRONMENT=staging
@@ -206,14 +206,18 @@ Completed locally with isolated synthetic records, without changing the running 
 
 Verified in Railway on September 16:
 
-- Web/API and paused worker deployments succeeded from the prepared release.
+- Web/API and the active production worker deployed successfully from the prepared release; both connect to the private `eridani` database.
 - `app.eridani.app` serves HTTPS with a valid certificate. Root/live/ready return 200; unauthenticated bootstrap returns 401; pairing is disabled; Google login generates the correct callback and a Secure/HttpOnly/SameSite cookie.
 - Official PostgreSQL 16 image boots **16.15**, matching local 16.15. PITR has a completed base backup (`20260916-061241F`) and continuous WAL archiving with zero observed failures.
-- The full encrypted migration export remains on the PC. No private records have been restored remotely.
+- Final encrypted snapshot `jarvis-20260916T064911481206Z.pgdump.enc` remains in the ignored local `.runtime/cloud-backups` directory. Full data transfer and exact per-table count comparison passed. Google identity linkage, current migrations, DBOS schema and credential decryption passed. The owner approved this transfer before it ran.
 - Native timestamp restore **passed**: a disposable sibling restored the synthetic marker to `before`, while the source retained `after`; both ran PostgreSQL 16.15. The target was 2026-09-16T06:31:14.918014Z. The disposable restore service and its volume were removed after verification.
 - Railway's separate manual-backup creation endpoint returned `OAUTH_INSUFFICIENT_GRANT`. Native PITR enablement, automatic base backup, archiving and timestamp-restore request worked with current access. No persistent SSH key was added.
 
-Still required: transfer approval, final data transfer/preflight/cutover, actual Google account login, real voice and device checks, notification delivery and controlled integration writes. Desktop and phone-sized login-page browser checks passed without page errors or horizontal overflow. R2 is deferred. The preview login page is not evidence that personal records or background jobs have moved.
+Production worker heartbeat is current. Google Calendar status is ready, read/write permission was preserved, and a cloud sync completed at 2026-09-16T06:54:28Z without an error. No Linear connection is currently configured; its code remains available. Recovery archiving remained healthy after the final restore. Temporary public database access was removed; the API remained ready using private networking.
+
+Local API, worker and backup containers are stopped. The Windows Startup `Jarvis.lnk` shortcut was moved to `.runtime/retired-startup` so a reboot cannot restart the old writer. Do not restart the stale local stack as production now that the cloud accepts writes. A separate development database should be used for future local work.
+
+Still required from the owner: actual Google browser sign-in, spoken voice/microphone checks, Android notifications and any desired controlled integration writes. Desktop and phone-sized login-page checks passed without page errors or horizontal overflow. R2 exports remain deferred pending bucket-scoped credentials; native PITR is active and its restore drill passed.
 
 ## Keeping PostgreSQL versions aligned
 
