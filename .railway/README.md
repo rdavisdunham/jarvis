@@ -12,7 +12,7 @@ mind when reviewing a plan. Never apply an unreviewed destructive plan.
 Secrets use `preserve()`. Do not import decrypted variables into source control.
 Both PostgreSQL image majors are explicit: the SDK's default is not safe for an
 existing version-16 volume. Production candidate is Postgres16; the old Postgres
-18 service remains untouched and is not connected to the app.
+18 service has its deployment stopped, its volume preserved, and is not connected to the app.
 
 The current services run a paused staging preview. Variable values remain managed
 in Railway so infrastructure application cannot silently promote staging or

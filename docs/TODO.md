@@ -96,7 +96,9 @@ Cloud preview provisioning is complete; private data transfer and cutover remain
       copy and test with the PC offline.
 - [ ] Deferred by owner: supply R2 bucket-scoped S3 credentials, deploy the daily
       backup job and verify export/download/restore. `eridani-backups` exists.
-- [ ] Retire the unused PostgreSQL 18 service after confirming it holds no needed
+- [x] Stop unused PostgreSQL 18 compute while preserving its volume. Remove the
+      disposable recovery service and its synthetic test volume after verification.
+- [ ] Retire the preserved PostgreSQL 18 volume after confirming it holds no needed
       data. Remove migration-only public database access after cutover.
 - [ ] Automate periodic isolated recovery drills and stale/failed-backup alerts.
 

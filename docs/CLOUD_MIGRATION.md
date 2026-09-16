@@ -43,7 +43,7 @@ Always review the plan before `railway config apply`. This file describes the **
 
 For app deployments, keep the repository root as build context and `Dockerfile.upgrade` as the Dockerfile. The API starts with `/app/.venv/bin/python -m jarvis.deploy api`, the worker with `... worker`; both use `... migrate` before deployment. API readiness is `/health/ready`, target port **8765**, with one process and one replica because Live controllers are process-local. The first upload used a curated source-only directory, excluding credentials, private snapshots, attachments and runtime files.
 
-All current services use **us-west2**. Only the API has a public HTTP domain. Worker and future backup need no public endpoint or volume. The existing PostgreSQL 18 service is retained untouched until it can be safely retired; it is not used by Eridani's cloud preview.
+All current services use **us-west2**. Only the API has a public HTTP domain. Worker and future backup need no public endpoint or volume. The unused PostgreSQL 18 deployment is stopped to avoid idle compute charges; its original volume and service configuration remain preserved. It is not used by Eridani's cloud preview.
 
 Deploy PostgreSQL first. **Do not run migrations against the intended restore target before its initial restore.** Preview migration hooks target `eridani_preview`; the intended restore databases remain empty. Keep the worker paused and external actions disabled throughout the rehearsal.
 
@@ -210,7 +210,7 @@ Verified in Railway on September 16:
 - `app.eridani.app` serves HTTPS with a valid certificate. Root/live/ready return 200; unauthenticated bootstrap returns 401; pairing is disabled; Google login generates the correct callback and a Secure/HttpOnly/SameSite cookie.
 - Official PostgreSQL 16 image boots **16.15**, matching local 16.15. PITR has a completed base backup (`20260916-061241F`) and continuous WAL archiving with zero observed failures.
 - The full encrypted migration export remains on the PC. No private records have been restored remotely.
-- Native timestamp restore **passed**: a disposable sibling restored the synthetic marker to `before`, while the source retained `after`; both ran PostgreSQL 16.15. The target was 2026-09-16T06:31:14.918014Z.
+- Native timestamp restore **passed**: a disposable sibling restored the synthetic marker to `before`, while the source retained `after`; both ran PostgreSQL 16.15. The target was 2026-09-16T06:31:14.918014Z. The disposable restore service and its volume were removed after verification.
 - Railway's separate manual-backup creation endpoint returned `OAUTH_INSUFFICIENT_GRANT`. Native PITR enablement, automatic base backup, archiving and timestamp-restore request worked with current access. No persistent SSH key was added.
 
 Still required: transfer approval, final data transfer/preflight/cutover, actual Google account login, real voice and device checks, notification delivery and controlled integration writes. Desktop and phone-sized login-page browser checks passed without page errors or horizontal overflow. R2 is deferred. The preview login page is not evidence that personal records or background jobs have moved.
