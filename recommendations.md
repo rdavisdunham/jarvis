@@ -49,6 +49,25 @@ These do not claim completion of the broader UX-11–34 recommendations below.
 Actual microphone/phone behavior and authenticated production Google/Linear
 write trials remain separate from the synthetic browser evidence.
 
+## Compact UX implementation — September 16
+
+The follow-through batch implements the remaining interface changes in UX-11–33:
+compact capture/filters, mobile board navigation and timelines, consistent labels,
+readable note and inline organization details, draft-preserving task conflict
+recovery, memory provenance and deletion scope, sharing/integration summaries,
+shared keyboard tabs, scoped mobile search, chat scroll locking, record links and
+optional examples. Existing calendar density work is preserved and related task
+appearances now identify the common task.
+
+UX-18's owner-specific Business → Work rename remains part of the parked routing
+rollout; no production classification records are renamed by a UI release.
+UX-27 reuses actual sync/permission state and confirmed-action history. Provider
+writes and OAuth consent are not exercised by a synthetic UX test.
+UX-31/34 physical Android behavior, actual microphones, lock-screen notifications,
+formal screen-reader and contrast acceptance remain manual checks. Large-data,
+responsive, keyboard and draft-recovery browser coverage is recorded separately
+in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
+
 ## Current batch — dependable work and onboarding
 
 ### UX-01 · P1 · Make each accepted instruction durable and visible

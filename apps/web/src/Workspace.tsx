@@ -305,7 +305,7 @@ export function Workspace(p: Props) {
         ) : (
           <LayoutSwitch value={p.layout} onChange={p.onLayout} />
         )}
-        <div className="workspace-add">
+        <details className="workspace-add action-menu"><summary>Actions</summary><div>
           {p.calendar && (
             <button
               className="primary compact"
@@ -339,7 +339,7 @@ export function Workspace(p: Props) {
             <Plus size={16} />
             New task
           </button>
-        </div>
+        </div></details>
       </div>
       {p.selecting && !p.calendar && (
         <div className="bulk-toolbar">
@@ -503,8 +503,8 @@ export function Workspace(p: Props) {
           {!visible.length && (
             <div className="empty-state">
               <CalendarDays size={28} />
-              <h3>Room for what comes next.</h3>
-              <p>Add a task or reminder, or adjust your filters.</p>
+              <h3>{p.tasks.length ? "No tasks match this view." : "Your tasks start here."}</h3>
+              <p>{p.tasks.length ? "Try removing a filter or choose All. Your other tasks are still saved." : "Add your first task above. Dates and projects can come later."}</p>
             </div>
           )}
         </>

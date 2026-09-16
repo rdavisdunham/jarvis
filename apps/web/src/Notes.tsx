@@ -1,3 +1,5 @@
+import { RecordTools } from "./record-links";
+import { humanLabel } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields, LinkPicker, OrganizationFilters } from "./Productivity";
@@ -383,6 +385,8 @@ export function NoteEditor({
   onConversation: (id: string) => void;
 }) {
   useDialogFocus();
+  const [writing, setWriting] = useState(note.id === "new");
+  const [discarding, setDiscarding] = useState(false);
   const [home, setHome] = useState<Home>({
     space_id: note.space_id,
     area_id: note.area_id,
@@ -540,6 +544,7 @@ export function NoteEditor({
   }
   useEditor({
     kind: "note",
+    mode: writing ? "edit" : "detail",
     record_id: note.id === "new" ? null : note.id,
     dirty,
     busy: busy || extracting,
@@ -548,6 +553,7 @@ export function NoteEditor({
     save,
     close: onClose,
     patch: (v) => {
+      setWriting(true);
       if ("title" in v) setTitle(v.title as string);
       if ("content" in v) setContent(v.content as string);
       if ("tags" in v) setTags((v.tags as string[]).join(", "));
@@ -607,7 +613,8 @@ export function NoteEditor({
   return (
     <div className="modal-backdrop">
       <form
-        className="dialog note-editor"
+        className={"dialog note-editor " + (!writing ? "note-detail" : "")}
+        onChange={() => setWriting(true)}
         role="dialog"
         aria-modal="true"
         aria-labelledby="note-title"
@@ -623,16 +630,20 @@ export function NoteEditor({
             className="icon-button"
             aria-label="Close note"
             disabled={busy}
-            onClick={onClose}
+            onClick={() => dirty ? setDiscarding(true) : onClose()}
           >
             <X size={20} />
           </button>
         </div>
+        {note.id !== "new" && <RecordTools kind="note" id={note.id}/>}
         {(error || localError) && (
           <p className="error-banner" role="alert">
             {error || localError}
           </p>
         )}
+        {discarding && <div role="alert" className="draft-warning"><p>Your note has unsaved changes.</p><button type="button" className="secondary" onClick={() => setDiscarding(false)}>Keep writing</button><button type="button" className="text-button danger" onClick={onClose}>Discard draft</button></div>}
+        <p className="footnote" role="status">{dirty ? "Unsaved draft · Save note to keep your changes" : note.id === "new" ? "Start with a title and your note" : "Saved " + new Date(note.updated_at).toLocaleString()}</p>
+        {writing ? <>
         <label>
           Title
           <input
@@ -654,6 +665,11 @@ export function NoteEditor({
             placeholder="Start writing…"
           />
         </label>
+        </> : <div className="note-reading"><button type="button" className="inline-value note-reading-title" aria-label="Change note title" onClick={() => setWriting(true)}>{title}</button>
+          <button type="button" className="inline-value note-reading-body" aria-label="Edit note content" onClick={() => setWriting(true)}>{content || "Add note content"}</button>
+          <div className="record-meta">{projects.find(p => p.id === project)?.name}{tags && <span>{tags}</span>}</div>
+        </div>}
+        <details className="note-attribution"><summary>Organization & links</summary>
         <div className="form-grid">
           <label>
             Home project
@@ -708,6 +724,7 @@ export function NoteEditor({
             selected={noteIds}
             onChange={setNoteIds}
           />
+        </details>
         </details>
         {!!(
           (note.related_notes?.length ?? 0) + (note.backlinks?.length ?? 0)
@@ -777,7 +794,7 @@ export function NoteEditor({
                   disabled={dirty || busy}
                   onClick={() => onTask(t.id)}
                 >
-                  {t.title}
+                  {t.title}<small>{humanLabel(t.status)}</small>
                   <ArrowRight size={14} />
                 </button>
                 {t.evidence && (
@@ -896,12 +913,8 @@ export function NoteEditor({
               {note.archived ? "Restore note" : "Archive note"}
             </button>
           )}
-          <button
-            className="primary"
-            disabled={busy || extracting || !title.trim()}
-          >
-            Save note
-          </button>
+          {(writing || dirty) && <button className="primary" disabled={busy || extracting || !title.trim()}>Save note</button>}
+          {!writing && !dirty && <span className="footnote">Click the title or text to edit</span>}
         </div>
       </form>
     </div>

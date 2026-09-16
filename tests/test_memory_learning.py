@@ -171,3 +171,16 @@ async def test_memory_changed_during_query_embedding_is_not_returned(cloud, monk
 
     monkeypatch.setattr(learning, "embeddings", change)
     assert await semantic_search("davin", "cat") == []
+
+
+def test_learning_status_distinguishes_queued_active_retry_and_failed(client):
+    with session_scope() as db:
+        for status in ["queued", "queued", "running", "retrying", "failed", "deferred_budget"]:
+            db.add(Job(owner_id="davin", kind="extract_memory", status=status, payload={}))
+        db.add(Job(owner_id="someone-else", kind="extract_memory", status="failed", payload={}))
+        db.add(Job(owner_id="davin", kind="agent_action", status="running", payload={}))
+    data = client.get("/api/v1/memory").json()["learning"]
+    assert data["queued"] == 2 and data["active"] == 1
+    assert data["retry_waiting"] == 1 and data["failed"] == 1
+    assert data["deferred"] == 1
+    assert data["pending"] == 3 and data["retrying"] == 2

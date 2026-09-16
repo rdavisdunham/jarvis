@@ -1,3 +1,4 @@
+import { priorityLabels } from "./ux";
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
 import { useState } from "react";
@@ -185,7 +186,7 @@ export function BulkTaskDialog({
               <option value="">Keep current</option>
               {[0, 1, 2, 3].map((n) => (
                 <option key={n} value={n}>
-                  {n === 0 ? "None" : "Priority " + n}
+                  {priorityLabels[n]}
                 </option>
               ))}
             </select>

@@ -76,6 +76,7 @@ export function LinearSettings({
         Bring issues into your task workspace. Changes to linked task titles,
         notes, status, due dates and assignees sync back to Linear.
       </p>
+      {data?.connected && <div className="integration-summary"><strong>{data.workspace ?? "Linear connected"}</strong><span>{data.team_ids.length} teams · {data.recent_changes.filter(c => !["succeeded", "completed", "cancelled"].includes(c.status)).length} changes pending or needing attention</span><small>Last successful sync: {data.last_sync_at ? new Date(data.last_sync_at).toLocaleString() : "Not yet synced"}</small></div>}
       {error && (
         <p role="alert" className="error-banner">
           {error}

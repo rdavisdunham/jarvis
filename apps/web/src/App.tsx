@@ -1,3 +1,6 @@
+import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
+import { MemoryActions } from "./MemoryActions";
+import { Tabs, humanLabel, PlannerGuide, useBodyLock } from "./ux";
 import { BotSettings } from "./BotSettings";
 import { PublicFooter } from "./PublicPages";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
@@ -100,6 +103,7 @@ import type {
   View,
 } from "./types";
 import {
+  useDialogFocus,
   dayInZone,
   timeLabel,
   recurrenceLabel,
@@ -118,6 +122,9 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
 ];
 export default function App() {
   const editors = useEditorBridge();
+  const initialRecord = useRef(readRecordLink(location.search));
+  const recordOpened = useRef(false);
+  const [linkWorkspace, setLinkWorkspace] = useState<string | null>(null);
   const initialSavedView = useRef(readView(location.search)).current;
   const [workLayout, setWorkLayout] = useState<WorkLayout>(
     initialSavedView?.layout ?? "list",
@@ -143,7 +150,7 @@ export default function App() {
     initialSavedView?.timeline_date ?? "",
   );
   const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>(
-    initialSavedView?.timeline_span ?? 30,
+    initialSavedView?.timeline_span ?? (window.innerWidth <= 600 ? 14 : 30),
   );
   const [organizationTab, setOrganizationTab] = useState<
     "goal" | "project" | "area" | "space" | "actor"
@@ -178,6 +185,11 @@ export default function App() {
   const [view, setView] = useState<View>(
     () => initialSavedView?.tab ?? initialView(location.search),
   );
+  const [planToday, setPlanToday] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchAvailable = view !== "settings";
+  const searchLabel = view === "notes" ? "Search notes" : view === "memory" ? "Search memories" : view === "organize" ? "Search goals & projects" : view === "calendar" ? "Search calendar" : view === "notifications" ? "Search notifications" : "Search tasks";
+  useEffect(() => { setPlanToday(true); setSearchOpen(false); }, [view]);
   const lastTaskTab = useRef<TaskTab>(isTaskTab(view) ? view : "today");
   useEffect(() => {
     if (isTaskTab(view)) lastTaskTab.current = view;
@@ -351,7 +363,7 @@ export default function App() {
     }
     history.replaceState(null, "", url);
   }, [view, JSON.stringify(savedViewState)]);
-  const [memoryStatus, setMemoryStatus] = useState({
+  const [memoryStatus, setMemoryStatus] = useState<{enabled:boolean;pending:number;retrying:number;deferred:number;queued?:number;active?:number;failed?:number;retry_waiting?:number}>({
     enabled: true,
     pending: 0,
     retrying: 0,
@@ -360,6 +372,7 @@ export default function App() {
   const [memoryRevision, setMemoryRevision] = useState(0);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [mobile, setMobile] = useState(() => window.innerWidth <= 1000);
+  useBodyLock(mobile && (companion || sidebar || searchOpen));
   const uiResults = useRef<
     { id: string; status: string; message?: string; data?: unknown }[]
   >([]);
@@ -566,9 +579,15 @@ export default function App() {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        searchRef.current?.focus();
+        if (view === "settings") return;
+        if (mobile) { setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus()); }
+        else searchRef.current?.focus();
       }
       if (e.key === "Escape") {
+        const activeEditor = editors.current();
+        if (activeEditor?.busy || activeEditor?.dirty) return;
+        if (activeEditor) {void editors.act({operation:"close"}).catch(e => setError(e.message));return;}
+        setSearchOpen(false);
         setSelected(null);
         setReminder(false);
         setScheduleEditor(null);
@@ -581,7 +600,7 @@ export default function App() {
     };
     window.addEventListener("keydown", listen);
     return () => window.removeEventListener("keydown", listen);
-  }, []);
+  }, [view, mobile]);
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(""), 4500);
@@ -678,11 +697,16 @@ export default function App() {
             : (projects.find((p) => p.name === projectFilter)?.id ?? null),
         space_id: view === "inbox" ? null : organizationFilter.space || null,
         area_id: view === "inbox" ? null : organizationFilter.area || null,
-        planned_date: ["today", "week"].includes(view) ? today : null,
+        planned_date: planToday && ["today", "week"].includes(view) ? today : null,
       },
       "Task added",
     );
-    if (result) setQuick("");
+    if (result) {
+      setQuick("");
+      // Keep a newly captured record discoverable even when the current filters exclude it.
+      const matches = (!query || result.title.toLowerCase().includes(query.toLowerCase())) && matchesTaskFilters(result, taskFilters) && (taskStatus === "active" || taskStatus === "all" || taskStatus === result.status);
+      if (!matches || (!result.planned_date && ["today", "week"].includes(view))) openTaskCard(result);
+    }
   }
   async function toggle(task: Task) {
     const completed = task.status === "completed";
@@ -725,7 +749,7 @@ export default function App() {
       tags: [],
       space_id: organizationFilter.space || null,
       area_id: organizationFilter.area || null,
-      planned_date: date ?? (["today", "week"].includes(view) ? dayInZone(boot?.preferences.timezone ?? "UTC") : null),
+      planned_date: date ?? (planToday && ["today", "week"].includes(view) ? dayInZone(boot?.preferences.timezone ?? "UTC") : null),
       due_date: null,
       due_time: null,
       due_timezone: null,
@@ -757,6 +781,24 @@ export default function App() {
       setError((e as Error).message);
     }
   }
+  async function openLinkedRecord(record: LinkedRecord) {
+    if (record.kind === "task") { const task = await api<Task>("/tasks/" + record.id); setNoteEditor(null); setSelected(null); openTaskCard(task); }
+    else if (record.kind === "note") { const note = await api<NoteRecord>("/notes/" + record.id); setCalendarDetail(null); setNoteEditor(note); }
+    else {
+      const current = await api<Organization>("/organization");
+      const rows = current[record.kind === "project" ? "projects" : record.kind === "goal" ? "goals" : record.kind === "area" ? "areas" : record.kind === "space" ? "spaces" : "actors"];
+      if (!rows.some(row => row.id === record.id)) throw new Error("This record is missing or you no longer have access.");
+      setOrganization(current); setView("organize"); setOrganizationTab(record.kind); setNoteEditor(null);setCalendarDetail(null);
+      setOrganizationEditor({kind:record.kind,id:record.id,sequence:Date.now()});
+    }
+  }
+  useEffect(() => {
+    const record = initialRecord.current;
+    if (!boot || loading || !record || recordOpened.current) return;
+    recordOpened.current = true;
+    if (record.workspace !== (boot.workspace?.id ?? "personal")) {setLinkWorkspace(record.workspace);return;}
+    void openLinkedRecord(record).catch(() => setError("This record is missing or you no longer have access. Check the selected workspace or ask its owner."));
+  }, [!!boot, loading]);
   async function openNoteConversation(id: string) {
     if (voice.current) {
       setError("End voice before switching conversations.");
@@ -833,21 +875,11 @@ export default function App() {
       setCompanion(action.mode === "auto" ? !mobile : action.mode === "open");
       return;
     }
-    if (editors.current()?.auto_save) await editors.current()?.beforeLeave?.();
-    if (
-      (editors.current() && editors.current()?.mode !== "detail") ||
-      selected ||
-      reminder ||
-      scheduleEditor ||
-      organizationEditing ||
-      editingMemory ||
-      noteEditor ||
-      googleEvent ||
-      bulkEditor
-    )
-      throw new Error(
-        "An editor is open. Save or close it before changing pages.",
-      );
+    const currentEditor = editors.current();
+    if (currentEditor?.auto_save) await currentEditor.beforeLeave?.();
+    if ((currentEditor && currentEditor.mode !== "detail") || (!currentEditor && (selected || reminder || scheduleEditor || organizationEditing || editingMemory || noteEditor || googleEvent || bulkEditor)))
+      throw new Error("An editor is open. Save or close it before changing pages.");
+    if (currentEditor?.mode === "detail") await editors.act({operation:"close"});
     setCalendarDetail(null);
     if (kind === "saved_view") {
       const collection = await api<{ items: SavedView[] }>("/task-views");
@@ -1726,7 +1758,7 @@ export default function App() {
       </div>
     );
   return (
-    <div
+    <RecordNavigator workspace={boot.workspace?.id ?? "personal"} view={view} onOpen={openLinkedRecord}><div
       className={
         "app-shell density-" +
         density +
@@ -1859,7 +1891,7 @@ export default function App() {
             <Menu size={21} />
           </button>
           <div className="breadcrumb">
-            <span>Your space</span>
+            <span>{boot.workspace?.name ?? "Personal workspace"}</span>
             <ChevronRight size={14} />
             <strong>
               {(isTaskTab(view) ? "Tasks" : nav.find((n) => n.id === view)?.label) ??
@@ -1876,23 +1908,21 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
-            <div className="search">
+            {searchAvailable && <>
+              {mobile && <button className="icon-button mobile-search" aria-label={searchLabel} onClick={() => {setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus());}}><Search size={18}/></button>}
+            <div className={"search " + (searchOpen ? "search-expanded" : "")}>
               <Search size={16} />
               <input
                 ref={searchRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={
-                  view === "notes"
-                    ? "Search notes…"
-                    : view === "memory"
-                      ? "Search memories"
-                      : "Search work…"
-                }
-                aria-label="Search"
+                placeholder={searchLabel + "…"}
+                aria-label={searchLabel}
               />
-              <kbd>⌘ K</kbd>
+              <kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K"}</kbd>
+              {mobile && <button className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18}/></button>}
             </div>
+            </>}
             <button
               className={"icon-button " + (unread ? "has-notice" : "")}
               aria-label={
@@ -1912,6 +1942,7 @@ export default function App() {
             </button>
           </div>
         </header>
+        {linkWorkspace && <div className="error-banner" role="status"><span>This record link belongs to another workspace. Switch to open it; the link does not grant access.</span><button onClick={async () => {try {await post("/accounts/switch", {workspace_id:linkWorkspace === "personal" ? null : linkWorkspace});location.reload();} catch {setError("That workspace is unavailable to your account. Ask its owner for access.");}}}>Open linked workspace</button><button onClick={() => setLinkWorkspace(null)}>Dismiss</button></div>}
         {error && (
           <div className="error-banner" role="alert">
             <span>{error}</span>
@@ -1929,19 +1960,15 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="workspace">
-          <main className="content">
+        <div className={"workspace " + (mobile && companion ? "chat-sheet-open" : "")}>
+          <main className="content" inert={mobile && companion}>
             <div className="page-heading">
               <h1>{titles[view]}</h1>
             </div>
             {isTaskTab(view) && (
               <>
                 <TaskTabs value={view} onChange={setView} />
-                <SavedViews
-                  key={savedViewRevision}
-                  state={savedViewState}
-                  onApply={applySavedView}
-                />
+
               </>
             )}
             {[
@@ -1952,6 +1979,8 @@ export default function App() {
               "calendar",
               "reminders",
             ].includes(view) && (
+              <div className="view-control-row">
+              {isTaskTab(view) && <SavedViews key={savedViewRevision} state={savedViewState} onApply={applySavedView}/>}
               <details className="filter-panel">
                 <summary>
                   Filters & sort{" "}
@@ -2141,10 +2170,11 @@ export default function App() {
                       setQuery("");
                     }}
                   >
-                    Reset filters
+                    Reset to this tab
                   </button>
                 </div>
               </details>
+              </div>
             )}
             {[
               "today",
@@ -2154,39 +2184,15 @@ export default function App() {
               "calendar",
               "reminders",
             ].includes(view) && (
-              <div className="active-filters">
+              <div className="active-filters" aria-label="Active filters">
                 {[
-                  projectFilter,
-                  organization.spaces.find(
-                    (s) => s.id === organizationFilter.space,
-                  )?.name,
-                  organization.areas.find(
-                    (a) => a.id === organizationFilter.area,
-                  )?.name,
-                  organization.goals.find(
-                    (g) => g.id === organizationFilter.goal,
-                  )?.name,
-                  taskStatus !== "active"
-                    ? "Status: " + taskStatus.replaceAll("_", " ")
-                    : "",
-                  taskFilters.assignee
-                    ? "Assignee: " +
-                      (organization.actors.find(
-                        (a) => a.id === taskFilters.assignee,
-                      )?.name ?? taskFilters.assignee)
-                    : "",
-                  taskFilters.work_type,
-                  taskFilters.tag ? "#" + taskFilters.tag : "",
-                  taskFilters.due_from ? "Due ≥ " + taskFilters.due_from : "",
-                  taskFilters.due_through
-                    ? "Due ≤ " + taskFilters.due_through
-                    : "",
-                  workKind !== "all" ? workKind : "",
-                ]
-                  .filter(Boolean)
-                  .map((label, i) => (
-                    <span key={i}>{label}</span>
-                  ))}
+                  {label: query ? 'Search: ' + query : '', clear: () => setQuery('')},
+                  {label: projectFilter, clear: () => setProjectFilter('')},
+                  ...(['space', 'area', 'goal'] as const).map(key => ({label: organization[key === 'space' ? 'spaces' : key === 'area' ? 'areas' : 'goals'].find(r => r.id === organizationFilter[key])?.name ?? '', clear: () => setOrganizationFilter({...organizationFilter, [key]: '', ...(key === 'space' ? {area: ''} : {})})})),
+                  {label: taskStatus !== 'active' ? 'Status: ' + humanLabel(taskStatus) : '', clear: () => setTaskStatus('active')},
+                  ...Object.entries(taskFilters).map(([key, value]) => ({label: value ? humanLabel(key) + ': ' + (key === 'assignee' ? organization.actors.find(a => a.id === value)?.name ?? value : value) : '', clear: () => setTaskFilters({...taskFilters, [key]: ''})})),
+                  {label: workKind !== 'all' ? humanLabel(workKind) : '', clear: () => setWorkKind('all')},
+                ].filter(chip => chip.label).map((chip, index) => <button key={index} className="filter-chip" aria-label={'Remove filter: ' + chip.label} onClick={chip.clear}>{chip.label}<X size={13}/></button>)}
               </div>
             )}
             {[
@@ -2199,19 +2205,19 @@ export default function App() {
             ].includes(view) && (
               <>
                 {["today", "inbox", "week", "all"].includes(view) && (
-                  <form className="quick-add compact-capture" onSubmit={add}>
+                  <div className="capture-bar"><form className="quick-add compact-capture" onSubmit={add}>
                     <Plus size={17} />
                     <input
                       value={quick}
                       onChange={(e) => setQuick(e.target.value)}
                       aria-label="New task"
-                      placeholder={["today", "week"].includes(view) ? "Add a task · planned today…" : "Add a task…"}
+                      placeholder="Add a task…"
                       maxLength={500}
                     />
                     <button disabled={!quick.trim() || busy} type="submit">
                       Add<span>↵</span>
                     </button>
-                  </form>
+                  </form>{["today", "week"].includes(view) && <button className="plan-chip" aria-pressed={planToday} onClick={() => setPlanToday(!planToday)} title="Planned day is when you intend to work on this task">{planToday ? <>Planned today <X size={12}/></> : "Plan today"}</button>}</div>
                 )}
                 <Workspace
                   layout={workLayout}
@@ -2372,6 +2378,7 @@ export default function App() {
             )}
             {view === "organize" && (
               <ProductivityPage
+                tasks={tasks}
                 organization={organization}
                 busy={busy}
                 mutate={mutate}
@@ -2431,23 +2438,10 @@ export default function App() {
             )}
             {view === "memory" && (
               <>
-                <p className="learning-status" role="status">
-                  {memoryStatus.enabled
-                    ? "Automatic learning is on"
-                    : "Automatic learning is off"}
-                  {memoryStatus.pending > 0
-                    ? " · Learning from " +
-                      memoryStatus.pending +
-                      " saved messages…"
-                    : memoryStatus.deferred > 0
-                      ? " · Paused near the model budget; resumes when room is available"
-                      : memoryStatus.retrying > 0
-                        ? ""
-                        : " · Up to date"}
-                  {memoryStatus.retrying > 0
-                    ? " · Some memories need a retry"
-                    : ""}
-                </p>
+                <div className="learning-status" role="status"><strong>{memoryStatus.enabled ? "Automatic learning is on" : "Automatic learning is off"}</strong><p>
+                  {!boot.capabilities.worker ? "Background processing is paused. " : ""}
+                  {[memoryStatus.queued ? `${memoryStatus.queued} waiting` : "", memoryStatus.active ? `${memoryStatus.active} processing` : "", memoryStatus.retry_waiting ? `${memoryStatus.retry_waiting} waiting to retry` : "", memoryStatus.failed ? `${memoryStatus.failed} failed` : "", memoryStatus.deferred ? `${memoryStatus.deferred} paused for budget` : "", memoryReviews.length ? `${memoryReviews.length} questions to review` : ""].filter(Boolean).join(" · ") || (memoryStatus.pending ? "Learning is queued" : "No learning waiting")}
+                </p><small>These are learning steps, not a count of messages. Correct a fact to change what Eri remembers; View source shows where it came from.</small></div>
 
                 {memoryStatus.retrying > 0 && (
                   <button
@@ -2554,7 +2548,7 @@ export default function App() {
                   <h2>
                     Remembered<span>{memories.length}</span>
                   </h2>
-                  <span className="subtle">Source-backed</span>
+                  <span className="subtle">Personal facts & preferences</span>
                 </div>
                 {memories.map((m) => (
                   <article className="memory" key={m.id}>
@@ -2569,48 +2563,10 @@ export default function App() {
                     <footer>
                       <span>
                         {m.attribution === "owner_statement"
-                          ? "You shared this"
-                          : "Derived from a source"}
+                          ? "You told Eri"
+                          : "Learned from a saved source"} · {new Date(m.created_at).toLocaleDateString()}
                       </span>
-                      <button
-                        className="text-button"
-                        onClick={async () => {
-                          const source = await api<{ content: string }>(
-                            "/sources/" + m.source_id,
-                          );
-                          setMessages((ms) => [
-                            ...ms,
-                            {
-                              id: crypto.randomUUID(),
-                              role: "assistant",
-                              content: "Original source:\n" + source.content,
-                            },
-                          ]);
-                          setCompanion(true);
-                        }}
-                      >
-                        View source
-                        <ChevronRight size={13} />
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() => setEditingMemory(m)}
-                      >
-                        Correct
-                      </button>
-                      <button
-                        className="icon-button"
-                        aria-label="Forget this memory"
-                        onClick={() =>
-                          void mutate(
-                            "memory.forget",
-                            { memory_id: m.id, delete_source: true },
-                            "Memory and its source deleted",
-                          )
-                        }
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <MemoryActions memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")}/>
                     </footer>
                   </article>
                 ))}
@@ -2632,31 +2588,9 @@ export default function App() {
             )}
             {view === "settings" && (
               <>
-                <div
-                  className="settings-tabs"
-                  role="tablist"
-                  aria-label="Settings sections"
-                >
-                  {(
-                    [
-                      "profile",
-                      "voice",
-                      "integrations",
-                      "privacy",
-                      "system",
-                      "sharing",
-                    ] as const
-                  ).map((section) => (
-                    <button
-                      key={section}
-                      role="tab"
-                      aria-selected={settingsSection === section}
-                      onClick={() => setSettingsSection(section)}
-                    >
-                      {section.charAt(0).toUpperCase() + section.slice(1)}
-                    </button>
-                  ))}
-                </div>
+                <Tabs id="settings-tab" label="Settings sections" className="settings-tabs" panel="settings-panel"
+                  value={settingsSection} onChange={setSettingsSection} items={(["profile", "voice", "integrations", "privacy", "system", "sharing"] as const).map(id => ({id, label: humanLabel(id)}))}/>
+                <div id="settings-panel" role="tabpanel" aria-labelledby={"settings-tab-" + settingsSection}>
                 {settingsSection === "sharing" && <SharingSettings />}
                 {boot.workspace?.id &&
                   ["profile", "privacy", "system", "integrations"].includes(
@@ -2668,7 +2602,7 @@ export default function App() {
                     </p>
                   )}
                 {settingsSection === "profile" && (
-                  <section className="density-setting">
+                  <section className="density-setting"><PlannerGuide />
                     <label>
                       Display density
                       <select
@@ -2810,6 +2744,7 @@ export default function App() {
                     onPush={enablePush}
                   />
                 )}
+                </div>
               </>
             )}
             <footer className="page-footer">
@@ -2824,7 +2759,10 @@ export default function App() {
               (voiceState && !voiceState.closed ? "voice-mode" : "")
             }
             aria-label="Eridani conversation"
+            role={mobile && companion ? "dialog" : undefined}
+            aria-modal={mobile && companion ? true : undefined}
           >
+            {mobile && companion && <MobileChatFocus />}
             <div className="companion-header">
               <button
                 className="text-button new-chat"
@@ -2851,6 +2789,7 @@ export default function App() {
               >
                 <Settings2 size={16} />
               </button>
+              {mobile && <button className="text-button return-to-work" onClick={() => setCompanion(false)}>Back to work</button>}
               <button
                 className="icon-button close-companion"
                 aria-label="Close conversation"
@@ -3137,7 +3076,7 @@ export default function App() {
               values,
               "Task saved",
             );
-            if (result) setSelected(null);
+            if (result) { setSelected(null); if (selected.id === "new") openTaskCard(result); }
             return result;
           }}
           onArchive={async () => {
@@ -3365,7 +3304,7 @@ export default function App() {
           }}
         />
       )}
-    </div>
+    </div></RecordNavigator>
   );
 }
 
@@ -3390,4 +3329,10 @@ function voiceLabel(state: string) {
       } as Record<string, string>
     )[state] ?? "Voice is on"
   );
+}
+
+function MobileChatFocus() {
+  useDialogFocus();
+  useEffect(() => { document.querySelector<HTMLButtonElement>(".companion .return-to-work")?.focus({preventScroll:true}); }, []);
+  return null;
 }

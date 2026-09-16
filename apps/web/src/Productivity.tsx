@@ -1,11 +1,13 @@
+import { RecordTools } from "./record-links";
+import { Tabs, humanLabel, plural, PlannerGuide } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice } from "./editor-control";
-import { LayoutSwitch, Timeline } from "./WorkViews";
+import { BoardNavigator, LayoutSwitch, Timeline } from "./WorkViews";
 import type { WorkLayout, TimelineSpan } from "./work-views";
 import { useEffect, useRef, useState } from "react";
 import { Plus, Target, Folder, ArrowRight, X } from "lucide-react";
 import { useDialogFocus } from "./components";
-import type { Project } from "./types";
+import type { Project, Task } from "./types";
 import type {
   Organization,
   Home,
@@ -233,6 +235,7 @@ export function OrganizationFilters({
 }
 
 export function ProductivityPage({
+  tasks,
   organization,
   busy,
   mutate,
@@ -258,6 +261,7 @@ export function ProductivityPage({
   onTimelineDate,
   onTimelineSpan,
 }: {
+  tasks: Task[];
   organization: Organization;
   busy: boolean;
   mutate: Mutate;
@@ -286,6 +290,8 @@ export function ProductivityPage({
   const [editor, setEditor] = useState<{ kind: Kind; row?: RecordRow } | null>(
     null,
   );
+  const boardRoot = useRef<HTMLDivElement>(null);
+  const [compactBoard, setCompactBoard] = useState(false);
   const collections = {
     goal: organization.goals,
     project: organization.projects,
@@ -323,11 +329,14 @@ export function ProductivityPage({
     setEditor(null);
     onEditing(false);
   };
+  const [missingRecord, setMissingRecord] = useState("");
   const seenRequest = useRef(0);
   useEffect(() => {
     if (!editorRequest || seenRequest.current === editorRequest.sequence)
       return;
     seenRequest.current = editorRequest.sequence;
+    if (editorRequest.id && !collections[editorRequest.kind].some(row => row.id === editorRequest.id)) {setMissingRecord("This record is missing or you no longer have access.");onEditorRequestHandled();return;}
+    setMissingRecord("");
     edit(
       editorRequest.kind,
       editorRequest.id
@@ -364,6 +373,8 @@ export function ProductivityPage({
     space: "Spaces",
     actor: "People & agents",
   };
+  const boardStatuses = ["planned", "active", "on_hold", "completed", "cancelled"].filter(status => !compactBoard || (!["completed", "cancelled"].includes(status) && visible.some(r => r.status === status)));
+  if (!boardStatuses.length) boardStatuses.push("active");
   function card(row: RecordRow) {
     const goal = tab === "goal" ? (row as Goal) : null,
       project = tab === "project" ? (row as Project) : null;
@@ -373,6 +384,8 @@ export function ProductivityPage({
         ? organization.goals.filter((g) => project.goal_ids?.includes(g.id))
         : [];
     const notes = goal?.notes ?? project?.notes ?? [];
+    const openTasks = project ? tasks.filter(task => task.project_id === project.id && !task.archived && !["completed", "cancelled"].includes(task.status)) : [];
+    const nextDue = openTasks.map(task => task.due_date).filter((date): date is string => !!date).sort()[0];
     const home = [
       organization.spaces.find((s) => s.id === row.space_id)?.name,
       organization.areas.find((a) => a.id === row.area_id)?.name,
@@ -398,7 +411,7 @@ export function ProductivityPage({
             <strong>{row.name}</strong>
           </button>
           <span className="record-status">
-            {(row.status ?? row.kind ?? "").replaceAll("_", " ")}
+            {humanLabel(row.status ?? row.kind ?? "")}
           </span>
         </div>
         <div className="record-meta">
@@ -406,17 +419,17 @@ export function ProductivityPage({
           {row.target_date && <span>Target {row.target_date}</span>}
           {project && (
             <span>
-              {project.completed_task_count ?? 0}/{project.task_count ?? 0}{" "}
-              tasks
+              {plural(openTasks.length, "open task")}{nextDue ? " · Next due " + nextDue : ""}
             </span>
           )}
           {!!linked.length && (
             <span>
-              {linked.length} {goal ? "projects" : "goals"}
+              {plural(linked.length, goal ? "project" : "goal")}
             </span>
           )}
-          {!!notes.length && <span>{notes.length} notes</span>}
+          {!!notes.length && <span>{plural(notes.length, "note")}</span>}
         </div>
+        {goal?.success_criteria && <p className="goal-outcome">Success: {goal.success_criteria}</p>}
         {goal && goal.metric_target != null && (
           <div className="goal-metric">
             <span>
@@ -471,7 +484,7 @@ export function ProductivityPage({
         )}
         <div className="organization-row-actions">
           <button className="text-button" onClick={() => edit(tab, row)}>
-            Edit
+            Open details
           </button>
           {project && (
             <button className="text-button" onClick={() => onProject(project)}>
@@ -496,7 +509,7 @@ export function ProductivityPage({
                 )
               }
             >
-              {["planned", "active", "on_hold", "completed", "cancelled"].map(
+              {boardStatuses.map(
                 (v) => (
                   <option key={v} value={v}>
                     {v.replaceAll("_", " ")}
@@ -505,7 +518,7 @@ export function ProductivityPage({
               )}
             </select>
           )}
-          <button
+          <details className="record-overflow"><summary aria-label={"More actions for " + row.name}>More</summary><button
             className="text-button archive-action"
             disabled={busy}
             onClick={() =>
@@ -521,30 +534,18 @@ export function ProductivityPage({
             }
           >
             {row.archived ? "Restore" : "Archive"}
-          </button>
+          </button></details>
         </div>
       </article>
     );
   }
   return (
     <section className="productivity-page" aria-label="Goals and projects">
-      <div
-        className="organization-tabs"
-        role="tablist"
-        aria-label="Organization"
-      >
-        {(Object.keys(labels) as Kind[]).map((kind) => (
-          <button
-            key={kind}
-            role="tab"
-            aria-selected={tab === kind}
-            onClick={() => onTab(kind)}
-          >
-            {labels[kind]}
-            <span>{collections[kind].filter((r) => !r.archived).length}</span>
-          </button>
-        ))}
-      </div>
+      {missingRecord && <p role="alert">{missingRecord}</p>}
+      <Tabs id="organization-tab" label="Organization" className="organization-tabs" panel="organization-panel" value={tab} onChange={onTab}
+        items={(Object.keys(labels) as Kind[]).map(id => ({id, label:<>{labels[id]}<span>{collections[id].filter(r => !r.archived).length}</span></>}))}/>
+      <div id="organization-panel" role="tabpanel" aria-labelledby={"organization-tab-" + tab}>
+      <p className="section-explanation">{tab === "goal" ? "Goals describe outcomes: grow savings to $10,000. Supporting projects describe the work that gets you there." : tab === "project" ? "Projects group work with a finish line: launch a website. Link them to the goals they support." : tab === "area" ? "Areas group ongoing responsibilities inside a space, such as Health or Operations." : tab === "space" ? "Spaces classify work, such as Work and Personal. They do not change who can access this workspace." : "People and agents identify who is responsible. Assignment does not grant access or start agent work."}</p>
       <div className="workspace-actions">
         {tab === "project" && (
           <LayoutSwitch
@@ -606,12 +607,14 @@ export function ProductivityPage({
           }
         />
       ) : tab === "project" && layout === "board" ? (
-        <div className="board-scroll" aria-label="Project board" tabIndex={0}>
+        <><BoardNavigator root={boardRoot} label="Project board" groups={boardStatuses.map(key => ({key, label: humanLabel(key), count:visible.filter(r => r.status === key).length}))} compact={compactBoard} onCompact={setCompactBoard}/>
+        <div ref={boardRoot} className="board-scroll" aria-label="Project board" tabIndex={0}>
           <div className="task-board">
             {["planned", "active", "on_hold", "completed", "cancelled"].map(
               (status) => (
                 <section
                   className="board-column"
+                  data-board-key={status}
                   key={status}
                   onDragOver={(e) => {
                     if (!busy) e.preventDefault();
@@ -649,7 +652,7 @@ export function ProductivityPage({
               ),
             )}
           </div>
-        </div>
+        </div></>
       ) : (
         <div className="organization-list">{visible.map(card)}</div>
       )}
@@ -658,6 +661,8 @@ export function ProductivityPage({
           No {labels[tab].toLowerCase()} match this view.
         </p>
       )}
+      <PlannerGuide />
+      </div>
       {editor && (
         <OrganizationEditor
           key={editor.kind + ":" + (editor.row?.id ?? "new")}
@@ -773,54 +778,40 @@ function OrganizationEditor({
   }
   if (kind === "actor" && !row)
     add("kind", "person", choice(["person", "agent"]));
-  const [values, setValues] = useState(initial),
-    [localError, setLocalError] = useState("");
-  const set = (key: string, value: unknown) =>
-    setValues((v) => ({ ...v, [key]: value }));
+  const [values, setValues] = useState(initial), [localError, setLocalError] = useState("");
+  const baseline = useRef(initial), currentValues = useRef(initial), revision = useRef(row?.revision);
+  const flight = useRef<Promise<unknown> | null>(null);
+  const [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
+  const updateDraft = (patch: Record<string, unknown>) => {currentValues.current = {...currentValues.current, ...patch}; setValues(currentValues.current);};
+  const set = (key: string, value: unknown) => updateDraft({[key]: value});
   const schema = z.object(shape);
   async function save() {
-    const parsed = schema.safeParse(values);
-    if (!parsed.success) {
-      setLocalError(
-        parsed.error.issues
-          .map((i) => i.path.join(".") + ": " + i.message)
-          .join("; "),
-      );
-      return;
-    }
-    const args = row
-      ? Object.fromEntries(
-          Object.entries(values).filter(
-            ([k, v]) => JSON.stringify(v) !== JSON.stringify(initial[k]),
-          ),
-        )
-      : values;
-    if (row && !Object.keys(args).length) {
-      onClose();
-      return row;
-    }
-    const result = await mutate(
-      kind + (row ? ".update" : ".create"),
-      row
-        ? { ...args, [kind + "_id"]: row.id, expected_revision: row.revision }
-        : args,
-      "Saved",
-    );
-    if (result) onClose();
-    else setLocalError("Could not save. Your changes are still here.");
-    return result;
+    if (flight.current) await flight.current;
+    const snapshot = currentValues.current;
+    const parsed = schema.safeParse(snapshot);
+    if (!parsed.success) { const message = parsed.error.issues.map(i => i.path.join(".") + ": " + i.message).join("; "); setLocalError(message); throw new Error(message); }
+    const args = row ? Object.fromEntries(Object.entries(snapshot).filter(([key,value]) => JSON.stringify(value) !== JSON.stringify(baseline.current[key]))) : snapshot;
+    if (row && !Object.keys(args).length) return row;
+    setSaving(true); setLocalError("");
+    const operation = (async () => {
+      const result = await mutate(kind + (row ? ".update" : ".create"), row ? {...args, [kind + "_id"]:row.id, expected_revision:revision.current} : args, "Saved");
+      if (!result) throw new Error("Could not save. Your draft is preserved. If someone changed this record, copy your draft before reopening its latest version.");
+      if (row) {
+        const record = result as RecordRow; revision.current = record.revision;
+        baseline.current = {...snapshot}; setSaved(true);
+      } else onClose();
+      return result;
+    })();
+    flight.current = operation;
+    try {return await operation;} catch(e) {setLocalError((e as Error).message); throw e;}
+    finally {flight.current = null; setSaving(false);}
   }
-  useEditor({
-    kind,
-    record_id: row?.id,
-    dirty: JSON.stringify(values) !== JSON.stringify(initial),
-    busy,
-    schema,
-    values,
-    patch: (patch) => setValues((v) => ({ ...v, ...patch })),
-    save,
-    close: onClose,
-  });
+  async function close() { if (row) {try {await save(); onClose();} catch { /* Keep the unsaved record open. */ }} else if (JSON.stringify(values) !== JSON.stringify(initial)) setLocalError("Your new record has unsaved changes. Create it below, or discard the draft."); else onClose(); }
+  const persist = (patch: Record<string, unknown>) => {updateDraft(patch); return row ? save() : Promise.resolve(undefined);};
+  useEditor({kind, record_id:row?.id, mode:row ? "detail" : "edit", auto_save:!!row,
+    beforeLeave: row ? async () => {await save();} : undefined,
+    dirty:JSON.stringify(values) !== JSON.stringify(baseline.current), busy:busy || saving, schema, values,
+    patch: patch => persist(patch), save, close:onClose, discard:onClose});
   const input = (key: string, label: string, type = "text") => (
     <label key={key}>
       {label}
@@ -858,7 +849,7 @@ function OrganizationEditor({
         aria-label={label}
         value={String(values[key] ?? "")}
         onChange={(e) =>
-          set(key, nullable ? e.target.value || null : e.target.value)
+          void persist({[key]: nullable ? e.target.value || null : e.target.value}).catch(() => {})
         }
       >
         {nullable && <option value="">None</option>}
@@ -871,37 +862,42 @@ function OrganizationEditor({
     </label>
   );
   const enums = (values: string[]) =>
-    values.map((v) => ({ id: v, name: v.replaceAll("_", " ") }));
+    values.map((v) => ({ id: v, name: humanLabel(v) }));
   return (
     <div className="modal-backdrop">
       <form
-        className="dialog organization-editor"
+        className={"dialog organization-editor " + (row ? "organization-detail" : "")}
+        onBlur={e => { if (row && (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) void save().catch(() => {}); }}
         role="dialog"
         aria-modal="true"
         aria-labelledby="organization-title"
         onSubmit={(e) => {
           e.preventDefault();
-          void save();
+          void save().catch(() => {});
         }}
       >
         <div className="dialog-heading">
           <h2 id="organization-title">
-            {row ? "Edit" : "New"} {kind === "actor" ? "assignee" : kind}
+            {row ? humanLabel(kind === "actor" ? "assignee" : kind) : "New " + (kind === "actor" ? "assignee" : kind)}
           </h2>
           <button
             type="button"
             className="icon-button"
             aria-label="Close organization editor"
-            onClick={onClose}
+            disabled={saving}
+            onClick={() => void close()}
           >
             <X size={20} />
           </button>
         </div>
+        {row && <RecordTools kind={kind} id={row.id}/>}
         {localError && (
           <p role="alert" className="error-banner">
             {localError}
           </p>
         )}
+        {row && <p role="status" className="footnote">{saving ? "Saving…" : localError ? "Draft needs attention" : saved ? "Saved" : "Click a field to edit. Changes save when you leave it."}</p>}
+        <fieldset className="record-fields" disabled={saving || busy}>
         {input("name", "Name")}
         {kind !== "actor" && (
           <label>
@@ -919,7 +915,7 @@ function OrganizationEditor({
             <HomeFields
               organization={organization}
               value={values as Home}
-              onChange={(h) => setValues((v) => ({ ...v, ...h }))}
+              onChange={h => {void persist(h as Record<string, unknown>).catch(() => {});}}
             />
             <label>
               Success criteria
@@ -985,7 +981,7 @@ function OrganizationEditor({
             label={isGoal ? "Supporting projects" : "Supported goals"}
             items={isGoal ? organization.projects : organization.goals}
             selected={values[isGoal ? "project_ids" : "goal_ids"] as string[]}
-            onChange={(ids) => set(isGoal ? "project_ids" : "goal_ids", ids)}
+            onChange={ids => {void persist({[isGoal ? "project_ids" : "goal_ids"]: ids}).catch(() => {});}}
           />
         )}
         {kind === "area" &&
@@ -993,14 +989,15 @@ function OrganizationEditor({
         {kind === "actor" &&
           !row &&
           select("kind", "Type", enums(["person", "agent"]))}
-        <div className="dialog-actions">
+        </fieldset>
+        {!row && <div className="dialog-actions">
           <button type="button" className="secondary" onClick={onClose}>
-            Cancel
+            Discard draft
           </button>
           <button className="primary" disabled={busy}>
-            Save
+            Create {kind === "actor" ? "assignee" : kind}
           </button>
-        </div>
+        </div>}
       </form>
     </div>
   );

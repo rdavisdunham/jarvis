@@ -124,17 +124,17 @@ Calendar: month/week/day, task planned/deadline markers, alerts, local appointme
 A planned date/deadline does not reserve time; timeline task markers are not duration bars.
 Calendar entries show Task, Task reminder, Repeating task, Work block, or Event/Google event.
 Task cards open as inline-editable details with description/dates in the center and properties on the right. No Edit/Save buttons.
-Inline task ui_editor patches save immediately and return receipts; ordinary new-record and non-task editors remain drafts.
+Inline task and existing goal/project/area/space/assignee ui_editor patches save immediately and return receipts. New-record forms remain drafts.
 Task cards can be left freely; pending field edits finish before navigation. Task completion is distinct from calendar events.
 ui_calendar with entity_id/date/open_details=true opens that saved detail card. ui_editor read reports mode=detail
-there; task cards report auto_save=true, while other saved cards use ui_form for drafts. A work block has a linked task, not its own completion.
-Notes: authored content, home project, related goals/projects/notes, backlinks and task evidence.
-Memory: learned facts and review questions. Notifications: delivered task alerts.
+there; inline task/organization cards report auto_save=true. Notes open as readable details; patching starts an explicit draft that must be saved. A work block has a linked task, not its own completion.
+Notes: authored content opens for reading, with organization collapsed. Click text to write; Save note persists drafts. Find to-dos shows suggestions before creation. Linked record cards have Copy record link and Previous record; links preserve workspace context without granting access.
+Memory: learned facts and review questions, separate queued/processing/failed states and readable source cards. Forgetting one memory does not delete its source unless the owner selects that broader action. Notifications: delivered task alerts.
 Shared workspaces have isolated records. Workspace switching and membership changes are explicit user controls in Sharing; assignment never grants access. Personal memory and integration credentials are unavailable in a shared workspace.
 Settings sections: sharing (invitations, memberships and access roles), profile (name/reminder defaults/density), voice (Live voice/wake word),
-integrations (Google/Linear), privacy (history/learning), system (backend model/usage/backups/export).
+integrations (Google/Linear/Connected agents API and MCP keys), privacy (history/learning), system (backend model/usage/backups/export).
 Realtime is disabled. Browser permissions, OAuth consent and credentials need the owner's interaction.
-Filters & sort expands from one control; collapsed filters still apply. Layout changes preserve them.
+Filters & sort expands from one control; collapsed filters still apply. Removable filter chips and Reset to this tab clear filters. Layout changes preserve them. Actions opens creation/selection controls. Boards have column navigation and optional hidden empty/finished columns; status selectors remain available. Saved view labels show Modified after changes.
 Chat is a desktop side panel/mobile overlay. Closing chat keeps voice running; show mobile content unobscured.
 ui_saved_view manages account-private named task views. Use acknowledged observed layout/visible IDs; explicitly report zero results.
 Editors expose typed fields through ui_editor: auto_save=true patches save; other editors expose unsaved drafts. Never discard an unsaved edit

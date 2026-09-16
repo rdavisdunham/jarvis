@@ -100,6 +100,8 @@ export function GoogleSettings({
         <p role="status">Loading connection…</p>
       ) : (
         <>
+          <div className="integration-summary"><strong>{data.linked ? data.email : "Not connected"}</strong><span>{data.calendar_enabled ? `${data.calendars.filter(c => c.selected && c.available).length} calendars · ${data.calendar_write_enabled ? "Read & edit" : "Read only"}` : "Calendar access not enabled"}</span></div>
+          <p className="footnote">Google sign-in and Calendar permissions are separate. Editing is limited to calendars your Google account can write to.</p>
           {!data.configured && (
             <p className="integration-hint">
               Google connection is not configured. Contact the app owner to enable it.

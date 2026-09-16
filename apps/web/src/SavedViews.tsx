@@ -61,8 +61,10 @@ export function SavedViews({
       setBusy(false);
     }
   }
+  const active = items.find(item => item.id === selected);
+  const modified = !!active && JSON.stringify(active.state) !== JSON.stringify(state);
   return (
-    <details className="saved-view-menu"><summary><Bookmark size={14}/> Views & links</summary>
+    <details className="saved-view-menu"><summary><Bookmark size={14}/> {active?.name ?? "Views & links"}{modified && <small> · Modified</small>}</summary>
     <div className="saved-views">
       <Bookmark size={14} />
       <select
@@ -101,6 +103,7 @@ export function SavedViews({
         <Link size={14} />
         Copy view link
       </button>
+      {modified && <button className="text-button" onClick={() => active && onApply(active.state)}>Reset saved view</button>}
       {selected && (
         <button
           className="icon-button"

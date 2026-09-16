@@ -133,7 +133,7 @@ export function useEditorBridge() {
           note: editor.auto_save
             ? "Inline fields save immediately through normal commands. Patch returns a saved receipt; no separate save is needed."
             : editor.mode === "detail"
-              ? "Saved record details. Use ui_form for this record to open an editable draft."
+              ? editor.kind === "note" ? "Saved note details. ui_editor patch starts an unsaved draft; ui_editor save persists it." : "Saved record details. Use ui_form for this record to open an editable draft."
               : "These are device-local draft values. Reading or filling them does not save.",
         };
       if (editor.busy)

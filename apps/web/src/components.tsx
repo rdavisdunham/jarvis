@@ -1,3 +1,4 @@
+import { useBodyLock, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
@@ -19,22 +20,23 @@ import {
 } from "lucide-react";
 import type { Bootstrap, Task, Project, Schedule } from "./types";
 export function useDialogFocus() {
+  useBodyLock(true);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const trap = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const dialog = document.querySelector('[role="dialog"]');
+      if (event.key !== "Tab" || event.defaultPrevented) return;
+      const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(el => el.getClientRects().length).at(-1);
       const items = Array.from(
         dialog?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea, select, [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex="0"]',
         ) ?? [],
-      );
+      ).filter(el => el.getClientRects().length && el.tabIndex >= 0);
       const first = items[0],
         last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) {
         event.preventDefault();
         last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) {
         event.preventDefault();
         first?.focus();
       }
@@ -42,7 +44,7 @@ export function useDialogFocus() {
     document.addEventListener("keydown", trap);
     return () => {
       document.removeEventListener("keydown", trap);
-      previous?.focus();
+      if (previous?.isConnected) previous.focus({preventScroll: true});
     };
   }, []);
 }
@@ -314,7 +316,7 @@ export function TaskDialog({
       }}
     >
       <form
-        className="dialog"
+        className="dialog task-create-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-dialog-title"
@@ -324,7 +326,7 @@ export function TaskDialog({
         }}
       >
         <div className="dialog-heading">
-          <h2 id="task-dialog-title">Task details</h2>
+          <h2 id="task-dialog-title">{task.id === "new" ? "New task" : "Task details"}</h2>
           <button
             className="icon-button"
             type="button"
@@ -349,6 +351,9 @@ export function TaskDialog({
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           />
         </label>
+        <div className="capture-date"><label>Planned day<input type="date" value={draft.planned_date ?? ""} onChange={e => setDraft({...draft, planned_date: e.target.value || null})}/></label>
+          {draft.planned_date && <button type="button" className="text-button" onClick={() => setDraft({...draft, planned_date: null})}>Clear planned day</button>}</div>
+        <details className="capture-options" open={task.id !== "new" || undefined}><summary>Details & organization</summary>
         <label>
           Notes
           <textarea
@@ -365,16 +370,6 @@ export function TaskDialog({
           onChange={(home) => setDraft({ ...draft, ...home })}
         />
         <div className="form-grid">
-          <label>
-            Planned date
-            <input
-              type="date"
-              value={draft.planned_date ?? ""}
-              onChange={(e) =>
-                setDraft({ ...draft, planned_date: e.target.value || null })
-              }
-            />
-          </label>
           <label>
             Estimate (minutes)
             <input
@@ -431,10 +426,7 @@ export function TaskDialog({
                 setDraft({ ...draft, priority: +e.target.value })
               }
             >
-              <option value={0}>Normal</option>
-              <option value={1}>Low</option>
-              <option value={2}>Medium</option>
-              <option value={3}>High</option>
+              {priorityLabels.map((label, value) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label>
@@ -542,7 +534,7 @@ export function TaskDialog({
                   ]
               ).map((s) => (
                 <option key={s} value={s}>
-                  {s.replace("_", " ")}
+                  {humanLabel(s)}
                 </option>
               ))}
             </select>
@@ -552,6 +544,8 @@ export function TaskDialog({
           Assigning a task organizes it; it does not start an agent. A deadline
           does not send a notification.
         </p>
+        </details>
+        <SchedulingHelp />
         {linkedNotes && (
           <fieldset
             className="linked-notes-fieldset"
@@ -607,7 +601,7 @@ export function TaskDialog({
             className="primary"
             disabled={busy || !draft.title.trim()}
           >
-            {busy ? "Saving…" : "Save task"}
+            {busy ? "Saving…" : task.id === "new" ? "Create task" : "Save task"}
           </button>
         </div>
       </form>

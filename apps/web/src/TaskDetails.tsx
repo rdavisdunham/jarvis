@@ -1,3 +1,5 @@
+import { RecordTools } from "./record-links";
+import { Tabs, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { useEffect, useRef, useState } from "react";
 import { Check, X, ChevronRight, ListTodo, Bell, FileText } from "lucide-react";
 import { z } from "zod";
@@ -35,6 +37,9 @@ export function TaskDetails(p: Props) {
   const [editing, setEditing] = useState<string | null>(null),
     [draft, setDraft] = useState("");
   const [notesError, setNotesError] = useState("");
+  const [savedFields, setSavedFields] = useState<string[]>([]);
+  const [comparison, setComparison] = useState<Task | null>(null);
+  const failedPatch = useRef<Record<string, unknown> | null>(null);
   const pending = useRef<{ field: string; value: string } | null>(null);
   const card = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -42,13 +47,10 @@ export function TaskDetails(p: Props) {
       ?.querySelector<HTMLButtonElement>("[aria-label='Close task details']")
       ?.focus();
   }, []);
-  async function reload() {
+  async function reload(compare = false) {
     const value = await api<Task>("/tasks/" + p.id);
-    current.current = value;
-    setTask(value);
-    pending.current = null;
-    setEditing(null);
-    setError("");
+    if (compare) setComparison(value);
+    else if (!pending.current && !flight.current) {current.current = value;setTask(value);}
   }
   useEffect(() => {
     let live = true;
@@ -132,12 +134,16 @@ export function TaskDetails(p: Props) {
       const updated = result as Task;
       current.current = updated;
       setTask(updated);
+      setSavedFields(Object.keys(changed));
+      failedPatch.current = null;
+      setComparison(null);
       return result;
     })();
     flight.current = operation;
     try {
       return await operation;
     } catch (e) {
+      failedPatch.current = changed;
       setError((e as Error).message);
       throw e;
     } finally {
@@ -265,10 +271,11 @@ export function TaskDetails(p: Props) {
               rows={7}
               value={draft}
               onChange={(e) => {
+                failedPatch.current = null;
                 setDraft(e.target.value);
                 pending.current = { field, value: e.target.value };
               }}
-              onBlur={() => void finish().catch(() => {})}
+              onBlur={() => { if (!failedPatch.current) void finish().catch(() => {}); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
@@ -284,10 +291,11 @@ export function TaskDetails(p: Props) {
               value={draft}
               min={type === "number" ? 1 : undefined}
               onChange={(e) => {
+                failedPatch.current = null;
                 setDraft(e.target.value);
                 pending.current = { field, value: e.target.value };
               }}
-              onBlur={() => void finish().catch(() => {})}
+              onBlur={() => { if (!failedPatch.current) void finish().catch(() => {}); }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -312,6 +320,8 @@ export function TaskDetails(p: Props) {
             {String(shown) || "Add " + label.toLowerCase()}
           </button>
         )}
+        {editing === field && <small className="inline-help">{type === "textarea" ? "Ctrl/⌘ + Enter" : "Enter"} or leave the field to save · Escape cancels this field.</small>}
+        {savedFields.includes(field) && !editing && !busy && !error && <small className="field-saved">Saved</small>}
       </div>
     );
   };
@@ -381,7 +391,7 @@ export function TaskDetails(p: Props) {
                 ? "Change needs attention"
                 : p.canEdit === false
                   ? "View only"
-                  : "Changes save automatically"}
+                  : savedFields.length ? "Saved" : "Click any field to edit"}
           </span>
           <button
             className="icon-button"
@@ -392,49 +402,32 @@ export function TaskDetails(p: Props) {
             <X size={20} />
           </button>
         </header>
+        <RecordTools kind="task" id={p.id}/>
         {error && (
           <div role="alert" className="error-banner">
             {error}{" "}
             <button
               className="text-button"
-              onClick={() => void reload().catch((e) => setError(e.message))}
+              onClick={() => void reload(true).catch((e) => setError(e.message))}
             >
-              Reload current values
+              Compare current values
             </button>
           </div>
         )}
+        {comparison && <section className="conflict-comparison" aria-label="Compare task changes"><h3>Your draft is still here</h3><p>Compare the saved version before choosing which values to keep.</p>
+          {Object.entries(failedPatch.current ?? {}).map(([field, value]) => <div key={field}><strong>{humanLabel(field)}</strong><p>Saved: {String(comparison[field as keyof Task] ?? "Empty")}</p><p>Your change: {String(value ?? "Empty")}</p></div>)}
+          <button className="secondary" disabled={busy} onClick={() => {current.current = comparison; setTask(comparison); pending.current = null; failedPatch.current = null; setEditing(null); setComparison(null); setError("");}}>Use saved values</button>
+          <button className="primary" disabled={busy} onClick={() => {const patch = failedPatch.current; current.current = comparison; setTask(comparison); if (patch) void save(patch).then(() => {pending.current = null; setEditing(null);}).catch(() => {});}}>Apply my change to this version</button>
+        </section>}
         {!task ? (
           <p role="status">Loading task…</p>
         ) : (
           <div className="task-detail-grid">
             <main className="task-detail-main">
               {text("title", "Task")}
-              <div
-                className="task-card-tabs"
-                role="tablist"
-                aria-label="Task detail sections"
-              >
-                {[
-                  ["overview", "Overview"],
-                  ["notes", "Linked notes"],
-                  ["reminders", "Reminders"],
-                ].map(([id, label]) => (
-                  <button
-                    key={id}
-                    role="tab"
-                    aria-selected={tab === id}
-                    onClick={() => void leave(() => setTab(id))}
-                  >
-                    {label}
-                    {id === "notes" && notes.length > 0
-                      ? " " + notes.length
-                      : id === "reminders" && reminders.length > 0
-                        ? " " + reminders.length
-                        : ""}
-                  </button>
-                ))}
-              </div>
-              <div role="tabpanel" aria-label={tab}>
+              <Tabs id="task-detail-tab" label="Task detail sections" className="task-card-tabs" panel="task-detail-panel" value={tab} onChange={id => leave(() => setTab(id))}
+                items={[{id:"overview",label:"Overview"},{id:"notes",label:"Linked notes" + (notes.length ? " " + notes.length : "")},{id:"reminders",label:"Reminders" + (reminders.length ? " " + reminders.length : "")}]} />
+              <div id="task-detail-panel" role="tabpanel" aria-labelledby={"task-detail-tab-" + tab}>
                 {tab === "overview" && (
                   <>
                     {text("notes", "Description", "textarea")}
@@ -445,6 +438,8 @@ export function TaskDetails(p: Props) {
                       {task.due_time && text("due_timezone", "Time zone")}
                       {text("estimate_minutes", "Estimate (minutes)", "number")}
                     </div>
+                    <SchedulingHelp />
+                    {reminders.length > 0 && <p className="footnote">This task has {reminders.length} reminder{reminders.length === 1 ? "" : "s"}. Its planned day, deadline and reminders all refer to this same task.</p>}
                     {parent && (
                       <section>
                         <h3>Parent task</h3>
@@ -601,13 +596,13 @@ export function TaskDetails(p: Props) {
                   "deferred",
                   "completed",
                   "cancelled",
-                ].map((id) => ({ id, name: id.replaceAll("_", " ") })),
+                ].map((id) => ({ id, name: humanLabel(id) })),
                 !!task.is_template,
               )}
               {select(
                 "priority",
                 "Priority",
-                ["Normal", "Low", "Medium", "High"].map((name, i) => ({
+                priorityLabels.map((name, i) => ({
                   id: String(i),
                   name,
                 })),

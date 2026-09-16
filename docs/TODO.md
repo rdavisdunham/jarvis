@@ -3,6 +3,40 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Compact planner UX follow-through — September 16
+
+- [x] Checkpoint the external-agent release on main (`5c76eeb`) before starting this batch.
+- [x] Combine task view/filter controls; move secondary actions into a menu; add
+  removable filter chips, modified saved-view feedback and clearer empty results.
+- [x] Make task capture title-first with optional details, a removable planned-day
+  default, visible submit action and immediate access to the saved detail card.
+- [x] Add board column navigation, remembered column, optional hidden empty/finished
+  columns, and compact mobile timelines with sticky names and date controls.
+- [x] Keep task drafts on failures; show field save state and compare conflicting
+  versions before explicitly applying a draft or accepting the saved values.
+- [x] Open notes for reading and save long-note drafts explicitly. Existing goals,
+  projects, spaces, areas and assignees now use inline saves. Eri can navigate away
+  from clean detail cards; dirty notes remain protected.
+- [x] Standardize priority/status labels, explain scheduling and organization,
+  show project open-task/deadline summaries and optional planner examples.
+- [x] Add workspace-aware record links and a return trail for linked cards.
+  Links use existing access checks and never grant permission.
+- [x] Clarify sharing roles, integration summaries, memory sources, processing
+  states and the exact scope of forgetting a fact versus deleting its source.
+- [x] Share accessible tab navigation, improve touch/focus targets, scope search to
+  the current page, and make mobile chat a scroll-locked sheet with Back to work.
+- [x] Update Eri's site map and editor behavior descriptions for the new controls.
+- [x] Verify 31 focused backend tests, 120 frontend tests and 25 browser acceptance
+  checks using 260 synthetic tasks and 16 projects; production build passes.
+- [ ] Complete real Android keyboard/microphone/background-notification and formal
+  screen-reader/contrast acceptance; browser emulation is not physical-device proof.
+- [ ] Rename the owner's existing Business space during the separately approved
+  task-routing rollout. This UX batch preserves classification IDs and records.
+
+Audit follow-through and verification: [UX_POLISH_VALIDATION.md](UX_POLISH_VALIDATION.md).
+R2 activation, MCP OAuth-only clients, automatic task routing and the seven-day
+usage pilot remain separate items; their status is unchanged by this UX work.
+
 ## External-agent API, MCP and backup preparation — September 16
 
 - [x] Add named, workspace-bound bot keys in Settings → Integrations, with separate
@@ -118,9 +152,9 @@ Design and decisions: [BACKGROUND_WORK_PRD.md](BACKGROUND_WORK_PRD.md).
   `eridani-backups`. The bucket exists; credentials are still absent. Native
   Railway PITR remains active. No second database or paid queue was added.
 
-Next focused UX batch: the remaining compact task/organization/note/settings
-recommendations (UX-11–25 and remaining UX-26–31), richer filters and organization
-clarity; then UX-32–34 polish. Keep the seven-day usage pilot after the expansion
+The compact task/organization/note/settings recommendations are implemented in
+the UX follow-through batch above. Remaining acceptance covers physical-device
+and assistive-technology checks, not another redesign. Keep the seven-day usage pilot after the expansion
 and real-device/operation checks. Broader notification delivery preferences,
 external API/MCP, Android, automatic task routing, vector indexing and open-ended
 research agents remain separate expansions.

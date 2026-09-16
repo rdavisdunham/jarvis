@@ -599,33 +599,16 @@ async def chat_endpoint(body: ChatInput, user: User):
 async def memories(user: User, q: str = ""):
     items = await semantic_search(user.owner_id, q[:500], 100 if not q else 20)
     with session_scope() as db:
-        pending = db.scalar(
-            select(func.count())
-            .select_from(Job)
-            .where(
+        counts = dict(db.execute(
+            select(Job.status, func.count()).where(
                 Job.owner_id == user.owner_id,
                 Job.kind.in_(["extract_memory", "embed_memory"]),
-                Job.status.in_(["queued", "running"]),
-            )
-        )
-        retrying = db.scalar(
-            select(func.count())
-            .select_from(Job)
-            .where(
-                Job.owner_id == user.owner_id,
-                Job.kind.in_(["extract_memory", "embed_memory"]),
-                Job.status.in_(["retrying", "failed"]),
-            )
-        )
-        deferred = db.scalar(
-            select(func.count())
-            .select_from(Job)
-            .where(
-                Job.owner_id == user.owner_id,
-                Job.kind.in_(["extract_memory", "embed_memory"]),
-                Job.status == "deferred_budget",
-            )
-        )
+            ).group_by(Job.status)
+        ).all())
+        queued, active = counts.get("queued", 0), counts.get("running", 0)
+        failed, retry_waiting = counts.get("failed", 0), counts.get("retrying", 0)
+        pending, retrying = queued + active, failed + retry_waiting
+        deferred = counts.get("deferred_budget", 0)
         enabled = preferences(db, user.owner_id)["memory_learning"]
         from .memory_review import pending_reviews, review_data, status
 
@@ -635,7 +618,8 @@ async def memories(user: User, q: str = ""):
         "items": items,
         "reviews": reviews,
         "maintenance": maintenance,
-        "learning": {"enabled": enabled, "pending": pending, "retrying": retrying, "deferred": deferred},
+        "learning": {"enabled": enabled, "pending": pending, "retrying": retrying, "deferred": deferred,
+                     "queued": queued, "active": active, "failed": failed, "retry_waiting": retry_waiting},
     }
 
 

@@ -1,3 +1,4 @@
+import { humanLabel } from "./ux";
 import type { Task } from "./types";
 import { shiftDate } from "./workspace";
 
@@ -69,7 +70,7 @@ export function groupedTasks(tasks: Task[], group: WorkGroup) {
   >();
   if (group === "status")
     statuses.forEach((key) =>
-      groups.set(key, { key, label: key.replaceAll("_", " "), tasks: [] }),
+      groups.set(key, { key, label: humanLabel(key), tasks: [] }),
     );
   for (const task of tasks) {
     const key =
@@ -84,7 +85,7 @@ export function groupedTasks(tasks: Task[], group: WorkGroup) {
         label:
           group === "project"
             ? task.project || "No project"
-            : task.assignee || "Unassigned",
+            : humanLabel(task.assignee || "Unassigned"),
         tasks: [],
       });
     groups.get(key)!.tasks.push(task);

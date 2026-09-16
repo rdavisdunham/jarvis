@@ -362,6 +362,7 @@ export function CalendarView(p: Props) {
                     <span className={"calendar-type-badge " + e.kind}>
                       {calendarKind(e).label}
                     </span>
+                    {e.task_id && agenda.filter(item => item.task_id === e.task_id).length > 1 && <small className="linked-task-schedule">Same task · {agenda.filter(item => item.task_id === e.task_id).map(item => calendarKind(item).label).filter((value,index,all) => all.indexOf(value) === index).join(" / ")}</small>}
                     <small>
                       {e.kind === "google" ? e.calendar_title : ""}
                       {e.projected && e.kind !== "google" ? " · Upcoming" : ""}

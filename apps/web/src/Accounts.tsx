@@ -145,12 +145,8 @@ export function SharingSettings() {
   return (
     <section className="sharing-settings">
       <h2>People & sharing</h2>
-      <p className="footnote">
-        Your personal tasks, notes, memory and connected accounts stay private.
-        Create a shared space or project, then invite people to it. Everyone in
-        that workspace sees its tasks, notes, local calendar and task alerts.
-        Assignment alone never grants access.
-      </p>
+      <div className="sharing-overview"><div><strong>Personal workspace</strong><p>Your own tasks, notes, memory and connected accounts.</p></div><div><strong>Shared workspace</strong><p>A separate set of tasks, notes and local calendar entries for invited people.</p></div></div>
+      <p className="footnote">Assignment organizes responsibility; it never grants access.</p>
       {error && (
         <p className="error-banner" role="alert">
           {error}
@@ -216,7 +212,7 @@ export function SharingSettings() {
           });
         }}
       >
-        <h3>Create a shared workspace</h3>
+        <h3>1. Create a shared workspace</h3>
         <div className="sharing-fields">
           <label>
             Name
@@ -245,7 +241,7 @@ export function SharingSettings() {
         </div>
       </form>
       <section>
-        <h3>Members & invitations</h3>
+        <h3>2. Invite people & manage access</h3>
         <label>
           Manage sharing
           <select
@@ -323,6 +319,8 @@ export function SharingSettings() {
         >
           Copy sign-in link
         </button>
+        <p className="role-guide"><strong>Viewer:</strong> can read. <strong>Editor:</strong> can add and change records. <strong>Owner:</strong> also manages invitations and access.</p>
+        {!!members.length && <h4>Members</h4>}
         {members.map((m) => (
           <div className="sharing-row" key={m.account_id}>
             <span>
@@ -372,6 +370,7 @@ export function SharingSettings() {
             )}
           </div>
         ))}
+        {!!invites.length && <h4>Pending invitations</h4>}
         {invites.map((i) => (
           <div className="sharing-row" key={i.id}>
             <span>

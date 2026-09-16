@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { humanLabel } from "./ux";
 import { createPortal } from "react-dom";
 import { useBoardDrag } from "./use-board-drag";
 import {
@@ -50,6 +52,44 @@ export function LayoutSwitch({
     </div>
   );
 }
+export function BoardNavigator({root, groups, label, compact, onCompact}: {
+  root: RefObject<HTMLDivElement | null>; groups: {key: string; label: string; count: number}[];
+  label: string; compact: boolean; onCompact: (value: boolean) => void;
+}) {
+  const [active, setActive] = useState("");
+  const signature = groups.map(g => g.key).join("|");
+  const restored = useRef("");
+  const go = (key: string) => {
+    const columns = Array.from(root.current?.querySelectorAll<HTMLElement>("[data-board-key]") ?? []);
+    const column = columns.find(c => c.dataset.boardKey === key);
+    if (!column || !root.current) return;
+    root.current.scrollTo({left: root.current.scrollLeft + column.getBoundingClientRect().left - root.current.getBoundingClientRect().left, behavior: "instant"});
+    setActive(key); sessionStorage.setItem("eri-board:" + label, key);
+  };
+  useEffect(() => {
+    if (!root.current || restored.current === signature) return;
+    restored.current = signature;
+    const saved = sessionStorage.getItem("eri-board:" + label);
+    const initial = groups.find(g => g.key === saved) ?? groups.find(g => ["open", "active"].includes(g.key)) ?? groups.find(g => g.count) ?? groups[0];
+    if (initial) go(initial.key);
+  }, [signature, label]);
+  useEffect(() => {
+    const node = root.current;
+    const update = () => {
+      if (!node) return;
+      const columns = Array.from(node.querySelectorAll<HTMLElement>("[data-board-key]"));
+      const edge = node.getBoundingClientRect().left;
+      const nearest = columns.sort((a,b) => Math.abs(a.getBoundingClientRect().left-edge) - Math.abs(b.getBoundingClientRect().left-edge))[0];
+      if (nearest) {const key = nearest.dataset.boardKey!; setActive(key); sessionStorage.setItem("eri-board:" + label, key);}
+    };
+    node?.addEventListener("scroll", update, {passive:true});
+    return () => node?.removeEventListener("scroll", update);
+  }, [signature, label]);
+  return <div className="board-navigation"><label>Column<select aria-label={label + " column"} value={groups.some(g => g.key === active) ? active : groups[0]?.key ?? ""} onChange={e => go(e.target.value)}>{groups.map(g => <option key={g.key} value={g.key}>{g.label} · {g.count}</option>)}</select></label>
+    <label className="inline-check"><input type="checkbox" checked={compact} onChange={e => onCompact(e.target.checked)}/>Hide empty & finished</label>
+  </div>;
+}
+
 type TaskProps = {
   tasks: Task[];
   allTasks: Task[];
@@ -61,7 +101,10 @@ type TaskProps = {
   group: WorkGroup;
 };
 export function TaskBoard(p: TaskProps) {
-  const groups = groupedTasks(p.tasks, p.group);
+  const [compact, setCompact] = useState(false);
+  const allGroups = groupedTasks(p.tasks, p.group);
+  const visibleGroups = allGroups.filter(g => !compact || (g.tasks.length > 0 && !(p.group === "status" && ["completed", "cancelled"].includes(g.key))));
+  const groups = visibleGroups.length ? visibleGroups : allGroups.filter(g => g.key === "open");
   const keyFor = (task: Task) =>
     p.group === "status"
       ? task.status
@@ -80,10 +123,11 @@ export function TaskBoard(p: TaskProps) {
   });
   return (
     <>
-      <p className="board-drag-help" id="board-drag-help">
+      <BoardNavigator root={root} label={"Task board " + p.group} groups={groups.map(g => ({...g, count:g.tasks.length}))} compact={compact} onCompact={setCompact}/>
+      <details className="board-help"><summary>Move cards</summary><p className="board-drag-help" id="board-drag-help">
         Drag the grip to change {p.group}. Keyboard: Space, left/right, Space.
         Your sort sets card order.
-      </p>
+      </p></details>
       <p className="sr-only" role="status" aria-live="polite">
         {message}
       </p>
@@ -163,7 +207,7 @@ export function TaskBoard(p: TaskProps) {
                         {"!".repeat(task.priority)}
                       </span>
                     )}
-                    {task.assignee !== "owner" && <span>{task.assignee}</span>}
+                    {task.assignee !== "owner" && <span>{humanLabel(task.assignee)}</span>}
                     {task.due_date && (
                       <span
                         title={
@@ -206,7 +250,7 @@ export function TaskBoard(p: TaskProps) {
                   >
                     {statuses.map((status) => (
                       <option key={status} value={status}>
-                        {status.replaceAll("_", " ")}
+                        {humanLabel(status)}
                       </option>
                     ))}
                   </select>
@@ -436,7 +480,7 @@ export function Timeline({
               open={group.title === "Unscheduled" || undefined}
             >
               <summary>
-                {group.title}
+                {group.title === "Unscheduled" ? "Unscheduled · no planned day or deadline" : group.title}
                 <span>{group.rows.length}</span>
               </summary>
               <div>
