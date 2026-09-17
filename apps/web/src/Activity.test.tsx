@@ -7,6 +7,10 @@ const base: WorkItem = { id:"work-1",parent_id:null,conversation_id:"chat-1",req
   created_at:"2026-09-16T15:00:00Z",updated_at:"2026-09-16T15:00:00Z",can_continue:false };
 const render = (item: WorkItem) => renderToStaticMarkup(<WorkCard item={item} onRefresh={async()=>{}} onOpen={async()=>{}}/>);
 describe("confirmed action cards",()=>{
+  it("opens custom records and renders nested values readably",()=>{
+    const html=render({...base,actions:[{id:"change-custom",command_id:"work-1:0",kind:"record",entity_id:"custom-1",title:"Docs",operation:"updated",fields:{values:{before:null,after:{Client:"ABC"}}},can_revert:true,revert_reason:"",reverted:false}]});
+    expect(html).toContain("Edit");expect(html).toContain("Client: ABC");expect(html).not.toContain("[object Object]");
+  });
   it("keeps the answered question inside one completed card",()=>{
     const html=render({...base,clarification_history:[{question:"What time?",answer:"9 a.m."}]});
     expect(html).toContain("Clarification history"); expect(html).toContain("What time?");

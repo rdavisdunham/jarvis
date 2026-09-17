@@ -67,6 +67,8 @@ app.include_router(google_router)
 from .saved_views import router as saved_views_router
 
 app.include_router(saved_views_router)
+from .structure_routes import router as structure_router
+app.include_router(structure_router)
 from .accounts import router as accounts_router
 
 app.include_router(accounts_router)
@@ -443,7 +445,7 @@ def notifications(user: User):
                 }
                 for n in db.scalars(
                     select(Notification)
-                    .where(Notification.owner_id == user.owner_id, Notification.dismissed_at.is_(None))
+                    .where(Notification.owner_id == user.owner_id, Notification.dismissed_at.is_(None), (Notification.category != "deadline") | (Notification.scheduled_at <= now()))
                     .order_by(Notification.created_at.desc())
                     .limit(100)
                 )
@@ -590,7 +592,12 @@ def work_seen(request_id: str, user: User):
     from .agent_work import require_work
     with session_scope() as db:
         row = require_work(db, user.owner_id, user.account_id, request_id)
-        row.seen_at = now()
+        from .work_continuation import attempts
+        for attempt in attempts(db,row):
+            attempt.seen_at=now()
+            if attempt.result.get("routing_offer_id"):
+                from .routing import mark_offer
+                mark_offer(db,attempt.owner_id,attempt.result["routing_offer_id"])
         return {"status": "seen"}
 
 

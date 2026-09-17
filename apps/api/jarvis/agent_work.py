@@ -175,6 +175,9 @@ def finish(db, row, status, message, **result):
             "id": stable_id(f"clarification:{row.id}:{row.revision}:{result.get('tool_calls', 0)}"),
             "request_id": row.id, "revision": row.revision, "question": message,
         }
+    if status=="succeeded":
+        from .routing import append_offer
+        message=append_offer(db,row,message)
     job.status, job.finished_at = status, now()
     row.result = {**row.result, **result, "message": message}
     row.updated_at = now()
@@ -207,6 +210,8 @@ def finish(db, row, status, message, **result):
         )
     from .work_continuation import touch_root
     touch_root(db, row)
+    from .notices import work_finished
+    work_finished(db,row,status,message)
     job.result = {"work_id": row.id, "status": status}
     emit(db, row.owner_id, "work.changed", row.id, row.revision)
 

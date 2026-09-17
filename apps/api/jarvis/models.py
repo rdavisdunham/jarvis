@@ -133,6 +133,8 @@ class Task(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)
     area_id: Mapped[str | None] = mapped_column(ForeignKey("areas.id"), index=True)
+    deadline_alert: Mapped[str] = mapped_column(String(20), default="default", server_default="default")
+    alert_urgent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     title: Mapped[str] = mapped_column(String(500))
     notes: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(30), default="open")
@@ -229,6 +231,12 @@ class Outbox(Base):
 class Notification(Base):
     __tablename__ = "notifications"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    category: Mapped[str] = mapped_column(String(40), default="reminder", server_default="reminder")
+    dedup_key: Mapped[str | None] = mapped_column(String(200), unique=True)
+    importance: Mapped[str] = mapped_column(String(20), default="normal", server_default="normal")
+    target: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    eligible_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    generation: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     occurrence_id: Mapped[str | None] = mapped_column(ForeignKey("schedule_occurrences.id"), unique=True)
     title: Mapped[str] = mapped_column(String(500))
@@ -252,10 +260,11 @@ class PushSubscription(Base):
 
 class Delivery(Base):
     __tablename__ = "delivery_attempts"
-    __table_args__ = (UniqueConstraint("notification_id", "subscription_id"),)
+    __table_args__ = (UniqueConstraint("notification_id", "subscription_id", "generation", name="uq_delivery_generation"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     notification_id: Mapped[str] = mapped_column(ForeignKey("notifications.id"))
     subscription_id: Mapped[str] = mapped_column(ForeignKey("push_subscriptions.id"))
+    generation: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     status: Mapped[str] = mapped_column(String(30), default="pending")
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -672,3 +681,6 @@ class BotCredential(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rate_window: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     rate_count: Mapped[int] = mapped_column(Integer, default=0)
+
+# Register configurable planner tables with the shared metadata.
+from .structure_models import (StructureSchema, StructureProposal, StructureRecord, StructureLink, FieldUnderstanding, RoutingObservation, RoutingPattern, RoutingReview)  # noqa: E402,F401

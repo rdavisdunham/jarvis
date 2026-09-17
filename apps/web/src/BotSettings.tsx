@@ -9,11 +9,11 @@ export function permissionScopes(levels: Record<string, string>, queued: boolean
   return [...Object.entries(levels).filter(([,level]) => level !== "none").map(([group,level]) => `${group}:${level}`),
     ...(queued ? ["work:run"] : [])];
 }
-export function BotSettings({ workspace, readOnly = false }: { workspace: string; readOnly?: boolean }) {
+export function BotSettings({ workspace, readOnly = false, canDesign = true }: { workspace: string; readOnly?: boolean; canDesign?: boolean }) {
   const [data, setData] = useState<KeyList | null>(null), [error, setError] = useState("");
   const [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [name, setName] = useState("");
   const [days, setDays] = useState(90), [queued, setQueued] = useState(false);
-  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none" });
+  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read" });
   const [secret, setSecret] = useState(""), [visible, setVisible] = useState(false), [copied, setCopied] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -51,9 +51,9 @@ export function BotSettings({ workspace, readOnly = false }: { workspace: string
     {!data && !error && <p role="status">Loading connected agents…</p>}
     {adding && <form className="bot-key-form" onSubmit={create}>
       <label>Agent name<input autoFocus value={name} maxLength={80} required placeholder="e.g. Codex" onChange={e => setName(e.target.value)}/></label>
-      <div className="bot-permissions">{[["tasks","Tasks"],["organization","Goals & projects"],["notes","Notes"]].map(([group,label]) =>
+      <div className="bot-permissions">{[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"]].map(([group,label]) =>
         <label key={group}>{label}<select value={levels[group]} onChange={e => setLevels({...levels, [group]:e.target.value})}>
-          <option value="none">No access</option><option value="read">Read</option>{!readOnly && <option value="write">Read & edit</option>}
+          <option value="none">No access</option><option value="read">Read</option>{!readOnly && (group!=="schema"||canDesign) && <option value="write">Read & edit</option>}
         </select></label>)}</div>
       <label>Key expires after<select value={days} onChange={e => setDays(Number(e.target.value))}>
         <option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>

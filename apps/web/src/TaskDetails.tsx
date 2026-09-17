@@ -27,6 +27,8 @@ type Props = {
 };
 export function TaskDetails(p: Props) {
   useDialogFocus();
+  const [customHome,setCustomHome]=useState<{id:string;type_name:string;home:{title:string}[]}|null>(null);
+  useEffect(()=>{void api<{id:string;type_name:string;home:{title:string}[]}>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
   const [task, setTask] = useState<Task | null>(null),
     [notes, setNotes] = useState<NoteRecord[]>([]);
   const current = useRef<Task | null>(null),
@@ -206,6 +208,8 @@ export function TaskDetails(p: Props) {
       "completed",
       "cancelled",
     ]),
+    deadline_alert:z.enum(["default","on","off"]),
+    alert_urgent:z.boolean(),
     priority: z.number().int().min(0).max(3),
     project_id: nullableId(p.organization.projects.map((x) => x.id)),
     space_id: nullableId(p.organization.spaces.map((x) => x.id)),
@@ -608,49 +612,10 @@ export function TaskDetails(p: Props) {
                 })),
               )}
               {select("assignee_id", "Assignee", p.organization.actors)}
-              {select("project_id", "Project", [
-                { id: "", name: "No project" },
-                ...p.organization.projects.filter(
-                  (x) => !x.archived || x.id === task.project_id,
-                ),
-              ])}
-              {select(
-                "space_id",
-                "Space",
-                [{ id: "", name: "No space" }, ...p.organization.spaces],
-                !!task.project_id,
-              )}
-              {select(
-                "area_id",
-                "Area",
-                [
-                  { id: "", name: "No area" },
-                  ...p.organization.areas.filter(
-                    (x) => x.space_id === task.space_id,
-                  ),
-                ],
-                !!task.project_id,
-              )}
-              {select("parent_task_id", "Parent task", [
-                { id: "", name: "No parent" },
-                ...p.tasks
-                  .filter((t) => t.id !== p.id && !t.archived)
-                  .map((t) => ({ id: t.id, name: t.title })),
-              ])}
-              <div className="inline-field">
-                <span className="field-label">Supporting goals</span>
-                {goals.length ? (
-                  goals.map((g) => (
-                    <span className="attribution-chip" key={g.id}>
-                      {g.name}
-                    </span>
-                  ))
-                ) : (
-                  <span className="footnote">Linked through a project</span>
-                )}
-              </div>
-              {text("work_type", "Work type")}
-              {text("tags", "Tags")}
+              {customHome&&<div className="inline-field"><span className="field-label">Main home</span><p>{customHome.home.map(h=>h.title).join(" / ")||"Unfiled"}</p><button onClick={()=>void leave(()=>{p.onClose();window.dispatchEvent(new CustomEvent("eri-open-custom-record",{detail:{id:customHome.id}}));})}>Organization & custom fields</button></div>}
+              {select("deadline_alert","Deadline alert",[{id:"default",name:"Use my setting"},{id:"on",name:"On"},{id:"off",name:"Off"}])}
+              <label className="check-label"><input type="checkbox" checked={!!task.alert_urgent} disabled={busy||p.canEdit===false} onChange={e=>void save({alert_urgent:e.target.checked}).catch(()=>{})}/>Urgent alert · bypass quiet hours</label>
+
               <button
                 className="text-button"
                 disabled={busy || p.canEdit === false}

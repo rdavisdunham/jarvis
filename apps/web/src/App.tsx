@@ -1,3 +1,6 @@
+import { NoticeSnooze } from "./NoticeSnooze";
+import { RoutingReviewPanel, NotificationPreferences } from "./PlannerPreferences";
+import { StructureWorkspace } from "./Structure";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryActions } from "./MemoryActions";
@@ -115,7 +118,7 @@ import {
 } from "./components";
 const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "all", label: "Tasks", icon: ListTodo },
-  { id: "organize", label: "Goals & projects", icon: ListTodo },
+  { id: "organize", label: "Organization", icon: ListTodo },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "notes", label: "Notes", icon: FileText },
 ];
@@ -164,6 +167,9 @@ export default function App() {
   } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
+  const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
+  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;proposal_id?:string;field?:string;value?:string}>();
+  useEffect(()=>{const open=(e:Event)=>{setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:(e as CustomEvent).detail.id});};window.addEventListener("eri-open-custom-record",open);return()=>window.removeEventListener("eri-open-custom-record",open);},[]);
   const [settingsSection, setSettingsSection] = useState<
     "profile" | "voice" | "integrations" | "privacy" | "system" | "sharing"
   >(() => {
@@ -187,7 +193,7 @@ export default function App() {
   const [planToday, setPlanToday] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const searchAvailable = view !== "settings";
-  const searchLabel = view === "notes" ? "Search notes" : view === "memory" ? "Search memories" : view === "organize" ? "Search goals & projects" : view === "calendar" ? "Search calendar" : view === "notifications" ? "Search notifications" : "Search tasks";
+  const searchLabel = view === "notes" ? "Search notes" : view === "memory" ? "Search memories" : view === "organize" ? "Search organization" : view === "calendar" ? "Search calendar" : view === "notifications" ? "Search notifications" : "Search tasks";
   useEffect(() => { setPlanToday(true); setSearchOpen(false); }, [view]);
   const lastTaskTab = useRef<TaskTab>(isTaskTab(view) ? view : "today");
   useEffect(() => {
@@ -285,7 +291,7 @@ export default function App() {
     [chatText, setChatText] = useState(""),
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
-  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"));
   const activeWork = work.items.filter(workActive).length;
   const attentionWork = work.items.filter(item => workAttention(item) && !item.seen).length;
@@ -615,6 +621,7 @@ export default function App() {
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "open-inbox") setView("notifications");
+      if(event.data?.type==="open-notification"&&typeof event.data.url==="string"&&event.data.url.startsWith("/?"))location.assign(event.data.url);
     };
     navigator.serviceWorker?.addEventListener("message", handler);
     return () =>
@@ -781,6 +788,7 @@ export default function App() {
     }
   }
   async function openLinkedRecord(record: LinkedRecord) {
+    if(record.kind === "record") {await api("/structure/records/"+record.id);setView("organize");setOrganizationEditor(null);setNoteEditor(null);setCalendarDetail(null);setRecordControl({nonce:crypto.randomUUID(),record_id:record.id});return;}
     if (record.kind === "task") { const task = await api<Task>("/tasks/" + record.id); setNoteEditor(null); setSelected(null); openTaskCard(task); }
     else if (record.kind === "note") { const note = await api<NoteRecord>("/notes/" + record.id); setCalendarDetail(null); setNoteEditor(note); }
     else {
@@ -880,6 +888,11 @@ export default function App() {
       throw new Error("An editor is open. Save or close it before changing pages.");
     if (currentEditor?.mode === "detail") await editors.act({operation:"close"});
     setCalendarDetail(null);
+    if(kind==="records"){
+      setView("organize");setOrganizationEditor(null);
+      setRecordControl({nonce:action.id,type_id:action.type_id,parent_id:action.parent_id,layout:action.layout,group:action.record_group,record_id:action.record_id,proposal_id:action.proposal_id,field:action.field,value:action.value});
+      return {outcome:"collection_opened",record_id:action.record_id??null};
+    }
     if (kind === "saved_view") {
       const collection = await api<{ items: SavedView[] }>("/task-views");
       if (action.view_operation === "list") return { items: collection.items };
@@ -1378,6 +1391,7 @@ export default function App() {
   }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
+    if(action.kind==="record"){setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:action.entity_id});return;}
     const form = action.kind === "schedule" ? "reminder" : action.kind === "planning" ? "event" : action.kind;
     await applyAction({ id: crypto.randomUUID(), kind: "form", form, entity_id: action.entity_id } as UIAction);
     setActivityOpen(false);
@@ -1613,6 +1627,7 @@ export default function App() {
 
     view,
     activity_open: activityOpen,
+    collection: collectionContext,
     chat_open: companion,
     mobile,
     voice_active: !!voiceState && !voiceState.closed,
@@ -1671,7 +1686,7 @@ export default function App() {
     await showActions(response.actions);
   };
   const titles: Record<View, string> = {
-    organize: "Projects & goals",
+    organize: "Organization",
     today: "Tasks",
     inbox: "Tasks",
     week: "Tasks",
@@ -1953,7 +1968,7 @@ export default function App() {
               "calendar",
               "reminders",
             ].includes(view) && (
-              <div className="view-control-row">
+              <div className="view-control-row" hidden={isTaskTab(view)}>
               {isTaskTab(view) && <SavedViews key={savedViewRevision} state={savedViewState} onApply={applySavedView}/>}
               <details className="filter-panel">
                 <summary>
@@ -2158,7 +2173,7 @@ export default function App() {
               "calendar",
               "reminders",
             ].includes(view) && (
-              <div className="active-filters" aria-label="Active filters">
+              <div className="active-filters" aria-label="Active filters" hidden={isTaskTab(view)}>
                 {[
                   {label: query ? 'Search: ' + query : '', clear: () => setQuery('')},
                   {label: projectFilter, clear: () => setProjectFilter('')},
@@ -2170,12 +2185,8 @@ export default function App() {
               </div>
             )}
             {[
-              "all",
               "calendar",
               "reminders",
-              "today",
-              "inbox",
-              "week",
             ].includes(view) && (
               <>
                 {["today", "inbox", "week", "all"].includes(view) && (
@@ -2269,6 +2280,7 @@ export default function App() {
                 />
               </>
             )}
+            {isTaskTab(view)&&<StructureWorkspace selecting={selectingTasks} selectedIds={selectedTaskIds} onSelecting={value=>{setSelectingTasks(value);if(!value)setSelectedTaskIds([]);}} onSelection={setSelectedTaskIds} onBulk={()=>{setError("");setBulkEditor(tasks.filter(t=>selectedTaskIds.includes(t.id)));}} key={boot.workspace?.id??"personal"} onContext={setCollectionContext} statusFilter={taskStatus} homeFilter={organizationFilter.area||organizationFilter.space||projects.find(p=>p.name===projectFilter)?.id||""} layoutFilter={workLayout} groupFilter={workGroup} onQuery={setQuery} onTab={setView} capability="work" tab={view} today={today} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()} onVisible={setWorkVisible} onTask={id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);}}/>}
             {view === "notifications" && (
               <>
                 <div className="section-head">
@@ -2303,7 +2315,8 @@ export default function App() {
                       </div>
                       {n.body && <p>{n.body}</p>}
                       <div className="notice-actions">
-                        <button
+                        <button onClick={()=>{if(n.task_id){const task=tasks.find(t=>t.id===n.task_id);if(task)openTaskCard(task);}else if(n.target?.view==="activity")setActivityOpen(true);else setView("today");void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
+                        {n.task_id&&["reminder","deadline"].includes(n.category??"reminder")&&<button
                           onClick={() =>
                             void mutate(
                               "notification.complete",
@@ -2314,19 +2327,8 @@ export default function App() {
                         >
                           <Check size={14} />
                           Complete
-                        </button>
-                        <button
-                          onClick={() =>
-                            void mutate(
-                              "notification.snooze",
-                              { notification_id: n.id, minutes: 10 },
-                              "Snoozed for 10 minutes",
-                            )
-                          }
-                        >
-                          <Clock3 size={14} />
-                          10 min
-                        </button>
+                        </button>}
+                        <NoticeSnooze onSnooze={args=>mutate("notification.snooze",{notification_id:n.id,...args},"Notification snoozed")}/>
                         <button
                           onClick={() =>
                             void mutate(
@@ -2350,7 +2352,7 @@ export default function App() {
                 )}
               </>
             )}
-            {view === "organize" && (
+            {view === "organize" && organizationEditor && (
               <ProductivityPage
                 tasks={tasks}
                 organization={organization}
@@ -2388,6 +2390,8 @@ export default function App() {
                 }}
               />
             )}
+            {view === "organize" && !organizationEditor && <StructureWorkspace onVisible={setOrganizationVisible} onContext={setCollectionContext} onQuery={setQuery} control={recordControl} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()}/>}
+
             {view === "notes" && (
               <NotesPage
                 archived={showArchived}
@@ -2566,6 +2570,7 @@ export default function App() {
                   value={settingsSection} onChange={setSettingsSection} items={(["profile", "voice", "integrations", "privacy", "system", "sharing"] as const).map(id => ({id, label: humanLabel(id)}))}/>
                 <div id="settings-panel" role="tabpanel" aria-labelledby={"settings-tab-" + settingsSection}>
                 {settingsSection === "sharing" && <SharingSettings />}
+                {settingsSection === "profile"&&!boot.workspace?.id&&<><RoutingReviewPanel/><NotificationPreferences/></>}
                 {boot.workspace?.id &&
                   ["profile", "privacy", "system", "integrations"].includes(
                     settingsSection,
@@ -2690,7 +2695,7 @@ export default function App() {
                     </div>
                   </section>
                 )}
-                {settingsSection === "integrations" && <BotSettings key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
+                {settingsSection === "integrations" && <BotSettings canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
                 {settingsSection === "integrations" && !boot.workspace?.id && (
                   <>
                     <LinearSettings revision={noteRevision} mutate={mutate} />
@@ -3218,6 +3223,7 @@ export default function App() {
       )}
       {bulkEditor && (
         <BulkTaskDialog
+          hideProject
           tasks={bulkEditor}
           projects={projects}
           busy={busy}

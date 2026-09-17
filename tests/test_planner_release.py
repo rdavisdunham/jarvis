@@ -3,13 +3,20 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from cryptography.fernet import Fernet
 from jarvis import planner
+from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute
 from jarvis.google_auth import seal, unseal
 from jarvis.models import Command, Note, NoteGoalLink, PlanningEntry, Task
 from jarvis.planner_schema import PlanRequest
 from sqlalchemy import func, select
+
+
+@pytest.fixture(autouse=True)
+def planner_encryption(monkeypatch):
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
 
 
 def run(tool, owner="davin", **args):

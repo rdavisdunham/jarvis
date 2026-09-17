@@ -39,18 +39,20 @@ export const taskStates = [
   "cancelled",
 ] as const;
 const date = z.string().date();
-const patchValue = z.union([
+const scalarPatchValue = z.union([
   z.string().max(30000),
   z.number().finite(),
   z.boolean(),
   z.null(),
   z.array(z.string().max(1000)).max(200),
 ]);
+const patchValue = z.union([scalarPatchValue, z.record(z.string().max(80), scalarPatchValue).refine(v => Object.keys(v).length <= 60, "Too many fields")]);
 export const actionSchema = z
   .object({
     id: z.string().max(150),
     kind: z
       .enum([
+        "records",
         "show",
         "chat",
         "activity",
@@ -69,6 +71,13 @@ export const actionSchema = z
     view_operation: z.enum(["list", "save", "load", "delete"]).optional(),
     view_name: z.string().max(80).optional(),
     saved_view_id: z.string().max(36).optional(),
+    type_id: z.string().max(80).optional(),
+    parent_id: z.string().max(36).optional(),
+    record_id: z.string().max(36).optional(),
+    proposal_id: z.string().max(36).optional(),
+    record_group: z.string().max(80).optional(),
+    field: z.string().max(80).optional(),
+    value: z.string().max(300).optional(),
     entity_id: z.string().nullable().optional(),
     mode: z.enum(["open", "close", "auto"]).optional(),
     query: z.string().max(300).optional(),

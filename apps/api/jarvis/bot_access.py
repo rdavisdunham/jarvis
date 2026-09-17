@@ -15,6 +15,10 @@ from .models import BotCredential, UserAccount, now
 
 principal = ContextVar("eridani_bot_credential", default=None)
 SCOPES = {
+    "schema:read": "Read type, field and relationship definitions",
+    "schema:write": "Preview and apply workspace schema changes (owner only)",
+    "records:read": "Read custom records, including their configured work and content fields",
+    "records:write": "Create and edit custom records and their relationships",
     "tasks:read": "Read tasks",
     "tasks:write": "Create and edit tasks",
     "organization:read": "Read spaces, areas, goals, projects and assignees",
@@ -24,6 +28,8 @@ SCOPES = {
     "work:run": "Ask Eri to work using this key's permitted records and tools",
 }
 COMMAND_SCOPES = {
+    **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
+    **{f"record.{op}": "records:write" for op in ("create", "update", "link")},
     **{f"task.{op}": "tasks:write" for op in ("create", "update", "complete", "reopen")},
     **{
         f"{kind}.{op}": "organization:write"
@@ -33,6 +39,9 @@ COMMAND_SCOPES = {
     **{f"note.{op}": "notes:write" for op in ("create", "update", "append", "replace")},
 }
 READ_SCOPES = {
+    "structure_schema": "schema:read",
+    "record_list": "records:read",
+    "record_get": "records:read",
     "task_list": "tasks:read",
     "task_get": "tasks:read",
     "task_resolve": "tasks:read",
@@ -138,6 +147,8 @@ def create(db, owner, account, name, scopes, days):
     scopes = normalize(scopes)
     if permission == "viewer" and any(s.endswith(":write") or s == "work:run" for s in scopes):
         raise DomainError("READ_ONLY", "Viewers can create read-only keys.", 403)
+    if "schema:write" in scopes and permission != "owner":
+        raise DomainError("OWNER_REQUIRED", "Only the workspace owner can grant structure editing.", 403)
     # Secrets are returned once; neither the database nor receipts store the token.
     token = "eri_bot_" + secrets.token_urlsafe(32)
     row = BotCredential(

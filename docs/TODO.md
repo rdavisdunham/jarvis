@@ -1,7 +1,127 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 16, 2026. Eridani (Eri) is the assistant's name.
+Updated September 17, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
+
+## Real-use acceptance checklist — pending
+
+These are owner/device checks, not implementation tasks. Automated and simulated
+checks already recorded below do not mark these complete. Use disposable test
+records where practical; record device/browser, result and any issue when tested.
+
+- [ ] **Clarification continuity:** make a request that needs more information,
+  answer Eri's follow-up, and confirm the original activity card completes with
+  the answer and saved action. No duplicate task or stranded Waiting for you card.
+- [ ] **Rapid voice requests:** say “Add a task to call Alex,” “Also remind me to
+  buy milk,” then “Actually, make that call tomorrow.” Each task appears once;
+  only the call gets tomorrow's date. Repeat with the correction arriving both
+  before and after the original request finishes.
+- [ ] **Action receipts:** verify the card describes what actually changed. Open
+  Edit, then try Revert on a separate unchanged test record; the previous value
+  returns. If another edit intervenes, Revert must not silently overwrite it.
+- [ ] **Voice shutdown and wake:** try “goodbye,” “that's all, thanks,” and “no”
+  after Eri asks whether anything else is needed. Voice ends; “Eri” / “Hey Eri”
+  starts it again while wake listening is enabled. Check the 30-second idle
+  timeout after her response and confirm speech/pending work is not cut off.
+- [ ] **Phone recovery:** switch Wi-Fi/cellular, briefly lose connectivity, and
+  background then return to the browser. Accepted work survives, no task is
+  duplicated, and voice reconnects or offers a working restart.
+- [ ] **Profile menu:** on phone and desktop, open Memory and Settings, dismiss
+  the menu by tapping outside, and log out/back in. Verify the correct account
+  and workspace return; personal memory stays outside shared workspaces.
+- [ ] **Activity reset:** finish the previously requested old-history cleanup
+  through authenticated access or Clear activity history; confirm old queued/error
+  cards disappear while saved tasks and notes remain. See the reset item below.
+- [ ] **Locked-phone notifications:** receive a real reminder while the phone is
+  locked, open it to the correct record, and check delivery after a network gap.
+- [ ] **Calendar and Linear:** verify Google create/edit, event details and selected
+  calendars with real accounts; verify a real Linear import/edit syncs correctly
+  without duplication. Use disposable events/issues and check both applications.
+- [ ] **External bot and sharing:** connect a real API/MCP client with a scoped
+  key, verify a permitted action and denied out-of-scope action, then revoke the
+  key. Check invitation and membership revocation with a second signed-in account.
+- [ ] **Mobile usability/accessibility:** check the physical phone's keyboard,
+  scrolling, detail cards and chat controls; finish screen-reader/contrast checks.
+- [ ] **Cloud recovery:** confirm normal use with the host PC off and queued-work
+  recovery across a controlled cloud API/worker restart. After R2 credentials are
+  supplied, verify upload/download, isolated restore and the scheduled backup;
+  test failed/stale-backup alerts once implemented. Existing Railway PITR remains.
+
+## Before native Android — recommended remaining order
+
+This is the current recommendation, not a claim these features have shipped.
+The detailed sections below retain implementation history and acceptance evidence.
+
+1. **Configurable planner acceptance:** the agreed organization/routing batch is
+   implemented and automated checks pass. The September 17 release is authorized;
+   validate Structure, custom collections, workflows, inheritance, learned rules
+   and weekly interviews in real use after deployment.
+   See [implementation and test notes](CUSTOM_PLANNER_IMPLEMENTATION.md).
+2. **Notification acceptance:** deadline alerts, quiet hours, explicit urgency,
+   daily summary, grouped background results and durable snooze are implemented
+   in this batch. Verify actual locked-phone delivery and real-account behavior.
+3. **Operational and connected-account acceptance:** complete the checklist above,
+   activate the separate R2 recovery copy when credentials are available, automate
+   restore drills/backup alerts, and finish Google production consent verification
+   before broader onboarding. Calendar writes, multi-user access and API/MCP are
+   implemented features to validate, not features to rebuild.
+4. **Android readiness and usage pilot:** document/test how a native client reuses
+   sign-in, record links, commands, activity/clarifications and notifications;
+   specify retry/conflict behavior for intermittent connectivity. After expansions
+   and device/operations checks, run the seven-day pilot with at least 50 successful
+   task/reminder interactions and fix material failures before native development.
+
+Vector indexing, Langfuse, open-ended research agents and additional integrations
+can follow demonstrated need; they are not prerequisites for native Android.
+
+## GitHub CI — September 17
+
+- [x] Add pull-request/main-push CI for backend correctness/tests, PostgreSQL
+  migration/model agreement, frontend tests/build and desktop/mobile browser
+  acceptance. Locked dependencies, standard Linux runners, synthetic data and
+  failure artifacts only; no deployment or model-provider credentials.
+- [ ] Push the workflow with the current feature batch and verify its first
+  GitHub-hosted run. It is configured locally, not active remotely yet.
+- [ ] After the first run, consider requiring both checks before merge and making
+  Railway wait for CI before deployment; those settings are unchanged.
+
+Details: [CI.md](CI.md).
+
+## Configurable planner, routing and notifications — September 17
+
+Implementation and automated verification complete; September 17 release to
+production is authorized and in progress.
+This supersedes the fixed goals/projects/classification portion of the earlier
+[task-routing PRD](TASK_ROUTING_PRD.md).
+
+- [x] Editable default schema: record types, required descriptions, fields,
+  workflows, main-home hierarchy, inheritance, named links and cardinality.
+- [x] Work/content/timeline/metric capabilities with stable task/note services;
+  best-effort import retains existing source data and adopts recurring/imported tasks.
+- [x] Inline detail cards, list/board/timeline, touch movement, custom filters,
+  saved views, task multi-select, links and conversational site controls.
+- [x] Versioned structural preview/apply/history; guarded record and relationship
+  receipts/Revert; stale external edits cannot be overwritten by an old undo.
+- [x] Separate field understanding and routing evidence, explicit rules,
+  weekly dream review, manual interview, daily offer and configurable work hours.
+  Learned automatic rules remain gated on independent held-out human evidence;
+  confirmed rules can be enabled directly.
+- [x] Deadline alerts, quiet hours, urgent overrides, optional morning summary,
+  same-notice snooze and unseen background-result grouping.
+- [x] Scoped schema/custom-record API and MCP access, including Connected agents
+  settings; existing keys do not gain new permissions automatically.
+- [x] Isolated migrations, backend/frontend checks and desktop/mobile browser
+  acceptance. See [evidence and limits](CUSTOM_PLANNER_IMPLEMENTATION.md).
+- [ ] Verify the September 17 API + worker release and migrations on Railway.
+  Existing PITR archive uploads were verified in logs; an extra local export was
+  blocked by automatic approval review and not performed.
+- [ ] Physical-phone voice, board gestures, notification delivery and network
+  recovery; actual model interviews and connected-account imports/updates.
+- [ ] Real-user routing quality dataset: 100 held-out matches and ≥95% precision
+  before claiming learned automatic-rule quality. Synthetic matcher tests are
+  regression checks, not a substitute for this acceptance gate.
+- [ ] Later expansion: occasional contextual clarifications during ordinary
+  conversation, outside explicit field setup or the weekly interview.
 
 ## Profile navigation — September 16
 
@@ -63,8 +183,8 @@ Implementation and test notes: [CLARIFICATION_CONTINUATIONS.md](CLARIFICATION_CO
   task-routing rollout. This UX batch preserves classification IDs and records.
 
 Audit follow-through and verification: [UX_POLISH_VALIDATION.md](UX_POLISH_VALIDATION.md).
-R2 activation, MCP OAuth-only clients, automatic task routing and the seven-day
-usage pilot remain separate items; their status is unchanged by this UX work.
+R2 activation, MCP OAuth-only clients and the seven-day usage pilot remain open.
+Automatic task routing was subsequently implemented locally in the September 17 batch.
 
 ## External-agent API, MCP and backup preparation — September 16
 
@@ -184,11 +304,11 @@ Design and decisions: [BACKGROUND_WORK_PRD.md](BACKGROUND_WORK_PRD.md).
 The compact task/organization/note/settings recommendations are implemented in
 the UX follow-through batch above. Remaining acceptance covers physical-device
 and assistive-technology checks, not another redesign. Keep the seven-day usage pilot after the expansion
-and real-device/operation checks. Broader notification delivery preferences,
-external API/MCP, Android, automatic task routing, vector indexing and open-ended
-research agents remain separate expansions.
+and real-device/operation checks. Notification controls and task routing were
+subsequently implemented locally in the September 17 batch; external API/MCP is
+implemented. Android, vector indexing and open-ended research remain expansions.
 
-## Task routing — specified, parked until after cloud migration
+## Task routing — original decisions, implemented locally September 17
 
 - [x] Inspect current backend memory injection, task organization and learning.
       Write [Task routing PRD](TASK_ROUTING_PRD.md) with agreed product decisions,
@@ -196,13 +316,14 @@ research agents remain separate expansions.
 - [x] Confirm automatic strong matches with uncertain fields left unassigned;
       customizable classification fields; one client per project and standalone
       client tasks.
-- [ ] After migration, implement the PRD in stages: classification fields and
-      canonical inheritance, separate task-routing knowledge, evidence/corrections,
-      historical preview, shadow evaluation, then automatic routing.
+- [x] Implement customizable structure, inheritance, separate routing knowledge,
+      evidence/corrections, reviewed reorganization and gated automatic routing.
+      The September 17 implementation supersedes the fixed-field PRD; real-user
+      held-out quality acceptance remains open in the current batch above.
 - [ ] At implementation, rename Davis's Business space to Work in place; configure
       Client = ABC and the Andi / Transcript Intelligence project relationships.
       These are planned setup requirements; no records have been changed for them.
-- [ ] Add editable work windows as weak context and an independent routing-memory
+- [x] Add editable work windows as weak context and an independent routing-memory
       section. Do not mix personal-memory facts with routing rules or reinforce
       Eri's unconfirmed guesses.
 
@@ -351,9 +472,10 @@ produce predictable delivery without duplicate task effects.
       wake words and 30-second handoff on the actual phone and desktop.
       These checks now ship with the current background-work batch above.
       Realtime remains paused.
-- [ ] Verify locked-phone Web Push, network gaps and actual Windows reboot
-      startup. Automate isolated restore drills and stale/failed-backup alerts;
-      retain a separately protected recovery copy off this PC.
+- [ ] Verify locked-phone Web Push, network gaps and cloud API/worker restart
+      recovery, including normal use with the host PC off. Automate isolated
+      restore drills and stale/failed-backup alerts; retain a separately
+      protected recovery copy outside the primary database service.
 - [ ] After those checks pass, run the seven-day PRD pilot with at least 50
       successful task/reminder interactions and record reliability, delivery and
       voice-quality results. Development cost tracking stays off; provider usage
@@ -747,8 +869,9 @@ failures fixed before expanding the execution surface.
 - [ ] Verify multiple selected calendars and combined availability on the real
       account, including shared calendars. Source selection and simultaneous sync
       are implemented; owner confirmed general sync, not this whole matrix.
-- [ ] Next expansion: smarter notifications (priority, snooze controls and bundling),
-      then authenticated scoped API/MCP access for external bots.
+- [x] Implement smarter notification controls locally in the September 17 batch;
+      authenticated scoped API/MCP was implemented September 16. Real-device and
+      external-client acceptance remain open.
 - [ ] Real-use voice recovery, device/operations checks and the seven-day pilot stay
       after expansion. Internal cost tracking stays disabled during development.
 

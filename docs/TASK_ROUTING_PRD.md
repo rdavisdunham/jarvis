@@ -1,9 +1,11 @@
 # Eridani task routing and organizational learning PRD
 
-Status: **Product decisions agreed; implementation parked until after cloud migration.**
-Date: September 15, 2026.
-This request changes documentation only. No task, space, memory, setting, prompt,
-database schema or deployed routing behavior has been changed.
+Status: **Historical September 15 proposal, superseded by the user-configurable
+planner implemented locally on September 17.** See
+[CUSTOM_PLANNER_IMPLEMENTATION.md](CUSTOM_PLANNER_IMPLEMENTATION.md) for the current
+schema, learning behavior, validation and deployment status. The sections below
+retain the original requirements and architecture snapshot; statements about
+missing features or fixed fields describe that earlier snapshot.
 
 ## 1. Product outcome
 

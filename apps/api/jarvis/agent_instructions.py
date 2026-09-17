@@ -8,7 +8,7 @@ from .config import get_settings
 from .personality import SYSTEM_PROMPT, VOICE_CONVERSATION_STYLE
 
 CAPABILITIES = (
-    "The app manages personal/business spaces, areas, goals and projects; tasks and task alerts; "
+    "The app manages user-defined organization (with spaces, goals and projects as editable defaults); tasks and alerts; "
     "authored notes and learned memory; local appointments/work blocks; Google Calendar and Linear "
     "when connected; notifications, profile settings, and conversational page/search/filter/chat controls, "
     "typed editor drafts, task/project boards and timelines, and verified constrained scheduling. "
@@ -37,6 +37,7 @@ def identity_context(prefs):
                 "preferred_name": prefs.get("preferred_name", get_settings().owner_name),
                 "timezone": prefs["timezone"],
                 "date_only_reminder_hour": prefs["default_reminder_hour"],
+                "work_windows_weak_hint_only": prefs.get("work_windows",[]),
                 "workspace":prefs.get("shared_workspace","Personal"),
                 "access_role":prefs.get("shared_role","owner"),
             }

@@ -208,7 +208,14 @@ def snapshot():
 
 
 def fingerprint(data):
-    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+    # Preserve the frozen pre-notification fixture identity when new columns carry defaults.
+    # Full snapshots still retain these fields for unexpected-mutation checks.
+    import copy
+    baseline=copy.deepcopy(data)
+    for row in baseline.get("tasks",{}).values():
+        if row.get("deadline_alert")=="default":row.pop("deadline_alert")
+        if row.get("alert_urgent") is False:row.pop("alert_urgent")
+    return hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
 
 
 def permit(f, table, ids, *fields):

@@ -22,7 +22,7 @@ User = Annotated[Identity, Depends(authenticate)]
 
 class KeyInput(service.Input):
     name: str = Field(min_length=1, max_length=80)
-    scopes: list[str] = Field(min_length=1, max_length=7)
+    scopes: list[str] = Field(min_length=1, max_length=11)
     expires_in_days: int = Field(default=90, ge=1, le=365)
 
 
@@ -171,5 +171,31 @@ def revert(action_id: UUID, body: RevertInput, identity: Bot):
             db, bot_access.authorize(db), body.request_id, "action.revert", {"action_id": str(action_id)}
         )
 
+
+
+
+
+@external.get("/structure")
+def external_structure(identity: Bot):
+    from .structure import schema_data
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="schema:read")
+        return schema_data(db,key.owner_id)
+
+@external.get("/structure/records")
+def external_records(identity: Bot,type_id: str | None=None,capability: str | None=None,query: str="",limit: int=Query(100,ge=1,le=200),offset: int=Query(0,ge=0)):
+    from .structure import records
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="records:read")
+        return records(db,key.owner_id,type_id=type_id,capability=capability,query=query,limit=limit,offset=offset)
+
+@external.get("/structure/records/{record_id}")
+def external_record(record_id: UUID,identity: Bot):
+    from .structure import data,ensure
+    from .structure_models import StructureRecord
+    from .domain import owned
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="records:read");ensure(db,key.owner_id)
+        return data(db,owned(db,StructureRecord,str(record_id),key.owner_id))
 
 router.include_router(external)

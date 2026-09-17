@@ -1,4 +1,6 @@
 export interface Task {
+  deadline_alert?: "default"|"on"|"off";
+  alert_urgent?: boolean;
   space_id?: string | null;
   area_id?: string | null;
   planned_date?: string | null;
@@ -99,6 +101,9 @@ export interface Schedule {
   completed_at: string | null;
 }
 export interface Notice {
+  category?: string;
+  target?: {view?:string;work_ids?:string[]};
+  eligible_at?: string;
   completed_at: string | null;
   schedule_id: string | null;
   id: string;
@@ -232,6 +237,7 @@ export type UIAction = import("zod").input<
 >;
 
 export interface UIContext {
+  collection?:Record<string,string|number|null>;
   layout?: "list" | "board" | "timeline";
   sort?: string;
   group_by?: string;

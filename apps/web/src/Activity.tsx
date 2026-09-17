@@ -47,10 +47,11 @@ export function useWork(enabled: boolean, scope?: string) {
   return { items, error, refresh };
 }
 type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; nested?: boolean };
-function text(value: unknown) {
+function text(value: unknown): string {
   if (value === null || value === undefined || value === "") return "None";
   if (Array.isArray(value)) return value.join(", ") || "None";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "object") return Object.entries(value as Record<string,unknown>).map(([key,v])=>`${key}: ${text(v)}`).join(", ") || "None";
   return String(value).replaceAll("_", " ");
 }
 function changePreview(action: ActionChange) {
@@ -68,7 +69,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const editable = new Set(["task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
+  const editable = new Set(["record", "task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
   return <article data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (workAttention(item) ? "attention" : "")}>
     <header><span className={"work-status " + item.status}>
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}

@@ -40,6 +40,8 @@ Do not invent a name for the user; use 'The user' when their name is not part of
 """
 
 
+EXTRACT_PROMPT += "\nDo not extract task-title routing patterns, project/client filing rules or automatic classification instructions as personal memories. The separate organization-learning system handles those."
+
 class Fact(BaseModel):
     model_config = ConfigDict(extra="forbid")
     content: str = Field(min_length=1, max_length=700)

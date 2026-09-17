@@ -72,6 +72,13 @@ def definitions(scopes):
                 [],
             ),
         )
+    if not kinds and any(s in scopes for s in ("records:read", "schema:read")):
+        add("changes_list", "Poll permitted custom record/schema changes after a saved cursor. Persist next_cursor and follow has_more.", schema({"after":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}, []))
+    from .tools import READ_TOOLS
+    for name, scope in (("structure_schema","schema:read"),("record_list","records:read"),("record_get","records:read")):
+        if scope in scopes:
+            definition=READ_TOOLS[name]
+            add(name,definition["description"],definition["parameters"])
     from .tool_catalog import DESCRIPTIONS, annotated_schema
 
     for command, scope in bot_access.COMMAND_SCOPES.items():
@@ -140,6 +147,14 @@ def dispatch(name, arguments):
             )
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Check the tool's required arguments and types.") from None
+        if name in {"structure_schema","record_list","record_get"}:
+            from . import structure
+            from .structure_models import StructureRecord
+            from .domain import owned
+            if name == "structure_schema": return structure.schema_data(db,bot.owner_id)
+            if name == "record_list": return structure.records(db,bot.owner_id,**arguments)
+            structure.ensure(db,bot.owner_id)
+            return structure.data(db,owned(db,StructureRecord,arguments["record_id"],bot.owner_id))
         args = copy.deepcopy(arguments)
         if name == "records_list":
             kind = args.pop("kind")

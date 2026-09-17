@@ -9,11 +9,13 @@ import type { Task, Project } from "./types";
 export function BulkTaskDialog({
   tasks,
   projects,
+  hideProject = false,
   busy,
   error,
   onClose,
   onSave,
 }: {
+  hideProject?: boolean;
   tasks: Task[];
   projects: Project[];
   busy: boolean;
@@ -65,7 +67,7 @@ export function BulkTaskDialog({
         "completed",
         "cancelled",
       ]),
-      project_id: choice(["unchanged", "", ...projects.map((p) => p.id)]),
+      project_id: choice(hideProject ? ["unchanged"] : ["unchanged", "", ...projects.map((p) => p.id)]),
       change_due_date: z.boolean(),
       due_date: z.string().date().or(z.literal("")),
       assignee: z.string().max(100),
@@ -149,7 +151,7 @@ export function BulkTaskDialog({
               ))}
             </select>
           </label>
-          <label>
+          {!hideProject && <label>
             Project
             <select
               aria-label="Bulk project"
@@ -167,6 +169,7 @@ export function BulkTaskDialog({
                 ))}
             </select>
           </label>
+          }
           <label>
             Assignee
             <input

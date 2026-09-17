@@ -131,7 +131,8 @@ async def test_uncertain_creation_keeps_budget_reservation(controller):
         assert db.get(BudgetReservation, c.id).state == "uncertain"
 
 
-def test_invalid_provider_voice_is_rejected_before_provider_call(client):
+def test_invalid_provider_voice_is_rejected_before_provider_call(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic")
     conv = client.post("/api/v1/conversations", json={}).json()
     result = client.post(
         "/api/v1/voice/sessions",

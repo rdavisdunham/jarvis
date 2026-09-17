@@ -539,3 +539,31 @@ def test_direct_command_cannot_be_requeued_as_an_agent(client):
     )
     assert response.status_code == 400
     assert result["activity"]["can_revise"] is False
+
+
+def test_custom_record_routes_scopes_receipts_and_change_feed(client):
+    external=TestClient(app)
+    _,headers=key(client,["schema:read","records:write"])
+    schema=external.get("/api/v1/external/structure",headers=headers)
+    assert schema.status_code==200,schema.text
+    created=call(headers,"record.create",{"type_id":"task","title":"Custom bot task","schema_revision":schema.json()["revision"]})
+    assert created.status_code==200,created.text
+    row=created.json()["data"]
+    fetched=external.get("/api/v1/external/structure/records/"+row["id"],headers=headers)
+    assert fetched.status_code==200 and fetched.json()["id"]==row["id"]
+    listed=external.get("/api/v1/external/structure/records",headers=headers)
+    assert listed.status_code==200 and listed.json()["items"][0]["id"]==row["id"]
+    feed=external.get("/api/v1/external/changes",headers=headers).json()
+    assert any(e["kind"]=="record" and e["record"]["id"]==row["id"] for e in feed["items"])
+    capabilities=external.get("/api/v1/external/capabilities",headers=headers).json()
+    assert "changes_list" in {t["name"] for t in capabilities["tools"]}
+    _,limited=key(client,["tasks:read"])
+    assert external.get("/api/v1/external/structure/records/"+row["id"],headers=limited).status_code==403
+    assert all(e["kind"]!="record" for e in external.get("/api/v1/external/changes",headers=limited).json()["items"])
+    client_record=call(headers,"record.create",{"type_id":"client","title":"A client","schema_revision":1}).json()["data"]
+    linked=call(headers,"record.link",{"source_id":row["id"],"target_id":client_record["id"],"relationship_id":"related","expected_revision":row["revision"],"schema_revision":1})
+    assert linked.status_code==200,linked.text
+    action=linked.json()["activity"]["actions"][0]
+    reversed_link=external.post("/api/v1/external/actions/"+action["id"]+"/revert",headers=headers,json={"request_id":str(uuid4())})
+    assert reversed_link.status_code==200,reversed_link.text
+    assert reversed_link.json()["data"]["links"]==[]

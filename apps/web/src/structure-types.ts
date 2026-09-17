@@ -1,0 +1,11 @@
+export type SchemaField = { id:string; name:string; description:string; kind:string; options:{id:string;name:string}[]; target_types:string[]; multiple:boolean; inherit:boolean; visible:boolean; archived:boolean; binding:string|null };
+export type SchemaStatus = { id:string; name:string; meaning:string };
+export type SchemaType = { id:string; name:string; plural:string; description:string; capabilities:string[]; parent_types:string[]; fields:SchemaField[]; statuses:SchemaStatus[]; archived:boolean };
+export type SchemaRelation = {id:string;name:string;description:string;source_types:string[];target_types:string[];cardinality:string;archived:boolean};
+export type Schema = {revision:number;types:SchemaType[];relationships:SchemaRelation[];understandings:{definition_id:string;status:string;understanding:Record<string,unknown>;questions:unknown[]}[]};
+export type CustomRecord = {id:string;revision:number;schema_revision:number;type_id:string;type_name:string;title:string;body:string;values:Record<string,unknown>;inherited:Record<string,string>;parent_id:string|null;status_id:string|null;status_meaning?:string;archived:boolean;task_id:string|null;note_id:string|null;capabilities:string[];home:{id:string;title:string;type_id:string}[];links:{id:string;source_id:string;target_id:string;relationship_id:string}[]};
+export type Proposal={id:string;schema_revision:number;definition:Pick<Schema,"types"|"relationships">;impact:{affected_count:number;affected_records:{id:string;title:string}[];issues:{message:string}[];blocking_count:number};expires_at:string};
+export const meanings=["backlog","open","in_progress","waiting","deferred","completed","cancelled"];
+export const fieldKinds=["text","long_text","number","boolean","date","datetime","select","multiselect","relation"];
+export const describe=(value:string)=>value.replaceAll("_"," ");
+export const emptyField=():SchemaField=>({id:crypto.randomUUID(),name:"",description:"",kind:"text",options:[],target_types:[],multiple:false,inherit:false,visible:true,archived:false,binding:null});

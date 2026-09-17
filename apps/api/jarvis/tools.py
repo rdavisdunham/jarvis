@@ -423,6 +423,21 @@ READ_TOOLS["time_resolve"] = {
 }
 
 
+READ_TOOLS.update({
+    "structure_schema": {"description": "Read the current user-defined types, fields, workflows, relationships, meaning and schema revision. Names are customizable; never assume Project or Client exists. Structural changes require a preview and a later explicit user confirmation.", "parameters": {"type":"object","properties":{},"additionalProperties":False}},
+    "record_list": {"description": "Find user-defined records by type, capability, main parent or title. Get exact IDs before linking records. Follow next_offset when has_more is true.", "parameters": {"type":"object","properties":{
+        "type_id":{"type":"string"},"capability":{"type":"string","enum":["work","content","timeline","metric"]},
+        "parent_id":{"type":"string","format":"uuid"},"query":{"type":"string","maxLength":300},
+        "archived":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200},"offset":{"type":"integer","minimum":0,"maximum":100000}},"additionalProperties":False}},
+    "record_get": {"description":"Read a record's current fields, main home, links and revision. Inherited properties follow the main home; additional links never silently change that home.","parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},"required":["record_id"],"additionalProperties":False}},
+})
+READ_TOOLS.update({
+    "ui_records":{"description":"Show a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
+    "routing_state":{"description":"Read separate organization rules, evidence, field understanding questions and weekly review. Ask at most one review question at a time; after three offer to stop. Never answer or activate a learned rule without the user. Manual review can resume any time.","parameters":{"type":"object","properties":{},"additionalProperties":False}}
+})
+VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.")))
+
+
 def registry():
     from .tool_catalog import DESCRIPTIONS, annotated_schema, loader_definition
 
@@ -450,7 +465,7 @@ def registry():
 def instructions(owner_prefs, focus=None, ui_context=None):
     from .agent_instructions import backend_instructions
 
-    return backend_instructions(owner_prefs, focus, ui_context)
+    return backend_instructions(owner_prefs, focus, ui_context) + "\nOrganization is user-defined. Discover structure_schema (structure tool group) before organizing work. Use record tools for custom types, fields and statuses; use core task IDs only for scheduling/integrations. Never assume fixed Project/Client labels. Structural edits ALWAYS require structure_preview and explicit later confirmation, including changes proposed during a rule interview. Ordinary record changes need no review. Organization learning is separate from personal memories: use routing tools for explicit rules and field clarifications. Do not store inferred routing associations in personal memory. Operational fields never inherit from classification. Work hours are weak context only, never a reason to assign a home on their own."
 
 
 async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conversation_id=None):
@@ -514,6 +529,26 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             if name == "work_cancel":
                 return cancel(db, require_work(db, owner, account, arguments["request_id"]))
             return revert(db, owner, account, arguments["action_id"], f"{turn_id}:{index}")
+    if name=="ui_records":
+        from .structure import ensure,record_type
+        from .structure_models import StructureRecord,StructureProposal
+        with session_scope() as db:
+            schema=ensure(db,owner)
+            if arguments.get("type_id"):record_type(schema,arguments["type_id"])
+            for key,model in (("record_id",StructureRecord),("parent_id",StructureRecord),("proposal_id",StructureProposal)):
+                if arguments.get(key):owned(db,model,arguments[key],owner)
+        return await dispatch(owner,device,{"id":f"{turn_id}:{index}","kind":"records",**arguments})
+    if name == "routing_state":
+        from .routing import state
+        with session_scope() as db:return state(db,owner)
+    if name in {"structure_schema", "record_list", "record_get"}:
+        from . import structure
+        from .structure_models import StructureRecord
+        with session_scope() as db:
+            if name == "structure_schema": return structure.schema_data(db,owner)
+            if name == "record_list": return structure.records(db,owner,**arguments)
+            structure.ensure(db,owner)
+            return structure.data(db,owned(db,StructureRecord,arguments["record_id"],owner))
     if name == "ui_state":
         context = get_context(owner, device)
         return {"status": "available" if context else "unavailable", "screen": context}

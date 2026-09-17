@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 
 export type EditorKind =
+  | "record"
   | "task"
   | "reminder"
   | "note"

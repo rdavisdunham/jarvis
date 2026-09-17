@@ -11,6 +11,10 @@ import {
 } from "./work-views";
 import type { Task } from "./types";
 describe("site control contract", () => {
+  it("accepts bounded custom-field patches and rejects arbitrary nesting", () => {
+    expect(actionSchema.parse({id:"custom",kind:"editor",operation:"patch",changes:{values:{client:"abc",labels:["one","two"],active:true}}}).changes?.values).toEqual({client:"abc",labels:["one","two"],active:true});
+    expect(()=>actionSchema.parse({id:"custom",kind:"editor",operation:"patch",changes:{values:{nested:{too:"deep"}}}})).toThrow();
+  });
   it("rejects the retired private-chat control", () => {
     expect(() => actionSchema.parse({ id: "private", kind: "device", private_chat: true })).toThrow();
   });

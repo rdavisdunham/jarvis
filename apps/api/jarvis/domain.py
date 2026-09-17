@@ -40,6 +40,8 @@ class Args(BaseModel):
 
 
 class TaskCreate(Args):
+    deadline_alert: Literal["default", "on", "off"] = "default"
+    alert_urgent: bool = False
     status: Literal["open", "backlog"] = "open"
     title: str = Field(min_length=1, max_length=500)
     notes: str = Field(default="", max_length=20000)
@@ -63,6 +65,8 @@ class TaskCreate(Args):
 
 
 class TaskChanges(Args):
+    deadline_alert: Literal["default", "on", "off"] = "default"
+    alert_urgent: bool = False
     title: str | None = Field(default=None, min_length=1, max_length=500)
     notes: str | None = Field(default=None, max_length=20000)
     project: str | None = Field(default=None, max_length=200)
@@ -158,11 +162,31 @@ class ResolveMemory(Args):
 
 
 class NotificationAction(Args):
+    until: str | None = Field(default=None, max_length=64)
     notification_id: str
     minutes: int = Field(default=10, ge=1, le=10080)
 
 
+class WorkWindow(Args):
+    days: list[int] = Field(default_factory=lambda: [0,1,2,3,4], max_length=7)
+    start: str = Field(default="08:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(default="17:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
 class SettingsUpdate(Args):
+    routing_mode: Literal["off", "suggest", "automatic"] | None = None
+    routing_learning: bool | None = None
+    routing_review_enabled: bool | None = None
+    routing_review_day: int | None = Field(default=None, ge=0, le=6)
+    routing_review_hour: int | None = Field(default=None, ge=0, le=23)
+    work_windows: list[WorkWindow] | None = Field(default=None, max_length=14)
+    deadline_alerts: bool | None = None
+    quiet_enabled: bool | None = None
+    quiet_start: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    quiet_end: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    morning_summary: bool | None = None
+    morning_hour: int | None = Field(default=None, ge=0, le=23)
+
     agent_profile: Literal["openai", "luna", "gemini", "groq"] | None = None
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
@@ -243,6 +267,11 @@ def preferences(db, owner):
         "history_enabled": True,
         "memory_learning": True,
         "deep_sleep_enabled": True,
+        "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
+        "routing_review_day": 0, "routing_review_hour": 3,
+        "work_windows": [{"days": [0,1,2,3,4], "start": "08:00", "end": "17:00"}],
+        "deadline_alerts": True, "quiet_enabled": True, "quiet_start": "22:00", "quiet_end": "08:00",
+        "morning_summary": False, "morning_hour": 8,
         "history_days": settings.history_days,
         "timezone": settings.timezone,
         "default_reminder_hour": settings.default_reminder_hour,
@@ -424,18 +453,24 @@ def execute(db, owner, command_id, tool, arguments):
         args = COMMANDS[tool].model_validate(arguments)
     except ValidationError as exc:
         raise DomainError(
-            "INVALID_ARGUMENT", "Please check the action details.", data=exc.errors(include_url=False)
+            "INVALID_ARGUMENT", "Please check the action details.", data=exc.errors(include_url=False, include_context=False)
         )
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.")
+        ("task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
     from .action_history import journal
     with journal(db, owner, command_id, tool, arguments):
-        data = mutate(db, owner, tool, args, command_id)
+        try:
+            data = mutate(db, owner, tool, args, command_id)
+        except ValidationError as exc:
+            raise DomainError("INVALID_ARGUMENT","Check the fields for this record's behavior.",data=exc.errors(include_url=False,include_context=False)) from exc
+        if tool.startswith(("task.", "note.")):
+            from .structure import observe_core
+            observe_core(db, owner, tool, data, command_id, arguments=arguments)
     from .work_coordination import record_saved_resources
     record_saved_resources(db, owner, data)
     result = {
@@ -478,8 +513,14 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    if tool.startswith("routing."):
+        from .routing import mutate as routing_mutate
+        return routing_mutate(db,owner,tool,args,command_id)
     from .organization import project_changes
 
+    if tool.startswith(("structure.", "record.")):
+        from .structure import mutate as mutate_structure
+        return mutate_structure(db, owner, tool, args, command_id)
     if tool.startswith("linear."):
         from .linear_commands import mutate as linear_mutate
 
@@ -770,6 +811,8 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("notification."):
         item = owned(db, Notification, args.notification_id, owner, lock=True)
         if tool == "notification.complete":
+            if item.category not in {"reminder","deadline"} or not item.task_id:
+                raise DomainError("INVALID_ARGUMENT","Open this notification to respond; it does not complete a task.")
             if item.task_id:
                 from .task_alerts import finish_task
 
@@ -790,24 +833,11 @@ def mutate(db, owner, tool, args, command_id):
                 task = owned(db, Task, item.task_id, owner, lock=True)
                 if task.status in {"completed", "cancelled"} or task.archived:
                     raise DomainError("INVALID_ARGUMENT", "Reopen this task before snoozing its alert.")
-            instant = now() + timedelta(minutes=args.minutes)
-            row = Schedule(
-                owner_id=owner,
-                title=item.title,
-                timezone=preferences(db, owner)["timezone"],
-                anchor_at=instant,
-                next_run_at=instant,
-                task_id=item.task_id,
-            )
-            if not row.task_id:
-                from .task_alerts import new_task
-
-                row.task_id = new_task(db, owner, item.title).id
-            db.add(row)
-            item.dismissed_at = now()
+            from .notices import snooze
+            snooze(db,item,args)
         elif tool == "notification.dismiss":
             item.dismissed_at = now()
-        item.read_at = now()
+        if tool != "notification.snooze": item.read_at = now()
         emit(db, owner, "notification.changed", item.id)
         return serial(item)
     if tool == "settings.update":
@@ -827,6 +857,7 @@ def mutate(db, owner, tool, args, command_id):
             values.update(agent_profile=agent.profile_id, agent_provider=agent.provider)
         if "timezone" in values:
             zone(values["timezone"])
+        if "work_windows" in values and any(any(day<0 or day>6 for day in w["days"]) for w in values["work_windows"]):raise DomainError("INVALID_ARGUMENT","Work days must be Monday through Sunday.")
         row = db.get(OwnerSettings, owner)
         if row:
             row.values = {**row.values, **values}
@@ -938,3 +969,9 @@ COMMANDS.update(LINEAR_COMMANDS)
 from .productivity_schema import PRODUCTIVITY_COMMANDS
 
 COMMANDS.update(PRODUCTIVITY_COMMANDS)
+
+from .structure_schema import COMMANDS as STRUCTURE_COMMANDS
+COMMANDS.update(STRUCTURE_COMMANDS)
+
+from .routing_schema import COMMANDS as ROUTING_COMMANDS
+COMMANDS.update(ROUTING_COMMANDS)

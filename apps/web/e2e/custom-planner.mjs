@@ -1,0 +1,26 @@
+import {chromium,expect} from "@playwright/test";
+import {mkdirSync} from "node:fs";
+const base=process.env.JARVIS_PLANNER_TEST_URL;
+const browser=await chromium.launch();
+const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on("pageerror",e=>errors.push(e.message));
+async function request(path,body){return page.evaluate(async({path,body})=>{const boot=await(await fetch("/api/v1/bootstrap")).json();const r=await fetch("/api/v1"+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json","X-CSRF-Token":boot.csrf},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));return data;},{path,body});}
+const cmd=async(tool,args)=>(await request("/commands",{command_id:crypto.randomUUID(),tool,arguments:args})).data;
+const ui=async(name,args)=>{const r=await request("/__test_ui",{name,arguments:args});if(r.status!=="displayed")throw Error(JSON.stringify(r));return r;};
+try{
+ await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
+ const client=await cmd("record.create",{type_id:"client",title:"ABC",schema_revision:1});
+ const project=await cmd("record.create",{type_id:"project",title:"Transcript Intelligence",parent_id:client.id,schema_revision:1,values:{start_date:"2026-09-17",target_date:"2026-09-24"}});
+ const task=await cmd("record.create",{type_id:"task",title:"Finish the central docs",parent_id:project.id,schema_revision:1,values:{due_date:"2027-01-01",due_time:"09:00",due_timezone:"America/Chicago"}});
+ await ui("ui_records",{type_id:"task",layout:"board"});await expect(page.getByRole("button",{name:"Finish the central docs",exact:true})).toBeVisible();
+ await page.getByRole("button",{name:"Finish the central docs",exact:true}).click();await expect(page.getByRole("dialog",{name:"Task details"})).toBeVisible();
+ await page.getByLabel("Record title").fill("Finish and publish the central docs");await page.getByLabel("Record content").click();await expect.poll(async()=>(await request("/structure/records/"+task.id)).title).toBe("Finish and publish the central docs");
+ await ui("ui_records",{type_id:"project",layout:"timeline"});await expect(page.getByRole("dialog")).toHaveCount(0);await expect(page.locator(".timeline-bar")).toHaveCount(1);
+ await page.getByRole("button",{name:"Structure",exact:true}).click();await expect(page.getByRole("dialog",{name:"Workspace structure"})).toBeVisible();await page.getByRole("button",{name:"Clients",exact:true}).click();await page.getByLabel("Singular name",{exact:true}).fill("Customer");await page.getByRole("button",{name:"Preview changes"}).click();await expect(page.getByRole("heading",{name:"Review your changes"})).toBeVisible();await page.getByRole("button",{name:"Apply structure",exact:true}).click();await expect(page.getByRole("dialog")).toHaveCount(0);await expect.poll(async()=>(await request("/structure")).revision).toBe(2);
+ await ui("ui_records",{type_id:"task",layout:"board"});await expect(page.getByRole("button",{name:"Finish and publish the central docs",exact:true})).toBeVisible();
+ mkdirSync("../../artifacts/custom-planner",{recursive:true});await page.screenshot({path:"../../artifacts/custom-planner/desktop.png",fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();await page.getByRole("button",{name:"Finish and publish the central docs",exact:true}).click();await expect(page.getByLabel("Record title")).toBeVisible();await page.screenshot({path:"../../artifacts/custom-planner/mobile.png",fullPage:true});await page.getByRole("button",{name:"Close record",exact:true}).click();
+ await ui("ui_workspace",{view:"all",layout:"list"});await page.getByRole("button",{name:"Select tasks",exact:true}).click();await page.getByLabel("Select Finish and publish the central docs",{exact:true}).check();await page.getByRole("button",{name:"Edit selected tasks",exact:true}).click();await expect(page.getByRole("heading",{name:"Edit 1 tasks",exact:true})).toBeVisible();await page.getByLabel("Bulk priority").selectOption("2");await page.getByRole("button",{name:"Apply changes",exact:true}).click();await expect(page.getByRole("dialog")).toHaveCount(0);await expect.poll(async()=>(await request("/tasks/"+task.task_id)).priority).toBe(2);
+ await page.goto(base+"?view=tasks&tab=all&record=task:"+task.task_id+"&workspace=personal");await expect(page.getByRole("dialog")).toBeVisible();await ui("ui_workspace",{view:"settings",settings_section:"profile"});await expect(page.getByRole("heading",{name:"Organization learning",exact:true})).toBeVisible();await expect(page.getByText("Quiet hours",{exact:true})).toBeVisible();
+ if(errors.length)throw Error(errors.join("\n"));console.log("Custom planner acceptance passed: migrations, schema preview/apply, inline cards, Eri navigation, timeline, desktop/mobile, settings.");
+}finally{await browser.close();}

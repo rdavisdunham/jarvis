@@ -74,6 +74,9 @@ def perform_job(job_id):
         from .memory_review import process
 
         return process(job_id)
+    if kind in {"assess_field", "review_routing"}:
+        from .routing import perform
+        return perform(job_id,kind)
     if learning:
         from .memory_learning import process
 
@@ -121,7 +124,7 @@ def dispatch_outbox(client):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -130,18 +133,29 @@ def dispatch_outbox(client):
             row.submitted_at = now()
 
 
+def notification_url(notification):
+    from urllib.parse import urlencode
+    target=notification.target or {}
+    if notification.task_id:return "/?"+urlencode({"view":"tasks","tab":"all","record":"task:"+notification.task_id,"workspace":"personal"})
+    if target.get("view")=="activity":return "/?view=tasks&activity=1"
+    if target.get("view")=="tasks":return "/?view=tasks&tab=today"
+    return "/?view=notifications"
+
+
 def prepare_deliveries():
     with session_scope() as db:
         advisory(db, "push:prepare")
         notifications = db.scalars(
             select(Notification).where(
-                Notification.created_at > now() - timedelta(days=1),
+                or_(Notification.created_at > now() - timedelta(days=1), Notification.eligible_at > now()-timedelta(days=1)),
                 Notification.dismissed_at.is_(None),
                 Notification.completed_at.is_(None),
                 Notification.read_at.is_(None),
             )
         ).all()
+        from .notices import eligible
         for notification in notifications:
+            if not eligible(db,notification):continue
             subscriptions = db.scalars(
                 select(PushSubscription).where(
                     PushSubscription.owner_id == notification.owner_id, PushSubscription.active.is_(True)
@@ -152,9 +166,10 @@ def prepare_deliveries():
                     select(Delivery.id).where(
                         Delivery.notification_id == notification.id,
                         Delivery.subscription_id == subscription.id,
+                        Delivery.generation == notification.generation,
                     )
                 ):
-                    db.add(Delivery(notification_id=notification.id, subscription_id=subscription.id))
+                    db.add(Delivery(notification_id=notification.id, subscription_id=subscription.id, generation=notification.generation))
 
 
 def send_deliveries():
@@ -178,14 +193,12 @@ def send_deliveries():
                 return
             subscription = db.get(PushSubscription, row.subscription_id)
             notification = db.get(Notification, row.notification_id)
-            if (
-                not subscription.active
-                or notification.read_at
-                or notification.dismissed_at
-                or notification.completed_at
-                or notification.created_at < now() - timedelta(days=1)
-            ):
-                row.status = "expired"
+            from .notices import eligible, quiet_until
+            if not subscription.active or row.generation != notification.generation or notification.read_at or notification.dismissed_at or notification.completed_at:
+                row.status="expired"
+                continue
+            if not eligible(db,notification):
+                row.next_attempt_at=max(now()+timedelta(minutes=1),quiet_until(preferences(db,notification.owner_id),now(),notification.importance=="urgent"),notification.eligible_at or now())
                 continue
             row.attempts += 1
             row.lease_until = now() + timedelta(seconds=45)
@@ -194,8 +207,10 @@ def send_deliveries():
             detailed = preferences(db, subscription.owner_id)["detailed_notifications"]
             message = {
                 "id": notification.id,
-                "title": notification.title if detailed else "Jarvis reminder",
-                "body": notification.body if detailed else "A reminder is waiting in your Inbox.",
+                "title": notification.title if detailed else "Eridani update",
+                "body": notification.body if detailed else "An update is waiting in Eridani.",
+                "url": notification_url(notification),
+                "category": notification.category,
                 "tag": notification.id,
             }
         status, error, inactive = "submitted", None, False
@@ -350,12 +365,16 @@ def run_supervisor(stop, lease):
                     flush_voice(db)
                     cleanup(db)
                     scan_schedules(db)
+                    from .notices import scan
+                    scan(db)
                     from .memory_learning import queue_backfill
 
                     queue_backfill(db)
                     from .memory_review import queue_due_reviews
 
                     queue_due_reviews(db)
+                    from .routing import queue_due
+                    queue_due(db)
                     from .google_calendar import queue_sync
                     from .models import GoogleIdentity, LinearConnection
 

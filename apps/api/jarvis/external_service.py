@@ -207,7 +207,7 @@ def direct(db, bot, request_id, tool, arguments):
             bot_access.check_command(db, bot.owner_id, tool, arguments)
         else:
             change = owned(db, models.ActionChange, arguments["action_id"], bot.owner_id)
-            bot_access.check_command(db, bot.owner_id, change.entity_kind + ".update", {})
+            bot_access.check_command(db, bot.owner_id, ("record.link" if change.entity_kind == "record_link" else change.entity_kind + ".update"), {})
         if existing.input_hash != fingerprint:
             raise DomainError(
                 "REVISION_CONFLICT", "This request ID was already used for different instructions.", 409
@@ -218,7 +218,7 @@ def direct(db, bot, request_id, tool, arguments):
         source = db.get(models.AgentWork, change.command_id.split(":")[0])
         if not source or source.credential_id != bot.id:
             raise DomainError("NOT_FOUND", "Only this bot's own actions can be reverted with its key.", 404)
-        bot_access.check_command(db, bot.owner_id, change.entity_kind + ".update", {})
+        bot_access.check_command(db, bot.owner_id, ("record.link" if change.entity_kind == "record_link" else change.entity_kind + ".update"), {})
     else:
         bot_access.check_command(db, bot.owner_id, tool, arguments)
     conv = conversation(db, bot)
@@ -335,6 +335,10 @@ def changes(db, bot, after=0, limit=100):
     names = [kind + ".changed" for kind in allowed]
     if "organization:read" in bot.scopes:
         names.append("organization.changed")
+    if "records:read" in bot.scopes:
+        names.append("record.changed")
+    if "schema:read" in bot.scopes:
+        names.append("structure.changed")
     rows = list(
         db.scalars(
             select(events)
@@ -352,8 +356,15 @@ def changes(db, bot, after=0, limit=100):
         if kind == "organization":
             # Legacy hierarchy-move events carry the affected record's ID.
             kind = next((k for k in allowed if db.get(KINDS[k], event.entity_id)), "organization")
-        model = KINDS.get(kind)
+        model = models.StructureRecord if kind == "record" else KINDS.get(kind)
         record = db.get(model, event.entity_id) if model else None
+        custom_data = None
+        if kind == "record" and record and record.owner_id == bot.owner_id:
+            from .structure import data
+            custom_data = data(db, record)
+        elif kind == "structure":
+            from .structure import schema_data
+            custom_data = schema_data(db, bot.owner_id)
         items.append(
             {
                 "cursor": event.id,
@@ -362,9 +373,9 @@ def changes(db, bot, after=0, limit=100):
                 "revision": event.revision,
                 "changed_at": event.created_at.isoformat(),
                 "deleted": record is None if model else False,
-                "record": record_data(db, record, bot.scopes)
+                "record": custom_data if kind in {"record", "structure"} else (record_data(db, record, bot.scopes)
                 if record and record.owner_id == bot.owner_id
-                else None,
+                else None),
             }
         )
     return {

@@ -4,10 +4,12 @@ import sys
 from pathlib import Path
 
 import pytest
+from cryptography.fernet import Fernet
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import reliability_eval_cases as cases
 from jarvis import tools
+from jarvis.config import get_settings
 from jarvis.domain import DomainError
 
 
@@ -277,7 +279,8 @@ def test_note_ui_editor_is_an_equivalent_real_sparse_edit_path():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("repeat", [1, 2, 3])
-async def test_real_planner_can_satisfy_independent_heldout_oracle(repeat):
+async def test_real_planner_can_satisfy_independent_heldout_oracle(repeat, monkeypatch):
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
     fixture = cases.seed_case("schedule_three_blocks", repeat)
     names = ["Index photographs", "Draft captions", "Polish proof"]
     request = {

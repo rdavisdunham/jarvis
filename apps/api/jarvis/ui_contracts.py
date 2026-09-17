@@ -41,3 +41,8 @@ UI_TOOLS = {
         {"voice": {"type": "string", "maxLength": 50}, "wake_enabled": {"type": "boolean"},
          "density": enum(["compact", "comfortable"])}),
 }
+
+# Custom record patches have one bounded values object; no recursive payloads.
+from copy import deepcopy
+_patch_scalar = UI_TOOLS["ui_editor"]["parameters"]["properties"]["changes"]["additionalProperties"]
+_patch_scalar["anyOf"].append({"type":"object","maxProperties":60,"propertyNames":{"maxLength":80},"additionalProperties":deepcopy(_patch_scalar)})

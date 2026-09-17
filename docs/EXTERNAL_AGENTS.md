@@ -110,3 +110,23 @@ curl --fail-with-body \
 ```
 
 MCP uses the official Python SDK, pinned in the lockfile. [SDK documentation](https://github.com/modelcontextprotocol/python-sdk) and [transport specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports) describe transport/client behavior; Eridani's own schemas and scopes above define the application contract.
+
+
+## Custom planner structure (September 17 implementation)
+
+New keys can opt into `schema:read`/`schema:write` and
+`records:read`/`records:write` in Connected agents. Existing keys are unchanged.
+Custom records can include authored note content; grant that scope deliberately.
+Schema writes require workspace ownership and the normal preview/later-confirmed
+apply flow. Read the current schema revision before creating or updating records.
+
+HTTP discovery: `GET /api/v1/external/structure` and
+`GET /api/v1/external/structure/records` (the latter lists custom records). Writes use the
+existing external command endpoint with `structure.preview`, `structure.apply`,
+`structure.restore`, `record.create`, `record.update`, or `record.link`.
+MCP equivalents include `structure_schema`, `record_list`, `record_get` and the
+underscore command names. Stable request IDs retain retry deduplication. The existing change feed includes
+custom record/schema events only when the key has the corresponding read scope.
+
+See [CUSTOM_PLANNER_IMPLEMENTATION.md](CUSTOM_PLANNER_IMPLEMENTATION.md) for
+capabilities, inheritance, migration and rollout status.

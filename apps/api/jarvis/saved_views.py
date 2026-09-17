@@ -12,6 +12,12 @@ from .models import OwnerSettings
 
 
 class ViewState(BaseModel):
+    collection_view: bool = False
+    collection_type: str = Field(default="",max_length=80)
+    collection_parent: str = Field(default="",max_length=36)
+    collection_group: str = Field(default="status",max_length=80)
+    collection_field: str = Field(default="",max_length=80)
+    collection_value: str = Field(default="",max_length=300)
     model_config = ConfigDict(extra="forbid")
     tab: Literal["today", "inbox", "week", "all"] = "all"
     query: str = Field(default="", max_length=300)

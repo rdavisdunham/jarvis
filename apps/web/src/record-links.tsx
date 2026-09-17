@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useEditorBridge } from "./editor-control";
-export const recordKinds = ["task", "note", "project", "goal", "area", "space", "actor"] as const;
+export const recordKinds = ["record","task", "note", "project", "goal", "area", "space", "actor"] as const;
 export type LinkedRecord = {kind: typeof recordKinds[number]; id:string};
 export function readRecordLink(search:string): (LinkedRecord & {workspace:string}) | null {
   const params = new URLSearchParams(search), [kind,id,...extra] = (params.get("record") ?? "").split(":");

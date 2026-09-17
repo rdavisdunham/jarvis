@@ -3,6 +3,9 @@
 import copy
 
 GROUPS = {
+    "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
+    "structure": ("Discover or redesign user-defined types, fields, workflows and relationships. Preview structural edits and wait for explicit confirmation before applying.", ["ui_records", "structure_schema", "structure_preview", "structure_apply", "structure_restore"]),
+    "records": ("Create, read and edit user-defined records using the current schema and capability behaviors.", ["ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link"]),
     "activity": ("Inspect accepted work and pending clarification IDs (use work_answer to resume them), cancel a named request, explicitly revert supported saved changes, or show Activity.", ["work_list", "work_cancel", "work_revert", "ui_activity"]),
     "tasks": (
         "Find, create, update, complete, reopen and batch-edit tasks.",
@@ -191,7 +194,7 @@ CORE = (
 )
 
 TASK_TIMING = (
-    "planned_date is intended work; due_date/due_time is a deadline, not a notification or reserved time. "
+    "planned_date is intended work; due_date/due_time is a deadline. Timed deadlines generate alerts according to the owner setting and per-task override; date-only deadlines do not. Neither reserves calendar time. "
     "Use time_resolve for ambiguous, nonexistent or offset-sensitive local times before saving; "
     "ask the owner to choose if invalid/ambiguous. Confirm timed deadlines with their zone. "
 )
@@ -219,6 +222,18 @@ REMOTE = (
     "Never create another record to retry an unknown write. "
 )
 DESCRIPTIONS = {
+    "routing_create":"Save an organization rule the user explicitly requested. Phrase matching only sets home and classification fields. Never use to confirm your own inference. Do not alter dates, assignees or integrations.",
+    "routing_change":"On explicit user instruction activate, pause or forget a rule; read routing_state first. Activation confirms the rule as explicit. Forget suppresses its supporting evidence.",
+    "routing_answer":"Record an explicit answer to one weekly review question, or defer the interview. Ask one question at a time; after three offer to stop. Never infer acceptance.",
+    "routing_understand":"Record the user's clarification of a field/type description. Read routing_state for definition_id and revision. Understanding is reassessed before learning resumes.",
+    "routing_preview":"Preview a rule's proposed changes to existing records. Show affected records and await explicit confirmation; automatic routing only applies to new records.",
+    "routing_apply":"Apply a reviewed reorganization preview only after explicit confirmation in a later turn.",
+    "structure_restore":"Preview restoring the definitions before one applied structural change. Returns a fresh impact preview, never applies automatically. Resolve current-data conflicts and request explicit confirmation before structure_apply.",
+    "structure_preview": "Prepare a structural change for the owner to review. Read structure_schema first, preserve unaffected definitions and stable IDs. Show impact and ask for explicit confirmation; do not apply in the same request.",
+    "structure_apply": "Apply the exact reviewed proposal only after the user explicitly confirms it in a later turn. Never use this for an unreviewed schema change. A stale proposal needs a new preview.",
+    "record_create": "Create a record under a current type definition. Read structure_schema for field IDs and schema_revision. Use a main parent for inherited home and separate named links for other associations. No approval step for ordinary record creation.",
+    "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value; omission preserves it.",
+    "record_link": "Add or remove a named relationship allowed by the schema. Additional links do not change the main home. Validate source/target IDs and use the source's current revision.",
     "planning_commit": "Save a planning_suggest proposal only when the owner requested scheduling. Rechecks current task revisions and fresh availability, then saves all local blocks atomically; conflicts save none. Copy the short plan_token reference exactly from planning_suggest. Reusing it cannot duplicate blocks, even with a new command ID. Does not publish to Google or change task deadlines/alerts. Expired/conflicting plans need a new proposal.",
     "task_list": "Find TASK records with structured filters; authored notes use note_search/note_read. "
     "due_from/due_through are inclusive. "
@@ -294,7 +309,7 @@ DESCRIPTIONS = {
     "notification_complete": "Mark one delivered reminder occurrence/task done while keeping the recurring series running. "
     "Complete the same underlying task, closing its other outstanding alerts.",
     "notification_read": "Mark the selected delivered notification read, without completing its task.",
-    "notification_snooze": "Snooze the selected delivered notification for the requested minutes; do not change its task deadline.",
+    "notification_snooze": "Snooze the same delivered notification for minutes or an explicit local until time. Do not create another task/schedule or change the deadline/recurrence.",
     "notification_dismiss": "Dismiss a delivered notification; this is not task completion.",
     "memory_capture": "Save exactly the durable fact the owner explicitly asks to remember. "
     "Do not turn assistant suggestions or quoted statements into owner beliefs. Never store credentials.",

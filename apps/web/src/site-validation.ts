@@ -2,6 +2,7 @@ import type { UIAction, View } from "./types";
 import type { Organization } from "./productivity";
 
 const fields: Record<string, string[]> = {
+  records: ["type_id","parent_id","record_id","proposal_id","record_group","layout","field","value"],
   show: ["view", "entity_id"],
   saved_view: ["view_operation", "view_name", "saved_view_id"],
   chat: ["mode"],
