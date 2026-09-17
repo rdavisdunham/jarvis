@@ -3,6 +3,13 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Profile navigation — September 16
+
+- [x] Move Memory, Settings and Log out into the bottom-left profile menu. Preserve
+  direct Eri navigation and personal-workspace-only memory access; support keyboard,
+  touch, outside-click dismissal and Escape. Production build and ten desktop/mobile
+  browser checks passed, including navigation, keyboard focus and logout.
+
 ## Clarification continuations and activity reset — September 16
 
 - [x] Give each pending question a stable identity and route conversational answers

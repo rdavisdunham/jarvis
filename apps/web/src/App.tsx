@@ -1,3 +1,4 @@
+import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryActions } from "./MemoryActions";
 import { Tabs, humanLabel, PlannerGuide, useBodyLock } from "./ux";
@@ -50,7 +51,6 @@ import {
   Inbox,
   ListTodo,
   FileText,
-  LogOut,
   Menu,
   MessageCircle,
   Mic,
@@ -118,7 +118,6 @@ const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "organize", label: "Goals & projects", icon: ListTodo },
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "notes", label: "Notes", icon: FileText },
-  { id: "memory", label: "Memory", icon: Brain },
 ];
 export default function App() {
   const editors = useEditorBridge();
@@ -1821,9 +1820,7 @@ export default function App() {
             : "YOUR SPACE"}
         </div>
         <nav>
-          {nav
-            .filter((item) => !boot.workspace?.id || item.id !== "memory")
-            .map((item) => (
+          {nav.map((item) => (
               <button
                 key={item.id}
                 aria-label={item.label}
@@ -1844,41 +1841,23 @@ export default function App() {
             ))}
         </nav>
         <div className="sidebar-bottom">
-          <button
-            className={"nav-item " + (view === "settings" ? "active" : "")}
-            onClick={() => {
-              setView("settings");
+          <ProfileMenu name={boot.name} view={view} personal={!boot.workspace?.id} navigationOpen={sidebar}
+            onNavigate={target => {
+              setView(target);
+              setQuery("");
               setSidebar(false);
+              if (matchMedia("(max-width: 700px)").matches)
+                document.querySelector<HTMLButtonElement>(".mobile-menu")?.focus({preventScroll: true});
             }}
-          >
-            <Settings2 size={18} />
-            <span>Settings</span>
-          </button>
-          <div className="owner">
-            <span className="avatar">{boot.name[0]}</span>
-            <div>
-              <strong>{boot.name}</strong>
-              <span>
-                <i className="status-dot" />
-                Connected
-              </span>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="Sign out"
-              onClick={async () => {
-                await voice.current?.stop();
-                await post("/auth/logout");
-                setBoot(null);
-                setTasks([]);
-                setMessages([]);
-                conversationRef.current = null;
-                sessionStorage.removeItem("jarvis-conversation");
-              }}
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
+            onLogout={async () => {
+              await voice.current?.stop();
+              await post("/auth/logout");
+              setBoot(null);
+              setTasks([]);
+              setMessages([]);
+              conversationRef.current = null;
+              sessionStorage.removeItem("jarvis-conversation");
+            }}/>
         </div>
       </aside>
       <div className="main-shell">
@@ -1894,12 +1873,7 @@ export default function App() {
             <span>{boot.workspace?.name ?? "Personal workspace"}</span>
             <ChevronRight size={14} />
             <strong>
-              {(isTaskTab(view) ? "Tasks" : nav.find((n) => n.id === view)?.label) ??
-                (view === "settings"
-                  ? "Settings"
-                  : view === "reminders"
-                    ? "Reminders"
-                    : "Notifications")}
+              {titles[view]}
             </strong>
           </div>
           <div className="top-actions">

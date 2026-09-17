@@ -120,3 +120,24 @@ summary {cursor:pointer}
 .productivity-page>* {min-width:0;max-width:100%}
 #organization-panel {min-width:0;max-width:100%}
 @media(max-width:600px) {.task-row {grid-template-columns:36px minmax(0,1fr) 26px 44px}.task-row>.task-more {min-width:44px}}
+
+
+/* Account controls live together above the bottom-left profile trigger. */
+.sidebar > nav {min-height:0;overflow-y:auto}
+.sidebar-bottom {margin-top:auto;padding-top:16px;flex-shrink:0;padding-bottom:max(18px,env(safe-area-inset-bottom))}
+.profile-menu {position:relative;border-top:1px solid var(--border);padding-top:10px}
+.profile-trigger {width:100%;min-height:56px;display:flex;align-items:center;gap:10px;padding:8px;border-radius:9px;text-align:left;color:var(--text)}
+.profile-trigger:hover,.profile-trigger.open {background:#202833}
+.profile-trigger .avatar {flex-shrink:0}
+.profile-identity {min-width:0;flex:1}
+.profile-identity strong {display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:550}
+.profile-identity > span {display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;margin-top:5px}
+.profile-chevron {flex-shrink:0;color:var(--muted)}
+.profile-trigger.open .profile-chevron {transform:rotate(180deg)}
+.profile-dropdown {position:absolute;bottom:calc(100% + 8px);left:0;right:0;z-index:60;padding:6px;background:#1b222c;border:1px solid #394451;border-radius:12px;box-shadow:0 12px 32px #0006;max-height:calc(100dvh - 104px);overflow-y:auto}
+.profile-dropdown > button {display:flex;align-items:center;gap:11px;width:100%;min-height:44px;padding:10px 12px;text-align:left;font-size:13px;color:var(--text);border-radius:7px}
+.profile-dropdown > button:hover,.profile-dropdown > button:focus-visible {background:#2a3541}
+.profile-dropdown > button[aria-current="page"] {background:#253630;color:var(--accent)}
+.profile-trigger:focus-visible,.profile-dropdown > button:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+.profile-menu-divider {height:1px;background:var(--border);margin:5px 7px}
+.profile-menu-error {margin:8px;font-size:12px;color:var(--danger);overflow-wrap:anywhere}

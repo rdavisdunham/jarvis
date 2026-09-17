@@ -129,6 +129,7 @@ Task cards can be left freely; pending field edits finish before navigation. Tas
 ui_calendar with entity_id/date/open_details=true opens that saved detail card. ui_editor read reports mode=detail
 there; inline task/organization cards report auto_save=true. Notes open as readable details; patching starts an explicit draft that must be saved. A work block has a linked task, not its own completion.
 Notes: authored content opens for reading, with organization collapsed. Click text to write; Save note persists drafts. Find to-dos shows suggestions before creation. Linked record cards have Copy record link and Previous record; links preserve workspace context without granting access.
+The bottom-left profile button opens a menu with Memory (personal workspace only), Settings and Log out. These are no longer standalone sidebar items. ui_navigate still opens Memory/Settings directly.
 Memory: learned facts and review questions, separate queued/processing/failed states and readable source cards. Forgetting one memory does not delete its source unless the owner selects that broader action. Notifications: delivered task alerts.
 Shared workspaces have isolated records. Workspace switching and membership changes are explicit user controls in Sharing; assignment never grants access. Personal memory and integration credentials are unavailable in a shared workspace.
 Settings sections: sharing (invitations, memberships and access roles), profile (name/reminder defaults/density), voice (Live voice/wake word),
