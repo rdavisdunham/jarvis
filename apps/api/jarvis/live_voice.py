@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 import httpx
 import websockets
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from . import budget
 from .agent_instructions import live_instructions
@@ -345,13 +345,20 @@ class LiveController(Controller):
                 return
             if not inbox or (now()-inbox.last_input_at).total_seconds() < 2.5:
                 return
-            roots = list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == self.id,
-                AgentWork.parent_id.is_(None)).order_by(AgentWork.updated_at)))
+            resumed_roots = select(AgentWork.parent_id).where(AgentWork.voice_session_id == self.id)
+            roots = list(db.scalars(select(AgentWork).where(
+                AgentWork.owner_id == self.owner, AgentWork.account_id == inbox.account_id,
+                or_(AgentWork.voice_session_id == self.id, AgentWork.id.in_(resumed_roots)),
+                AgentWork.parent_id.is_(None), AgentWork.result["archived_at"].as_string().is_(None)).order_by(AgentWork.updated_at)))
             notices, stamps = [], []
             for root in roots:
+                if root.result.get("continuation_ids"):
+                    from .work_continuation import latest
+                    if latest(db, root).voice_session_id != self.id:
+                        continue
                 children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == root.id)))
-                leaves = children or [root]
-                snapshots = [public(db, leaf, children=False) for leaf in leaves]
+                leaves = [root] if root.result.get("continuation_ids") else children or [root]
+                snapshots = [public(db, leaf) for leaf in leaves]
                 if any(snapshot["status"] in {*ACTIVE, "waiting_sync"} for snapshot in snapshots):
                     continue
                 stamp = (root.id, root.revision, tuple((snapshot["id"], snapshot["revision"], snapshot["status"]) for snapshot in snapshots))
@@ -370,12 +377,21 @@ class LiveController(Controller):
                     elif remote:
                         texts.append("Synchronization confirmed: " + ", ".join(action["title"] for action in remote))
                     else:
-                        texts.append(leaf.result.get("message", ""))
+                        texts.append(snapshot.get("message", ""))
+                # One result per tick: never mark a question announced after truncating it out.
                 notices.extend(t for t in texts if t)
                 stamps.append(stamp)
-                for leaf in leaves:
-                    self.receipts.extend(a["command_id"] for a in leaf.result.get("actions", [])
+                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
+                if questions:
+                    question = questions[0]
+                    await self.send({"type": "session.thinking.append", "event_id": uid(),
+                        "delegation_id": None, "content": "Pending clarification DATA; ask its question, never read IDs aloud: "
+                        + json.dumps({"request_id": question["request_id"], "clarification_id": question["id"], "question": question["question"][:700]})})
+                for snapshot in snapshots:
+                    self.receipts.extend(a["command_id"] for a in snapshot["actions"]
                         if a["command_id"] not in self.receipts)
+                if notices:
+                    break
             if not notices:
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.

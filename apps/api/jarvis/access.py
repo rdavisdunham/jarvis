@@ -35,6 +35,7 @@ def authorize_execution(db, owner, *, write=False):
     if not grant:
         return None
     if write:
+        advisory(db, "work-order:" + owner)
         advisory(db, "work:" + grant["id"])
     row = db.get(AgentWork, grant["id"], populate_existing=True)
     if (not row or row.owner_id != owner or row.account_id != grant["account_id"]

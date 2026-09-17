@@ -3,6 +3,28 @@
 Updated September 16, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+## Clarification continuations and activity reset — September 16
+
+- [x] Give each pending question a stable identity and route conversational answers
+  through the existing backend's `work_answer` tool, without an interpretation model.
+- [x] Start a fresh durable attempt beneath the original activity card; preserve the
+  original request, question/answer history, saved command receipts and per-action Revert.
+- [x] Reject duplicate/stale question claims, account/agent mismatches, cancelled work,
+  and detached edits that attempt to bypass an explicitly linked pending question.
+- [x] Keep unrelated requests parallel, preserve repeated clarification rounds, and
+  notify the current voice session when an earlier session's request is continued.
+- [x] Add Clear activity history with a confirmation: stop unfinished requests and
+  hide old cards while retaining saved records and their audit receipts. Scope to the
+  signed-in account and workspace; late model responses cannot recreate cleared cards.
+- [x] Validate real Luna and Gemini continuations with synthetic records; both kept
+  independent work separate and updated the original task without duplicating it.
+- [x] Verify 96 focused backend tests, 121 frontend tests and six mobile browser
+  checks; production build passes. Clearing preserves saved tasks; no browser errors.
+- [ ] Complete the owner's requested production history reset after authenticated
+  maintenance access is available; no production records should be deleted.
+
+Implementation and test notes: [CLARIFICATION_CONTINUATIONS.md](CLARIFICATION_CONTINUATIONS.md).
+
 ## Compact planner UX follow-through — September 16
 
 - [x] Checkpoint the external-agent release on main (`5c76eeb`) before starting this batch.

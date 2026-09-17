@@ -7,6 +7,13 @@ const base: WorkItem = { id:"work-1",parent_id:null,conversation_id:"chat-1",req
   created_at:"2026-09-16T15:00:00Z",updated_at:"2026-09-16T15:00:00Z",can_continue:false };
 const render = (item: WorkItem) => renderToStaticMarkup(<WorkCard item={item} onRefresh={async()=>{}} onOpen={async()=>{}}/>);
 describe("confirmed action cards",()=>{
+  it("keeps the answered question inside one completed card",()=>{
+    const html=render({...base,clarification_history:[{question:"What time?",answer:"9 a.m."}]});
+    expect(html).toContain("Clarification history"); expect(html).toContain("What time?");
+    expect(html).toContain("9 a.m."); expect(html).toContain("Completed");
+    expect(html).not.toContain("Waiting for you");
+    expect(html.match(/data-work-id=/g)).toHaveLength(1);
+  });
   it("leads with the saved change, puts speech in closed details, and has no review step",()=>{
     const html=render({...base,actions:[{id:"change-1",command_id:"work-1:0",kind:"task",entity_id:"task-1",title:"Call Alex",
       summary:"Updated task: Call Alex",operation:"updated",fields:{due_date:{before:null,after:"2026-09-17"}},can_revert:true,revert_reason:"",reverted:false}]});

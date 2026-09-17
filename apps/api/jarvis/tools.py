@@ -12,7 +12,7 @@ from .ui_control import dispatch, get_context
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
     "work_list": {
-        "description": "Read this account's accepted requests and saved action cards in the current workspace. Includes exact request/action IDs, status, changed fields and safe Revert availability. Other users' jobs are never included.",
+        "description": "Read this account's accepted requests and saved action cards in the current workspace. Includes exact request/action IDs, pending clarification IDs, status, changed fields and safe Revert availability. Answer pending questions with work_answer before making changes; answers continue the original card. Other users' jobs are never included.",
         "parameters": {"type":"object","properties":{},"additionalProperties":False}},
     "work_cancel": {
         "description": "Cancel one explicitly identified accepted request and its unfinished child work. Saved effects remain. Read work_list first; clarify ambiguous references. Ending voice or stopping speech is not cancelling work.",

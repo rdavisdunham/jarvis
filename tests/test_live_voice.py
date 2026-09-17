@@ -304,3 +304,55 @@ async def test_read_only_backend_result_is_spoken_even_without_an_action_card(co
     c.send.reset_mock()
     await c.report_work()
     c.send.assert_not_awaited()
+
+
+async def test_pending_question_keeps_exact_identity_and_cleared_work_is_not_spoken(controller):
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from jarvis.agent_work import enqueue, finish
+    from jarvis.models import now
+    c = controller
+    with session_scope() as db:
+        row = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), "Schedule review", voice_session_id=c.id)
+        row.transient = False
+        finish(db, row, "needs_input", "What time should I use?")
+        question = row.result["clarification"]
+        ignored = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), "Old request", voice_session_id=c.id)
+        ignored.transient = False
+        finish(db, ignored, "failed", "Do not announce cleared error")
+        ignored.result = {**ignored.result, "archived_at": now().isoformat()}
+        db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
+    await c.report_work()
+    events = [call.args[0] for call in c.send.await_args_list]
+    assert any(e["type"] == "session.thinking.append" and question["id"] in e["content"] and question["request_id"] in e["content"] for e in events)
+    assert any(e["type"] == "session.commentary.append" and "What time" in e["content"] for e in events)
+    c.send.reset_mock()
+    await c.report_work()
+    c.send.assert_not_awaited()
+
+
+async def test_continuation_result_is_announced_in_the_new_voice_session(controller):
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from jarvis.agent_work import enqueue, finish
+    from jarvis.models import now
+    from jarvis.work_continuation import WorkContinued, answer
+    c = controller
+    with session_scope() as db:
+        root = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), "Schedule review", voice_session_id="older-session")
+        root.transient = False
+        finish(db, root, "needs_input", "What time?")
+        question = root.result["clarification"]
+        follow = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), "9 a.m.", voice_session_id=c.id)
+        follow.transient = False
+        db.flush()
+        db.expunge(follow)
+    with pytest.raises(WorkContinued):
+        answer(follow, {"request_id": root.id, "clarification_id": question["id"]})
+    with session_scope() as db:
+        finish(db, db.get(AgentWork, follow.id), "succeeded", "The review deadline is set.")
+        db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
+    await c.report_work()
+    assert any('The review deadline is set.' in call.args[0]['content'] for call in c.send.await_args_list)

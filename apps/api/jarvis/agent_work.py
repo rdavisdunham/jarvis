@@ -17,7 +17,7 @@ from .models import AgentWork, Conversation, Job, Outbox, UserAccount, now
 from .work_crypto import seal, unseal
 
 ACTIVE = {"queued", "dispatched", "running"}
-TERMINAL = {"succeeded", "partial", "failed", "cancelled", "expired"}
+TERMINAL = {"succeeded", "partial", "failed", "cancelled", "expired", "continued"}
 
 
 def stable_id(value):
@@ -141,7 +141,13 @@ def eligible(db, job):
     except DomainError:
         finish(db, row, "failed", "Workspace access ended before this request finished.")
         return False
-    dependencies = [db.get(Job, identity) for identity in row.dependencies]
+    from .work_continuation import latest
+    dependencies = []
+    for identity in row.dependencies:
+        prior = db.get(AgentWork, identity)
+        dependency = latest(db, prior).id if prior else identity
+        if dependency != row.id:
+            dependencies.append(db.get(Job, dependency))
     if any(dep and dep.status in ACTIVE for dep in dependencies):
         return False
     # A resumed backend receives the actual predecessor outcome, including failures.
@@ -164,6 +170,11 @@ def eligible(db, job):
 
 def finish(db, row, status, message, **result):
     job = db.get(Job, row.id)
+    if status == "needs_input":
+        result["clarification"] = {
+            "id": stable_id(f"clarification:{row.id}:{row.revision}:{result.get('tool_calls', 0)}"),
+            "request_id": row.id, "revision": row.revision, "question": message,
+        }
     job.status, job.finished_at = status, now()
     row.result = {**row.result, **result, "message": message}
     row.updated_at = now()
@@ -185,7 +196,8 @@ def finish(db, row, status, message, **result):
                 "route_kinds",
                 "quiet",
                 "receipt_ids",
-                "related_request_id",
+                "related_request_id", "continuation_root", "continuation_ids", "continued_as",
+                "answered_clarification_id", "archived_at",
             }
         }
         row.result["message"] = (
@@ -193,6 +205,8 @@ def finish(db, row, status, message, **result):
             if result.get("actions")
             else "Request finished."
         )
+    from .work_continuation import touch_root
+    touch_root(db, row)
     job.result = {"work_id": row.id, "status": status}
     emit(db, row.owner_id, "work.changed", row.id, row.revision)
 
@@ -202,6 +216,8 @@ def checkpoint(request_id, state):
         row = db.get(AgentWork, request_id)
         row.checkpoint_ciphertext = seal(state)
         row.updated_at = now()
+        from .work_continuation import touch_root
+        touch_root(db, row)
         emit(db, row.owner_id, "work.changed", row.id, row.revision)
 
 
@@ -216,6 +232,7 @@ def require_work(db, owner, account, request_id):
 
 
 def cancel(db, row):
+    advisory(db, "work-order:" + row.owner_id)
     advisory(db, "work:" + row.id)
     db.flush()
     db.refresh(row)
@@ -233,6 +250,14 @@ def cancel(db, row):
 
 
 def revise(db, row, message, *, continue_work=False):
+    advisory(db, "work-order:" + row.owner_id)
+    from .work_continuation import latest
+    current = latest(db, row)
+    if current.id != row.id:
+        revise(db, current, message, continue_work=continue_work)
+        return public(db, row)
+    if row.result.get("archived_at"):
+        raise DomainError("REQUEST_EXPIRED", "This activity was cleared. Start a new request.", 409)
     advisory(db, "work:" + row.id)
     db.flush()
     db.refresh(row)
@@ -252,6 +277,8 @@ def revise(db, row, message, *, continue_work=False):
         from .bot_access import authorize
         authorize(db, row.owner_id, "work:run", credential_id=row.credential_id)
     data = unseal(row.input_ciphertext)
+    if job.status == "needs_input" and message:
+        data["last_question"] = row.result.get("message", "")
     corrections = list(data.get("corrections", []))
     if message:
         corrections.append(message[:12000])
@@ -275,6 +302,8 @@ def revise(db, row, message, *, continue_work=False):
     # A live runner observes the revision and consumes the correction itself.
     if job.status != "running":
         reschedule(db, row)
+    from .work_continuation import touch_root
+    touch_root(db, row)
     emit(db, row.owner_id, "work.changed", row.id, row.revision)
     return public(db, row)
 
@@ -300,7 +329,7 @@ def public(db, row, *, children=True):
     data = unseal(row.input_ciphertext)
     result = dict(row.result or {})
     items = []
-    if children:
+    if children and not result.get("continuation_ids"):
         items = [
             public(db, child, children=False)
             for child in db.scalars(
@@ -323,6 +352,25 @@ def public(db, row, *, children=True):
             else "succeeded",
         )
     actions = changes_for_work(db, row)
+    history = []
+    from .work_continuation import question_for
+    clarification = question_for(db, row) if status == "needs_input" else None
+    active = row
+    if result.get("continuation_ids"):
+        from .work_continuation import attempts
+        chain = attempts(db, row)
+        active = chain[-1]
+        current = public(db, active, children=False)
+        status = current["status"]
+        result = {**result, "message": current["message"], "waiting_for": active.result.get("waiting_for", [])}
+        clarification = current.get("clarification")
+        items = []  # Continuations share this card, unlike legacy independent child work.
+        for attempt in chain[1:]:
+            actions.extend(changes_for_work(db, attempt))
+            answer = unseal(attempt.input_ciphertext).get("clarification_answer")
+            if answer:
+                history.append(answer)
+        actions = list({action["id"]: action for action in actions}.values())
     if status == "succeeded" and any(a.get("remote_status") in {*ACTIVE, "retrying"} for a in actions):
         status = "waiting_sync"
     elif status == "succeeded" and any(
@@ -343,14 +391,16 @@ def public(db, row, *, children=True):
         "status": status,
         "revision": row.revision,
         "message": result.get("message", ""),
+        "clarification": clarification,
+        "clarification_history": history,
         "actions": actions,
         "children": items,
-        "cancel_requested": row.cancel_requested,
+        "cancel_requested": active.cancel_requested,
         "seen": bool(row.seen_at),
         "created_at": job.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
         "can_revise": job.kind != "external_command",
-        "can_continue": job.kind != "external_command" and status in {"needs_input", "failed", "partial"} and bool(row.input_ciphertext),
+        "can_continue": job.kind != "external_command" and status in {"needs_input", "failed", "partial"} and bool(active.input_ciphertext) and not row.result.get("archived_at"),
     }
 
 
@@ -366,9 +416,27 @@ def list_work(db, owner, account, *, limit=50):
                 AgentWork.parent_id.is_(None),
                 *([AgentWork.credential_id == current_id()] if current_id() else []),
                 AgentWork.result["quiet"].as_boolean().is_not(True),
+                AgentWork.result["archived_at"].as_string().is_(None),
             )
             .order_by(AgentWork.updated_at.desc())
             .limit(limit)
         )
     )
     return {"items": [public(db, row) for row in rows]}
+
+
+def clear_history(db, owner, account, before):
+    """Hide this account's existing activity; stop unfinished work, retain saved effects/audit."""
+    role(db, owner, account)
+    advisory(db, "work-order:" + owner)
+    rows = list(db.scalars(select(AgentWork).join(Job).where(
+        AgentWork.owner_id == owner, AgentWork.account_id == account,
+        Job.created_at <= before, AgentWork.result["archived_at"].as_string().is_(None),
+    ).order_by(Job.created_at)))
+    for row in rows:
+        cancel(db, row)
+        row.result = {**row.result, "archived_at": now().isoformat(), "quiet": True}
+        row.seen_at = now()
+        row.revision += 1  # In-flight model responses cannot execute stale plans.
+        emit(db, owner, "work.changed", row.id, row.revision)
+    return {"cleared": sum(row.parent_id is None for row in rows)}

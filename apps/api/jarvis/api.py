@@ -6,7 +6,7 @@ import json
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -544,6 +544,20 @@ def work_create(body: ChatInput, user: User):
         return public(db, row)
 
 
+class ClearWorkInput(Input):
+    before: datetime | None = None
+
+
+@app.post("/api/v1/work/clear")
+def work_clear(body: ClearWorkInput, user: User):
+    from .agent_work import clear_history
+    before = body.before or now()
+    if before.tzinfo is None or before > now():
+        raise DomainError("INVALID_ARGUMENT", "Choose a valid activity cutoff.")
+    with session_scope() as db:
+        return clear_history(db, user.owner_id, user.account_id, before)
+
+
 @app.get("/api/v1/work/{request_id}")
 def work_get(request_id: str, user: User):
     from .agent_work import public, require_work
@@ -563,6 +577,7 @@ def work_revise(request_id: str, body: WorkRevision, user: User):
     from .agent_work import require_work, revise
     from .domain import advisory
     with session_scope() as db:
+        advisory(db, "work-order:"+user.owner_id)
         advisory(db, "work:"+request_id)
         row = require_work(db, user.owner_id, user.account_id, request_id)
         if row.revision != body.expected_revision:

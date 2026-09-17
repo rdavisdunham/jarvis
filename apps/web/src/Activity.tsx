@@ -9,6 +9,7 @@ export type ActionChange = {
   can_revert: boolean; revert_reason: string; reverted: boolean; remote_status?: string | null;
 };
 export type WorkItem = {
+  clarification_history?: { question: string; answer: string }[];
   actor?: { type: "bot"; id: string; name: string } | null;
   id: string; parent_id: string | null; conversation_id: string; request: string;
   status: string; revision: number; message: string; actions: ActionChange[]; children: WorkItem[];
@@ -113,6 +114,9 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
       {!nested && workAttention(item) && item.status !== "needs_input" && !item.seen && <button className="text-button" disabled={busy}
         onClick={() => void act(() => post("/work/"+item.id+"/seen", {}))}>Dismiss notification</button>}
     </div>
+    {!!item.clarification_history?.length && <details className="work-original"><summary>Clarification history</summary>
+      {item.clarification_history.map((turn, index) => <div key={index}><p><strong>Eri:</strong> {turn.question}</p><p><strong>You:</strong> {turn.answer}</p></div>)}
+    </details>}
     {!!item.request && item.request !== "Request" && <details className="work-original"><summary>Original request</summary>
       <p>{item.request}</p></details>}
     {editing && <form className="work-revision" onSubmit={event => {
@@ -130,6 +134,7 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
   items: WorkItem[]; error: string; onClose: () => void; onRefresh: () => Promise<void>; onOpen: Props["onOpen"];
 }) {
   useDialogFocus();
+  const [clearing, setClearing] = useState(false), [clearError, setClearError] = useState("");
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   return <div className="modal-backdrop activity-backdrop" onClick={event => {if(event.target===event.currentTarget) onClose();}}>
@@ -137,7 +142,14 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
       onKeyDown={event => {if(event.key === "Escape") onClose();}}>
       <header><div><h2>Activity</h2><p>Saved changes and work in progress.</p></div>
         <button ref={close} className="icon-button" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
-      {error && <p role="alert">{error}</p>}
+      {!!items.length && <button className="text-button" disabled={clearing} onClick={async () => {
+        if (!window.confirm("Clear your activity history in this workspace and stop unfinished requests? Saved tasks, notes, and other changes will stay.")) return;
+        setClearing(true); setClearError("");
+        try { await post("/work/clear", {}); await onRefresh(); }
+        catch (e) { setClearError((e as Error).message); }
+        finally { setClearing(false); }
+      }}>{clearing ? "Clearing…" : "Clear activity history"}</button>}
+      {(error || clearError) && <p role="alert">{error || clearError}</p>}
       {!items.length && <p className="activity-empty">Ask Eri to do something. Its progress and saved changes will appear here.</p>}
       <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
     </section>

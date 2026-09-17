@@ -17,7 +17,7 @@ from .work_crypto import seal, unseal
 FOLLOWUP_TOOL = {
     "type": "function",
     "name": "work_followup",
-    "description": "Link THIS request to an earlier request when the user edits a specific earlier result, answers its clarification, or asks about its result (for example 'make that call tomorrow'). Use the exact request_id from recent work or work_list BEFORE editing or recreating anything. The scheduler waits if needed and returns the earlier outcome and saved record IDs. A failed original is not proof a record exists. Never link a fully specified new creation merely because it says 'also' or follows another request. 'Add Call Alex' and 'Also add Buy milk' are independent; only 'make that call tomorrow' links to Call Alex. Ambiguous references need work_needs_input.",
+    "description": "Link THIS request to an earlier request when the user edits a specific earlier result or asks about its result (for example 'make that call tomorrow'). Use the exact request_id from recent work or work_list BEFORE editing or recreating anything. The scheduler waits if needed and returns the earlier outcome and saved record IDs. A pending clarification must be answered with work_answer, not an independent edit. A failed original is not proof a record exists. Never link a fully specified new creation merely because it says 'also' or follows another request. 'Add Call Alex' and 'Also add Buy milk' are independent; only 'make that call tomorrow' links to Call Alex. Ambiguous references need work_needs_input.",
     "parameters": {
         "type": "object",
         "properties": {"request_id": {"type": "string", "format": "uuid"}},
@@ -37,13 +37,18 @@ def order(db, row):
 
 
 def describe(db, row):
+    from .agent_work import public
+    from .work_continuation import attempts
+    snapshot = public(db, row)
+    prefixes = [Command.id.startswith(item.id + ":") for item in attempts(db, row)]
+    from sqlalchemy import or_
     receipts = list(
         db.scalars(
             select(Command)
             .where(
                 Command.owner_id == row.owner_id,
                 Command.account_id == row.account_id,
-                Command.id.startswith(row.id + ":"),
+                or_(*prefixes),
             )
             .order_by(Command.created_at)
             .limit(30)
@@ -52,9 +57,10 @@ def describe(db, row):
     return {
         "request_id": row.id,
         "request": unseal(row.input_ciphertext).get("message", "")[:3000],
-        "status": db.get(Job, row.id).status,
+        "status": snapshot["status"],
+        "clarification": snapshot.get("clarification"),
         "related_request_id": row.result.get("related_request_id"),
-        "outcome": row.result.get("message", "")[:1500],
+        "outcome": snapshot["message"][:1500],
         "saved_records": [
             {
                 "command_id": c.id,
@@ -80,6 +86,9 @@ def recent(db, row):
                 AgentWork.account_id == row.account_id,
                 AgentWork.conversation_id == row.conversation_id,
                 AgentWork.id != row.id,
+                AgentWork.id != row.result.get("continuation_root", row.id),
+                AgentWork.parent_id.is_(None),
+                AgentWork.result["archived_at"].as_string().is_(None),
                 Job.created_at <= db.get(Job, row.id).created_at,
             )
             .order_by(Job.created_at.desc(), Job.id.desc())
@@ -105,7 +114,13 @@ def followup(row, arguments):
                 "This request already follows another request. Resolve its result first.",
             )
         current.result = {**current.result, "related_request_id": target.id}
+        from .work_continuation import latest
+        target = latest(db, target)
+        if order(db, target) >= order(db, current):
+            raise DomainError("INVALID_DEPENDENCY", "A newer continuation already owns this work. Read its current state; do not replay earlier actions.")
         status = db.get(Job, target.id).status
+        if status == "needs_input":
+            return {**describe(db, target), "next_step": "If this turn answers the question, call work_answer with this clarification's request_id and id. Do not perform it as a separate action."}
         if status in ACTIVE:
             # Commit the link, then park outside this transaction.
             waiting = target.id
@@ -167,6 +182,11 @@ def reserve(row, name, arguments, index):
     with session_scope() as db:
         advisory(db, "work-order:" + row.owner_id)
         current = db.get(AgentWork, row.id, populate_existing=True)
+        if current.result.get("related_request_id") and not current.result.get("continuation_root"):
+            from .work_continuation import latest
+            related = db.get(AgentWork, current.result["related_request_id"])
+            if related and db.get(Job, latest(db, related).id).status == "needs_input":
+                raise DomainError("CLARIFICATION_REQUIRED", "This related request is waiting for your answer. Use work_answer with its exact clarification IDs before saving changes.")
         prior_keys = set(current.resources)
         peers = list(
             db.scalars(
