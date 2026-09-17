@@ -194,7 +194,7 @@ def send_deliveries():
             subscription = db.get(PushSubscription, row.subscription_id)
             notification = db.get(Notification, row.notification_id)
             from .notices import eligible, quiet_until
-            if not subscription.active or row.generation != notification.generation or notification.read_at or notification.dismissed_at or notification.completed_at:
+            if notification.category == "work_result" or not subscription.active or row.generation != notification.generation or notification.read_at or notification.dismissed_at or notification.completed_at:
                 row.status="expired"
                 continue
             if not eligible(db,notification):

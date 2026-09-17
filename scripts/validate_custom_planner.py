@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 from uuid import uuid4
 
+from cryptography.fernet import Fernet
 from jarvis.config import get_settings
 from jarvis.db import engine
 from sqlalchemy import create_engine
@@ -38,6 +39,7 @@ def main():
             JARVIS_GEMINI_API_KEY="synthetic-gemini",
             JARVIS_GROQ_API_KEY="synthetic-groq",
             JARVIS_COST_TRACKING_ENABLED="false",
+            JARVIS_INTEGRATION_ENCRYPTION_KEY=Fernet.generate_key().decode(),
         )
         get_settings.cache_clear()
         engine.cache_clear()
@@ -48,7 +50,7 @@ def main():
                     sys.executable,
                     "-m",
                     "uvicorn",
-                    "accounts_acceptance:app",
+                    "chat_activity_acceptance:app",
                     "--app-dir",
                     str(ROOT / "tests" / "fixtures"),
                     "--host",
@@ -72,13 +74,21 @@ def main():
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Isolated API did not become ready")
-            for fixture in ("custom-planner.mjs", "shell-navigation.mjs"):
-                subprocess.run(
-                    ["node", "e2e/" + fixture],
-                    cwd=ROOT / "apps" / "web",
-                    env={**os.environ, "JARVIS_PLANNER_TEST_URL": base},
-                    check=True,
-                )
+            fixtures = ("custom-planner.mjs", "shell-navigation.mjs", "chat-activity.mjs")
+            for fixture in fixtures:
+                if os.environ.get("JARVIS_BROWSER_FIXTURE") and fixture != os.environ["JARVIS_BROWSER_FIXTURE"]:
+                    continue
+                try:
+                    subprocess.run(
+                        ["node", "e2e/" + fixture],
+                        cwd=ROOT / "apps" / "web",
+                        env={**os.environ, "JARVIS_PLANNER_TEST_URL": base},
+                        check=True,
+                    )
+                except subprocess.CalledProcessError:
+                    log.seek(0)
+                    print(log.read().decode()[-5000:], file=sys.stderr)
+                    raise
     finally:
         if server:
             server.terminate()

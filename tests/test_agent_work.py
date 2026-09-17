@@ -864,3 +864,58 @@ async def test_revert_creation_checks_backlinks_that_did_not_change_task_revisio
     assert result.status_code == 409
     with session_scope() as db:
         assert not db.get(Task, card["entity_id"]).archived
+
+
+def test_chat_work_includes_quiet_replies_without_leaking_other_conversations(client):
+    first, payload = accept(client, "Show my calendar")
+    other, _ = accept(client, "Unrelated")
+    with session_scope() as db:
+        agent_work.finish(db, db.get(AgentWork, first["id"]), "succeeded", "Here is your calendar.", quiet=True)
+    assert first["id"] not in {w["id"] for w in client.get("/api/v1/work").json()["items"]}
+    result = client.get("/api/v1/work", params={"conversation_id": payload["conversation_id"]})
+    assert result.status_code == 200
+    items = result.json()["items"]
+    assert [w["id"] for w in items] == [first["id"]]
+    assert items[0]["response_native_id"] == f"work:{first['id']}:assistant:1"
+    assert items[0]["finished_at"] and items[0]["message"] == "Here is your calendar."
+
+
+def test_success_stays_in_activity_without_notifying_and_retires_questions(client):
+    from jarvis.models import Notification, now
+    from jarvis import notices
+    work = action(client)
+    with session_scope() as db:
+        row = db.get(AgentWork, work["id"])
+        agent_work.finish(db, row, "needs_input", "What time?")
+        db.flush()
+        question = db.scalar(select(Notification))
+        assert question.category == "question" and question.dismissed_at is None
+        agent_work.finish(db, row, "succeeded", "Saved.")
+        db.flush()
+        assert question.dismissed_at is not None
+        assert len(list(db.scalars(select(Notification)))) == 1
+        old = Notification(owner_id=row.owner_id, title="Old success", category="work_result", scheduled_at=now())
+        db.add(old);db.flush()
+        assert not notices.eligible(db, old)
+    assert not client.get("/api/v1/notifications").json()["items"]
+    assert work["id"] in {w["id"] for w in client.get("/api/v1/work").json()["items"]}
+
+
+def test_failure_still_notifies(client):
+    work=action(client)
+    with session_scope() as db:
+        agent_work.finish(db, db.get(AgentWork,work["id"]),"failed","Could not save.")
+    items=client.get("/api/v1/notifications").json()["items"]
+    assert len(items)==1 and items[0]["category"]=="failure"
+
+
+def test_conversation_pagination_keeps_older_markers(client):
+    first,payload=accept(client,"First")
+    payload.update(turn_id=str(uuid4()),message="Second")
+    second=client.post("/api/v1/work",json=payload).json()
+    with session_scope() as db:
+        row=db.get(AgentWork,first["id"])
+        page=agent_work.list_work(db,row.owner_id,row.account_id,conversation_id=row.conversation_id,limit=1)
+        assert [w["id"] for w in page["items"]]==[first["id"]] and page["next_offset"]==1
+        tail=agent_work.list_work(db,row.owner_id,row.account_id,conversation_id=row.conversation_id,limit=1,offset=page["next_offset"])
+        assert [w["id"] for w in tail["items"]]==[second["id"]] and tail["next_offset"] is None

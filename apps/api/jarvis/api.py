@@ -445,7 +445,7 @@ def notifications(user: User):
                 }
                 for n in db.scalars(
                     select(Notification)
-                    .where(Notification.owner_id == user.owner_id, Notification.dismissed_at.is_(None), (Notification.category != "deadline") | (Notification.scheduled_at <= now()))
+                    .where(Notification.owner_id == user.owner_id, Notification.category != "work_result", Notification.dismissed_at.is_(None), (Notification.category != "deadline") | (Notification.scheduled_at <= now()))
                     .order_by(Notification.created_at.desc())
                     .limit(100)
                 )
@@ -523,10 +523,14 @@ class RevertInput(Input):
 
 
 @app.get("/api/v1/work")
-def work_list(user: User):
+def work_list(user: User, conversation_id: UUID | None = None, offset: int = Query(default=0, ge=0)):
     from .agent_work import list_work
     with session_scope() as db:
-        return list_work(db, user.owner_id, user.account_id)
+        if conversation_id:
+            conv = owned(db, Conversation, str(conversation_id), user.owner_id)
+            if conv.device_id != user.device_id:
+                raise DomainError("NOT_AUTHORIZED", "This conversation belongs to another device.", 403)
+        return list_work(db, user.owner_id, user.account_id, conversation_id=str(conversation_id) if conversation_id else None, limit=200 if conversation_id else 50, offset=offset)
 
 
 @app.post("/api/v1/work")

@@ -385,6 +385,7 @@ def public(db, row, *, children=True):
         status = "partial"
     from .models import BotCredential
     bot = db.get(BotCredential, row.credential_id) if row.credential_id else None
+    active_job = db.get(Job, active.id)
     return {
         "id": row.id,
         "actor": {"type": "bot", "id": bot.id, "name": bot.name} if bot else None,
@@ -392,6 +393,10 @@ def public(db, row, *, children=True):
         "related_request_id": result.get("related_request_id"),
         "waiting": bool(result.get("waiting_for")) and status == "queued",
         "conversation_id": row.conversation_id,
+        "voice_session_id": active.voice_session_id,
+        "navigation_only": bool(active.result.get("navigation_only")),
+        "response_native_id": f"work:{active.id}:assistant:{active.revision}",
+        "finished_at": active_job.finished_at.isoformat() if active_job.finished_at else None,
         "request": data.get("message", "Request"),
         "status": status,
         "revision": row.revision,
@@ -409,25 +414,28 @@ def public(db, row, *, children=True):
     }
 
 
-def list_work(db, owner, account, *, limit=50):
+def list_work(db, owner, account, *, limit=50, conversation_id=None, offset=0):
     role(db, owner, account)
     from .bot_access import current_id
     rows = list(
         db.scalars(
-            select(AgentWork)
+            select(AgentWork).join(Job)
             .where(
                 AgentWork.owner_id == owner,
                 AgentWork.account_id == account,
                 AgentWork.parent_id.is_(None),
                 *([AgentWork.credential_id == current_id()] if current_id() else []),
-                AgentWork.result["quiet"].as_boolean().is_not(True),
+                *([AgentWork.conversation_id == conversation_id] if conversation_id else
+                  [AgentWork.result["quiet"].as_boolean().is_not(True)]),
                 AgentWork.result["archived_at"].as_string().is_(None),
             )
-            .order_by(AgentWork.updated_at.desc())
-            .limit(limit)
+            .order_by(*( [Job.created_at, AgentWork.id] if conversation_id else [AgentWork.updated_at.desc()] ))
+            .offset(offset if conversation_id else 0)
+            .limit(limit + 1 if conversation_id else limit)
         )
     )
-    return {"items": [public(db, row) for row in rows]}
+    return {"items": [public(db, row) for row in rows[:limit]],
+            "next_offset": offset + limit if conversation_id and len(rows) > limit else None}
 
 
 def clear_history(db, owner, account, before):

@@ -11,6 +11,7 @@ import { MemoryActions } from "./MemoryActions";
 import { humanLabel, PlannerGuide, useBodyLock } from "./ux";
 import { BotSettings } from "./BotSettings";
 import { PublicFooter } from "./PublicPages";
+import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import { SavedViews } from "./SavedViews";
@@ -272,7 +273,7 @@ export default function App() {
     date?: string;
     task?: Task | null;
   } | null>(null);
-  const pendingNotices = notices.filter((notice) => !notice.completed_at);
+  const pendingNotices = notices.filter((notice) => !notice.completed_at && notice.category !== "work_result");
   const [memories, setMemories] = useState<Memory[]>([]);
   const [memoryReviews, setMemoryReviews] = useState<MemoryReview[]>([]);
   const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(
@@ -296,7 +297,16 @@ export default function App() {
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
-  const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"));
+  const conversationRef = useRef<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState<string | null>(null);
+  const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
+  const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
+  if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
+  const conversationWork = work.chatItems.filter(item => item.conversation_id === conversationRef.current);
+  const chatEntries = chatTimeline(messages, conversationWork, chatAnchors.current.items);
+  useEffect(() => {
+    setMessages(current => mergeWorkReplies(current, work.chatItems.filter(item => item.conversation_id === conversationRef.current)));
+  }, [work.chatItems]);
   const activeWork = work.items.filter(workActive).length;
   const attentionWork = work.items.filter(item => workAttention(item) && !item.seen).length;
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
@@ -384,7 +394,6 @@ export default function App() {
   const displayedActions = useRef(new Set<string>());
   const voiceGeneration = useRef(0);
   const voice = useRef<Voice | null>(null),
-    conversationRef = useRef<string | null>(null),
     retryRef = useRef<null | (() => Promise<void>)>(null),
     lastVoiceReceipt = useRef("");
   const pendingCommands = useRef(
@@ -494,7 +503,7 @@ export default function App() {
             private: boolean;
             messages: ChatMessage[];
           }>("/conversations/" + saved);
-          conversationRef.current = conversation.id;
+          conversationRef.current = conversation.id; setActiveConversation(conversation.id);
           setConversationHistoryOff(conversation.private);
           setMessages(conversation.messages);
         } catch {
@@ -718,7 +727,7 @@ export default function App() {
     if (conversationRef.current) return conversationRef.current;
     const data = await post<{ id: string; private: boolean }>("/conversations", {});
     setConversationHistoryOff(data.private);
-    conversationRef.current = data.id;
+    conversationRef.current = data.id; setActiveConversation(data.id);
     sessionStorage.setItem("jarvis-conversation", data.id);
     return data.id;
   }
@@ -818,7 +827,7 @@ export default function App() {
         private: boolean;
         messages: ChatMessage[];
       }>("/conversations/" + id);
-      conversationRef.current = data.id;
+      conversationRef.current = data.id; setActiveConversation(data.id);
       sessionStorage.setItem("jarvis-conversation", data.id);
       setMessages(data.messages);
       setConversationHistoryOff(data.private);
@@ -1331,7 +1340,7 @@ export default function App() {
         : null,
     );
     if (previous) await previous.stop();
-    conversationRef.current = null;
+    conversationRef.current = null; setActiveConversation(null);
     sessionStorage.removeItem("jarvis-conversation");
     retryRef.current = null;
     setConversationHistoryOff(false);
@@ -1358,7 +1367,7 @@ export default function App() {
       turn_id = crypto.randomUUID();
     setChatText("");
     setThinking(true);
-    setMessages((m) => [...m, { id: turn_id, role: "user", content }]);
+    setMessages((m) => [...m, { id: turn_id, role: "user", content, created_at: new Date().toISOString() }]);
     let conversation_id: string;
     try {
       conversation_id = await ensureConversation();
@@ -1449,6 +1458,7 @@ export default function App() {
                 id: state.text_id!,
                 role: "assistant",
                 content: state.text,
+                created_at: existing?.created_at ?? new Date().toISOString(),
               };
               return existing
                 ? m.map((item) => (item.id === message.id ? message : item))
@@ -1465,8 +1475,8 @@ export default function App() {
           if (voice.current !== controller) return;
           setMessages((m) =>
             m.some((item) => item.id === message.id)
-              ? m.map((item) => (item.id === message.id ? message : item))
-              : [...m, message],
+              ? m.map((item) => (item.id === message.id ? {...message, created_at: item.created_at ?? message.created_at} : item))
+              : [...m, {...message, created_at: message.created_at ?? new Date().toISOString()}],
           );
         },
         (level) =>
@@ -1493,7 +1503,7 @@ export default function App() {
         try {
           const conversation_id = await ensureConversation();
           await post("/work", {turn_id:id, conversation_id, message:request});
-          setMessages(items => [...items, {id, role:"user", content:request}]);
+          setMessages(items => [...items, {id, role:"user", content:request, created_at:new Date().toISOString()}]);
           await work.refresh();
         } catch (e) { setError((e as Error).message); return; }
       }
@@ -1938,7 +1948,7 @@ export default function App() {
               setBoot(null);
               setTasks([]);
               setMessages([]);
-              conversationRef.current = null;
+              conversationRef.current = null; setActiveConversation(null);
               sessionStorage.removeItem("jarvis-conversation");
             }}/>
         </div>
@@ -2854,8 +2864,11 @@ export default function App() {
                   <p>What can I help with?</p>
                 </div>
               )}
-              {messages.map((m) => (
-                <div className={"message " + m.role} key={m.id}>
+              {chatEntries.map(entry => {
+                if (entry.kind === "work") return <WorkCard key={"work:" + entry.work.id} item={entry.work} compact onRefresh={work.refresh} onOpen={openWorkRecord}/>;
+                const m = entry.message;
+                return (
+                <div className={"message " + m.role} key={m.id} data-message-id={m.id}>
                   <span className="message-label">
                     {m.role === "assistant" ? "ERIDANI" : "YOU"}
                   </span>
@@ -2866,15 +2879,13 @@ export default function App() {
                     </span>
                   )}
                 </div>
-              ))}
+              );})}
               {thinking && (
                 <div className="thinking">
                   <span />
                   Sending your request…
                 </div>
               )}
-              {work.items.filter(item => item.conversation_id === conversationRef.current).slice().reverse().map(item =>
-                <WorkCard key={item.id} item={item} onRefresh={work.refresh} onOpen={openWorkRecord}/>)}
               <div ref={messageEnd} />
             </div>
             {voiceState && !voiceState.closed && (

@@ -38,6 +38,7 @@ export class LiveTranscript {
         message: {
           id: this.prefix + crypto.randomUUID(),
           role,
+          created_at: new Date().toISOString(),
           content: "",
           pending: true,
         },

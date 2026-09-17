@@ -39,3 +39,14 @@ describe("confirmed action cards",()=>{
     expect(html).not.toContain("Waiting for you");
   });
 });
+
+
+describe("compact conversation markers", () => {
+  it("keeps Edit/Revert and the outcome, with the audit details minimized", () => {
+    const item={...base, actions:[{id:"change",command_id:"work-1:0",kind:"task",entity_id:"task-1",title:"Call Alex",operation:"updated",summary:"Updated task: Call Alex",fields:{due_date:{before:null,after:"2026-09-18"}},can_revert:true,revert_reason:"",reverted:false}]};
+    const html=renderToStaticMarkup(<WorkCard item={item} compact onRefresh={async()=>{}} onOpen={async()=>{}}/>);
+    expect(html).toContain("Updated task: Call Alex");expect(html).toContain("Edit");expect(html).toContain("Revert");
+    expect(html).toContain('aria-expanded="false"');expect(html).toContain("2026-09-18");
+    expect(html).not.toContain("Original request");expect(html).not.toContain(base.request);expect(html).not.toContain("<dl>");
+  });
+});

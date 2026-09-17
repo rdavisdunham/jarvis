@@ -9,6 +9,7 @@ export type ActionChange = {
   can_revert: boolean; revert_reason: string; reverted: boolean; remote_status?: string | null;
 };
 export type WorkItem = {
+  voice_session_id?: string | null; response_native_id?: string; finished_at?: string | null; navigation_only?: boolean;
   clarification_history?: { question: string; answer: string }[];
   actor?: { type: "bot"; id: string; name: string } | null;
   id: string; parent_id: string | null; conversation_id: string; request: string;
@@ -22,31 +23,45 @@ const labels: Record<string, string> = {
   succeeded: "Completed", partial: "Partly completed", failed: "Couldn't finish",
   cancelled: "Cancelled", expired: "Expired", waiting_sync: "Syncing",
 };
-export function useWork(enabled: boolean, scope?: string) {
+export function useWork(enabled: boolean, scope?: string, conversation?: string | null) {
   const [items, setItems] = useState<WorkItem[]>([]), [error, setError] = useState("");
+  const [chatItems, setChatItems] = useState<WorkItem[]>([]);
   const current = useRef(0);
   async function refresh() {
     const generation = current.current;
     try {
-      const result = await api<{ items: WorkItem[] }>("/work");
-      if (generation === current.current) { setItems(result.items); setError(""); }
+      const conversationItems = async () => {
+        const all = new Map<string, WorkItem>();
+        let offset: number | null = 0;
+        while (conversation && offset !== null && generation === current.current) {
+          const page: {items: WorkItem[]; next_offset?: number | null} = await api("/work?conversation_id=" + encodeURIComponent(conversation) + "&offset=" + offset);
+          page.items.forEach(item => all.set(item.id, item));
+          offset = page.next_offset ?? null;
+        }
+        return {items: [...all.values()]};
+      };
+      const [result, chat] = await Promise.all([
+        api<{ items: WorkItem[] }>("/work"),
+        conversationItems(),
+      ]);
+      if (generation === current.current) { setItems(result.items); setChatItems(chat.items); setError(""); }
     } catch (e) {
       if (generation === current.current) setError((e as Error).message);
     }
   }
   useEffect(() => {
     current.current++;
-    setItems([]);
+    setItems([]); setChatItems([]);
     if (!enabled) return;
     void refresh();
     const update = () => void refresh();
     const timer = setInterval(update, 3000);
     window.addEventListener("eri-work-changed", update);
     return () => { current.current++; clearInterval(timer); window.removeEventListener("eri-work-changed", update); };
-  }, [enabled, scope]);
-  return { items, error, refresh };
+  }, [enabled, scope, conversation]);
+  return { items, chatItems, error, refresh };
 }
-type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; nested?: boolean };
+type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; nested?: boolean; compact?: boolean };
 function text(value: unknown): string {
   if (value === null || value === undefined || value === "") return "None";
   if (Array.isArray(value)) return value.join(", ") || "None";
@@ -54,14 +69,18 @@ function text(value: unknown): string {
   if (typeof value === "object") return Object.entries(value as Record<string,unknown>).map(([key,v])=>`${key}: ${text(v)}`).join(", ") || "None";
   return String(value).replaceAll("_", " ");
 }
-function changePreview(action: ActionChange) {
-  const important = ["due_date", "due_time", "status", "project", "space", "assignee", "priority"];
+function changePreview(action: ActionChange, compact = false) {
+  const important = compact && action.operation === "created" ? ["due_date", "due_time", "project"] : ["due_date", "due_time", "status", "project", "space", "assignee", "priority"];
   return important.filter(key => key in action.fields).slice(0, 3).map(key =>
     `${key.replaceAll("_", " ")}: ${text(action.fields[key].after)}`).join(" · ");
 }
-export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
+export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: Props) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""),
     [editing, setEditing] = useState(false), [correction, setCorrection] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const terminal = !workActive(item) && item.status !== "needs_input";
+  useEffect(() => { if (terminal) setExpanded(false); }, [terminal]);
+  const details = !compact || expanded;
   const revertIds = useRef(new Map<string, string>());
   async function act(fn: () => Promise<unknown>) {
     setBusy(true); setError("");
@@ -69,26 +88,27 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
+  const disclosure = compact ? <button type="button" className="text-button work-expand" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Less" : "Details"}<ChevronDown size={12}/></button> : null;
   const editable = new Set(["record", "task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
-  return <article data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (workAttention(item) ? "attention" : "")}>
+  return <article data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (compact ? "chat-work-card " : "") + (workAttention(item) ? "attention" : "")}>
     <header><span className={"work-status " + item.status}>
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
       {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : item.waiting ? "Waiting for related work" : labels[item.status] ?? item.status}
     </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
-    {item.actor && <p className="work-actor">{item.actor.name} <span>· connected agent</span></p>}
-    {item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
+    {details && item.actor && <p className="work-actor">{item.actor.name} <span>· connected agent</span></p>}
+    {details && item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
     {!item.actions.length && !item.children.length && <p className="work-result">{
       item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
     }</p>}
     {!!item.actions.length && workAttention(item) && !!item.message && <p className="work-result">{item.message}</p>}
     {item.status === "needs_input" && !!item.children.length && <p className="work-result">{item.message}</p>}
-    {item.children.map(child => <WorkCard key={child.id} item={child} onRefresh={onRefresh} onOpen={onOpen} nested/>)}
+    {item.children.map(child => <WorkCard key={child.id} item={child} onRefresh={onRefresh} onOpen={onOpen} nested compact={compact}/>)}
     {item.actions.map(action => <div className="work-change" key={action.id}>
       <div><strong>{action.summary ?? `${action.operation.charAt(0).toUpperCase() + action.operation.slice(1)}: ${action.title}`}</strong>
         {action.remote_status && <span>{labels[action.remote_status] ?? action.remote_status}</span>}</div>
-      {!!changePreview(action) && <p className="work-change-preview">{changePreview(action)}</p>}
+      {!!changePreview(action, compact) && <p className="work-change-preview">{changePreview(action, compact)}</p>}
       {action.reverted && <small className="work-reverted"><Check size={12}/>Change reverted</small>}
-      {!!Object.keys(action.fields).length && <details><summary>Changes <ChevronDown size={12}/></summary>
+      {details && !!Object.keys(action.fields).length && <details><summary>Changes <ChevronDown size={12}/></summary>
         <dl>{Object.entries(action.fields).map(([field, values]) => <div key={field}><dt>{field.replaceAll("_", " ")}</dt>
           <dd>{action.operation !== "created" && <><del>{text(values.before)}</del><span aria-hidden="true"> → </span></>}
             <span>{text(values.after)}</span></dd></div>)}</dl></details>}
@@ -101,8 +121,9 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
             revertIds.current.set(action.id, command_id);
             return post("/work/actions/"+action.id+"/revert", {command_id});
           })}><RotateCcw size={13}/>{action.reverted ? "Reverted" : "Revert"}</button>
+        {action.id === item.actions.at(-1)?.id && disclosure}
       </div>
-      {!action.can_revert && !action.reverted && <small className="work-revert-note">{action.revert_reason}</small>}
+      {details && !action.can_revert && !action.reverted && <small className="work-revert-note">{action.revert_reason}</small>}
     </div>)}
     <div className="work-card-actions">
       {(workActive(item) || item.status === "needs_input") && <button className="text-button" disabled={busy || item.cancel_requested}
@@ -114,11 +135,12 @@ export function WorkCard({ item, onRefresh, onOpen, nested }: Props) {
         post("/work/"+item.id+"/revise", {message:"", expected_revision:item.revision, continue_work:true}))}>{item.status === "failed" ? "Retry" : "Continue"}</button>}
       {!nested && workAttention(item) && item.status !== "needs_input" && !item.seen && <button className="text-button" disabled={busy}
         onClick={() => void act(() => post("/work/"+item.id+"/seen", {}))}>Dismiss notification</button>}
+      {!item.actions.length && disclosure}
     </div>
-    {!!item.clarification_history?.length && <details className="work-original"><summary>Clarification history</summary>
+    {details && !!item.clarification_history?.length && <details className="work-original"><summary>Clarification history</summary>
       {item.clarification_history.map((turn, index) => <div key={index}><p><strong>Eri:</strong> {turn.question}</p><p><strong>You:</strong> {turn.answer}</p></div>)}
     </details>}
-    {!!item.request && item.request !== "Request" && <details className="work-original"><summary>Original request</summary>
+    {details && !!item.request && item.request !== "Request" && <details className="work-original"><summary>Original request</summary>
       <p>{item.request}</p></details>}
     {editing && <form className="work-revision" onSubmit={event => {
       event.preventDefault(); void act(async () => {

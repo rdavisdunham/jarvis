@@ -226,6 +226,8 @@ export type View =
   | "settings";
 export interface ChatMessage {
   id: string;
+  native_id?: string;
+  created_at?: string;
   role: "user" | "assistant";
   content: string;
   pending?: boolean;

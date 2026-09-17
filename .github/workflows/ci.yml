@@ -129,6 +129,7 @@ jobs:
           name: browser-failure-artifacts
           path: |
             artifacts/custom-planner/
+            artifacts/chat-activity/
             apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

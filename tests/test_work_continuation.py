@@ -76,9 +76,12 @@ async def test_spoken_answer_completes_original_card_without_repeating_saved_act
     card = cards[0]
     assert card["id"] == original["id"] and card["status"] == "succeeded"
     assert not card["children"] and not card["clarification"]
+    assert card["finished_at"] and card["voice_session_id"] is None
     assert len(card["actions"]) == 2
     assert card["clarification_history"] == [{"question": "What time should its deadline be?", "answer": "9 a.m., just a deadline"}]
     with session_scope() as db:
+        active = db.get(AgentWork, answered["id"])
+        assert card["response_native_id"] == f"work:{active.id}:assistant:{active.revision}"
         assert len(list(db.scalars(select(Task)))) == 1
         assert db.get(Task, task_id).due_date.isoformat() == "2026-09-17"
     edit = next(a for a in card["actions"] if a["operation"] == "updated")

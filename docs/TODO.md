@@ -7,6 +7,25 @@ Completed implementation is marked **[x]**. **[ ]** means work or verification i
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
 
+## Conversation action cards — September 17
+
+- [x] Navigation and read-only requests stay ordinary conversation; they do not
+  create chat action cards. Saved changes and requests needing attention retain cards.
+- [x] Compact chat cards show the outcome and useful changed details, with Edit and
+  Revert available directly. Original requests, field differences and clarification
+  history are available under Details; full Activity remains available at the top.
+- [x] Anchor cards to their originating messages. Completion, parallel requests,
+  clarification continuations and reloads preserve their conversation positions;
+  subsequent messages continue below them. Completed cards start collapsed.
+- [x] Remove routine success notifications, including old success entries and pending
+  push deliveries. Keep reminders, deadlines, questions and failures actionable.
+- [x] Verify real queue/save/revert behavior in a synthetic browser environment,
+  reverse completion order, transcript replies, reloads and existing navigation.
+  See [validation](CHAT_ACTIVITY_VALIDATION.md).
+- [ ] Physical voice acceptance: navigate with “show me that,” create two tasks,
+  answer a clarification and continue talking. Check compact cards stay by their
+  original speech and only reminders/questions/errors appear in Notifications.
+
 ## Chat, search, foldable settings and phone navigation — September 17
 
 - [x] Persistent bottom-right Eri button on every signed-in page, animated opening,
@@ -95,7 +114,7 @@ The detailed sections below retain implementation history and acceptance evidenc
    inheritance, learned rules and weekly interviews in real use.
    See [implementation and test notes](CUSTOM_PLANNER_IMPLEMENTATION.md).
 2. **Notification acceptance:** deadline alerts, quiet hours, explicit urgency,
-   daily summary, grouped background results and durable snooze are implemented
+   daily summary, actionable questions/errors and durable snooze are implemented
    in this batch. Verify actual locked-phone delivery and real-account behavior.
 3. **Operational and connected-account acceptance:** complete the checklist above,
    activate the separate R2 recovery copy when credentials are available, automate

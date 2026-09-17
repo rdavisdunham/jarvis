@@ -126,7 +126,7 @@ def quiet_until(prefs, instant, urgent=False):
 
 def eligible(db, n, instant=None):
     instant = instant or now()
-    if n.read_at or n.dismissed_at or n.completed_at:
+    if n.category == "work_result" or n.read_at or n.dismissed_at or n.completed_at:
         return False
     if n.scheduled_at > instant or (n.eligible_at and n.eligible_at > instant):
         return False
@@ -199,7 +199,6 @@ def work_finished(db, row, status, message):
     if (
         db.get(SharedWorkspace, row.owner_id)
         or row.credential_id
-        or row.result.get("quiet")
         or row.result.get("archived_at")
     ):
         return
@@ -209,12 +208,8 @@ def work_finished(db, row, status, message):
         if status == "needs_input"
         else "failure"
         if status in {"failed", "partial"}
-        else "work_result"
-        if status == "succeeded"
         else None
     )
-    if not category:
-        return
     # Rooted follow-ups supersede their earlier question notifications.
     root = row.result.get("continuation_root") or row.id
     for n in db.scalars(
@@ -226,28 +221,11 @@ def work_finished(db, row, status, message):
     ):
         if root in n.target.get("work_ids", []) or row.id in n.target.get("work_ids", []):
             n.dismissed_at = instant
+    # Success belongs in chat and Activity. Still retire the answered question.
+    if not category or row.result.get("quiet"):
+        return
     key = "work:" + row.id + ":" + str(row.revision) + ":" + status
     if db.scalar(select(Notification.id).where(Notification.dedup_key == key)):
-        return
-    # Only coalesce results still waiting in their initial 30-second collection window.
-    group = (
-        db.scalar(
-            select(Notification).where(
-                Notification.owner_id == row.owner_id,
-                Notification.category == "work_result",
-                Notification.eligible_at > instant,
-                Notification.created_at > instant - timedelta(seconds=30),
-                Notification.read_at.is_(None),
-            )
-        )
-        if category == "work_result"
-        else None
-    )
-    if group:
-        ids = list(dict.fromkeys([*group.target.get("work_ids", []), row.id]))
-        group.target = {"view": "activity", "work_ids": ids}
-        group.title = f"{len(ids)} requests finished"
-        group.body = "Your saved changes are ready to review."
         return
     db.add(
         Notification(
@@ -256,12 +234,10 @@ def work_finished(db, row, status, message):
             category=category,
             title="Eri needs your answer"
             if category == "question"
-            else "Eri could not finish"
-            if category == "failure"
-            else "Eri finished your request",
+            else "Eri could not finish",
             body=message[:2000],
             scheduled_at=instant,
-            eligible_at=instant + timedelta(seconds=30 if category == "work_result" else 0),
+            eligible_at=instant,
             target={"view": "activity", "work_ids": [row.id]},
         )
     )
@@ -300,7 +276,7 @@ def morning(db, owner, instant=None):
                 Notification.read_at.is_(None),
                 Notification.dismissed_at.is_(None),
                 Notification.completed_at.is_(None),
-                Notification.category.in_(["deadline", "reminder", "work_result"]),
+                Notification.category.in_(["deadline", "reminder"]),
             )
         )
     )

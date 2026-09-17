@@ -37,7 +37,7 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged}:{s
   const close=()=>void finish().then(onClose).catch(()=>{});
   useEditor({kind:"record",record_id:row.id,mode:"detail",auto_save:true,dirty:title!==row.title||body!==row.body,busy,
     schema:z.object({title:z.string().min(1).max(500),body:z.string().max(30000),parent_id:z.string().nullable(),status_id:z.string().nullable(),values:z.record(z.string(),z.unknown()),archived:z.boolean()}).partial(),
-    values:{title:row.title,body:row.body,parent_id:row.parent_id,status_id:row.status_id,values:row.values,archived:row.archived},beforeLeave:finish,patch:async v=>{if(!canEdit)throw new Error("Read-only workspace");await finish();return save(v);},close});
+    values:{title:row.title,body:row.body,parent_id:row.parent_id,status_id:row.status_id,values:row.values,archived:row.archived},beforeLeave:finish,patch:async v=>{if(!canEdit)throw new Error("Read-only workspace");await finish();return save(v);},close:onClose});
   const link=async(remove=false,relationship_id=relation,target_id=target)=>{await run("record.link",{source_id:row.id,target_id,relationship_id,expected_revision:row.revision,schema_revision:schema.revision,remove});setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();setTarget("");};
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy&&!e.defaultPrevented)close();};document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);},[busy,onClose]);
   return <div className="modal-backdrop" onClick={e=>{if(e.target===e.currentTarget&&!busy)close();}}><section className="record-detail" role="dialog" aria-modal="true" aria-label={t.name+" details"}>

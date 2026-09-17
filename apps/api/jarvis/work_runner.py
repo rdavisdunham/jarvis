@@ -505,6 +505,7 @@ async def run(request_id):
                 tool_calls=state.get("tool_index", 0),
                 errors=state.get("errors", []),
                 quiet=final_status == "succeeded" and not saved and not state.get("ui_actions"),
+                navigation_only=bool(state.get("ui_actions")) and not saved,
                 waiting_for=[],
             )
             if not current.transient and not current.voice_session_id and not current.credential_id:

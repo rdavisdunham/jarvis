@@ -81,3 +81,20 @@
  .settings-mobile-nav select {width:100%;max-width:100%;}
 }
 @media (prefers-reduced-motion:reduce) {.app-shell .companion.visible,.chat-scrim {animation:none;}.chat-launcher,.chat-launcher-icon {transition:none;}}
+
+/* Inline action markers carry outcomes; the full audit stays in Activity. */
+.messages .chat-work-card {padding:9px 12px;margin:8px 0;border-radius:10px;font-size:12px;flex-shrink:0;}
+.chat-work-card .work-related,.chat-work-card .work-actor {font-size:11px;}
+.chat-work-card .work-change {border:0;margin:5px 0 0;padding:0;}
+.chat-work-card .work-change+.work-change {border-top:1px solid var(--border);padding-top:7px;margin-top:7px;}
+.chat-work-card .work-change strong {font-size:12px;line-height:1.4;font-weight:500;}
+.chat-work-card .work-change>div:first-child {gap:6px;}
+.chat-work-card .work-card-actions {gap:12px;margin-top:2px;}
+.chat-work-card .work-card-actions:empty {display:none;}
+.chat-work-card .work-card-actions button {font-size:11px;min-height:34px;padding:4px 0;}
+.chat-work-card .work-result {font-size:12px;line-height:1.5;margin:7px 0;white-space:pre-wrap;}
+.chat-work-card .work-expand {font-size:10px;gap:4px;min-height:30px;margin-top:0;padding:2px 0;color:var(--muted);}
+.chat-work-card .work-expand[aria-expanded=true] svg {transform:rotate(180deg);}
+@media(max-width:700px) {.chat-work-card .work-card-actions button,.chat-work-card .work-expand {min-height:40px;}}
+.chat-work-card .work-change-preview {font-size:11px;line-height:1.4;margin:3px 0;}
+.chat-work-card .work-card-actions .work-expand {margin-left:auto;}
