@@ -111,6 +111,8 @@ export const actionSchema = z
     settings_section: z
       .enum([
         "profile",
+        "organization",
+        "notifications",
         "voice",
         "integrations",
         "privacy",

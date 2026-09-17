@@ -6,16 +6,17 @@ export const plural = (count: number, noun: string) => `${count} ${noun}${count 
 export function tabDestination(key: string, index: number, count: number) {
   return key === "ArrowRight" ? (index + 1) % count : key === "ArrowLeft" ? (index + count - 1) % count : key === "Home" ? 0 : key === "End" ? count - 1 : null;
 }
-export function Tabs<T extends string>({id, label, items, value, onChange, className = "", panel}: {
+export function Tabs<T extends string>({id, label, items, value, onChange, className = "", panel, orientation = "horizontal"}: {
   id: string; label: string; items: readonly {id: T; label: ReactNode; description?: string}[]; value: T;
-  onChange: (value: T) => unknown | Promise<unknown>; className?: string; panel: string;
+  onChange: (value: T) => unknown | Promise<unknown>; className?: string; panel: string; orientation?: "horizontal" | "vertical";
 }) {
   const root = useRef<HTMLDivElement>(null);
-  return <div ref={root} className={className} role="tablist" aria-label={label}>
+  return <div ref={root} className={className} role="tablist" aria-label={label} aria-orientation={orientation}>
     {items.map((item, index) => <button type="button" key={item.id} id={`${id}-${item.id}`} role="tab" title={item.description}
       aria-controls={panel} aria-selected={value === item.id} tabIndex={value === item.id ? 0 : -1}
       onClick={() => void onChange(item.id)} onKeyDown={e => {
-        const next = tabDestination(e.key, index, items.length);
+        const key = orientation === "vertical" ? ({ArrowDown: "ArrowRight", ArrowUp: "ArrowLeft"} as Record<string,string>)[e.key] ?? e.key : e.key;
+        const next = tabDestination(key, index, items.length);
         if (next === null) return;
         e.preventDefault();
         void Promise.resolve(onChange(items[next].id)).then(() => root.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus());

@@ -1,10 +1,14 @@
+import { useAppHistory } from "./app-history";
+import { SettingsLayout } from "./SettingsLayout";
+import { readSettingsSection, type SettingsSection } from "./settings-sections";
+import "./shell.css";
 import { NoticeSnooze } from "./NoticeSnooze";
 import { RoutingReviewPanel, NotificationPreferences } from "./PlannerPreferences";
 import { StructureWorkspace } from "./Structure";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryActions } from "./MemoryActions";
-import { Tabs, humanLabel, PlannerGuide, useBodyLock } from "./ux";
+import { humanLabel, PlannerGuide, useBodyLock } from "./ux";
 import { BotSettings } from "./BotSettings";
 import { PublicFooter } from "./PublicPages";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
@@ -168,13 +172,12 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
-  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;proposal_id?:string;field?:string;value?:string}>();
+  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}>();
+  const [taskRecordControl,setTaskRecordControl]=useState<typeof recordControl>();
   useEffect(()=>{const open=(e:Event)=>{setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:(e as CustomEvent).detail.id});};window.addEventListener("eri-open-custom-record",open);return()=>window.removeEventListener("eri-open-custom-record",open);},[]);
-  const [settingsSection, setSettingsSection] = useState<
-    "profile" | "voice" | "integrations" | "privacy" | "system" | "sharing"
-  >(() => {
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
     const params = new URLSearchParams(location.search), section = params.get("section");
-    if (section === "profile" || section === "voice" || section === "integrations" || section === "privacy" || section === "system" || section === "sharing") return section;
+    if (section) return readSettingsSection(section);
     return params.has("sharing") ? "sharing" : params.has("google") ? "integrations" : "profile";
   });
   const [density, setDensity] = useState<"compact" | "comfortable">(() =>
@@ -192,9 +195,8 @@ export default function App() {
   );
   const [planToday, setPlanToday] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
-  const searchAvailable = view !== "settings";
   const searchLabel = view === "notes" ? "Search notes" : view === "memory" ? "Search memories" : view === "organize" ? "Search organization" : view === "calendar" ? "Search calendar" : view === "notifications" ? "Search notifications" : "Search tasks";
-  useEffect(() => { setPlanToday(true); setSearchOpen(false); }, [view]);
+  useEffect(() => { setPlanToday(true); }, [view]);
   const lastTaskTab = useRef<TaskTab>(isTaskTab(view) ? view : "today");
   useEffect(() => {
     if (isTaskTab(view)) lastTaskTab.current = view;
@@ -279,6 +281,8 @@ export default function App() {
   const [query, setQuery] = useState(initialSavedView?.query ?? ""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
+  const [taskSearchText, setTaskSearchText] = useState(initialSavedView?.query ?? "");
+  useEffect(() => { if (isTaskTab(view)) setTaskSearchText(query); }, [view, query]);
   const [error, setError] = useState(""),
     [toast, setToast] = useState(""),
     [busy, setBusy] = useState(false);
@@ -357,17 +361,6 @@ export default function App() {
     setTimelineDate(value.timeline_date);
     setTimelineSpan(value.timeline_span);
   }
-  useEffect(() => {
-    const url = isTaskTab(view)
-      ? viewLink(savedViewState)
-      : new URL(location.href);
-    if (!isTaskTab(view)) {
-      url.searchParams.set("view", view);
-      url.searchParams.delete("tab");
-      url.searchParams.delete("state");
-    }
-    history.replaceState(null, "", url);
-  }, [view, JSON.stringify(savedViewState)]);
   const [memoryStatus, setMemoryStatus] = useState<{enabled:boolean;pending:number;retrying:number;deferred:number;queued?:number;active?:number;failed?:number;retry_waiting?:number}>({
     enabled: true,
     pending: 0,
@@ -584,7 +577,6 @@ export default function App() {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        if (view === "settings") return;
         if (mobile) { setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus()); }
         else searchRef.current?.focus();
       }
@@ -766,6 +758,15 @@ export default function App() {
       archived: false,
       occurrence_id: null,
     });
+  }
+  async function searchAllTasks() {
+    try {
+      if (editors.current()) await editors.act({operation: "close"});
+      setView("all"); setQuery(taskSearchText.trim()); setTaskStatus("all");
+      setProjectFilter(""); setOrganizationFilter(emptyFilter); setTaskFilters(emptyTaskFilters);
+      setWorkKind("all"); setWorkLayout("list"); setSearchOpen(false); setSidebar(false);
+      setTaskRecordControl({nonce: crypto.randomUUID(), type_id: "", parent_id: "", field: "", value: "", status: "all", archived: false, layout: "list"});
+    } catch (error) {setError((error as Error).message);}
   }
   async function openNote(id: string) {
     try {
@@ -1031,6 +1032,8 @@ export default function App() {
             ? "sharing"
             : /voice|wake|sound/.test(phrase)
               ? "voice"
+              : /notification|quiet|reminder|summary/.test(phrase) ? "notifications"
+              : /routing|organization|work hours|filing|rule/.test(phrase) ? "organization"
               : /google|calendar|linear|integration/.test(phrase)
                 ? "integrations"
                 : /memory|history|privacy|learning/.test(phrase)
@@ -1698,6 +1701,71 @@ export default function App() {
     notifications: "Notifications",
     settings: "Settings",
   };
+  const previousLayer = useRef({record: null as string | null, structure: false});
+  useEffect(() => {
+    const previous = previousLayer.current;
+    const record = editors.summary?.kind === "record" ? editors.summary.record_id : null;
+    const structure = !!collectionContext.design;
+    if ((previous.record && !record) || (previous.structure && !structure)) {
+      // Opening a card is a one-time command, not a default for the next page visit.
+      const consume = (control: typeof recordControl) => control ? {...control,
+        ...(control.record_id === previous.record && !record ? {record_id: undefined} : {}),
+        ...(previous.structure && !structure ? {design: false, proposal_id: undefined} : {})} : control;
+      setRecordControl(consume); setTaskRecordControl(consume);
+    }
+    previousLayer.current = {record, structure};
+  }, [editors.summary?.kind, editors.summary?.record_id, collectionContext.design]);
+  const detailKey = (detail: typeof editors.summary) => detail ? `${detail.kind}:${detail.record_id ?? "new"}:${detail.mode}` : "";
+  const navigation = {view, settingsSection, query, savedViewState, collectionContext, calendarMode, calendarDay,
+    notesMode, showArchived, companion, activityOpen, sidebar, searchOpen, detail: editors.summary,
+    selected, reminder, scheduleEditor, noteEditor, googleEvent, calendarDetail, bulkEditor, editingMemory, organizationEditor};
+  const navigationUrl = isTaskTab(view) ? viewLink(savedViewState) : new URL(location.href);
+  if (!isTaskTab(view)) {navigationUrl.searchParams.set("view", view); navigationUrl.searchParams.delete("tab"); navigationUrl.searchParams.delete("state");}
+  if (view === "settings") navigationUrl.searchParams.set("section", settingsSection); else navigationUrl.searchParams.delete("section");
+  if (editors.summary?.record_id && ["record", "task", "note", "project", "goal", "area", "space", "actor"].includes(editors.summary.kind)) {
+    navigationUrl.searchParams.set("record", editors.summary.kind + ":" + editors.summary.record_id);
+    navigationUrl.searchParams.set("workspace", boot?.workspace?.id ?? "personal");
+  } else if (!linkWorkspace) {navigationUrl.searchParams.delete("record"); navigationUrl.searchParams.delete("workspace");}
+  if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
+  useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
+    page: view + (view === "settings" ? ":" + settingsSection : ""),
+    layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
+    url: navigationUrl.href, onError: setError,
+    restore: async target => {
+      if (collectionContext.design && collectionContext.design_dirty && (!target.collectionContext.design || view !== target.view)) {
+        throw new Error("Apply your structure changes or close the structure editor before leaving.");
+      }
+      const detailChanged = detailKey(editors.summary) !== detailKey(target.detail);
+      if (detailChanged && editors.current()) await editors.act({operation: "close"});
+      if (isTaskTab(target.view)) applySavedView(target.savedViewState); else setView(target.view);
+      setQuery(target.query); setSettingsSection(target.settingsSection); setCalendarMode(target.calendarMode);
+      setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setShowArchived(target.showArchived);
+      setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
+      const collection = target.collectionContext;
+      (isTaskTab(target.view) ? setTaskRecordControl : setRecordControl)({nonce: crypto.randomUUID(), type_id: String(collection.type_id ?? ""), parent_id: String(collection.parent_id ?? ""),
+        layout: String(collection.layout ?? "list"), group: String(collection.group ?? "status"), field: String(collection.field ?? ""),
+        value: String(collection.value ?? ""), status: String(collection.status ?? "active"), archived: !!collection.archived, design: !!collection.design,
+        ...(detailChanged && target.detail?.kind === "record" && target.detail.record_id ? {record_id: target.detail.record_id} : {})});
+      if (detailChanged) {
+        setSelected(target.selected); setReminder(target.reminder); setScheduleEditor(target.scheduleEditor);
+        setNoteEditor(target.noteEditor); setGoogleEvent(target.googleEvent); setCalendarDetail(target.calendarDetail);
+        setBulkEditor(target.bulkEditor); setEditingMemory(target.editingMemory); setOrganizationEditor(target.organizationEditor);
+        const record = target.detail;
+        if (record?.record_id && ["task", "note", "project", "goal", "area", "space", "actor"].includes(record.kind)) {
+          await openLinkedRecord({kind: record.kind as LinkedRecord["kind"], id: record.record_id});
+          setView(target.view);
+        }
+        if (record) {
+          const deadline = performance.now() + 5000;
+          while ((editors.current()?.kind !== record.kind || (editors.current()?.record_id ?? null) !== record.record_id) && performance.now() < deadline) {
+            await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+          }
+        }
+      }
+    }});
+  useEffect(() => {
+    if (companion) requestAnimationFrame(() => document.getElementById("eri-conversation")?.focus({preventScroll: true}));
+  }, [companion]);
   if (loading)
     return (
       <div className="splash">
@@ -1897,21 +1965,22 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
-            {searchAvailable && <>
-              {mobile && <button className="icon-button mobile-search" aria-label={searchLabel} onClick={() => {setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus());}}><Search size={18}/></button>}
-            <div className={"search " + (searchOpen ? "search-expanded" : "")}>
+            <>
+              {mobile && <button className="icon-button mobile-search" aria-label="Search tasks" onClick={() => {setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus());}}><Search size={18}/></button>}
+            <form role="search" aria-label="Task search" className={"search " + (searchOpen ? "search-expanded" : "")} onSubmit={e => {e.preventDefault();void searchAllTasks();}}>
               <Search size={16} />
               <input
                 ref={searchRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={searchLabel + "…"}
-                aria-label={searchLabel}
+                value={taskSearchText}
+                onChange={(e) => setTaskSearchText(e.target.value)}
+                placeholder="Search tasks…"
+                aria-label="Search tasks"
               />
               <kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘ K" : "Ctrl K"}</kbd>
-              {mobile && <button className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18}/></button>}
-            </div>
-            </>}
+              <button type="submit" className="icon-button search-submit" aria-label="Find tasks"><ArrowUp size={16}/></button>
+              {mobile && <button type="button" className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18}/></button>}
+            </form>
+            </>
             <button
               className={"icon-button " + (unread ? "has-notice" : "")}
               aria-label={
@@ -1921,13 +1990,6 @@ export default function App() {
             >
               <Bell size={19} />
               {unread > 0 && <i />}
-            </button>
-            <button
-              className="icon-button companion-toggle"
-              aria-label="Open Eridani"
-              onClick={() => setCompanion(!companion)}
-            >
-              <MessageCircle size={20} />
             </button>
           </div>
         </header>
@@ -1950,10 +2012,11 @@ export default function App() {
           </div>
         )}
         <div className={"workspace " + (mobile && companion ? "chat-sheet-open" : "")}>
-          <main className="content" inert={mobile && companion}>
+          <main className={"content" + (view === "settings" ? " settings-page" : "")} inert={mobile && companion}>
             <div className="page-heading">
               <h1>{titles[view]}</h1>
             </div>
+            {!isTaskTab(view) && view !== "settings" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
             {isTaskTab(view) && (
               <>
                 <TaskTabs value={view} onChange={setView} />
@@ -2280,7 +2343,7 @@ export default function App() {
                 />
               </>
             )}
-            {isTaskTab(view)&&<StructureWorkspace selecting={selectingTasks} selectedIds={selectedTaskIds} onSelecting={value=>{setSelectingTasks(value);if(!value)setSelectedTaskIds([]);}} onSelection={setSelectedTaskIds} onBulk={()=>{setError("");setBulkEditor(tasks.filter(t=>selectedTaskIds.includes(t.id)));}} key={boot.workspace?.id??"personal"} onContext={setCollectionContext} statusFilter={taskStatus} homeFilter={organizationFilter.area||organizationFilter.space||projects.find(p=>p.name===projectFilter)?.id||""} layoutFilter={workLayout} groupFilter={workGroup} onQuery={setQuery} onTab={setView} capability="work" tab={view} today={today} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()} onVisible={setWorkVisible} onTask={id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);}}/>}
+            {isTaskTab(view)&&<StructureWorkspace control={taskRecordControl} selecting={selectingTasks} selectedIds={selectedTaskIds} onSelecting={value=>{setSelectingTasks(value);if(!value)setSelectedTaskIds([]);}} onSelection={setSelectedTaskIds} onBulk={()=>{setError("");setBulkEditor(tasks.filter(t=>selectedTaskIds.includes(t.id)));}} key={boot.workspace?.id??"personal"} onContext={setCollectionContext} statusFilter={taskStatus} homeFilter={organizationFilter.area||organizationFilter.space||projects.find(p=>p.name===projectFilter)?.id||""} layoutFilter={workLayout} groupFilter={workGroup} onQuery={setQuery} onTab={setView} capability="work" tab={view} today={today} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()} onVisible={setWorkVisible} onTask={id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);}}/>}
             {view === "notifications" && (
               <>
                 <div className="section-head">
@@ -2566,13 +2629,12 @@ export default function App() {
             )}
             {view === "settings" && (
               <>
-                <Tabs id="settings-tab" label="Settings sections" className="settings-tabs" panel="settings-panel"
-                  value={settingsSection} onChange={setSettingsSection} items={(["profile", "voice", "integrations", "privacy", "system", "sharing"] as const).map(id => ({id, label: humanLabel(id)}))}/>
-                <div id="settings-panel" role="tabpanel" aria-labelledby={"settings-tab-" + settingsSection}>
+                <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "profile"&&!boot.workspace?.id&&<><RoutingReviewPanel/><NotificationPreferences/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<RoutingReviewPanel/>}
+                {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
-                  ["profile", "privacy", "system", "integrations"].includes(
+                  ["profile", "organization", "notifications", "privacy", "system", "integrations"].includes(
                     settingsSection,
                   ) && (
                     <p className="footnote">
@@ -2723,7 +2785,7 @@ export default function App() {
                     onPush={enablePush}
                   />
                 )}
-                </div>
+                </SettingsLayout>
               </>
             )}
             <footer className="page-footer">
@@ -2732,6 +2794,8 @@ export default function App() {
             </footer>
           </main>
           <aside
+            id="eri-conversation"
+            tabIndex={-1}
             className={
               "companion " +
               (companion ? "visible " : "") +
@@ -2925,6 +2989,14 @@ export default function App() {
           </aside>
         </div>
       </div>
+      {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
+      <button type="button" className={"chat-launcher" + (companion ? " is-open" : "") + (voiceState && !voiceState.closed ? " is-listening" : "")}
+        aria-label={companion ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={companion}
+        onClick={() => setCompanion(!companion)}>
+        <span className="chat-launcher-icon">{companion ? <X size={23}/> : <MessageCircle size={24}/>}</span>
+        {!companion && <span className="chat-launcher-label">Eri</span>}
+        {voiceState && !voiceState.closed && <span className="chat-live-dot" aria-label="Voice active"/>}
+      </button>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
       <div className="voice-glow" ref={glowRef} aria-hidden="true">

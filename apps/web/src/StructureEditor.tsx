@@ -8,11 +8,12 @@ import { MultiSelect, TypeEditor } from "./TypeEditor";
 import type { Schema, SchemaType, SchemaRelation, Proposal } from "./structure-types";
 import { describe } from "./structure-types";
 
-export function StructureEditor({schema,onClose,onApplied,initialProposal}:{initialProposal?:Proposal;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
+export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirtyChange}:{onDirtyChange?:(dirty:boolean)=>void;initialProposal?:Proposal;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
   useBodyLock(true);useDialogFocus();const [draft,setDraft]=useState(()=>structuredClone(schema));const [selected,setSelected]=useState(schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error}=useStructureActions();
   const [history,setHistory]=useState<Proposal[]>([]);
   useEffect(()=>{void api<{items:Proposal[]}>("/structure/history/applied").then(r=>setHistory(r.items));},[]);
   const type=draft.types.find(t=>t.id===selected);const [statusMappings,setStatusMappings]=useState<Record<string,Record<string,string>>>({});
+  useEffect(()=>{onDirtyChange?.(busy||JSON.stringify(draft)!==JSON.stringify(schema)||Object.keys(statusMappings).length>0);},[draft,schema,busy,statusMappings,onDirtyChange]);
   const update=(patch:Partial<SchemaType>)=>{setDraft({...draft,types:draft.types.map(t=>t.id===selected?{...t,...patch}:t)});setProposal(null);};
   const addType=()=>{const t:SchemaType={id:crypto.randomUUID(),name:"New type",plural:"New types",description:"",capabilities:[],parent_types:draft.types.map(t=>t.id),fields:[],statuses:[],archived:false};setDraft({...draft,types:[...draft.types,t]});setSelected(t.id);setProposal(null);};
   const preview=async()=>setProposal(await run<Proposal>("structure.preview",{expected_revision:schema.revision,definition:{types:draft.types,relationships:draft.relationships},status_mappings:statusMappings}));

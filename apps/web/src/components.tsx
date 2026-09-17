@@ -759,7 +759,7 @@ export function SettingsPanel({
   onPush,
   section,
 }: {
-  section: "profile" | "voice" | "integrations" | "privacy" | "system";
+  section: "profile" | "voice" | "integrations" | "privacy" | "system" | "organization" | "notifications";
   boot: Bootstrap;
   busy: boolean;
   onSave: (args: unknown) => Promise<void>;
@@ -867,8 +867,8 @@ export function SettingsPanel({
           </p>
         </div>
       </section>
-      <section hidden={section !== "profile"}>
-        <h2>Reminders</h2>
+      <section hidden={section !== "notifications"}>
+        <h2>Reminder delivery</h2>
         <label className="setting-row">
           <span>
             <strong>Default reminder time</strong>

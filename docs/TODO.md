@@ -3,6 +3,44 @@
 Updated September 17, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
+Completed implementation is marked **[x]**. **[ ]** means work or verification is
+still pending; automated checks do not mark physical-device acceptance complete.
+The newest batches are near the top; earlier sections retain release history.
+
+## Chat, search, foldable settings and phone navigation — September 17
+
+- [x] Persistent bottom-right Eri button on every signed-in page, animated opening,
+  accessible open/close controls, reduced-motion support and clear active-voice state.
+- [x] Top search consistently finds actionable tasks across collections, including
+  completed work, without changing into notification search. Keep page-local search
+  available for notes, memory, calendar and organization.
+- [x] Focused Settings sections for Profile, Organization, Notifications, Voice,
+  Connections, Privacy, Sharing and System; responsive controls for folded phones,
+  unfolded/foldable widths and desktop; update Eri's site-control descriptions.
+- [x] In-app browser Back/Forward: close details/chat before going to the previous
+  page, preserve filters and protect unsaved edits without document reloads.
+- [x] Browser acceptance at 390, 600, 768, 820, 1000 and 1440px: no page overflow,
+  chat stays within the viewport, Back/Forward stays in the same document, and
+  unsaved note/structure drafts survive Back. Reduced-motion opening also passes.
+  See [validation](SHELL_UX_VALIDATION.md).
+- [ ] Physical Pixel 10 Pro Fold acceptance: folded/unfolded keyboard, scrolling,
+  Back gestures and voice remaining active when the conversation is closed.
+
+## Task embeddings and agent search — planned
+
+- [ ] Embed task titles and full descriptions/details, plus searchable custom-field
+  labels/values and client/project/main-home names, for semantic retrieval by Eri
+  and authorized external agents. Include every actionable custom type.
+- [ ] Combine semantic matches with exact text/ID lookup and explicit status/date/
+  assignee filters; return record IDs, current details and evidence for each match.
+- [ ] Index asynchronously after creation/edits/imports; refresh affected tasks when
+  linked names or inherited classifications change; handle archive/deletion and
+  backfill existing records. Keep this index separate from personal-memory learning
+  and routing evidence, with workspace permissions checked before returning results.
+- [ ] Add retrieval evaluations for paraphrases, ambiguous names, changed details,
+  missed tasks and cross-workspace isolation. Reuse the planned vector-storage
+  work; embeddings are not implemented by the UI search change above.
+
 ## Real-use acceptance checklist — pending
 
 These are owner/device checks, not implementation tasks. Automated and simulated

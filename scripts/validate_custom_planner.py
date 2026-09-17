@@ -72,12 +72,13 @@ def main():
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Isolated API did not become ready")
-            subprocess.run(
-                ["node", "e2e/custom-planner.mjs"],
-                cwd=ROOT / "apps" / "web",
-                env={**os.environ, "JARVIS_PLANNER_TEST_URL": base},
-                check=True,
-            )
+            for fixture in ("custom-planner.mjs", "shell-navigation.mjs"):
+                subprocess.run(
+                    ["node", "e2e/" + fixture],
+                    cwd=ROOT / "apps" / "web",
+                    env={**os.environ, "JARVIS_PLANNER_TEST_URL": base},
+                    check=True,
+                )
     finally:
         if server:
             server.terminate()
