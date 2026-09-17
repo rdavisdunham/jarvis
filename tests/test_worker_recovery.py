@@ -26,9 +26,9 @@ def notification_count():
         return db.scalar(select(func.count(Notification.id)))
 
 
-def test_accepted_reminder_survives_kill_and_outbox_replay(test_database):
+def test_accepted_reminder_survives_kill_and_outbox_replay(test_database, tmp_path):
     root = Path(__file__).resolve().parents[1]
-    log_path = root / ".runtime" / "test-worker.log"
+    log_path = tmp_path / "test-worker.log"
     env = {
         **os.environ,
         "JARVIS_DATABASE_URL": test_database,

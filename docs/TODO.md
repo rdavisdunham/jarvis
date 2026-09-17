@@ -53,9 +53,8 @@ This is the current recommendation, not a claim these features have shipped.
 The detailed sections below retain implementation history and acceptance evidence.
 
 1. **Configurable planner acceptance:** the agreed organization/routing batch is
-   implemented and automated checks pass. The September 17 release is authorized;
-   validate Structure, custom collections, workflows, inheritance, learned rules
-   and weekly interviews in real use after deployment.
+   deployed September 17. Validate Structure, custom collections, workflows,
+   inheritance, learned rules and weekly interviews in real use.
    See [implementation and test notes](CUSTOM_PLANNER_IMPLEMENTATION.md).
 2. **Notification acceptance:** deadline alerts, quiet hours, explicit urgency,
    daily summary, grouped background results and durable snooze are implemented
@@ -80,8 +79,10 @@ can follow demonstrated need; they are not prerequisites for native Android.
   migration/model agreement, frontend tests/build and desktop/mobile browser
   acceptance. Locked dependencies, standard Linux runners, synthetic data and
   failure artifacts only; no deployment or model-provider credentials.
-- [ ] Push the workflow with the current feature batch and verify its first
-  GitHub-hosted run. It is configured locally, not active remotely yet.
+- [x] Push and activate the workflow with the feature batch. The first hosted run
+  passed frontend/browser checks and caught a worker-test log-directory assumption;
+  the test now uses a temporary directory. Follow full-suite results in
+  [GitHub Actions](https://github.com/rdavisdunham/jarvis/actions/workflows/ci.yml).
 - [ ] After the first run, consider requiring both checks before merge and making
   Railway wait for CI before deployment; those settings are unchanged.
 
@@ -89,8 +90,8 @@ Details: [CI.md](CI.md).
 
 ## Configurable planner, routing and notifications — September 17
 
-Implementation and automated verification complete; September 17 release to
-production is authorized and in progress.
+Deployed to production September 17 in `8e63e95`. Both Railway services report
+SUCCESS; the public frontend matches the tested build and the API is ready.
 This supersedes the fixed goals/projects/classification portion of the earlier
 [task-routing PRD](TASK_ROUTING_PRD.md).
 
@@ -112,9 +113,10 @@ This supersedes the fixed goals/projects/classification portion of the earlier
   settings; existing keys do not gain new permissions automatically.
 - [x] Isolated migrations, backend/frontend checks and desktop/mobile browser
   acceptance. See [evidence and limits](CUSTOM_PLANNER_IMPLEMENTATION.md).
-- [ ] Verify the September 17 API + worker release and migrations on Railway.
-  Existing PITR archive uploads were verified in logs; an extra local export was
-  blocked by automatic approval review and not performed.
+- [x] Release and verify API + worker on Railway (`8e63e95`), including migrations,
+  exact frontend asset hashes, API readiness and clean worker startup. Existing
+  PITR archive uploads were verified in logs; an extra local export was blocked
+  by automatic approval review and not performed.
 - [ ] Physical-phone voice, board gestures, notification delivery and network
   recovery; actual model interviews and connected-account imports/updates.
 - [ ] Real-user routing quality dataset: 100 held-out matches and ≥95% precision

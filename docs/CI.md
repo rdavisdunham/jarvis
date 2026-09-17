@@ -2,8 +2,7 @@
 
 The `CI` workflow runs on pull requests to `main`, pushes to `main`, and manual
 runs. It must be pushed with the configurable planner implementation, including
-`scripts/validate_custom_planner.py` and its browser fixture. The first GitHub-hosted run starts when this release is pushed; its result is
-available in the repository Actions tab.
+`scripts/validate_custom_planner.py` and its browser fixture. The workflow is active on GitHub. Current results are in the [Actions tab](https://github.com/rdavisdunham/jarvis/actions/workflows/ci.yml).
 
 Two independent Linux jobs:
 
@@ -56,3 +55,8 @@ The backend run excluded local environment files and provider credentials. Tests
 that previously depended on local settings now declare synthetic encryption/provider
 configuration themselves. Python correctness and whitespace checks also passed.
 The build retains its existing large-bundle advisory.
+
+The first GitHub run passed frontend/browser checks and exposed one additional
+clean-checkout assumption: the worker recovery test wrote to a pre-existing local
+`.runtime` folder. It now uses pytest's temporary directory. Subsequent CI runs
+verify that regression together with the full suite.

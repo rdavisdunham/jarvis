@@ -1,8 +1,8 @@
 # Configurable planner, organization learning and notifications
 
-Status: implementation verified; production release authorized and in progress,
-September 17, 2026. GitHub Actions and Railway deployment history record rollout
-status. The local development database has not been migrated in this batch. Database and browser acceptance used disposable databases and synthetic
+Status: deployed to production September 17, 2026, in `8e63e95`. Both Railway
+services report SUCCESS for that commit. The local development database has not
+been migrated in this batch. Database and browser acceptance used disposable databases and synthetic
 records. This document supersedes the fixed classification design in the original
 [TASK_ROUTING_PRD.md](TASK_ROUTING_PRD.md).
 
@@ -176,3 +176,15 @@ Still to verify before a broader release:
 - [ ] Second-account permissions; cloud API/worker restart; backup/restore drill.
 
 The complete pending owner/device checklist remains in [TODO.md](TODO.md).
+
+## Production verification — September 17, 2026
+
+- Web deployment: `40ebef44-f218-4dee-8b3f-139dd6a9e607`, SUCCESS.
+- Worker deployment: `a45cf519-c4c6-4b6d-ab36-5331e9e3826d`, SUCCESS.
+- Both deployment metadata records identify commit `8e63e95907b131ad6b3e60a8ef9a3ea0970850ff`.
+- Public page and `/health/ready` return HTTP 200. Frontend JavaScript
+  `index-DMcsGTZi.js` and CSS `index-98bLRaCn.css` hashes match the tested local build.
+- API startup and DBOS worker launch appear in recent logs, with no error/traceback
+  lines in the inspected window. Native PITR logs show successful archive uploads.
+- These are rollout checks, not proof of real-device voice, push delivery, live
+  learning interviews, or connected-account behavior. Those checks remain open.
