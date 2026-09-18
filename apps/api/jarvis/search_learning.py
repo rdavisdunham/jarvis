@@ -4,6 +4,7 @@ import re
 from datetime import timedelta
 from sqlalchemy import select
 from .models import Conversation, Job, AgentWork, now
+from .config import get_settings
 from .search_models import SearchAlias, SearchSession, SearchPreference
 from .search_index import snapshot, digest
 from .search_service import normalize, contains, permitted
@@ -50,7 +51,8 @@ def choose(db, owner, account, args):
 
 def accept_search(db, row, signal):
     if (
-        row.suppressed
+        not get_settings().semantic_search_enabled
+        or row.suppressed
         or row.outcome in ("accepted", "corrected")
         or not row.presented_at
         or not row.selected_key
@@ -165,7 +167,7 @@ CORRECTION = re.compile(
 
 def observe_source(db, source):
     """Real transcript/UI presentation only; background tool output is never acceptance."""
-    if not source.conversation_id:
+    if not get_settings().semantic_search_enabled or not source.conversation_id:
         return
     conversation = db.get(Conversation, source.conversation_id)
     if not conversation:
@@ -194,10 +196,15 @@ def observe_source(db, source):
         SearchSession.suppressed.is_(False),
     )
     if source.role == "assistant" and source.native_id.startswith("live:"):
+        waiting = list(
+            db.scalars(
+                q.where(SearchSession.presented_at.is_(None), SearchSession.created_at <= source.created_at)
+            )
+        )
+        if not waiting:
+            return
         docs, _ = snapshot(db, source.owner_id)
-        for row in db.scalars(
-            q.where(SearchSession.presented_at.is_(None), SearchSession.created_at <= source.created_at)
-        ):
+        for row in waiting:
             target = docs.get(row.selected_key)
             # A spoken target anchors this interpretation. "Here it is" alone stays unknown.
             if target and contains(source.content, normalize(target["label"])):
