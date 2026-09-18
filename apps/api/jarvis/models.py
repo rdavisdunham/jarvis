@@ -684,3 +684,5 @@ class BotCredential(Base):
 
 # Register configurable planner tables with the shared metadata.
 from .structure_models import (StructureSchema, StructureProposal, StructureRecord, StructureLink, FieldUnderstanding, RoutingObservation, RoutingPattern, RoutingReview)  # noqa: E402,F401
+
+from .search_models import SearchDocument, SearchIndexState, SearchPreference, SearchAlias, SearchSession  # noqa: E402,F401

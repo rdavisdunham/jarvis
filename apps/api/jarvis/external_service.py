@@ -412,6 +412,9 @@ def backend_read(name, arguments, conversation_id):
         raise DomainError("INVALID_ARGUMENT", "Check the read-tool arguments.") from None
     with session_scope() as db:
         bot = bot_access.check_tool(db, None, name)
+        if name == "record_search":
+            from .search_service import search as semantic_records
+            return semantic_records(bot.owner_id,bot.account_id,arguments,track=False)
         if name == "time_resolve":
             from .time_tools import resolve_time
 

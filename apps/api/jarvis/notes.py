@@ -313,6 +313,22 @@ def list_notes(
 
 
 def search_notes(owner, query, project_id=None, task_id=None, space_id=None, area_id=None, goal_id=None):
+    from .config import get_settings
+    if get_settings().semantic_search_enabled:
+        from .access import actor
+        from .search_service import search
+        with session_scope() as db:
+            account=actor(db,owner)
+        found=search(owner,account,{"query":query,"capability":"content","limit":30},track=False,
+            note_filters={"project_id":project_id,"task_id":task_id,"space_id":space_id,"area_id":area_id,"goal_id":goal_id})
+        matches=found["structured"]["items"]+found["possible"]["items"]
+        with session_scope() as db:
+            items=[]
+            for match in matches[:30]:
+                row=db.get(Note,match["record"]["note_id"])
+                if row and row.owner_id==owner and not row.archived:
+                    items.append({**note_data(db,row,preview=True),"score":match["score"]})
+        return {"items":items,"mode":found["mode"],"truncated":any(found[g]["next_offset"] is not None for g in ("structured","possible")) or len(matches)>30,"index":found["index"]}
     vector, fallback = None, False
     try:
         vector = embeddings(owner, [query[:500]])[0]

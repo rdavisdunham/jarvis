@@ -130,6 +130,7 @@ jobs:
           path: |
             artifacts/custom-planner/
             artifacts/chat-activity/
+            artifacts/semantic-search/
             apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

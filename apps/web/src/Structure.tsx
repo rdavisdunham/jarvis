@@ -6,10 +6,13 @@ import { RecordCard } from "./RecordCard";
 import { StructureEditor } from "./StructureEditor";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./structure.css";
+import { useSemanticSearch } from "./semantic-search";
 import { meanings, describe } from "./structure-types";
 
-export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,onSelection,onBulk,query="",canEdit=true,canDesign=true,refresh=0,onChanged,capability="",tab="all",today=new Date().toISOString().slice(0,10),onTask,onVisible,control,onQuery,onTab,statusFilter,homeFilter,layoutFilter,groupFilter,onContext}:{selecting?:boolean;selectedIds?:string[];onSelecting?:(v:boolean)=>void;onSelection?:(ids:string[])=>void;onBulk?:()=>void;statusFilter?:string;homeFilter?:string;layoutFilter?:string;groupFilter?:string;onContext?:(state:Record<string,string|number|null>)=>void;query?:string;canEdit?:boolean;canDesign?:boolean;refresh?:number;onChanged?:()=>void;capability?:string;tab?:string;today?:string;onTask?:(id:string)=>void;onQuery?:(value:string)=>void;onTab?:(value:"today"|"inbox"|"week"|"all")=>void;onVisible?:(ids:string[])=>void;control?:{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}}){
+export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,onSelection,onBulk,query="",canEdit=true,canDesign=true,refresh=0,onChanged,capability="",tab="all",today=new Date().toISOString().slice(0,10),onTask,onVisible,control,onQuery,onTab,statusFilter,homeFilter,layoutFilter,groupFilter,onContext}:{selecting?:boolean;selectedIds?:string[];onSelecting?:(v:boolean)=>void;onSelection?:(ids:string[])=>void;onBulk?:()=>void;statusFilter?:string;homeFilter?:string;layoutFilter?:string;groupFilter?:string;onContext?:(state:Record<string,string|number|null>)=>void;query?:string;canEdit?:boolean;canDesign?:boolean;refresh?:number;onChanged?:()=>void;capability?:string;tab?:string;today?:string;onTask?:(id:string)=>void;onQuery?:(value:string)=>void;onTab?:(value:"today"|"inbox"|"week"|"all")=>void;onVisible?:(ids:string[])=>void;control?:{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}}){
   const [schema,setSchema]=useState<Schema|null>(null);const [items,setItems]=useState<CustomRecord[]>([]);
+  const [resultIds,setResultIds]=useState<string[]|null>(null);
+  const [resultSearch,setResultSearch]=useState<string|null>(null);
   const [typeId,setTypeId]=useState("");const [layout,setLayout]=useState("list");const [parent,setParent]=useState("");
   const [selected,setSelected]=useState<CustomRecord|null>(null);const [design,setDesign]=useState(false);const [designDirty,setDesignDirty]=useState(false);
   const [title,setTitle]=useState("");const [archived,setArchived]=useState(false);const [group,setGroup]=useState("status");
@@ -26,7 +29,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   },[archived]);
   useEffect(()=>{let live=true;load().catch(e=>{if(live)setError(String(e.message??e));});return()=>{live=false;};},[load,refresh,setError]);
   useEffect(()=>{const handler=(event:Event)=>{const id=(event as CustomEvent).detail?.id;if(id)api<CustomRecord>("/structure/records/"+id).then(setSelected).catch(e=>setError(e.message));};window.addEventListener("eri-open-record",handler);return()=>window.removeEventListener("eri-open-record",handler);},[setError]);
-  useEffect(()=>{if(!control)return;if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
+  useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
 
   useEffect(()=>{if(statusFilter!==undefined)setStatus(statusFilter);},[statusFilter]);
   useEffect(()=>{if(homeFilter!==undefined)setParent(homeFilter);},[homeFilter]);
@@ -36,12 +39,16 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const types=(schema?.types??[]).filter(t=>!t.archived&&(!capability||t.capabilities.includes(capability)));const type=types.find(t=>t.id===typeId);
   const captureType=type??types.find(t=>t.id==="task")??types[0];
   const weekEnd=new Date(today+"T12:00:00Z");weekEnd.setUTCDate(weekEnd.getUTCDate()+6);const end=weekEnd.toISOString().slice(0,10);
+  const semantic=useSemanticSearch(query,capability,archived,refresh);
+  useEffect(()=>{if(query){setResultIds(null);setResultSearch(null);}},[query]);
+  const ranked=semantic.result?new Map(semantic.result.ids.map((id,i)=>[id,i])):null;
   const visible=items.filter(r=>{
     if(!schema)return false;
+    if(resultIds&&!resultIds.includes(r.id))return false;
     if(capability&&!r.capabilities.includes(capability))return false;
     if(typeId&&r.type_id!==typeId)return false;
     if(parent&&r.parent_id!==parent&&!r.home.some(p=>p.id===parent))return false;
-    if(query&&![r.title,r.body,r.type_name,JSON.stringify(r.values)].join(" ").toLowerCase().includes(query.toLowerCase()))return false;
+    if(query&&(ranked?!ranked.has(r.id):![r.title,r.body,r.type_name,JSON.stringify(r.values)].join(" ").toLowerCase().includes(query.toLowerCase())))return false;
     if(status==="active"&&["completed","cancelled"].includes(r.status_meaning??""))return false;
     if(status!=="active"&&status!=="all"&&r.status_meaning!==status)return false;
     if(filterField&&filterValue&&!String(r.values[filterField]??"").toLowerCase().includes(filterValue.toLowerCase()))return false;
@@ -49,8 +56,25 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(tab==="inbox"&&r.parent_id)return false;
     if(tab==="today"||tab==="week"){const dates=[dateFor("planned_date"),dateFor("due_date")].filter(Boolean);if(!dates.some(d=>d<=(tab==="today"?today:end)))return false;}
     return true;
-  });
+  }).sort((a,b)=>ranked?(ranked.get(a.id)??0)-(ranked.get(b.id)??0):0);
   const visibleIds = JSON.stringify(visible.map(r=>r.task_id??r.id));
+  const visibleSearchIds=JSON.stringify(visible.map(r=>r.id));
+  useEffect(()=>{
+    if(!resultSearch||!resultIds)return;
+    let sent=false;
+    const observer=new IntersectionObserver(entries=>{
+      if(sent||document.visibilityState!=="visible")return;
+      for(const entry of entries){
+        if(!entry.isIntersecting)continue;
+        const rect=entry.intersectionRect;
+        const top=document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2);
+        if(!top||!entry.target.contains(top))continue;
+        sent=true;void post("/search/events",{search_id:resultSearch,kind:"presented"}).catch(()=>{});break;
+      }
+    },{threshold:.25});
+    document.querySelectorAll(".custom-record[data-record-id]").forEach(el=>observer.observe(el));
+    return()=>observer.disconnect();
+  },[resultSearch,resultIds,visibleSearchIds]);
   useEffect(()=>{onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible]);
   if(!schema)return <p role="status">{error||"Loading your structure…"}</p>;
   const refreshAll=async()=>{await load();onChanged?.();};
@@ -63,10 +87,10 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const move=async(id:string,column:string)=>{const row=items.find(r=>r.id===id);if(!row||!canEdit||busy)return;const rt=schema.types.find(t=>t.id===row.type_id)!;const statusId=type?column:rt.statuses.find(s=>s.meaning===column)?.id;if(group==="status"&&!statusId)throw new Error("Choose a workflow status for this record.");const changes=group==="status"?{status_id:statusId}:group==="parent"?{parent_id:column||null}:{values:{[group]:column||null}};await edit(row,changes);};
   const saveView=async()=>{if(!viewName.trim())return;await post("/task-views",{id:crypto.randomUUID(),name:viewName.trim(),expected_revision:0,state:{collection_view:true,collection_type:typeId,collection_parent:parent,collection_group:group,collection_field:filterField,collection_value:filterValue,tab:capability?tab:"all",query,status,layout}});setViewName("");await load();};
   const grip=(event:React.PointerEvent,id:string)=>{if(event.pointerType==="mouse")return;event.preventDefault();const target=event.currentTarget;target.setPointerCapture(event.pointerId);const up=(e:Event)=>{const point=e as PointerEvent;const col=document.elementFromPoint(point.clientX,point.clientY)?.closest<HTMLElement>("[data-record-column]");if(col)void move(id,col.dataset.recordColumn??"").catch(()=>{});target.removeEventListener("pointerup",up);};target.addEventListener("pointerup",up);};
-  const card=(r:CustomRecord)=><article key={r.id} className="custom-record" draggable={canEdit&&layout==="board"} onDragStart={e=>e.dataTransfer.setData("application/eri-record",r.id)}>
+  const card=(r:CustomRecord)=><article key={r.id} className="custom-record" data-record-id={r.id} draggable={canEdit&&layout==="board"} onDragStart={e=>e.dataTransfer.setData("application/eri-record",r.id)}>
     {selecting&&r.task_id&&<input aria-label={"Select "+r.title} type="checkbox" checked={selectedIds.includes(r.task_id)} onChange={e=>onSelection?.(e.target.checked?[...selectedIds,r.task_id!].slice(0,100):selectedIds.filter(id=>id!==r.task_id))}/>}
     {!selecting&&r.capabilities.includes("work")&&<button className="record-complete" aria-label={(r.status_meaning==="completed"?"Reopen ":"Complete ")+r.title} disabled={!canEdit||busy} onClick={()=>{const rt=schema.types.find(t=>t.id===r.type_id)!;const next=rt.statuses.find(s=>s.meaning===(r.status_meaning==="completed"?"open":"completed"))??(r.status_meaning==="completed"?rt.statuses.find(s=>s.meaning==="backlog"):undefined);if(next)void edit(r,{status_id:next.id}).catch(()=>{});}}>{r.status_meaning==="completed"?"✓":"○"}</button>}
-    <button className="record-title" onClick={()=>setSelected(r)}>{r.title}</button><span className="subtle">{r.type_name}{r.home.length?" · "+r.home.map(p=>p.title).join(" / "):""}</span>
+    <button className="record-title" onClick={()=>{setSelected(r);void semantic.used(r.id);if(resultSearch)void post("/search/events",{search_id:resultSearch,kind:"used",record_id:r.id}).catch(()=>{});}}>{r.title}</button><span className="subtle">{r.type_name}{r.home.length?" · "+r.home.map(p=>p.title).join(" / "):""}</span>
     {layout==="board"&&canEdit&&<button aria-label={"Move "+r.title} className="record-grip" onPointerDown={e=>grip(e,r.id)}><GripVertical size={16}/></button>}
     {r.task_id&&onTask&&<button className="text-button" onClick={()=>onTask(r.task_id!)}>Schedule & linked notes</button>}
     {r.status_id&&<span className="record-state">{schema.types.find(t=>t.id===r.type_id)?.statuses.find(s=>s.id===r.status_id)?.name}</span>}
@@ -75,6 +99,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     <header className="section-head"><div></div>{canDesign&&<button onClick={()=>{setProposal(undefined);setDesign(true);}}><Settings2 size={16}/> Structure</button>}</header>
     {onSelecting&&canEdit&&<div className="structure-controls"><button onClick={()=>onSelecting(!selecting)}>{selecting?"Done selecting":"Select tasks"}</button>{selecting&&<><label className="check-label"><input type="checkbox" aria-label="Select visible tasks" checked={visible.some(r=>r.task_id)&&visible.filter(r=>r.task_id).slice(0,100).every(r=>selectedIds.includes(r.task_id!))} onChange={e=>onSelection?.(e.target.checked?visible.filter(r=>r.task_id).slice(0,100).map(r=>r.task_id!):[])}/>Select visible tasks</label><span>{selectedIds.length} selected</span><button disabled={!selectedIds.length} onClick={onBulk}>Edit selected tasks</button></>}</div>}
     {error&&<p role="alert" className="error">{error}</p>}
+    {resultIds&&<div className="filter-chip">{resultIds.length} search results <button onClick={()=>{setResultIds(null);setResultSearch(null);}}>Show all records</button></div>}
+    {query&&semantic.pending&&<p role="status" className="subtle">Searching…</p>}
+    {query&&(semantic.error||semantic.result?.incomplete)&&<p className="subtle">Showing available matches. Semantic search is still catching up.</p>}
     <details><summary>Saved views</summary><div className="structure-controls"><select aria-label="Saved collection view" defaultValue="" onChange={e=>{const v=saved.find(v=>v.id===e.target.value)?.state;if(!v)return;setTypeId(String(v.collection_type??""));setParent(String(v.collection_parent??""));setLayout(String(v.layout));setGroup(String(v.collection_group));setFilterField(String(v.collection_field??""));setFilterValue(String(v.collection_value??""));setStatus(String(v.status??"active"));onQuery?.(String(v.query??""));if(capability)onTab?.((["today","week","inbox"].includes(String(v.tab))?v.tab:"all") as "today"|"inbox"|"week"|"all");}}><option value="">Choose a view…</option>{saved.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select><input aria-label="View name" value={viewName} onChange={e=>setViewName(e.target.value)} placeholder="Name this view"/><button disabled={!viewName.trim()} onClick={()=>void saveView().catch(e=>setError(e.message))}>Save view</button></div></details>
     <div className="structure-controls"><label>Collection<select value={typeId} onChange={e=>{setTypeId(e.target.value);setGroup("status");}}><option value="">{capability?"All actionable work":"All records"}</option>{types.map(t=><option key={t.id} value={t.id}>{t.plural}</option>)}</select></label>
       <label>Main home<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">All homes</option>{items.map(r=><option key={r.id} value={r.id}>{r.title} · {r.type_name}</option>)}</select></label>

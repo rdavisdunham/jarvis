@@ -69,6 +69,8 @@ from .saved_views import router as saved_views_router
 app.include_router(saved_views_router)
 from .structure_routes import router as structure_router
 app.include_router(structure_router)
+from .search_routes import router as search_router
+app.include_router(search_router)
 from .accounts import router as accounts_router
 
 app.include_router(accounts_router)
@@ -545,6 +547,9 @@ def work_create(body: ChatInput, user: User):
             str(body.turn_id), body.message, focus=body.focus)
         conv = db.get(Conversation, row.conversation_id)
         source = capture_source(db, user.owner_id, body.message, "work:"+row.id+":user", role="user", conversation=conv)
+        if source:
+            from .search_learning import observe_source
+            observe_source(db,source)
         if source and conv.learning:
             enqueue_job(db, user.owner_id, "extract_memory", {"source_id": source.id})
         return public(db, row)

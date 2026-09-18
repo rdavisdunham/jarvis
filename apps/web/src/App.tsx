@@ -173,7 +173,7 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
-  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}>();
+  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}>();
   const [taskRecordControl,setTaskRecordControl]=useState<typeof recordControl>();
   useEffect(()=>{const open=(e:Event)=>{setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:(e as CustomEvent).detail.id});};window.addEventListener("eri-open-custom-record",open);return()=>window.removeEventListener("eri-open-custom-record",open);},[]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
@@ -307,6 +307,23 @@ export default function App() {
   useEffect(() => {
     setMessages(current => mergeWorkReplies(current, work.chatItems.filter(item => item.conversation_id === conversationRef.current)));
   }, [work.chatItems]);
+  const presentedSearchWork = useRef(new Set<string>());
+  useEffect(()=>{
+    if(!companion)return;
+    const observer=new IntersectionObserver(entries=>{
+      if(document.visibilityState!=="visible")return;
+      for(const entry of entries){
+        if(!entry.isIntersecting)continue;
+        const native=entry.target.getAttribute("data-native-id");
+        const item=work.chatItems.find(w=>w.response_native_id===native);
+        if(!item||item.voice_session_id||!item.finished_at||!native||presentedSearchWork.current.has(native))continue;
+        presentedSearchWork.current.add(native);
+        void post("/search/events",{work_id:item.id,kind:"presented"}).catch(()=>presentedSearchWork.current.delete(native));
+      }
+    },{threshold:.25});
+    document.querySelectorAll(".messages .message.assistant").forEach(element=>observer.observe(element));
+    return()=>observer.disconnect();
+  },[companion,messages,work.chatItems]);
   const activeWork = work.items.filter(workActive).length;
   const attentionWork = work.items.filter(item => workAttention(item) && !item.seen).length;
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
@@ -900,7 +917,8 @@ export default function App() {
     setCalendarDetail(null);
     if(kind==="records"){
       setView("organize");setOrganizationEditor(null);
-      setRecordControl({nonce:action.id,type_id:action.type_id,parent_id:action.parent_id,layout:action.layout,group:action.record_group,record_id:action.record_id,proposal_id:action.proposal_id,field:action.field,value:action.value});
+      setRecordControl({nonce:action.id,type_id:action.type_id,parent_id:action.parent_id,layout:action.layout,group:action.record_group,record_id:action.record_id,record_ids:action.record_ids,search_id:action.search_id,proposal_id:action.proposal_id,field:action.field,value:action.value});
+      if(action.record_ids!==undefined){setQuery("");setRecordControl(c=>c?{...c,status:"all",parent_id:"",field:"",value:"",type_id:""}:c);}
       return {outcome:"collection_opened",record_id:action.record_id??null};
     }
     if (kind === "saved_view") {
@@ -2868,7 +2886,7 @@ export default function App() {
                 if (entry.kind === "work") return <WorkCard key={"work:" + entry.work.id} item={entry.work} compact onRefresh={work.refresh} onOpen={openWorkRecord}/>;
                 const m = entry.message;
                 return (
-                <div className={"message " + m.role} key={m.id} data-message-id={m.id}>
+                <div className={"message " + m.role} key={m.id} data-message-id={m.id} data-native-id={m.native_id??m.id}>
                   <span className="message-label">
                     {m.role === "assistant" ? "ERIDANI" : "YOU"}
                   </span>

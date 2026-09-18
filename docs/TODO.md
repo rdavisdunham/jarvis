@@ -1,11 +1,51 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 17, 2026. Eridani (Eri) is the assistant's name.
+Updated September 18, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
 Completed implementation is marked **[x]**. **[ ]** means work or verification is
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
+
+## Invitation flow cleanup — planned
+
+- [ ] Rename “Standalone personal account” to “Invite to Eridani — separate account.”
+- [ ] Separate app-access invitations from shared-workspace invitations. Explain
+  that each invited person gets their own private records, and show exactly which
+  workspace is shared when one is selected.
+- [ ] Hide irrelevant Viewer/Editor roles for separate-account invitations; clarify
+  creating the email-bound invitation versus copying a generic sign-in link.
+- [ ] Improve first sign-in/acceptance copy and test both invitation paths on phones.
+
+## Semantic search and vocabulary learning — September 18
+
+- [x] Shared hybrid search over tasks, notes and custom records, full descriptions,
+  field definitions/options/values, inherited homes and linked names. Eri receives
+  structured matches and a separate possible-match lane, including misfiled items.
+  Explicit filters and current workspace permissions apply to both lanes.
+- [x] Per-account/workspace search aliases, separate from personal memories and
+  routing examples. Use or recent conversational continuation can teach provisional
+  vocabulary after presentation. Silence and unseen output remain unknown;
+  corrections pause disputed mappings. Never relabel records during search.
+- [x] Settings → Organization → Search aliases: inspect sources, confirm, correct,
+  pause, forget, and disable learning. Weekly review can propose organization rules;
+  search acceptance never activates a rule by itself.
+- [x] Incremental, chunked cloud embeddings with generation checks, recoverable jobs,
+  keyword fallback, complete collection coverage and a production backfill command.
+  Use existing PostgreSQL JSON vectors; pgvector infrastructure remains deferred.
+- [x] Task-only top search, note meaning search, selected-result Eri navigation,
+  authenticated HTTP search and MCP `record_search` under `records:read`.
+  No navigation/action cards or success notifications are created by search.
+- [x] Migration/model agreement, focused regressions, full backend/frontend suites,
+  isolated desktop/mobile browser acceptance and paired Luna/Gemini evaluations.
+  See [architecture and verification](SEMANTIC_SEARCH.md).
+- [ ] Production rollout: deploy both services, backfill, enable search, verify index
+  coverage and deployment health. Record completion after checking production.
+- [ ] Physical Live acceptance: ask for the pest-control company's tasks, inspect a
+  misfiled match, continue, correct the identity, then inspect Search aliases. Verify
+  interruption and a reply never heard/seen do not create a positive interaction.
+- [ ] Expand the reviewed retrieval benchmark with real failures. Current synthetic
+  paired checks are a regression sample, not a broad accuracy claim.
 
 ## Conversation action cards — September 17
 
@@ -45,20 +85,11 @@ The newest batches are near the top; earlier sections retain release history.
 - [ ] Physical Pixel 10 Pro Fold acceptance: folded/unfolded keyboard, scrolling,
   Back gestures and voice remaining active when the conversation is closed.
 
-## Task embeddings and agent search — planned
+## Task embeddings and agent search
 
-- [ ] Embed task titles and full descriptions/details, plus searchable custom-field
-  labels/values and client/project/main-home names, for semantic retrieval by Eri
-  and authorized external agents. Include every actionable custom type.
-- [ ] Combine semantic matches with exact text/ID lookup and explicit status/date/
-  assignee filters; return record IDs, current details and evidence for each match.
-- [ ] Index asynchronously after creation/edits/imports; refresh affected tasks when
-  linked names or inherited classifications change; handle archive/deletion and
-  backfill existing records. Keep this index separate from personal-memory learning
-  and routing evidence, with workspace permissions checked before returning results.
-- [ ] Add retrieval evaluations for paraphrases, ambiguous names, changed details,
-  missed tasks and cross-workspace isolation. Reuse the planned vector-storage
-  work; embeddings are not implemented by the UI search change above.
+Implemented in the September 18 semantic-search batch above. Its verification,
+remaining phone checks and deferred pgvector upgrade are tracked there and in the
+vector-index backlog; this section no longer duplicates unfinished implementation.
 
 ## Real-use acceptance checklist — pending
 

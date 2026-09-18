@@ -36,3 +36,16 @@ def finish_work(request_id: str, body: dict, user: User):
         capture_source(db,row.owner_id,message,f"work:{row.id}:assistant:{row.revision}",
             role="assistant",conversation=db.get(Conversation,row.conversation_id))
         return agent_work.public(db,row)
+
+
+@app.post("/api/v1/__test_search_index")
+def index_search(user: User):
+    from jarvis import search_index, search_service
+    from jarvis.config import get_settings
+    def synthetic_vectors(owner,texts,*args):
+        return [[1.,0.,0.] if any(w in t.lower() for w in ('pest','termite','insect','extermin','spraying')) else [0.,1.,0.] if 'software' in t.lower() else [0.,0.,1.] for t in texts]
+    get_settings().semantic_search_enabled=True
+    search_index.embeddings=search_service.embeddings=synthetic_vectors
+    with session_scope() as db:identity=search_index.queue_index(db,user.owner_id,force=True)
+    search_index.index_workspace(identity)
+    return {'indexed':True}

@@ -41,6 +41,7 @@ COMMAND_SCOPES = {
 READ_SCOPES = {
     "structure_schema": "schema:read",
     "record_list": "records:read",
+    "record_search": "records:read",
     "record_get": "records:read",
     "task_list": "tasks:read",
     "task_get": "tasks:read",

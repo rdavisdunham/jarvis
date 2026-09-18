@@ -438,6 +438,26 @@ READ_TOOLS.update({
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.")))
 
 
+READ_TOOLS["ui_records"]["parameters"]["properties"].update({
+    "record_ids":{"type":"array","items":{"type":"string","format":"uuid"},"maxItems":100},
+    "search_id":{"type":"string","format":"uuid"},
+})
+READ_TOOLS["ui_records"]["description"] += " To display selected search results, supply record_ids and search_id. Only selected records are shown; an empty record_ids clears the selection filter. Search navigation creates no chat receipt."
+
+from .search_schema import SearchQuery, SearchSelection, SearchFeedback
+READ_TOOLS.update({
+    "record_search": {
+        "description": "Preserve the user's referring phrase in query. Search tasks, notes, field definitions and any custom records by meaning, names, fields and relationships. Returns resolution candidates, structured matches and separate possible matches (including unassigned or differently filed items). Inspect both groups before answering; possible associations are NOT saved classifications. Refine with resolved target keys from the results. Explicit filters always apply; strict=true means ONLY those resolved identities. Keep the top search task-scoped. Never silently relabel records. Fetch current details before edits. Follow pagination for complete lists.",
+        "parameters": SearchQuery.model_json_schema()},
+    "search_select": {
+        "description": "When the search returns a non-null search_id, record the search interpretation you are about to show or describe to the user. Supply search_id, a returned target_key, the exact referring phrase copied from the search response referring_text, and returned record_ids used in your answer. This is NOT user confirmation and creates no action card; vocabulary learning waits for actual presentation and later use/continuation. Call only for a supported interpretation, not every candidate. Then state the selected identity naturally in your reply.",
+        "parameters": SearchSelection.model_json_schema()},
+    "search_feedback": {
+        "description": "On an explicit user correction or confirmation of a recent search, record its outcome with the search_id from recent search context. Corrected can replace the target with a freshly resolved identity. Never report accepted for your own inference. Search feedback never changes records or creates a routing rule.",
+        "parameters": SearchFeedback.model_json_schema()},
+})
+
+
 def registry():
     from .tool_catalog import DESCRIPTIONS, annotated_schema, loader_definition
 
@@ -517,6 +537,18 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 "MALFORMED_ID",
                 "Copy the complete 36-character UUID from a fresh lookup and retry. A malformed ID does not mean the record was deleted.",
             ) from None
+    if name in {"record_search", "search_select", "search_feedback"}:
+        from .access import actor, execution
+        from . import search_service, search_learning
+        with session_scope() as db:
+            account = actor(db,owner)
+            if name == "search_select":
+                return search_learning.choose(db,owner,account,SearchSelection.model_validate(arguments))
+            if name == "search_feedback":
+                return search_learning.feedback(db,owner,account,SearchFeedback.model_validate(arguments))
+        grant=execution.get()
+        return await __import__("asyncio").to_thread(search_service.search,owner,account,arguments,
+            conversation_id=conversation_id,work_id=grant["id"] if grant else None,request_key=f"{turn_id}:{index}")
     if name in {"work_list", "work_cancel", "work_revert"}:
         from .access import actor, authorize_execution
         from .action_history import revert
@@ -535,6 +567,14 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
         with session_scope() as db:
             schema=ensure(db,owner)
             if arguments.get("type_id"):record_type(schema,arguments["type_id"])
+            for identity in arguments.get("record_ids",[]):
+                owned(db,StructureRecord,identity,owner)
+            if arguments.get("search_id"):
+                from .search_learning import require_session
+                from .access import actor
+                search_session=require_session(db,owner,actor(db,owner),arguments["search_id"])
+                if set(arguments.get("record_ids",[]))-set(search_session.selected_records):
+                    raise DomainError("INVALID_SEARCH_TARGET","Display only the selected search results, or record a new interpretation first.")
             for key,model in (("record_id",StructureRecord),("parent_id",StructureRecord),("proposal_id",StructureProposal)):
                 if arguments.get(key):owned(db,model,arguments[key],owner)
         return await dispatch(owner,device,{"id":f"{turn_id}:{index}","kind":"records",**arguments})

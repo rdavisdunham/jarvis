@@ -66,6 +66,9 @@ def perform_job(job_id):
         from .google_calendar import process
 
         return process(job_id)
+    if kind == "index_search":
+        from .search_index import index_workspace
+        return index_workspace(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -124,7 +127,7 @@ def dispatch_outbox(client):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -367,6 +370,8 @@ def run_supervisor(stop, lease):
                     scan_schedules(db)
                     from .notices import scan
                     scan(db)
+                    from .search_index import backfill as search_backfill
+                    search_backfill(db)
                     from .memory_learning import queue_backfill
 
                     queue_backfill(db)

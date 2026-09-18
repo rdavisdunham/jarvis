@@ -250,6 +250,9 @@ def emit(db, owner, kind, entity, revision=None):
     # Assign event IDs only while holding the owner's commit-order lock.
     advisory(db, f"events:{owner}")
     db.add(Event(owner_id=owner, kind=kind, entity_id=entity, revision=revision))
+    if kind in {"record.changed", "structure.changed", "task.changed", "note.changed", "project.changed", "goal.changed", "space.changed", "area.changed", "actor.changed"}:
+        from .search_index import queue_index
+        queue_index(db, owner)
 
 
 def advisory(db, key):

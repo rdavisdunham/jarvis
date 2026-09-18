@@ -74,6 +74,8 @@ export const actionSchema = z
     type_id: z.string().max(80).optional(),
     parent_id: z.string().max(36).optional(),
     record_id: z.string().max(36).optional(),
+    record_ids: z.array(z.string().uuid()).max(100).optional(),
+    search_id: z.string().uuid().optional(),
     proposal_id: z.string().max(36).optional(),
     record_group: z.string().max(80).optional(),
     field: z.string().max(80).optional(),

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     pairing_enabled: bool = True
     worker_enabled: bool = True
     external_services_enabled: bool = True
+    semantic_search_enabled: bool = False
     maintenance_mode: bool = False
     database_pool_size: int = Field(default=10, ge=1, le=50)
     database_max_overflow: int = Field(default=10, ge=0, le=50)

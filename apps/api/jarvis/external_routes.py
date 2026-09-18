@@ -100,6 +100,17 @@ def capabilities(identity: Bot):
         }
 
 
+from .search_schema import SearchQuery
+
+@external.post("/search")
+async def semantic_search(body: SearchQuery, identity: Bot):
+    with session_scope() as db:
+        bot=bot_access.authorize(db,required="records:read")
+        owner,account=bot.owner_id,bot.account_id
+    from .search_service import search
+    return await run_in_threadpool(search,owner,account,body,track=False)
+
+
 @external.get("/records/{kind}")
 def records(kind: service.Kind, identity: Bot, query: Annotated[service.Search, Query()]):
     with session_scope() as db:

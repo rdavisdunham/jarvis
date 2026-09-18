@@ -341,6 +341,10 @@ def process(job_id):
         review = owned(db, RoutingReview, job.payload["review_id"], owner)
         schema = ensure(db, owner)
         revision = schema.revision
+        from .search_learning import routing_candidates
+        alias_questions = [q for q in review.questions if q.get("source") == "search_alias"]
+        alias_questions = list({q["id"]:q for q in [*alias_questions,*routing_candidates(db,owner)]}.values())
+        review.questions = alias_questions
         evidence = latest_evidence(db, owner)
         # Stable per-record split prevents revisions of a training record leaking into held-out evaluation.
         training = [e for e in evidence if int(fingerprint(e.record_id)[:8], 16) % 5]
@@ -357,7 +361,7 @@ def process(job_id):
             .order_by(RoutingReview.finished_at.desc())
             .limit(1)
         )
-        if prior and prior.summary.get("evidence_fingerprint") == evidence_fingerprint:
+        if prior and prior.summary.get("evidence_fingerprint") == evidence_fingerprint and not alias_questions:
             review.status = "completed"
             review.summary = {
                 "message": "No new organization evidence since the last review.",
@@ -368,11 +372,11 @@ def process(job_id):
             job.finished_at = now()
             return
         if not training:
-            review.status = "completed"
+            review.status = "pending" if alias_questions else "completed"
             review.summary = {
-                "message": "No independent human organization examples yet.",
+                "message": "Review search vocabulary before using it to organize work." if alias_questions else "No independent human organization examples yet.",
                 "activated": [],
-                "questions": 0,
+                "questions": len(alias_questions),
             }
             review.finished_at = now()
             job.status = "succeeded"
@@ -408,7 +412,7 @@ def process(job_id):
         evidence = latest_evidence(db, owner)
         training = [e for e in evidence if int(fingerprint(e.record_id)[:8], 16) % 5]
         held = [e for e in evidence if not int(fingerprint(e.record_id)[:8], 16) % 5]
-        questions = []
+        questions = alias_questions
         activated = []
         paused = []
         for candidate in result.candidates[:30]:

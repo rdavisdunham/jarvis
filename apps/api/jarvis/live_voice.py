@@ -250,6 +250,8 @@ class LiveController(Controller):
             )
             if source:
                 source.created_at = self.wall_started + timedelta(milliseconds=group["start"])
+                from .search_learning import observe_source
+                observe_source(db,source)
                 if group["role"] == "user" and conv.learning:
                     enqueue_job(db, self.owner, "extract_memory", {"source_id": source.id})
         group["saved"] = True

@@ -3,9 +3,10 @@
 import copy
 
 GROUPS = {
+    "search": ("Semantic retrieval, search vocabulary and correcting a previous interpretation.", ["record_search", "search_select", "search_feedback", "record_get", "ui_records"]),
     "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
     "structure": ("Discover or redesign user-defined types, fields, workflows and relationships. Preview structural edits and wait for explicit confirmation before applying.", ["ui_records", "structure_schema", "structure_preview", "structure_apply", "structure_restore"]),
-    "records": ("Create, read and edit user-defined records using the current schema and capability behaviors.", ["ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link"]),
+    "records": ("Find records by meaning and learned vocabulary; create, read and edit using the current schema.", ["record_search", "search_select", "ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link"]),
     "activity": ("Inspect accepted work and pending clarification IDs (use work_answer to resume them), cancel a named request, explicitly revert supported saved changes, or show Activity.", ["work_list", "work_cancel", "work_revert", "ui_activity"]),
     "tasks": (
         "Find, create, update, complete, reopen and batch-edit tasks.",
@@ -177,6 +178,7 @@ CORE = (
     "task_list",
     "task_get",
     "task_resolve",
+    "record_search",
     "task_create",
     "task_update",
     "task_complete",
