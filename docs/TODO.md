@@ -39,8 +39,9 @@ The newest batches are near the top; earlier sections retain release history.
 - [x] Migration/model agreement, focused regressions, full backend/frontend suites,
   isolated desktop/mobile browser acceptance and paired Luna/Gemini evaluations.
   See [architecture and verification](SEMANTIC_SEARCH.md).
-- [ ] Production rollout: deploy both services, backfill, enable search, verify index
-  coverage and deployment health. Record completion after checking production.
+- [x] Production rollout: API and worker deployed, search enabled on both services,
+  and all 67 initial search documents ready with no pending generations/errors.
+  GitHub CI and public readiness checks pass.
 - [ ] Physical Live acceptance: ask for the pest-control company's tasks, inspect a
   misfiled match, continue, correct the identity, then inspect Search aliases. Verify
   interruption and a reply never heard/seen do not create a positive interaction.

@@ -104,13 +104,18 @@ The paired provider eval is intentionally opt-in and never runs in CI.
 ## Rollout and rollback
 
 1. Deploy migration/code on API and worker with `JARVIS_SEMANTIC_SEARCH_ENABLED=false`.
-2. Run `python -m jarvis.search_index` in the deployed worker to queue backfill.
-3. Inspect `python -m jarvis.search_index --status`; all workspaces should be ready.
+2. Run `/app/.venv/bin/python -m jarvis.search_index` in the deployed Railway worker
+   to queue backfill (use the application virtualenv, not the container system Python).
+3. Inspect `/app/.venv/bin/python -m jarvis.search_index --status`; all workspaces should be ready.
 4. Enable `JARVIS_SEMANTIC_SEARCH_ENABLED=true` on both services. Queue a fresh pass
    to cover edits made while the flag was off, then verify readiness and index status.
 5. Roll back behavior by disabling the flag on both services. Keep derived tables
    and evidence; do not downgrade away retained data. Existing keyword search stays
    available, and older note-search behavior remains available.
+
+Production rollout verified: both Railway services have the feature enabled and
+all 67 initial search documents are ready, with zero pending generations/errors.
+GitHub CI passed for the implementation and the public readiness endpoint is healthy.
 
 Physical phone/Live acceptance remains on the Todo list. Synthetic transcripts and
 browser visibility tests cannot prove what was heard through a real microphone session.
