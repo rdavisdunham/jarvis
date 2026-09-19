@@ -36,6 +36,7 @@ const fields: Record<string, string[]> = {
     "organization_tab",
     "settings_section",
     "notes_mode",
+    "note_list_id",
     "show_archived",
   ],
   editor: ["operation", "changes"],
@@ -128,6 +129,7 @@ export function validateSiteAction(
       throw new Error("Organization tabs belong to Projects & goals.");
     if (action.settings_section && target !== "settings")
       throw new Error("Choose Settings for that section.");
+    if (action.note_list_id !== undefined && target !== "notes") throw new Error("Choose Notes for a list.");
     if (action.notes_mode && target !== "notes")
       throw new Error("Choose Notes for search mode.");
     if (

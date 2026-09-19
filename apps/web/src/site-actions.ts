@@ -122,6 +122,7 @@ export const actionSchema = z
         "sharing",
       ])
       .optional(),
+    note_list_id: z.string().max(36).optional(),
     notes_mode: z.enum(["keyword", "semantic"]).optional(),
     show_archived: z.boolean().optional(),
     operation: z.enum(["read", "patch", "save", "close", "discard"]).optional(),

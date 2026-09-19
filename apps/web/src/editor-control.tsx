@@ -10,6 +10,7 @@ import { z } from "zod";
 
 export type EditorKind =
   | "record"
+  | "note_list"
   | "task"
   | "reminder"
   | "note"

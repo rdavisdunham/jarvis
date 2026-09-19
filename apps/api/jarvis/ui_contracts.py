@@ -28,7 +28,7 @@ UI_TOOLS = {
          "timeline_date": {"type": "string", "format": "date"}, "timeline_span": {"type": "integer", "enum": [14, 30, 90]},
          "organization_tab": enum(["goal", "project", "area", "space", "actor"]),
          "settings_section": enum(["profile", "organization", "notifications", "voice", "integrations", "privacy", "system", "sharing"]),
-         "notes_mode": enum(["keyword", "semantic"]), "show_archived": {"type": "boolean"}}),
+         "note_list_id": {"type": "string", "maxLength": 36}, "notes_mode": enum(["keyword", "semantic"]), "show_archived": {"type": "boolean"}}),
     "ui_editor": definition(
         "Read or change the open record. Read first for exact field schemas and auto_save. Existing task cards auto-save each patch: a saved receipt needs no save step, and close/navigation flushes pending fields. Other forms hold drafts until save, and close refuses unsaved changes. Patch only requested fields. Discard requires an explicit user request and cancels only uncommitted fields; it cannot undo saved changes. Use domain tools when no card/form is open.",
         {"operation": enum(["read", "patch", "save", "close", "discard"]),

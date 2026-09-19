@@ -131,6 +131,7 @@ jobs:
             artifacts/custom-planner/
             artifacts/chat-activity/
             artifacts/semantic-search/
+            artifacts/note-lists/
             apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

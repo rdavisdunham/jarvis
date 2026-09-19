@@ -435,7 +435,10 @@ READ_TOOLS.update({
     "ui_records":{"description":"Show a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
     "routing_state":{"description":"Read separate organization rules, evidence, field understanding questions and weekly review. Ask at most one review question at a time; after three offer to stop. Never answer or activate a learned rule without the user. Manual review can resume any time.","parameters":{"type":"object","properties":{},"additionalProperties":False}}
 })
-VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.")))
+VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.","notelist.")))
+VOICE_MUTATIONS.update({"note.file", "note.organize"})
+READ_TOOLS["note_lists"] = {"description": "Read saved note lists, their descriptions, filters, IDs and counts. List contents use stored fields, not semantic guesses.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}
+READ_TOOLS["note_list_items"] = {"description": "Read exact members of a saved note list. Follow next_offset; use note_read for full content and sources.", "parameters": {"type": "object", "properties": {"list_id": {"type": "string", "format": "uuid"}, "query": {"type": "string", "maxLength": 300}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}, "offset": {"type": "integer", "minimum": 0}}, "required": ["list_id"], "additionalProperties": False}}
 
 
 READ_TOOLS["ui_records"]["parameters"]["properties"].update({
@@ -578,6 +581,12 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             for key,model in (("record_id",StructureRecord),("parent_id",StructureRecord),("proposal_id",StructureProposal)):
                 if arguments.get(key):owned(db,model,arguments[key],owner)
         return await dispatch(owner,device,{"id":f"{turn_id}:{index}","kind":"records",**arguments})
+    if name in {"note_lists", "note_list_items"}:
+        from .note_lists import all_lists
+        from .notes import list_notes
+        with session_scope() as db:
+            if name == "note_lists": return all_lists(db, owner)
+            return list_notes(db, owner, list_id=arguments["list_id"], query=arguments.get("query", ""), limit=arguments.get("limit", 50), offset=arguments.get("offset", 0))
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
@@ -750,6 +759,10 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             jsonschema.validate(arguments, READ_TOOLS[name]["parameters"])
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Invalid site control arguments.")
+        if name == "ui_workspace" and arguments.get("note_list_id") not in {None, "", "uncategorized"}:
+            from .models import NoteList
+            with session_scope() as db:
+                owned(db, NoteList, arguments["note_list_id"], owner)
         if name == "ui_filter" and arguments.get("assignee"):
             from .assignees import resolve_assignee
             with session_scope() as db:

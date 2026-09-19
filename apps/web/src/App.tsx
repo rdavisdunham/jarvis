@@ -171,6 +171,7 @@ export default function App() {
     sequence: number;
   } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [noteListId, setNoteListId] = useState(() => new URLSearchParams(location.search).get("note_list") ?? "");
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
   const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}>();
@@ -962,6 +963,11 @@ export default function App() {
         );
       if (action.organization_tab && target !== "organize")
         throw new Error("Organization tabs belong to Projects.");
+      if (action.note_list_id !== undefined && target !== "notes") throw new Error("Choose Notes for a list.");
+      if (action.note_list_id && action.note_list_id !== "uncategorized") {
+        const lists = await api<{items:{id:string}[]}>("/note-lists");
+        if (!lists.items.some(l => l.id === action.note_list_id)) throw new Error("That list is unavailable.");
+      }
       if (action.notes_mode && target !== "notes")
         throw new Error("Choose Notes for note search mode.");
       if (action.settings_section && target !== "settings")
@@ -978,6 +984,7 @@ export default function App() {
       if (action.show_archived !== undefined)
         setShowArchived(action.show_archived);
       if (action.notes_mode) setNotesMode(action.notes_mode);
+      if (action.note_list_id !== undefined) setNoteListId(action.note_list_id);
       if (action.settings_section) setSettingsSection(action.settings_section);
       setView(target);
     } else if (kind === "select") {
@@ -1644,6 +1651,7 @@ export default function App() {
     timeline_span: timelineSpan,
     organization_tab: organizationTab,
     settings_section: settingsSection,
+    note_list_id: noteListId,
     notes_mode: notesMode,
     show_archived: showArchived,
     ...taskFilters,
@@ -1745,7 +1753,7 @@ export default function App() {
   }, [editors.summary?.kind, editors.summary?.record_id, collectionContext.design]);
   const detailKey = (detail: typeof editors.summary) => detail ? `${detail.kind}:${detail.record_id ?? "new"}:${detail.mode}` : "";
   const navigation = {view, settingsSection, query, savedViewState, collectionContext, calendarMode, calendarDay,
-    notesMode, showArchived, companion, activityOpen, sidebar, searchOpen, detail: editors.summary,
+    noteListId, notesMode, showArchived, companion, activityOpen, sidebar, searchOpen, detail: editors.summary,
     selected, reminder, scheduleEditor, noteEditor, googleEvent, calendarDetail, bulkEditor, editingMemory, organizationEditor};
   const navigationUrl = isTaskTab(view) ? viewLink(savedViewState) : new URL(location.href);
   if (!isTaskTab(view)) {navigationUrl.searchParams.set("view", view); navigationUrl.searchParams.delete("tab"); navigationUrl.searchParams.delete("state");}
@@ -1754,9 +1762,10 @@ export default function App() {
     navigationUrl.searchParams.set("record", editors.summary.kind + ":" + editors.summary.record_id);
     navigationUrl.searchParams.set("workspace", boot?.workspace?.id ?? "personal");
   } else if (!linkWorkspace) {navigationUrl.searchParams.delete("record"); navigationUrl.searchParams.delete("workspace");}
+  if (view === "notes" && noteListId) navigationUrl.searchParams.set("note_list", noteListId); else navigationUrl.searchParams.delete("note_list");
   if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
-    page: view + (view === "settings" ? ":" + settingsSection : ""),
+    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : ""),
     layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
     url: navigationUrl.href, onError: setError,
     restore: async target => {
@@ -1767,7 +1776,7 @@ export default function App() {
       if (detailChanged && editors.current()) await editors.act({operation: "close"});
       if (isTaskTab(target.view)) applySavedView(target.savedViewState); else setView(target.view);
       setQuery(target.query); setSettingsSection(target.settingsSection); setCalendarMode(target.calendarMode);
-      setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setShowArchived(target.showArchived);
+      setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setNoteListId(target.noteListId); setShowArchived(target.showArchived);
       setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
       const collection = target.collectionContext;
       (isTaskTab(target.view) ? setTaskRecordControl : setRecordControl)({nonce: crypto.randomUUID(), type_id: String(collection.type_id ?? ""), parent_id: String(collection.parent_id ?? ""),
@@ -2485,6 +2494,7 @@ export default function App() {
 
             {view === "notes" && (
               <NotesPage
+                listId={noteListId} onList={setNoteListId} canEdit={boot.workspace?.role !== "viewer"}
                 archived={showArchived}
                 onArchived={setShowArchived}
                 mode={notesMode}
@@ -3296,6 +3306,7 @@ export default function App() {
       )}
       {noteEditor && (
         <NoteEditor
+          readOnly={boot.workspace?.role === "viewer"}
           organization={organization}
           onOpenNote={(id) => {
             void openNote(id);

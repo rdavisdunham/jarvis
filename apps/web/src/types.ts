@@ -248,6 +248,7 @@ export interface UIContext {
   organization_tab?: string;
   settings_section?: string;
   notes_mode?: string;
+  note_list_id?: string;
   show_archived?: boolean;
   assignee?: string;
   work_type?: string;

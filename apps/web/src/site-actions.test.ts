@@ -11,6 +11,11 @@ import {
 } from "./work-views";
 import type { Task } from "./types";
 describe("site control contract", () => {
+  it("scopes saved note lists to Notes", () => {
+    const list = actionSchema.parse({id:"list",kind:"workspace",view:"notes",note_list_id:"uncategorized"});
+    expect(() => validateSiteAction(list, "all", emptyOrganization, "project")).not.toThrow();
+    expect(() => validateSiteAction({...list,view:"all"}, "all", emptyOrganization, "project")).toThrow();
+  });
   it("accepts bounded custom-field patches and rejects arbitrary nesting", () => {
     expect(actionSchema.parse({id:"custom",kind:"editor",operation:"patch",changes:{values:{client:"abc",labels:["one","two"],active:true}}}).changes?.values).toEqual({client:"abc",labels:["one","two"],active:true});
     expect(()=>actionSchema.parse({id:"custom",kind:"editor",operation:"patch",changes:{values:{nested:{too:"deep"}}}})).toThrow();

@@ -461,7 +461,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
+        ("notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -540,6 +540,9 @@ def mutate(db, owner, tool, args, command_id):
         from .google_calendar import select_calendar
 
         return select_calendar(db, owner, args)
+    if tool.startswith("notelist.") or tool in {"note.organize", "note.file"}:
+        from .note_lists import mutate as mutate_lists
+        return mutate_lists(db, owner, tool, args, command_id)
     if tool.startswith("note."):
         from .notes import mutate_note
 
@@ -978,3 +981,6 @@ COMMANDS.update(STRUCTURE_COMMANDS)
 
 from .routing_schema import COMMANDS as ROUTING_COMMANDS
 COMMANDS.update(ROUTING_COMMANDS)
+
+from .note_list_schema import COMMANDS as NOTE_LIST_COMMANDS
+COMMANDS.update(NOTE_LIST_COMMANDS)

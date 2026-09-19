@@ -1,3 +1,4 @@
+import { NoteLists, NoteFiling } from "./NoteLists";
 import { RecordTools } from "./record-links";
 import { humanLabel } from "./ux";
 import { z } from "zod";
@@ -15,7 +16,11 @@ import { api, post } from "./api";
 import { useDialogFocus } from "./components";
 import type { Project, Task } from "./types";
 
+type NoteSource = {id:string; title:string; evidence:string; source_revision:number; source_changed:boolean};
 export type NoteRecord = {
+  organization?: {status:string; tags_locked:boolean; generated:boolean; saved_count?:number; uncertain_count?:number} | null;
+  sources?: NoteSource[];
+  saved_entries?: NoteSource[];
   space_id?: string | null;
   area_id?: string | null;
   goals?: { id: string; name: string; archived?: boolean }[];
@@ -78,6 +83,7 @@ export function blankNote(
 }
 
 export function NotesPage({
+  listId = "", onList, canEdit = true,
   organization,
   organizationFilter,
   onOrganizationFilter,
@@ -94,6 +100,9 @@ export function NotesPage({
   mode,
   onMode,
 }: {
+  listId?: string;
+  onList?: (id: string) => void;
+  canEdit?: boolean;
   archived: boolean;
   onArchived: (v: boolean) => void;
   mode: "keyword" | "semantic";
@@ -130,6 +139,8 @@ export function NotesPage({
       q: query,
       archived: String(archived),
     });
+    if (listId === "uncategorized") params.set("uncategorized", "true");
+    else if (listId) params.set("list_id", listId);
     if (organizationFilter.space)
       params.set("space_id", organizationFilter.space);
     if (organizationFilter.area) params.set("area_id", organizationFilter.area);
@@ -167,6 +178,7 @@ export function NotesPage({
       generation.current++;
     };
   }, [
+    listId,
     query,
     projectId,
     archived,
@@ -193,6 +205,8 @@ export function NotesPage({
         archived: String(archived),
         offset: String(offset),
       });
+      if (listId === "uncategorized") params.set("uncategorized", "true");
+      else if (listId) params.set("list_id", listId);
       if (organizationFilter.space)
         params.set("space_id", organizationFilter.space);
       if (organizationFilter.area)
@@ -223,6 +237,7 @@ export function NotesPage({
   ].filter(Boolean);
   return (
     <section className="notes-workspace" aria-label="Notes workspace">
+      <NoteLists selected={listId} onSelect={id => onList?.(id)} onOpen={onOpen} revision={revision} canEdit={canEdit}/>
       <div className="workspace-actions">
         <details className="filter-panel note-filter-panel">
           <summary>
@@ -265,7 +280,7 @@ export function NotesPage({
             </label>
           </div>
         </details>
-        <button className="primary compact" onClick={onNew}>
+        <button className="primary compact" disabled={!canEdit} onClick={onNew}>
           <Plus size={16} />
           New note
         </button>
@@ -313,7 +328,7 @@ export function NotesPage({
               <FileText size={18} />
               <strong>{n.title}</strong>
             </span>
-            <span className="note-excerpt">{n.excerpt || "Empty note"}</span>
+            <span className="note-excerpt">{n.excerpt || (n.organization?.generated ? "Saved item" : "Empty note")}</span>
             <span className="task-meta">
               {projects.find((p) => p.id === n.project_id)?.name}
               {n.tags.length
@@ -358,6 +373,7 @@ export function NotesPage({
 }
 
 export function NoteEditor({
+  readOnly = false,
   organization = emptyOrganization,
   onOpenNote,
   note,
@@ -373,6 +389,7 @@ export function NoteEditor({
 }: {
   organization?: Organization;
   onOpenNote?: (id: string) => void;
+  readOnly?: boolean;
   note: NoteRecord;
   projects: Project[];
   tasks: Task[];
@@ -636,6 +653,7 @@ export function NoteEditor({
           </button>
         </div>
         {note.id !== "new" && <RecordTools kind="note" id={note.id}/>}
+        {note.id !== "new" && <NoteFiling note={note} readOnly={readOnly} disabled={busy || dirty || note.archived} onSaved={onSaved} onOpen={onOpenNote}/>}
         {(error || localError) && (
           <p className="error-banner" role="alert">
             {error || localError}

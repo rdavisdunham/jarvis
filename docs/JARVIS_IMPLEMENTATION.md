@@ -2,6 +2,13 @@
 
 Started September 10–11, 2026; updated September 13. The owner delegated the design choices and confirmed that the host PC stays awake.
 
+## Notes lists update — September 19, 2026
+
+Self-organizing Notes lists, source-linked saved entries and reviewed note rules
+are documented in [NOTE_LISTS.md](NOTE_LISTS.md). Use the current cloud app at
+https://app.eridani.app; the local deployment directions below are historical.
+Migration 0018 adds list/provenance metadata without changing existing notes.
+
 ## Open Jarvis
 
 Use **https://davispc.tail957c2.ts.net:9443** while connected to Tailscale. Pair each device with the code in `.runtime/pairing-code`. The code is local and is not committed to Git. Each paired device receives its own revocable, HTTP-only session.

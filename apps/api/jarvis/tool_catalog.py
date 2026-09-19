@@ -35,7 +35,7 @@ GROUPS = {
         ],
     ),
     "notes": (
-        "Search/read authored notes, edit links, extract evidence-backed tasks.",
+        "Search/read notes, browse or configure saved lists, file notes, organize recommendations and extract evidence-backed tasks.",
         [
             "note_search",
             "note_read",
@@ -47,6 +47,7 @@ GROUPS = {
             "note_tasks",
         ],
     ),
+    "lists": ("Saved note lists, deterministic filters, automatic filing and source-linked recommendations.", ["note_lists", "note_list_items", "note_file", "note_organize", "notelist_save", "notelist_setup", "ui_workspace", "note_read"]),
     "organization": (
         "Spaces, areas, assignees and the current productivity graph.",
         [
@@ -277,6 +278,10 @@ DESCRIPTIONS = {
     "note_read": "Read exact note content, revision, task evidence links and backlinks. "
     "Reading does not display it on screen; use ui_show(view=notes, entity_id=note_id) for an open/show request. "
     "A malformed reference needs a fresh search and exact copy, not a claim the note disappeared.",
+    "note_file": "File an existing note in a saved list using its exact ID and current note revision. This applies the stored tags/custom-field filters. Read note_lists and note_read first. Preserve unrelated content. Conflicting custom type requires a compatible list, not silently changing record type.",
+    "note_organize": "Queue classification and source-linked extraction for one saved note. This is asynchronous: queued is not completed. Read note_read later for status and extracted entries. Never claim extracted entries exist before the job finishes.",
+    "notelist_setup": "Create editable Movies, Books, Shows, Restaurants and Recipes lists using note tags. Only on a request to set up lists. Existing lists remain unchanged.",
+    "notelist_save": "Create or edit a saved note list: name and description are required. Filters combine all tags and optional type_id/custom-field values. Read structure_schema before filtering custom fields. automatic enables future classification; extract_entries enables individual source-linked saved recommendations. Does not redesign schema or reprocess old notes. Archive only on request.",
     "note_create": "Create an authored note with requested content and links. " + NOTE_LINKS,
     "note_update": "Edit requested note metadata/links at its current revision. Prefer note_append or note_replace for body edits; use content only for an explicitly requested full rewrite. " + NOTE_LINKS,
     "note_append": "Append exact text to the current note at expected_revision. Include any desired newline separator in text; untouched content and links are preserved. Read first. Never reconstruct the old body.",
@@ -364,7 +369,7 @@ DESCRIPTIONS = {
     "settings_update": "Change only explicitly requested profile/settings fields. Profile selects luna or gemini; "
     "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization.",
     "ui_state": "Read the authenticated device's current screen, visible IDs, filters, layouts, active editor and allowed Live voices. This is bounded ephemeral data; no connected device means no verified screen. Read before preserving existing view settings.",
-    "ui_workspace": "Change view options without editing records. Work (all/today/inbox/week) supports list, board and timeline, task sorting and board grouping. Projects timeline/board requires view=organize and organization_tab=project. timeline_date plus span 14/30/90 selects the range. Notes supports keyword/semantic mode; Notes/organize support show_archived. Settings sections: profile, organization (routing/reviews/work hours), notifications, voice, integrations, privacy, system, sharing. Omitted options/filters are preserved; invalid combinations are refused. Wait for displayed acknowledgement.",
+    "ui_workspace": "Change view options without editing records. Work (all/today/inbox/week) supports list, board and timeline, task sorting and board grouping. Projects timeline/board requires view=organize and organization_tab=project. timeline_date plus span 14/30/90 selects the range. Notes supports keyword/semantic mode and note_list_id from note_lists (empty clears, uncategorized shows unfiled notes); Notes/organize support show_archived. Settings sections: profile, organization (routing/reviews/work hours), notifications, voice, integrations, privacy, system, sharing. Omitted options/filters are preserved; invalid combinations are refused. Wait for displayed acknowledgement.",
     "ui_search": "Search the selected page (default all). This deliberately clears project, status, organization, assignee, work-type, tag and due filters; status becomes all. If the owner wants filters retained, read ui_state and reapply them with ui_filter AFTER searching. Empty query clears search. Settings search opens the relevant settings section. Reading a record is separate from displaying it.",
     "ui_filter": "Set exact filters while preserving every omitted field and the current search query. Work/calendar/alerts support status, project_id (preferred) or exact project name, space/area/goal, assignee ID/name, exact work_type/tag, inclusive due_from/due_through and work_kind. Empty strings clear filters. Status active excludes completed/cancelled; open means exactly open. Notes supports only project/space/area/goal; organize supports only space_id. Other pages have no record filters. Layout switches preserve these filters.",
     "ui_form": "Open a new or existing typed editor. form: task, reminder, note, goal, project, area, space, actor, event (local appointment/block), google_event, bulk or memory. Use entity_id for an existing record; bulk uses ui_select's task selection; memory requires a visible existing memory. Then ui_editor read reveals its fields/options and auto_save mode. Existing tasks and organization cards save patches immediately; notes and new forms require save. Opening does not save. Dirty editors must be saved or explicitly discarded first. Google recurrence scope/conflict choices use calendar_event_read and normal calendar tools.",

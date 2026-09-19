@@ -34,6 +34,8 @@ def note_data(db, row, *, preview=False):
     from .productivity import note_links
 
     data.update(note_links(db, row))
+    from .note_lists import details
+    data.update(details(db, row))
     data["excerpt"] = row.content[:240]
     if preview:
         data.pop("content")
@@ -64,10 +66,12 @@ def mutate_note(db, owner, tool, args):
     link_keys = {"goal_ids", "project_ids", "related_note_ids"}
     link_values = args.model_dump(exclude_unset=True, include=link_keys)
     previous_project = None
+    tags_changed = False
     if tool == "note.create":
         values = args.model_dump(exclude={"task_ids"} | link_keys)
         row = Note(owner_id=owner, **values)
         task_ids = args.task_ids
+        tags_changed = bool(args.tags)
     else:
         row = owned(db, Note, args.note_id, owner, lock=True)
         previous_project = row.project_id
@@ -148,6 +152,7 @@ def mutate_note(db, owner, tool, args):
         if any(values.get(k) is None for k in ("title", "content", "tags", "archived") if k in values):
             raise DomainError("INVALID_ARGUMENT", "Title, content, tags and archive state cannot be null.")
         task_ids = args.task_ids if "task_ids" in args.model_fields_set else None
+        tags_changed = "tags" in values and values["tags"] != row.tags
         values = home_changes(db, owner, values, row)
         for k, v in values.items():
             setattr(row, k, v)
@@ -181,6 +186,10 @@ def mutate_note(db, owner, tool, args):
         enqueue_job(db, owner, "embed_note", {"note_id": row.id, "revision": row.revision})
     emit(db, owner, "note.changed", row.id, row.revision)
     db.flush()
+    from .note_lists import note_changed
+    note_changed(db, row, tags_changed=tags_changed)
+    if tags_changed and not db.info.get("note_organization"):
+        db.info.setdefault("note_tag_changes", set()).add(row.id)
     return note_data(db, row)
 
 
@@ -276,6 +285,8 @@ def list_notes(
     space_id=None,
     area_id=None,
     goal_id=None,
+    list_id=None,
+    uncategorized=False,
 ):
     q = scope_notes(
         select(Note).where(Note.owner_id == owner, Note.archived == archived), space_id, area_id, goal_id
@@ -305,6 +316,8 @@ def list_notes(
                 cast(Note.tags, Text).ilike("%" + term + "%", escape="\\"),
             )
         )
+    from .note_lists import filtered
+    q = filtered(db, owner, q, list_id, uncategorized)
     rows = list(db.scalars(q.order_by(Note.updated_at.desc(), Note.id).offset(offset).limit(limit + 1)))
     return {
         "items": [note_data(db, n, preview=True) for n in rows[:limit]],
@@ -312,7 +325,7 @@ def list_notes(
     }
 
 
-def search_notes(owner, query, project_id=None, task_id=None, space_id=None, area_id=None, goal_id=None):
+def search_notes(owner, query, project_id=None, task_id=None, space_id=None, area_id=None, goal_id=None, list_id=None, uncategorized=False):
     from .config import get_settings
     if get_settings().semantic_search_enabled:
         from .access import actor
@@ -320,7 +333,7 @@ def search_notes(owner, query, project_id=None, task_id=None, space_id=None, are
         with session_scope() as db:
             account=actor(db,owner)
         found=search(owner,account,{"query":query,"capability":"content","limit":30},track=False,
-            note_filters={"project_id":project_id,"task_id":task_id,"space_id":space_id,"area_id":area_id,"goal_id":goal_id})
+            note_filters={"project_id":project_id,"task_id":task_id,"space_id":space_id,"area_id":area_id,"goal_id":goal_id,"list_id":list_id,"uncategorized":uncategorized})
         matches=found["structured"]["items"]+found["possible"]["items"]
         with session_scope() as db:
             items=[]
@@ -355,6 +368,8 @@ def search_notes(owner, query, project_id=None, task_id=None, space_id=None, are
             )
         if task_id:
             q = q.join(NoteTaskLink).where(NoteTaskLink.task_id == task_id, NoteTaskLink.linked.is_(True))
+        from .note_lists import filtered
+        q = filtered(db, owner, q, list_id, uncategorized)
         notes = list(db.scalars(q.order_by(Note.updated_at.desc()).limit(1001)))
         matches = []
         for row in notes[:1000]:

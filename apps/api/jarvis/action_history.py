@@ -68,7 +68,7 @@ def journal(db, owner, command_id, tool, arguments=None):
         for obj in [*session.new, *session.dirty, *session.deleted]:
             if isinstance(obj, models.StructureLink) and tool != "record.link": continue
             if isinstance(obj, models.StructureRecord) and tool == "record.link": continue
-            if isinstance(obj,models.StructureRecord) and not tool.startswith(("record.","routing.apply")):continue
+            if isinstance(obj,models.StructureRecord) and not tool.startswith(("record.","routing.apply","note.file","note.organize")):continue
             if isinstance(obj,(models.Task,models.Note)) and tool.startswith(("record.","routing.apply")):continue
             if type(obj) not in KINDS or getattr(obj, "owner_id", None) != owner:
                 continue
@@ -115,7 +115,7 @@ def has_linked_records(db, model, identity):
     # Index/cache references are not user work. All real incoming record links
     # must be reviewed before undoing a creation, even if they did not bump revision.
     for table in models.Base.metadata.sorted_tables:
-        if table.name in {"task_references", "note_embeddings", "routing_observations"} or (table.name=="structure_records" and model in {models.Task,models.Note}):
+        if table.name in {"task_references", "note_embeddings", "routing_observations", "note_organizations", "note_entry_sources"} or (table.name=="structure_records" and model in {models.Task,models.Note}):
             continue
         for column in table.columns:
             if (

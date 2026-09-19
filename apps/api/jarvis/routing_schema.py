@@ -14,6 +14,7 @@ class PatternCreate(Input):
     type_id: str = Field(min_length=1, max_length=80)
     parent_id: str | None = None
     values: dict = Field(default_factory=dict)
+    note_tags: list[str] = Field(default_factory=list, max_length=20)
     reason: str = Field(min_length=1, max_length=2000)
 
 

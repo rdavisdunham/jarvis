@@ -1,11 +1,37 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 18, 2026. Eridani (Eri) is the assistant's name.
+Updated September 19, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
 Completed implementation is marked **[x]**. **[ ]** means work or verification is
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
+
+## Self-organizing notes with saved list filters — September 19
+
+- [x] Notes Lists picker with editable Movies, Books, Shows, Restaurants and
+  Recipes templates, custom lists, required descriptions, tag and custom-field
+  filters, counts and Uncategorized. Categories/statuses remain user-defined.
+- [x] Automatic confident filing and separate per-list extraction switches.
+  Manual corrections survive reprocessing; uncertain entries remain unchanged.
+  Broader semantic possible matches are shown separately from actual membership.
+- [x] Source-linked individual saved items from clear recommendations, preserving
+  original notes and exact evidence. Passing mentions and negative/quoted
+  instructions are excluded. Reuse is conservative; retries do not duplicate
+  saved items, and several lists can display the same record.
+- [x] Weekly note-organization rule proposals from human evidence, with explicit
+  review and correction handling. Keep this separate from personal memories.
+- [x] Eri tools for list discovery, filtered contents, filing, organization and
+  acknowledged navigation; protected list drafts, source links, bounded retries,
+  stale-result checks, exports and workspace permission boundaries.
+- [x] Automated integration and desktop/mobile browser checks, plus six synthetic
+  real-Luna extraction cases. Implementation and limits: [NOTE_LISTS.md](NOTE_LISTS.md).
+- [ ] Verify on the actual fold phone: picker, custom list settings, source
+  navigation and Back. Speak “save these movies” and “show my movies” through
+  GPT-Live, then correct a tag and confirm it stays corrected.
+- [ ] Gather real note examples before broadening fuzzy duplicate matching.
+  Current filters use directly stored custom values; consider inherited-value
+  filtering only with clear provenance and correction behavior.
 
 ## Invitation flow cleanup — planned
 

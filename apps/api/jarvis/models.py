@@ -686,3 +686,5 @@ class BotCredential(Base):
 from .structure_models import (StructureSchema, StructureProposal, StructureRecord, StructureLink, FieldUnderstanding, RoutingObservation, RoutingPattern, RoutingReview)  # noqa: E402,F401
 
 from .search_models import SearchDocument, SearchIndexState, SearchPreference, SearchAlias, SearchSession  # noqa: E402,F401
+
+from .note_list_models import NoteList, NoteOrganization, NoteEntrySource  # noqa: E402,F401

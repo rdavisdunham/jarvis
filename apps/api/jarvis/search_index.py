@@ -28,6 +28,12 @@ def snapshot(db, owner):
     actors = {r.id: r for r in db.scalars(select(Actor).where(Actor.owner_id == owner))}
     links = list(db.scalars(select(StructureLink).where(StructureLink.owner_id == owner)))
     relations = {r["id"]: r for r in schema.definition["relationships"] if not r.get("archived")}
+    from .models import NoteEntrySource
+    note_sources = {}
+    for source in db.scalars(select(NoteEntrySource).where(NoteEntrySource.owner_id == owner)):
+        origin = notes.get(source.source_id)
+        if origin and not origin.archived:
+            note_sources.setdefault(source.entry_id, []).append((origin.title, source.evidence))
     documents, records = {}, {}
 
     def put(key, kind, label, content, **metadata):
@@ -180,6 +186,7 @@ def snapshot(db, owner):
                 parts.append("Assigned to: " + actors[task.assignee_id].name)
         if note:
             parts.append("Tags: " + ", ".join(note.tags))
+            parts.extend("Saved from " + title + ": " + quote for title, quote in note_sources.get(note.id, []))
         labels, bindings = {}, {}
         for f in t["fields"]:
             if f.get("archived"):

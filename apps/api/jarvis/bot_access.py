@@ -50,6 +50,7 @@ READ_SCOPES = {
     "project_list": "organization:read",
     "note_search": "notes:read",
     "note_read": "notes:read",
+    "note_lists": "notes:read", "note_list_items": "notes:read",
     "time_resolve": None,
 }
 

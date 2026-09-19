@@ -987,7 +987,7 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
     """Keep typed services discoverable through the registry without a second authority."""
     if tool.split(".")[0] not in {"task", "note"} or not isinstance(result, dict):
         return
-    if result.get("tasks"):
+    if tool == "note.tasks" and result.get("tasks"):
         for item in result["tasks"]:
             observe_core(db, owner, "task.update", item, command_id)
         return
@@ -1038,6 +1038,11 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         )
         db.add(row)
     db.flush()
+    if kind == "note" and row.note_id in db.info.get("note_tag_changes", set()):
+        from .routing import observe
+        from .bot_access import current_id
+        observe(db, row, command_id, human=":" not in command_id and not current_id())
+        db.info["note_tag_changes"].discard(row.note_id)
     if tool == "task.create" and arguments is not None:
         from .routing import suggest
 

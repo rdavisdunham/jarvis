@@ -212,6 +212,8 @@ def search(
                         )
                     )
                 )
+            from .note_lists import filtered
+            q = filtered(db, owner, q, note_filters.get("list_id"), note_filters.get("uncategorized", False))
             note_ids = set(db.scalars(q))
         structured, possible = [], []
         for identity, data in records.items():

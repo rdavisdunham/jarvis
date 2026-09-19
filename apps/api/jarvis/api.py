@@ -71,6 +71,8 @@ from .structure_routes import router as structure_router
 app.include_router(structure_router)
 from .search_routes import router as search_router
 app.include_router(search_router)
+from .note_lists import router as note_lists_router
+app.include_router(note_lists_router)
 from .accounts import router as accounts_router
 
 app.include_router(accounts_router)
@@ -332,6 +334,8 @@ def calendar_items(user: User, start: date, end: date, timezone: str | None = No
 @app.get("/api/v1/notes")
 def notes(
     user: User,
+    list_id: str | None = None,
+    uncategorized: bool = False,
     q: str = Query(default="", max_length=300),
     space_id: str | None = None,
     area_id: str | None = None,
@@ -346,13 +350,15 @@ def notes(
 
     with session_scope() as db:
         return list_notes(
-            db, user.owner_id, q, project_id, task_id, archived, limit, offset, space_id, area_id, goal_id
+            db, user.owner_id, q, project_id, task_id, archived, limit, offset, space_id, area_id, goal_id, list_id, uncategorized
         )
 
 
 @app.get("/api/v1/notes/search")
 async def notes_search(
     user: User,
+    list_id: str | None = None,
+    uncategorized: bool = False,
     q: str = Query(min_length=1, max_length=500),
     space_id: str | None = None,
     area_id: str | None = None,
@@ -363,7 +369,7 @@ async def notes_search(
     from .notes import search_notes
 
     return await asyncio.to_thread(
-        search_notes, user.owner_id, q, project_id, task_id, space_id, area_id, goal_id
+        search_notes, user.owner_id, q, project_id, task_id, space_id, area_id, goal_id, list_id, uncategorized
     )
 
 
@@ -788,6 +794,9 @@ def export(user: User, format: str = "json"):
                 Actor,
             )
         }
+        from .models import NoteList, NoteOrganization, NoteEntrySource
+        for model in (NoteList, NoteOrganization, NoteEntrySource):
+            data[model.__tablename__] = [serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))]
         data["note_task_links"] = [
             serial(link)
             for link in db.scalars(

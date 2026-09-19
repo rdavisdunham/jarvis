@@ -26,7 +26,7 @@ class EditorContext(BaseModel):
     mode: Literal["detail", "edit"] = "edit"
     auto_save: bool = False
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["record", "task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
+    kind: Literal["note_list", "record", "task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
     record_id: str | None = Field(default=None, max_length=36)
     dirty: bool = False
     busy: bool = False
@@ -76,6 +76,7 @@ class UIContext(BaseModel):
     timeline_span: Literal[14, 30, 90] = 30
     organization_tab: Literal["goal", "project", "area", "space", "actor"] = "project"
     settings_section: Literal["profile", "organization", "notifications", "voice", "integrations", "privacy", "system", "sharing"] = "profile"
+    note_list_id: str = Field(default="", max_length=36)
     notes_mode: Literal["keyword", "semantic"] = "keyword"
     show_archived: bool = False
     assignee: str = Field(default="", max_length=100)
@@ -118,7 +119,7 @@ APP_MAP = """Site map:
 Tasks has Today (today), Inbox (inbox), Next 7 days (week), and All (all) tabs. Today/week include planned or due work through today/today+6, including overdue. Inbox means no main home. Tasks includes every type with actionable-work behavior.
 Organization (organize) has user-defined collections, fields, statuses, links, list/board/timeline views and a Structure editor. Read structure_schema; use record tools for organization, ui_records for custom record cards, filters, grouping and schema previews. Workflow columns keep completion semantics under custom labels. Structural changes require reviewed confirmation. Main-home inheritance never follows extra links. Metrics remain independent of task counts.
 Calendar supports month/week/day, task dates, reminders, local events/work blocks and Google events. A deadline or planned date does not reserve time. Work blocks link to tasks; ordinary events cannot be completed.
-Record cards edit individual fields immediately. Wait for pending saves before navigating. ui_editor read reports detail/edit and auto_save; unsaved drafts require save or explicit discard. Existing core task cards also expose scheduling, alerts and linked notes. Notes preserve authored content; edits are drafts. Personal memories are separate learned facts with source cards and review questions.
+Record cards edit individual fields immediately. Wait for pending saves before navigating. ui_editor read reports detail/edit and auto_save; unsaved drafts require save or explicit discard. Existing core task cards also expose scheduling, alerts and linked notes. Notes preserve authored content; edits are drafts. Notes has saved Lists (note_lists / note_list_items). ui_workspace(view=notes, note_list_id=ID) opens a list; empty clears and uncategorized shows unfiled notes. Read source-linked entries with note_read; automatic filing uses list descriptions and stored filters. Note lists are not personal memory. Personal memories are separate learned facts with source cards and review questions.
 Activity in the top bar shows accepted work, necessary questions and saved changes with Edit/Revert. ui_activity opens/closes it. Cancel stops unfinished work; ending voice does not cancel accepted work.
 The profile menu at bottom left holds Memory, Settings and Log out. Chat opens from the persistent bottom-right Eridani button. The top search searches tasks; other pages have their own local search. Settings sections: profile (name/display), organization (routing learning/interviews/work hours), notifications (reminder delivery/quiet hours/summary), voice (Live voices/wake word), integrations (Google/Linear/API/MCP keys), privacy, system and sharing. Realtime is disabled. Browser permissions and OAuth require the owner.
 Notifications have category-specific actions: task alerts can complete/snooze; questions and work results open Activity. Quiet hours only hold push delivery, not in-app visibility. Only explicitly urgent alerts bypass quiet hours.

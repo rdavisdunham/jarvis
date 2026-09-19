@@ -49,3 +49,24 @@ def index_search(user: User):
     with session_scope() as db:identity=search_index.queue_index(db,user.owner_id,force=True)
     search_index.index_workspace(identity)
     return {'indexed':True}
+
+
+@app.post("/api/v1/__test_organize_note")
+def organize_note(body: dict, user: User):
+    from sqlalchemy import select
+    from jarvis.domain import owned
+    from jarvis.models import Job, Note
+    from jarvis.note_lists import process, active_lists
+    from jarvis.note_list_schema import OrganizationResult
+    with session_scope() as db:
+        note = owned(db, Note, body["note_id"], user.owner_id)
+        source = note.content
+        movie = next(r for r in active_lists(db, user.owner_id) if "movies" in r.filters.get("tags", []))
+        jid = db.scalar(select(Job.id).where(Job.owner_id == user.owner_id, Job.kind == "organize_note",
+            Job.payload["note_id"].as_string() == note.id).order_by(Job.created_at.desc()).limit(1))
+    result = OrganizationResult(classifications=[], entries=[
+        {"title": title, "evidence": source, "list_ids": [movie.id], "confidence": .99,
+         "save_intent": True, "existing_note_id": None} for title in ("Arrival", "Dune")])
+    with patch("jarvis.routing.infer", return_value=result):
+        process(jid)
+    return {"processed": True}

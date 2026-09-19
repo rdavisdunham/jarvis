@@ -5,7 +5,7 @@ import re
 from datetime import UTC, timedelta
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from .db import session_scope
 from .domain import DomainError, advisory, check_revision, emit, enqueue_job, owned, preferences, serial
 from .models import Job, SharedWorkspace, now
@@ -60,9 +60,9 @@ def ready(db, schema, type_id, values, parent_id=None):
 
 def validate_assignment(db, owner, schema, type_id, assignment):
     t = record_type(schema, type_id)
-    if "work" not in t["capabilities"]:
-        raise DomainError("INVALID_RULE", "Routing is for actionable records.")
-    if set(assignment) - {"parent_id", "values"}:
+    if not ({"work", "content"} & set(t["capabilities"])):
+        raise DomainError("INVALID_RULE", "Routing is for actionable records and authored content.")
+    if set(assignment) - {"parent_id", "values", "note_tags"}:
         raise DomainError("INVALID_RULE", "Only home and classification fields can be learned.")
     validate_parent(db, owner, None, t, assignment.get("parent_id"))
     fields = {f["id"]: f for f in t["fields"]}
@@ -73,6 +73,13 @@ def validate_assignment(db, owner, schema, type_id, assignment):
                 "INVALID_RULE", "Rules cannot change operational fields, dates or responsibility."
             )
     validate_values(db, owner, t, assignment.get("values", {}))
+    if "note_tags" in assignment:
+        from .note_list_schema import ListFilter
+        if "content" not in t["capabilities"]:
+            raise DomainError("INVALID_RULE", "Note tags apply only to content.")
+        ListFilter(tags=assignment["note_tags"])
+        if not assignment["note_tags"]:
+            raise DomainError("INVALID_RULE", "Rules add classifications, never clear them.")
 
 
 def observe(db, row, command_id, *, human=False):
@@ -81,7 +88,7 @@ def observe(db, row, command_id, *, human=False):
         return
     schema = ensure(db, row.owner_id)
     t = record_type(schema, row.type_id, archived=True)
-    if "work" not in t["capabilities"] or not human or row.archived:
+    if not ({"work", "content"} & set(t["capabilities"])) or not human or row.archived:
         return
     assignment = {
         "parent_id": row.parent_id,
@@ -91,6 +98,9 @@ def observe(db, row, command_id, *, human=False):
             if not f["binding"] and f["kind"] not in {"date", "datetime"} and f["id"] in row.values
         },
     }
+    if row.note_id:
+        from .models import Note
+        assignment["note_tags"] = db.get(Note, row.note_id).tags
     key = command_id + ":" + row.id
     if db.scalar(
         select(RoutingObservation.id).where(
@@ -117,8 +127,9 @@ def observe(db, row, command_id, *, human=False):
     ):
         if rule.condition["type_id"] == row.type_id and matches(row.title, rule.condition["phrase"]):
             conflict = any(
-                assignment.get(k) != v for k, v in rule.assignment.items() if k != "values"
+                assignment.get(k) != v for k, v in rule.assignment.items() if k not in {"values", "note_tags"}
             ) or any(assignment["values"].get(k) != v for k, v in rule.assignment.get("values", {}).items())
+            conflict = conflict or not set(rule.assignment.get("note_tags", [])).issubset(assignment.get("note_tags", []))
             if conflict:
                 rule.status = "conflict"
                 rule.revision += 1
@@ -153,6 +164,7 @@ def suggest(db, owner, type_id, title, explicit):
     conflicts = set()
     for rule in candidates:
         flat = {
+            **({"note_tags": rule.assignment["note_tags"]} if "note_tags" in rule.assignment else {}),
             **({"parent_id": rule.assignment["parent_id"]} if "parent_id" in rule.assignment else {}),
             **{"field:" + k: v for k, v in rule.assignment.get("values", {}).items()},
         }
@@ -169,6 +181,8 @@ def suggest(db, owner, type_id, title, explicit):
             if k.startswith("field:") and k[6:] not in explicit.get("values", {})
         }
     }
+    if "note_tags" in assignment and "note_tags" not in explicit:
+        result["note_tags"] = assignment["note_tags"]
     if "parent_id" in assignment and "parent_id" not in explicit:
         result["parent_id"] = assignment["parent_id"]
     return {
@@ -241,6 +255,7 @@ class Candidate(BaseModel):
     type_id: str
     parent_id: str | None
     values: list[CandidateValue]
+    note_tags: list[str] = Field(default_factory=list, max_length=20)
     reason: str
 
 
@@ -252,6 +267,16 @@ class Candidates(BaseModel):
 def infer(owner, model, prompt, payload):
     from .memory_learning import EXTRACTION_MODEL, extraction_request
 
+    schema = model.model_json_schema()
+    def strict(node):
+        if isinstance(node, dict):
+            node.pop("default", None)
+            if node.get("type") == "object":
+                node["required"] = list(node.get("properties", {}))
+            for value in node.values(): strict(value)
+        elif isinstance(node, list):
+            for value in node: strict(value)
+    strict(schema)
     result = extraction_request(
         owner,
         "chat/completions",
@@ -268,7 +293,7 @@ def infer(owner, model, prompt, payload):
                 "json_schema": {
                     "name": "routing_review",
                     "strict": True,
-                    "schema": model.model_json_schema(),
+                    "schema": schema,
                 },
             },
             "max_completion_tokens": 4000,
@@ -382,9 +407,11 @@ def process(job_id):
             job.status = "succeeded"
             job.finished_at = now()
             return
+        from .note_lists import all_lists
         payload = {
             "definition": schema.definition,
             "examples": [{"id": e.record_id, **e.evidence} for e in training[-400:]],
+            "note_lists": all_lists(db, owner)["items"],
             "homes": [
                 {"id": r.id, "title": r.title, "type_id": r.type_id}
                 for r in db.scalars(
@@ -398,7 +425,7 @@ def process(job_id):
     result = infer(
         owner,
         Candidates,
-        "Find precise task-title phrases that reliably identify an existing main home from the human-labeled examples. Return at most 30 candidates. A home must be an existing ID in homes. Do not invent projects or clients. Prefer distinctive phrases over generic verbs. A phrase must occur verbatim ignoring punctuation/case in evidence. Also identify reliable non-operational classification values from the evidence using exact field and option/record IDs in the schema. Encode each value as JSON in values.value_json, or return values=[]. Never infer empty/cleared fields, dates, priority, assignee or access. No work-hour-only rules.",
+        "Find precise task or note title phrases that reliably identify an existing main home from the human-labeled examples. Return at most 30 candidates. A home must be an existing ID in homes. Do not invent projects or clients. Prefer distinctive phrases over generic verbs. A phrase must occur verbatim ignoring punctuation/case in evidence. Also identify reliable non-operational classification values from the evidence using exact field and option/record IDs in the schema. Encode each value as JSON in values.value_json, or return values=[]. Never infer empty/cleared fields, dates, priority, assignee or access. No work-hour-only rules. For content records, note_tags may contain exact tags independently assigned by humans; otherwise return an empty array. List descriptions explain the tag meanings. Never learn a status or personal fact.",
         payload,
     )
     with session_scope() as db:
@@ -422,9 +449,11 @@ def process(job_id):
                 continue
             values = {k: v for k, v in values.items() if v is not None}
             assignment = {"values": values}
+            if candidate.note_tags:
+                assignment["note_tags"] = candidate.note_tags
             if candidate.parent_id:
                 assignment["parent_id"] = candidate.parent_id
-            if not values and not candidate.parent_id:
+            if not values and not candidate.parent_id and not candidate.note_tags:
                 continue
             try:
                 validate_assignment(db, owner, schema, candidate.type_id, assignment)
@@ -472,7 +501,8 @@ def process(job_id):
                 else 0
             )
             strong = (
-                len(support) >= 3
+                "content" not in record_type(schema, candidate.type_id)["capabilities"]
+                and len(support) >= 3
                 and len(evaluated) >= 100
                 and precision >= 0.95
                 and ready(db, schema, candidate.type_id, values, candidate.parent_id)
@@ -587,6 +617,8 @@ def mutate(db, owner, tool, args, command_id):
         return {"queued": bool(job), "job_id": job.id if job else None}
     if tool == "routing.create":
         assignment = {"values": args.values}
+        if args.note_tags:
+            assignment["note_tags"] = args.note_tags
         if "parent_id" in args.model_fields_set:
             assignment["parent_id"] = args.parent_id
         validate_assignment(db, owner, schema, args.type_id, assignment)
@@ -755,11 +787,20 @@ def mutate(db, owner, tool, args, command_id):
                         record_id=item["id"],
                         expected_revision=item["revision"],
                         schema_revision=schema.revision,
-                        **p["assignment"],
+                        **{k: v for k, v in p["assignment"].items() if k != "note_tags"},
                     ),
                     command_id + ":routing",
                 )
             )
+        if p["assignment"].get("note_tags"):
+            from .notes import mutate_note
+            from .note_schema import NoteUpdate
+            from .models import Note
+            for item in p["rows"]:
+                row = owned(db, StructureRecord, item["id"], owner)
+                note = owned(db, Note, row.note_id, owner)
+                mutate_note(db, owner, "note.update", NoteUpdate(note_id=note.id, expected_revision=note.revision,
+                    tags=list(dict.fromkeys([*note.tags, *p["assignment"]["note_tags"]]))))
         preview.status = "applied"
         preview.revision += 1
         return {"records": results, "review_id": preview.id}
@@ -840,13 +881,13 @@ def perform(job_id, kind):
 
 
 def agrees(observed, assignment):
-    return ("parent_id" not in assignment or observed.get("parent_id") == assignment["parent_id"]) and all(
+    return (not assignment.get("note_tags") or set(assignment["note_tags"]).issubset(observed.get("note_tags", []))) and ("parent_id" not in assignment or observed.get("parent_id") == assignment["parent_id"]) and all(
         observed.get("values", {}).get(k) == v for k, v in assignment.get("values", {}).items()
     )
 
 
 def classification_question(db, schema, type_id, phrase, assignment):
-    labels = []
+    labels = ["Note tags: " + ", ".join(assignment["note_tags"])] if assignment.get("note_tags") else []
     if assignment.get("parent_id"):
         labels.append(
             "Main home: " + owned(db, StructureRecord, assignment["parent_id"], schema.owner_id).title
