@@ -1,0 +1,1302 @@
+{
+  "meaning": "Surface ownership map, not proof every endpoint has an executed assertion.",
+  "commands": [
+    {
+      "name": "actor.create",
+      "feature": "organization"
+    },
+    {
+      "name": "actor.update",
+      "feature": "organization"
+    },
+    {
+      "name": "area.create",
+      "feature": "organization"
+    },
+    {
+      "name": "area.update",
+      "feature": "organization"
+    },
+    {
+      "name": "calendar.create",
+      "feature": "google_writes"
+    },
+    {
+      "name": "calendar.delete",
+      "feature": "google_writes"
+    },
+    {
+      "name": "calendar.select",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar.update",
+      "feature": "google_writes"
+    },
+    {
+      "name": "goal.create",
+      "feature": "organization"
+    },
+    {
+      "name": "goal.update",
+      "feature": "organization"
+    },
+    {
+      "name": "linear.create",
+      "feature": "linear_writes"
+    },
+    {
+      "name": "linear.publish",
+      "feature": "linear_writes"
+    },
+    {
+      "name": "linear.resolve",
+      "feature": "linear_writes"
+    },
+    {
+      "name": "linear.select",
+      "feature": "linear_sync"
+    },
+    {
+      "name": "linear.update",
+      "feature": "linear_writes"
+    },
+    {
+      "name": "memory.capture",
+      "feature": "memory_capture"
+    },
+    {
+      "name": "memory.correct",
+      "feature": "memory_management"
+    },
+    {
+      "name": "memory.forget",
+      "feature": "memory_management"
+    },
+    {
+      "name": "memory.resolve",
+      "feature": "memory_dream"
+    },
+    {
+      "name": "note.append",
+      "feature": "notes"
+    },
+    {
+      "name": "note.create",
+      "feature": "notes"
+    },
+    {
+      "name": "note.file",
+      "feature": "note_lists"
+    },
+    {
+      "name": "note.organize",
+      "feature": "note_organization"
+    },
+    {
+      "name": "note.replace",
+      "feature": "notes"
+    },
+    {
+      "name": "note.tasks",
+      "feature": "note_tasks"
+    },
+    {
+      "name": "note.update",
+      "feature": "notes"
+    },
+    {
+      "name": "notelist.save",
+      "feature": "note_lists"
+    },
+    {
+      "name": "notelist.setup",
+      "feature": "note_lists"
+    },
+    {
+      "name": "notification.complete",
+      "feature": "notifications"
+    },
+    {
+      "name": "notification.dismiss",
+      "feature": "notifications"
+    },
+    {
+      "name": "notification.read",
+      "feature": "notifications"
+    },
+    {
+      "name": "notification.snooze",
+      "feature": "notifications"
+    },
+    {
+      "name": "planning.commit",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.create",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.delete",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.publish",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.resolve",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.unlink",
+      "feature": "planning"
+    },
+    {
+      "name": "planning.update",
+      "feature": "planning"
+    },
+    {
+      "name": "project.create",
+      "feature": "organization"
+    },
+    {
+      "name": "project.update",
+      "feature": "organization"
+    },
+    {
+      "name": "record.create",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record.link",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record.update",
+      "feature": "custom_records"
+    },
+    {
+      "name": "routing.answer",
+      "feature": "routing_dream"
+    },
+    {
+      "name": "routing.apply",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "routing.change",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "routing.create",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "routing.preview",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "routing.run",
+      "feature": "routing_dream"
+    },
+    {
+      "name": "routing.understand",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "schedule.cancel",
+      "feature": "routines"
+    },
+    {
+      "name": "schedule.complete",
+      "feature": "routines"
+    },
+    {
+      "name": "schedule.create",
+      "feature": "routines"
+    },
+    {
+      "name": "schedule.reschedule",
+      "feature": "routines"
+    },
+    {
+      "name": "schedule.update",
+      "feature": "routines"
+    },
+    {
+      "name": "settings.update",
+      "feature": "browser_settings"
+    },
+    {
+      "name": "space.create",
+      "feature": "organization"
+    },
+    {
+      "name": "space.update",
+      "feature": "organization"
+    },
+    {
+      "name": "structure.apply",
+      "feature": "custom_schema"
+    },
+    {
+      "name": "structure.preview",
+      "feature": "custom_schema"
+    },
+    {
+      "name": "structure.restore",
+      "feature": "custom_schema"
+    },
+    {
+      "name": "task.batch",
+      "feature": "task_lifecycle"
+    },
+    {
+      "name": "task.complete",
+      "feature": "task_lifecycle"
+    },
+    {
+      "name": "task.create",
+      "feature": "task_capture"
+    },
+    {
+      "name": "task.reopen",
+      "feature": "task_lifecycle"
+    },
+    {
+      "name": "task.selection_update",
+      "feature": "task_lifecycle"
+    },
+    {
+      "name": "task.update",
+      "feature": "task_edit"
+    }
+  ],
+  "read_tools": [
+    {
+      "name": "calendar_availability",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar_connection",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar_event_read",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar_list",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar_sync",
+      "feature": "google_sync"
+    },
+    {
+      "name": "calendar_write_status",
+      "feature": "google_sync"
+    },
+    {
+      "name": "linear_compare",
+      "feature": "linear_sync"
+    },
+    {
+      "name": "linear_connection",
+      "feature": "linear_sync"
+    },
+    {
+      "name": "linear_sync",
+      "feature": "linear_sync"
+    },
+    {
+      "name": "linear_write_status",
+      "feature": "linear_sync"
+    },
+    {
+      "name": "memory_review_list",
+      "feature": "memory_dream"
+    },
+    {
+      "name": "memory_search",
+      "feature": "memory_management"
+    },
+    {
+      "name": "note_extract",
+      "feature": "note_tasks"
+    },
+    {
+      "name": "note_list_items",
+      "feature": "note_lists"
+    },
+    {
+      "name": "note_lists",
+      "feature": "note_lists"
+    },
+    {
+      "name": "note_read",
+      "feature": "notes"
+    },
+    {
+      "name": "note_search",
+      "feature": "notes"
+    },
+    {
+      "name": "notification_list",
+      "feature": "notifications"
+    },
+    {
+      "name": "organization_list",
+      "feature": "organization"
+    },
+    {
+      "name": "planning_compare",
+      "feature": "planning"
+    },
+    {
+      "name": "planning_get",
+      "feature": "planning"
+    },
+    {
+      "name": "planning_suggest",
+      "feature": "planning"
+    },
+    {
+      "name": "project_list",
+      "feature": "organization"
+    },
+    {
+      "name": "record_get",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record_list",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record_search",
+      "feature": "search"
+    },
+    {
+      "name": "routing_state",
+      "feature": "routing_rules"
+    },
+    {
+      "name": "schedule_list",
+      "feature": "routines"
+    },
+    {
+      "name": "search_feedback",
+      "feature": "search_aliases"
+    },
+    {
+      "name": "search_select",
+      "feature": "search_aliases"
+    },
+    {
+      "name": "structure_schema",
+      "feature": "custom_schema"
+    },
+    {
+      "name": "task_get",
+      "feature": "task_edit"
+    },
+    {
+      "name": "task_list",
+      "feature": "task_edit"
+    },
+    {
+      "name": "task_resolve",
+      "feature": "task_edit"
+    },
+    {
+      "name": "time_resolve",
+      "feature": "time_deadlines"
+    },
+    {
+      "name": "ui_activity",
+      "feature": "receipts"
+    },
+    {
+      "name": "ui_calendar",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_chat",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_device",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_editor",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_filter",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_form",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_records",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_saved_view",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_search",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_select",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_show",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_state",
+      "feature": "site_controls"
+    },
+    {
+      "name": "ui_workspace",
+      "feature": "site_controls"
+    },
+    {
+      "name": "work_cancel",
+      "feature": "queue"
+    },
+    {
+      "name": "work_list",
+      "feature": "queue"
+    },
+    {
+      "name": "work_revert",
+      "feature": "receipts"
+    }
+  ],
+  "loop_controls": [
+    {
+      "name": "tools_load",
+      "feature": "chat_agent"
+    },
+    {
+      "name": "work_needs_input",
+      "feature": "clarifications"
+    },
+    {
+      "name": "work_answer",
+      "feature": "clarifications"
+    },
+    {
+      "name": "work_followup",
+      "feature": "queue"
+    },
+    {
+      "name": "voice_end",
+      "feature": "wake_shutdown"
+    }
+  ],
+  "http_routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts",
+      "handler": "overview",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/accept",
+      "handler": "accept",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/invitations",
+      "handler": "invite",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/invitations/{invite_id}",
+      "handler": "invitation_detail",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/members",
+      "handler": "change_member",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/accounts/members/{workspace_id}",
+      "handler": "members",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/revoke-invitation",
+      "handler": "revoke_invitation",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/switch",
+      "handler": "switch_workspace",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/workspaces",
+      "handler": "create_workspace",
+      "source": "apps/api/jarvis/accounts.py",
+      "feature": "workspaces"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/google/start",
+      "handler": "start",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "handler": "login",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "accounts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "handler": "logout",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/options",
+      "handler": "options",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bootstrap",
+      "handler": "bootstrap",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "accounts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bot-keys",
+      "handler": "keys",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bot-keys",
+      "handler": "create_key",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bot-keys/{identity}/revoke",
+      "handler": "revoke_key",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/budget/holds",
+      "handler": "budget_holds",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "budget"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar",
+      "handler": "calendar_items",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calendar/availability",
+      "handler": "available",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calendar/availability/day",
+      "handler": "day_availability",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calendar/event-detail",
+      "handler": "event_read",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar/events/{event_id}",
+      "handler": "event",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar/writes",
+      "handler": "writes",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_writes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calendar/writes/{job_id}",
+      "handler": "write",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_writes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/chat",
+      "handler": "chat_endpoint",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "chat_agent"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commands",
+      "handler": "command",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "receipts"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commands/{command_id}",
+      "handler": "command_status",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "receipts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/conversations",
+      "handler": "create_conversation",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "chat_agent"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/conversations/{conversation_id}",
+      "handler": "conversation",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "chat_agent"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/events",
+      "handler": "events",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/export",
+      "handler": "export",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/actions/{action_id}/revert",
+      "handler": "revert",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/capabilities",
+      "handler": "capabilities",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/commands",
+      "handler": "command",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/records/{kind}",
+      "handler": "records",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/records/{kind}/{record_id}",
+      "handler": "record",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/requests",
+      "handler": "submit",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/requests/{request_id}",
+      "handler": "request_status",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/requests/{request_id}/cancel",
+      "handler": "cancel",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/requests/{request_id}/reply",
+      "handler": "reply",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/search",
+      "handler": "semantic_search",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/structure",
+      "handler": "external_structure",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/structure/records",
+      "handler": "external_records",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/structure/records/{record_id}",
+      "handler": "external_record",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/google",
+      "handler": "status",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/google/disconnect-calendar",
+      "handler": "disconnect",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/google/sync",
+      "handler": "sync",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/google/unlink",
+      "handler": "unlink",
+      "source": "apps/api/jarvis/google_routes.py",
+      "feature": "google_sync"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/integrations/linear",
+      "handler": "linear_status",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/connect",
+      "handler": "linear_connect",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/disconnect",
+      "handler": "linear_disconnect",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/sync",
+      "handler": "linear_sync_now",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/jobs/{job_id}",
+      "handler": "job",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/linear/tasks/{task_id}/comparison",
+      "handler": "linear_compare",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_writes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/linear/writes/{job_id}",
+      "handler": "linear_write_status",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_writes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/memory",
+      "handler": "memories",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "memory_management"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/retry",
+      "handler": "retry_memory",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "memory_management"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/memory/review",
+      "handler": "run_memory_review",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "memory_dream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/note-lists",
+      "handler": "get_lists",
+      "source": "apps/api/jarvis/note_lists.py",
+      "feature": "note_lists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/note-lists/{list_id}/notes",
+      "handler": "get_list_notes",
+      "source": "apps/api/jarvis/note_lists.py",
+      "feature": "note_lists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/note-lists/{list_id}/suggestions",
+      "handler": "get_suggestions",
+      "source": "apps/api/jarvis/note_lists.py",
+      "feature": "note_lists"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "handler": "notes",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "notes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes/search",
+      "handler": "notes_search",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "search"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes/{note_id}",
+      "handler": "note_detail",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "notes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notes/{note_id}/suggest-tasks",
+      "handler": "note_suggestions",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "note_tasks"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "handler": "notifications",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/organization",
+      "handler": "organization",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "organization"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/planning/{entry_id}",
+      "handler": "planning_get",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "planning"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/planning/{entry_id}/comparison",
+      "handler": "planning_compare",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "planning"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects",
+      "handler": "projects",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "organization"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/push",
+      "handler": "push",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/schedules",
+      "handler": "schedules",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "routines"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/schedules/{schedule_id}",
+      "handler": "schedule_record",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "routines"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/search/aliases",
+      "handler": "aliases",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search_aliases"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/aliases/{alias_id}",
+      "handler": "change",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search_aliases"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/events",
+      "handler": "event",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/feedback",
+      "handler": "feedback",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search_aliases"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/preferences",
+      "handler": "preferences",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/records",
+      "handler": "records",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/search/selection",
+      "handler": "selection",
+      "source": "apps/api/jarvis/search_routes.py",
+      "feature": "search_aliases"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/sources/{source_id}",
+      "handler": "source",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure",
+      "handler": "schema",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/by-core/{kind}/{identity}",
+      "handler": "by_core",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/history/applied",
+      "handler": "history",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/proposals/{proposal_id}",
+      "handler": "proposal",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/records",
+      "handler": "records",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/records/{record_id}",
+      "handler": "record",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/routing/state",
+      "handler": "routing_state",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "routing_rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/task-views",
+      "handler": "list_views",
+      "source": "apps/api/jarvis/saved_views.py",
+      "feature": "planner_views"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/task-views",
+      "handler": "put_view",
+      "source": "apps/api/jarvis/saved_views.py",
+      "feature": "planner_views"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/task-views/remove",
+      "handler": "remove_view",
+      "source": "apps/api/jarvis/saved_views.py",
+      "feature": "planner_views"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks",
+      "handler": "tasks",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "task_edit"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tasks/{task_id}",
+      "handler": "task",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "task_edit"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ui/sync",
+      "handler": "ui_sync",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "site_controls"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/sessions",
+      "handler": "start",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/voice/sessions/{session_id}",
+      "handler": "status",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/sessions/{session_id}/interrupt",
+      "handler": "interrupt",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/sessions/{session_id}/stop",
+      "handler": "stop",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/sessions/{session_id}/submit",
+      "handler": "submit",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/work",
+      "handler": "work_list",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work",
+      "handler": "work_create",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work/actions/{change_id}/revert",
+      "handler": "work_revert",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "receipts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work/clear",
+      "handler": "work_clear",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/work/{request_id}",
+      "handler": "work_get",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work/{request_id}/cancel",
+      "handler": "work_cancel",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work/{request_id}/revise",
+      "handler": "work_revise",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/work/{request_id}/seen",
+      "handler": "work_seen",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "GET",
+      "path": "/health/live",
+      "handler": "live",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "handler": "ready",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/{path:path}",
+      "handler": "frontend",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "browser_settings"
+    }
+  ],
+  "mounted_services": [
+    {
+      "path": "/api/v1/external/mcp",
+      "feature": "external_agents",
+      "note": "Mounted in api.py via external_mcp."
+    }
+  ]
+}

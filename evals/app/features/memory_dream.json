@@ -1,0 +1,1029 @@
+[
+  {
+    "id": "memory_dream.01",
+    "feature": "memory_dream",
+    "title": "Weekly review of exact duplicate facts.",
+    "inputs": [
+      "Weekly review of exact duplicate facts."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Safe duplicates merged with provenance."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Weekly review of exact duplicate facts.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.02",
+    "feature": "memory_dream",
+    "title": "Similar Miso/Mizo names.",
+    "inputs": [
+      "Similar Miso/Mizo names."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Question proposed, no silent merge."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Similar Miso/Mizo names.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.03",
+    "feature": "memory_dream",
+    "title": "Distinct Alex Rivera/Alex Morgan.",
+    "inputs": [
+      "Distinct Alex Rivera/Alex Morgan."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No collapse from same first name."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Distinct Alex Rivera/Alex Morgan.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.04",
+    "feature": "memory_dream",
+    "title": "User confirms Mizo was transcription of Miso.",
+    "inputs": [
+      "User confirms Mizo was transcription of Miso."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Merge/correct with explicit answer."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User confirms Mizo was transcription of Miso.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.05",
+    "feature": "memory_dream",
+    "title": "User says names are distinct.",
+    "inputs": [
+      "User says names are distinct."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Retain separate assertions."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User says names are distinct.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.06",
+    "feature": "memory_dream",
+    "title": "User defers question.",
+    "inputs": [
+      "User defers question."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No fact mutation."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User defers question.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.07",
+    "feature": "memory_dream",
+    "title": "Stale review revision.",
+    "inputs": [
+      "Stale review revision."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject outdated resolution."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Stale review revision.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.08",
+    "feature": "memory_dream",
+    "title": "Repeat same resolution command.",
+    "inputs": [
+      "Repeat same resolution command."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No duplicate merge effect."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Repeat same resolution command.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.09",
+    "feature": "memory_dream",
+    "title": "Source deleted during review.",
+    "inputs": [
+      "Source deleted during review."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Deleted fact cannot reappear."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Source deleted during review.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.10",
+    "feature": "memory_dream",
+    "title": "Suppressed memory in candidate set.",
+    "inputs": [
+      "Suppressed memory in candidate set."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Excluded."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Suppressed memory in candidate set.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.11",
+    "feature": "memory_dream",
+    "title": "Two accounts with same cat name.",
+    "inputs": [
+      "Two accounts with same cat name."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Separate reviews."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Two accounts with same cat name.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.12",
+    "feature": "memory_dream",
+    "title": "Deep sleep disabled.",
+    "inputs": [
+      "Deep sleep disabled."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No automatic review job."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Deep sleep disabled.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.13",
+    "feature": "memory_dream",
+    "title": "Memory learning disabled.",
+    "inputs": [
+      "Memory learning disabled."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No review queue."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Memory learning disabled.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.14",
+    "feature": "memory_dream",
+    "title": "Review rerun same weekly period.",
+    "inputs": [
+      "Review rerun same weekly period."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "One scheduled review."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Review rerun same weekly period.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.15",
+    "feature": "memory_dream",
+    "title": "Manual review with pending review.",
+    "inputs": [
+      "Manual review with pending review."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reuse pending work appropriately."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Manual review with pending review.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.16",
+    "feature": "memory_dream",
+    "title": "Chicago weekly boundary across DST.",
+    "inputs": [
+      "Chicago weekly boundary across DST."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Local schedule consistent."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Chicago weekly boundary across DST.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.17",
+    "feature": "memory_dream",
+    "title": "New source evidence arrives after review.",
+    "inputs": [
+      "New source evidence arrives after review."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Version/context checked before merge."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "New source evidence arrives after review.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.18",
+    "feature": "memory_dream",
+    "title": "Exact duplicate has multiple sources.",
+    "inputs": [
+      "Exact duplicate has multiple sources."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Preserve all supported provenance."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Exact duplicate has multiple sources.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.19",
+    "feature": "memory_dream",
+    "title": "Conflicting factual values.",
+    "inputs": [
+      "Conflicting factual values."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Ask, do not choose latest spelling blindly."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Conflicting factual values.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.20",
+    "feature": "memory_dream",
+    "title": "Prompt injection in memory text.",
+    "inputs": [
+      "Prompt injection in memory text."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Data only",
+      "no unrelated operations."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Prompt injection in memory text.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.21",
+    "feature": "memory_dream",
+    "title": "Empty memory store.",
+    "inputs": [
+      "Empty memory store."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Successful no-op review."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Empty memory store.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.22",
+    "feature": "memory_dream",
+    "title": "Large memory store.",
+    "inputs": [
+      "Large memory store."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Bounded candidate work, no runaway comparisons."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Large memory store.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.23",
+    "feature": "memory_dream",
+    "title": "Review process retries.",
+    "inputs": [
+      "Review process retries."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No duplicate destructive merge."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Review process retries.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.24",
+    "feature": "memory_dream",
+    "title": "Offer questions during conversation.",
+    "inputs": [
+      "Offer questions during conversation."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Bounded offer, user can defer."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Offer questions during conversation.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "memory_dream.25",
+    "feature": "memory_dream",
+    "title": "Review finishes while voice is closed.",
+    "inputs": [
+      "Review finishes while voice is closed."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Persist for later",
+      "no forced microphone session."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Review finishes while voice is closed.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  }
+]

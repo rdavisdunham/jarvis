@@ -1,0 +1,642 @@
+[
+  {
+    "id": "task_capture",
+    "title": "Capture tasks",
+    "description": "Create tasks with precise titles, notes, ownership and initial classifications.",
+    "order": 1,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/domain.py",
+      "apps/api/jarvis/task_tools.py"
+    ],
+    "regression_files": [
+      "tests/test_domain.py",
+      "tests/test_tool_refinement.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "task_edit",
+    "title": "Edit and resolve tasks",
+    "description": "Resolve references and change only requested fields, preserving concurrent edits.",
+    "order": 2,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/task_tools.py",
+      "apps/api/jarvis/task_context.py"
+    ],
+    "regression_files": [
+      "tests/test_tool_refinement.py",
+      "tests/test_batch1.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "task_lifecycle",
+    "title": "Task status and bulk changes",
+    "description": "Backlog, open, active, waiting, completion, reopening, archive and atomic bulk operations.",
+    "order": 3,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/domain.py",
+      "apps/api/jarvis/workspace.py"
+    ],
+    "regression_files": [
+      "tests/test_backlog.py",
+      "tests/test_workspace.py",
+      "tests/test_recurrence_edges.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "time_deadlines",
+    "title": "Dates, deadlines and time zones",
+    "description": "Separate planned days, deadlines, local times and notification schedules.",
+    "order": 4,
+    "target_cases": 26,
+    "source_files": [
+      "apps/api/jarvis/time_tools.py",
+      "apps/api/jarvis/task_alerts.py"
+    ],
+    "regression_files": [
+      "tests/test_recurrence_edges.py",
+      "tests/test_tool_refinement.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "routines",
+    "title": "Reminders and recurring routines",
+    "description": "Durable alerts, occurrence tasks, schedule changes and recurrence boundaries.",
+    "order": 5,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/domain.py",
+      "apps/api/jarvis/worker.py"
+    ],
+    "regression_files": [
+      "tests/test_domain.py",
+      "tests/test_daily_polish.py",
+      "tests/test_recurrence_edges.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "organization",
+    "title": "Goals, projects and responsibility",
+    "description": "Spaces, areas, clients, goals, projects, assignees, subtasks and linked records.",
+    "order": 6,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/organization.py",
+      "apps/api/jarvis/productivity.py"
+    ],
+    "regression_files": [
+      "tests/test_productivity.py",
+      "tests/test_planner_release.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "custom_schema",
+    "title": "Custom types and fields",
+    "description": "Versioned structure proposals, required descriptions, workflows, relationships and restoration.",
+    "order": 7,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/structure.py",
+      "apps/api/jarvis/structure_schema.py"
+    ],
+    "regression_files": [
+      "tests/test_structure.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "custom_records",
+    "title": "Custom records and inheritance",
+    "description": "Typed records, parent trees, custom values, inherited classifications and graph links.",
+    "order": 8,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/structure.py",
+      "apps/api/jarvis/structure_routes.py"
+    ],
+    "regression_files": [
+      "tests/test_structure.py",
+      "tests/test_accounts.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "planner_views",
+    "title": "Views, boards and timelines",
+    "description": "Task tabs, saved filters, selection, drag/drop status and calendar projections.",
+    "order": 9,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/saved_views.py",
+      "apps/api/jarvis/workspace.py",
+      "apps/api/jarvis/calendar_details.py"
+    ],
+    "regression_files": [
+      "tests/test_workspace.py",
+      "tests/test_planner_release.py",
+      "tests/test_backlog.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "planning",
+    "title": "Scheduling work blocks",
+    "description": "Constraint-aware proposals, atomic commits, calendar publication and conflict resolution.",
+    "order": 10,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/planner.py",
+      "apps/api/jarvis/planning.py"
+    ],
+    "regression_files": [
+      "tests/test_planning.py",
+      "tests/test_reliability_eval_cases.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "notes",
+    "title": "Notes and linked context",
+    "description": "Authored content, exact edits, linked tasks/projects/goals, sources and archive behavior.",
+    "order": 11,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/notes.py",
+      "apps/api/jarvis/productivity.py"
+    ],
+    "regression_files": [
+      "tests/test_notes_context.py",
+      "tests/test_productivity.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "note_tasks",
+    "title": "Extract tasks from notes",
+    "description": "Evidence-backed task suggestions with explicit acceptance and duplicate prevention.",
+    "order": 12,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/notes.py"
+    ],
+    "regression_files": [
+      "tests/test_notes_context.py",
+      "tests/test_expert_eval_cases.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "note_lists",
+    "title": "Saved Notes lists",
+    "description": "Descriptions, deterministic tags/custom-field filters, multiple memberships and list lifecycle.",
+    "order": 13,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/note_lists.py"
+    ],
+    "regression_files": [
+      "tests/test_note_lists.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "note_organization",
+    "title": "Automatic note organization",
+    "description": "Conservative filing, source-linked recommendations, correction locks and recovery.",
+    "order": 14,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/note_lists.py"
+    ],
+    "regression_files": [
+      "tests/test_note_lists.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "search",
+    "title": "Semantic and lexical search",
+    "description": "Hybrid retrieval across tasks, notes, record bodies, fields, aliases and misfiled candidates.",
+    "order": 15,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/search_service.py",
+      "apps/api/jarvis/search_index.py"
+    ],
+    "regression_files": [
+      "tests/test_semantic_search.py",
+      "tests/test_accounts.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "search_aliases",
+    "title": "Search vocabulary learning",
+    "description": "Separate provisional vocabulary, confirmation, correction, pause, forget and review.",
+    "order": 16,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/search_learning.py"
+    ],
+    "regression_files": [
+      "tests/test_semantic_search.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "memory_capture",
+    "title": "Automatic memory capture",
+    "description": "Extract durable facts from eligible user sources with provenance and embeddings.",
+    "order": 17,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/memory_learning.py"
+    ],
+    "regression_files": [
+      "tests/test_memory_learning.py",
+      "tests/test_memory_cloud.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "memory_management",
+    "title": "Memory use and correction",
+    "description": "Capture, retrieve, inject, correct, forget and preserve source/privacy constraints.",
+    "order": 18,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/memory_service.py",
+      "apps/api/jarvis/memory_learning.py"
+    ],
+    "regression_files": [
+      "tests/test_memory_cloud.py",
+      "tests/test_privacy.py",
+      "tests/test_memory_learning.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "memory_dream",
+    "title": "Dream sequence: memories",
+    "description": "Weekly duplicate cleanup, similar-name questions, explicit resolution and scheduling.",
+    "order": 19,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/memory_review.py"
+    ],
+    "regression_files": [
+      "tests/test_memory_review.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "routing_rules",
+    "title": "Organization rules",
+    "description": "Explicit rule creation, explanations, preview/apply, user overrides and field understanding.",
+    "order": 20,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/routing.py",
+      "apps/api/jarvis/structure.py"
+    ],
+    "regression_files": [
+      "tests/test_routing.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "routing_dream",
+    "title": "Dream sequence: organization",
+    "description": "Review human categorization evidence, propose task/note rules and offer bounded interviews.",
+    "order": 21,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/routing.py"
+    ],
+    "regression_files": [
+      "tests/test_routing.py",
+      "tests/test_note_lists.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "notifications",
+    "title": "Smarter notifications",
+    "description": "Quiet hours, urgency, deadline alerts, summaries, snooze, dismiss and completion.",
+    "order": 22,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/notices.py",
+      "apps/api/jarvis/task_alerts.py",
+      "apps/api/jarvis/worker.py"
+    ],
+    "regression_files": [
+      "tests/test_smart_notifications.py",
+      "tests/test_daily_polish.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "google_sync",
+    "title": "Google Calendar read and sync",
+    "description": "Consent, selected calendars, event details, coverage, availability and timezone handling.",
+    "order": 23,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/google_calendar.py",
+      "apps/api/jarvis/google_auth.py",
+      "apps/api/jarvis/google_projection.py"
+    ],
+    "regression_files": [
+      "tests/test_google_calendar.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "google_writes",
+    "title": "Google Calendar writes",
+    "description": "Durable idempotent event creation/edit/deletion and honest remote status.",
+    "order": 24,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/google_writes.py",
+      "apps/api/jarvis/google_routes.py"
+    ],
+    "regression_files": [
+      "tests/test_google_writes.py",
+      "tests/test_eval_integrations.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "linear_sync",
+    "title": "Linear read and sync",
+    "description": "Credentials, selected teams/projects, imported issue mapping, pagination and reconciliation.",
+    "order": 25,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/linear_sync.py",
+      "apps/api/jarvis/linear_client.py"
+    ],
+    "regression_files": [
+      "tests/test_linear.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "linear_writes",
+    "title": "Linear writes",
+    "description": "Create/update/publish issues, pending status, revisions and deliberate conflict resolution.",
+    "order": 26,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/linear_commands.py",
+      "apps/api/jarvis/linear_sync.py"
+    ],
+    "regression_files": [
+      "tests/test_linear.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "queue",
+    "title": "Durable parallel agent work",
+    "description": "Accept requests independently of voice, serialize conflicting entities, retry and cancel safely.",
+    "order": 27,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/work_intake.py",
+      "apps/api/jarvis/work_runner.py",
+      "apps/api/jarvis/work_coordination.py"
+    ],
+    "regression_files": [
+      "tests/test_agent_work.py",
+      "tests/test_action_limits.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "clarifications",
+    "title": "Clarification continuation",
+    "description": "Stable question identity, one continued work item, late answers and concurrent replies.",
+    "order": 28,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/work_continuation.py"
+    ],
+    "regression_files": [
+      "tests/test_work_continuation.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "receipts",
+    "title": "Action cards, history and revert",
+    "description": "Actual saved changes, compact anchored cards, field-level reversion and history cleanup.",
+    "order": 29,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/action_history.py",
+      "apps/api/jarvis/agent_work.py"
+    ],
+    "regression_files": [
+      "tests/test_agent_work.py",
+      "tests/test_work_continuation.py",
+      "tests/test_external_agents.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "chat_agent",
+    "title": "Conversation and backend agents",
+    "description": "Production tool discovery, context, personality, provider continuity and honest reporting.",
+    "order": 30,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/conversation.py",
+      "apps/api/jarvis/agent_models.py",
+      "apps/api/jarvis/responses_adapter.py"
+    ],
+    "regression_files": [
+      "tests/test_agent_models.py",
+      "tests/test_responses_agent.py",
+      "tests/test_tool_refinement.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "site_controls",
+    "title": "Conversational site controls",
+    "description": "Acknowledged navigation, filters, selection, editor control and draft protection.",
+    "order": 31,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/ui_control.py",
+      "apps/api/jarvis/ui_contracts.py",
+      "apps/api/jarvis/tools.py"
+    ],
+    "regression_files": [
+      "tests/test_ui_control.py",
+      "tests/test_batch1.py",
+      "tests/test_tool_refinement.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "browser_settings",
+    "title": "Browser navigation and settings",
+    "description": "Back/Forward, persistent chat affordance, fold layouts, profile menu and preferences.",
+    "order": 32,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/api.py",
+      "apps/api/jarvis/saved_views.py"
+    ],
+    "regression_files": [
+      "tests/test_planner_release.py",
+      "tests/test_api.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "live_voice",
+    "title": "GPT-Live sessions",
+    "description": "Live creation, captions, delegation, interruption, context updates and session recovery.",
+    "order": 33,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/live_voice.py",
+      "apps/api/jarvis/voice_control.py"
+    ],
+    "regression_files": [
+      "tests/test_live_voice.py",
+      "tests/test_voice_settlement.py",
+      "tests/test_voice.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "wake_shutdown",
+    "title": "Wake words and voice shutdown",
+    "description": "Hey Eri/Eri detection, 30-second quiet timeout, natural goodbye and wake-up recovery.",
+    "order": 34,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/voice_control.py",
+      "apps/api/jarvis/live_voice.py"
+    ],
+    "regression_files": [
+      "tests/test_live_voice.py",
+      "tests/test_voice.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "accounts",
+    "title": "Accounts, login and sessions",
+    "description": "Google identity, invitations, pairing compatibility, sessions, CSRF and device revocation.",
+    "order": 35,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/auth.py",
+      "apps/api/jarvis/accounts.py",
+      "apps/api/jarvis/google_auth.py"
+    ],
+    "regression_files": [
+      "tests/test_accounts.py",
+      "tests/test_api.py",
+      "tests/test_google_calendar.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "workspaces",
+    "title": "Shared workspaces and permissions",
+    "description": "Private accounts, owner/editor/viewer roles, switching, revocation and actor attribution.",
+    "order": 36,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/access.py",
+      "apps/api/jarvis/accounts.py"
+    ],
+    "regression_files": [
+      "tests/test_accounts.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "external_agents",
+    "title": "External HTTP API and MCP",
+    "description": "Scoped credentials, direct and queued commands, receipts, feeds, rate limits and revocation.",
+    "order": 37,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/external_routes.py",
+      "apps/api/jarvis/external_mcp.py",
+      "apps/api/jarvis/bot_access.py"
+    ],
+    "regression_files": [
+      "tests/test_external_agents.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "privacy",
+    "title": "History, retention and exports",
+    "description": "Source retention, deletion, export redaction, notification privacy and injection boundaries.",
+    "order": 38,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/api.py",
+      "apps/api/jarvis/memory_service.py"
+    ],
+    "regression_files": [
+      "tests/test_privacy.py",
+      "tests/test_accounts.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "operations",
+    "title": "Deployment, backups and recovery",
+    "description": "Readiness, worker leases, outbox replay, encrypted backups, restore and disabled integrations.",
+    "order": 39,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/deploy.py",
+      "apps/api/jarvis/worker.py"
+    ],
+    "regression_files": [
+      "tests/test_cloud_backups.py",
+      "tests/test_cloud_deployment.py",
+      "tests/test_worker_recovery.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "budget",
+    "title": "Optional cost controls",
+    "description": "Disabled-dev mode, reservations, action limits, settlement and uncertainty reconciliation.",
+    "order": 40,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/budget.py",
+      "apps/api/jarvis/voice.py"
+    ],
+    "regression_files": [
+      "tests/test_budget_guard.py",
+      "tests/test_budget_controls.py",
+      "tests/test_budget_reconciliation.py",
+      "tests/test_action_limits.py"
+    ],
+    "status": "implemented_disabled_by_default"
+  }
+]

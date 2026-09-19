@@ -1,15 +1,16 @@
 from calendar import monthrange
-from datetime import timedelta
+from datetime import UTC, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
 
 from .config import get_settings
+from .cost_features import LABELS, current_feature
 from .domain import DomainError, advisory, preferences
 from .models import BudgetReservation, Usage, now
 
 # Identifies the configured estimation rates, not a provider billing statement.
-PRICING_VERSION = "configured-2026-09-11-v2"
+PRICING_VERSION = "configured-2026-09-19-v3"
 
 
 def enabled():
@@ -60,12 +61,19 @@ def summary(db, owner):
     elapsed_days = max(1, (now() - month).total_seconds() / 86400)
     return {
         "tracking_enabled": True,
+        "enforcement_enabled": get_settings().budget_enforcement_enabled,
+        "report": usage_report(db, owner),
         "uncertain_usd": float(uncertain),
         "unconfirmed_sessions": sum(r.state == "uncertain" or stale(r) for r in rows),
         "active_reserved_usd": float(reserved - uncertain),
         "usage_by_model": {model: float(amount) for model, amount in by_model.items()},
-        "projected_month_usd": float(spent) / elapsed_days * monthrange(month.year, month.month)[1],
-        "budget_mode": "paused"
+        "projected_month_usd": (
+            None if get_settings().cost_tracking_since and get_settings().cost_tracking_since.astimezone(UTC) > month
+            else float(spent) / elapsed_days * monthrange(month.year, month.month)[1]
+        ),
+        "budget_mode": "tracking_only"
+        if not get_settings().budget_enforcement_enabled
+        else "paused"
         if fraction >= 1
         else "defer_optional"
         if fraction >= 0.95
@@ -79,6 +87,39 @@ def summary(db, owner):
         "remaining_usd": float(max(Decimal(0), limit - spent - reserved)),
         "month": month.strftime("%Y-%m"),
         "approximate": True,
+    }
+
+
+def usage_report(db, owner):
+    """Rolling recorded usage. Missing history is never extrapolated as zero."""
+    end = now()
+    week, month = end - timedelta(days=7), end - timedelta(days=30)
+    rows = db.scalars(select(Usage).where(
+        Usage.owner_id == owner, Usage.created_at >= month, Usage.created_at <= end
+    )).all()
+    features = {}
+    for row in rows:
+        key = (row.tokens or {}).get("feature", "unattributed")
+        key = key if key in LABELS else "unattributed"
+        item = features.setdefault(key, {
+            "id": key, "label": LABELS[key], "last_7_days_usd": Decimal(0),
+            "last_30_days_usd": Decimal(0), "usage_records": 0,
+        })
+        item["last_30_days_usd"] += row.amount
+        if row.created_at >= week:
+            item["last_7_days_usd"] += row.amount
+        item["usage_records"] += 1
+    values = sorted(features.values(), key=lambda f: (-f["last_30_days_usd"], f["id"]))
+    since = get_settings().cost_tracking_since
+    return {
+        "as_of": end.isoformat(),
+        "tracking_since": since.isoformat() if since else None,
+        "last_7_days_usd": float(sum((f["last_7_days_usd"] for f in values), Decimal(0))),
+        "last_30_days_usd": float(sum((f["last_30_days_usd"] for f in values), Decimal(0))),
+        "partial_7_days": since is None or since.astimezone(UTC) > week,
+        "partial_30_days": since is None or since.astimezone(UTC) > month,
+        "features": [{**f, "last_7_days_usd": float(f["last_7_days_usd"]),
+                      "last_30_days_usd": float(f["last_30_days_usd"])} for f in values],
     }
 
 
@@ -96,7 +137,7 @@ def reserve(db, owner, reservation_id, amount, model, *, optional=False):
         raise DomainError(
             "BUDGET_DEFERRED", "Automatic memory work is paused near the monthly model budget.", 402
         )
-    if available["remaining_usd"] < amount:
+    if get_settings().budget_enforcement_enabled and available["remaining_usd"] < amount:
         raise DomainError(
             "BUDGET_EXCEEDED", "The model budget is reserved or used. Tasks and reminders still work.", 402
         )
@@ -118,7 +159,7 @@ def ensure_room(db, owner, reservation_id, headroom):
         raise DomainError("BUDGET_EXCEEDED", "This model session has ended.", 402)
     target = (row.actual or Decimal(0)) + Decimal(str(headroom))
     increase = max(Decimal(0), target - row.amount)
-    if Decimal(str(summary(db, owner)["remaining_usd"])) < increase:
+    if get_settings().budget_enforcement_enabled and Decimal(str(summary(db, owner)["remaining_usd"])) < increase:
         raise DomainError(
             "BUDGET_EXCEEDED",
             "Model spending is paused at your budget. Saved tasks and reminders still work.",
@@ -129,7 +170,7 @@ def ensure_room(db, owner, reservation_id, headroom):
     db.flush()
 
 
-def record_usage(db, owner, reservation_id, request_id, model, tokens, amount):
+def record_usage(db, owner, reservation_id, request_id, model, tokens, amount, *, feature=None):
     if not enabled():
         return
     advisory(db, f"budget:{owner}")
@@ -148,7 +189,7 @@ def record_usage(db, owner, reservation_id, request_id, model, tokens, amount):
             owner_id=owner,
             reservation_id=reservation_id,
             model=model,
-            tokens={**tokens, "pricing_version": PRICING_VERSION},
+            tokens={**tokens, "pricing_version": PRICING_VERSION, "feature": feature or current_feature.get()},
             amount=cost,
         )
     )

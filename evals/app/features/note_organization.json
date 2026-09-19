@@ -1,0 +1,1033 @@
+[
+  {
+    "id": "note_organization.01",
+    "feature": "note_organization",
+    "title": "Save Arrival and After Yang from recommendations.",
+    "inputs": [
+      "Save Arrival and After Yang from recommendations."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Two source-linked entries, reusing unambiguous existing film."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Save Arrival and After Yang from recommendations.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.02",
+    "feature": "note_organization",
+    "title": "Passing Arrival mention in standup.",
+    "inputs": [
+      "Passing Arrival mention in standup."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No entry extraction."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Passing Arrival mention in standup.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.03",
+    "feature": "note_organization",
+    "title": "Do not save Dune or Alien.",
+    "inputs": [
+      "Do not save Dune or Alien."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No entries or tags inferred from negation."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Do not save Dune or Alien.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.04",
+    "feature": "note_organization",
+    "title": "Quoted 'save Arrival' example.",
+    "inputs": [
+      "Quoted 'save Arrival' example."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No saving intent."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Quoted 'save Arrival' example.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.05",
+    "feature": "note_organization",
+    "title": "Note already titled Arrival.",
+    "inputs": [
+      "Note already titled Arrival."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Classify existing note, no duplicate."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Note already titled Arrival.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.06",
+    "feature": "note_organization",
+    "title": "Mixed task and movie note.",
+    "inputs": [
+      "Mixed task and movie note."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Movie entry only",
+      "no task disguised as movie."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Mixed task and movie note.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.07",
+    "feature": "note_organization",
+    "title": "Unknown film title with clear save intent.",
+    "inputs": [
+      "Unknown film title with clear save intent."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Preserve supplied title, invent no metadata."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Unknown film title with clear save intent.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.08",
+    "feature": "note_organization",
+    "title": "Low-confidence category.",
+    "inputs": [
+      "Low-confidence category."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Leave unassigned."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Low-confidence category.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.09",
+    "feature": "note_organization",
+    "title": "Missing exact evidence quote.",
+    "inputs": [
+      "Missing exact evidence quote."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject proposal."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Missing exact evidence quote.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.10",
+    "feature": "note_organization",
+    "title": "Entry title absent from evidence.",
+    "inputs": [
+      "Entry title absent from evidence."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject hallucinated identity."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Entry title absent from evidence.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.11",
+    "feature": "note_organization",
+    "title": "Two Dune adaptations.",
+    "inputs": [
+      "Two Dune adaptations."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Keep distinct."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Two Dune adaptations.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.12",
+    "feature": "note_organization",
+    "title": "Ambiguous existing title.",
+    "inputs": [
+      "Ambiguous existing title."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No silent merge."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Ambiguous existing title.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.13",
+    "feature": "note_organization",
+    "title": "Same recommendation retried.",
+    "inputs": [
+      "Same recommendation retried."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "One source/item link."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Same recommendation retried.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.14",
+    "feature": "note_organization",
+    "title": "Same entry recommended by second source.",
+    "inputs": [
+      "Same entry recommended by second source."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reuse only unambiguous identity",
+      "retain both sources."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Same entry recommended by second source.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.15",
+    "feature": "note_organization",
+    "title": "Manual tag correction then reprocess.",
+    "inputs": [
+      "Manual tag correction then reprocess."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Correction survives."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Manual tag correction then reprocess.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.16",
+    "feature": "note_organization",
+    "title": "Explicitly clear tags then reprocess.",
+    "inputs": [
+      "Explicitly clear tags then reprocess."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Automatic tags remain locked."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Explicitly clear tags then reprocess.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.17",
+    "feature": "note_organization",
+    "title": "Source edited during model call.",
+    "inputs": [
+      "Source edited during model call."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Discard stale result."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Source edited during model call.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.18",
+    "feature": "note_organization",
+    "title": "List definition edited during model call.",
+    "inputs": [
+      "List definition edited during model call."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Discard stale result."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "List definition edited during model call.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.19",
+    "feature": "note_organization",
+    "title": "Schema edited during model call.",
+    "inputs": [
+      "Schema edited during model call."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Discard stale result."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Schema edited during model call.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.20",
+    "feature": "note_organization",
+    "title": "Turn extraction off, leave filing on.",
+    "inputs": [
+      "Turn extraction off, leave filing on."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Whole note may classify",
+      "no child entries."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Turn extraction off, leave filing on.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.21",
+    "feature": "note_organization",
+    "title": "Turn all automatic lists off.",
+    "inputs": [
+      "Turn all automatic lists off."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No automatic model work."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Turn all automatic lists off.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.22",
+    "feature": "note_organization",
+    "title": "Provider fails repeatedly.",
+    "inputs": [
+      "Provider fails repeatedly."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Bounded retries",
+      "source saved",
+      "retry option."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Provider fails repeatedly.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.23",
+    "feature": "note_organization",
+    "title": "Archive generated child then reprocess.",
+    "inputs": [
+      "Archive generated child then reprocess."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No resurrection/duplicate."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Archive generated child then reprocess.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.24",
+    "feature": "note_organization",
+    "title": "Creator loses shared write permission mid-job.",
+    "inputs": [
+      "Creator loses shared write permission mid-job."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Cancel effects",
+      "no indefinite queued status."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Creator loses shared write permission mid-job.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "note_organization.25",
+    "feature": "note_organization",
+    "title": "Extracted quote becomes searchable.",
+    "inputs": [
+      "Extracted quote becomes searchable."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Derived index contains provenance without copying editable body."
+    ],
+    "invariants": [
+      "Preserve original authored sources.",
+      "No cross-account access or personal-memory/routing conflation.",
+      "No unverified success claims."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "pipeline",
+      "protocol": "evals/app/protocols.md#pipeline"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Extracted quote becomes searchable.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  }
+]

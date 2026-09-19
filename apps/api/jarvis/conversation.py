@@ -182,7 +182,7 @@ async def chat(
                     raise ValueError("Provider response omitted usage")
                 cost = agent.usage_cost(usage)
                 with session_scope() as db:
-                    budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost)
+                    budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost, feature="assistant")
                 provider_pending = False
                 msg = data["choices"][0]["message"]
                 # Keep native Responses items and Gemini thought signatures intact in

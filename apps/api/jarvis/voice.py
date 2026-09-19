@@ -265,6 +265,7 @@ class Controller:
                         "gpt-live-transcribe",
                         usage,
                         cost,
+                        feature="transcription",
                     )
                 self.pending_transcription.discard(event["item_id"])
             with session_scope() as db:
@@ -307,6 +308,7 @@ class Controller:
                         self.model,
                         usage,
                         budget.realtime_cost(usage, self.model),
+                        feature="voice",
                     )
             if not usage:
                 self.unreported.add(response["id"])

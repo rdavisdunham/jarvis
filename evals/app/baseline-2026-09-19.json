@@ -1,0 +1,648 @@
+{
+  "date": "2026-09-19",
+  "app_commit": "1efb808b0f4b076599d63319b5adbb2a627bf059",
+  "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+  "scenario_count": 1001,
+  "feature_count": 40,
+  "component_results": [
+    {
+      "case_id": "custom_records.03",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 1.528
+    },
+    {
+      "case_id": "custom_records.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.597
+    },
+    {
+      "case_id": "custom_records.05",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.654
+    },
+    {
+      "case_id": "custom_records.08",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.513
+    },
+    {
+      "case_id": "custom_records.09",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.635
+    },
+    {
+      "case_id": "custom_records.10",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.569
+    },
+    {
+      "case_id": "custom_records.11",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.615
+    },
+    {
+      "case_id": "custom_records.12",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.526
+    },
+    {
+      "case_id": "custom_records.15",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.607
+    },
+    {
+      "case_id": "custom_records.19",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.786
+    },
+    {
+      "case_id": "custom_records.20",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.606
+    },
+    {
+      "case_id": "custom_records.22",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.529
+    },
+    {
+      "case_id": "memory_dream.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.584
+    },
+    {
+      "case_id": "memory_dream.02",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.717
+    },
+    {
+      "case_id": "memory_dream.05",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.584
+    },
+    {
+      "case_id": "memory_dream.06",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.742
+    },
+    {
+      "case_id": "memory_dream.23",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.549
+    },
+    {
+      "case_id": "note_lists.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.641
+    },
+    {
+      "case_id": "note_lists.02",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.572
+    },
+    {
+      "case_id": "note_lists.03",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.529
+    },
+    {
+      "case_id": "note_lists.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.625
+    },
+    {
+      "case_id": "note_lists.05",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.556
+    },
+    {
+      "case_id": "note_lists.06",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.721
+    },
+    {
+      "case_id": "note_lists.15",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.539
+    },
+    {
+      "case_id": "notes.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.575
+    },
+    {
+      "case_id": "notes.02",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.648
+    },
+    {
+      "case_id": "notes.03",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.582
+    },
+    {
+      "case_id": "notes.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.702
+    },
+    {
+      "case_id": "notes.05",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.561
+    },
+    {
+      "case_id": "notes.06",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.688
+    },
+    {
+      "case_id": "notes.07",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.726
+    },
+    {
+      "case_id": "notes.08",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.653
+    },
+    {
+      "case_id": "notes.10",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.673
+    },
+    {
+      "case_id": "notes.11",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.582
+    },
+    {
+      "case_id": "notes.18",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.694
+    },
+    {
+      "case_id": "notes.20",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.646
+    },
+    {
+      "case_id": "notes.21",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.579
+    },
+    {
+      "case_id": "notes.22",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.731
+    },
+    {
+      "case_id": "notes.23",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.655
+    },
+    {
+      "case_id": "notes.24",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.522
+    },
+    {
+      "case_id": "routing_dream.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 1.59
+    },
+    {
+      "case_id": "routing_dream.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 1.93
+    },
+    {
+      "case_id": "routing_dream.14",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 2.315
+    },
+    {
+      "case_id": "routing_dream.23",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 1.502
+    },
+    {
+      "case_id": "routing_dream.24",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 1.336
+    },
+    {
+      "case_id": "routing_rules.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.694
+    },
+    {
+      "case_id": "routing_rules.09",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.83
+    },
+    {
+      "case_id": "routing_rules.10",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.724
+    },
+    {
+      "case_id": "routing_rules.11",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.817
+    },
+    {
+      "case_id": "routing_rules.12",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.612
+    },
+    {
+      "case_id": "routing_rules.13",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.677
+    },
+    {
+      "case_id": "routing_rules.18",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.712
+    },
+    {
+      "case_id": "routing_rules.19",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.617
+    },
+    {
+      "case_id": "routing_rules.20",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.554
+    },
+    {
+      "case_id": "task_capture.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.688
+    },
+    {
+      "case_id": "task_capture.02",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.741
+    },
+    {
+      "case_id": "task_capture.03",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.717
+    },
+    {
+      "case_id": "task_capture.06",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.573
+    },
+    {
+      "case_id": "task_capture.07",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.681
+    },
+    {
+      "case_id": "task_capture.15",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.545
+    },
+    {
+      "case_id": "task_capture.17",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.679
+    },
+    {
+      "case_id": "task_capture.18",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.563
+    },
+    {
+      "case_id": "task_capture.19",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.748
+    },
+    {
+      "case_id": "task_capture.20",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.684
+    },
+    {
+      "case_id": "task_capture.21",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.583
+    },
+    {
+      "case_id": "task_capture.23",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.707
+    },
+    {
+      "case_id": "task_edit.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.625
+    },
+    {
+      "case_id": "task_edit.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.563
+    },
+    {
+      "case_id": "task_edit.11",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.792
+    },
+    {
+      "case_id": "task_edit.12",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.544
+    },
+    {
+      "case_id": "task_edit.13",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.555
+    },
+    {
+      "case_id": "task_edit.15",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.707
+    },
+    {
+      "case_id": "task_edit.21",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.542
+    },
+    {
+      "case_id": "task_edit.23",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.517
+    },
+    {
+      "case_id": "task_edit.24",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.537
+    },
+    {
+      "case_id": "task_edit.25",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.814
+    },
+    {
+      "case_id": "task_lifecycle.01",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.53
+    },
+    {
+      "case_id": "task_lifecycle.02",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.664
+    },
+    {
+      "case_id": "task_lifecycle.03",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.531
+    },
+    {
+      "case_id": "task_lifecycle.04",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.784
+    },
+    {
+      "case_id": "task_lifecycle.05",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.533
+    },
+    {
+      "case_id": "task_lifecycle.06",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.627
+    },
+    {
+      "case_id": "task_lifecycle.07",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.761
+    },
+    {
+      "case_id": "task_lifecycle.08",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.554
+    },
+    {
+      "case_id": "task_lifecycle.10",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.64
+    },
+    {
+      "case_id": "task_lifecycle.12",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.532
+    },
+    {
+      "case_id": "task_lifecycle.25",
+      "layer": "command_contract",
+      "status": "passed",
+      "checks": "Declared component assertions and private-account snapshot",
+      "duration_seconds": 0.724
+    },
+    {
+      "case_id": "time_deadlines.26",
+      "layer": "command_contract",
+      "status": "failed",
+      "error": "This record changed after it was created. Review it before archiving.",
+      "duration_seconds": 0.571
+    }
+  ],
+  "existing_backend": {
+    "passed": 673,
+    "skipped": 1
+  },
+  "existing_frontend": {
+    "passed": 131,
+    "skipped": 1
+  },
+  "existing_browser": {
+    "passed_suites": [
+      "custom-planner",
+      "shell-navigation",
+      "chat-activity",
+      "semantic-search",
+      "note-lists"
+    ]
+  },
+  "harness_meta_tests": {
+    "passed": 22
+  },
+  "paid_models": "not_run",
+  "physical_devices": "not_run",
+  "note": "Catalog scenarios are not blanket passed by component or existing regression success."
+}

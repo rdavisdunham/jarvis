@@ -9,6 +9,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from .cost_features import feature
 from . import budget
 from .config import get_settings
 from .db import session_scope
@@ -92,35 +93,39 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
             uncertain = False  # an explicit rejection
         response.raise_for_status()
         data = response.json()
+        raw_usage = data.get("usage") or {}
+        if path == "embeddings":
+            total = raw_usage.get("total_tokens")
+            if type(total) is not int or total < 0:
+                raise ValueError("Embedding response omitted valid usage")
+            usage, cost = raw_usage, total * 0.02 / 1_000_000
+        else:
+            usage = {
+                "prompt_tokens": raw_usage.get("input_tokens"),
+                "completion_tokens": raw_usage.get("output_tokens"),
+                "prompt_tokens_details": raw_usage.get("input_tokens_details") or {},
+            } if path == "responses" else raw_usage
+            if any(type(usage.get(k)) is not int or usage[k] < 0 for k in ("prompt_tokens", "completion_tokens")):
+                raise ValueError("Extraction response omitted valid usage")
+            from .agent_models import catalog
+            cost = catalog()["luna"].usage_cost(usage)
+        # A truncated/refused/unusable answer can still have a known provider charge.
+        with session_scope() as db:
+            budget.record_usage(db, owner, reservation, reservation, model, usage, cost)
+        uncertain = False
         if path == "responses":
             from .responses_adapter import normalize
-
             if data.get("status") != "completed":
                 raise DomainError(
                     "PROVIDER_INCOMPLETE", "Extraction did not finish; no facts were saved.", 503
                 )
             refusal = next(
-                (
-                    p["refusal"]
-                    for item in data.get("output", [])
-                    if item.get("type") == "message"
-                    for p in item.get("content", [])
-                    if p.get("type") == "refusal"
-                ),
-                None,
+                (p["refusal"] for item in data.get("output", []) if item.get("type") == "message"
+                 for p in item.get("content", []) if p.get("type") == "refusal"), None,
             )
             data = normalize(data)
             if refusal:
                 data["choices"][0]["message"]["refusal"] = refusal
-        usage = data.get("usage", {})
-        cost = (
-            usage.get("total_tokens", 0) * 0.02 / 1_000_000
-            if path == "embeddings"
-            else __import__("jarvis.agent_models", fromlist=["catalog"]).catalog()["luna"].usage_cost(usage)
-        )
-        with session_scope() as db:
-            budget.record_usage(db, owner, reservation, reservation, model, usage, cost)
-        uncertain = False
         return data
     finally:
         with session_scope() as db:
@@ -296,6 +301,7 @@ def apply_facts(db, owner, source, facts, vectors):
     return saved
 
 
+@feature("memory_learning")
 def process(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id, with_for_update=True)

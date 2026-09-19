@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
 import { emptyOrganization, type Organization } from "./productivity";
+import { UsageReport } from "./UsageReport";
 import { BudgetHolds } from "./BudgetHolds";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -983,7 +984,9 @@ export function SettingsPanel({
           </p>
         ) : (
           <>
-            <form
+            {boot.budget.report && <UsageReport report={boot.budget.report} />}
+            {boot.budget.enforcement_enabled === false && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Eri.</p>}
+            {boot.budget.enforcement_enabled !== false && <form
               className="setting-row"
               onSubmit={(event) => {
                 event.preventDefault();
@@ -1007,11 +1010,11 @@ export function SettingsPanel({
               <button className="secondary" disabled={busy}>
                 Save limit
               </button>
-            </form>
+            </form>}
             <div className="budget-line">
               <strong>
                 ${boot.budget.spent_usd.toFixed(2)}
-                <span> / ${boot.budget.limit_usd.toFixed(0)} this month</span>
+                <span>{boot.budget.enforcement_enabled !== false && " / $" + boot.budget.limit_usd.toFixed(0)} this calendar month</span>
               </strong>
               <span>
                 ${boot.budget.active_reserved_usd.toFixed(2)} reserved for
@@ -1020,26 +1023,25 @@ export function SettingsPanel({
             </div>
             {boot.budget.uncertain_usd > 0 && (
               <p className="footnote">
-                ${boot.budget.uncertain_usd.toFixed(2)} is held for sessions
-                with unconfirmed final usage.
+                ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs.
               </p>
             )}
-            <BudgetHolds />
-            <p className="footnote">
+            <BudgetHolds enforced={boot.budget.enforcement_enabled !== false} />
+            {boot.budget.projected_month_usd != null && <p className="footnote">
               At this month's pace: about $
               {boot.budget.projected_month_usd.toFixed(2)} this month.
-            </p>
-            {boot.budget.budget_mode !== "normal" && (
+            </p>}
+            {boot.budget.enforcement_enabled !== false && boot.budget.budget_mode !== "normal" && (
               <p role="status" className="footnote">
                 {["defer_optional", "paused"].includes(boot.budget.budget_mode)
                   ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
                   : "Your usage and reservations have reached 80% of the monthly limit."}
               </p>
             )}
-            <progress
+            {boot.budget.enforcement_enabled !== false && <progress
               max={Math.max(1, boot.budget.limit_usd)}
               value={boot.budget.spent_usd + boot.budget.reserved_usd}
-            />
+            />}
             <p className="footnote">
               Usage is estimated from provider reports. Tasks and reminders keep
               working when model spending stops.

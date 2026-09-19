@@ -1,0 +1,21 @@
+name: eridani-eval
+services:
+  postgres:
+    image: postgres:16.15-bookworm
+    environment:
+      POSTGRES_USER: eridani_eval
+      POSTGRES_PASSWORD: synthetic-eval-only
+      POSTGRES_DB: eridani_eval_corpus
+    ports:
+      - "127.0.0.1:54340:5432"
+    volumes:
+      - eval-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eridani_eval -d eridani_eval_corpus"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    restart: unless-stopped
+volumes:
+  eval-postgres:
+    name: eridani-eval-postgres

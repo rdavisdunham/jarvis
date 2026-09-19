@@ -9,7 +9,7 @@ type Hold = {
   held_usd: number;
   reason: string;
 };
-export function BudgetHolds() {
+export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
   const [holds, setHolds] = useState<Hold[]>([]),
     [error, setError] = useState("");
   useEffect(() => {
@@ -32,8 +32,8 @@ export function BudgetHolds() {
     <details className="budget-holds">
       <summary>{uncertain.length} sessions awaiting final usage</summary>
       <p>
-        These amounts are held from your limit, not confirmed charges. They need
-        provider billing evidence before they can be released.
+        {enforced ? "These estimates reserve room in your limit until provider billing is checked." : "These are estimates for sessions without a final usage report. They do not block Eri while spending limits are off."}
+        {" "}They are not confirmed charges.
       </p>
       <a
         className="text-button"

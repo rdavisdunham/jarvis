@@ -38,11 +38,6 @@ async def request_model(agent, messages, definitions, *, limited=False):
             if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
                 response.raise_for_status()
                 data = agent.normalize(response.json())
-                choice = data["choices"][0]
-                if choice.get("finish_reason") == "length":
-                    raise DomainError(
-                        "OUTPUT_TRUNCATED", "The model response was incomplete. Saved changes remain."
-                    )
                 return data
             await asyncio.sleep(2**attempt)
     raise RuntimeError("Provider retry exhausted")
@@ -218,6 +213,9 @@ async def run(request_id):
     with principal_for(row):
         try:
             assert_current(row.owner_id, row.device_id)
+            # A durable checkpoint may predate cost tracking being enabled.
+            with session_scope() as db:
+                budget.reserve(db, row.owner_id, row.id, 0.10, agent.model)
             if not state:
                 state = await initial_state(row, agent)
                 checkpoint(row.id, state)
@@ -294,12 +292,6 @@ async def run(request_id):
                     with session_scope() as db:
                         budget.ensure_room(db, row.owner_id, row.id, agent.reserve_cost(size + 1024))
                     result = await request_model(agent, state["messages"], definitions, limited=limited)
-                    try:
-                        assert_current(row.owner_id, row.device_id)
-                    except DomainError as changed:
-                        if changed.code == "WORK_CHANGED":
-                            continue
-                        raise
                     usage = result.get("usage", {})
                     with session_scope() as db:
                         budget.record_usage(
@@ -310,6 +302,17 @@ async def run(request_id):
                             agent.model,
                             usage,
                             agent.usage_cost(usage),
+                            feature="assistant",
+                        )
+                    try:
+                        assert_current(row.owner_id, row.device_id)
+                    except DomainError as changed:
+                        if changed.code == "WORK_CHANGED":
+                            continue
+                        raise
+                    if result["choices"][0].get("finish_reason") == "length":
+                        raise DomainError(
+                            "OUTPUT_TRUNCATED", "The model response was incomplete. Saved changes remain."
                         )
                     message = result["choices"][0]["message"]
                     state["messages"].append(

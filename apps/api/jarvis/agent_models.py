@@ -48,12 +48,16 @@ class AgentModel:
     def reserve_cost(self, input_bound):
         incoming, outgoing = self.rates()
         # Luna charges a cache-write premium; this remains an upper bound.
+        if self.model == "gpt-5.6-luna" and input_bound > 272000:
+            incoming, outgoing = incoming * 2, outgoing * 1.5
         incoming *= 1.25 if self.model == "gpt-5.6-luna" else 1
         return (input_bound * incoming + self.max_output_tokens * outgoing) / 1_000_000
 
     def usage_cost(self, usage):
         incoming, outgoing = self.rates()
         prompt = usage["prompt_tokens"]
+        if self.model == "gpt-5.6-luna" and prompt > 272000:
+            incoming, outgoing = incoming * 2, outgoing * 1.5
         cost = prompt * incoming + usage["completion_tokens"] * outgoing
         if self.model == "gpt-5.6-luna":
             details = usage.get("prompt_tokens_details") or {}

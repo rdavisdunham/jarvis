@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 
+from .cost_features import feature
 from .auth import Identity, authenticate
 from .db import session_scope
 from .domain import DomainError, advisory, check_revision, emit, enqueue_job, owned, serial
@@ -612,6 +613,7 @@ def apply_result(db, job, note, result, payload, lists):
     return state.result
 
 
+@feature("note_organization")
 def process(job_id):
     from .routing import infer
 

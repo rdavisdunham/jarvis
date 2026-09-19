@@ -1,0 +1,54 @@
+{
+  "layer": "queued_backend",
+  "models": {
+    "luna": {
+      "trials": 20,
+      "passed": 19,
+      "spending": {
+        "estimated_usd": "0.02352347999999999762",
+        "including_uncertain_usd": "0.02352347999999999762",
+        "requests": 62
+      },
+      "median_seconds": 6.125500000000001,
+      "failed_cases": [
+        {
+          "case_id": "task_edit.25",
+          "failures": [
+            "Wrong queue outcome: partial",
+            "Edited task field: notes"
+          ]
+        }
+      ]
+    },
+    "gemini": {
+      "trials": 20,
+      "passed": 19,
+      "spending": {
+        "estimated_usd": "0.49766700",
+        "including_uncertain_usd": "0.49766700",
+        "requests": 69
+      },
+      "median_seconds": 4.9305,
+      "failed_cases": [
+        {
+          "case_id": "task_edit.25",
+          "failures": [
+            "Wrong queue outcome: partial"
+          ]
+        }
+      ]
+    }
+  },
+  "per_model_cap_usd": 2,
+  "allowed_ceiling_per_model_usd": 10,
+  "pricing_sources": [
+    "https://developers.openai.com/api/docs/models/gpt-5.6-luna",
+    "https://ai.google.dev/gemini-api/docs/latest-model"
+  ],
+  "limitations": [
+    "One repeat, 20 implemented probes, not the complete acceptance catalog.",
+    "Gemini's first 20 attempts were blocked locally by the meter before network traffic; corrected rerun scores are reported.",
+    "No prompt/tool tuning between model runs. Costs are estimates from reported tokens, not final provider invoices.",
+    "Synthetic lexical memory only; voice, dream and embedding pipeline quality were not tested in this paid subset."
+  ]
+}

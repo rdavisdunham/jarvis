@@ -1,0 +1,524 @@
+[
+  {
+    "feature": "task_capture",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "task_capture.01",
+      "task_capture.02",
+      "task_capture.03",
+      "task_capture.06",
+      "task_capture.07",
+      "task_capture.15",
+      "task_capture.17",
+      "task_capture.18",
+      "task_capture.19",
+      "task_capture.20",
+      "task_capture.21",
+      "task_capture.23"
+    ],
+    "queued_backend_probes": [
+      "task_capture.01",
+      "task_capture.02",
+      "task_capture.03",
+      "task_capture.06",
+      "task_capture.07",
+      "task_capture.10",
+      "task_capture.15"
+    ],
+    "regression_files": [
+      "tests/test_domain.py",
+      "tests/test_tool_refinement.py"
+    ]
+  },
+  {
+    "feature": "task_edit",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "task_edit.01",
+      "task_edit.04",
+      "task_edit.11",
+      "task_edit.12",
+      "task_edit.13",
+      "task_edit.15",
+      "task_edit.21",
+      "task_edit.23",
+      "task_edit.24",
+      "task_edit.25"
+    ],
+    "queued_backend_probes": [
+      "task_edit.01",
+      "task_edit.04",
+      "task_edit.11",
+      "task_edit.12",
+      "task_edit.13",
+      "task_edit.15",
+      "task_edit.19",
+      "task_edit.25"
+    ],
+    "regression_files": [
+      "tests/test_tool_refinement.py",
+      "tests/test_batch1.py"
+    ]
+  },
+  {
+    "feature": "task_lifecycle",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "task_lifecycle.01",
+      "task_lifecycle.02",
+      "task_lifecycle.03",
+      "task_lifecycle.04",
+      "task_lifecycle.05",
+      "task_lifecycle.06",
+      "task_lifecycle.07",
+      "task_lifecycle.08",
+      "task_lifecycle.10",
+      "task_lifecycle.12",
+      "task_lifecycle.25"
+    ],
+    "queued_backend_probes": [
+      "task_lifecycle.02",
+      "task_lifecycle.03",
+      "task_lifecycle.05",
+      "task_lifecycle.08"
+    ],
+    "regression_files": [
+      "tests/test_backlog.py",
+      "tests/test_workspace.py",
+      "tests/test_recurrence_edges.py"
+    ]
+  },
+  {
+    "feature": "time_deadlines",
+    "scenario_count": 26,
+    "automated_component_cases": [
+      "time_deadlines.26"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_recurrence_edges.py",
+      "tests/test_tool_refinement.py"
+    ]
+  },
+  {
+    "feature": "routines",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_domain.py",
+      "tests/test_daily_polish.py",
+      "tests/test_recurrence_edges.py"
+    ]
+  },
+  {
+    "feature": "organization",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_productivity.py",
+      "tests/test_planner_release.py"
+    ]
+  },
+  {
+    "feature": "custom_schema",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_structure.py"
+    ]
+  },
+  {
+    "feature": "custom_records",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "custom_records.03",
+      "custom_records.04",
+      "custom_records.05",
+      "custom_records.08",
+      "custom_records.09",
+      "custom_records.10",
+      "custom_records.11",
+      "custom_records.12",
+      "custom_records.15",
+      "custom_records.19",
+      "custom_records.20",
+      "custom_records.22"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_structure.py",
+      "tests/test_accounts.py"
+    ]
+  },
+  {
+    "feature": "planner_views",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_workspace.py",
+      "tests/test_planner_release.py",
+      "tests/test_backlog.py"
+    ]
+  },
+  {
+    "feature": "planning",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_planning.py",
+      "tests/test_reliability_eval_cases.py"
+    ]
+  },
+  {
+    "feature": "notes",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "notes.01",
+      "notes.02",
+      "notes.03",
+      "notes.04",
+      "notes.05",
+      "notes.06",
+      "notes.07",
+      "notes.08",
+      "notes.10",
+      "notes.11",
+      "notes.18",
+      "notes.20",
+      "notes.21",
+      "notes.22",
+      "notes.23",
+      "notes.24"
+    ],
+    "queued_backend_probes": [
+      "notes.02"
+    ],
+    "regression_files": [
+      "tests/test_notes_context.py",
+      "tests/test_productivity.py"
+    ]
+  },
+  {
+    "feature": "note_tasks",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_notes_context.py",
+      "tests/test_expert_eval_cases.py"
+    ]
+  },
+  {
+    "feature": "note_lists",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "note_lists.01",
+      "note_lists.02",
+      "note_lists.03",
+      "note_lists.04",
+      "note_lists.05",
+      "note_lists.06",
+      "note_lists.15"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_note_lists.py"
+    ]
+  },
+  {
+    "feature": "note_organization",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_note_lists.py"
+    ]
+  },
+  {
+    "feature": "search",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_semantic_search.py",
+      "tests/test_accounts.py"
+    ]
+  },
+  {
+    "feature": "search_aliases",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_semantic_search.py"
+    ]
+  },
+  {
+    "feature": "memory_capture",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_memory_learning.py",
+      "tests/test_memory_cloud.py"
+    ]
+  },
+  {
+    "feature": "memory_management",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_memory_cloud.py",
+      "tests/test_privacy.py",
+      "tests/test_memory_learning.py"
+    ]
+  },
+  {
+    "feature": "memory_dream",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "memory_dream.01",
+      "memory_dream.02",
+      "memory_dream.05",
+      "memory_dream.06",
+      "memory_dream.23"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_memory_review.py"
+    ]
+  },
+  {
+    "feature": "routing_rules",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "routing_rules.01",
+      "routing_rules.09",
+      "routing_rules.10",
+      "routing_rules.11",
+      "routing_rules.12",
+      "routing_rules.13",
+      "routing_rules.18",
+      "routing_rules.19",
+      "routing_rules.20"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_routing.py"
+    ]
+  },
+  {
+    "feature": "routing_dream",
+    "scenario_count": 25,
+    "automated_component_cases": [
+      "routing_dream.01",
+      "routing_dream.04",
+      "routing_dream.14",
+      "routing_dream.23",
+      "routing_dream.24"
+    ],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_routing.py",
+      "tests/test_note_lists.py"
+    ]
+  },
+  {
+    "feature": "notifications",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_smart_notifications.py",
+      "tests/test_daily_polish.py"
+    ]
+  },
+  {
+    "feature": "google_sync",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_google_calendar.py"
+    ]
+  },
+  {
+    "feature": "google_writes",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_google_writes.py",
+      "tests/test_eval_integrations.py"
+    ]
+  },
+  {
+    "feature": "linear_sync",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_linear.py"
+    ]
+  },
+  {
+    "feature": "linear_writes",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_linear.py"
+    ]
+  },
+  {
+    "feature": "queue",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_agent_work.py",
+      "tests/test_action_limits.py"
+    ]
+  },
+  {
+    "feature": "clarifications",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_work_continuation.py"
+    ]
+  },
+  {
+    "feature": "receipts",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_agent_work.py",
+      "tests/test_work_continuation.py",
+      "tests/test_external_agents.py"
+    ]
+  },
+  {
+    "feature": "chat_agent",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_agent_models.py",
+      "tests/test_responses_agent.py",
+      "tests/test_tool_refinement.py"
+    ]
+  },
+  {
+    "feature": "site_controls",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_ui_control.py",
+      "tests/test_batch1.py",
+      "tests/test_tool_refinement.py"
+    ]
+  },
+  {
+    "feature": "browser_settings",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_planner_release.py",
+      "tests/test_api.py"
+    ]
+  },
+  {
+    "feature": "live_voice",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_live_voice.py",
+      "tests/test_voice_settlement.py",
+      "tests/test_voice.py"
+    ]
+  },
+  {
+    "feature": "wake_shutdown",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_live_voice.py",
+      "tests/test_voice.py"
+    ]
+  },
+  {
+    "feature": "accounts",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_accounts.py",
+      "tests/test_api.py",
+      "tests/test_google_calendar.py"
+    ]
+  },
+  {
+    "feature": "workspaces",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_accounts.py"
+    ]
+  },
+  {
+    "feature": "external_agents",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_external_agents.py"
+    ]
+  },
+  {
+    "feature": "privacy",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_privacy.py",
+      "tests/test_accounts.py"
+    ]
+  },
+  {
+    "feature": "operations",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_cloud_backups.py",
+      "tests/test_cloud_deployment.py",
+      "tests/test_worker_recovery.py"
+    ]
+  },
+  {
+    "feature": "budget",
+    "scenario_count": 25,
+    "automated_component_cases": [],
+    "queued_backend_probes": [],
+    "regression_files": [
+      "tests/test_budget_guard.py",
+      "tests/test_budget_controls.py",
+      "tests/test_budget_reconciliation.py",
+      "tests/test_action_limits.py"
+    ]
+  }
+]

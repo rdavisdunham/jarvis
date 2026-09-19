@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, capture_source, emit, enqueue_job, owned, preferences, serial
 from .memory_learning import fingerprint, normalized
@@ -168,6 +169,7 @@ def review_data(db, review):
     }
 
 
+@feature("memory_review")
 def process(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id, with_for_update=True)

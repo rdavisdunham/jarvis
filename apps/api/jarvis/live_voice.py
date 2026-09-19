@@ -269,6 +269,7 @@ class LiveController(Controller):
                 self.model,
                 {"seconds": total},
                 (total - self.seconds) * LIVE_PRICE_PER_SECOND,
+                feature="voice",
             )
         self.seconds = total
 

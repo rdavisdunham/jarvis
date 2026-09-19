@@ -3,6 +3,7 @@
 import hashlib
 import json
 from sqlalchemy import delete, select
+from .cost_features import feature
 from .db import session_scope
 from .models import Actor, Job, Note, Task, now
 from .structure_models import StructureRecord, StructureLink, StructureSchema
@@ -257,6 +258,7 @@ def queue_index(db, owner, *, dirty=True, force=False):
     return job.id
 
 
+@feature("search_indexing")
 def index_workspace(job_id):
     from .domain import advisory
 

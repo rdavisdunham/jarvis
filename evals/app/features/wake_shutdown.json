@@ -1,0 +1,1029 @@
+[
+  {
+    "id": "wake_shutdown.01",
+    "feature": "wake_shutdown",
+    "title": "Say Hey Eri while idle.",
+    "inputs": [
+      "Say Hey Eri while idle."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Starts once when wake listening enabled."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say Hey Eri while idle.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.02",
+    "feature": "wake_shutdown",
+    "title": "Say Eri while idle.",
+    "inputs": [
+      "Say Eri while idle."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Starts once."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say Eri while idle.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.03",
+    "feature": "wake_shutdown",
+    "title": "Say hey, Eri with punctuation in transcript.",
+    "inputs": [
+      "Say hey, Eri with punctuation in transcript."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Recognition normalizes allowed phrase."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say hey, Eri with punctuation in transcript.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.04",
+    "feature": "wake_shutdown",
+    "title": "Say Erie in unrelated sentence.",
+    "inputs": [
+      "Say Erie in unrelated sentence."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No overbroad false activation."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say Erie in unrelated sentence.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.05",
+    "feature": "wake_shutdown",
+    "title": "Assistant playback says Eri.",
+    "inputs": [
+      "Assistant playback says Eri."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No self-trigger feedback loop."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Assistant playback says Eri.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.06",
+    "feature": "wake_shutdown",
+    "title": "Wake listening disabled.",
+    "inputs": [
+      "Wake listening disabled."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No background microphone activation."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Wake listening disabled.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.07",
+    "feature": "wake_shutdown",
+    "title": "Voice active, hear wake phrase.",
+    "inputs": [
+      "Voice active, hear wake phrase."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No second session."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Voice active, hear wake phrase.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.08",
+    "feature": "wake_shutdown",
+    "title": "Finish response and stay silent 29 seconds.",
+    "inputs": [
+      "Finish response and stay silent 29 seconds."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Session stays open."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Finish response and stay silent 29 seconds.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.09",
+    "feature": "wake_shutdown",
+    "title": "Finish response and stay silent 30 seconds.",
+    "inputs": [
+      "Finish response and stay silent 30 seconds."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Quiet timeout closes as configured."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Finish response and stay silent 30 seconds.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.10",
+    "feature": "wake_shutdown",
+    "title": "User starts speaking at 29 seconds.",
+    "inputs": [
+      "User starts speaking at 29 seconds."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Idle timer resets",
+      "no cutoff."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User starts speaking at 29 seconds.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.11",
+    "feature": "wake_shutdown",
+    "title": "Assistant still speaking after 30 seconds.",
+    "inputs": [
+      "Assistant still speaking after 30 seconds."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Do not treat speech as user silence window."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Assistant still speaking after 30 seconds.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.12",
+    "feature": "wake_shutdown",
+    "title": "Say goodbye.",
+    "inputs": [
+      "Say goodbye."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Session-bound end tool closes."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say goodbye.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.13",
+    "feature": "wake_shutdown",
+    "title": "Say thanks that's all.",
+    "inputs": [
+      "Say thanks that's all."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Natural end recognized."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Say thanks that's all.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.14",
+    "feature": "wake_shutdown",
+    "title": "Assistant asks anything else, user says no.",
+    "inputs": [
+      "Assistant asks anything else, user says no."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Closes voice."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Assistant asks anything else, user says no.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.15",
+    "feature": "wake_shutdown",
+    "title": "Assistant asks will that be all, user says yes.",
+    "inputs": [
+      "Assistant asks will that be all, user says yes."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Closes voice."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Assistant asks will that be all, user says yes.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.16",
+    "feature": "wake_shutdown",
+    "title": "User says yes to an unrelated task question.",
+    "inputs": [
+      "User says yes to an unrelated task question."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Does not end voice."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User says yes to an unrelated task question.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.17",
+    "feature": "wake_shutdown",
+    "title": "User quotes someone saying goodbye.",
+    "inputs": [
+      "User quotes someone saying goodbye."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No unintended shutdown."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "User quotes someone saying goodbye.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.18",
+    "feature": "wake_shutdown",
+    "title": "Thank you followed by another task.",
+    "inputs": [
+      "Thank you followed by another task."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Continue or complete accepted task",
+      "no dropped request."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Thank you followed by another task.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.19",
+    "feature": "wake_shutdown",
+    "title": "End request while delegated mutation running.",
+    "inputs": [
+      "End request while delegated mutation running."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Voice closes, saved work persists."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "End request while delegated mutation running.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.20",
+    "feature": "wake_shutdown",
+    "title": "Duplicate end tool call.",
+    "inputs": [
+      "Duplicate end tool call."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Idempotent close."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Duplicate end tool call.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.21",
+    "feature": "wake_shutdown",
+    "title": "End tool refers to foreign/old session.",
+    "inputs": [
+      "End tool refers to foreign/old session."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "End tool refers to foreign/old session.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.22",
+    "feature": "wake_shutdown",
+    "title": "Wake after quiet timeout.",
+    "inputs": [
+      "Wake after quiet timeout."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Mic handoff works, new session starts."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Wake after quiet timeout.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.23",
+    "feature": "wake_shutdown",
+    "title": "Wake after explicit goodbye.",
+    "inputs": [
+      "Wake after explicit goodbye."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "New session starts without reload."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Wake after explicit goodbye.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.24",
+    "feature": "wake_shutdown",
+    "title": "Network failure during shutdown.",
+    "inputs": [
+      "Network failure during shutdown."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Local mic stops, remote cleanup recoverable."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Network failure during shutdown.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  },
+  {
+    "id": "wake_shutdown.25",
+    "feature": "wake_shutdown",
+    "title": "Phone wake/shutdown repeated ten cycles.",
+    "inputs": [
+      "Phone wake/shutdown repeated ten cycles."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No stuck mic, doubled session or residual audio."
+    ],
+    "invariants": [
+      "No production data/credentials or external writes.",
+      "Missing evidence is not a pass.",
+      "Preserve account, device, and workspace boundaries."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "device_or_protocol",
+      "protocol": "evals/app/protocols.md#device-or-protocol"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+    ],
+    "steps": [
+      "Phone wake/shutdown repeated ten cycles.",
+      "Apply the stated boundary, concurrent edit, provider fault, role, or settings condition before exercising the affected operation.",
+      "Capture the state before and after, all requested tools and their results, and visible output. Follow the feature protocol in protocols.md.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
+  }
+]

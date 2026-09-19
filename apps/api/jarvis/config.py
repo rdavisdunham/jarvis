@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, AwareDatetime, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     timezone: str = "America/Chicago"
     default_reminder_hour: int = 10
     cost_tracking_enabled: bool = True
+    budget_enforcement_enabled: bool = True
+    cost_tracking_since: AwareDatetime | None = None
     monthly_budget_usd: float = 150
     realtime_model: str = "gpt-realtime-2.1"
     live_model: str = "gpt-live-1"

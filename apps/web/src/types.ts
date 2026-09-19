@@ -189,7 +189,9 @@ export interface Bootstrap {
         spent_usd: number;
         uncertain_usd: number;
         active_reserved_usd: number;
-        projected_month_usd: number;
+        projected_month_usd: number | null;
+        enforcement_enabled?: boolean;
+        report?: import('./UsageReport').CostReport;
         usage_by_model: Record<string, number>;
         budget_mode: string;
         reserved_usd: number;

@@ -5,6 +5,7 @@ import time
 from functools import lru_cache
 from uuid import uuid4
 from sqlalchemy import func, select
+from .cost_features import feature
 from . import access
 from .config import get_settings
 from .db import session_scope
@@ -20,6 +21,7 @@ STOP = set(
 
 
 @lru_cache(maxsize=128)
+@feature("semantic_search")
 def query_vector(owner, query, model, period, provider):
     # Short-lived, owner-scoped reuse across result pages. Authorization and
     # canonical records are still checked afresh before and after this lookup.

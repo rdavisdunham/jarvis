@@ -4,6 +4,7 @@ import re
 
 from sqlalchemy import func, select
 
+from .cost_features import feature
 from .domain import serial
 from .models import Memory, Source
 
@@ -23,6 +24,7 @@ def search(db, owner, query="", limit=10):
     return [serial(m) for m in db.scalars(q.limit(limit))]
 
 
+@feature("memory_retrieval")
 async def semantic_search(owner, query="", limit=10):
     """Hybrid retrieval over canonical facts, with lexical fallback when the cloud is unavailable."""
     import asyncio

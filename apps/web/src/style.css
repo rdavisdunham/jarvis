@@ -3096,3 +3096,14 @@ progress::-webkit-progress-value {
   .bot-settings button, .bot-settings summary, .bot-key-form .bot-queued { min-height: 44px; }
   .bot-settings summary { align-content: center; }
 }
+
+/* Compact cost reporting remains readable on phones and unfolded devices. */
+.usage-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1rem 0; }
+.usage-totals > div { display: grid; gap: .35rem; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.usage-totals strong { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.usage-breakdown { max-width: 100%; overflow-x: auto; }
+.usage-breakdown table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.usage-breakdown caption { text-align: left; padding-bottom: .75rem; font-weight: 600; }
+.usage-breakdown th, .usage-breakdown td { padding: .6rem .4rem; text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.usage-breakdown th:first-child { text-align: left; font-weight: 400; }
+.usage-breakdown td { white-space: nowrap; }

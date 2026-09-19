@@ -5,6 +5,7 @@ import json
 
 from sqlalchemy import delete, select
 
+from .cost_features import feature
 from .db import session_scope
 from .memory_learning import EMBEDDING_MODEL, EXTRACTION_MODEL, cosine, embeddings, extraction_request
 from .models import Conversation, Job, Note, NoteEmbedding, NoteTaskLink, Project, Task, now
@@ -198,6 +199,7 @@ def chunks(title, content, tags):
     return [prefix + content[i : i + 1800] for i in range(0, max(1, len(content)), 1600)]
 
 
+@feature("note_indexing")
 def index_note(job_id):
     from .domain import DomainError, advisory, emit
 
@@ -325,6 +327,7 @@ def list_notes(
     }
 
 
+@feature("note_search")
 def search_notes(owner, query, project_id=None, task_id=None, space_id=None, area_id=None, goal_id=None, list_id=None, uncategorized=False):
     from .config import get_settings
     if get_settings().semantic_search_enabled:
@@ -396,6 +399,7 @@ def search_notes(owner, query, project_id=None, task_id=None, space_id=None, are
         }
 
 
+@feature("note_tasks")
 def suggest_tasks(owner, note_id):
     from .domain import DomainError, owned
 

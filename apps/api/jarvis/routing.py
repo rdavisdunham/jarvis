@@ -6,6 +6,7 @@ from datetime import UTC, timedelta
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from pydantic import BaseModel, ConfigDict, Field
+from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, check_revision, emit, enqueue_job, owned, preferences, serial
 from .models import Job, SharedWorkspace, now
@@ -304,6 +305,7 @@ def infer(owner, model, prompt, payload):
     return model.model_validate_json(result["choices"][0]["message"]["content"])
 
 
+@feature("field_understanding")
 def assess(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id, with_for_update=True)
@@ -357,6 +359,7 @@ def latest_evidence(db, owner):
     return list(latest.values())
 
 
+@feature("organization_learning")
 def process(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id, with_for_update=True)

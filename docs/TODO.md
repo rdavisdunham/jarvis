@@ -7,6 +7,44 @@ Completed implementation is marked **[x]**. **[ ]** means work or verification i
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
 
+## Cost tracking restored — September 19
+
+- [x] Separate recording from enforcement; old holds cannot block tracking-only mode.
+- [x] Last-7-day / last-30-day feature totals in Settings → System, partial-history
+  labels, separate uncertain amounts and no invented historical charges.
+- [x] Attribute assistant, voice, memory, note organization, field/rule learning,
+  indexing and search; record known usage even on incomplete answers.
+- [x] Paid evals capped at $2 per model ($10 maximum), with preflight bounds and
+  durable journals. Luna $0.02352; Gemini $0.49767; 19/20 complete outcomes each.
+- [ ] Verify production tracking after deploying both API and worker.
+- [ ] Fix task-note clearing instructions and recovered-error queue status
+  (EVAL-002); retain strict regression cases.
+- [ ] Collect a full week/month before judging ongoing feature costs.
+  Details: [COST_TRACKING.md](COST_TRACKING.md).
+
+## Full-app evaluation baseline — September 19
+
+- [x] Current-functionality overview, exposed command/tool/route inventory, and
+  1,001 evidence-based acceptance scenarios across 40 areas (25–26 each).
+  Start at [APP_FUNCTIONALITY.md](APP_FUNCTIONALITY.md) and
+  [evals/app/README.md](../evals/app/README.md).
+- [x] Fictional Rowan persona and versioned PostgreSQL corpus; separate private
+  and shared identities, task/project/client ambiguity, note-list and memory
+  evidence, pagination fixtures, isolated disposable scoring databases.
+- [x] Runnable component oracles, existing-regression adapters, and opt-in capped
+  Luna/Gemini trials through the actual durable queue. CI checks catalog/surface
+  drift and grader integrity without provider secrets or paid inference.
+- [ ] Run the broader real-model and pipeline-quality scenarios with reviewed gold
+  labels; retain all failures and repetitions. Authored cases are not all automated.
+- [ ] Execute actual phone/foldable wake/shutdown, navigation, push, consent and
+  deployment protocols; mocks do not complete these acceptance checks.
+- [ ] Fix EVAL-001: equivalent database timestamp offsets can falsely block Revert.
+  Preserve revision/link guards; reproduce with time_deadlines.26. See
+  [eval findings](../evals/app/FINDINGS.md).
+- [ ] Grow a separately reviewed synthetic history from real-use regressions;
+  promote minimal anonymized examples into versioned fixtures, never silently
+  mutate the golden baseline during model comparisons.
+
 ## Self-organizing notes with saved list filters — September 19
 
 - [x] Notes Lists picker with editable Movies, Books, Shows, Restaurants and
