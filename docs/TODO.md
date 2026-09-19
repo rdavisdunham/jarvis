@@ -16,7 +16,8 @@ The newest batches are near the top; earlier sections retain release history.
   indexing and search; record known usage even on incomplete answers.
 - [x] Paid evals capped at $2 per model ($10 maximum), with preflight bounds and
   durable journals. Luna $0.02352; Gemini $0.49767; 19/20 complete outcomes each.
-- [ ] Verify production tracking after deploying both API and worker.
+- [x] Both production services deployed with recording on and enforcement off;
+  Railway health checks passed. Earlier missing usage cannot be reconstructed.
 - [ ] Fix task-note clearing instructions and recovered-error queue status
   (EVAL-002); retain strict regression cases.
 - [ ] Collect a full week/month before judging ongoing feature costs.

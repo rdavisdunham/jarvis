@@ -59,7 +59,7 @@ jobs:
         run: |
           uv run --no-sync ruff check --select E9,F63,F7,F82,F811 scripts/app_eval evals
           uv run --no-sync python -m scripts.app_eval.runner validate
-          uv run --no-sync pytest -q evals --tb=short
+          uv run --no-sync python -m pytest -q evals --tb=short
       - name: Apply migrations to an empty database
         run: uv run --no-sync alembic upgrade head
       - name: Check migration/model agreement
