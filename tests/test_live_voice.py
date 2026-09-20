@@ -333,7 +333,7 @@ async def test_pending_question_keeps_exact_identity_and_cleared_work_is_not_spo
     c.send.assert_not_awaited()
 
 
-async def test_continuation_result_is_announced_in_the_new_voice_session(controller):
+async def test_continuation_result_is_announced_in_the_new_voice_session(controller, monkeypatch):
     from datetime import timedelta
     from uuid import uuid4
 
@@ -352,8 +352,100 @@ async def test_continuation_result_is_announced_in_the_new_voice_session(control
         db.expunge(follow)
     with pytest.raises(WorkContinued):
         answer(follow, {"request_id": root.id, "clarification_id": question["id"]})
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "working"
     with session_scope() as db:
         finish(db, db.get(AgentWork, follow.id), "succeeded", "The review deadline is set.")
         db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
     await c.report_work()
     assert any('The review deadline is set.' in call.args[0]['content'] for call in c.send.await_args_list)
+
+
+async def voice_state(c, monkeypatch):
+    from jarvis import voice
+    monkeypatch.setattr(voice, "control", lambda *_: c)
+    return (await voice.status(c.id, None))["state"]
+
+
+def queued_voice_work(c, session_id=None):
+    from uuid import uuid4
+    from jarvis.agent_work import enqueue
+    with session_scope() as db:
+        row = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()),
+                      "Synthetic task", voice_session_id=session_id or c.id)
+        row.transient = False
+        return row.id
+
+
+async def test_accepted_work_stays_busy_after_intake_and_during_new_speech(controller, monkeypatch):
+    c = controller
+    await c.event({"type": "session.input_transcript.delta", "delta": "Add Alpha.", "start_ms": 0, "end_ms": 1000})
+    await c.delegate("save")
+    assert await voice_state(c, monkeypatch) == "working"
+    # The recent-speech announcement delay must not hide durable work from status.
+    await c.report_work()
+    await c.event({"type": "session.output_transcript.delta", "delta": "On it.", "start_ms": 1000, "end_ms": 1500})
+    assert await voice_state(c, monkeypatch) == "working"
+    await c.close()
+
+
+@pytest.mark.parametrize("terminal", ["succeeded", "needs_input", "failed", "cancelled"])
+async def test_busy_ends_when_work_finishes_or_needs_an_answer(controller, monkeypatch, terminal):
+    from jarvis.agent_work import finish
+    c = controller
+    c.state = "listening"
+    work_id = queued_voice_work(c)
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "working"
+    with session_scope() as db:
+        finish(db, db.get(AgentWork, work_id), terminal, "Result or question")
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "listening"
+
+
+async def test_completed_notice_does_not_hide_parallel_pending_work(controller, monkeypatch):
+    from datetime import timedelta
+    from jarvis.agent_work import finish
+    from jarvis.models import now
+    c = controller
+    c.state = "listening"
+    first = queued_voice_work(c)
+    with session_scope() as db:
+        finish(db, db.get(AgentWork, first), "succeeded", "First is done.")
+    queued_voice_work(c)
+    with session_scope() as db:
+        db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
+    await c.report_work()
+    assert any("First is done." in call.args[0]["content"] for call in c.send.await_args_list)
+    assert await voice_state(c, monkeypatch) == "working"
+    c.request_end()
+    assert await voice_state(c, monkeypatch) == "closing"
+    await c.close()
+    assert await voice_state(c, monkeypatch) == "closed"
+
+
+async def test_unrelated_voice_session_work_does_not_hold_microphone_open(controller, monkeypatch):
+    c = controller
+    c.state = "listening"
+    queued_voice_work(c, "another-session")
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "listening"
+
+
+@pytest.mark.parametrize("remote_state", ["queued", "running", "retrying"])
+async def test_remote_write_stays_busy_until_sync_is_confirmed(controller, monkeypatch, remote_state):
+    from jarvis import action_history
+    from jarvis.agent_work import finish
+    c = controller
+    c.state = "listening"
+    work_id = queued_voice_work(c)
+    with session_scope() as db:
+        finish(db, db.get(AgentWork, work_id), "succeeded", "Change submitted.")
+    # The command receipt can outlive agent execution while its provider write retries.
+    action = {"remote_status": remote_state}
+    monkeypatch.setattr(action_history, "changes_for_work", lambda *_: [action])
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "working"
+    action["remote_status"] = "succeeded"
+    await c.report_work()
+    assert await voice_state(c, monkeypatch) == "listening"

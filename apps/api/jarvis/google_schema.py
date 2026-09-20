@@ -13,10 +13,18 @@ class CalendarSelection(BaseModel):
 class EventFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=500)
-    start: str = Field(max_length=64, description="Local date or date/time. All-day end is exclusive.")
-    end: str = Field(max_length=64)
+    start: str = Field(
+        max_length=64, description="YYYY-MM-DD when all_day=true; otherwise a local date/time in timezone."
+    )
+    end: str = Field(
+        max_length=64,
+        description="Same format as start, later than start. For all-day events use the day AFTER the last included day.",
+    )
     timezone: str = Field(max_length=100)
-    all_day: bool = False
+    all_day: bool = Field(
+        default=False,
+        description="Set false with BOTH start/end date-times to give an all-day event hours; set true with BOTH dates to make it all-day.",
+    )
     location: str = Field(default="", max_length=1000)
     description: str = Field(default="", max_length=10000)
     busy: bool = True

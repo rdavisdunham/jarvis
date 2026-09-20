@@ -143,3 +143,23 @@ def test_rich_event_details_are_cached_without_unsafe_links():
     assert event["attendees"][0]["responseStatus"] == "accepted"
     assert len(event["attachments"]) == 1
     assert "not-cached" not in str(event)
+
+
+def test_local_all_day_conversion_publishes_and_round_trips(provider):
+    entry = run("planning.create", **fields(all_day=True, start="2026-09-18", end="2026-09-20"),
+                google_calendar_id=provider.source)
+    process_write(entry["google_job_id"])
+    changed = run("planning.update", entry_id=entry["id"], expected_revision=1, **fields(all_day=False))
+    process_write(changed["google_job_id"])
+    with session_scope() as db:
+        local = db.get(PlanningEntry, entry["id"])
+        assert local.google_state == "synced" and not local.fields["all_day"]
+        assert set(provider.events[local.google_event_id]["start"]) == {"dateTime", "timeZone"}
+        revision = local.revision
+    changed = run("planning.update", entry_id=entry["id"], expected_revision=revision,
+                  **fields(all_day=True, start="2026-09-21", end="2026-09-24"))
+    process_write(changed["google_job_id"])
+    with session_scope() as db:
+        local = db.get(PlanningEntry, entry["id"])
+        assert local.google_state == "synced" and local.fields["all_day"]
+        assert provider.events[local.google_event_id]["end"] == {"date": "2026-09-24"}

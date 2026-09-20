@@ -49,6 +49,16 @@ class LiveController(Controller):
         self.context_signature = None
         self.context_pending = set()
         self.announced_work = set()
+        self.pending_work = False
+
+    def display_state(self):
+        if self.closed or self.state == "closed":
+            return "closed"
+        if self.closing or self.end_requested:
+            return "closing"
+        if self.pending_work or any(not task.done() for task in self.work):
+            return "working"
+        return self.state
 
     def request_end(self):
         # Bound by the controller that delegated this turn; the model supplies no IDs.
@@ -180,7 +190,7 @@ class LiveController(Controller):
             if not delta:
                 return
             self.error = None
-            self.state = "working" if self.work else "listening"
+            self.state = "listening"
             start = float(event.get("start_ms", 0))
             end = float(event.get("end_ms", start))
             with session_scope() as db:
@@ -329,6 +339,9 @@ class LiveController(Controller):
             with session_scope() as db:
                 inbox = db.get(VoiceInbox, self.id)
                 accepted = claim_voice(db, inbox) if inbox else None
+            if accepted:
+                # Bridge the handoff to the next durable-queue snapshot.
+                self.pending_work = True
             if not self.closed and not self.closing:
                 await self.send({"type": "session.thinking.append", "event_id": uid(),
                     "delegation_id": delegation_id,
@@ -346,14 +359,17 @@ class LiveController(Controller):
             if inbox and inbox.end_requested:
                 self.request_end()
                 return
-            if not inbox or (now()-inbox.last_input_at).total_seconds() < 2.5:
+            if not inbox:
+                self.pending_work = False
                 return
             resumed_roots = select(AgentWork.parent_id).where(AgentWork.voice_session_id == self.id)
             roots = list(db.scalars(select(AgentWork).where(
                 AgentWork.owner_id == self.owner, AgentWork.account_id == inbox.account_id,
                 or_(AgentWork.voice_session_id == self.id, AgentWork.id.in_(resumed_roots)),
                 AgentWork.parent_id.is_(None), AgentWork.result["archived_at"].as_string().is_(None)).order_by(AgentWork.updated_at)))
-            notices, stamps = [], []
+            # Snapshot every request before announcing any result. A completed
+            # sibling or the speech debounce must not hide work still in flight.
+            entries = []
             for root in roots:
                 if root.result.get("continuation_ids"):
                     from .work_continuation import latest
@@ -362,7 +378,17 @@ class LiveController(Controller):
                 children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == root.id)))
                 leaves = [root] if root.result.get("continuation_ids") else children or [root]
                 snapshots = [public(db, leaf) for leaf in leaves]
-                if any(snapshot["status"] in {*ACTIVE, "waiting_sync"} for snapshot in snapshots):
+                entries.append((root, children, leaves, snapshots))
+            busy_statuses = {*ACTIVE, "waiting_sync", "retrying"}
+            self.pending_work = any(
+                snapshot["status"] in busy_statuses
+                for _, _, _, snapshots in entries for snapshot in snapshots
+            )
+            if (now() - inbox.last_input_at).total_seconds() < 2.5:
+                return
+            notices, stamps = [], []
+            for root, children, leaves, snapshots in entries:
+                if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
                     continue
                 stamp = (root.id, root.revision, tuple((snapshot["id"], snapshot["revision"], snapshot["status"]) for snapshot in snapshots))
                 if stamp in self.announced_work:

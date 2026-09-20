@@ -409,6 +409,12 @@ def process_write(job_id):
                     event_path(payload["provider_calendar"]), {"sendUpdates": "none"}, body, method="POST"
                 )
             else:
+                # Google PATCH merges nested objects. Clear the opposite format;
+                # omitting it leaves date and dateTime together and rejects conversion.
+                for boundary in ("start", "end"):
+                    point = body[boundary]
+                    cleared = {"dateTime": None, "timeZone": None} if "date" in point else {"date": None}
+                    body[boundary] = {**cleared, **point}
                 saved = client.request(
                     path, {"sendUpdates": "none"}, body, method="PATCH", headers={"If-Match": payload["etag"]}
                 )

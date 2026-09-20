@@ -1,11 +1,31 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 19, 2026. Eridani (Eri) is the assistant's name.
+Updated September 20, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
 Completed implementation is marked **[x]**. **[ ]** means work or verification is
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
+
+## Calendar/voice fixes and current testing order — September 20
+
+- [x] Fix Google all-day ↔ timed event conversion by clearing the old nested
+  date format on PATCH. Cover date/span edits, metadata, response-loss replay,
+  and publication of Eridani-owned events without duplicate writes.
+- [x] Keep voice active during durable queued/running work and connected-service
+  sync. Restore a fresh 30-second idle window afterward; explicit ending and
+  saved work surviving voice shutdown remain covered.
+- [ ] Verify both fixes on the physical phone and real Google events; automated
+  provider/media fixtures do not complete those acceptance checks.
+- [x] Reassess current coverage and write [TESTING_PLAN.md](TESTING_PLAN.md).
+- [ ] Next: fix EVAL-001 (timestamp/Revert) and EVAL-002 (note clearing/recovered
+  queue status), then rerun component and capped paired model checks.
+- [ ] Execute focused phone/foldable, learning, integration and access checks,
+  then cloud recovery and backup checks. Keep R2 activation pending credentials.
+- [ ] Run the seven-day/50-interaction pilot after those gates, before native Android.
+
+This order supersedes older “next” suggestions below. Keep implementation status,
+automated evidence, and real-device/provider acceptance separate.
 
 ## Cost tracking restored — September 19
 

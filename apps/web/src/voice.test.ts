@@ -435,3 +435,41 @@ test("a server-side voice_end closes media and allows a fresh wake session", asy
   expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
   await next.stop();
 });
+
+
+test("queued backend work suspends idle shutdown and completion starts a fresh 30 seconds", async () => {
+  const changed = vi.fn();
+  vi.mocked(api).mockResolvedValue({
+    state: "working", closed: false, error: null, text: "", receipts: [],
+  });
+  await startVoice("live", changed);
+  await vi.advanceTimersByTimeAsync(90000);
+  expect(stopped).not.toHaveBeenCalled();
+  expect(changed.mock.calls.some(([state]) => state.closed)).toBe(false);
+  vi.mocked(api).mockResolvedValue({
+    state: "listening", closed: false, error: null, text: "", receipts: [],
+  });
+  await vi.advanceTimersByTimeAsync(400);
+  await vi.advanceTimersByTimeAsync(29000);
+  expect(stopped).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(stopped).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenCalledWith(
+    expect.objectContaining({ state: "idle_timeout", closed: true }),
+  );
+});
+
+test("explicit goodbye still ends voice while queued backend work is pending", async () => {
+  const changed = vi.fn();
+  vi.mocked(api).mockResolvedValue({
+    state: "working", closed: false, error: null, text: "", receipts: [],
+  });
+  await startVoice("live", changed);
+  await vi.advanceTimersByTimeAsync(35000);
+  userReply("live", "Goodbye Eri.");
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(stopped).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenCalledWith(
+    expect.objectContaining({ state: "ended", closed: true }),
+  );
+});

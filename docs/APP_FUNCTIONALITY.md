@@ -67,8 +67,8 @@ The existing regression files are supporting evidence; they do not automatically
 the new language or device scenarios.
 
 Realtime remains disabled and is tested as a disabled boundary. Cost controls exist
-but cost recording is disabled in ordinary development. R2 backup machinery exists;
-credentialed restore/drill checks remain an operations task. No real OAuth, push,
+with cost recording restored September 19 and budget enforcement off in development.
+R2 backup machinery exists; credentialed restore/drill checks remain an operations task. No real OAuth, push,
 microphone, R2 or PITR success is inferred from fake transports. Android-native features
 and other unimplemented roadmap ideas are outside this current-functionality baseline.
 

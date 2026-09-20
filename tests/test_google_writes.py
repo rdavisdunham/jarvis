@@ -54,7 +54,22 @@ class Provider:
                     self.fail = ""
                     raise google_calendar.SyncFailure("unavailable")
                 return {}
-            self.events[event_id].update(copy.deepcopy(body))
+            # Google PATCH merges nested objects and removes explicit null fields.
+            def merge(current, patch):
+                result = copy.deepcopy(current)
+                for key, value in patch.items():
+                    if value is None:
+                        result.pop(key, None)
+                    elif isinstance(value, dict):
+                        result[key] = merge(result.get(key, {}), value)
+                    else:
+                        result[key] = copy.deepcopy(value)
+                return result
+            saved = merge(self.events[event_id], body)
+            kinds = [{key for key in ("date", "dateTime") if point.get(key)} for point in (saved["start"], saved["end"])]
+            if kinds not in [[{"date"}, {"date"}], [{"dateTime"}, {"dateTime"}]]:
+                raise google_calendar.SyncFailure("invalid_event_time", 400)
+            self.events[event_id] = saved
         self.version += 1
         self.events[event_id]["etag"] = '"' + str(self.version) + '"'
         self.events[event_id].setdefault("status", "confirmed")
@@ -440,3 +455,46 @@ def test_lost_response_then_lost_access_does_not_report_definite_failure(provide
     assert status(job)["status"] == "unconfirmed"
     assert len(provider.events) == 1
     assert sum(call[0] == "POST" for call in provider.calls) == 1
+
+
+@pytest.mark.parametrize("to_all_day", [False, True])
+@pytest.mark.parametrize("lose_response", [False, True])
+def test_convert_event_time_format_and_preserve_remote_metadata(provider, to_all_day, lose_response):
+    current = {} if to_all_day else {
+        "start": {"date": "2026-09-18"}, "end": {"date": "2026-09-20"},
+    }
+    token = preview(provider, **current, extendedProperties={"private": {"otherApp": "keep"}},
+                    colorId="3")["edit_token"]
+    replacement = fields(all_day=to_all_day, description="Keep the agenda")
+    if to_all_day:
+        replacement.update(start="2026-09-21", end="2026-09-24")
+    job = command("calendar.update", {**replacement, "edit_token": token})
+    if lose_response:
+        provider.fail = "after_update"
+        with pytest.raises(RuntimeError, match="retry"):
+            process_write(job["job_id"])
+    process_write(job["job_id"])
+    assert status(job)["status"] == "succeeded"
+    saved = provider.events["existing"]
+    for key in ("start", "end"):
+        assert set(saved[key]) == ({"date"} if to_all_day else {"dateTime", "timeZone"})
+    assert saved["start"] == ({"date": "2026-09-21"} if to_all_day else
+                             {"dateTime": "2026-09-18T14:00:00+00:00", "timeZone": "America/Chicago"})
+    assert saved["end"] == ({"date": "2026-09-24"} if to_all_day else
+                           {"dateTime": "2026-09-18T15:00:00+00:00", "timeZone": "America/Chicago"})
+    assert saved["description"] == "Keep the agenda" and saved["location"] == "Desk"
+    assert saved["colorId"] == "3" and saved["extendedProperties"]["private"]["otherApp"] == "keep"
+    assert sum(c[0] == "PATCH" for c in provider.calls) == 1
+    with session_scope() as db:
+        cached = db.scalar(select(GoogleCalendarEvent))
+        assert cached.payload["start"] == saved["start"] and cached.payload["end"] == saved["end"]
+
+
+def test_reschedule_all_day_event_keeps_exclusive_multiday_end(provider):
+    token = preview(provider, start={"date": "2026-09-18"}, end={"date": "2026-09-19"})["edit_token"]
+    job = command("calendar.update", {**fields(all_day=True, start="2026-09-21", end="2026-09-24"),
+                                      "edit_token": token})
+    process_write(job["job_id"])
+    assert status(job)["status"] == "succeeded"
+    assert provider.events["existing"]["start"] == {"date": "2026-09-21"}
+    assert provider.events["existing"]["end"] == {"date": "2026-09-24"}

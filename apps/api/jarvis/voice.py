@@ -89,6 +89,9 @@ class Controller:
             async with self.send_lock:
                 await self.ws.send(json.dumps(event))
 
+    def display_state(self):
+        return self.state
+
     def can_submit(self):
         return bool(
             self.current_item
@@ -627,7 +630,7 @@ async def start(body: VoiceInput, user: User):
 async def status(session_id: str, user: User):
     c = control(session_id, user)
     return {
-        "state": c.state,
+        "state": c.display_state(),
         "provider": c.provider,
         "ui_actions": c.ui_actions[-30:],
         "error": c.error,
