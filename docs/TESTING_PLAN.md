@@ -70,9 +70,9 @@ IDs. A dropped network connection is distinct from an idle timeout.
 - [ ] Fix EVAL-001 with UTC and America/Chicago database sessions, including DST
   boundaries, before re-running receipt/Revert cases. Preserve stale-change guards.
 - [ ] Fix EVAL-002: explicit empty-note semantics and honest final status after a
-  recovered tool error. Verify both backend models through the real queue.
+  recovered tool error. Verify Luna through the real queue; Gemini comparisons are paused.
 - [ ] Re-run all 88 component checks; any remaining failure stays visible.
-- [ ] Re-run the 20 paired backend probes with three independent repetitions where
+- [ ] Re-run the 20 backend probes with Luna and three independent repetitions where
   the remaining dollar allowance permits. Compare saved state, receipts, unresolved
   errors, latency and tokens; retain cap interruptions and provider failures.
 - [ ] Add reviewed live-pipeline adapters/gold labels for memory extraction and
@@ -88,11 +88,17 @@ exploratory data separate; promote regression fixtures through explicit review.
 Record prompt/model/catalog versions and ground truth, rather than grading an
 assistant's “Done” message.
 
-Default to offline checks. For paid runs, aim below $2/model and never exceed the
+Default to offline checks. Paid runs now default to Luna only; Gemini comparisons
+are paused at the owner's request (September 20). Aim below $2 and never exceed the
 user's $10/model allowance; subtract prior runs rather than treating each command
 as a new allowance. The previous sample spent $0.02352348 on Luna and $0.497667 on
 Gemini. Request caps and the durable spend journal remain mandatory. This fix
 batch makes no paid model calls.
+
+At the measured Luna average, 1,001 comparable text-agent cases cost about $1.18
+for one pass. The $2 text-run cap is retained. The complete mixed catalog is not
+confirmed under $2: GPT-Live sessions and unmeasured learning/embedding work are
+separate, and only 20 paid probes currently have runnable adapters.
 
 Pass gate: all deterministic checks pass; permission, duplicate-write and wrong-
 target failures are zero. Report model success and recovery rates separately;

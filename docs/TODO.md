@@ -7,6 +7,16 @@ Completed implementation is marked **[x]**. **[ ]** means work or verification i
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
 
+## Luna-only paid evaluations — September 20
+
+- [x] Pause Gemini comparisons; make Luna the paid-eval runner default. The app
+  already prefers Luna when an OpenAI key is configured.
+- [x] Retain the $2 default text-eval cap and document the measured estimate:
+  about $1.18 for 1,001 comparable Luna text-agent cases, one pass.
+- [ ] Measure dream/learning and real voice costs separately before estimating
+  a complete mixed-catalog run. Do not label the whole catalog confirmed under $2.
+- [x] Railway CI gating enabled and read back on both production services.
+
 ## Calendar/voice fixes and current testing order — September 20
 
 - [x] Fix Google all-day ↔ timed event conversion by clearing the old nested
@@ -19,7 +29,7 @@ The newest batches are near the top; earlier sections retain release history.
   provider/media fixtures do not complete those acceptance checks.
 - [x] Reassess current coverage and write [TESTING_PLAN.md](TESTING_PLAN.md).
 - [ ] Next: fix EVAL-001 (timestamp/Revert) and EVAL-002 (note clearing/recovered
-  queue status), then rerun component and capped paired model checks.
+  queue status), then rerun component and capped Luna checks.
 - [ ] Execute focused phone/foldable, learning, integration and access checks,
   then cloud recovery and backup checks. Keep R2 activation pending credentials.
 - [ ] Run the seven-day/50-interaction pilot after those gates, before native Android.

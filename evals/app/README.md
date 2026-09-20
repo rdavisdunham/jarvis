@@ -46,13 +46,25 @@ The harness checks the local hostname, dedicated database role, namespace, synth
 
 Relative-date truth is January 14, 2030, 09:00 America/Chicago. The live backend adapter freezes the instruction clock and uses absolute dates in its dated probes. It does not freeze runtime leases. Broader relative-date protocols must freeze the time-resolver clock as well.
 
-## Real Luna/Gemini comparisons
+## Paid backend evaluations — Luna by default
 
 No paid inference is needed to build, inspect or validate the dataset.
 
+As of September 20, paid runs default to Luna only. Gemini comparisons are paused
+at the owner's request; the adapter and historical results remain available.
+The app already selects Luna by default when an OpenAI key is configured.
+
+The measured Luna sample cost $0.02352348 for 20 cases. At the same average,
+1,001 comparable text-agent cases would cost about $1.18 for one pass. This is
+an extrapolation, not an estimate for the complete mixed catalog: real GPT-Live
+sessions and unmeasured dream/learning/embedding workloads are additional.
+The $2 default text-run ceiling stops before a request would exceed its bound;
+it does not guarantee all selected cases finish. Only 20 paid probes are currently
+wired into this runner; the full catalog still includes manual/unimplemented adapters.
+
 ~~~sh
 .venv/bin/python -m scripts.app_eval.runner models \
-  --run-paid --models luna,gemini \
+  --run-paid --models luna \
   --cases task_capture.01,task_edit.19 \
   --repeats 3 --max-provider-requests 40 --max-usd-per-model 2
 ~~~

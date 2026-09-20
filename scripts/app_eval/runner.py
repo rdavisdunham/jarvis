@@ -176,7 +176,7 @@ def main():
     p.add_argument("--output")
     p = sub.add_parser("models")
     p.add_argument("--cases")
-    p.add_argument("--models", default="luna,gemini")
+    p.add_argument("--models", default="luna", help="Comma-separated profiles; defaults to Luna only. Gemini comparisons are paused.")
     p.add_argument("--run-paid", action="store_true")
     p.add_argument("--max-provider-requests", type=int, default=20)
     p.add_argument("--max-usd-per-model", type=float, default=2.0)
