@@ -4,7 +4,7 @@ requests
 
 # Required for local streaming STT (STT_PROVIDER=local)
 faster-whisper
-websockets>=12.0
+websockets>=17.1
 
 # Required only if TTS_PROVIDER=kokoro (local Kokoro-82M on GPU)
 numpy
