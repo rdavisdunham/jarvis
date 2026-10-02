@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormHTMLAttributes, type HTMLAttributes, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FormHTMLAttributes, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 
 export const humanLabel = (value: string) => value === "owner" ? "Me" : value.replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
 export const priorityLabels = ["None", "Low", "Medium", "High"];
@@ -169,4 +169,43 @@ export function PlannerGuide() {
     <p>Projects can support several goals; goals can draw on several projects. One-off tasks need neither. Spaces such as Work and Personal classify records; workspaces determine who can see them.</p>
     <SchedulingHelp />
   </details>;
+}
+// ---- Brand -----------------------------------------------------------------------------
+/** The orbit epsilon: two iridescent swooshes around a small star. Decorative by default. */
+export function BrandMark({size = 28, className = "", title}: {size?: number; className?: string; title?: string}) {
+  const id = useId().replace(/:/g, "");
+  return <svg className={"brand-mark-svg " + className} width={size} height={size} viewBox="0 0 48 48" fill="none"
+    role={title ? "img" : undefined} aria-hidden={title ? undefined : true} aria-label={title}>
+    <defs>
+      <linearGradient id={id + "a"} x1="9" y1="20" x2="40" y2="9" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#B9A4F8"/><stop offset=".55" stopColor="#8CC8FA"/><stop offset="1" stopColor="#9BE3CF"/>
+      </linearGradient>
+      <linearGradient id={id + "b"} x1="9" y1="26" x2="40" y2="34" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#8CC8FA"/><stop offset=".25" stopColor="#9BE3CF"/><stop offset=".6" stopColor="#B9A4F8"/><stop offset="1" stopColor="#F6B9CF"/>
+      </linearGradient>
+      <linearGradient id={id + "c"} x1="20" y1="20" x2="29" y2="29" gradientUnits="userSpaceOnUse">
+        <stop offset="0" stopColor="#B9A4F8"/><stop offset=".5" stopColor="#8CC8FA"/><stop offset="1" stopColor="#F6B9CF"/>
+      </linearGradient>
+    </defs>
+    <path fill={`url(#${id}a)`} d="M10.1 21.6c-.9-.4-.9-1.6-.5-2.6C12.6 12.2 21.6 7.4 31 7.4c5.6 0 9.4 2 9.4 5 0 1.6-1 3.3-2.6 4.6-.3.2-.6-.1-.4-.4.5-.8.7-1.5.7-2.2 0-2-2.7-3.2-6.7-3.2-7.6 0-15.6 3.7-19.3 9.4-.5.7-1.2 1.3-2 1z"/>
+    <path fill={`url(#${id}b)`} d="M16.9 21.8c.3-.2.1-.6-.2-.5-5.4 1.6-8.7 4.9-8.7 8.6 0 5.3 6.5 9.5 15.2 9.5 7.2 0 13.4-3.1 15.6-7.6.3-.6-.4-1.1-.9-.7-3 2.6-8 4.2-13.3 4.2-6.6 0-11.3-2.6-11.3-6.1 0-2.6 1.3-5 3.6-7.4z"/>
+    <circle cx="24.6" cy="24.4" r="4.3" fill={`url(#${id}c)`}/>
+  </svg>;
+}
+
+/** A toolbar button that toggles a floating `.popover`; closes on outside click and Escape. */
+export function Popover({label, button, className = "", panelClassName = "", children}: {label: string; button: ReactNode; className?: string; panelClassName?: string; children: (close: () => void) => ReactNode}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [open]);
+  const close = () => { setOpen(false); trigger.current?.focus(); };
+  return <div ref={root} className={"popover-anchor " + className} onKeyDown={e => { if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); close(); } }}>
+    <button ref={trigger} type="button" className={"btn btn-ghost toolbar-button" + (open ? " is-open" : "")} aria-label={label} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>{button}</button>
+    {open && <div className={"popover toolbar-popover " + panelClassName} role="dialog" aria-label={label.replace(/,.*/, "")}>{children(close)}</div>}
+  </div>;
 }

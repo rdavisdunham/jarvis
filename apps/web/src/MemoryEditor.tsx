@@ -2,7 +2,7 @@ import { useState } from "react";
 import { z } from "zod";
 import { X } from "lucide-react";
 import { useEditor } from "./editor-control";
-import { useDialogFocus } from "./components";
+import { Dialog } from "./ux";
 import type { Memory } from "./types";
 
 export function MemoryEditor({
@@ -16,7 +16,6 @@ export function MemoryEditor({
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
   onClose: () => void;
 }) {
-  useDialogFocus();
   const [content, setContent] = useState(memory.content);
   async function save() {
     if (!content.trim()) return;
@@ -40,28 +39,28 @@ export function MemoryEditor({
     close: onClose,
   });
   return (
-    <div className="modal-backdrop">
-      <form
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="memory-editor-title"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <div className="dialog-heading">
-          <h2 id="memory-editor-title">Correct memory</h2>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Close memory editor"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog
+      as="form"
+      className="dialog memory-editor"
+      aria-labelledby="memory-editor-title"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <div className="dialog-heading">
+        <h2 id="memory-editor-title">Correct memory</h2>
+        <button
+          type="button"
+          className="btn-icon"
+          aria-label="Close memory editor"
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <label>
+        Remembered fact
         <textarea
           aria-label="Memory correction"
           required
@@ -70,10 +69,16 @@ export function MemoryEditor({
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />
-        <button className="primary" disabled={busy || !content.trim()}>
+      </label>
+      <p className="field-hint">Write the complete fact as Eri should remember it. Your original words stay in the source.</p>
+      <div className="dialog-actions">
+        <button type="button" className="btn" onClick={onClose}>
+          Cancel
+        </button>
+        <button className="btn btn-primary" disabled={busy || !content.trim()}>
           Save correction
         </button>
-      </form>
-    </div>
+      </div>
+    </Dialog>
   );
 }

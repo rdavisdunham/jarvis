@@ -8,7 +8,7 @@ async function request(path,body){return page.evaluate(async({path,body})=>{cons
 const cmd=async(tool,args)=>(await request("/commands",{command_id:crypto.randomUUID(),tool,arguments:args})).data;
 const ui=async(name,args)=>{const result=await request("/__test_ui",{name,arguments:args});if(result.status!=="displayed")throw Error(JSON.stringify(result));};
 try{
- await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
+ await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();
  const schema=await request("/structure");const create=(type_id,title,extra={})=>cmd("record.create",{type_id,title,schema_revision:schema.revision,...extra});
  const abc=await create("client","Synthetic Pest ABC",{body:"Commercial pest control company"});
  const task=await create("task","Renew spraying coverage",{parent_id:abc.id});

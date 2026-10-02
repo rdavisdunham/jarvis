@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, post } from "./api";
+import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import type { Task } from "./types";
 
 type Mutate = (
@@ -69,23 +70,20 @@ export function LinearSettings({
       setRefresh((n) => n + 1);
     }
   }
+  const open = (data?.recent_changes ?? []).filter(c => !["succeeded", "completed", "cancelled"].includes(c.status)).length ?? 0;
   return (
-    <section className="google-settings">
-      <h2>Linear</h2>
-      <p>
-        Bring issues into your task workspace. Changes to linked task titles,
-        notes, status, due dates and assignees sync back to Linear.
-      </p>
-      {data?.connected && <div className="integration-summary"><strong>{data.workspace ?? "Linear connected"}</strong><span>{data.team_ids.length} teams · {data.recent_changes.filter(c => !["succeeded", "completed", "cancelled"].includes(c.status)).length} changes pending or needing attention</span><small>Last successful sync: {data.last_sync_at ? new Date(data.last_sync_at).toLocaleString() : "Not yet synced"}</small></div>}
+    <SettingsGroup className="linear-settings" title="Linear"
+      description="Bring issues into your task workspace. Changes to linked task titles, notes, status, due dates and assignees sync back to Linear.">
       {error && (
         <p role="alert" className="error-banner">
           {error}
         </p>
       )}
       {!data ? (
-        <p>Loading connection…</p>
+        <p className="settings-empty">Loading connection…</p>
       ) : !data.connected ? (
         <form
+          className="settings-form"
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
@@ -95,8 +93,8 @@ export function LinearSettings({
             });
           }}
         >
-          <label>
-            Personal API key
+          <label className="field wide">
+            <span className="field-label-text">Personal API key</span>
             <input
               aria-label="Linear API key"
               type="password"
@@ -105,59 +103,64 @@ export function LinearSettings({
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
+            <span className="field-hint">
+              Create one in Linear under Settings, Security & access, with read, create and write access for your chosen teams. Stored encrypted in Eridani.
+            </span>
           </label>
-          <p className="footnote">
-            Create a personal API key in Linear → Settings → Security & access,
-            with read, create and write access for your chosen teams. Stored
-            encrypted in Eridani.
-          </p>
-          <button className="secondary" disabled={busy || !key}>
-            Connect Linear
-          </button>
+          <div className="settings-form-actions">
+            <button className="btn btn-primary" disabled={busy || !key}>
+              Connect Linear
+            </button>
+          </div>
         </form>
       ) : (
         <>
-          <p>
-            <strong>{data.workspace}</strong> · {data.status}
-            {data.last_sync_at
-              ? " · Synced " + new Date(data.last_sync_at).toLocaleString()
-              : ""}
-          </p>
-          {data.error && <p role="alert">{data.error}</p>}
-          <fieldset disabled={busy}>
-            <legend>Teams to sync</legend>
-            {data.teams.map((t) => (
-              <label className="event-checkbox" key={t.id}>
-                <input
-                  type="checkbox"
-                  checked={teams.includes(t.id)}
-                  onChange={(e) => {
-                    setDirty(true);
-                    setTeams((ids) =>
-                      e.target.checked
-                        ? [...ids, t.id]
-                        : ids.filter((id) => id !== t.id),
-                    );
-                  }}
-                />
-                {t.name}
-              </label>
-            ))}
-            <label className="event-checkbox">
+          <div className="integration-status">
+            <span className="status-dot on" aria-hidden="true"/>
+            <strong>{data.workspace ?? "Linear connected"}</strong>
+            <span className="chip">{humanize(data.status)}</span>
+            <span className="chip">{data.team_ids.length} {data.team_ids.length === 1 ? "team" : "teams"}</span>
+            {open > 0 && <span className="chip chip-due-today">{open} changes pending or needing attention</span>}
+            <span className="footnote">Last successful sync: {data.last_sync_at ? new Date(data.last_sync_at).toLocaleString() : "Not yet synced"}</span>
+          </div>
+          {data.error && <p role="alert" className="error-banner">{data.error}</p>}
+          <fieldset disabled={busy} className="settings-block linear-scope">
+            <legend className="sr-only">Teams to sync</legend>
+            <SettingRow label="Teams to sync" hint="Issues from these teams appear as tasks." className="stack">
+              {data.teams.map((t) => (
+                <label className="inline-check" key={t.id}>
+                  <input
+                    type="checkbox"
+                    checked={teams.includes(t.id)}
+                    onChange={(e) => {
+                      setDirty(true);
+                      setTeams((ids) =>
+                        e.target.checked
+                          ? [...ids, t.id]
+                          : ids.filter((id) => id !== t.id),
+                      );
+                    }}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </SettingRow>
+            <SettingRow as="label" className="switch-row" label="Only issues assigned to me">
               <input
                 type="checkbox"
+                className="switch"
+                role="switch"
                 checked={mine}
                 onChange={(e) => {
                   setDirty(true);
                   setMine(e.target.checked);
                 }}
               />
-              Only issues assigned to me
-            </label>
-            <div className="dialog-actions">
+            </SettingRow>
+            <div className="setting-actions">
               <button
                 type="button"
-                className="secondary"
+                className="btn btn-primary"
                 onClick={() =>
                   void act(async () => {
                     const saved = await mutate(
@@ -181,6 +184,7 @@ export function LinearSettings({
               </button>
               <button
                 type="button"
+                className="btn"
                 onClick={() =>
                   void act(() => post("/integrations/linear/sync", {}))
                 }
@@ -194,31 +198,37 @@ export function LinearSettings({
             precise due times and work blocks remain in Eridani. Removing an
             issue remotely keeps its local record for review.
           </p>
-          <details>
+          <details className="settings-block">
             <summary>Recent Linear changes</summary>
             {data.recent_changes.length ? (
-              data.recent_changes.map((j) => (
-                <p key={j.job_id}>
-                  {j.status} · {j.message}
-                </p>
-              ))
+              <div className="settings-list">
+                {data.recent_changes.map((j) => (
+                  <div className="settings-item" key={j.job_id}>
+                    <span className="settings-item-main">{j.message}</span>
+                    <span className="chip">{humanize(j.status)}</span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p>No changes yet.</p>
+              <p className="settings-empty">No changes yet.</p>
             )}
           </details>
           {!disconnecting ? (
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setDisconnecting(true)}
-            >
-              Disconnect Linear
-            </button>
-          ) : (
-            <p>
-              Keep local tasks and remove the stored key?
+            <div className="setting-actions">
               <button
                 type="button"
+                className="btn btn-danger"
+                onClick={() => setDisconnecting(true)}
+              >
+                Disconnect Linear
+              </button>
+            </div>
+          ) : (
+            <div className="settings-confirm">
+              <p>Keep local tasks and remove the stored key?</p>
+              <button
+                type="button"
+                className="btn btn-danger"
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
@@ -229,16 +239,17 @@ export function LinearSettings({
               >
                 Disconnect
               </button>
-              <button type="button" onClick={() => setDisconnecting(false)}>
+              <button type="button" className="btn btn-ghost" onClick={() => setDisconnecting(false)}>
                 Keep connected
               </button>
-            </p>
+            </div>
           )}
         </>
       )}
-    </section>
+    </SettingsGroup>
   );
 }
+const humanize = (value: string) => { const text = value.replaceAll("_", " "); return text.charAt(0).toUpperCase() + text.slice(1); };
 type Comparison = {
   pending_change?: Record<string, string | number | null>;
   local: Task;
@@ -321,8 +332,8 @@ export function LinearTask({
   const needsReview =
     linked && !["synced", "pending"].includes(task.external?.sync_state ?? "");
   return (
-    <section className="task-reminders linear-task">
-      <h3>Linear</h3>
+    <section className="detail-section linear-task">
+      <div className="detail-section-head"><h3>Linear</h3></div>
       {error && (
         <p role="alert" className="error-banner">
           {error}
@@ -338,8 +349,8 @@ export function LinearTask({
             ) : (
               task.external?.identifier
             )}{" "}
-            · {task.external?.sync_state}
-            {task.external?.state ? " · " + task.external.state : ""}
+            <span className="chip">{task.external?.sync_state}</span>
+            {task.external?.state && <> <span className="chip">{task.external.state}</span></>}
           </p>
           {!data?.connected && (
             <>
@@ -350,7 +361,7 @@ export function LinearTask({
                   void act(() => change("linear.resolve", { choice: "unlink" }))
                 }
               >
-                Unlink · keep local task
+                Unlink and keep local task
               </button>
             </>
           )}
@@ -489,11 +500,11 @@ export function LinearTask({
                       <p className="plain-details">
                         {compare.linear.description || "No notes"}
                       </p>
-                      <p>
-                        {compare.linear.state.name} · Due{" "}
-                        {compare.linear.dueDate || "not set"} ·{" "}
-                        {compare.linear.assignee?.name || "Unassigned"} ·{" "}
-                        {compare.linear.project?.name || "No project"}
+                      <p className="chip-row">
+                        <span className="chip">{compare.linear.state.name}</span>
+                        <span className="chip">Due {compare.linear.dueDate || "not set"}</span>
+                        <span className="chip">{compare.linear.assignee?.name || "Unassigned"}</span>
+                        <span className="chip">{compare.linear.project?.name || "No project"}</span>
                       </p>
                     </>
                   ) : (
@@ -503,8 +514,9 @@ export function LinearTask({
                     </p>
                   )}
                   <p>
-                    Local task: {task.title} · {task.status} · Due{" "}
-                    {task.due_date || "not set"}
+                    Local task: {task.title}{" "}
+                    <span className="chip">{task.status}</span>{" "}
+                    <span className="chip">Due {task.due_date || "not set"}</span>
                   </p>
                   {compare.linear && (
                     <>
@@ -547,7 +559,7 @@ export function LinearTask({
                       )
                     }
                   >
-                    Unlink · keep local task
+                    Unlink and keep local task
                   </button>
                 </div>
               )}

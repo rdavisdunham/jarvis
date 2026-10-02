@@ -25,7 +25,7 @@ try {
   await page.goto(base);
   await page.getByLabel("Pairing code").fill("planner-fixture");
   await page.locator(".login-card button.primary").click();
-  await expect(page.getByRole("heading", { name: "Tasks", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Today", exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const b = await (await fetch("/api/v1/bootstrap")).json();
     const r = await fetch("/api/v1/__test_ui", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": b.csrf},

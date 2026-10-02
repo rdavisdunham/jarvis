@@ -53,7 +53,6 @@ type Props = {
   calendar: boolean;
   calendarMode: CalendarMode;
   onCalendarMode: (mode: CalendarMode) => void;
-  onCreateEvent: (day: string) => void;
   day: string;
   onDay: (day: string) => void;
   today: string;
@@ -247,17 +246,19 @@ export function Workspace(p: Props) {
         <button className="task-info" onClick={() => p.onSchedule(s)}>
           <span className="task-title">{s.title}</span>
           <span className="task-meta">
-            {s.status === "finished"
-              ? "Delivered · waiting for you"
-              : s.status === "completed"
-                ? "Completed"
-                : s.status === "cancelled"
-                  ? "Cancelled"
-                  : timeLabel(s.next_run_at ?? s.anchor_at, p.zone)}
-            {s.recurrence ? " · Repeats" : ""}
-            {!linked && scheduleProject(s, p.tasks, p.projects)
-              ? " · " + scheduleProject(s, p.tasks, p.projects)
-              : ""}
+            <span>
+              {s.status === "finished"
+                ? "Delivered, waiting for you"
+                : s.status === "completed"
+                  ? "Completed"
+                  : s.status === "cancelled"
+                    ? "Cancelled"
+                    : timeLabel(s.next_run_at ?? s.anchor_at, p.zone)}
+            </span>
+            {s.recurrence && <span>Repeats</span>}
+            {!linked && scheduleProject(s, p.tasks, p.projects) && (
+              <span>{scheduleProject(s, p.tasks, p.projects)}</span>
+            )}
           </span>
         </button>
         {["active", "finished"].includes(s.status) &&
@@ -276,7 +277,7 @@ export function Workspace(p: Props) {
                     ? { notification_id: outstanding!.id }
                     : { schedule_id: s.id, expected_revision: s.revision },
                   s.recurrence
-                    ? "Occurrence completed · routine continues"
+                    ? "Occurrence completed. The routine continues."
                     : "Reminder completed",
                 )
               }
@@ -297,24 +298,14 @@ export function Workspace(p: Props) {
         p.calendar ? undefined : "task-tab-" + (p.preset ?? "all")
       }
     >
-      <div className="workspace-actions">
-        {p.calendar ? (
-          <span className="footnote">Calendar</span>
-        ) : p.kind === "reminder" ? (
+      {!p.calendar && <div className="workspace-actions">
+        {p.kind === "reminder" ? (
           <span className="footnote">Task alerts</span>
         ) : (
           <LayoutSwitch value={p.layout} onChange={p.onLayout} />
         )}
         <details className="workspace-add action-menu"><summary>Actions</summary><div>
-          {p.calendar && (
-            <button
-              className="primary compact"
-              onClick={() => p.onCreateEvent(p.day)}
-            >
-              <Plus size={17} /> New event
-            </button>
-          )}
-          {!p.calendar && p.kind !== "reminder" && (
+          {p.kind !== "reminder" && (
             <button
               className="text-button"
               onClick={() => {
@@ -327,20 +318,20 @@ export function Workspace(p: Props) {
           )}
           <button
             className="secondary compact"
-            onClick={() => p.createReminder(p.calendar ? p.day : undefined)}
+            onClick={() => p.createReminder()}
           >
             <Clock3 size={15} />
             Task reminder
           </button>
           <button
             className="primary compact"
-            onClick={() => p.createTask(p.calendar ? p.day : undefined)}
+            onClick={() => p.createTask()}
           >
             <Plus size={16} />
             New task
           </button>
         </div></details>
-      </div>
+      </div>}
       {p.selecting && !p.calendar && (
         <div className="bulk-toolbar">
           <label>

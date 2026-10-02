@@ -12,7 +12,7 @@ const command=async(tool,args)=>(await request("/commands",{command_id:crypto.ra
 const ui=async(args)=>{const result=await request("/__test_ui",{name:"ui_workspace",arguments:args});expect(result.status).toBe("displayed");};
 try{
  await page.goto(process.env.JARVIS_PLANNER_TEST_URL);await page.getByLabel("Pairing code").fill("planner-fixture");
- await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
+ await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();
  await ui({view:"notes"});await page.getByRole("button",{name:"Set up suggested lists",exact:true}).click();
  await expect(page.getByLabel("Note list")).toContainText("Movies");
  const lists=(await request("/note-lists")).items, movies=lists.find(l=>l.name==="Movies");

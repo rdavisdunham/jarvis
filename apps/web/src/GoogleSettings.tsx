@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, ExternalLink, RefreshCw } from "lucide-react";
 import { api, post } from "./api";
+import { SettingRow, SettingsGroup } from "./SettingsLayout";
 
 export interface GoogleStatus {
   configured: boolean;
@@ -75,17 +76,15 @@ export function GoogleSettings({
       setBusy(false);
     }
   }
+  const selectedCount = data ? data.calendars.filter(c => c.selected && c.available).length : 0;
   return (
-    <section className="google-settings">
-      <h2>Google</h2>
-      <p>
-        Sign in with your account and bring your calendars into Eri’s view of
-        your day.
-      </p>
+    <SettingsGroup className="google-settings" title="Google"
+      description="Sign in with your account and bring your calendars into Eri’s view of your day.">
       {error && (
         <p className="error-banner" role="alert">
-          {error}
+          <span>{error}</span>
           <button
+            className="btn btn-sm"
             onClick={() => {
               setError("");
               setRefresh((n) => n + 1);
@@ -95,27 +94,24 @@ export function GoogleSettings({
           </button>
         </p>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {notice && <p role="status" className="settings-callout">{notice}</p>}
       {!data ? (
-        <p role="status">Loading connection…</p>
+        <p role="status" className="settings-empty">Loading connection…</p>
       ) : (
         <>
-          <div className="integration-summary"><strong>{data.linked ? data.email : "Not connected"}</strong><span>{data.calendar_enabled ? `${data.calendars.filter(c => c.selected && c.available).length} calendars · ${data.calendar_write_enabled ? "Read & edit" : "Read only"}` : "Calendar access not enabled"}</span></div>
-          <p className="footnote">Google sign-in and Calendar permissions are separate. Editing is limited to calendars your Google account can write to.</p>
+          <div className="integration-status">
+            <span className={"status-dot" + (data.linked ? " on" : "")} aria-hidden="true"/>
+            <strong>{data.linked ? data.email : "Not connected"}</strong>
+            {data.calendar_enabled
+              ? <><span className="chip">{selectedCount} {selectedCount === 1 ? "calendar" : "calendars"}</span><span className="chip">{data.calendar_write_enabled ? "Read & edit" : "Read only"}</span></>
+              : <span className="chip">Calendar access not enabled</span>}
+          </div>
           {!data.configured && (
-            <p className="integration-hint">
+            <p className="settings-callout integration-hint">
               Google connection is not configured. Contact the app owner to enable it.
             </p>
           )}
-          <div className="setting-row">
-            <span>
-              <strong>Sign in with Google</strong>
-              <small>
-                {data.linked
-                  ? data.email
-                  : "Connect your Google account to Eridani."}
-              </small>
-            </span>
+          <SettingRow label="Sign in with Google" hint={data.linked ? data.email : "Connect your Google account to Eridani."}>
             {data.linked ? (
               <span className="connection-label">
                 <Check size={16} />
@@ -123,23 +119,17 @@ export function GoogleSettings({
               </span>
             ) : (
               <button
-                className="secondary compact"
+                className="btn"
                 disabled={!data.configured || busy || voiceActive}
                 onClick={() => void act(() => startGoogle("link"))}
               >
                 Link Google account
               </button>
             )}
-          </div>
-          <div className="setting-row">
-            <span>
-              <strong>Calendar access</strong>
-              <small>
-                Events and availability from your selected calendars.
-              </small>
-            </span>
+          </SettingRow>
+          <SettingRow label="Calendar access" hint="Events and availability from your selected calendars. Sign-in and Calendar permissions are separate.">
             <button
-              className="secondary compact"
+              className="btn"
               disabled={!data.configured || busy || voiceActive}
               onClick={() => void act(() => startGoogle("calendar"))}
             >
@@ -147,19 +137,13 @@ export function GoogleSettings({
                 ? "Reconnect Calendar"
                 : "Connect Calendar"}
             </button>
-          </div>
+          </SettingRow>
           {data.calendar_enabled && (
-            <div className="setting-row">
-              <span>
-                <strong>Calendar editing</strong>
-                <small>
-                  {data.calendar_write_enabled
-                    ? "Create, edit and delete personal events on writable calendars."
-                    : "Allow Eri and the website to save changes to Google Calendar."}
-                </small>
-              </span>
+            <SettingRow label="Calendar editing" hint={data.calendar_write_enabled
+              ? "Create, edit and delete personal events on calendars your Google account can write to."
+              : "Allow Eri and the website to save changes to Google Calendar."}>
               <button
-                className="secondary compact"
+                className="btn"
                 disabled={!data.configured || busy || voiceActive}
                 onClick={() => void act(() => startGoogle("calendar_write"))}
               >
@@ -167,15 +151,14 @@ export function GoogleSettings({
                   ? "Reconnect editing"
                   : "Enable Calendar editing"}
               </button>
-            </div>
+            </SettingRow>
           )}
           {voiceActive && (
             <p className="footnote">End voice before opening Google sign-in.</p>
           )}
           {data.calendar_enabled && (
             <>
-              <div className="calendar-sync-row">
-                <span role="status">
+              <SettingRow label="Sync" hint={<span role="status">
                   {data.syncing
                     ? "Syncing calendars…"
                     : data.status === "needs_reconnect"
@@ -186,9 +169,9 @@ export function GoogleSettings({
                           ? "Last synced " +
                             new Date(data.last_sync_at).toLocaleString()
                           : "Waiting for the first sync…"}
-                </span>
+                </span>}>
                 <button
-                  className="text-button"
+                  className="btn btn-ghost"
                   disabled={
                     busy || data.syncing || data.status === "needs_reconnect"
                   }
@@ -202,27 +185,27 @@ export function GoogleSettings({
                   <RefreshCw size={14} />
                   Sync now
                 </button>
-              </div>
-              <div className="google-calendar-choices">
+              </SettingRow>
+              <div className="settings-block google-calendar-choices">
+                <h4>Calendars</h4>
                 {data.calendars.map((cal) => (
-                  <label key={cal.id} className="setting-row">
-                    <span>
-                      <strong>
+                  <label key={cal.id} className="setting-row switch-row">
+                    <span className="setting-text">
+                      <strong className="setting-label">
                         {cal.title}
-                        {cal.primary ? " · Primary" : ""}
                       </strong>
-                      <small>
+                      <span className="settings-item-meta">
+                        {cal.primary && <span className="chip">Primary</span>}
                         {cal.available
-                          ? cal.timezone +
-                            (cal.writable ? " · Can edit" : " · Read-only")
-                          : "No longer accessible"}
-                        {cal.selected && !cal.last_sync_at
-                          ? " · Waiting for sync"
-                          : ""}
-                      </small>
+                          ? <><span className="chip">{cal.writable ? "Can edit" : "Read only"}</span><span>{cal.timezone}</span></>
+                          : <span className="chip chip-due-overdue">No longer accessible</span>}
+                        {cal.selected && !cal.last_sync_at && <span>Waiting for sync</span>}
+                      </span>
                     </span>
                     <input
                       type="checkbox"
+                      className="switch"
+                      role="switch"
                       aria-label={"Use calendar " + cal.title}
                       checked={cal.selected}
                       disabled={busy || (!cal.available && !cal.selected)}
@@ -260,22 +243,14 @@ export function GoogleSettings({
                   </label>
                 ))}
               </div>
-              {!disconnecting ? (
-                <button
-                  className="text-button danger"
-                  disabled={busy}
-                  onClick={() => setDisconnecting(true)}
-                >
-                  Disconnect Calendar
-                </button>
-              ) : (
-                <div className="disconnect-confirm">
+              {disconnecting && (
+                <div className="settings-confirm">
                   <p>
                     Remove synced events from Eri and revoke Calendar access?
                     Your Google events stay in Google.
                   </p>
                   <button
-                    className="secondary compact"
+                    className="btn btn-danger"
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
@@ -294,7 +269,7 @@ export function GoogleSettings({
                     Disconnect now
                   </button>
                   <button
-                    className="text-button"
+                    className="btn btn-ghost"
                     onClick={() => setDisconnecting(false)}
                   >
                     Keep connected
@@ -303,23 +278,14 @@ export function GoogleSettings({
               )}
             </>
           )}
-          {data.linked &&
-            (!unlinking ? (
-              <button
-                className="text-button danger"
-                disabled={busy}
-                onClick={() => setUnlinking(true)}
-              >
-                Unlink Google sign-in
-              </button>
-            ) : (
-              <div className="disconnect-confirm">
+          {data.linked && unlinking && (
+              <div className="settings-confirm">
                 <p>
                   Unlink this account and disconnect Calendar? Devices signed in
                   through Google will need to pair again.
                 </p>
                 <button
-                  className="secondary compact"
+                  className="btn btn-danger"
                   disabled={busy}
                   onClick={() =>
                     void act(async () => {
@@ -331,24 +297,44 @@ export function GoogleSettings({
                   Unlink account
                 </button>
                 <button
-                  className="text-button"
+                  className="btn btn-ghost"
                   onClick={() => setUnlinking(false)}
                 >
                   Keep account
                 </button>
               </div>
-            ))}
-          <a
-            className="footnote external-link"
-            href="https://myaccount.google.com/connections"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Google account connections
-            <ExternalLink size={12} />
-          </a>
+            )}
+          <div className="settings-links">
+            {data.calendar_enabled && !disconnecting && (
+              <button
+                className="btn btn-danger btn-sm"
+                disabled={busy}
+                onClick={() => setDisconnecting(true)}
+              >
+                Disconnect Calendar
+              </button>
+            )}
+            {data.linked && !unlinking && (
+              <button
+                className="btn btn-danger btn-sm"
+                disabled={busy}
+                onClick={() => setUnlinking(true)}
+              >
+                Unlink Google sign-in
+              </button>
+            )}
+            <a
+              className="external-link"
+              href="https://myaccount.google.com/connections"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google account connections
+              <ExternalLink size={12} />
+            </a>
+          </div>
         </>
       )}
-    </section>
+    </SettingsGroup>
   );
 }

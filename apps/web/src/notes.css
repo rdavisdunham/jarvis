@@ -1,0 +1,1137 @@
+/* Notes page, note editor and Memory page. Tokens and base components live in theme.css. */
+
+/* ---- Notes layout: list rail + main ------------------------------------------------------ */
+.notes-page {
+  container-type: inline-size;
+  container-name: notes;
+  display: block;
+  min-width: 0;
+}
+.notes-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.notes-main {
+  min-width: 0;
+}
+
+/* Phones and narrow widths: the rail is a select with the list actions beside it. */
+.note-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.note-rail-picker {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.note-rail-picker select {
+  width: 100%;
+}
+.note-rail-list {
+  display: none;
+}
+.note-rail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+@container notes (min-width: 760px) {
+  .notes-layout {
+    grid-template-columns: 208px minmax(0, 1fr);
+    gap: 32px;
+  }
+  .note-rail {
+    position: sticky;
+    top: 16px;
+    display: block;
+    padding-top: 2px;
+  }
+  /* The select stays available to keyboard users and scripts but only shows while focused. */
+  .note-rail-picker {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .note-rail-picker:focus-within {
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+  .note-rail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .note-rail-actions {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .note-rail-actions .btn {
+    margin-left: -4px;
+  }
+  .note-rail-edit {
+    display: none;
+  }
+}
+.note-rail-group {
+  padding: 14px 10px 4px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+}
+.note-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.note-rail-item svg {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+}
+.note-rail-item:hover:not(:disabled) {
+  background: var(--sunken);
+  color: var(--ink);
+}
+.note-rail-item[aria-current="page"] {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.note-rail-item[aria-current="page"] svg {
+  color: var(--violet);
+}
+.note-rail-item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.note-rail-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-rail-count {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.note-rail-item[aria-current="page"] .note-rail-count {
+  color: var(--violet);
+}
+.note-rail-setup {
+  text-align: left;
+}
+
+/* ---- Main header and toolbar ------------------------------------------------------------ */
+.note-list-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+.note-list-title {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.note-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+}
+.note-list-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.note-list-count {
+  color: var(--ink-3);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.notes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.notes-toolbar .notes-search {
+  flex: 1 1 220px;
+  width: auto;
+  max-width: 320px;
+  margin: 0;
+}
+.note-list-about {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 2px 0 0;
+}
+.note-list-about p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 20px;
+}
+.notes-main > .note-list-header {
+  margin-bottom: 20px;
+}
+
+/* Filters popover */
+.notes-filter {
+  position: relative;
+}
+.notes-filter > summary {
+  list-style: none;
+}
+.notes-filter > summary::-webkit-details-marker {
+  display: none;
+}
+.notes-filter[open] > summary {
+  background: var(--sunken);
+}
+.notes-filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--violet-soft);
+  color: var(--violet);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.notes-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 12px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+}
+.notes-filter-popover label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.notes-filter-popover select {
+  width: 100%;
+  max-width: none;
+}
+@container notes (max-width: 759px) {
+  /* The select already names the list; keep only its description here. */
+  .note-list-heading {
+    display: none;
+  }
+  .note-list-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .note-list-title:not(:has(.note-list-about)) {
+    display: none;
+  }
+  .note-list-title {
+    flex: 0 0 auto;
+  }
+  .notes-toolbar {
+    width: 100%;
+  }
+  .notes-toolbar .notes-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .notes-toolbar .btn-primary {
+    margin-left: auto;
+  }
+  .notes-filter-popover {
+    left: 0;
+    right: auto;
+  }
+  .notes-page .note-card {
+    min-height: 0;
+  }
+}
+
+.notes-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+}
+.notes-status {
+  margin: 0 0 12px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+.notes-more {
+  display: flex;
+  margin: 24px auto 0;
+}
+.notes-empty {
+  max-width: 560px;
+}
+.notes-empty p {
+  margin: 0;
+}
+
+/* Possible missing items */
+.note-possible {
+  margin: 0 0 20px;
+  padding: 16px 20px;
+}
+.note-possible .panel-header {
+  margin-bottom: 4px;
+}
+.note-possible .panel-title {
+  margin: 0;
+}
+.note-possible-hint {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.note-possible-list {
+  margin: 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+.note-possible-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.note-possible-item svg {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+}
+.note-possible-item:hover {
+  background: var(--sunken);
+}
+
+/* ---- Note cards ------------------------------------------------------------------------- */
+.notes-page .note-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+.notes-page .note-card {
+  min-height: 176px;
+  padding: 18px 20px 16px;
+  cursor: pointer;
+  font: inherit;
+}
+.notes-page .note-card:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 2px;
+}
+.notes-page .note-card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink);
+}
+.notes-page .note-card-preview {
+  white-space: normal;
+}
+.note-card-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 4px;
+  min-width: 0;
+}
+.notes-page .note-card-foot .note-card-tags {
+  margin-top: 0;
+  min-width: 0;
+}
+.note-card-date {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 24px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.density-compact .notes-page .note-card {
+  min-height: 0;
+  padding: 14px 16px 12px;
+}
+
+/* ---- Note editor and reader ------------------------------------------------------------- */
+.dialog.note-editor {
+  width: min(800px, 100%);
+  max-width: 100%;
+}
+.note-editor .note-editor-head {
+  justify-content: flex-start;
+  margin-bottom: 16px;
+}
+.note-editor-crumb {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.note-editor .note-editor-crumb h2 {
+  color: var(--ink-2);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.note-editor-saved {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.note-editor .record-tools {
+  flex: 0 1 auto;
+  margin: 0;
+  gap: 2px;
+}
+.record-tools .btn-sm {
+  color: var(--ink-2);
+}
+.note-doc {
+  max-width: 72ch;
+  min-width: 0;
+}
+
+/* Reading mode: the title and body are large tap targets that switch to writing. */
+.note-editor .note-reading {
+  padding: 0;
+}
+.note-reading-title,
+.note-reading-body {
+  display: block;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+.note-reading-title:hover,
+.note-reading-body:hover {
+  background: var(--sunken);
+}
+.note-editor .note-reading-title {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.note-editor .note-reading-body {
+  min-height: 72px;
+  margin-top: 12px;
+  padding: 8px;
+  font-size: 15px;
+  line-height: 24px;
+}
+.note-reading-body.is-empty {
+  color: var(--ink-3);
+}
+
+/* Writing mode */
+.note-writing {
+  display: grid;
+  gap: 12px;
+}
+.note-editor .note-title-field,
+.note-editor .note-body-field {
+  margin: 0;
+}
+.note-editor .note-title-field input {
+  min-height: 46px;
+  margin: 0 -9px;
+  width: calc(100% + 18px);
+  padding: 4px 8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+.note-editor .note-title-field input:hover:not(:focus) {
+  border-color: var(--line);
+}
+.note-editor .note-body-field textarea.note-body {
+  min-height: 260px;
+  max-height: 55dvh;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 24px;
+}
+
+.note-meta {
+  margin-top: 16px;
+}
+.note-section-title {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+.note-hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+.note-doc > .note-filing,
+.note-doc > .note-backlinks,
+.note-doc > .note-linked-records,
+.note-doc > .note-extraction,
+.note-doc > .note-attribution {
+  margin: 20px 0 0;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+}
+.note-chip-link {
+  color: var(--ink);
+}
+button.note-chip-link:hover:not(:disabled) {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+button.note-chip-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Lists and sources */
+.note-filing {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.note-filing .note-source {
+  padding: 0;
+}
+.note-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--violet);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.note-source-link:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.note-source-link:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.note-filing .note-source blockquote,
+.note-proposal blockquote,
+.memory-evidence blockquote {
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 21px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.note-filing .note-source .chip {
+  margin-top: 8px;
+}
+.note-filing .note-saved-entries {
+  display: block;
+  padding: 0;
+}
+.note-filing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.dialog .note-filing-select {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  flex: 0 1 320px;
+  min-width: 0;
+}
+.note-filing-select > span {
+  flex: 0 0 auto;
+}
+.dialog .note-filing-select select {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.note-filing-hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* Linked work */
+.note-editor .note-linked-records {
+  display: grid;
+  gap: 2px;
+}
+.note-linked-task {
+  min-width: 0;
+}
+.note-linked-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% + 16px);
+  min-height: 40px;
+  margin: 0 -8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.note-linked-open:hover:not(:disabled) {
+  background: var(--sunken);
+}
+.note-linked-open:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.note-linked-open > svg {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+}
+.note-linked-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.note-linked-task small {
+  display: block;
+  padding: 0 0 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 17px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Find to-dos */
+.note-editor .note-extraction {
+  display: grid;
+  gap: 10px;
+}
+.note-extraction-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.note-extraction-head .note-hint {
+  flex: 1 1 260px;
+}
+.note-extraction > .btn-primary {
+  justify-self: start;
+}
+.note-editor .note-proposal {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+}
+.note-editor .note-proposal label {
+  margin: 0;
+}
+
+/* Organization and links */
+.note-attribution > summary,
+.note-links > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.note-attribution > summary:hover,
+.note-links > summary:hover {
+  color: var(--ink);
+}
+.note-editor .note-attribution > summary {
+  margin-bottom: 0;
+  font-size: 14px;
+}
+.note-attribution[open] > summary {
+  margin-bottom: 12px;
+}
+.note-attribution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0 16px;
+}
+.note-editor .note-links {
+  margin: 4px 0 0;
+}
+.note-links > summary {
+  font-size: 13px;
+}
+.note-links[open] > summary {
+  margin-bottom: 8px;
+}
+.note-links-count {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.note-editor .link-task-list {
+  display: grid;
+  gap: 0;
+  max-height: 220px;
+  margin-top: 8px;
+  padding: 0;
+  overflow-y: auto;
+}
+.note-editor .link-task-list label {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+/* Note list settings dialog */
+.dialog.note-list-editor {
+  width: min(600px, 100%);
+}
+.note-list-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 0 16px;
+}
+.note-list-editor .note-list-fields small {
+  color: var(--ink-3);
+}
+.note-list-custom {
+  margin: 0 0 16px;
+}
+.note-list-custom > summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.note-list-custom[open] > summary {
+  margin-bottom: 12px;
+}
+.note-list-editor select[multiple] {
+  min-height: 96px;
+}
+.note-list-options {
+  display: grid;
+  gap: 4px;
+}
+.dialog .note-list-options .check-label {
+  margin: 0;
+  min-height: 32px;
+  align-items: center;
+}
+.note-list-editor .field-hint {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 700px) {
+  .note-editor .note-reading-title,
+  .note-editor .note-title-field input {
+    font-size: 24px;
+    line-height: 30px;
+  }
+  .note-editor .record-tools {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .note-editor .note-editor-head {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Memory ----------------------------------------------------------------------------- */
+.memory-page {
+  max-width: 880px;
+  min-width: 0;
+}
+.memory-page .memory-status {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.memory-page .learning-status {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.memory-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.memory-status-line strong {
+  margin-right: 4px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+.memory-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.memory-dot.on {
+  background: var(--done);
+}
+.memory-status-quiet {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.memory-status-help {
+  max-width: 72ch;
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+.memory-page .memory-maintenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px 16px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.memory-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Review question */
+.memory-page .memory-review {
+  margin: 0 0 16px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+}
+.memory-review .panel-header {
+  margin-bottom: 8px;
+}
+.memory-review .memory-review-icon {
+  color: var(--violet);
+}
+.memory-review h3.panel-title {
+  margin: 0;
+  font-size: 17px;
+}
+.memory-review-question {
+  max-width: 72ch;
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+}
+.memory-review ul.memory-review-candidates {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.memory-review-candidates li {
+  padding: 8px 12px;
+  border-left: 2px solid var(--line-strong);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--sunken);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+}
+.memory-review .memory-review-merge label {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+}
+.memory-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.memory-page > .quick-add {
+  margin: 0 0 28px;
+}
+
+/* Remembered facts */
+.memory-section-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+}
+.memory-section-head h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.memory-section-sub {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.memory-list .memory.memory-row {
+  flex-wrap: nowrap;
+  gap: 8px 16px;
+  padding: 12px;
+}
+.memory-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.memory-row .memory-content {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.memory-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.memory-meta time {
+  color: var(--ink-3);
+}
+.memory-meta .chip {
+  margin-left: -4px;
+}
+.memory-evidence {
+  margin-top: 6px;
+}
+.memory-evidence > summary {
+  width: max-content;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.memory-evidence > summary:hover {
+  color: var(--ink);
+}
+.memory-evidence blockquote {
+  max-width: 72ch;
+}
+.memory-actions {
+  flex: 0 0 auto;
+  align-self: center;
+}
+@media (max-width: 700px) {
+  .memory-list .memory.memory-row {
+    flex-wrap: wrap;
+  }
+  .memory-actions {
+    flex-basis: 100%;
+    margin-left: -10px;
+    opacity: 1;
+  }
+  .memory-section-sub {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .memory-status-actions {
+    margin-left: 0;
+  }
+}
+
+/* Memory dialogs */
+.dialog.memory-editor {
+  width: min(560px, 100%);
+}
+.dialog.memory-source {
+  width: min(600px, 100%);
+}
+.memory-source-date {
+  margin: 0 0 8px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.dialog .source-content {
+  max-height: 50dvh;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  overflow-y: auto;
+  border-radius: var(--r-md);
+  background: var(--sunken);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.memory-forget-copy {
+  margin: 0 0 16px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+}
+.memory-source .dialog-actions > .memory-forget-confirm {
+  background: var(--danger);
+  color: var(--surface);
+}
+.memory-source .dialog-actions > .memory-forget-confirm:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 90%, var(--hover-mix));
+}
+.memory-source > .dialog-actions > button {
+  margin: 0;
+}
+
+/* Disclosure summaries share one quiet chevron. */
+:is(.note-attribution, .note-links, .note-list-custom, .memory-evidence) > summary {
+  list-style: none;
+}
+:is(.note-attribution, .note-links, .note-list-custom, .memory-evidence) > summary::-webkit-details-marker {
+  display: none;
+}
+:is(.note-attribution, .note-links, .note-list-custom, .memory-evidence) > summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin: 0 4px 2px 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.12s;
+}
+:is(.note-attribution, .note-links, .note-list-custom, .memory-evidence)[open] > summary::before {
+  transform: rotate(45deg);
+}
+.memory-evidence > summary,
+.note-list-custom > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dialog.memory-source .inline-check {
+  margin-bottom: 8px;
+}

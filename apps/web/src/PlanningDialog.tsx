@@ -2,7 +2,8 @@ import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice } from "./editor-control";
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { CalendarDays, Timer, X } from "lucide-react";
+import "./calendar.css";
 import { api } from "./api";
 import { localDateTime, shiftDate } from "./workspace";
 import type { CalendarEntry, Task } from "./types";
@@ -224,12 +225,37 @@ export function PlanningDialog({
         setCalendar((google_calendar_id as string) || "");
     },
   });
+  const writable = (connection?.calendars ?? []).filter((c) => c.writable);
+  const locked = busy || !!pending || !!review;
+  const status = record?.google_calendar_id
+    ? "Google copy, " + record.google_state.replaceAll("_", " ")
+    : fresh
+      ? "Kept in Eridani unless you publish a Google copy."
+      : "Saved in Eridani";
   return (
-    <Dialog onBackdrop={() => onClose()}
-        className="dialog google-event-editor"
-        aria-labelledby="planning-title"
-      >
-        <div className="dialog-heading">
+    <Dialog
+      onBackdrop={() => onClose()}
+      className="dialog cal-dialog google-event-editor planning-dialog"
+      aria-labelledby="planning-title"
+    >
+      <div className="dialog-heading">
+        <div className="cal-dialog-heading-text">
+          <span className="chip-row">
+            <span
+              className={
+                "chip calendar-type-badge cal-kind-" +
+                (kind === "block" ? "block" : "event")
+              }
+            >
+              {kind === "block" ? (
+                <Timer size={13} aria-hidden="true" />
+              ) : (
+                <CalendarDays size={13} aria-hidden="true" />
+              )}
+              {kind === "block" ? "Work block" : "Event"}
+            </span>
+            {(!fresh || record) && <span className="chip">{status}</span>}
+          </span>
           <h2 id="planning-title">
             {fresh
               ? kind === "block"
@@ -239,86 +265,122 @@ export function PlanningDialog({
                 ? "Task work block"
                 : "Event details"}
           </h2>
+        </div>
+        <div className="cal-dialog-heading-actions">
           <button
             type="button"
             aria-label="Close event"
-            className="icon-button"
+            className="btn-icon"
             onClick={onClose}
           >
             <X size={20} />
           </button>
         </div>
-        {error && (
-          <p role="alert" className="error-banner">
-            {error}
-          </p>
-        )}
-        {!fresh && !record ? (
-          <p>Loading entry…</p>
-        ) : (
-          <>
-            <p className="footnote">
-              {record?.google_calendar_id
-                ? "Google copy · " + record.google_state
-                : fresh
-                  ? "Kept in Eridani unless you publish a Google copy."
-                  : "Saved in Eridani"}
-              {record?.write_message ? " · " + record.write_message : ""}
+      </div>
+      {error && (
+        <p role="alert" className="error-banner">
+          {error}
+        </p>
+      )}
+      {!fresh && !record ? (
+        <p className="cal-loading-line" role="status">
+          Loading entry…
+        </p>
+      ) : (
+        <>
+          {fresh && <p className="cal-dialog-hint">{status}</p>}
+          {record?.write_message && (
+            <p className="cal-notice">{record.write_message}</p>
+          )}
+          {pending && (
+            <p role="status" className="cal-notice">
+              Waiting for Google to confirm. You can close this window and check
+              again.
             </p>
-            {pending && (
-              <p role="status">
-                Waiting for Google to confirm. You can close this window and
-                check again.
-              </p>
-            )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void save();
-              }}
-            >
-              <fieldset disabled={busy || !!pending || !!review}>
-                {fresh && (
-                  <label>
-                    Entry type
-                    <select
-                      value={kind}
-                      onChange={(e) => setKind(e.target.value as typeof kind)}
-                    >
-                      <option value="event">Appointment</option>
-                      <option value="block">Task work block</option>
-                    </select>
-                  </label>
-                )}
-                <label>
-                  Title
-                  <input
-                    aria-label="Event title"
-                    required
-                    maxLength={500}
-                    value={form.title}
-                    onChange={(e) => set("title", e.target.value)}
-                  />
-                </label>
-                <label>
-                  Linked task
+          )}
+          <form
+            id="planning-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+          >
+            <fieldset className="cal-form cal-form-grid" disabled={locked}>
+              {fresh && (
+                <label className="field span-2">
+                  <span className="field-label-text">Entry type</span>
                   <select
-                    aria-label="Linked task"
-                    required={kind === "block"}
-                    value={taskId}
-                    onChange={(e) => setTaskId(e.target.value)}
+                    value={kind}
+                    onChange={(e) => setKind(e.target.value as typeof kind)}
                   >
-                    <option value="">No task</option>
-                    {tasks
-                      .filter((t) => !t.archived && !t.is_template)
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.title}
-                        </option>
-                      ))}
+                    <option value="event">Appointment</option>
+                    <option value="block">Task work block</option>
                   </select>
                 </label>
-                <label className="event-checkbox">
+              )}
+              <label className="field span-2">
+                <span className="field-label-text">Title</span>
+                <input
+                  aria-label="Event title"
+                  required
+                  maxLength={500}
+                  value={form.title}
+                  onChange={(e) => set("title", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label-text">
+                  {form.all_day ? "First day" : "Starts"}
+                </span>
+                <input
+                  aria-label="Event start"
+                  required
+                  type={form.all_day ? "date" : "datetime-local"}
+                  value={form.start}
+                  onChange={(e) => set("start", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label-text">
+                  {form.all_day ? "Last day" : "Ends"}
+                </span>
+                <input
+                  aria-label="Event end"
+                  required
+                  type={form.all_day ? "date" : "datetime-local"}
+                  value={form.end}
+                  onChange={(e) => set("end", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label-text">Time zone</span>
+                <input
+                  aria-label="Event time zone"
+                  required
+                  value={form.timezone}
+                  onChange={(e) => set("timezone", e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span className="field-label-text">Linked task</span>
+                <select
+                  aria-label="Linked task"
+                  required={kind === "block"}
+                  value={taskId}
+                  onChange={(e) => setTaskId(e.target.value)}
+                >
+                  <option value="">No task</option>
+                  {tasks
+                    .filter((t) => !t.archived && !t.is_template)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="cal-checks span-2">
+                <label className="cal-check event-checkbox">
                   <input
                     type="checkbox"
                     checked={form.all_day}
@@ -334,57 +396,7 @@ export function PlanningDialog({
                   />
                   All day
                 </label>
-                <div className="event-date-fields">
-                  <label>
-                    {form.all_day ? "First day" : "Starts"}
-                    <input
-                      aria-label="Event start"
-                      required
-                      type={form.all_day ? "date" : "datetime-local"}
-                      value={form.start}
-                      onChange={(e) => set("start", e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    {form.all_day ? "Last day" : "Ends"}
-                    <input
-                      aria-label="Event end"
-                      required
-                      type={form.all_day ? "date" : "datetime-local"}
-                      value={form.end}
-                      onChange={(e) => set("end", e.target.value)}
-                    />
-                  </label>
-                </div>
-                <label>
-                  Time zone
-                  <input
-                    aria-label="Event time zone"
-                    required
-                    value={form.timezone}
-                    onChange={(e) => set("timezone", e.target.value)}
-                  />
-                </label>
-                <label>
-                  Location
-                  <input
-                    aria-label="Event location"
-                    maxLength={1000}
-                    value={form.location}
-                    onChange={(e) => set("location", e.target.value)}
-                  />
-                </label>
-                <label>
-                  Notes
-                  <textarea
-                    aria-label="Event notes"
-                    rows={4}
-                    maxLength={10000}
-                    value={form.description}
-                    onChange={(e) => set("description", e.target.value)}
-                  />
-                </label>
-                <label className="event-checkbox">
+                <label className="cal-check event-checkbox">
                   <input
                     type="checkbox"
                     checked={form.busy}
@@ -392,72 +404,94 @@ export function PlanningDialog({
                   />
                   Reserve this time as busy
                 </label>
-                {fresh && (
-                  <label>
-                    Google copy
-                    <select
-                      aria-label="Google copy"
-                      value={calendar}
-                      onChange={(e) => setCalendar(e.target.value)}
-                    >
-                      <option value="">Keep in Eridani only</option>
-                      {connection?.calendar_write_enabled &&
-                        connection.calendars
-                          .filter((c) => c.writable)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.title}
-                            </option>
-                          ))}
-                    </select>
-                  </label>
-                )}
-                <p className="footnote">
-                  A work block reserves time. It does not change the task’s
-                  deadline or alerts.
-                </p>
-                <button className="primary" type="submit">
-                  Save event
-                </button>
-              </fieldset>
-            </form>
-            {!fresh && record && !pending && (
-              <div className="planning-actions">
-                {!record.google_calendar_id &&
-                  connection?.calendar_write_enabled && (
-                    <div>
-                      <label>
-                        Publish to Google
-                        <select
-                          aria-label="Publish calendar"
-                          value={calendar}
-                          onChange={(e) => setCalendar(e.target.value)}
-                        >
-                          <option value="">Choose calendar</option>
-                          {connection.calendars
-                            .filter((c) => c.writable)
-                            .map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.title}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <button
-                        disabled={busy || !calendar}
-                        onClick={() =>
-                          void act("planning.publish", {
-                            calendar_id: calendar,
-                          })
-                        }
+              </div>
+              <label className="field span-2">
+                <span className="field-label-text">Location</span>
+                <input
+                  aria-label="Event location"
+                  maxLength={1000}
+                  value={form.location}
+                  onChange={(e) => set("location", e.target.value)}
+                />
+              </label>
+              <label className="field span-2">
+                <span className="field-label-text">Notes</span>
+                <textarea
+                  aria-label="Event notes"
+                  rows={3}
+                  maxLength={10000}
+                  value={form.description}
+                  onChange={(e) => set("description", e.target.value)}
+                />
+              </label>
+              {fresh && (
+                <label className="field span-2">
+                  <span className="field-label-text">Google copy</span>
+                  <select
+                    aria-label="Google copy"
+                    value={calendar}
+                    onChange={(e) => setCalendar(e.target.value)}
+                  >
+                    <option value="">Keep in Eridani only</option>
+                    {connection?.calendar_write_enabled &&
+                      writable.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <p className="cal-form-hint span-2">
+                A work block reserves time. It does not change the task’s
+                deadline or alerts.
+              </p>
+            </fieldset>
+          </form>
+          {!fresh && record && !pending && (connection || record.google_calendar_id) && (
+            <section className="cal-sync-tools planning-actions">
+              <h3>Google Calendar</h3>
+              {!record.google_calendar_id &&
+                connection?.calendar_write_enabled && (
+                  <div className="cal-sync-row">
+                    <label className="field">
+                      <span className="field-label-text">Publish to Google</span>
+                      <select
+                        aria-label="Publish calendar"
+                        value={calendar}
+                        onChange={(e) => setCalendar(e.target.value)}
                       >
-                        Publish copy
-                      </button>
-                    </div>
-                  )}
-                {record.google_calendar_id && (
-                  <>
+                        <option value="">Choose calendar</option>
+                        {writable.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
+                      className="secondary"
+                      disabled={busy || !calendar}
+                      onClick={() =>
+                        void act("planning.publish", { calendar_id: calendar })
+                      }
+                    >
+                      Publish copy
+                    </button>
+                  </div>
+                )}
+              {!record.google_calendar_id &&
+                !connection?.calendar_write_enabled && (
+                  <p className="cal-form-hint">
+                    Kept in Eridani. Enable calendar editing in Settings to
+                    publish a Google copy.
+                  </p>
+                )}
+              {record.google_calendar_id && (
+                <>
+                  <div className="cal-sync-row">
+                    <button
+                      className="secondary"
                       disabled={busy}
                       onClick={async () => {
                         setBusy(true);
@@ -474,85 +508,106 @@ export function PlanningDialog({
                     >
                       Compare Google copy
                     </button>
-                    {compare && (
-                      <div className="sync-comparison">
-                        <h3>Google copy</h3>
-                        <strong>{compare.google.title}</strong>
-                        <p>
-                          {compare.google.start} – {compare.google.end} ·{" "}
-                          {compare.google.timezone}
-                        </p>
-                        <p className="plain-details">
-                          {compare.google.description}
-                        </p>
-                        {compare.google.edit_token ? (
-                          <>
-                            <button
-                              disabled={busy}
-                              onClick={() =>
-                                void act("planning.resolve", {
-                                  choice: "google",
-                                  edit_token: compare.google.edit_token,
-                                })
-                              }
-                            >
-                              Use Google version
-                            </button>
-                            <button
-                              disabled={busy}
-                              onClick={() =>
-                                void act("planning.resolve", {
-                                  choice: "eridani",
-                                  edit_token: compare.google.edit_token,
-                                })
-                              }
-                            >
-                              Keep Eridani version
-                            </button>
-                          </>
-                        ) : (
-                          <p>{compare.google.read_only_reason}</p>
-                        )}
-                      </div>
-                    )}
                     <button
+                      className="btn btn-ghost"
                       disabled={busy}
                       onClick={() => void act("planning.unlink", {})}
                     >
-                      Unlink · keep both copies
+                      Unlink, keep both copies
                     </button>
-                  </>
-                )}
-                {!deleting ? (
-                  <button
-                    className="text-button"
-                    disabled={busy || !!review}
-                    onClick={() => setDeleting(true)}
-                  >
-                    Cancel event
-                  </button>
-                ) : (
-                  <p>
-                    Cancel this entry
-                    {record.google_calendar_id
-                      ? " and delete its Google copy"
-                      : ""}
-                    ? The task remains.
-                    <button
-                      disabled={busy}
-                      onClick={() => void act("planning.delete", {})}
-                    >
-                      Confirm cancellation
-                    </button>
-                    <button onClick={() => setDeleting(false)}>
-                      Keep event
-                    </button>
-                  </p>
-                )}
-              </div>
+                  </div>
+                  {compare && (
+                    <div className="cal-compare sync-comparison">
+                      <h3 className="cal-props-title">Google copy</h3>
+                      <strong>{compare.google.title}</strong>
+                      <p>
+                        {compare.google.start} – {compare.google.end}{" "}
+                        <span className="chip">{compare.google.timezone}</span>
+                      </p>
+                      {compare.google.description && (
+                        <p className="cal-prose plain-details">
+                          {compare.google.description}
+                        </p>
+                      )}
+                      {compare.google.edit_token ? (
+                        <div className="cal-sync-row">
+                          <button
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              void act("planning.resolve", {
+                                choice: "google",
+                                edit_token: compare.google.edit_token,
+                              })
+                            }
+                          >
+                            Use Google version
+                          </button>
+                          <button
+                            className="secondary"
+                            disabled={busy}
+                            onClick={() =>
+                              void act("planning.resolve", {
+                                choice: "eridani",
+                                edit_token: compare.google.edit_token,
+                              })
+                            }
+                          >
+                            Keep Eridani version
+                          </button>
+                        </div>
+                      ) : (
+                        <p>{compare.google.read_only_reason}</p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+          )}
+          {!fresh && record && !pending && deleting && (
+            <div className="cal-confirm">
+              <p>
+                Cancel this entry
+                {record.google_calendar_id ? " and delete its Google copy" : ""}?
+                The task remains.
+              </p>
+              <button className="btn btn-ghost" onClick={() => setDeleting(false)}>
+                Keep event
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={busy}
+                onClick={() => void act("planning.delete", {})}
+              >
+                Confirm cancellation
+              </button>
+            </div>
+          )}
+          <div className="dialog-actions">
+            {!fresh && record && !pending && !deleting && (
+              <button
+                className="btn btn-danger dialog-actions-start"
+                disabled={busy || !!review}
+                onClick={() => setDeleting(true)}
+              >
+                Cancel event
+              </button>
             )}
-          </>
-        )}
-      </Dialog>
+            <button className="btn btn-ghost" type="button" onClick={onClose}>
+              Close
+            </button>
+            <button
+              className="primary"
+              type="submit"
+              form="planning-form"
+              disabled={locked}
+            >
+              Save event
+            </button>
+          </div>
+        </>
+      )}
+    </Dialog>
   );
 }

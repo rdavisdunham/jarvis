@@ -35,7 +35,7 @@ export function LayoutSwitch({
 }) {
   const icons = { list: List, board: Columns3, timeline: ChartNoAxesGantt };
   return (
-    <div className="layout-switch" role="group" aria-label={label}>
+    <div className="segmented layout-switch" role="group" aria-label={label}>
       {(["list", "board", "timeline"] as const).map((layout) => {
         const Icon = icons[layout];
         return (
@@ -85,7 +85,7 @@ export function BoardNavigator({root, groups, label, compact, onCompact}: {
     node?.addEventListener("scroll", update, {passive:true});
     return () => node?.removeEventListener("scroll", update);
   }, [signature, label]);
-  return <div className="board-navigation"><label>Column<select aria-label={label + " column"} value={groups.some(g => g.key === active) ? active : groups[0]?.key ?? ""} onChange={e => go(e.target.value)}>{groups.map(g => <option key={g.key} value={g.key}>{g.label} · {g.count}</option>)}</select></label>
+  return <div className="board-navigation"><label>Column<select aria-label={label + " column"} value={groups.some(g => g.key === active) ? active : groups[0]?.key ?? ""} onChange={e => go(e.target.value)}>{groups.map(g => <option key={g.key} value={g.key}>{g.label} ({g.count})</option>)}</select></label>
     <label className="inline-check"><input type="checkbox" checked={compact} onChange={e => onCompact(e.target.checked)}/>Hide empty & finished</label>
   </div>;
 }
@@ -212,7 +212,7 @@ export function TaskBoard(p: TaskProps) {
                       <span
                         title={
                           "Deadline" +
-                          (task.due_timezone ? " · " + task.due_timezone : "")
+                          (task.due_timezone ? " (" + task.due_timezone + ")" : "")
                         }
                       >
                         <CalendarDays size={12} />
@@ -366,7 +366,7 @@ export function Timeline({
       <p className="timeline-legend">
         {items.some((item) => item.range)
           ? "Bars: project start to target. Single dates are milestones."
-          : "● Planned work · ◆ Deadline. Dates do not reserve calendar time."}
+          : "Circles are planned work and diamonds are deadlines. Dates do not reserve calendar time."}
       </p>
       <div
         className="timeline-scroll"
@@ -480,7 +480,7 @@ export function Timeline({
               open={group.title === "Unscheduled" || undefined}
             >
               <summary>
-                {group.title === "Unscheduled" ? "Unscheduled · no planned day or deadline" : group.title}
+                {group.title === "Unscheduled" ? "Unscheduled: no planned day or deadline" : group.title}
                 <span>{group.rows.length}</span>
               </summary>
               <div>
@@ -488,7 +488,7 @@ export function Timeline({
                   <button key={item.id} onClick={() => onOpen(item.id)}>
                     <span>{item.title}</span>
                     <small>
-                      {[item.start, item.end].filter(Boolean).join(" → ") ||
+                      {[item.start, item.end].filter(Boolean).join(" to ") ||
                         "Set a planned date or deadline"}
                     </small>
                   </button>

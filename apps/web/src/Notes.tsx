@@ -10,9 +10,11 @@ import {
   type Home,
   type OrganizationFilter,
 } from "./productivity";
-import { useEffect, useRef, useState } from "react";
-import { Archive, ArrowRight, FileText, Plus, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Archive, ChevronRight, FileText, FolderOpen, ListChecks, MessageSquare, Plus, Search, ListFilter, Sparkles, X } from "lucide-react";
+import "./notes.css";
 import { api, post } from "./api";
+import { notePreview } from "./note-preview";
 import type { Project, Task } from "./types";
 
 type NoteSource = {id:string; title:string; evidence:string; source_revision:number; source_changed:boolean};
@@ -83,6 +85,7 @@ export function blankNote(
 
 export function NotesPage({
   listId = "", onList, canEdit = true,
+  onQuery,
   organization,
   organizationFilter,
   onOrganizationFilter,
@@ -101,6 +104,7 @@ export function NotesPage({
 }: {
   listId?: string;
   onList?: (id: string) => void;
+  onQuery?: (value: string) => void;
   canEdit?: boolean;
   archived: boolean;
   onArchived: (v: boolean) => void;
@@ -234,78 +238,68 @@ export function NotesPage({
     project,
     archived ? "Archived" : "",
   ].filter(Boolean);
+  const toolbar = (
+    <div className="notes-toolbar">
+      {onQuery && (
+        <label className="page-search notes-search">
+          <Search size={16} aria-hidden />
+          <input aria-label="Search notes" placeholder="Search notes…" value={query} onChange={(e) => onQuery(e.target.value)} />
+        </label>
+      )}
+      <FilterMenu count={filterLabels.length}>
+        <OrganizationFilters organization={organization} value={organizationFilter} onChange={onOrganizationFilter} />
+        <label>
+          Project
+          <select aria-label="Notes project" value={project} onChange={(e) => onProject(e.target.value)}>
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Collection
+          <select aria-label="Notes collection" value={archived ? "archived" : "active"} onChange={(e) => onArchived(e.target.value === "archived")}>
+            <option value="active">Active notes</option>
+            <option value="archived">Archived notes</option>
+          </select>
+        </label>
+      </FilterMenu>
+      <button className="btn btn-primary" disabled={!canEdit} onClick={onNew}>
+        <Plus size={16} />
+        New note
+      </button>
+    </div>
+  );
   return (
-    <section className="notes-workspace" aria-label="Notes workspace">
-      <NoteLists selected={listId} onSelect={id => onList?.(id)} onOpen={onOpen} revision={revision} canEdit={canEdit}/>
-      <div className="workspace-actions">
-        <details className="filter-panel note-filter-panel">
-          <summary>
-            Filters{" "}
-            {filterLabels.length > 0 && (
-              <span>{filterLabels.length} active</span>
-            )}
-          </summary>
-          <div className="note-filters">
-            <OrganizationFilters
-              organization={organization}
-              value={organizationFilter}
-              onChange={onOrganizationFilter}
-            />
-            <label>
-              Project
-              <select
-                aria-label="Notes project"
-                value={project}
-                onChange={(e) => onProject(e.target.value)}
-              >
-                <option value="">All projects</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Collection
-              <select
-                aria-label="Notes collection"
-                value={archived ? "archived" : "active"}
-                onChange={(e) => onArchived(e.target.value === "archived")}
-              >
-                <option value="active">Active notes</option>
-                <option value="archived">Archived notes</option>
-              </select>
-            </label>
-          </div>
-        </details>
-        <button className="primary compact" disabled={!canEdit} onClick={onNew}>
-          <Plus size={16} />
-          New note
-        </button>
-      </div>
-      {filterLabels.length > 0 && (
-        <div className="active-filters" aria-label="Active note filters">
-          {filterLabels.map((label, i) => (
-            <span key={i}>{label}</span>
-          ))}
+    <section className="notes-workspace notes-page" aria-label="Notes workspace">
+      <NoteLists selected={listId} onSelect={id => onList?.(id)} onOpen={onOpen} revision={revision} canEdit={canEdit} toolbar={toolbar}>
+      {(filterLabels.length > 0 || (query.trim() && !archived)) && (
+        <div className="notes-context">
+          {filterLabels.length > 0 && (
+            <div className="chip-row" aria-label="Active note filters">
+              {filterLabels.map((label, i) => (
+                <span className="chip" key={i}>{label}</span>
+              ))}
+            </div>
+          )}
+          {query.trim() && !archived && (
+            <button
+              className="btn btn-ghost btn-sm notes-mode"
+              disabled={loading}
+              onClick={() => {
+                onMode(meaning ? "keyword" : "semantic");
+                setRefresh((n) => n + 1);
+              }}
+            >
+              <Sparkles size={15} />
+              {meaning ? "Use keyword search" : "Search by meaning"}
+            </button>
+          )}
         </div>
       )}
-      {query.trim() && !archived && (
-        <button
-          className="secondary compact"
-          disabled={loading}
-          onClick={() => {
-            onMode(meaning ? "keyword" : "semantic");
-            setRefresh((n) => n + 1);
-          }}
-        >
-          <Sparkles size={15} />
-          {meaning ? "Use keyword search" : "Search by meaning"}
-        </button>
-      )}
       {loading && (
-        <p role="status" className="footnote">
+        <p role="status" className="notes-status">
           Loading notes…
         </p>
       )}
@@ -316,58 +310,109 @@ export function NotesPage({
         </p>
       )}
       {hint && (
-        <p role="status" className="footnote">
+        <p role="status" className="notes-status">
           {hint}
         </p>
       )}
       <div className="note-grid">
-        {items.map((n) => (
-          <button key={n.id} className="note-card" onClick={() => onOpen(n.id)}>
-            <span className="note-card-heading">
-              <FileText size={18} />
-              <strong>{n.title}</strong>
-            </span>
-            <span className="note-excerpt">{n.excerpt || (n.organization?.generated ? "Saved item" : "Empty note")}</span>
-            <span className="task-meta">
-              {projects.find((p) => p.id === n.project_id)?.name}
-              {n.tags.length
-                ? " · " + n.tags.map((t) => "#" + t).join(" ")
-                : ""}
-            </span>
-            <span className="note-card-footer">
-              {n.tasks.length ? n.tasks.length + " linked tasks" : "Note"}
-              <span>{new Date(n.updated_at).toLocaleDateString()}</span>
-            </span>
-          </button>
-        ))}
+        {items.map((n) => {
+          const home = projects.find((p) => p.id === n.project_id)?.name;
+          const preview = notePreview(n);
+          return (
+            <button key={n.id} className="note-card" onClick={() => onOpen(n.id)}>
+              <strong className="note-card-title">{n.title}</strong>
+              {preview && <span className="note-card-preview">{preview}</span>}
+              <span className="note-card-foot">
+                <span className="note-card-tags">
+                  {home && <span className="chip chip-home"><FolderOpen size={13} aria-hidden />{home}</span>}
+                  {n.tags.map((t) => <span className="chip" key={t}>{t}</span>)}
+                  {n.tasks.length > 0 && <span className="chip"><ListChecks size={13} aria-hidden />{n.tasks.length === 1 ? "1 task" : n.tasks.length + " tasks"}</span>}
+                </span>
+                <time className="note-card-date" dateTime={n.updated_at}>{shortDate(n.updated_at)}</time>
+              </span>
+            </button>
+          );
+        })}
       </div>
       {!loading && !error && !items.length && (
-        <div className="empty-state">
-          <FileText size={28} />
-          <h3>
-            {query
-              ? "No matching notes."
-              : archived
-                ? "No archived notes."
-                : "A place to put your thoughts."}
-          </h3>
+        <div className="empty notes-empty">
           <p>
             {query
-              ? "Try another phrase or search by meaning."
-              : "Keep notes, connect them to your work, and ask Eri to find the next steps."}
+              ? "No notes match this search. Try another phrase or search by meaning."
+              : archived
+                ? "Archived notes will appear here."
+                : listId === "uncategorized"
+                  ? "Every note is filed in a list."
+                  : listId
+                    ? "Nothing is filed in this list yet."
+                    : "Keep notes here, connect them to your work, and ask Eri to find the next steps."}
           </p>
+          {!query && !archived && canEdit && !listId && (
+            <button className="btn btn-soft" onClick={onNew}>
+              <Plus size={16} />
+              Write a note
+            </button>
+          )}
+          {query && onQuery && (
+            <button className="btn btn-soft" onClick={() => onQuery("")}>
+              Clear search
+            </button>
+          )}
         </div>
       )}
       {offset !== null && (
         <button
-          className="secondary"
+          className="btn notes-more"
           disabled={loading}
           onClick={() => void more()}
         >
           Load more notes
         </button>
       )}
+      </NoteLists>
     </section>
+  );
+}
+
+function shortDate(iso: string) {
+  const d = new Date(iso), now = new Date();
+  return d.toLocaleDateString([], d.getFullYear() === now.getFullYear()
+    ? { month: "short", day: "numeric" }
+    : { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** A "Filters" button that opens a small popover; closes on outside click or Escape. */
+function FilterMenu({ count, children }: { count: number; children: ReactNode }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const outside = (event: Event) => {
+      const el = ref.current;
+      if (el?.open && !el.contains(event.target as Node)) el.open = false;
+    };
+    const escape = (event: KeyboardEvent) => {
+      const el = ref.current;
+      if (event.key === "Escape" && el?.open && el.contains(document.activeElement)) {
+        event.stopPropagation();
+        el.open = false;
+        el.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape, true);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape, true);
+    };
+  }, []);
+  return (
+    <details className="notes-filter" ref={ref}>
+      <summary className="btn">
+        <ListFilter size={16} aria-hidden />
+        Filters
+        {count > 0 && <span className="notes-filter-count">{count}</span>}
+      </summary>
+      <div className="popover notes-filter-popover">{children}</div>
+    </details>
   );
 }
 
@@ -625,9 +670,16 @@ export function NoteEditor({
       }
     }
   }
+  const homeProject = projects.find((p) => p.id === project)?.name;
+  const tagList = tags.split(",").map((t) => t.trim()).filter(Boolean);
+  const connected = [
+    ...new Map(
+      [...(note.related_notes ?? []), ...(note.backlinks ?? [])].map((n) => [n.id, n]),
+    ).values(),
+  ];
   return (
     <Dialog as="form"
-        className={"dialog note-editor " + (!writing ? "note-detail" : "")}
+        className={"dialog note-editor" + (!writing ? " note-detail" : "")}
         onChange={() => setWriting(true)}
         aria-labelledby="note-title"
         onSubmit={(e) => {
@@ -635,11 +687,17 @@ export function NoteEditor({
           void save();
         }}
       >
-        <div className="dialog-heading">
-          <h2 id="note-title">{note.id === "new" ? "New note" : "Note"}</h2>
+        <div className="dialog-heading note-editor-head">
+          <div className="note-editor-crumb">
+            <h2 id="note-title">{note.id === "new" ? "New note" : "Note"}</h2>
+            <span className="note-editor-saved" role="status">
+              {dirty ? "Unsaved changes" : note.id === "new" ? "Start with a title" : "Saved " + new Date(note.updated_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </span>
+          </div>
+          {note.id !== "new" && <RecordTools kind="note" id={note.id}/>}
           <button
             type="button"
-            className="icon-button"
+            className="btn-icon"
             aria-label="Close note"
             disabled={busy}
             onClick={() => dirty ? setDiscarding(true) : onClose()}
@@ -647,43 +705,181 @@ export function NoteEditor({
             <X size={20} />
           </button>
         </div>
-        {note.id !== "new" && <RecordTools kind="note" id={note.id}/>}
-        {note.id !== "new" && <NoteFiling note={note} readOnly={readOnly} disabled={busy || dirty || note.archived} onSaved={onSaved} onOpen={onOpenNote}/>}
         {(error || localError) && (
           <p className="error-banner" role="alert">
             {error || localError}
           </p>
         )}
-        {discarding && <div role="alert" className="draft-warning"><p>Your note has unsaved changes.</p><button type="button" className="secondary" onClick={() => setDiscarding(false)}>Keep writing</button><button type="button" className="text-button danger" onClick={onClose}>Discard draft</button></div>}
-        <p className="footnote" role="status">{dirty ? "Unsaved draft · Save note to keep your changes" : note.id === "new" ? "Start with a title and your note" : "Saved " + new Date(note.updated_at).toLocaleString()}</p>
-        {writing ? <>
-        <label>
-          Title
-          <input
-            autoFocus
-            required
-            maxLength={200}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-        <label>
-          Note
-          <textarea
-            className="note-body"
-            maxLength={30000}
-            rows={11}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Start writing…"
-          />
-        </label>
-        </> : <div className="note-reading"><button type="button" className="inline-value note-reading-title" aria-label="Change note title" onClick={() => setWriting(true)}>{title}</button>
-          <button type="button" className="inline-value note-reading-body" aria-label="Edit note content" onClick={() => setWriting(true)}>{content || "Add note content"}</button>
-          <div className="record-meta">{projects.find(p => p.id === project)?.name}{tags && <span>{tags}</span>}</div>
+        {discarding && <div role="alert" className="draft-warning"><p>Your note has unsaved changes.</p><button type="button" className="btn btn-sm" onClick={() => setDiscarding(false)}>Keep writing</button><button type="button" className="btn btn-danger btn-sm" onClick={onClose}>Discard draft</button></div>}
+        <div className="note-doc">
+        {writing ? <div className="note-writing">
+          <label className="note-title-field">
+            <span className="sr-only">Title</span>
+            <input
+              autoFocus
+              required
+              maxLength={200}
+              value={title}
+              placeholder="Untitled note"
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+          <label className="note-body-field">
+            <span className="sr-only">Note</span>
+            <textarea
+              className="note-body"
+              maxLength={30000}
+              rows={11}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Start writing…"
+            />
+          </label>
+        </div> : <div className="note-reading">
+          <button type="button" className="note-reading-title" aria-label="Change note title" onClick={() => setWriting(true)}>{title}</button>
+          <button type="button" className={"note-reading-body" + (content ? "" : " is-empty")} aria-label="Edit note content" onClick={() => setWriting(true)}>{content || "Add note content"}</button>
         </div>}
-        <details className="note-attribution"><summary>Organization & links</summary>
-        <div className="form-grid">
+        {(homeProject || tagList.length > 0) && (
+          <div className="chip-row note-meta" aria-label="Project and tags">
+            {homeProject && <span className="chip chip-home"><FolderOpen size={13} aria-hidden />{homeProject}</span>}
+            {tagList.map((t) => <span className="chip" key={t}>{t}</span>)}
+          </div>
+        )}
+        {note.id !== "new" && <NoteFiling note={note} readOnly={readOnly} disabled={busy || dirty || note.archived} onSaved={onSaved} onOpen={onOpenNote}/>}
+        {connected.length > 0 && (
+          <div className="note-backlinks">
+            <h3 className="note-section-title">Connected notes and backlinks</h3>
+            <div className="chip-row">
+              {connected.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className="chip note-chip-link"
+                  disabled={dirty || busy}
+                  onClick={() => onOpenNote?.(n.id)}
+                >
+                  <FileText size={13} aria-hidden />
+                  {n.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {(!!note.tasks.length || note.conversation_id) && (
+          <div className="note-linked-records">
+            <h3 className="note-section-title">Linked work</h3>
+            {note.tasks.map((t) => (
+              <div className="note-linked-task" key={t.id}>
+                <button
+                  className="note-linked-open"
+                  type="button"
+                  disabled={dirty || busy}
+                  onClick={() => onTask(t.id)}
+                >
+                  <span className="note-linked-name">{t.title}</span>
+                  <span className={"chip" + (t.status === "done" ? " chip-done" : "")}>{humanLabel(t.status)}</span>
+                  <ChevronRight size={16} aria-hidden className="note-linked-chevron" />
+                </button>
+                {t.evidence && (
+                  <small>
+                    From note version {t.note_revision}: {t.evidence}
+                  </small>
+                )}
+              </div>
+            ))}
+            {note.conversation_id && (
+              <div className="note-linked-task">
+                <button
+                  type="button"
+                  className="note-linked-open"
+                  disabled={dirty || busy}
+                  onClick={() => onConversation(note.conversation_id!)}
+                >
+                  <MessageSquare size={15} aria-hidden />
+                  <span className="note-linked-name">Open linked conversation</span>
+                  <ChevronRight size={16} aria-hidden className="note-linked-chevron" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        {note.id !== "new" && !note.archived && (
+          <section className="note-extraction" aria-label="To-dos in this note">
+            <div className="note-extraction-head">
+              <button
+                type="button"
+                className="btn btn-soft btn-sm"
+                disabled={busy || extracting || dirty}
+                onClick={() => void extract()}
+              >
+                <Sparkles size={15} />
+                {extracting ? "Finding to-dos…" : "Find to-dos"}
+              </button>
+              <p className="note-hint">
+                {dirty
+                  ? "Save your edits before extracting to-dos or opening linked records."
+                  : "Review suggestions before creating tasks. Existing extractions won't create duplicates."}
+              </p>
+            </div>
+            {note.index_state !== "ready" && (
+              <p className="note-hint">
+                {note.index_state === "failed"
+                  ? "Meaning search could not be prepared. Save again to retry; keyword search works."
+                  : "Preparing this note for meaning search."}
+              </p>
+            )}
+            {proposals.map((p, i) => (
+              <div className="note-proposal" key={i}>
+                <label className="check-label">
+                  <input
+                    type="checkbox"
+                    checked={p.checked}
+                    disabled={!!p.existing_task_id}
+                    onChange={(e) =>
+                      setProposals((rows) =>
+                        rows.map((r, index) =>
+                          index === i ? { ...r, checked: e.target.checked } : r,
+                        ),
+                      )
+                    }
+                  />
+                  {p.existing_task_id ? "Already extracted" : "Create task"}
+                </label>
+                <input
+                  aria-label={"Suggested task " + (i + 1)}
+                  value={p.title}
+                  maxLength={500}
+                  disabled={!!p.existing_task_id}
+                  onChange={(e) =>
+                    setProposals((rows) =>
+                      rows.map((r, index) =>
+                        index === i ? { ...r, title: e.target.value } : r,
+                      ),
+                    )
+                  }
+                />
+                <blockquote>{p.evidence}</blockquote>
+              </div>
+            ))}
+            {!!proposals.length && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={
+                  busy ||
+                  dirty ||
+                  !proposals.some((p) => p.checked && !p.existing_task_id) ||
+                  proposals.some((p) => p.checked && !p.title.trim())
+                }
+                onClick={() => void createTasks()}
+              >
+                Create selected tasks
+              </button>
+            )}
+          </section>
+        )}
+        <details className="note-attribution"><summary>Organization and links</summary>
+        <div className="note-attribution-grid">
           <label>
             Home project
             <select
@@ -738,34 +934,8 @@ export function NoteEditor({
             onChange={setNoteIds}
           />
         </details>
-        </details>
-        {!!(
-          (note.related_notes?.length ?? 0) + (note.backlinks?.length ?? 0)
-        ) && (
-          <div className="note-backlinks">
-            <strong>Connected notes & backlinks</strong>
-            {[
-              ...new Map(
-                [...(note.related_notes ?? []), ...(note.backlinks ?? [])].map(
-                  (n) => [n.id, n],
-                ),
-              ).values(),
-            ].map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                className="text-button"
-                disabled={dirty || busy}
-                onClick={() => onOpenNote?.(n.id)}
-              >
-                {n.title}
-                <ArrowRight size={14} />
-              </button>
-            ))}
-          </div>
-        )}
         <details className="note-links">
-          <summary>Linked tasks · {linked.length}</summary>
+          <summary>Linked tasks <span className="note-links-count">{linked.length}</span></summary>
           <input
             aria-label="Find tasks to link"
             placeholder="Find a task…"
@@ -797,117 +967,13 @@ export function NoteEditor({
               ))}
           </div>
         </details>
-        {!!note.tasks.length && (
-          <div className="note-linked-records">
-            {note.tasks.map((t) => (
-              <div key={t.id}>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={dirty || busy}
-                  onClick={() => onTask(t.id)}
-                >
-                  {t.title}<small>{humanLabel(t.status)}</small>
-                  <ArrowRight size={14} />
-                </button>
-                {t.evidence && (
-                  <small>
-                    From note version {t.note_revision}: {t.evidence}
-                  </small>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {note.conversation_id && (
-          <button
-            type="button"
-            className="text-button"
-            disabled={dirty || busy}
-            onClick={() => onConversation(note.conversation_id!)}
-          >
-            Open linked conversation
-            <ArrowRight size={14} />
-          </button>
-        )}
-        {note.id !== "new" && !note.archived && (
-          <section className="note-extraction">
-            <button
-              type="button"
-              className="secondary compact"
-              disabled={busy || extracting || dirty}
-              onClick={() => void extract()}
-            >
-              <Sparkles size={15} />
-              {extracting ? "Finding to-dos…" : "Find to-dos"}
-            </button>
-            <p className="footnote">
-              {dirty
-                ? "Save your edits before extracting to-dos or opening linked records."
-                : "Review suggestions before creating tasks. Existing extractions won't create duplicates."}
-            </p>
-            {note.index_state !== "ready" && (
-              <p className="footnote">
-                {note.index_state === "failed"
-                  ? "Meaning search could not be prepared. Save again to retry; keyword search works."
-                  : "Preparing this note for meaning search."}
-              </p>
-            )}
-            {proposals.map((p, i) => (
-              <div className="note-proposal" key={i}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={p.checked}
-                    disabled={!!p.existing_task_id}
-                    onChange={(e) =>
-                      setProposals((rows) =>
-                        rows.map((r, index) =>
-                          index === i ? { ...r, checked: e.target.checked } : r,
-                        ),
-                      )
-                    }
-                  />
-                  {p.existing_task_id ? "Already extracted" : "Create task"}
-                </label>
-                <input
-                  aria-label={"Suggested task " + (i + 1)}
-                  value={p.title}
-                  maxLength={500}
-                  disabled={!!p.existing_task_id}
-                  onChange={(e) =>
-                    setProposals((rows) =>
-                      rows.map((r, index) =>
-                        index === i ? { ...r, title: e.target.value } : r,
-                      ),
-                    )
-                  }
-                />
-                <blockquote>{p.evidence}</blockquote>
-              </div>
-            ))}
-            {!!proposals.length && (
-              <button
-                type="button"
-                className="primary"
-                disabled={
-                  busy ||
-                  dirty ||
-                  !proposals.some((p) => p.checked && !p.existing_task_id) ||
-                  proposals.some((p) => p.checked && !p.title.trim())
-                }
-                onClick={() => void createTasks()}
-              >
-                Create selected tasks
-              </button>
-            )}
-          </section>
-        )}
+        </details>
+        </div>
         <div className="dialog-actions">
           {note.id !== "new" && (
             <button
               type="button"
-              className="text-button"
+              className="btn btn-ghost dialog-actions-start"
               disabled={busy || dirty}
               onClick={async () => {
                 const result = await mutate(
@@ -926,8 +992,8 @@ export function NoteEditor({
               {note.archived ? "Restore note" : "Archive note"}
             </button>
           )}
-          {(writing || dirty) && <button className="primary" disabled={busy || extracting || !title.trim()}>Save note</button>}
-          {!writing && !dirty && <span className="footnote">Click the title or text to edit</span>}
+          {!writing && !dirty && <span className="note-hint">Select the title or text to edit</span>}
+          {(writing || dirty) && <button className="btn btn-primary" disabled={busy || extracting || !title.trim()}>Save note</button>}
         </div>
       </Dialog>
   );

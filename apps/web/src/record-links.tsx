@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link2, Undo2 } from "lucide-react";
 import { useEditorBridge } from "./editor-control";
 export const recordKinds = ["record","task", "note", "project", "goal", "area", "space", "actor"] as const;
 export type LinkedRecord = {kind: typeof recordKinds[number]; id:string};
@@ -32,7 +33,7 @@ export function RecordNavigator({children, workspace, view, onOpen}: {children:R
 }
 export function RecordTools({kind,id}:LinkedRecord) {
   const context = useContext(Context), [message,setMessage] = useState("");
-  return <div className="record-tools">{context.back && <button type="button" className="text-button" onClick={() => void context.back!().catch(e => setMessage(e.message))}>← Previous record</button>}
-    <button type="button" className="text-button" onClick={() => void navigator.clipboard.writeText(recordLink(location.origin,{kind,id},context.workspace)).then(() => setMessage("Link copied · access is still required")).catch(() => setMessage(recordLink(location.origin,{kind,id},context.workspace)))}>Copy record link</button>
+  return <div className="record-tools">{context.back && <button type="button" className="btn btn-ghost btn-sm" onClick={() => void context.back!().catch(e => setMessage(e.message))}><Undo2 size={15} aria-hidden/>Previous record</button>}
+    <button type="button" className="btn btn-ghost btn-sm" onClick={() => void navigator.clipboard.writeText(recordLink(location.origin,{kind,id},context.workspace)).then(() => setMessage("Link copied. Opening it still requires access.")).catch(() => setMessage(recordLink(location.origin,{kind,id},context.workspace)))}><Link2 size={15} aria-hidden/>Copy record link</button>
     {message && <small role="status">{message}</small>}</div>;
 }

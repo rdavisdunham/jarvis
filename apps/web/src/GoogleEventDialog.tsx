@@ -1,8 +1,16 @@
 import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
-import { useEffect, useRef, useState } from "react";
-import { ExternalLink, Pencil, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  CalendarDays,
+  ExternalLink,
+  Paperclip,
+  Pencil,
+  Video,
+  X,
+} from "lucide-react";
+import "./calendar.css";
 import { api, post } from "./api";
 import { localDateTime, shiftDate } from "./workspace";
 import type { CalendarEntry } from "./types";
@@ -313,12 +321,129 @@ export function GoogleEventDialog({
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(value));
+  const when =
+    (detail?.all_day ?? event.all_day)
+      ? (detail?.start ?? event.date) +
+        (detail?.end ? " – " + shiftDate(detail.end, -1) : "")
+      : (detail?.start ?? event.at)
+        ? fmt((detail?.start ?? event.at)!) +
+          ((detail?.end ?? event.end_at)
+            ? " – " + fmt((detail?.end ?? event.end_at)!)
+            : "")
+        : event.date;
+  const locked = busy || !!pending || blocked;
+  const viewProps: [string, ReactNode][] = [
+    ["Calendar", event.calendar_title || "Google Calendar"],
+    ["Time zone", timezone],
+    ...(shown?.organizer
+      ? ([
+          [
+            "Organizer",
+            shown.organizer.displayName || shown.organizer.email,
+          ],
+        ] as [string, ReactNode][])
+      : []),
+    [
+      "Availability",
+      (detail?.busy ?? event.busy) === false ? "Free" : "Busy",
+    ],
+  ];
+  const footer =
+    editing && canEdit ? (
+      <div className="dialog-actions">
+        {event.url && (
+          <a
+            className="btn btn-ghost external-link dialog-actions-start"
+            href={event.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open in Google Calendar
+            <ExternalLink size={15} aria-hidden="true" />
+          </a>
+        )}
+        {pending && !busy && (
+          <button className="secondary" onClick={() => void submit()}>
+            Check save status
+          </button>
+        )}
+        {!fresh && !busy && (blocked || (error && !detail)) && (
+          <button
+            className="secondary"
+            onClick={() => setRefresh((n) => n + 1)}
+          >
+            Reload event
+          </button>
+        )}
+        <button
+          className="primary"
+          type="submit"
+          form="google-event-form"
+          disabled={locked}
+        >
+          {busy ? "Saving…" : fresh ? "Create event" : "Save event"}
+        </button>
+      </div>
+    ) : (
+      !fresh &&
+      (event.url ||
+        pending ||
+        blocked ||
+        (error && !detail) ||
+        (detail?.editable && !deleting)) && (
+        <div className="dialog-actions">
+          {detail?.editable && !deleting && (
+            <button
+              className="btn btn-danger dialog-actions-start"
+              disabled={locked}
+              onClick={() => setDeleting(true)}
+            >
+              Delete event
+            </button>
+          )}
+          {pending && !busy && (
+            <button className="secondary" onClick={() => void submit()}>
+              Check save status
+            </button>
+          )}
+          {!busy && (blocked || (error && !detail)) && (
+            <button
+              className="secondary"
+              onClick={() => setRefresh((n) => n + 1)}
+            >
+              Reload event
+            </button>
+          )}
+          {event.url && (
+            <a
+              className="secondary external-link"
+              href={event.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open in Google Calendar
+              <ExternalLink size={15} aria-hidden="true" />
+            </a>
+          )}
+        </div>
+      )
+    );
   return (
     <Dialog
-        className="dialog google-event-editor"
-        aria-labelledby="google-event-title"
-      >
-        <div className="dialog-heading">
+      className="dialog cal-dialog google-event-editor"
+      aria-labelledby="google-event-title"
+    >
+      <div className="dialog-heading">
+        <div className="cal-dialog-heading-text">
+          {!editing && (
+            <span className="chip-row">
+              <span className="chip calendar-type-badge cal-kind-google">
+                <CalendarDays size={13} aria-hidden="true" />
+                Google event
+              </span>
+              <span className="chip">No task completion</span>
+            </span>
+          )}
           <h2 id="google-event-title">
             {fresh
               ? "New calendar event"
@@ -326,34 +451,33 @@ export function GoogleEventDialog({
                 ? "Edit calendar event"
                 : (shown?.title ?? event.title)}
           </h2>
+        </div>
+        <div className="cal-dialog-heading-actions">
           {!fresh && !editing && (
             <button
-              className="icon-button detail-edit"
+              className="btn btn-ghost btn-sm detail-edit"
               aria-label="Edit event"
               title={detail?.read_only_reason || "Edit event"}
               disabled={!canEdit || busy || !!pending || blocked}
               onClick={() => setEditing(true)}
             >
-              <Pencil size={18} />
+              <Pencil size={15} aria-hidden="true" />
               <span>Edit</span>
             </button>
           )}
           <button
-            className="icon-button"
+            className="btn-icon"
             aria-label="Close calendar event"
             onClick={onClose}
           >
             <X size={20} />
           </button>
         </div>
-        {!editing && (
-          <p className="calendar-type-badge google">
-            Google event · no task completion
-          </p>
-        )}
-        {!fresh && event.recurring && (
-          <label className="calendar-scope">
-            Apply to
+      </div>
+      {!fresh && event.recurring && (
+        <div className="cal-form-grid cal-scope-row">
+          <label className="field calendar-scope">
+            <span className="field-label-text">Apply to</span>
             <select
               aria-label="Recurring event scope"
               value={scope}
@@ -364,89 +488,150 @@ export function GoogleEventDialog({
               <option value="series">Entire series</option>
             </select>
           </label>
-        )}
-        {scope === "series" && (
-          <p className="integration-hint">
-            Changes apply to the entire recurring series. Dates below refer to
-            the series start.
-          </p>
-        )}
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
-        {job && (
-          <p className="calendar-write-feedback" role="status">
-            {job.status === "succeeded"
-              ? "Saved in Google Calendar."
-              : job.status === "unconfirmed"
-                ? "Outcome not confirmed. Check Google Calendar before creating another event."
-                : terminal(job.status)
-                  ? job.result?.message
-                  : "Saving in Google Calendar… You can close this and check Recent calendar changes."}
-          </p>
-        )}
-        {!fresh && !detail && !error && (
-          <p role="status">Loading current event…</p>
-        )}
-        {fresh && connection && !canCreate && (
-          <p className="integration-hint">
-            {connection.calendar_write_enabled
-              ? "Select a calendar you can edit in Settings."
-              : "Enable Calendar editing in Settings to create events."}{" "}
+        </div>
+      )}
+      {scope === "series" && (
+        <p className="cal-notice">
+          Changes apply to the entire recurring series. Dates below refer to the
+          series start.
+        </p>
+      )}
+      {error && (
+        <p className="error-banner" role="alert">
+          {error}
+        </p>
+      )}
+      {job && (
+        <p
+          className={
+            "cal-notice calendar-write-feedback" +
+            (job.status === "succeeded" ? " cal-notice-success" : "")
+          }
+          role="status"
+        >
+          {job.status === "succeeded"
+            ? "Saved in Google Calendar."
+            : job.status === "unconfirmed"
+              ? "Outcome not confirmed. Check Google Calendar before creating another event."
+              : terminal(job.status)
+                ? job.result?.message
+                : "Saving in Google Calendar… You can close this and check Recent calendar changes."}
+        </p>
+      )}
+      {!fresh && !detail && !error && (
+        <p role="status" className="cal-loading-line">
+          Loading current event…
+        </p>
+      )}
+      {fresh && connection && !canCreate && (
+        <p className="cal-notice">
+          {connection.calendar_write_enabled
+            ? "Select a calendar you can edit in Settings."
+            : "Enable Calendar editing in Settings to create events."}{" "}
+          <button className="text-button" onClick={onSettings}>
+            Open Settings
+          </button>
+        </p>
+      )}
+      {!fresh && detail && !detail.editable && (
+        <p className="cal-notice">
+          {detail.read_only_reason}{" "}
+          {!connection?.calendar_write_enabled && (
             <button className="text-button" onClick={onSettings}>
               Open Settings
             </button>
-          </p>
-        )}
-        {!fresh && detail && !detail.editable && (
-          <p className="footnote">
-            {detail.read_only_reason}{" "}
-            {!connection?.calendar_write_enabled && (
-              <button className="text-button" onClick={onSettings}>
-                Open Settings
-              </button>
-            )}
-          </p>
-        )}
-        {editing && canEdit ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-          >
-            <fieldset disabled={busy || !!pending || blocked}>
-              {fresh && (
-                <label>
-                  Calendar
-                  <select
-                    aria-label="Event calendar"
-                    value={calendar}
-                    onChange={(e) => setCalendar(e.target.value)}
-                  >
-                    {connection?.calendars
-                      .filter((c) => c.writable)
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              )}
-              <label>
-                Title
-                <input
-                  aria-label="Event title"
-                  required
-                  maxLength={500}
-                  value={form.title}
-                  onChange={(e) => set("title", e.target.value)}
-                />
+          )}
+        </p>
+      )}
+      {editing && canEdit ? (
+        <form
+          id="google-event-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <fieldset className="cal-form cal-form-grid" disabled={locked}>
+            {fresh && (
+              <label className="field span-2">
+                <span className="field-label-text">Calendar</span>
+                <select
+                  aria-label="Event calendar"
+                  value={calendar}
+                  onChange={(e) => setCalendar(e.target.value)}
+                >
+                  {connection?.calendars
+                    .filter((c) => c.writable)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.title}
+                      </option>
+                    ))}
+                </select>
               </label>
-              <label className="event-checkbox">
+            )}
+            <label className="field span-2">
+              <span className="field-label-text">Title</span>
+              <input
+                aria-label="Event title"
+                required
+                maxLength={500}
+                value={form.title}
+                onChange={(e) => set("title", e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label-text">
+                {form.all_day ? "First day" : "Starts"}
+              </span>
+              <input
+                aria-label="Event start"
+                required
+                type={form.all_day ? "date" : "datetime-local"}
+                value={form.start}
+                onChange={(e) => set("start", e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label-text">
+                {form.all_day ? "Last day" : "Ends"}
+              </span>
+              <input
+                aria-label="Event end"
+                required
+                type={form.all_day ? "date" : "datetime-local"}
+                value={form.end}
+                onChange={(e) => set("end", e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field-label-text">Time zone</span>
+              <input
+                aria-label="Event time zone"
+                required
+                value={form.timezone}
+                onChange={(e) => set("timezone", e.target.value)}
+              />
+            </label>
+            {fresh ? (
+              <label className="field">
+                <span className="field-label-text">Repeat</span>
+                <select
+                  aria-label="Event repeat"
+                  value={repeat}
+                  onChange={(e) => setRepeat(e.target.value)}
+                >
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Every day</option>
+                  <option value="weekly">Every week</option>
+                  <option value="monthly">Every month</option>
+                </select>
+              </label>
+            ) : (
+              <span aria-hidden="true" />
+            )}
+            <div className="cal-checks span-2">
+              <label className="cal-check event-checkbox">
                 <input
                   type="checkbox"
                   checked={form.all_day}
@@ -462,72 +647,7 @@ export function GoogleEventDialog({
                 />
                 All day
               </label>
-              <div className="event-date-fields">
-                <label>
-                  {form.all_day ? "First day" : "Starts"}
-                  <input
-                    aria-label="Event start"
-                    required
-                    type={form.all_day ? "date" : "datetime-local"}
-                    value={form.start}
-                    onChange={(e) => set("start", e.target.value)}
-                  />
-                </label>
-                <label>
-                  {form.all_day ? "Last day" : "Ends"}
-                  <input
-                    aria-label="Event end"
-                    required
-                    type={form.all_day ? "date" : "datetime-local"}
-                    value={form.end}
-                    onChange={(e) => set("end", e.target.value)}
-                  />
-                </label>
-              </div>
-              <label>
-                Time zone
-                <input
-                  aria-label="Event time zone"
-                  required
-                  value={form.timezone}
-                  onChange={(e) => set("timezone", e.target.value)}
-                />
-              </label>
-              {fresh && (
-                <label>
-                  Repeat
-                  <select
-                    aria-label="Event repeat"
-                    value={repeat}
-                    onChange={(e) => setRepeat(e.target.value)}
-                  >
-                    <option value="none">Does not repeat</option>
-                    <option value="daily">Every day</option>
-                    <option value="weekly">Every week</option>
-                    <option value="monthly">Every month</option>
-                  </select>
-                </label>
-              )}
-              <label>
-                Location
-                <input
-                  aria-label="Event location"
-                  maxLength={1000}
-                  value={form.location}
-                  onChange={(e) => set("location", e.target.value)}
-                />
-              </label>
-              <label>
-                Notes
-                <textarea
-                  aria-label="Event notes"
-                  maxLength={10000}
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => set("description", e.target.value)}
-                />
-              </label>
-              <label className="event-checkbox">
+              <label className="cal-check event-checkbox">
                 <input
                   type="checkbox"
                   checked={form.busy}
@@ -535,147 +655,151 @@ export function GoogleEventDialog({
                 />
                 Blocks availability
               </label>
-              <button className="primary" type="submit">
-                {busy ? "Saving…" : fresh ? "Create event" : "Save event"}
-              </button>
-            </fieldset>
-          </form>
-        ) : (
-          !fresh && (
-            <>
-              <p>
-                {(detail?.all_day ?? event.all_day)
-                  ? "All day · " +
-                    (detail?.start ?? event.date) +
-                    (detail?.end ? " – " + shiftDate(detail.end, -1) : "")
-                  : (detail?.start ?? event.at)
-                    ? fmt((detail?.start ?? event.at)!) +
-                      ((detail?.end ?? event.end_at)
-                        ? " – " + fmt((detail?.end ?? event.end_at)!)
-                        : "")
-                    : event.date}
-              </p>
-              <p className="footnote">
-                {event.calendar_title} · {timezone}
-              </p>
+            </div>
+            <label className="field span-2">
+              <span className="field-label-text">Location</span>
+              <input
+                aria-label="Event location"
+                maxLength={1000}
+                value={form.location}
+                onChange={(e) => set("location", e.target.value)}
+              />
+            </label>
+            <label className="field span-2">
+              <span className="field-label-text">Notes</span>
+              <textarea
+                aria-label="Event notes"
+                maxLength={10000}
+                rows={3}
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+              />
+            </label>
+          </fieldset>
+        </form>
+      ) : (
+        !fresh && (
+          <div className="cal-detail-layout">
+            <div className="cal-detail-main">
+              <div className="cal-when">
+                <CalendarDays size={18} aria-hidden="true" />
+                <div>
+                  {when}
+                  {(detail?.all_day ?? event.all_day) && <small>All day</small>}
+                </div>
+              </div>
               {(shown?.location ?? event.location) && (
-                <p>{shown?.location ?? event.location}</p>
+                <section className="cal-section">
+                  <h3>Location</h3>
+                  <p>{shown?.location ?? event.location}</p>
+                </section>
               )}
               {(shown?.description ?? event.description) && (
-                <p className="event-description">
-                  {shown?.description ?? event.description}
-                </p>
+                <section className="cal-section">
+                  <h3>Details</h3>
+                  <p className="cal-prose event-description">
+                    {shown?.description ?? event.description}
+                  </p>
+                </section>
               )}
               {!detail && cached && (
-                <p className="footnote">
+                <p className="cal-form-hint">
                   Showing synced details while the current Google copy is
                   unavailable.
                 </p>
               )}
               {shown?.meeting_url && safeLink(shown.meeting_url) && (
                 <p>
-                  <a href={shown.meeting_url} target="_blank" rel="noreferrer">
+                  <a
+                    className="btn btn-soft"
+                    href={shown.meeting_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Video size={16} aria-hidden="true" />
                     Join meeting
                   </a>
                 </p>
               )}
-              {shown?.organizer && (
-                <p className="footnote">
-                  Organizer:{" "}
-                  {shown.organizer.displayName || shown.organizer.email}
-                </p>
-              )}
               {!!shown?.attendees?.length && (
-                <details open>
-                  <summary>
+                <section className="cal-section">
+                  <h3>
                     Guests ({shown.attendees.length}
                     {shown.attendees_omitted ? "+" : ""})
-                  </summary>
-                  {shown.attendees.map((a, i) => (
-                    <p key={i}>
-                      {a.displayName || a.email} ·{" "}
-                      {a.responseStatus ?? "No response"}
-                    </p>
-                  ))}
-                </details>
+                  </h3>
+                  <ul className="cal-guests">
+                    {shown.attendees.map((a, i) => (
+                      <li key={i}>
+                        <span>{a.displayName || a.email}</span>
+                        <span>{guestStatus(a.responseStatus)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               )}
-              {shown?.attachments
-                ?.filter((a) => safeLink(a.url))
-                .map((a, i) => (
-                  <p key={i}>
-                    <a href={a.url} target="_blank" rel="noreferrer">
-                      {a.title || "Attachment"}
-                    </a>
-                  </p>
+              {!!shown?.attachments?.filter((a) => safeLink(a.url)).length && (
+                <section className="cal-section">
+                  <h3>Attachments</h3>
+                  <div className="cal-links">
+                    {shown
+                      .attachments!.filter((a) => safeLink(a.url))
+                      .map((a, i) => (
+                        <a key={i} href={a.url} target="_blank" rel="noreferrer">
+                          <Paperclip size={15} aria-hidden="true" />
+                          {a.title || "Attachment"}
+                        </a>
+                      ))}
+                  </div>
+                </section>
+              )}
+            </div>
+            <aside className="cal-aside" aria-label="Properties">
+              <dl className="cal-props">
+                {viewProps.map(([term, value]) => (
+                  <div key={term}>
+                    <dt>{term}</dt>
+                    <dd>{value}</dd>
+                  </div>
                 ))}
-              {(detail?.busy ?? event.busy) === false && (
-                <p className="footnote">This event is marked as free time.</p>
-              )}
-              {detail?.editable && !deleting && (
-                <div className="event-editor-actions">
-                  <button
-                    className="text-button danger"
-                    disabled={busy || !!pending || blocked}
-                    onClick={() => setDeleting(true)}
-                  >
-                    Delete event
-                  </button>
-                </div>
-              )}
-            </>
-          )
-        )}
-        {deleting && (
-          <div className="disconnect-confirm">
-            <p>
-              Delete{" "}
-              {scope === "series"
-                ? "the entire series"
-                : scope === "occurrence"
-                  ? "this occurrence"
-                  : "this event"}{" "}
-              from Google Calendar?
-            </p>
-            <button
-              className="secondary"
-              disabled={busy || !!pending || blocked}
-              onClick={() => void submit(true)}
-            >
-              Confirm delete
-            </button>
-            <button
-              className="text-button"
-              disabled={busy}
-              onClick={() => setDeleting(false)}
-            >
-              Keep event
-            </button>
+              </dl>
+            </aside>
           </div>
-        )}
-        {pending && !busy && (
-          <button className="secondary" onClick={() => void submit()}>
-            Check save status
-          </button>
-        )}
-        {!fresh && !busy && (blocked || (error && !detail)) && (
+        )
+      )}
+      {deleting && (
+        <div className="cal-confirm disconnect-confirm">
+          <p>
+            Delete{" "}
+            {scope === "series"
+              ? "the entire series"
+              : scope === "occurrence"
+                ? "this occurrence"
+                : "this event"}{" "}
+            from Google Calendar?
+          </p>
           <button
-            className="secondary"
-            onClick={() => setRefresh((n) => n + 1)}
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={() => setDeleting(false)}
           >
-            Reload event
+            Keep event
           </button>
-        )}
-        {event.url && (
-          <a
-            className="secondary compact external-link"
-            href={event.url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            className="btn btn-danger"
+            disabled={locked}
+            onClick={() => void submit(true)}
           >
-            Open in Google Calendar
-            <ExternalLink size={15} />
-          </a>
-        )}
-      </Dialog>
+            Confirm delete
+          </button>
+        </div>
+      )}
+      {footer}
+    </Dialog>
   );
+}
+function guestStatus(status?: string) {
+  if (status === "accepted") return "Accepted";
+  if (status === "declined") return "Declined";
+  if (status === "tentative") return "Maybe";
+  return "No response";
 }

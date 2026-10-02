@@ -9,7 +9,7 @@ const ui=async(name,args)=>{const r=await request("/__test_ui",{name,arguments:a
 // Dates relative to today so the 30-day timeline window always contains the project.
 const day=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
 try{
- await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
+ await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();
  const client=await cmd("record.create",{type_id:"client",title:"ABC",schema_revision:1});
  const project=await cmd("record.create",{type_id:"project",title:"Transcript Intelligence",parent_id:client.id,schema_revision:1,values:{start_date:day(1),target_date:day(8)}});
  const task=await cmd("record.create",{type_id:"task",title:"Finish the central docs",parent_id:project.id,schema_revision:1,values:{due_date:"2027-01-01",due_time:"09:00",due_timezone:"America/Chicago"}});

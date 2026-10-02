@@ -4,6 +4,8 @@ import { Check, ChevronDown, Clock3, Pencil, RotateCcw, X } from "lucide-react";
 import { api, post } from "./api";
 import { eventStreamOnline, fallbackInterval } from "./events";
 
+const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
 export type ActionChange = {
   id: string; command_id: string; kind: string; entity_id: string | null;
   title: string; operation: string; summary?: string; request_id?: string; revert_command_id?: string | null; fields: Record<string, { before: unknown; after: unknown }>;
@@ -94,7 +96,7 @@ function text(value: unknown): string {
 function changePreview(action: ActionChange, compact = false) {
   const important = compact && action.operation === "created" ? ["due_date", "due_time", "project"] : ["due_date", "due_time", "status", "project", "space", "assignee", "priority"];
   return important.filter(key => key in action.fields).slice(0, 3).map(key =>
-    `${key.replaceAll("_", " ")}: ${text(action.fields[key].after)}`).join(" · ");
+    `${key.replaceAll("_", " ")}: ${text(action.fields[key].after)}`);
 }
 export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: Props) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""),
@@ -117,7 +119,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
       {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : item.waiting ? "Waiting for related work" : labels[item.status] ?? item.status}
     </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
-    {details && item.actor && <p className="work-actor">{item.actor.name} <span>· connected agent</span></p>}
+    {details && item.actor && <p className="work-actor">{item.actor.name} <span className="chip">connected agent</span></p>}
     {details && item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
     {!item.actions.length && !item.children.length && <p className="work-result">{
       item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
@@ -128,11 +130,11 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
     {item.actions.map(action => <div className="work-change" key={action.id}>
       <div><strong>{action.summary ?? `${action.operation.charAt(0).toUpperCase() + action.operation.slice(1)}: ${action.title}`}</strong>
         {action.remote_status && <span>{labels[action.remote_status] ?? action.remote_status}</span>}</div>
-      {!!changePreview(action, compact) && <p className="work-change-preview">{changePreview(action, compact)}</p>}
+      {!!changePreview(action, compact).length && <p className="work-change-preview">{changePreview(action, compact).map(item => <span className="chip" key={item}>{item}</span>)}</p>}
       {action.reverted && <small className="work-reverted"><Check size={12}/>Change reverted</small>}
       {details && !!Object.keys(action.fields).length && <details><summary>Changes <ChevronDown size={12}/></summary>
-        <dl>{Object.entries(action.fields).map(([field, values]) => <div key={field}><dt>{field.replaceAll("_", " ")}</dt>
-          <dd>{action.operation !== "created" && <><del>{text(values.before)}</del><span aria-hidden="true"> → </span></>}
+        <dl>{Object.entries(action.fields).map(([field, values]) => <div key={field}><dt>{sentenceCase(field.replaceAll("_", " "))}</dt>
+          <dd>{action.operation !== "created" && <><del>{text(values.before)}</del><span className="sr-only"> changed to </span></>}
             <span>{text(values.after)}</span></dd></div>)}</dl></details>}
       <div className="work-card-actions">
         {action.entity_id && editable.has(action.kind) && <button className="text-button" disabled={busy}
@@ -181,17 +183,22 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
   const [clearing, setClearing] = useState(false), [clearError, setClearError] = useState("");
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
+  const attention = items.filter(workAttention).length, active = items.filter(workActive).length;
   return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel" aria-label="Eri activity"
       onKeyDown={event => {if(event.key === "Escape") onClose();}}>
       <header><div><h2>Activity</h2><p>Saved changes and work in progress.</p></div>
-        <button ref={close} className="icon-button" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
-      {!!items.length && <button className="text-button" disabled={clearing} onClick={async () => {
+        <button ref={close} className="btn-icon" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
+      {!!items.length && <div className="activity-toolbar">
+        <span className="activity-count">{items.length} {items.length === 1 ? "request" : "requests"}</span>
+        {active > 0 && <span className="chip">{active} in progress</span>}
+        {attention > 0 && <span className="chip chip-due-today">{attention} need attention</span>}
+        <button className="btn btn-ghost btn-sm" disabled={clearing} onClick={async () => {
         if (!window.confirm("Clear your activity history in this workspace and stop unfinished requests? Saved tasks, notes, and other changes will stay.")) return;
         setClearing(true); setClearError("");
         try { await post("/work/clear", {}); await onRefresh(); }
         catch (e) { setClearError((e as Error).message); }
         finally { setClearing(false); }
-      }}>{clearing ? "Clearing…" : "Clear activity history"}</button>}
+      }}>{clearing ? "Clearing…" : "Clear activity history"}</button></div>}
       {(error || clearError) && <p role="alert">{error || clearError}</p>}
       {!items.length && <p className="activity-empty">Ask Eri to do something. Its progress and saved changes will appear here.</p>}
       <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>

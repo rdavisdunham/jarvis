@@ -29,7 +29,7 @@ try {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const saved = await page.evaluate(async id => (await fetch("/api/v1/tasks/" + id)).json(), task.id);
   if (saved.due_time !== "14:30" || saved.due_timezone !== "America/Chicago") throw new Error("Timed deadline did not persist");
-  await expect(page.getByRole("button", { name: "Oct 12 · 14:30", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Oct 12 14:30", exact: true })).toBeVisible();
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error("Task list overflows on mobile");
   await page.screenshot({ path: new URL("../../../.runtime/task-time-list-mobile.png", import.meta.url).pathname, fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });

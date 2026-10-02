@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
+  Bell,
   Check,
   Pencil,
   X,
   CalendarDays,
+  FileText,
   ListTodo,
   ExternalLink,
 } from "lucide-react";
+import { KindIcon } from "./CalendarView";
+import "./calendar.css";
 import { api } from "./api";
 import { useDialogFocus, timeLabel, recurrenceLabel } from "./components";
 import { useEditor } from "./editor-control";
 import {
   calendarKind,
+  clockLabel,
   completableCalendarTask,
   dateLabel,
 } from "./calendar-presentation";
@@ -197,12 +202,88 @@ export function CalendarDetails({
       ? dateLabel(fields.start) +
         (shiftDate(fields.end, -1) !== fields.start
           ? " – " + dateLabel(shiftDate(fields.end, -1))
-          : "") +
-        " · All day"
-      : timeLabel(fields.start, fields.timezone) +
-        " – " +
-        timeLabel(fields.end, fields.timezone)
+          : "")
+      : sameDayRange(fields.start, fields.end, fields.timezone)
     : null;
+  const shownZone =
+    fields?.timezone ?? schedule?.timezone ?? task?.due_timezone ?? zone;
+  const allDay = fields ? fields.all_day : !event.at;
+  const human = (value: string) => {
+    const text = value.replaceAll("_", " ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  };
+  const props: [string, ReactNode][] = [];
+  if (fields) {
+    props.push(["Availability", fields.busy ? "Busy" : "Free"]);
+    props.push([
+      "Calendar",
+      record?.google_calendar_id
+        ? "Google, " + record.google_state.replaceAll("_", " ")
+        : "Eridani",
+    ]);
+  }
+  if (schedule) {
+    props.push(["Alert status", human(schedule.status)]);
+    props.push([
+      "Repeat",
+      schedule.recurrence ? recurrenceLabel(schedule.recurrence) : "Does not repeat",
+    ]);
+    if (schedule.next_run_at)
+      props.push(["Next alert", timeLabel(schedule.next_run_at, schedule.timezone)]);
+  }
+  if (task) {
+    props.push(["Status", human(task.status)]);
+    props.push([
+      "Assignee",
+      organization.actors.find((a) => a.id === task.assignee_id)?.name ??
+        task.assignee,
+    ]);
+    props.push([
+      "Priority",
+      ["Normal", "Low", "Medium", "High"][task.priority] ?? task.priority,
+    ]);
+    if (task.planned_date) props.push(["Planned", dateLabel(task.planned_date)]);
+    if (task.due_date)
+      props.push([
+        "Deadline",
+        <>
+          {dateLabel(task.due_date)}
+          {task.due_time && (
+            <>
+              {", " + task.due_time.slice(0, 5)}
+              <small className="cal-prop-sub">{task.due_timezone}</small>
+            </>
+          )}
+        </>,
+      ]);
+    if (task.estimate_minutes)
+      props.push(["Estimate", task.estimate_minutes + " minutes"]);
+    if (project) props.push(["Project", project.name]);
+    if (space) props.push(["Space", space.name]);
+    if (area) props.push(["Area", area.name]);
+    if (goals.length) props.push(["Goals", goals.map((g) => g.name).join(", ")]);
+    if (task.work_type) props.push(["Work type", task.work_type]);
+    if (task.tags.length)
+      props.push([
+        "Tags",
+        <span className="chip-row">
+          {task.tags.map((t) => (
+            <span className="chip" key={t}>
+              #{t}
+            </span>
+          ))}
+        </span>,
+      ]);
+    if (task.completed_at)
+      props.push(["Completed", timeLabel(task.completed_at, zone)]);
+    if (parent)
+      props.push([
+        "Parent task",
+        <button className="text-button cal-prop-link" onClick={() => onTask(parent)}>
+          {parent.title}
+        </button>,
+      ]);
+  }
   return (
     <div
       className="modal-backdrop"
@@ -211,30 +292,34 @@ export function CalendarDetails({
       }}
     >
       <section
-        className="dialog calendar-detail-card"
+        className="dialog cal-dialog calendar-detail-card"
         ref={card}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendar-detail-title"
       >
-        <div className="calendar-detail-toolbar">
-          <span className={"calendar-type-badge " + event.kind}>
-            {kind.label}
-          </span>
-          <div>
+        <div className="dialog-heading">
+          <div className="cal-dialog-heading-text">
+            <span className={"chip calendar-type-badge cal-kind-" + event.kind}>
+              <KindIcon kind={event.kind} size={13} />
+              {kind.label}
+            </span>
+            <h2 id="calendar-detail-title">{title}</h2>
+          </div>
+          <div className="cal-dialog-heading-actions">
             <button
-              className="icon-button detail-edit"
+              className="btn btn-ghost btn-sm detail-edit"
               aria-label="Edit calendar item"
               title="Edit"
               disabled={!canEdit || saving}
               onClick={() => onEdit(event, task, schedule)}
             >
-              <Pencil size={18} />
+              <Pencil size={15} aria-hidden="true" />
               <span>Edit</span>
             </button>
             <button
-              className="icon-button"
+              className="btn-icon"
               aria-label="Close calendar details"
               disabled={saving}
               onClick={onClose}
@@ -243,9 +328,12 @@ export function CalendarDetails({
             </button>
           </div>
         </div>
-        <h2 id="calendar-detail-title">{title}</h2>
-        <p className="footnote">{kind.hint}</p>
-        {loading && <p role="status">Loading details…</p>}
+        <p className="cal-dialog-hint">{kind.hint}</p>
+        {loading && (
+          <p role="status" className="cal-loading-line">
+            Loading details…
+          </p>
+        )}
         {error && (
           <p className="error-banner" role="alert">
             {error}{" "}
@@ -254,231 +342,128 @@ export function CalendarDetails({
             </button>
           </p>
         )}
-        <div className="detail-time">
-          <CalendarDays size={18} />
-          <span>
-            {appointmentTime ??
-              (event.at ? timeLabel(event.at, zone) : dateLabel(event.date))}
-          </span>
-        </div>
-        <p className="footnote">
-          {fields?.timezone ?? schedule?.timezone ?? task?.due_timezone ?? zone}
-          {!event.at && !local ? " · Date only" : ""}
-        </p>
-        {fields && (
-          <>
-            {fields.location && (
-              <section>
+        <div className={"cal-detail-layout" + (props.length ? "" : " single")}>
+          <div className="cal-detail-main">
+            <div className="cal-when">
+              <CalendarDays size={18} aria-hidden="true" />
+              <div>
+                {appointmentTime ??
+                  (event.at ? timeLabel(event.at, zone) : dateLabel(event.date))}
+                <small>
+                  {allDay && !fields ? "Date only, " : allDay ? "All day, " : ""}
+                  {shownZone}
+                </small>
+              </div>
+            </div>
+            {fields?.location && (
+              <section className="cal-section">
                 <h3>Location</h3>
                 <p>{fields.location}</p>
               </section>
             )}
-            {fields.description && (
-              <section>
+            {fields?.description && (
+              <section className="cal-section">
                 <h3>Details</h3>
-                <p className="event-description">{fields.description}</p>
+                <p className="cal-prose event-description">{fields.description}</p>
               </section>
             )}
-            <p className="footnote">
-              {fields.busy ? "Blocks availability" : "Free time"}
-              {record?.google_calendar_id
-                ? " · Google: " + record.google_state.replaceAll("_", " ")
-                : " · Eridani calendar"}
-            </p>
             {record?.write_message && (
-              <p role="status">{record.write_message}</p>
+              <p role="status" className="cal-notice">
+                {record.write_message}
+              </p>
             )}
-          </>
-        )}
-        {schedule && (
-          <dl className="detail-facts">
-            <div>
-              <dt>Alert status</dt>
-              <dd>{schedule.status.replaceAll("_", " ")}</dd>
-            </div>
-            <div>
-              <dt>Repeat</dt>
-              <dd>
-                {schedule.recurrence
-                  ? recurrenceLabel(schedule.recurrence)
-                  : "Does not repeat"}
-              </dd>
-            </div>
-            {schedule.next_run_at && (
-              <div>
-                <dt>Next alert</dt>
-                <dd>{timeLabel(schedule.next_run_at, schedule.timezone)}</dd>
-              </div>
+            {task && event.kind !== "task" && (
+              <section className="cal-section">
+                <h3>{task.is_template ? "Routine template" : "Linked task"}</h3>
+                <div className="cal-links">
+                  <button onClick={() => onTask(task)}>
+                    <ListTodo size={16} aria-hidden="true" />
+                    {task.title}
+                  </button>
+                </div>
+              </section>
             )}
-          </dl>
-        )}
-        {task && (
-          <section className="calendar-task-details">
-            {event.kind !== "task" && (
-              <h3>
-                <ListTodo size={16} />
-                {task.is_template ? "Routine template" : "Linked task"}:{" "}
-                {task.title}
-              </h3>
-            )}
-            <dl className="detail-facts">
-              <div>
-                <dt>Status</dt>
-                <dd>{task.status.replaceAll("_", " ")}</dd>
-              </div>
-              <div>
-                <dt>Assignee</dt>
-                <dd>
-                  {organization.actors.find((a) => a.id === task.assignee_id)
-                    ?.name ?? task.assignee}
-                </dd>
-              </div>
-              <div>
-                <dt>Priority</dt>
-                <dd>
-                  {["Normal", "Low", "Medium", "High"][task.priority] ??
-                    task.priority}
-                </dd>
-              </div>
-              {task.planned_date && (
-                <div>
-                  <dt>Planned</dt>
-                  <dd>{dateLabel(task.planned_date)}</dd>
-                </div>
-              )}
-              {task.due_date && (
-                <div>
-                  <dt>Deadline</dt>
-                  <dd>
-                    {dateLabel(task.due_date)}
-                    {task.due_time
-                      ? " · " +
-                        task.due_time.slice(0, 5) +
-                        " · " +
-                        task.due_timezone
-                      : ""}
-                  </dd>
-                </div>
-              )}
-              {!!task.estimate_minutes && (
-                <div>
-                  <dt>Estimate</dt>
-                  <dd>{task.estimate_minutes} minutes</dd>
-                </div>
-              )}
-              {project && (
-                <div>
-                  <dt>Project</dt>
-                  <dd>{project.name}</dd>
-                </div>
-              )}
-              {space && (
-                <div>
-                  <dt>Space</dt>
-                  <dd>{space.name}</dd>
-                </div>
-              )}
-              {area && (
-                <div>
-                  <dt>Area</dt>
-                  <dd>{area.name}</dd>
-                </div>
-              )}
-              {!!goals.length && (
-                <div>
-                  <dt>Goals</dt>
-                  <dd>{goals.map((g) => g.name).join(", ")}</dd>
-                </div>
-              )}
-              {task.work_type && (
-                <div>
-                  <dt>Work type</dt>
-                  <dd>{task.work_type}</dd>
-                </div>
-              )}
-              {!!task.tags.length && (
-                <div>
-                  <dt>Tags</dt>
-                  <dd>{task.tags.map((t) => "#" + t).join(" ")}</dd>
-                </div>
-              )}
-              {task.completed_at && (
-                <div>
-                  <dt>Completed</dt>
-                  <dd>{timeLabel(task.completed_at, zone)}</dd>
-                </div>
-              )}
-            </dl>
-            {parent && (
-              <section>
-                <h3>Parent task</h3>
-                <button className="text-button" onClick={() => onTask(parent)}>
-                  {parent.title}
-                </button>
+            {task?.notes && (
+              <section className="cal-section">
+                <h3>Task notes</h3>
+                <p className="cal-prose event-description">{task.notes}</p>
               </section>
             )}
             {!!children.length && (
-              <section>
+              <section className="cal-section">
                 <h3>Subtasks</h3>
-                {children.map((child) => (
-                  <button
-                    key={child.id}
-                    className="text-button linked-note-detail"
-                    onClick={() => onTask(child)}
-                  >
-                    {child.title} · {child.status.replaceAll("_", " ")}
-                  </button>
-                ))}
+                <div className="cal-links">
+                  {children.map((child) => (
+                    <button
+                      key={child.id}
+                      className="linked-note-detail"
+                      onClick={() => onTask(child)}
+                    >
+                      {child.title}
+                      <span className="chip">{human(child.status)}</span>
+                    </button>
+                  ))}
+                </div>
               </section>
             )}
             {!!alerts.length && (
-              <section>
+              <section className="cal-section">
                 <h3>Task reminders</h3>
-                {alerts.map((alert) => (
-                  <p key={alert.id}>
-                    {alert.title} · {alert.status.replaceAll("_", " ")}
-                    {alert.next_run_at
-                      ? " · " + timeLabel(alert.next_run_at, alert.timezone)
-                      : ""}
-                    {alert.recurrence
-                      ? " · " + recurrenceLabel(alert.recurrence)
-                      : ""}
-                  </p>
-                ))}
-              </section>
-            )}
-            {task.notes && (
-              <section>
-                <h3>Task notes</h3>
-                <p className="event-description">{task.notes}</p>
+                <div className="cal-links">
+                  {alerts.map((alert) => (
+                    <div key={alert.id}>
+                      <Bell size={15} aria-hidden="true" />
+                      {alert.title}
+                      <span className="chip-row cal-links-meta">
+                        {alert.next_run_at && (
+                          <span className="chip">
+                            {timeLabel(alert.next_run_at, alert.timezone)}
+                          </span>
+                        )}
+                        {alert.recurrence && (
+                          <span className="chip">
+                            {recurrenceLabel(alert.recurrence)}
+                          </span>
+                        )}
+                        <span className="chip">{human(alert.status)}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </section>
             )}
             {!!notes.length && (
-              <section>
+              <section className="cal-section">
                 <h3>Linked notes</h3>
-                {notes.map((note) => (
-                  <button
-                    className="text-button linked-note-detail"
-                    key={note.id}
-                    onClick={() => onNote(note.id)}
-                  >
-                    {note.title}
-                  </button>
-                ))}
+                <div className="cal-links">
+                  {notes.map((note) => (
+                    <button
+                      className="linked-note-detail"
+                      key={note.id}
+                      onClick={() => onNote(note.id)}
+                    >
+                      <FileText size={15} aria-hidden="true" />
+                      {note.title}
+                    </button>
+                  ))}
+                </div>
               </section>
             )}
             {notesError && (
-              <p role="status">
+              <p role="status" className="cal-form-hint">
                 Linked notes could not load. Reopen this card to retry.
               </p>
             )}
-            {task.external?.provider && (
-              <p className="footnote">
-                {task.external.identifier} ·{" "}
-                {task.external.sync_state?.replaceAll("_", " ")}
+            {task?.external?.provider && (
+              <p className="cal-form-hint">
+                <span className="chip">{task.external.identifier}</span>{" "}
+                <span className="chip">
+                  {human(task.external.sync_state ?? "")}
+                </span>
                 {task.external.url &&
                   /^https?:\/\//i.test(task.external.url) && (
                     <a
+                      className="text-button"
                       href={task.external.url}
                       target="_blank"
                       rel="noreferrer"
@@ -489,37 +474,73 @@ export function CalendarDetails({
                   )}
               </p>
             )}
-            {completion && (
-              <button
-                className="primary complete-calendar-task"
-                disabled={saving || loading}
-                onClick={() => void complete()}
-              >
-                <Check size={17} />
-                {saving
-                  ? "Saving…"
-                  : task.status === "completed"
-                    ? "Reopen task"
-                    : "Complete task"}
-              </button>
+            {event.kind === "routine" && event.projected && (
+              <p className="cal-notice">
+                This occurrence becomes completable when its scheduled task is
+                created.
+              </p>
             )}
-            {!completion && (
-              <button
-                className="secondary compact"
-                onClick={() => onTask(task)}
-              >
+          </div>
+          {!!props.length && (
+            <aside className="cal-aside" aria-label="Properties">
+              <dl className="cal-props detail-facts">
+                {props.map(([term, value]) => (
+                  <div key={term}>
+                    <dt>{term}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </aside>
+          )}
+        </div>
+        {task && (
+          <div className="dialog-actions">
+            {completion ? (
+              <>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => onTask(task)}
+                  disabled={saving}
+                >
+                  Open task
+                </button>
+                <button
+                  className="primary complete-calendar-task"
+                  disabled={saving || loading}
+                  onClick={() => void complete()}
+                >
+                  <Check size={17} aria-hidden="true" />
+                  {saving
+                    ? "Saving…"
+                    : task.status === "completed"
+                      ? "Reopen task"
+                      : "Complete task"}
+                </button>
+              </>
+            ) : (
+              <button className="secondary" onClick={() => onTask(task)}>
                 Open {task.is_template ? "routine template" : "linked task"}
               </button>
             )}
-          </section>
-        )}
-        {event.kind === "routine" && event.projected && (
-          <p className="footnote">
-            This occurrence becomes completable when its scheduled task is
-            created.
-          </p>
+          </div>
         )}
       </section>
     </div>
   );
+}
+
+/** "Fri, Oct 2, 10:00 AM – 11:00 AM" for a same-day range, full stamps otherwise. */
+function sameDayRange(start: string, end: string, zone: string) {
+  const day = (value: string) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(new Date(value));
+  if (day(start) !== day(end))
+    return timeLabel(start, zone) + " – " + timeLabel(end, zone);
+  const date = new Intl.DateTimeFormat(undefined, {
+    timeZone: zone,
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(start));
+  return date + ", " + clockLabel(start, zone) + " – " + clockLabel(end, zone);
 }

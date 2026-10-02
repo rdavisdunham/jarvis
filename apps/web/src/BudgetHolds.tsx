@@ -29,35 +29,38 @@ export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
   if (error) return <p className="footnote">{error}</p>;
   if (!uncertain.length) return null;
   return (
-    <details className="budget-holds">
-      <summary>{uncertain.length} sessions awaiting final usage</summary>
+    <details className="settings-block budget-holds">
+      <summary>{uncertain.length} {uncertain.length === 1 ? "session" : "sessions"} awaiting final usage</summary>
       <p>
         {enforced ? "These estimates reserve room in your limit until provider billing is checked." : "These are estimates for sessions without a final usage report. They do not block Eri while spending limits are off."}
         {" "}They are not confirmed charges.
       </p>
-      <a
-        className="text-button"
-        href="https://platform.openai.com/usage"
-        target="_blank"
-        rel="noreferrer"
-      >
-        Open provider usage
-      </a>
       {uncertain.map((h) => (
         <div className="budget-hold" key={h.id}>
           <span>
-            {h.model}
-            <small>
-              {new Date(h.created_at).toLocaleString()} ·{" "}
-              {h.reason === "activity_lease_expired"
-                ? "Connection ended without a final report"
-                : "Final report unavailable"}
-            </small>
-            <small>Recorded: ${h.recorded_usd.toFixed(4)}</small>
+            <strong>{h.model}</strong>
+            <span className="budget-hold-meta">
+              <span className="chip">{new Date(h.created_at).toLocaleString()}</span>
+              <span className="chip">
+                {h.reason === "activity_lease_expired"
+                  ? "Connection ended without a final report"
+                  : "Final report unavailable"}
+              </span>
+              <span className="chip">Recorded ${h.recorded_usd.toFixed(4)}</span>
+            </span>
           </span>
           <span>${h.held_usd.toFixed(2)} held</span>
         </div>
       ))}
+      <div className="settings-links">
+        <a
+          href="https://platform.openai.com/usage"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open provider usage
+        </a>
+      </div>
     </details>
   );
 }

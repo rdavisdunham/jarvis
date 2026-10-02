@@ -104,3 +104,39 @@ export function dayOffset(start: string, date: string) {
 export function taskDates(task: Task) {
   return { planned: task.planned_date ?? null, deadline: task.due_date };
 }
+
+// ---- Date presentation shared by task rows, boards and Today --------------------------
+export type DueBucket = "overdue" | "today" | "upcoming" | "none";
+export const dueBuckets: { key: DueBucket; label: string }[] = [
+  { key: "overdue", label: "Overdue" },
+  { key: "today", label: "Today" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "none", label: "No date" },
+];
+export function dueBucket(date: string | null | undefined, today: string): DueBucket {
+  if (!date) return "none";
+  return date < today ? "overdue" : date === today ? "today" : "upcoming";
+}
+/** "Today", "Tomorrow", "Yesterday", "Oct 5", or "Oct 5, 2027" outside this year. */
+export function shortDate(date: string, today: string) {
+  const offset = dayOffset(today, date);
+  if (offset === 0) return "Today";
+  if (offset === 1) return "Tomorrow";
+  if (offset === -1) return "Yesterday";
+  return new Date(date + "T12:00:00Z").toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    ...(date.slice(0, 4) !== today.slice(0, 4) ? { year: "numeric" } : {}),
+  });
+}
+/** "15:00" or "15:00:00" -> "3:00 pm". */
+export function clockLabel(time: string) {
+  const [h, m] = time.split(":").map(Number);
+  if (Number.isNaN(h)) return time;
+  return (h % 12 || 12) + ":" + String(m || 0).padStart(2, "0") + (h < 12 ? " am" : " pm");
+}
+/** "Oct 5" without relative words or year. */
+export function monthDay(date: string) {
+  return new Date(date + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric" });
+}
