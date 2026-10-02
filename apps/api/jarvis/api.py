@@ -566,6 +566,33 @@ def work_create(body: ChatInput, user: User):
         return public(db, row)
 
 
+class VoiceDraftInput(Input):
+    message: str = Field(min_length=1, max_length=12000)
+
+
+@app.get("/api/v1/voice/drafts")
+def voice_drafts(user: User):
+    from .work_intake import list_drafts
+    with session_scope() as db:
+        return list_drafts(db, user.owner_id, user.account_id or user.owner_id, user.device_id)
+
+
+@app.post("/api/v1/voice/drafts/{identity}/send")
+def voice_draft_send(identity: UUID, body: VoiceDraftInput, user: User):
+    from .work_intake import resolve_draft
+    with session_scope() as db:
+        return resolve_draft(db, user.owner_id, user.account_id or user.owner_id,
+                             user.device_id, str(identity), message=body.message)
+
+
+@app.post("/api/v1/voice/drafts/{identity}/discard")
+def voice_draft_discard(identity: UUID, user: User):
+    from .work_intake import resolve_draft
+    with session_scope() as db:
+        return resolve_draft(db, user.owner_id, user.account_id or user.owner_id,
+                             user.device_id, str(identity))
+
+
 class ClearWorkInput(Input):
     before: datetime | None = None
 

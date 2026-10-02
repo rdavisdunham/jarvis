@@ -70,3 +70,20 @@ def organize_note(body: dict, user: User):
     with patch("jarvis.routing.infer", return_value=result):
         process(jid)
     return {"processed": True}
+
+@app.post('/api/v1/__test_voice_draft')
+def create_voice_draft(body: dict, user: User):
+    from uuid import uuid4
+    from jarvis.work_intake import open_voice, append_voice, claim_voice
+    with session_scope() as db:
+        row = open_voice(db, str(uuid4()), user.owner_id, user.account_id, user.device_id, body['conversation_id'])
+        append_voice(db, row.id, 'synthetic', 'user', body['message'], 0, 1000)
+        claim_voice(db, row, close=True)
+        return {'id': row.id}
+
+
+@app.post('/api/v1/__test_voice_draft/{identity}/send')
+def send_voice_draft(identity: str, body: dict, user: User):
+    from jarvis.work_intake import resolve_draft
+    with patch('jarvis.config.require_external_services'), patch('jarvis.agent_models.selected', return_value=agent_work.agent_models.catalog()['luna']), session_scope() as db:
+        return resolve_draft(db, user.owner_id, user.account_id, user.device_id, identity, message=body['message'])

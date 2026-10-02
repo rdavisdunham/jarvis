@@ -119,14 +119,15 @@ async def test_goodbye_and_chitchat_are_not_enqueued_at_close(controller):
         assert db.get(VoiceInbox, c.id).closed
 
 
-async def test_undelegated_action_at_close_is_one_request_without_the_farewell(controller):
+async def test_undelegated_action_at_close_is_a_draft_without_the_farewell(controller):
     c = controller
     await say(c, "user", "Remind me to water the plants.", 0)
     await say(c, "user", "Thank you, goodbye.", 3000)
     await c.close()
-    [(_, data, _)] = jobs()
-    assert data["message"] == "Remind me to water the plants."
-    assert "Voice ended before Live delegated" in data["context"][-1]["content"]
+    assert jobs() == []
+    with session_scope() as db:
+        draft = unseal(db.get(VoiceInbox, c.id).content_ciphertext)["draft"]
+        assert draft["message"] == "Remind me to water the plants."
 
 
 async def test_dismissed_request_at_close_is_dropped(controller):
@@ -214,7 +215,7 @@ async def test_stale_question_is_not_spoken_after_later_voice_work_started(contr
     assert not c.pending_question
 
 
-async def test_abandoned_inbox_is_closed_by_flush_with_one_request(controller):
+async def test_abandoned_inbox_is_closed_by_flush_with_one_draft(controller):
     c = controller
     await say(c, "user", "Add Alpha.", 0)
     await say(c, "user", "Add Beta.", 4000)
@@ -223,10 +224,11 @@ async def test_abandoned_inbox_is_closed_by_flush_with_one_request(controller):
     assert jobs() == []
     quiet(c, 3600)
     scan()
-    [(_, data, _)] = jobs()
-    assert data["message"] == "Add Alpha.\nAdd Beta."
+    assert jobs() == []
     with session_scope() as db:
-        assert db.get(VoiceInbox, c.id).closed
+        row = db.get(VoiceInbox, c.id)
+        assert row.closed
+        assert unseal(row.content_ciphertext)["draft"]["message"] == "Add Alpha.\nAdd Beta."
 
 
 async def test_flush_skips_an_inbox_locked_by_capture(controller):
@@ -269,7 +271,7 @@ def test_close_policy_filters():
     turns = lambda *texts: [{"role": "user", "content": t} for t in texts]
     assert work_intake.undelegated(turns("Thanks so much, goodbye!")) == ""
     assert work_intake.undelegated(turns("That's all for now.")) == ""
-    assert work_intake.undelegated(turns("What's the capital of Peru?")) == ""
+    assert work_intake.undelegated(turns("What's the capital of Peru?")) == "What's the capital of Peru?"
     assert work_intake.undelegated(turns("Move my dentist to Friday", "okay bye")) == "Move my dentist to Friday"
 
 

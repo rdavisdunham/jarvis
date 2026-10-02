@@ -15,6 +15,7 @@ from .access import assert_current, execution, person_preferences
 from .agent_work import checkpoint, finish, principal_for, reschedule
 from .config import get_settings, require_external_services
 from .db import engine, session_scope
+from .latency import mark, span
 from .domain import DomainError, advisory, capture_source, preferences
 from .memory_service import prompt_context
 from .models import AgentWork, Command, Conversation, Job, Source, now
@@ -333,6 +334,7 @@ async def perform(request_id):
         if state and "messages" not in state:
             state = {}  # Legacy intake checkpoints contain a routing plan, not a tool loop.
         row.result = {**row.result, "waiting_for": []}
+        mark("runner_started", row.id, revision=row.revision, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
         job.status = "running"
         row.updated_at = now()
         db.expunge(row)
@@ -349,7 +351,8 @@ async def perform(request_id):
                 reservation = reservation_for(db, row, state)
                 budget.reserve(db, row.owner_id, reservation, 0.10, agent.model)
             if not state:
-                state = await initial_state(row, agent, reservation)
+                with span("context", row.id, revision=row.revision):
+                    state = await initial_state(row, agent, reservation)
             state["reservation"] = reservation
             checkpoint(row.id, state)
             definitions = registry()
@@ -426,7 +429,8 @@ async def perform(request_id):
                         budget.ensure_room(db, row.owner_id, reservation, agent.reserve_cost(size + 1024))
                     provider_pending = True
                     try:
-                        result = await request_model(agent, state["messages"], definitions, limited=limited)
+                        with span("model", row.id, revision=row.revision, round=state["round"]):
+                            result = await request_model(agent, state["messages"], definitions, limited=limited)
                     except httpx.HTTPStatusError as rejected:
                         code = rejected.response.status_code
                         if 400 <= code < 500 and code != 408:
@@ -527,18 +531,20 @@ async def perform(request_id):
                         outcome = {"status": "succeeded", "voice_ended": True}
                         state["reply"] = "Voice ended. Saved work remains available."
                     elif fn["name"] == "tools_load":
-                        outcome = session.load(args)
+                        with span("tool_discovery", row.id, revision=row.revision, tool_index=state["tool_index"]):
+                            outcome = session.load(args)
                     else:
                         work_coordination.reserve(row, fn["name"], args, state["tool_index"])
-                        outcome = await call_tool(
-                            row.owner_id,
-                            row.id,
-                            state["tool_index"],
-                            fn["name"],
-                            args,
-                            device=row.device_id,
-                            conversation_id=row.conversation_id,
-                        )
+                        with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"]):
+                            outcome = await call_tool(
+                                row.owner_id,
+                                row.id,
+                                state["tool_index"],
+                                fn["name"],
+                                args,
+                                device=row.device_id,
+                                conversation_id=row.conversation_id,
+                            )
                     browser_data = outcome.get("data")
                     browser_receipt = (
                         browser_data.get("command_id") if isinstance(browser_data, dict) else None

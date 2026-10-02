@@ -15,6 +15,8 @@ from .db import session_scope
 from .domain import DomainError, advisory, emit, owned, preferences
 from .models import AgentWork, Conversation, Job, Outbox, UserAccount, now
 from .work_crypto import seal, unseal
+from .work_wakeup import wake_dispatch
+from .latency import mark
 
 ACTIVE = {"queued", "dispatched", "running"}
 TERMINAL = {"succeeded", "partial", "failed", "cancelled", "expired", "continued"}
@@ -102,7 +104,9 @@ def enqueue(
     )
     db.add(row)
     db.add(Outbox(job_id=request_id))
+    wake_dispatch(db)
     db.flush()
+    mark("accepted_precommit", request_id, revision=1)
     emit(db, owner, "work.changed", request_id, 1)
     return row
 
@@ -213,7 +217,9 @@ def finish(db, row, status, message, **result):
     touch_root(db, row)
     from .notices import work_finished
     work_finished(db,row,status,message)
+    mark("finished_precommit", row.id, revision=row.revision, outcome=status)
     job.result = {"work_id": row.id, "status": status}
+    wake_dispatch(db)  # Completion releases account capacity and dependent requests.
     emit(db, row.owner_id, "work.changed", row.id, row.revision)
 
 
@@ -316,6 +322,7 @@ def revise(db, row, message, *, continue_work=False):
 
 
 def reschedule(db, row):
+    wake_dispatch(db)
     job = db.get(Job, row.id)
     job.status, job.finished_at = "queued", None
     job.payload = {

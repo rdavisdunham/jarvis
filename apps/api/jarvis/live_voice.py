@@ -20,6 +20,7 @@ from .memory_service import prompt_context, semantic_search
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
 from .ui_control import get_context
 from .voice import Controller, controllers
+from .latency import mark, span
 from .work_intake import append_voice, claim_voice, mark_asked, open_voice
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
@@ -356,8 +357,11 @@ class LiveController(Controller):
         # Only intake is attached to the media lifecycle. Saved work belongs to the worker.
         self.unclaimed.add(delegation_id)
         try:
-            await self.settle()
+            with span("voice_settle", self.id):
+                await self.settle()
             accepted = self.claim()
+            if accepted:
+                mark("voice_claimed", accepted[0], voice_session_id=self.id)
             self.unclaimed.discard(delegation_id)
             if accepted:
                 # Bridge the handoff to the next durable-queue snapshot.
@@ -466,6 +470,8 @@ class LiveController(Controller):
             "your own, then delegate the reply." if asking else " Full details are in Activity.")
         await self.send({"type": "session.commentary.append", "event_id": uid(),
             "delegation_id": None, "content": content + suffix})
+        for identity, *_ in stamps:
+            mark("live_append_sent", identity)
         self.announced_work.update(stamps)
         if asking:
             self.asked.add(asking["id"])
@@ -540,7 +546,7 @@ class LiveController(Controller):
                 with session_scope() as db:
                     inbox = db.get(VoiceInbox, self.id)
                     if inbox:
-                        # Undelegated remainder: farewell/chit-chat dropped, an action becomes one request.
+                        # Undelegated speech is recoverable as a draft; closing never guesses an action.
                         claim_voice(db, inbox, close=True)
             except DomainError as exc:
                 logging.getLogger("jarvis.voice").warning("Final intake unavailable (%s)", exc.code)

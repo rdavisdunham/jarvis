@@ -74,6 +74,10 @@ export function subscribeEvents(
         payload = JSON.parse(event.data || "{}") ?? {};
       } catch { /* malformed payloads still trigger a full refresh below */ }
       const kind = typeof payload.kind === "string" ? payload.kind : "";
+      if (kind === "voice.draft.changed") {
+        window.dispatchEvent(new Event("eri-voice-drafts-changed"));
+        return;
+      }
       if (kind === "work.changed") {
         window.dispatchEvent(new Event("eri-work-changed"));
         return;
