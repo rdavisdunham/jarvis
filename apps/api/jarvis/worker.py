@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from dbos import DBOS, DBOSClient, Queue
@@ -112,11 +112,16 @@ def dispatch_outbox(client):
             job = db.get(Job, row.job_id)
             if job.kind in {"agent_intake", "agent_action"}:
                 from .agent_work import eligible
+                if job.status == "running":
+                    # The live invocation observes new revisions and reschedules itself if needed.
+                    row.submitted_at = now()
+                    continue
                 if not eligible(db, job):
                     if job.status not in {"queued", "running", "dispatched"}:
                         row.submitted_at = now()
                     continue
                 job.status = "dispatched"
+                job.payload = {**job.payload, "dispatched_at": now().isoformat()}
                 db.flush()
             # Enqueue identity is stable across a crash before submitted_at commits.
             client.enqueue(
@@ -168,6 +173,11 @@ def prepare_deliveries():
                 )
             ).all()
             for subscription in subscriptions:
+                registered = subscription.subscription.get("registered_at")
+                if registered and (notification.eligible_at or notification.created_at) < datetime.fromisoformat(
+                    registered
+                ) - timedelta(minutes=5):
+                    continue
                 if not db.scalar(
                     select(Delivery.id).where(
                         Delivery.notification_id == notification.id,
@@ -209,7 +219,7 @@ def send_deliveries():
             row.attempts += 1
             row.lease_until = now() + timedelta(seconds=45)
             delivery_id, sub_id = row.id, subscription.id
-            payload = dict(subscription.subscription)
+            payload = {k: v for k, v in subscription.subscription.items() if k != "registered_at"}
             detailed = preferences(db, subscription.owner_id)["detailed_notifications"]
             message = {
                 "id": notification.id,
@@ -233,12 +243,12 @@ def send_deliveries():
             )
         except WebPushException as exc:
             code = exc.response.status_code if exc.response is not None else 0
-            status, error, inactive = "retry", f"HTTP_{code}", code in {404, 410}
+            status, error, inactive = "retry", f"HTTP_{code}", code in {403, 404, 410}  # 403: VAPID key mismatch; a re-register revives it
         except Exception:  # noqa: BLE001 - isolate provider/process failures without exposing personal data
             status, error = "retry", "DELIVERY_UNAVAILABLE"
         with session_scope() as db:
             row = db.get(Delivery, delivery_id)
-            row.status = "failed" if inactive or row.attempts >= 5 else status
+            row.status = "failed" if inactive or (status == "retry" and row.attempts >= 5) else status
             row.error_code, row.lease_until = error, None
             row.next_attempt_at = now() + timedelta(seconds=min(3600, 30 * 2**row.attempts))
             if inactive:
@@ -254,8 +264,9 @@ def housekeeping():
             | set(db.scalars(select(Source.owner_id).distinct()))
             | {get_settings().owner_id}
         )
-        for owner in owners:
-            housekeeping_owner(db, owner)
+    for owner in owners:
+        isolated("housekeeping_owner", in_session, housekeeping_owner, owner)
+    with session_scope() as db:
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
             select(Job).where(
@@ -275,6 +286,118 @@ def housekeeping():
                 "message": "The connection ended before a reply was saved. Check your saved tasks before repeating the request.",
             }
             budget.close(db, job.owner_id, job.id, uncertain=True)
+
+
+def reap_agent_work():
+    """Finish accepted work whose invocation died without a terminal status."""
+    from datetime import datetime
+
+    from .agent_work import finish
+    from .models import AgentWork
+    from .work_runner import committed
+
+    timeout = get_settings().agent_request_timeout_seconds
+    running_cutoff = now() - timedelta(seconds=timeout + 600)
+    dispatched_cutoff = now() - timedelta(seconds=2 * timeout + 1800)
+
+    def stale(job, row):
+        if job.status == "running":
+            return row.updated_at < running_cutoff
+        dispatched = job.payload.get("dispatched_at")
+        return job.status == "dispatched" and (
+            datetime.fromisoformat(dispatched) if dispatched else row.updated_at
+        ) < dispatched_cutoff
+
+    with session_scope() as db:
+        candidates = [
+            job.id
+            for job, row in db.execute(
+                select(Job, AgentWork)
+                .join(AgentWork, AgentWork.id == Job.id)
+                .where(Job.kind.in_(["agent_action", "agent_intake"]), Job.status.in_(["running", "dispatched"]))
+            )
+            if stale(job, row)
+        ]
+    for identity in candidates:
+        try:
+            with session_scope() as db:
+                row = db.get(AgentWork, identity)
+                advisory(db, "work-order:" + row.owner_id)
+                advisory(db, "work:" + identity)
+                held = db.scalar(
+                    text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": "work-run:" + identity}
+                )
+                if not held:
+                    continue  # A live invocation still owns this request.
+                db.refresh(row)
+                job = db.get(Job, identity, populate_existing=True)
+                if job.status not in {"running", "dispatched"} or not stale(job, row):
+                    continue
+                saved = committed(db, row)
+                finish(
+                    db,
+                    row,
+                    "partial" if saved else "failed",
+                    "This request stopped unexpectedly. Saved changes remain; use Continue to resume.",
+                    actions=[{"command_id": c["command_id"], "status": c["status"]} for c in saved],
+                    waiting_for=[],
+                )
+                logger.warning("Finished stale agent request %s", identity)
+        except Exception:  # noqa: BLE001 - one bad row must not stop the sweep
+            logger.exception("Could not finish stale agent request %s", identity)
+
+
+def isolated(name, fn, *args):
+    try:
+        return fn(*args)
+    except Exception:  # noqa: BLE001 - one failing scan must not block dispatch or other scans
+        logger.exception("Worker step %s failed; will retry", name)
+
+
+def in_session(fn, *args):
+    with session_scope() as db:
+        return fn(db, *args)
+
+
+def mark_health(db):
+    health = db.get(WorkerHealth, "worker")
+    if health:
+        health.last_scan_at = now()
+    else:
+        db.add(WorkerHealth(id="worker", last_scan_at=now()))
+
+
+def supervisor_cycle(client, iteration):
+    from .device_bridge import cleanup
+    from .google_calendar import queue_sync
+    from .linear_sync import queue_sync as linear_queue_sync
+    from .memory_learning import queue_backfill
+    from .memory_review import queue_due_reviews
+    from .models import GoogleIdentity, LinearConnection
+    from .notices import scan
+    from .routing import queue_due
+    from .search_index import backfill as search_backfill
+    from .work_intake import flush_voice
+
+    # Already-queued work is submitted before any scan can fail.
+    isolated("dispatch", dispatch_outbox, client)
+    for name, scan_fn in (
+        ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
+        ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
+        ("memory_reviews", queue_due_reviews), ("routing", queue_due),
+    ):
+        isolated(name, in_session, scan_fn)
+    for model, queue in ((GoogleIdentity, queue_sync), (LinearConnection, linear_queue_sync)):
+        accounts = isolated("accounts", in_session, lambda db, m=model: list(db.scalars(select(m.owner_id)))) or []
+        for account in accounts:
+            isolated(queue.__module__, in_session, queue, account)
+    isolated("health", in_session, mark_health)
+    isolated("dispatch", dispatch_outbox, client)
+    isolated("prepare_deliveries", prepare_deliveries)
+    isolated("send_deliveries", send_deliveries)
+    if iteration % 12 == 0:
+        isolated("housekeeping", housekeeping)
+        isolated("reap_agent_work", reap_agent_work)
 
 
 def housekeeping_owner(db, owner):
@@ -365,43 +488,7 @@ def run_supervisor(stop, lease):
                 raise RuntimeError("Worker lease was lost.")
             lease.commit()
             try:
-                with session_scope() as db:
-                    from .device_bridge import cleanup
-                    from .work_intake import flush_voice
-                    flush_voice(db)
-                    cleanup(db)
-                    scan_schedules(db)
-                    from .notices import scan
-                    scan(db)
-                    from .search_index import backfill as search_backfill
-                    search_backfill(db)
-                    from .memory_learning import queue_backfill
-
-                    queue_backfill(db)
-                    from .memory_review import queue_due_reviews
-
-                    queue_due_reviews(db)
-                    from .routing import queue_due
-                    queue_due(db)
-                    from .google_calendar import queue_sync
-                    from .models import GoogleIdentity, LinearConnection
-
-                    for account in db.scalars(select(GoogleIdentity.owner_id)):
-                        queue_sync(db, account)
-                    from .linear_sync import queue_sync as linear_queue_sync
-
-                    for account in db.scalars(select(LinearConnection.owner_id)):
-                        linear_queue_sync(db, account)
-                    health = db.get(WorkerHealth, "worker")
-                    if health:
-                        health.last_scan_at = now()
-                    else:
-                        db.add(WorkerHealth(id="worker", last_scan_at=now()))
-                dispatch_outbox(client)
-                prepare_deliveries()
-                send_deliveries()
-                if iteration % 12 == 0:
-                    housekeeping()
+                supervisor_cycle(client, iteration)
                 iteration += 1
             except Exception:
                 logger.exception("Worker cycle failed; will retry")
