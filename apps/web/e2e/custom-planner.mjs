@@ -6,10 +6,12 @@ const page=await browser.newPage({viewport:{width:1440,height:1000}});const erro
 async function request(path,body){return page.evaluate(async({path,body})=>{const boot=await(await fetch("/api/v1/bootstrap")).json();const r=await fetch("/api/v1"+path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json","X-CSRF-Token":boot.csrf},...(body?{body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));return data;},{path,body});}
 const cmd=async(tool,args)=>(await request("/commands",{command_id:crypto.randomUUID(),tool,arguments:args})).data;
 const ui=async(name,args)=>{const r=await request("/__test_ui",{name,arguments:args});if(r.status!=="displayed")throw Error(JSON.stringify(r));return r;};
+// Dates relative to today so the 30-day timeline window always contains the project.
+const day=n=>new Date(Date.now()+n*864e5).toISOString().slice(0,10);
 try{
  await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
  const client=await cmd("record.create",{type_id:"client",title:"ABC",schema_revision:1});
- const project=await cmd("record.create",{type_id:"project",title:"Transcript Intelligence",parent_id:client.id,schema_revision:1,values:{start_date:"2026-09-17",target_date:"2026-09-24"}});
+ const project=await cmd("record.create",{type_id:"project",title:"Transcript Intelligence",parent_id:client.id,schema_revision:1,values:{start_date:day(1),target_date:day(8)}});
  const task=await cmd("record.create",{type_id:"task",title:"Finish the central docs",parent_id:project.id,schema_revision:1,values:{due_date:"2027-01-01",due_time:"09:00",due_timezone:"America/Chicago"}});
  await ui("ui_records",{type_id:"task",layout:"board"});await expect(page.getByRole("button",{name:"Finish the central docs",exact:true})).toBeVisible();
  await page.getByRole("button",{name:"Finish the central docs",exact:true}).click();await expect(page.getByRole("dialog",{name:"Task details"})).toBeVisible();
