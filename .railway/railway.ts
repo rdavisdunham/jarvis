@@ -1,11 +1,33 @@
+// =====================================================================================
+// DANGER: WHOLE-PROJECT PLAN. Applying this file reconciles the ENTIRE Railway project
+// "Eridani" to exactly what is declared here. Any service, volume, bucket or variable that
+// exists in Railway but is omitted (or renamed) below may be DELETED, including databases
+// and the PITR bucket that holds production recovery history.
+//
+// Required before any apply:
+//   1. Generate the plan only (no apply) and have a second person review it.
+//   2. Check the plan for destructive diffs: it must contain zero deletes/replaces of
+//      services, volumes or buckets unless that exact deletion was separately approved.
+//   3. Confirm the active database with the provider first (do not trust this file alone).
+//
+// Database status (per docs/CLOUD_MIGRATION.md, Sept 16 2026; re-verify with Railway):
+//   - Postgres16 / postgres16-volume: ACTIVE production database (PostgreSQL 16.15,
+//     private `eridani` database used by Eridani_Web and Eridani_Worker).
+//   - Postgres (PG18) / postgres-volume: RETIRED BUT PRESERVED. Deployment is stopped; the
+//     service and its volume are kept deliberately. Do not remove these declarations
+//     (that would delete the volume) and do not repoint JARVIS_DATABASE_URL at it.
+//   - Postgres-PITR: native point-in-time recovery archive for the active database.
+// =====================================================================================
 // Whole-project definition: review all deletions; keep secrets in Railway.
 // Version pins are intentional. Do not use the postgres() default on an existing volume.
 import { bucket, defineRailway, github, postgres, preserve, project, service, volume } from "railway/iac";
 
 export default defineRailway(() => {
+  // ACTIVE production database (PG16). See header before changing anything here.
   const Postgres16 = postgres("Postgres16", { image: "ghcr.io/railwayapp-templates/postgres-ssl:16", region: "us-west2" });
   Postgres16.deploy = { ...Postgres16.deploy, overlapSeconds: 0, restartPolicyType: "ALWAYS" };
   Postgres16.networking = { privateNetworkEndpoint: "postgres16" };
+  // RETIRED BUT PRESERVED (PG18, stopped). Keep declared so a plan never deletes its volume.
   const Postgres = postgres("Postgres", { image: "ghcr.io/railwayapp-templates/postgres-ssl:18", region: "us-west2" });
   Postgres.networking = { privateNetworkEndpoint: "postgres" };
   const postgres16Volume = volume("postgres16-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "us-west2", sizeMB: 5000 });
