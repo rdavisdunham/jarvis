@@ -1,0 +1,23 @@
+{
+  "google": {
+    "dedicated_test_resources": true,
+    "calendar_id": "dedicated-calendar-id",
+    "client_id_env": "ERIDANI_EVAL_GOOGLE_CLIENT_ID",
+    "client_secret_env": "ERIDANI_EVAL_GOOGLE_CLIENT_SECRET",
+    "refresh_token_env": "ERIDANI_EVAL_GOOGLE_REFRESH_TOKEN"
+  },
+  "linear": {
+    "dedicated_test_resources": true,
+    "organization_id": "dedicated-organization-id",
+    "team_id": "dedicated-team-id",
+    "api_key_env": "ERIDANI_EVAL_LINEAR_API_KEY"
+  },
+  "r2": {
+    "dedicated_test_resources": true,
+    "endpoint": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+    "bucket": "eval-bucket",
+    "prefix": "eridani-eval",
+    "access_key_env": "ERIDANI_EVAL_R2_ACCESS_KEY_ID",
+    "secret_key_env": "ERIDANI_EVAL_R2_SECRET_ACCESS_KEY"
+  }
+}

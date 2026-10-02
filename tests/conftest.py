@@ -12,6 +12,28 @@ from sqlalchemy.engine import make_url
 
 @pytest.fixture(scope="session", autouse=True)
 def test_database():
+    supplied = os.environ.get("ERIDANI_EVAL_OWNED_DB")
+    if supplied:
+        from scripts.app_eval.environment import validate_url
+        from sqlalchemy import text
+        validate_url(supplied, trial=True)
+        if get_settings().database_url != supplied:
+            raise ValueError("Eval trial environment mismatch")
+        with engine().connect() as connection:
+            marker = connection.scalar(text("SELECT value FROM eval_harness.metadata WHERE key='corpus'"))
+            if not marker.get("synthetic"):
+                raise ValueError("Missing synthetic eval marker")
+        os.environ.update(JARVIS_COST_TRACKING_ENABLED="true", JARVIS_OWNER_TOKEN="test-owner-token", JARVIS_ORIGIN="http://testserver")
+        get_settings.cache_clear()
+        Base.metadata.create_all(engine())
+        # Match the original pytest fixture: model tables, not a migrated schema.
+        # Migration/readiness tests deliberately expect no alembic_version.
+        with engine().begin() as connection:
+            connection.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+        yield supplied
+        engine().dispose()
+        engine.cache_clear()
+        return
     original = get_settings().database_url
     name = "jarvis_test_" + uuid4().hex
     admin = create_engine(original, isolation_level="AUTOCOMMIT")

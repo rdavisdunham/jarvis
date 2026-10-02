@@ -32,7 +32,7 @@ def validate_url(url, *, trial=False):
     return parsed
 
 
-def settings_env(url, *, live=False):
+def settings_env(url, *, live=False, providers=("OPENAI", "GEMINI")):
     validate_url(url)
     values = {
         "JARVIS_ENV_FILE": "",
@@ -66,8 +66,8 @@ def settings_env(url, *, live=False):
     if live:
         from dotenv import dotenv_values
 
-        secrets = {**dotenv_values(ROOT / ".env"), **os.environ}
-        for provider in ("OPENAI", "GEMINI"):
+        secrets = {**dotenv_values(ROOT / ".env"), **{k: v for k, v in os.environ.items() if v}}
+        for provider in providers:
             values[f"JARVIS_{provider}_API_KEY"] = (
                 secrets.get(f"JARVIS_{provider}_API_KEY") or secrets.get(f"{provider}_API_KEY") or ""
             )
@@ -75,8 +75,8 @@ def settings_env(url, *, live=False):
 
 
 @contextmanager
-def environment(url, *, live=False):
-    overrides = settings_env(url, live=live)
+def environment(url, *, live=False, providers=("OPENAI", "GEMINI")):
+    overrides = settings_env(url, live=live, providers=providers)
     controlled = set(overrides) | {k for k in os.environ if k.startswith("JARVIS_")}
     previous = {k: os.environ.get(k) for k in controlled}
     for key in controlled:
@@ -114,7 +114,9 @@ def corpus_hash():
 
 def admin_for(url):
     parsed = validate_url(url)
-    return create_engine(parsed.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    return create_engine(
+        parsed.set(database="postgres"), isolation_level="AUTOCOMMIT", connect_args={"connect_timeout": 5}
+    )
 
 
 def ensure_corpus(url):
@@ -128,7 +130,7 @@ def ensure_corpus(url):
             exists = db.scalar(text("SELECT 1 FROM pg_database WHERE datname=:name"), {"name": CORPUS})
             if not exists:
                 db.exec_driver_sql(f'CREATE DATABASE "{CORPUS}"')
-        target = create_engine(url)
+        target = create_engine(url, connect_args={"connect_timeout": 5})
         try:
             with target.connect() as db:
                 marker = db.scalar(text("SELECT to_regclass('eval_harness.metadata')"))
@@ -185,23 +187,28 @@ def trial_database(url):
     parsed = validate_url(url)
     if parsed.database != CORPUS:
         raise ValueError("Trials must clone the marked corpus, not another arbitrary database.")
-    target = create_engine(url)
-    try:
-        with target.connect() as db:
-            saved = db.scalar(text("SELECT value FROM eval_harness.metadata WHERE key='corpus'"))
-            if saved["sha256"] != corpus_hash() or not saved.get("synthetic"):
-                raise ValueError("Corpus marker mismatch.")
-    finally:
-        target.dispose()
     name = PREFIX + uuid4().hex
     trial_url = parsed.set(database=name).render_as_string(hide_password=False)
     validate_url(trial_url, trial=True)
     admin = admin_for(url)
     created = False
     try:
-        with admin.connect() as db:
-            db.exec_driver_sql(f'CREATE DATABASE "{name}" TEMPLATE "{CORPUS}"')
-        created = True
+        # PostgreSQL cannot clone a template while another worker connects to it.
+        with admin.connect() as gate:
+            gate.exec_driver_sql("SELECT pg_advisory_lock(61403915)")
+            try:
+                target = create_engine(url, connect_args={"connect_timeout": 5})
+                try:
+                    with target.connect() as db:
+                        saved = db.scalar(text("SELECT value FROM eval_harness.metadata WHERE key='corpus'"))
+                        if saved["sha256"] != corpus_hash() or not saved.get("synthetic"):
+                            raise ValueError("Corpus marker mismatch.")
+                finally:
+                    target.dispose()
+                gate.exec_driver_sql(f'CREATE DATABASE "{name}" TEMPLATE "{CORPUS}"')
+                created = True
+            finally:
+                gate.exec_driver_sql("SELECT pg_advisory_unlock(61403915)")
         yield trial_url, saved
     finally:
         if created:

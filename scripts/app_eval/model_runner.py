@@ -8,6 +8,7 @@ from contextlib import ExitStack
 from datetime import UTC, datetime
 from unittest.mock import patch
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -113,8 +114,158 @@ PROBES = {
 }
 
 
+# More single-turn probes: dates, sparse updates and workflow distinctions.
+PROBES.update(
+    {
+        "task_capture.04": {
+            "message": "Add a new task titled Review Beacon logs due tomorrow.",
+            "create": {"title": "Review Beacon logs", "due_date": "2030-01-15", "due_time": None},
+        },
+        "task_capture.05": {
+            "message": "Add Submit Cedar estimate due Friday at 16:00 Chicago.",
+            "create": {"title": "Submit Cedar estimate", "due_date": "2030-01-18", "due_time": "16:00"},
+        },
+        "task_edit.05": {
+            "message": "Clear the deadline on Finish Beacon central docs but keep its planned day.",
+            "target": "beacon-docs",
+            "setup": {"planned_date": "2030-01-14"},
+            "change": {"due_date": None, "due_time": None, "due_timezone": None},
+        },
+        "task_edit.06": {
+            "message": "Change Finish Beacon central docs due time to 14:30. Keep its date and timezone.",
+            "target": "beacon-docs",
+            "change": {"due_time": "14:30"},
+        },
+        "task_edit.08": {
+            "message": "Remove the project from Finish Beacon central docs. Keep the task and all other details.",
+            "target": "beacon-docs",
+            "change": {"project_id": None},
+        },
+        "task_edit.10": {
+            "message": "Unassign Finish Beacon central docs. Keep everything else.",
+            "target": "beacon-docs",
+            "change": {"assignee_id": None},
+        },
+        "task_lifecycle.04": {
+            "message": "Move Map Harbor inventory event IDs from backlog to open.",
+            "target": "inventory-map",
+            "change": {"status": "open"},
+        },
+        "task_lifecycle.06": {
+            "message": "Mark Finish Beacon central docs as waiting.",
+            "target": "beacon-docs",
+            "change": {"status": "waiting"},
+        },
+        "task_lifecycle.07": {
+            "message": "Defer Review Transcript Lens confidence thresholds.",
+            "target": "lens-review",
+            "change": {"status": "deferred"},
+        },
+        "task_lifecycle.09": {
+            "message": "Archive Finish Beacon central docs.",
+            "target": "beacon-docs",
+            "change": {"archived": True},
+        },
+        "task_lifecycle.10": {
+            "message": "Restore the archived task Old Juniper pilot recap.",
+            "target": "archive",
+            "change": {"archived": False},
+        },
+        "time_deadlines.03": {
+            "message": "Add a new task titled Date only deadline with a due date of January 18, 2030. No due time.",
+            "create": {"title": "Date only deadline", "due_date": "2030-01-18", "due_time": None},
+        },
+        "time_deadlines.04": {
+            "message": "Add a task titled Plan and deadline, planned for Wednesday and due Friday.",
+            "create": {
+                "title": "Plan and deadline",
+                "planned_date": "2030-01-16",
+                "due_date": "2030-01-18",
+                "due_time": None,
+            },
+        },
+        "time_deadlines.05": {
+            "message": "Clear the due time on Finish Beacon central docs. Keep the due date.",
+            "target": "beacon-docs",
+            "change": {"due_time": None, "due_timezone": None},
+        },
+        "time_deadlines.12": {
+            "message": "Change Finish Beacon central docs due time to midnight 00:00. Keep its date.",
+            "target": "beacon-docs",
+            "change": {"due_time": "00:00"},
+        },
+        "time_deadlines.13": {
+            "message": "Change Finish Beacon central docs due time to 23:59. Keep its date.",
+            "target": "beacon-docs",
+            "change": {"due_time": "23:59"},
+        },
+        "time_deadlines.18": {
+            "message": "Set Finish Beacon central docs deadline to January 10, 2030. Keep its time.",
+            "target": "beacon-docs",
+            "change": {"due_date": "2030-01-10"},
+        },
+        "time_deadlines.20": {
+            "message": "Add a task with an exact deadline after lunch tomorrow. I haven't told you what time I take lunch.",
+            "needs_input": True,
+        },
+    }
+)
+
+
+PROBES.update(
+    {
+        "clarifications.01": {
+            "message": "Rename Review proposal to Final proposal.",
+            "followups": ["The Review proposal in Beacon Dispatch, please."],
+            "target": "beacon-contract",
+            "change": {"title": "Final proposal"},
+            "one_card": True,
+            "first_needs_input": True,
+        },
+        "clarifications.03": {
+            "message": "Set an exact timed deadline tomorrow on Finish Beacon central docs, but ask me which time first.",
+            "followups": ["Sometime in the morning; I haven't chosen an exact time yet. Please ask me."],
+            "needs_input": True,
+            "one_card": True,
+            "first_needs_input": True,
+        },
+        "clarifications.20": {
+            "message": "Schedule a calendar work block for Finish Beacon central docs tomorrow. Ask me for both start time and duration first.",
+            "followups": ["Start at 9 a.m. I have not decided the duration."],
+            "needs_input": True,
+            "one_card": True,
+            "first_needs_input": True,
+        },
+    }
+)
+
+
 def stable(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def field_matches(field, actual, expected, row):
+    if actual == expected:
+        return True
+    if field != "due_time" or not isinstance(actual, str) or not isinstance(expected, str):
+        return False
+    date = row.get("due_date")
+    zone = row.get("due_timezone")
+    if not date or not zone:
+        return False
+    try:
+        instant = datetime.fromisoformat(f"{date}T{actual}")
+        if instant.utcoffset() is None:
+            return False
+        local = instant.astimezone(ZoneInfo(zone))
+        return (
+            local.date().isoformat() == date
+            and local.strftime("%H:%M") == expected
+            and local.second == 0
+            and local.microsecond == 0
+        )
+    except (TypeError, ValueError, KeyError):
+        return False
 
 
 def grade(probe, before, after, fixture, status, reply):
@@ -142,7 +293,7 @@ def grade(probe, before, after, fixture, status, reply):
             if k == "title" and isinstance(actual, str):
                 actual = actual.casefold()
                 v = v.casefold()
-            if actual != v:
+            if not field_matches(k, actual, v, new_tasks[0]):
                 failures.append("Created task field: " + k)
         if new_tasks[0].get("completed_at"):
             failures.append("Unexpected completion")
@@ -150,7 +301,7 @@ def grade(probe, before, after, fixture, status, reply):
         current = tasks_after.get(identity, {})
         changes = probe.get("change", {}) if identity == target else {}
         for k, v in changes.items():
-            if current.get(k) != v:
+            if not field_matches(k, current.get(k), v, current):
                 failures.append("Edited task field: " + k)
         allowed = {"updated_at", "revision", *changes}
         if probe.get("change", {}).get("status") == "cancelled":
@@ -197,11 +348,23 @@ def grade(probe, before, after, fixture, status, reply):
 async def execute_probe(identity, probe, profile, fixture, trace, scripted=None):
     from jarvis import agent_instructions, agent_work, work_runner
     from jarvis.db import session_scope
-    from jarvis.models import AgentWork, Conversation, Job, OwnerSettings
+    from jarvis.models import AgentWork, Conversation, Job, OwnerSettings, Task
 
     from scripts.evaluate_expert_agents import InstructionDateTime
 
     owner = fixture["owner"]
+    if probe.get("setup"):
+        from jarvis.domain import execute
+
+        target = fixture["refs"]["tasks"][probe["target"]]["id"]
+        with session_scope() as db:
+            execute(
+                db,
+                owner,
+                str(uuid4()),
+                "task.update",
+                {"task_id": target, "expected_revision": db.get(Task, target).revision, **probe["setup"]},
+            )
     device = "synthetic-rowan-device"
     with session_scope() as db:
         prefs = db.get(OwnerSettings, owner)
@@ -231,7 +394,23 @@ async def execute_probe(identity, probe, profile, fixture, trace, scripted=None)
         stack.enter_context(patch.object(work_runner, "call_tool", observed))
         if scripted:
             stack.enter_context(patch.object(work_runner, "request_model", scripted))
-        await asyncio.wait_for(work_runner.run(request), timeout=180)
+        requests = [request]
+        outcomes = []
+        for step, message in enumerate([probe["message"], *probe.get("followups", [])]):
+            if step:
+                with session_scope() as db:
+                    row = agent_work.enqueue(db, owner, owner, device, conversation, str(uuid4()), message)
+                    request = row.id
+                    requests.append(request)
+            # work_answer performs a durable handoff; execute its queued continuation
+            # in the same trial, preserving the original conversation and work identity.
+            for _ in range(4):
+                await asyncio.wait_for(work_runner.run(request), timeout=180)
+                with session_scope() as db:
+                    state = db.get(Job, request).status
+                if state != "queued":
+                    break
+            outcomes.append(state)
     after = snapshot()
     with session_scope() as db:
         job = db.get(Job, request)
@@ -239,6 +418,15 @@ async def execute_probe(identity, probe, profile, fixture, trace, scripted=None)
         state = job.status
         result = row.result
     failures = grade(probe, before, after, fixture, state, result)
+    if probe.get("first_needs_input") and outcomes[0] != "needs_input":
+        failures.append("First turn did not ask the required clarification")
+    if probe.get("one_card"):
+        with session_scope() as db:
+            cards = agent_work.list_work(db, owner, owner, conversation_id=conversation)["items"]
+        if len(cards) != 1:
+            failures.append("Clarification stranded or duplicated an activity card")
+        elif cards[0]["id"] != requests[0]:
+            failures.append("Clarification lost the original work identity")
     return {
         "status": "safety_failure"
         if any(x.startswith("SAFETY:") for x in failures)
@@ -246,6 +434,7 @@ async def execute_probe(identity, probe, profile, fixture, trace, scripted=None)
         if failures
         else "passed",
         "queue_status": state,
+        "turn_outcomes": outcomes,
         "failures": failures,
         "reply": result,
         "before": before,
@@ -317,7 +506,8 @@ def run(args, output):
                                 )
                 except EvalLimit:
                     result.update(
-                        status="not_completed", reason="Dollar/request ceiling interrupted this trial; see spending.json"
+                        status="not_completed",
+                        reason="Dollar/request ceiling interrupted this trial; see spending.json",
                     )
                 except Exception as exc:  # noqa: BLE001 - one failed trial must preserve evidence and cleanup
                     # Do not serialize provider exceptions/headers, which may contain credentials.

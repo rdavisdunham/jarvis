@@ -1,0 +1,3403 @@
+{
+  "task_capture.01": [
+    {
+      "id": "agent:task_capture.01:live-model",
+      "adapter": "agent",
+      "target": "task_capture.01",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.02": [
+    {
+      "id": "agent:task_capture.02:live-model",
+      "adapter": "agent",
+      "target": "task_capture.02",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.03": [
+    {
+      "id": "agent:task_capture.03:live-model",
+      "adapter": "agent",
+      "target": "task_capture.03",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.06": [
+    {
+      "id": "agent:task_capture.06:live-model",
+      "adapter": "agent",
+      "target": "task_capture.06",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.07": [
+    {
+      "id": "agent:task_capture.07:live-model",
+      "adapter": "agent",
+      "target": "task_capture.07",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.10": [
+    {
+      "id": "agent:task_capture.10:live-model",
+      "adapter": "agent",
+      "target": "task_capture.10",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.15": [
+    {
+      "id": "agent:task_capture.15:live-model",
+      "adapter": "agent",
+      "target": "task_capture.15",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.01": [
+    {
+      "id": "agent:task_edit.01:live-model",
+      "adapter": "agent",
+      "target": "task_edit.01",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.04": [
+    {
+      "id": "agent:task_edit.04:live-model",
+      "adapter": "agent",
+      "target": "task_edit.04",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.11": [
+    {
+      "id": "agent:task_edit.11:live-model",
+      "adapter": "agent",
+      "target": "task_edit.11",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.12": [
+    {
+      "id": "agent:task_edit.12:live-model",
+      "adapter": "agent",
+      "target": "task_edit.12",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.13": [
+    {
+      "id": "agent:task_edit.13:live-model",
+      "adapter": "agent",
+      "target": "task_edit.13",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.15": [
+    {
+      "id": "agent:task_edit.15:live-model",
+      "adapter": "agent",
+      "target": "task_edit.15",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.19": [
+    {
+      "id": "agent:task_edit.19:live-model",
+      "adapter": "agent",
+      "target": "task_edit.19",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_edit.25": [
+    {
+      "id": "agent:task_edit.25:live-model",
+      "adapter": "agent",
+      "target": "task_edit.25",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_lifecycle.02": [
+    {
+      "id": "agent:task_lifecycle.02:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.02",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_lifecycle.03": [
+    {
+      "id": "agent:task_lifecycle.03:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.03",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_lifecycle.05": [
+    {
+      "id": "agent:task_lifecycle.05:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.05",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_lifecycle.08": [
+    {
+      "id": "agent:task_lifecycle.08:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.08",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "notes.02": [
+    {
+      "id": "agent:notes.02:live-model",
+      "adapter": "agent",
+      "target": "notes.02",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna through production durable queue; saved-state oracle and foreign-account canary."
+    }
+  ],
+  "task_capture.17": [
+    {
+      "id": "contract:task_capture.17:offline",
+      "adapter": "contract",
+      "target": "task_capture.17",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_capture.18": [
+    {
+      "id": "contract:task_capture.18:offline",
+      "adapter": "contract",
+      "target": "task_capture.18",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_capture.19": [
+    {
+      "id": "contract:task_capture.19:offline",
+      "adapter": "contract",
+      "target": "task_capture.19",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_capture.20": [
+    {
+      "id": "contract:task_capture.20:offline",
+      "adapter": "contract",
+      "target": "task_capture.20",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_capture.21": [
+    {
+      "id": "contract:task_capture.21:offline",
+      "adapter": "contract",
+      "target": "task_capture.21",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_capture.23": [
+    {
+      "id": "contract:task_capture.23:offline",
+      "adapter": "contract",
+      "target": "task_capture.23",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_edit.21": [
+    {
+      "id": "contract:task_edit.21:offline",
+      "adapter": "contract",
+      "target": "task_edit.21",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_edit.23": [
+    {
+      "id": "contract:task_edit.23:offline",
+      "adapter": "contract",
+      "target": "task_edit.23",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "task_edit.24": [
+    {
+      "id": "contract:task_edit.24:offline",
+      "adapter": "contract",
+      "target": "task_edit.24",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "time_deadlines.26": [
+    {
+      "id": "contract:time_deadlines.26:offline",
+      "adapter": "contract",
+      "target": "time_deadlines.26",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact command-layer boundary, revision or timestamp scenario plus trial privacy invariant."
+    }
+  ],
+  "memory_capture.01": [
+    {
+      "id": "pipeline:memory_capture.01:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.01",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.02": [
+    {
+      "id": "pipeline:memory_capture.02:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.02",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.03": [
+    {
+      "id": "pipeline:memory_capture.03:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.03",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.04": [
+    {
+      "id": "pipeline:memory_capture.04:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.04",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.05": [
+    {
+      "id": "pipeline:memory_capture.05:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.05",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.06": [
+    {
+      "id": "pipeline:memory_capture.06:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.06",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.07": [
+    {
+      "id": "pipeline:memory_capture.07:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.07",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.08": [
+    {
+      "id": "pipeline:memory_capture.08:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.08",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.09": [
+    {
+      "id": "pipeline:memory_capture.09:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.09",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.10": [
+    {
+      "id": "pipeline:memory_capture.10:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.10",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.11": [
+    {
+      "id": "pipeline:memory_capture.11:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.11",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.12": [
+    {
+      "id": "pipeline:memory_capture.12:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.12",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.13": [
+    {
+      "id": "pipeline:memory_capture.13:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.13",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.14": [
+    {
+      "id": "pipeline:memory_capture.14:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.14",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.15": [
+    {
+      "id": "pipeline:memory_capture.15:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.15",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.16": [
+    {
+      "id": "pipeline:memory_capture.16:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.16",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.17": [
+    {
+      "id": "pipeline:memory_capture.17:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.17",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.18": [
+    {
+      "id": "pipeline:memory_capture.18:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.18",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.19": [
+    {
+      "id": "pipeline:memory_capture.19:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.19",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.20": [
+    {
+      "id": "pipeline:memory_capture.20:live-model",
+      "adapter": "pipeline",
+      "target": "memory_capture.20",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.21": [
+    {
+      "id": "pipeline:memory_capture.21:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.21",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.22": [
+    {
+      "id": "pipeline:memory_capture.22:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.22",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.23": [
+    {
+      "id": "pipeline:memory_capture.23:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.23",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.24": [
+    {
+      "id": "pipeline:memory_capture.24:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.24",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "memory_capture.25": [
+    {
+      "id": "pipeline:memory_capture.25:offline",
+      "adapter": "pipeline",
+      "target": "memory_capture.25",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    }
+  ],
+  "note_organization.01": [
+    {
+      "id": "pipeline:note_organization.01:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.01",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.02": [
+    {
+      "id": "pipeline:note_organization.02:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.02",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.03": [
+    {
+      "id": "pipeline:note_organization.03:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.03",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.04": [
+    {
+      "id": "pipeline:note_organization.04:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.04",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.05": [
+    {
+      "id": "pipeline:note_organization.05:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.05",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.06": [
+    {
+      "id": "pipeline:note_organization.06:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.06",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.07": [
+    {
+      "id": "pipeline:note_organization.07:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.07",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.08": [
+    {
+      "id": "pipeline:note_organization.08:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.08",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.09": [
+    {
+      "id": "pipeline:note_organization.09:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.09",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.10": [
+    {
+      "id": "pipeline:note_organization.10:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.10",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_invalid_quotes_passing_mentions_and_low_confidence_are_not_extracted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.13": [
+    {
+      "id": "pipeline:note_organization.13:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.13",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.15": [
+    {
+      "id": "pipeline:note_organization.15:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.15",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.16": [
+    {
+      "id": "pipeline:note_organization.16:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.16",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.17": [
+    {
+      "id": "pipeline:note_organization.17:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.17",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.18": [
+    {
+      "id": "pipeline:note_organization.18:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.18",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.20": [
+    {
+      "id": "pipeline:note_organization.20:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.20",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_extraction_switch_keeps_whole_note_classification:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_extraction_switch_keeps_whole_note_classification",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.21": [
+    {
+      "id": "pipeline:note_organization.21:live-model",
+      "adapter": "pipeline",
+      "target": "note_organization.21",
+      "mode": "live-model",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_classification_can_be_disabled_and_failures_are_retryable:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_classification_can_be_disabled_and_failures_are_retryable",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.22": [
+    {
+      "id": "pipeline:note_organization.22:offline",
+      "adapter": "pipeline",
+      "target": "note_organization.22",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "pytest:tests/test_note_lists.py::test_classification_can_be_disabled_and_failures_are_retryable:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_classification_can_be_disabled_and_failures_are_retryable",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "memory_dream.01": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.01",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.01",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.18": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.18",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.18",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.23": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.23",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.23",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.02": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_spelling_candidates_are_queued_not_guessed_and_not_duplicated:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_spelling_candidates_are_queued_not_guessed_and_not_duplicated",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.02",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.02",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.04": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_owner_resolution_has_receipt_provenance_and_new_embedding_job:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_owner_resolution_has_receipt_provenance_and_new_embedding_job",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.04",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.04",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.08": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_owner_resolution_has_receipt_provenance_and_new_embedding_job:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_owner_resolution_has_receipt_provenance_and_new_embedding_job",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.08",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.08",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.05": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_distinct_answer_is_not_asked_again_next_run:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_distinct_answer_is_not_asked_again_next_run",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.05",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.05",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.06": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_defer_and_context_cooldown_leave_question_pending:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_defer_and_context_cooldown_leave_question_pending",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.06",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.06",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.24": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_defer_and_context_cooldown_leave_question_pending:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_defer_and_context_cooldown_leave_question_pending",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.24",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.24",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.07": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_review_api_and_agent_tools_enforce_owner_and_revision:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_review_api_and_agent_tools_enforce_owner_and_revision",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.07",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.07",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.09": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.09",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.09",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.10": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.10",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.10",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.17": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.17",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.17",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.11": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_spelling_candidates_are_queued_not_guessed_and_not_duplicated:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_spelling_candidates_are_queued_not_guessed_and_not_duplicated",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.11",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.11",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.12": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.12",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.12",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.14": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.14",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.14",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.16": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.16",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.16",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.19": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_similarity_never_merges_different_numbers_or_unrelated_facts:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_similarity_never_merges_different_numbers_or_unrelated_facts",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.19",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.19",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.25": [
+    {
+      "id": "pytest:tests/test_memory_review.py::test_unasked_review_remains_available_and_private_output_records_question:offline",
+      "adapter": "pytest",
+      "target": "tests/test_memory_review.py::test_unasked_review_remains_available_and_private_output_records_question",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "scenario:memory_dream.25",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.25",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "clarifications.01": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_spoken_answer_completes_original_card_without_repeating_saved_action:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_spoken_answer_completes_original_card_without_repeating_saved_action",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "conversation:clarifications.01",
+      "mode": "live-model",
+      "adapter": "agent",
+      "target": "clarifications.01",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real multi-turn Luna conversation; persisted clarification handoff, saved-state and one-original-card assertions."
+    }
+  ],
+  "clarifications.02": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_spoken_answer_completes_original_card_without_repeating_saved_action:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_spoken_answer_completes_original_card_without_repeating_saved_action",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.03": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_incomplete_answers_stay_on_one_card_and_keep_question_history:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_incomplete_answers_stay_on_one_card_and_keep_question_history",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "conversation:clarifications.03",
+      "mode": "live-model",
+      "adapter": "agent",
+      "target": "clarifications.03",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real multi-turn Luna conversation; persisted clarification handoff, saved-state and one-original-card assertions."
+    }
+  ],
+  "clarifications.04": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_answer_handoff_is_idempotent_and_rejects_late_answer_to_consumed_question:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_answer_handoff_is_idempotent_and_rejects_late_answer_to_consumed_question",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.06": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_answer_handoff_is_idempotent_and_rejects_late_answer_to_consumed_question:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_answer_handoff_is_idempotent_and_rejects_late_answer_to_consumed_question",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.05": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_two_concurrent_answers_cannot_both_claim_one_question:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_two_concurrent_answers_cannot_both_claim_one_question",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.07": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.08": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.09": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_wrong_question_account_or_cancelled_request_cannot_be_adopted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.10": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_pending_followup_returns_exact_question_and_independent_work_stays_separate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_pending_followup_returns_exact_question_and_independent_work_stays_separate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.12": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_pending_followup_returns_exact_question_and_independent_work_stays_separate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_pending_followup_returns_exact_question_and_independent_work_stays_separate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.13": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_manual_revision_preserves_question_and_resumes_latest_attempt:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_manual_revision_preserves_question_and_resumes_latest_attempt",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "clarifications.22": [
+    {
+      "id": "pytest:tests/test_work_continuation.py::test_clear_history_preserves_saved_records_and_is_account_scoped:offline",
+      "adapter": "pytest",
+      "target": "tests/test_work_continuation.py::test_clear_history_preserves_saved_records_and_is_account_scoped",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.01": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_independent_backend_requests_execute_concurrently:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_independent_backend_requests_execute_concurrently",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.02": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_independent_backend_requests_execute_concurrently:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_independent_backend_requests_execute_concurrently",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.03": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_followup_uses_original_saved_task_running_or_completed:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_followup_uses_original_saved_task_running_or_completed",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.04": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_followup_uses_original_saved_task_running_or_completed:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_followup_uses_original_saved_task_running_or_completed",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.06": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.07": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.08": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.11": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_explicit_cancel_keeps_saved_actions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_explicit_cancel_keeps_saved_actions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.12": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_explicit_cancel_keeps_saved_actions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_explicit_cancel_keeps_saved_actions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.13": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_other_account_cannot_inspect_cancel_or_revert_work:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_other_account_cannot_inspect_cancel_or_revert_work",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.14": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_real_worker_resumes_command_after_process_kill:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_real_worker_resumes_command_after_process_kill",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.16": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_record_reservations_wait_for_conflicts_but_allow_different_records:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_record_reservations_wait_for_conflicts_but_allow_different_records",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.21": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_crash_after_commit_replays_same_command_once:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_crash_after_commit_replays_same_command_once",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.24": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_direct_voice_backend_ends_voice_and_hides_conversation_only_cards:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_direct_voice_backend_ends_voice_and_hides_conversation_only_cards",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "queue.25": [
+    {
+      "id": "pytest:tests/test_agent_work.py::test_revoked_member_cannot_finish_accepted_write:offline",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_revoked_member_cannot_finish_accepted_write",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.01": [
+    {
+      "id": "pytest:tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.02": [
+    {
+      "id": "pytest:tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.03": [
+    {
+      "id": "pytest:tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_three_training_examples_do_not_bypass_heldout_gate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.11": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.12": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.13": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_assessment_stale_fingerprint_cannot_overwrite",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.16": [
+    {
+      "id": "pytest:tests/test_routing.py::test_weekly_learning_supports_classification_without_forcing_a_home:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_weekly_learning_supports_classification_without_forcing_a_home",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.19": [
+    {
+      "id": "pytest:tests/test_routing.py::test_no_change_review_avoids_another_model_call:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_no_change_review_avoids_another_model_call",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.20": [
+    {
+      "id": "pytest:tests/test_routing.py::test_weekly_schedule_and_queue_are_idempotent:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_weekly_schedule_and_queue_are_idempotent",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.21": [
+    {
+      "id": "pytest:tests/test_routing.py::test_learning_toggle_separate_from_routing_and_personal_memory:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_learning_toggle_separate_from_routing_and_personal_memory",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.22": [
+    {
+      "id": "pytest:tests/test_routing.py::test_learning_toggle_separate_from_routing_and_personal_memory:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_learning_toggle_separate_from_routing_and_personal_memory",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_dream.25": [
+    {
+      "id": "pytest:tests/test_routing.py::test_assessment_outage_is_bounded_and_leaves_manual_use:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_assessment_outage_is_bounded_and_leaves_manual_use",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.03": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.04": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.05": [
+    {
+      "id": "pytest:tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_field_clarification_gets_a_review_offer_and_answer_resolves_it",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.06": [
+    {
+      "id": "pytest:tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.07": [
+    {
+      "id": "pytest:tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.08": [
+    {
+      "id": "pytest:tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.23": [
+    {
+      "id": "pytest:tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_existing_reorganization_needs_preview_and_preserves_newer_edits",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.12": [
+    {
+      "id": "pytest:tests/test_routing.py::test_explicit_rule_routes_new_work_but_preserves_explicit_clear:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_explicit_rule_routes_new_work_but_preserves_explicit_clear",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.17": [
+    {
+      "id": "pytest:tests/test_routing.py::test_explicit_rule_routes_new_work_but_preserves_explicit_clear:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_explicit_rule_routes_new_work_but_preserves_explicit_clear",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.13": [
+    {
+      "id": "pytest:tests/test_routing.py::test_conflicting_rules_leave_home_unassigned:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_conflicting_rules_leave_home_unassigned",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.18": [
+    {
+      "id": "pytest:tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.19": [
+    {
+      "id": "pytest:tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.20": [
+    {
+      "id": "pytest:tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.21": [
+    {
+      "id": "pytest:tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_routing_cannot_change_due_dates_responsibility_or_foreign_homes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "routing_rules.25": [
+    {
+      "id": "pytest:tests/test_routing.py::test_only_rules_using_changed_definitions_need_review:offline",
+      "adapter": "pytest",
+      "target": "tests/test_routing.py::test_only_rules_using_changed_definitions_need_review",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.01": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.02": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.04": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.05": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.06": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.24": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_lists_are_editable_filters_and_safe_permissions",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.09": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_new_lists_accept_custom_fields:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_new_lists_accept_custom_fields",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.10": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_new_lists_accept_custom_fields:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_new_lists_accept_custom_fields",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.11": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_new_lists_accept_custom_fields:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_new_lists_accept_custom_fields",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.12": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_new_lists_accept_custom_fields:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_new_lists_accept_custom_fields",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.13": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_disabling_extraction_keeps_classification_and_one_item_multiple_lists:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_disabling_extraction_keeps_classification_and_one_item_multiple_lists",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.15": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.16": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.17": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_archiving_list_does_not_archive_notes_and_invalid_filter_can_be_removed",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.18": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_manual_clear_survives_model_and_counts_as_human_evidence",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.22": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_optional_candidates_do_not_change_membership:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_optional_candidates_do_not_change_membership",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.23": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_shared_viewer_cannot_configure_or_file_and_revoked_creator_cannot_extract:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_shared_viewer_cannot_configure_or_file_and_revoked_creator_cannot_extract",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_lists.25": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_tools_discover_and_browse_lists_without_mutation:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_tools_discover_and_browse_lists_without_mutation",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.14": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_extraction_keeps_source_and_retries_do_not_duplicate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.11": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_ambiguous_existing_titles_never_merge_or_duplicate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_ambiguous_existing_titles_never_merge_or_duplicate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.12": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_ambiguous_existing_titles_never_merge_or_duplicate:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_ambiguous_existing_titles_never_merge_or_duplicate",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.19": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_results_are_discarded_when_source_or_definition_changes",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.24": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_shared_viewer_cannot_configure_or_file_and_revoked_creator_cannot_extract:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_shared_viewer_cannot_configure_or_file_and_revoked_creator_cannot_extract",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "note_organization.25": [
+    {
+      "id": "pytest:tests/test_note_lists.py::test_extracted_evidence_is_searchable_without_copying_authored_content:offline",
+      "adapter": "pytest",
+      "target": "tests/test_note_lists.py::test_extracted_evidence_is_searchable_without_copying_authored_content",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.01": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.02": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.03": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_structured_and_possible_lanes_keep_wrongly_filed_records",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.07": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_inherited_fields_explicit_clear_and_option_identity:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_inherited_fields_explicit_clear_and_option_identity",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.11": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_duplicate_names_remain_ambiguous_and_schema_aliases_survive_rename:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_duplicate_names_remain_ambiguous_and_schema_aliases_survive_rename",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.14": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_other_account_cannot_read_search_evidence_or_influence_aliases:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_other_account_cannot_read_search_evidence_or_influence_aliases",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.15": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_shared_membership_revoked_during_embedding_never_returns_data:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_shared_membership_revoked_during_embedding_never_returns_data",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.16": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_current_revision_and_provider_failure_preserve_keyword_search:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_current_revision_and_provider_failure_preserve_keyword_search",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.17": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_current_revision_and_provider_failure_preserve_keyword_search:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_current_revision_and_provider_failure_preserve_keyword_search",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.18": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_index_stale_generation_never_publishes_old_vectors:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_index_stale_generation_never_publishes_old_vectors",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "search.19": [
+    {
+      "id": "pytest:tests/test_semantic_search.py::test_full_collection_over_one_thousand_and_pagination:offline",
+      "adapter": "pytest",
+      "target": "tests/test_semantic_search.py::test_full_collection_over_one_thousand_and_pagination",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    }
+  ],
+  "memory_dream.03": [
+    {
+      "id": "scenario:memory_dream.03",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.03",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.13": [
+    {
+      "id": "scenario:memory_dream.13",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.13",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.15": [
+    {
+      "id": "scenario:memory_dream.15",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.15",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.20": [
+    {
+      "id": "scenario:memory_dream.20",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.20",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.21": [
+    {
+      "id": "scenario:memory_dream.21",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.21",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "memory_dream.22": [
+    {
+      "id": "scenario:memory_dream.22",
+      "mode": "offline",
+      "adapter": "contract",
+      "target": "memory_dream.22",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+    }
+  ],
+  "task_capture.04": [
+    {
+      "id": "agent:task_capture.04:live-model",
+      "adapter": "agent",
+      "target": "task_capture.04",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_capture.05": [
+    {
+      "id": "agent:task_capture.05:live-model",
+      "adapter": "agent",
+      "target": "task_capture.05",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_edit.05": [
+    {
+      "id": "agent:task_edit.05:live-model",
+      "adapter": "agent",
+      "target": "task_edit.05",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_edit.06": [
+    {
+      "id": "agent:task_edit.06:live-model",
+      "adapter": "agent",
+      "target": "task_edit.06",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_edit.08": [
+    {
+      "id": "agent:task_edit.08:live-model",
+      "adapter": "agent",
+      "target": "task_edit.08",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_edit.10": [
+    {
+      "id": "agent:task_edit.10:live-model",
+      "adapter": "agent",
+      "target": "task_edit.10",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_lifecycle.04": [
+    {
+      "id": "agent:task_lifecycle.04:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.04",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_lifecycle.06": [
+    {
+      "id": "agent:task_lifecycle.06:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.06",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_lifecycle.07": [
+    {
+      "id": "agent:task_lifecycle.07:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.07",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_lifecycle.09": [
+    {
+      "id": "agent:task_lifecycle.09:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.09",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "task_lifecycle.10": [
+    {
+      "id": "agent:task_lifecycle.10:live-model",
+      "adapter": "agent",
+      "target": "task_lifecycle.10",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.03": [
+    {
+      "id": "agent:time_deadlines.03:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.03",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.04": [
+    {
+      "id": "agent:time_deadlines.04:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.04",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.05": [
+    {
+      "id": "agent:time_deadlines.05:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.05",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.12": [
+    {
+      "id": "agent:time_deadlines.12:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.12",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.13": [
+    {
+      "id": "agent:time_deadlines.13:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.13",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.18": [
+    {
+      "id": "agent:time_deadlines.18:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.18",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "time_deadlines.20": [
+    {
+      "id": "agent:time_deadlines.20:live-model",
+      "adapter": "agent",
+      "target": "time_deadlines.20",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+    }
+  ],
+  "clarifications.20": [
+    {
+      "id": "conversation:clarifications.20",
+      "mode": "live-model",
+      "adapter": "agent",
+      "target": "clarifications.20",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real multi-turn Luna conversation; persisted clarification handoff, saved-state and one-original-card assertions."
+    }
+  ]
+}

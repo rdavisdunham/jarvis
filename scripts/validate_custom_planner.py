@@ -21,11 +21,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     original = get_settings().database_url
-    name = "jarvis_custom_test_" + uuid4().hex
+    supplied = os.environ.get("ERIDANI_EVAL_OWNED_DB")
+    if supplied:
+        from scripts.app_eval.environment import validate_url
+        validate_url(supplied, trial=True)
+        if supplied != original:
+            raise ValueError("Browser fixture database mismatch")
+    name = make_url(supplied).database if supplied else "jarvis_custom_test_" + uuid4().hex
     admin = create_engine(original, isolation_level="AUTOCOMMIT")
     server = None
-    with admin.connect() as db:
-        db.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    if not supplied:
+        with admin.connect() as db:
+            db.exec_driver_sql(f'CREATE DATABASE "{name}"')
     try:
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
@@ -95,8 +102,9 @@ def main():
             server.wait(timeout=10)
         engine().dispose()
         engine.cache_clear()
-        with admin.connect() as db:
-            db.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        if not supplied:
+            with admin.connect() as db:
+                db.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
 
 
