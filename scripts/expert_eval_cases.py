@@ -235,9 +235,16 @@ def task(f, key, title, **kw):
 
 def seed_case(case, repeat):
     database = make_url(get_settings().database_url).database
-    assert database.startswith(("jarvis_expert_eval_", "jarvis_test_")), (
-        "Refuse fixture reset outside a disposable DB"
-    )
+    if database.startswith("eridani_eval_trial_"):
+        import os
+        from scripts.app_eval.environment import validate_url
+        supplied = os.environ.get("ERIDANI_EVAL_OWNED_DB")
+        assert supplied == get_settings().database_url, "Eval trial must be owned by its coordinator"
+        validate_url(supplied, trial=True)
+    else:
+        assert database.startswith(("jarvis_expert_eval_", "jarvis_test_")), (
+            "Refuse fixture reset outside a disposable DB"
+        )
     with engine().begin() as db:
         for table in reversed(Base.metadata.sorted_tables):
             db.execute(table.delete())

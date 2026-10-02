@@ -15,6 +15,15 @@ export interface VoiceState {
   provider?: VoiceProvider;
   ui_actions?: UIAction[];
   idle_seconds?: number | null;
+  awaiting_answer?: boolean;
+}
+// Status doubles as the server lease (30 s cutoff); every interval stays well under it.
+export const POLL_ACTIVE_MS = 400;
+export const POLL_STABLE_MS = 1000;
+export const POLL_HIDDEN_MS = 5000;
+const STABLE_POLLS = 10;
+function hidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 export class Voice {
   private pc: RTCPeerConnection | null = null;
@@ -45,17 +54,29 @@ export class Voice {
   private audioContext: AudioContext | null = null;
   private meterFrame: number | null = null;
   private stopPromise: Promise<void> | null = null;
+  private published = "";
+  private lastStatus = "";
+  private unchangedPolls = 0;
+  private changed: (state: VoiceState) => void;
   constructor(
-    private changed: (state: VoiceState) => void,
+    changed: (state: VoiceState) => void,
     message: (value: ChatMessage) => void = () => {},
     private level: (value: number) => void = () => {},
   ) {
+    // Only publish real changes; pollers and the idle ticker otherwise rerender the app.
+    this.changed = (state) => {
+      const key = JSON.stringify(state);
+      if (key === this.published) return;
+      this.published = key;
+      changed(state);
+    };
     const transcriptMessage = (value: ChatMessage) => {
       message(value);
       if (this.stopped || value.role !== "user") return;
       if (this.endingTimer) clearTimeout(this.endingTimer);
       this.endingTimer = null;
-      if (this.ending.user(value)) {
+      this.pollSoon();
+      if (this.ending.user(value, Date.now(), this.busy())) {
         this.endingTimer = setTimeout(() => {
           this.endingTimer = null;
           if (this.stopped) return;
@@ -84,7 +105,7 @@ export class Voice {
         if (this.stopped) return;
         if (value.role === "assistant")
           this.ending.assistant(value.id, value.content);
-        else this.ending.user(value);
+        else this.ending.user(value, Date.now(), this.busy());
       },
     );
     this.transcript = new VoiceTranscript(
@@ -283,6 +304,8 @@ export class Voice {
       this.stream.getTracks().forEach((t) => (t.enabled = true));
       this.idle.start(performance.now());
       this.idleTimer = setInterval(() => this.checkIdle(), 200);
+      if (typeof document !== "undefined")
+        document.addEventListener("visibilitychange", this.pollSoon);
       this.check();
     } catch (error) {
       await this.stop();
@@ -296,6 +319,9 @@ export class Voice {
       const state = await api<VoiceState>("/voice/sessions/" + session);
       if (this.stopped || this.session !== session) return;
       this.pollFailures = 0;
+      const status = JSON.stringify(state);
+      this.unchangedPolls = status === this.lastStatus ? this.unchangedPolls + 1 : 0;
+      this.lastStatus = status;
       this.latestState = state;
       if (this.provider === "realtime" && state.text_id && state.text)
         this.ending.assistant(state.text_id, state.text);
@@ -327,8 +353,25 @@ export class Voice {
       await this.stop();
       return;
     }
-    if (!this.stopped) this.poll = setTimeout(this.check, 400);
+    if (!this.stopped) this.poll = setTimeout(this.check, this.interval());
   };
+  private interval() {
+    if (hidden()) return POLL_HIDDEN_MS;
+    return this.unchangedPolls >= STABLE_POLLS ? POLL_STABLE_MS : POLL_ACTIVE_MS;
+  }
+  // Speech or a visible tab may change state soon: return to the fast cadence.
+  private pollSoon = () => {
+    this.unchangedPolls = 0;
+    if (this.stopped || !this.session || !this.poll || hidden()) return;
+    clearTimeout(this.poll);
+    this.poll = setTimeout(this.check, POLL_ACTIVE_MS);
+  };
+  // Work is running or its question awaits an answer: "thanks" must not hang up.
+  private busy() {
+    return (
+      this.latestState.state === "working" || !!this.latestState.awaiting_answer
+    );
+  }
   private startMeter() {
     if (typeof AudioContext === "undefined" || !this.stream) return;
     try {
@@ -426,6 +469,9 @@ export class Voice {
     this.audioContext = null;
     this.level(0);
     if (this.poll) clearTimeout(this.poll);
+    this.poll = null;
+    if (typeof document !== "undefined")
+      document.removeEventListener("visibilitychange", this.pollSoon);
     if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
     this.disconnectTimer = null;
     // Release microphone capture immediately. The transport can still receive final usage.

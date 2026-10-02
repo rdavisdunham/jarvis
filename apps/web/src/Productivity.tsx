@@ -62,7 +62,7 @@ export function LinkPicker({
   return (
     <fieldset className="relationship-picker">
       <legend>
-        {label} · {selected.length}
+        {label} <span className="chip">{selected.length}</span>
       </legend>
       {items.length > 6 && (
         <input
@@ -419,8 +419,11 @@ export function ProductivityPage({
           {row.target_date && <span>Target {row.target_date}</span>}
           {project && (
             <span>
-              {plural(openTasks.length, "open task")}{nextDue ? " · Next due " + nextDue : ""}
+              {plural(openTasks.length, "open task")}
             </span>
+          )}
+          {project && nextDue && (
+            <span>Next due {nextDue}</span>
           )}
           {!!linked.length && (
             <span>
@@ -639,7 +642,7 @@ export function ProductivityPage({
                   }}
                 >
                   <h3>
-                    {status.replaceAll("_", " ")}
+                    {humanLabel(status)}
                     <span>
                       {visible.filter((r) => r.status === status).length}
                     </span>

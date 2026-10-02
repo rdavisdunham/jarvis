@@ -8,7 +8,7 @@ async function request(path,body){return page.evaluate(async({path,body})=>{cons
 const cmd=async(tool,args)=>(await request("/commands",{command_id:crypto.randomUUID(),tool,arguments:args})).data;
 const ui=async(name,args)=>{const result=await request("/__test_ui",{name,arguments:args});if(result.status!=="displayed")throw Error(JSON.stringify(result));};
 try{
- await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("heading",{name:"Tasks",exact:true})).toBeVisible();
+ await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();
  const schema=await request("/structure");const create=(type_id,title,extra={})=>cmd("record.create",{type_id,title,schema_revision:schema.revision,...extra});
  const abc=await create("client","Synthetic Pest ABC",{body:"Commercial pest control company"});
  const task=await create("task","Renew spraying coverage",{parent_id:abc.id});
@@ -26,7 +26,7 @@ try{
  await ui("ui_workspace",{view:"settings",settings_section:"organization"});await expect(page.getByRole("heading",{name:"Search aliases",exact:true})).toBeVisible();const aliases=page.locator(".search-alias-settings");await expect(aliases.getByText(/pest control company.*Synthetic Pest ABC/)).toBeVisible();
  await aliases.getByRole("button",{name:"Confirm",exact:true}).click();await expect(aliases.getByText(/confirmed/)).toBeVisible();await aliases.getByRole("button",{name:"Pause",exact:true}).click();await expect(aliases.getByText(/paused/)).toBeVisible();
  for(const width of [390,820,1440]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();}
- mkdirSync("../../artifacts/semantic-search",{recursive:true});await page.screenshot({path:"../../artifacts/semantic-search/aliases.png",fullPage:true});
+ mkdirSync((process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/semantic-search"),{recursive:true});await page.screenshot({path:(process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/semantic-search") + "/aliases.png",fullPage:true});
  await aliases.getByRole("button",{name:"Forget",exact:true}).click();await expect(aliases.getByText("No aliases learned yet.")).toBeVisible();
  expect(errors).toEqual([]);console.log("Semantic browser acceptance passed: task-scoped meaning search, selected mixed results, click acceptance, alias controls and responsive settings.");
 }finally{await browser.close();}

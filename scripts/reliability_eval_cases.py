@@ -60,7 +60,16 @@ PLANNING_TOOLS = {"planning_suggest", "planning_commit"}
 
 def seed_case(case, repeat):
     database = make_url(get_settings().database_url).database
-    assert database.startswith(("jarvis_expert_eval_", "jarvis_test_"))
+    import os
+
+    owned = os.environ.get("ERIDANI_EVAL_OWNED_DB")
+    if owned:
+        from scripts.app_eval.environment import validate_url
+
+        validate_url(owned, trial=True)
+        assert owned == get_settings().database_url
+    else:
+        assert database.startswith(("jarvis_expert_eval_", "jarvis_test_"))
     with engine().begin() as db:
         for table in reversed(Base.metadata.sorted_tables):
             db.execute(table.delete())
@@ -392,7 +401,12 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
     try:
         from jarvis.ui_contracts import UI_TOOLS
 
-        if name not in legacy.LOCAL_TOOLS | PLANNING_TOOLS | set(UI_TOOLS) | {"calendar_connection", "calendar_sync", "note_append", "note_replace"}:
+        if name not in legacy.LOCAL_TOOLS | PLANNING_TOOLS | set(UI_TOOLS) | {
+            "calendar_connection",
+            "calendar_sync",
+            "note_append",
+            "note_replace",
+        }:
             entry["blocked"] = True
             raise DomainError("EVAL_BLOCKED", "Only fixture-local tools are available.")
         if arguments.get("google_calendar_id"):
@@ -412,6 +426,7 @@ async def invoke_tool(f, real_tool, owner, turn_id, index, name, arguments, **kw
             result = await real_tool(owner, turn_id, index, name, arguments, **kwargs)
             if name == "calendar_sync":
                 from eval_integrations import run_calendar_sync
+
                 run_calendar_sync(f, owner, result)
                 entry["simulation"] = "production_sync_worker_with_synthetic_transport"
         entry["outcome"] = copy.deepcopy(result)

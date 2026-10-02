@@ -1,8 +1,9 @@
+import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId } from "./editor-control";
 import { useState } from "react";
-import { X, Check, Clock3 } from "lucide-react";
-import { useDialogFocus } from "./components";
+import { Bell, Check, Clock3, Repeat2, X } from "lucide-react";
+import "./calendar.css";
 import { localDateTime } from "./workspace";
 import type { Schedule, Task, Project, Notice } from "./types";
 export function ScheduleDialog({
@@ -30,7 +31,6 @@ export function ScheduleDialog({
   onClose: () => void;
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
 }) {
-  useDialogFocus();
   const [title, setTitle] = useState(
     schedule?.title ?? linkedTask?.title ?? "",
   );
@@ -174,28 +174,45 @@ export function ScheduleDialog({
     },
   });
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <Dialog
+      onBackdrop={() => onClose()}
+      as="form"
+      className="dialog cal-dialog schedule-dialog"
+      aria-labelledby="schedule-heading"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
       }}
     >
-      <form
-        className="dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="schedule-heading"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <div className="dialog-heading">
+      <div className="dialog-heading">
+        <div className="cal-dialog-heading-text">
+          {schedule && (
+            <span className="chip-row">
+              <span className="chip calendar-type-badge cal-kind-reminder">
+                {schedule.recurrence ? (
+                  <Repeat2 size={13} aria-hidden="true" />
+                ) : (
+                  <Bell size={13} aria-hidden="true" />
+                )}
+                {schedule.recurrence ? "Repeating reminder" : "Reminder"}
+              </span>
+              <span
+                className={
+                  "chip" + (schedule.status === "completed" ? " chip-done" : "")
+                }
+              >
+                {schedule.status.charAt(0).toUpperCase() +
+                  schedule.status.slice(1).replaceAll("_", " ")}
+              </span>
+            </span>
+          )}
           <h2 id="schedule-heading">
             {schedule ? "Reminder details" : "New reminder"}
           </h2>
+        </div>
+        <div className="cal-dialog-heading-actions">
           <button
-            className="icon-button"
+            className="btn-icon"
             type="button"
             aria-label="Close reminder"
             onClick={onClose}
@@ -203,19 +220,27 @@ export function ScheduleDialog({
             <X size={20} />
           </button>
         </div>
-        {error && (
-          <p className="error-banner" role="alert">
-            {error}
-          </p>
-        )}
-        {!schedule && (
-          <p className="integration-hint">
-            A reminder alerts you about a task. Choose an existing task below,
-            or create a task with this alert.
-          </p>
-        )}
-        <label>
-          Reminder
+      </div>
+      {error && (
+        <p className="error-banner" role="alert">
+          {error}
+        </p>
+      )}
+      {!schedule && (
+        <p className="cal-dialog-hint">
+          A reminder alerts you about a task. Choose an existing task below, or
+          create a task with this alert.
+        </p>
+      )}
+      {inactive && (
+        <p className="cal-notice">
+          This reminder is {schedule?.status}. Choose a new time to reactivate
+          it.
+        </p>
+      )}
+      <div className="cal-form-grid">
+        <label className="field span-2">
+          <span className="field-label-text">Reminder</span>
           <input
             autoFocus
             required
@@ -225,155 +250,145 @@ export function ScheduleDialog({
             onChange={(e) => setTitle(e.target.value)}
           />
         </label>
-        {inactive && (
-          <p className="footnote">
-            This reminder is {schedule?.status}. Choose a new time to reactivate
-            it.
-          </p>
-        )}
-        <div className="form-grid">
-          <label>
-            When
-            <input
-              type="datetime-local"
-              required
-              value={when}
-              onChange={(e) => setWhen(e.target.value)}
-            />
-          </label>
-          <label>
-            Time zone
-            <input
-              required
-              value={timezone}
-              disabled={inactive}
-              onChange={(e) => setZone(e.target.value)}
-            />
-          </label>
-          <label>
-            Repeat
+        <label className="field">
+          <span className="field-label-text">When</span>
+          <input
+            type="datetime-local"
+            required
+            value={when}
+            onChange={(e) => setWhen(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label-text">Time zone</span>
+          <input
+            required
+            value={timezone}
+            disabled={inactive}
+            onChange={(e) => setZone(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label-text">Repeat</span>
+          <select
+            aria-label="Repeat"
+            value={repeat}
+            disabled={inactive}
+            onChange={(e) => {
+              setRepeat(e.target.value);
+            }}
+          >
+            <option value="">Just once</option>
+            <option value="FREQ=DAILY">Every day</option>
+            <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">Weekdays</option>
+            <option value="FREQ=WEEKLY">Weekly</option>
+            <option value="FREQ=MONTHLY">Monthly</option>
+            {repeat &&
+              ![
+                "FREQ=DAILY",
+                "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+                "FREQ=WEEKLY",
+                "FREQ=MONTHLY",
+              ].includes(repeat) && <option value={repeat}>{repeat}</option>}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label-text">Linked task</span>
+          <select
+            aria-label="Linked task"
+            value={taskId}
+            disabled={inactive || kind === "recurring_task"}
+            onChange={(e) => setTaskId(e.target.value)}
+          >
+            {!schedule && <option value="">Create a task with this alert</option>}
+            {tasks
+              .filter((t) => !t.archived)
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+          </select>
+        </label>
+        {!taskId && (
+          <label className="field span-2">
+            <span className="field-label-text">Project</span>
             <select
-              aria-label="Repeat"
-              value={repeat}
+              aria-label="Project"
+              value={projectId}
               disabled={inactive}
-              onChange={(e) => {
-                setRepeat(e.target.value);
-              }}
+              onChange={(e) => setProjectId(e.target.value)}
             >
-              <option value="">Just once</option>
-              <option value="FREQ=DAILY">Every day</option>
-              <option value="FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR">Weekdays</option>
-              <option value="FREQ=WEEKLY">Weekly</option>
-              <option value="FREQ=MONTHLY">Monthly</option>
-              {repeat &&
-                ![
-                  "FREQ=DAILY",
-                  "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
-                  "FREQ=WEEKLY",
-                  "FREQ=MONTHLY",
-                ].includes(repeat) && <option value={repeat}>{repeat}</option>}
-            </select>
-          </label>
-          <label>
-            Linked task
-            <select
-              aria-label="Linked task"
-              value={taskId}
-              disabled={inactive || kind === "recurring_task"}
-              onChange={(e) => setTaskId(e.target.value)}
-            >
-              {!schedule && (
-                <option value="">Create a task with this alert</option>
-              )}
-              {tasks
-                .filter((t) => !t.archived)
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
+              <option value="">No project</option>
+              {projects
+                .filter((p) => !p.archived || p.id === projectId)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
                   </option>
                 ))}
             </select>
           </label>
-          {!taskId && (
-            <label>
-              Project
-              <select
-                aria-label="Project"
-                value={projectId}
-                disabled={inactive}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">No project</option>
-                {projects
-                  .filter((p) => !p.archived || p.id === projectId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          )}
-        </div>
-        <p className="footnote">
+        )}
+        <p className="cal-form-hint span-2">
           {taskId
             ? "Completing this task closes its alerts. Repeat alerts on an existing task stop when it is done."
             : repeat
               ? "Each occurrence creates a task with its own completion history."
               : "This creates one task with an alert. The alert time is separate from its deadline."}
         </p>
-        <div className="dialog-actions">
-          {schedule &&
-            ["active", "finished"].includes(schedule.status) &&
-            (!schedule.recurrence || outstanding) && (
-              <button
-                type="button"
-                className="text-button"
-                disabled={busy}
-                onClick={() =>
-                  void run(
-                    schedule.recurrence
-                      ? "notification.complete"
-                      : "schedule.complete",
-                    schedule.recurrence
-                      ? { notification_id: outstanding!.id }
-                      : {
-                          schedule_id: schedule.id,
-                          expected_revision: schedule.revision,
-                        },
-                    "Reminder completed",
-                  )
-                }
-              >
-                <Check size={16} />
-                {schedule.recurrence ? "Done this time" : "Complete"}
-              </button>
-            )}
-          {schedule?.status === "active" && (
+      </div>
+      <div className="dialog-actions">
+        {schedule?.status === "active" && (
+          <button
+            className="btn btn-danger dialog-actions-start"
+            disabled={busy}
+            type="button"
+            onClick={() =>
+              void run(
+                "schedule.cancel",
+                {
+                  schedule_id: schedule.id,
+                  expected_revision: schedule.revision,
+                },
+                "Reminder cancelled",
+              )
+            }
+          >
+            Cancel {schedule.recurrence ? "series" : "reminder"}
+          </button>
+        )}
+        {schedule &&
+          ["active", "finished"].includes(schedule.status) &&
+          (!schedule.recurrence || outstanding) && (
             <button
-              className="text-button danger"
-              disabled={busy}
               type="button"
+              className="secondary"
+              disabled={busy}
               onClick={() =>
                 void run(
-                  "schedule.cancel",
-                  {
-                    schedule_id: schedule.id,
-                    expected_revision: schedule.revision,
-                  },
-                  "Reminder cancelled",
+                  schedule.recurrence
+                    ? "notification.complete"
+                    : "schedule.complete",
+                  schedule.recurrence
+                    ? { notification_id: outstanding!.id }
+                    : {
+                        schedule_id: schedule.id,
+                        expected_revision: schedule.revision,
+                      },
+                  "Reminder completed",
                 )
               }
             >
-              Cancel {schedule.recurrence ? "series" : "reminder"}
+              <Check size={16} aria-hidden="true" />
+              {schedule.recurrence ? "Done this time" : "Complete"}
             </button>
           )}
-          <button className="primary" disabled={busy || !title.trim() || !when}>
-            <Clock3 size={16} />
-            {inactive ? "Reschedule" : "Save reminder"}
-          </button>
-        </div>
-      </form>
-    </div>
+        <button className="primary" disabled={busy || !title.trim() || !when}>
+          <Clock3 size={16} aria-hidden="true" />
+          {inactive ? "Reschedule" : "Save reminder"}
+        </button>
+      </div>
+    </Dialog>
   );
 }

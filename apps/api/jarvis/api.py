@@ -236,10 +236,16 @@ def login(body: Login, request: Request):
 
 
 @app.post("/api/v1/auth/logout")
-def logout(request: Request, user: User):
+def logout(request: Request):
+    import secrets
+
+    # Works from any workspace state (viewer, revoked, expired); the cookie alone identifies the row.
+    token = request.cookies.get("jarvis_session", "")
     with session_scope() as db:
-        row = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
+        row = db.get(AuthSession, digest(token)) if token else None
         if row:
+            if not secrets.compare_digest(request.headers.get("X-CSRF-Token", ""), row.csrf):
+                raise DomainError("NOT_AUTHORIZED", "Refresh this page before trying again.", 403)
             db.delete(row)
     response = JSONResponse({"signed_out": True})
     response.delete_cookie("jarvis_session")
@@ -472,14 +478,13 @@ def push(body: PushInput, user: User):
         row = db.get(PushSubscription, sid)
         if row and row.owner_id != user.owner_id:
             raise DomainError("NOT_AUTHORIZED", "Subscription is already registered.", 403)
+        # A new or revived device receives alerts from now on, not a backlog of older ones.
+        registered = row.subscription.get("registered_at") if row and row.active else None
+        values = {**body.model_dump(), "registered_at": registered or now().isoformat()}
         if row:
-            row.subscription, row.active, row.device_id = body.model_dump(), True, user.device_id
+            row.subscription, row.active, row.device_id = values, True, user.device_id
         else:
-            db.add(
-                PushSubscription(
-                    id=sid, owner_id=user.owner_id, device_id=user.device_id, subscription=body.model_dump()
-                )
-            )
+            db.add(PushSubscription(id=sid, owner_id=user.owner_id, device_id=user.device_id, subscription=values))
     return {"registered": True}
 
 

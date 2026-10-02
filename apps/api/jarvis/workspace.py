@@ -165,7 +165,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
         )
     }
     google_events = [e for e in google_events if (e["calendar_id"], e["provider_id"]) not in mirrored]
-    local_events = local_project(db, owner, start, end, timezone)
+    local_events = local_project(db, owner, start, end, timezone, warnings)
     # A deadline is an instant, not an assumed-duration booking.
     for event in events:
         if event["kind"] == "task" and event["at"]:

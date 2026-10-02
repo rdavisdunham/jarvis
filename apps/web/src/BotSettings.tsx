@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, KeyRound, Plus, X } from "lucide-react";
 import { api, post } from "./api";
+import { SettingsGroup } from "./SettingsLayout";
 
 export type BotKey = { id: string; name: string; prefix: string; scopes: string[];
   expires_at: string; created_at: string; revoked_at: string | null; last_used_at: string | null };
@@ -42,52 +43,53 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     catch(e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  return <section className="bot-settings google-settings">
-    <header className="bot-heading"><div><h2><KeyRound size={18}/> Connected agents</h2>
-      <p>Let other assistants work in {workspace}. Their changes appear in Activity.</p></div>
-      <button className="secondary compact" disabled={busy || !data} onClick={() => { setAdding(!adding); setSecret(""); }}>
-        {adding ? <X size={15}/> : <Plus size={15}/>} {adding ? "Cancel" : "Add agent"}</button></header>
+  const scopeLabel = (scope: string) => scope === "work:run" ? "Eri requests"
+    : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
+  return <SettingsGroup className="bot-settings" icon={<KeyRound size={18}/>} title="Connected agents"
+    description={`Let other assistants work in ${workspace}. Their changes appear in Activity.`}
+    action={<button className={adding ? "btn btn-ghost" : "btn btn-soft"} disabled={busy || !data} onClick={() => { setAdding(!adding); setSecret(""); }}>
+      {adding ? <X size={15}/> : <Plus size={15}/>} {adding ? "Cancel" : "Add agent"}</button>}>
     {error && <p className="error-banner" role="alert">{error}</p>}
-    {!data && !error && <p role="status">Loading connected agents…</p>}
-    {adding && <form className="bot-key-form" onSubmit={create}>
-      <label>Agent name<input autoFocus value={name} maxLength={80} required placeholder="e.g. Codex" onChange={e => setName(e.target.value)}/></label>
-      <div className="bot-permissions">{[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"]].map(([group,label]) =>
-        <label key={group}>{label}<select value={levels[group]} onChange={e => setLevels({...levels, [group]:e.target.value})}>
+    {!data && !error && <p role="status" className="settings-empty">Loading connected agents…</p>}
+    {adding && <form className="settings-form bot-key-form" onSubmit={create}>
+      <label className="field wide"><span className="field-label-text">Agent name</span><input autoFocus value={name} maxLength={80} required placeholder="For example, Codex" onChange={e => setName(e.target.value)}/></label>
+      {[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"]].map(([group,label]) =>
+        <label className="field" key={group}><span className="field-label-text">{label}</span><select value={levels[group]} onChange={e => setLevels({...levels, [group]:e.target.value})}>
           <option value="none">No access</option><option value="read">Read</option>{!readOnly && (group!=="schema"||canDesign) && <option value="write">Read & edit</option>}
-        </select></label>)}</div>
-      <label>Key expires after<select value={days} onChange={e => setDays(Number(e.target.value))}>
+        </select></label>)}
+      <label className="field"><span className="field-label-text">Key expires after</span><select value={days} onChange={e => setDays(Number(e.target.value))}>
         <option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
-      {!readOnly && <label className="bot-queued"><input type="checkbox" checked={queued} onChange={e => setQueued(e.target.checked)}/>
+      {!readOnly && <label className="inline-check wide"><input type="checkbox" checked={queued} onChange={e => setQueued(e.target.checked)}/>
         Allow requests to Eri’s background agent</label>}
       <p className="footnote">Access applies to this workspace. Personal memory, conversations and connected accounts stay private. Revoking a key stops future actions, including queued work.</p>
-      <button className="primary compact" disabled={busy || !name.trim() || Object.values(levels).every(v => v === "none")}>{busy ? "Creating…" : "Create key"}</button>
+      <div className="settings-form-actions"><button className="btn btn-primary" disabled={busy || !name.trim() || Object.values(levels).every(v => v === "none")}>{busy ? "Creating…" : "Create key"}</button></div>
     </form>}
     {secret && <div className="bot-secret" role="region" aria-label="New agent key">
       <strong>Copy this key now</strong><p>This is the only time it will be shown.</p>
       <label className="sr-only" htmlFor="bot-secret">New agent key</label>
       <input id="bot-secret" readOnly type={visible ? "text" : "password"} value={secret} autoComplete="off" onFocus={e => e.target.select()}/>
-      <div className="bot-key-actions"><button className="secondary compact" onClick={() => void copy(secret, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
-        <button className="text-button" onClick={() => setVisible(!visible)}>{visible ? "Hide" : "Reveal"}</button>
-        <button className="text-button" onClick={() => setSecret("")}>Done</button></div>
+      <div className="bot-key-actions"><button className="btn btn-primary btn-sm" onClick={() => void copy(secret, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setVisible(!visible)}>{visible ? "Hide" : "Reveal"}</button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setSecret("")}>Done</button></div>
     </div>}
-    {!!data && <div className="bot-key-list">{!data.items.length && <p className="footnote">No agents connected yet.</p>}
+    {!!data && <div className="settings-list bot-key-list">{!data.items.length && <p className="settings-empty">No agents connected yet.</p>}
       {data.items.map(item => {
         const expired = new Date(item.expires_at).getTime() <= Date.now();
-        return <article className="bot-key-row" key={item.id}><div><strong>{item.name}</strong>
-          <small>{item.revoked_at ? "Revoked" : expired ? "Expired" : `Expires ${new Date(item.expires_at).toLocaleDateString()}`} · {item.prefix}…</small>
-          <small>{item.scopes.filter(scope => !scope.endsWith(":read") || !item.scopes.includes(scope.replace(":read",":write"))).map(scope =>
-            scope === "work:run" ? "Eri requests" : scope.replace("organization", "Goals & projects").replace(":write", " · edit").replace(":read", " · read")).join(" / ")}</small>
-          {item.last_used_at && <small>Last used {new Date(item.last_used_at).toLocaleString()}</small>}</div>
-          {!item.revoked_at && !expired && <button className="text-button" disabled={busy} onClick={() => void revoke(item.id)}>Revoke</button>}
+        return <article className="settings-item bot-key-row" key={item.id}><div className="settings-item-main"><strong className="settings-item-title">{item.name}</strong>
+          <span className="settings-item-meta"><span className={"chip" + (item.revoked_at || expired ? "" : " chip-done")}>{item.revoked_at ? "Revoked" : expired ? "Expired" : `Expires ${new Date(item.expires_at).toLocaleDateString()}`}</span><code>{item.prefix}…</code>
+            {item.last_used_at && <span>Last used {new Date(item.last_used_at).toLocaleString()}</span>}</span>
+          <span className="chip-row">{item.scopes.filter(scope => !scope.endsWith(":read") || !item.scopes.includes(scope.replace(":read",":write"))).map(scope =>
+            <span className="chip" key={scope}>{scopeLabel(scope)}</span>)}</span></div>
+          {!item.revoked_at && !expired && <div className="settings-item-actions"><button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void revoke(item.id)}>Revoke</button></div>}
         </article>;
       })}</div>}
-    {!!data && <details className="bot-connection"><summary>Connection details</summary>
-      <p>Use your agent’s key as a Bearer token.</p>
-      {[["MCP", data.mcp_url], ["API", data.api_url]].map(([label,value]) => <div key={label}>
-        <label>{label}<input readOnly aria-label={`${label} URL`} value={value} onFocus={e => e.target.select()}/></label>
-        <button className="icon-button" aria-label={`Copy ${label} URL`} onClick={() => void copy(value,label)}>{copied === label ? <Check size={15}/> : <Copy size={15}/>}</button>
+    {!!data && <details className="settings-block bot-connection"><summary>Connection details</summary>
+      <p className="footnote">Use your agent’s key as a Bearer token.</p>
+      {[["MCP", data.mcp_url], ["API", data.api_url]].map(([label,value]) => <div className="copy-field" key={label}>
+        <label className="field"><span className="field-label-text">{label}</span><input readOnly aria-label={`${label} URL`} value={value} onFocus={e => e.target.select()}/></label>
+        <button className="btn-icon" aria-label={`Copy ${label} URL`} onClick={() => void copy(value,label)}>{copied === label ? <Check size={15}/> : <Copy size={15}/>}</button>
       </div>)}
-      <a href="https://github.com/rdavisdunham/jarvis/blob/main/docs/EXTERNAL_AGENTS.md" target="_blank" rel="noreferrer">Connection guide</a>
+      <div className="settings-links"><a href="https://github.com/rdavisdunham/jarvis/blob/main/docs/EXTERNAL_AGENTS.md" target="_blank" rel="noreferrer">Connection guide</a></div>
     </details>}
-  </section>;
+  </SettingsGroup>;
 }

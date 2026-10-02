@@ -59,13 +59,14 @@ def enqueue(
         raise DomainError("NOT_AUTHORIZED", "This conversation belongs to another device.", 403)
     role(db, owner, account)
     identity = hashlib.sha256(json.dumps([conversation_id, message, focus, parent_id]).encode()).hexdigest()
+    # Same order as running commands, cancel and revise: work-order, then work.
+    advisory(db, "work-order:" + owner)
     advisory(db, "work:" + request_id)
     previous = db.get(AgentWork, request_id)
     if previous:
         if previous.owner_id != owner or previous.account_id != account or previous.input_hash != identity:
             raise DomainError("REVISION_CONFLICT", "This request ID already belongs to another request.", 409)
         return previous
-    advisory(db, "work-order:" + owner)
     pending = list(
         db.scalars(select(AgentWork).join(Job).where(AgentWork.account_id == account, Job.status.in_(ACTIVE)))
     )
@@ -299,6 +300,7 @@ def revise(db, row, message, *, continue_work=False):
         saved_state["needs_input"] = False
         saved_state["round"] = 0
         saved_state["errors"] = []
+        saved_state.pop("question_checked", None)
         row.checkpoint_ciphertext = seal(saved_state)
     row.cancel_requested = False
     row.expires_at = now() + timedelta(hours=24)

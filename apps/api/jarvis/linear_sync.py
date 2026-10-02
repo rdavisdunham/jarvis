@@ -1,6 +1,6 @@
 """Owner-scoped Linear synchronization through durable jobs and stable issue identities."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import select
@@ -169,7 +169,16 @@ def local_project(db, owner, workspace, remote):
     return row
 
 
-def apply_remote(db, conn, link, remote):
+def older(remote, snapshot):
+    try:
+        return datetime.fromisoformat(remote["updatedAt"]) < datetime.fromisoformat(snapshot["updatedAt"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def apply_remote(db, conn, link, remote, force=False):
+    if not force and older(remote, link.snapshot or {}):
+        return  # A reordered, older Linear read never rolls back a newer applied snapshot.
     task = db.get(Task, link.task_id)
     project = local_project(db, conn.owner_id, conn.workspace_id, remote.get("project"))
     state = remote["state"]["type"]
@@ -240,6 +249,19 @@ def process_sync(job_id):
             filter["assignee"] = {"id": {"eq": viewer}}
         if not full and conn.last_sync_at:
             filter["updatedAt"] = {"gte": (conn.last_sync_at - timedelta(minutes=2)).isoformat()}
+        known = (
+            set(
+                db.scalars(
+                    select(LinearIssue.remote_id).where(
+                        LinearIssue.owner_id == owner,
+                        LinearIssue.workspace_id == workspace,
+                        LinearIssue.sync_state != "unlinked",
+                    )
+                )
+            )
+            if full and only_mine
+            else set()
+        )
         job.status = "running"
     client = LinearClient(key)
     try:
@@ -248,6 +270,10 @@ def process_sync(job_id):
             raise LinearFailure("workspace_changed")
         directory = client.directory(teams)
         remote_rows = client.issues(filter)
+        # The assignee filter hides reassigned issues; read them by id so they become out of scope, not lost.
+        missing = sorted(known - {r["id"] for r in remote_rows})
+        for index in range(0, len(missing), 100):
+            remote_rows += client.issues({"id": {"in": missing[index : index + 100]}})
         with session_scope() as db:
             advisory(db, f"workspace:{owner}")
             job = db.get(Job, job_id)

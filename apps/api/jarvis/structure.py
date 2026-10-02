@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
-from .domain import DomainError, advisory, check_revision, emit, owned, serial
+from .domain import DomainError, advisory, check_revision, emit, nulls, owned, serial
 from .models import (
     Area,
     Goal,
@@ -39,6 +39,32 @@ TASK_BINDINGS = {
     "estimate_minutes",
     "assignee",
 }
+
+
+BINDING_DEFAULTS = {"assignee": "owner", "priority": 0}
+# Custom workflows may omit a core meaning; map to the closest remaining status.
+NEAREST = {
+    "backlog": ("open",),
+    "open": ("backlog", "in_progress"),
+    "in_progress": ("open",),
+    "waiting": ("in_progress", "open"),
+    "deferred": ("backlog", "open"),
+    "completed": ("cancelled",),
+    "cancelled": ("completed",),
+}
+
+
+def task_status(t, meaning, current=None):
+    statuses = t["statuses"]
+    if any(s["id"] == current and s["meaning"] == meaning for s in statuses):
+        return current
+    for candidate in (meaning, *NEAREST.get(meaning, ())):
+        found = next((s["id"] for s in statuses if s["meaning"] == candidate), None)
+        if found:
+            return found
+    if any(s["id"] == current for s in statuses):
+        return current
+    return statuses[0]["id"] if statuses else None
 
 
 def fingerprint(value):
@@ -292,7 +318,8 @@ def assert_schema(schema, revision):
 
 def schema_data(db, owner):
     schema = ensure(db, owner)
-    sync_core_records(db, owner, schema)
+    if core_drift(db, owner):
+        sync_core_records(db, owner, schema)
     return {
         "revision": schema.revision,
         **schema.definition,
@@ -391,12 +418,7 @@ def data(db, row, schema=None):
     note = db.get(Note, row.note_id) if row.note_id else None
     if task:
         result.update(title=task.title, body=task.notes, archived=task.archived, task_revision=task.revision)
-        status = next(
-            (s for s in t["statuses"] if s["id"] == row.status_id and s["meaning"] == task.status), None
-        )
-        if not status:
-            status = next((s for s in t["statuses"] if s["meaning"] == task.status), None)
-        result["status_id"] = status["id"] if status else None
+        result["status_id"] = task_status(t, task.status, row.status_id)
         result["status_meaning"] = task.status
         for f in t["fields"]:
             if f.get("binding") in TASK_BINDINGS:
@@ -441,11 +463,15 @@ def data(db, row, schema=None):
     return result
 
 
+COMPACT = ("id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
+
+
 def records(
-    db, owner, *, type_id=None, capability=None, parent_id=None, query="", archived=False, limit=100, offset=0
+    db, owner, *, type_id=None, capability=None, parent_id=None, query="", archived=False, limit=25, offset=0, detail="full"
 ):
     schema = ensure(db, owner)
-    sync_core_records(db, owner, schema)
+    if core_drift(db, owner):
+        sync_core_records(db, owner, schema)
     q = select(StructureRecord).where(StructureRecord.owner_id == owner, StructureRecord.archived == archived)
     if type_id:
         q = q.where(StructureRecord.type_id == type_id)
@@ -458,15 +484,19 @@ def records(
     if parent_id:
         q = q.where(StructureRecord.parent_id == parent_id)
     if query:
-        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        q = q.where(StructureRecord.title.ilike("%" + escaped + "%", escape="\\"))
+        from .text_normalize import sql_filter
+
+        q = q.where(sql_filter(query, StructureRecord.title))
     rows = list(
         db.scalars(
             q.order_by(StructureRecord.updated_at.desc(), StructureRecord.id).offset(offset).limit(limit + 1)
         )
     )
     return {
-        "items": [data(db, r, schema) for r in rows[:limit]],
+        "items": [
+            data(db, r, schema) if detail == "full" else {k: v for k, v in data(db, r, schema).items() if k in COMPACT}
+            for r in rows[:limit]
+        ],
         "has_more": len(rows) > limit,
         "next_offset": offset + limit if len(rows) > limit else None,
         "schema_revision": schema.revision,
@@ -741,12 +771,14 @@ def apply(db, owner, args, command_id):
     }
 
 
-def sync_capabilities(db, owner, row, t, supplied, command_id):
+def sync_capabilities(db, owner, row, t, supplied, command_id, *, status=True, parent=False):
     from .domain import TaskCreate, TaskUpdate, mutate
 
     if "work" in t["capabilities"]:
         bindings = {f["id"]: f["binding"] for f in t["fields"] if f.get("binding") in TASK_BINDINGS}
         values = {binding: supplied[key] for key, binding in bindings.items() if key in supplied}
+        # Cleared bindings (including reverted additions) return to the core task defaults.
+        values.update({k: v for k, v in BINDING_DEFAULTS.items() if k in values and values[k] is None})
         meaning = next((s["meaning"] for s in t["statuses"] if s["id"] == row.status_id), "open")
         if not row.task_id:
             creation = TaskCreate(
@@ -777,8 +809,12 @@ def sync_capabilities(db, owner, row, t, supplied, command_id):
                 changes["title"] = row.title
             if task.notes != row.body:
                 changes["notes"] = row.body
-            if task.status != meaning:
+            # A workflow without the task's meaning shows the nearest status; only an explicit choice moves the task.
+            if status and task.status != meaning:
                 changes["status"] = meaning
+            project = db.get(Project, row.parent_id) if parent and row.parent_id else None
+            if project and project.owner_id == owner and task.project_id != project.id:
+                changes["project_id"] = project.id
             if task.archived != row.archived:
                 changes["archived"] = row.archived
             if changes:
@@ -789,6 +825,7 @@ def sync_capabilities(db, owner, row, t, supplied, command_id):
                     TaskUpdate(task_id=task.id, expected_revision=task.revision, **changes),
                     command_id,
                 )
+                db.info.get("task_project_moves", set()).discard(task.id)
     if "content" in t["capabilities"]:
         from .note_schema import NoteCreate, NoteUpdate
 
@@ -920,11 +957,9 @@ def mutate(db, owner, tool, args, command_id):
         row.title = current["title"]
         row.body = current["body"]
         row.status_id = current["status_id"]
-        for key in ("title", "body", "status_id", "archived"):
-            if key in args.model_fields_set:
-                if key in {"title", "body"} and getattr(args, key) is None:
-                    raise DomainError("INVALID_ARGUMENT", key + " cannot be null.")
-                setattr(row, key, getattr(args, key))
+        supplied = nulls("record.update", {k: getattr(args, k) for k in ("title", "body", "status_id", "archived") if k in args.model_fields_set})
+        for key, value in supplied.items():
+            setattr(row, key, value)
         row.revision += 1
         row.updated_at = now()
     if "work" in t["capabilities"] and row.status_id is None:
@@ -962,21 +997,28 @@ def mutate(db, owner, tool, args, command_id):
         and timeline["target_date"] < timeline["start_date"]
     ):
         raise DomainError("INVALID_ARGUMENT", "Target date must not precede the start.")
-    sync_capabilities(db, owner, row, t, clean, command_id)
+    sync_capabilities(
+        db, owner, row, t, clean, command_id,
+        status=creating or "status_id" in args.model_fields_set,
+        parent="parent_id" in args.model_fields_set,
+    )
     remember_core(db, row)
     db.flush()
-    from .routing import observe
-    from .bot_access import current_id
+    from .routing import human_command, observe
 
-    # Browser edits are confirmations; agent and imported assignments never self-reinforce.
+    # Browser edits are confirmations; agent, agent-driven UI and imported assignments never self-reinforce.
+    routing = row.provenance.get("routing", {})
+    assigned = routing.get("assignment", {})
+    # Rule-routed records count only when the owner departs from the rule's assignment.
+    departs = not routing.get("rules") or (tool == "record.update" and (
+        ("parent_id" in args.model_fields_set and args.parent_id != assigned.get("parent_id"))
+        or any(assigned.get("values", {}).get(k) != v for k, v in args.values.items())
+    ))
     human = (
-        ":" not in command_id
-        and not current_id()
+        human_command(command_id)
         and ("parent_id" in args.model_fields_set or bool(args.values))
-        and not row.provenance.get("routing", {}).get("rules")
+        and departs
     )
-    if tool == "record.update" and ("parent_id" in args.model_fields_set or args.values):
-        human = ":" not in command_id and not current_id()
     observe(db, row, command_id, human=human)
     remember_core(db, row)
     emit(db, owner, "record.changed", row.id, row.revision)
@@ -987,9 +1029,12 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
     """Keep typed services discoverable through the registry without a second authority."""
     if tool.split(".")[0] not in {"task", "note"} or not isinstance(result, dict):
         return
-    if tool == "note.tasks" and result.get("tasks"):
+    if not result.get("id") and isinstance(result.get("tasks"), list):
+        # note.tasks, task.batch and task.selection_update report several tasks.
+        applied = result.get("applied_ids")
         for item in result["tasks"]:
-            observe_core(db, owner, "task.update", item, command_id)
+            if isinstance(item, dict) and (applied is None or item.get("id") in applied):
+                observe_core(db, owner, "task.update", item, command_id)
         return
     if not result.get("id"):
         return
@@ -1007,9 +1052,10 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         row.archived = core.archived
         if kind == "task":
             t = record_type(schema, row.type_id, archived=True)
-            current = next((s for s in t["statuses"] if s["id"] == row.status_id), None)
-            if not current or current["meaning"] != core.status:
-                row.status_id = next((s["id"] for s in t["statuses"] if s["meaning"] == core.status), None)
+            row.status_id = task_status(t, core.status, row.status_id)
+            if core.id in db.info.get("task_project_moves", set()):
+                db.info["task_project_moves"].discard(core.id)
+                follow_project(db, owner, row, core, t)
         row.revision += 1
         row.updated_at = now()
     else:
@@ -1028,9 +1074,7 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
             parent_id=parent,
             task_id=core.id if kind == "task" else None,
             note_id=core.id if kind == "note" else None,
-            status_id=next((s["id"] for s in t["statuses"] if s["meaning"] == core.status), None)
-            if kind == "task"
-            else None,
+            status_id=task_status(t, core.status) if kind == "task" else None,
             archived=core.archived,
             schema_revision=schema.revision,
             values={},
@@ -1039,9 +1083,8 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         db.add(row)
     db.flush()
     if kind == "note" and row.note_id in db.info.get("note_tag_changes", set()):
-        from .routing import observe
-        from .bot_access import current_id
-        observe(db, row, command_id, human=":" not in command_id and not current_id())
+        from .routing import human_command, observe
+        observe(db, row, command_id, human=human_command(command_id))
         db.info["note_tag_changes"].discard(row.note_id)
     if tool == "task.create" and arguments is not None:
         from .routing import suggest
@@ -1063,6 +1106,24 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         db.flush()
     remember_core(db, row)
     emit(db, owner, "record.changed", row.id, row.revision)
+
+
+def follow_project(db, owner, row, core, t):
+    """Legacy project moves update the record home when the destination has a registry row."""
+    target = core.project_id
+    if not target:
+        if not (row.parent_id and db.get(Project, row.parent_id)):
+            return
+        target = next((h for h in (core.area_id, core.space_id) if h and db.get(StructureRecord, h)), None)
+    if target:
+        home = db.get(StructureRecord, target)
+        if not home or home.owner_id != owner or home.archived or home.type_id not in t["parent_types"]:
+            return
+        try:
+            parent_chain(db, owner, target, self_id=row.id)
+        except DomainError:
+            return
+    row.parent_id = target
 
 
 def import_type(schema, kind):
@@ -1109,6 +1170,34 @@ def reconcile_core(db, row, schema):
         row.revision += 1
         row.updated_at = now()
     remember_core(db, row)
+    return changed
+
+
+def core_drift(db, owner):
+    """Cheap unlocked check for core rows the registry has not adopted or reconciled yet."""
+    from sqlalchemy import or_
+
+    for kind, model, column in (("task", Task, StructureRecord.task_id), ("note", Note, StructureRecord.note_id)):
+        revision = StructureRecord.provenance["core_revisions"][kind].as_integer()
+        drift = (
+            select(StructureRecord.id)
+            .join(model, model.id == column)
+            .where(StructureRecord.owner_id == owner, revision.is_distinct_from(model.revision))
+            .limit(1)
+        )
+        if db.scalar(drift):
+            return True
+        known = select(StructureRecord.id).where(
+            StructureRecord.owner_id == owner,
+            or_(
+                column == model.id,
+                StructureRecord.id == model.id,
+                StructureRecord.provenance["retired_" + kind + "_id"].astext == model.id,
+            ),
+        )
+        if db.scalar(select(model.id).where(model.owner_id == owner, ~known.exists()).limit(1)):
+            return True
+    return False
 
 
 def sync_core_records(db, owner, schema):
@@ -1116,7 +1205,9 @@ def sync_core_records(db, owner, schema):
     advisory(db, "workspace:" + owner)
     rows = list(db.scalars(select(StructureRecord).where(StructureRecord.owner_id == owner)))
     for row in rows:
-        reconcile_core(db, row, schema)
+        if reconcile_core(db, row, schema):
+            # Open cards hold the old revision; tell them before their next save conflicts.
+            emit(db, owner, "record.changed", row.id, row.revision)
     for kind, model, column in (
         ("task", Task, StructureRecord.task_id),
         ("note", Note, StructureRecord.note_id),

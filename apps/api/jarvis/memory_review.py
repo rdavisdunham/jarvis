@@ -16,6 +16,7 @@ from .db import session_scope
 from .domain import DomainError, advisory, capture_source, emit, enqueue_job, owned, preferences, serial
 from .memory_learning import fingerprint, normalized
 from .models import Job, Memory, MemoryReview, Source, now
+from .text_normalize import canon, canon_tokens
 
 KIND = "review_memory"
 
@@ -151,12 +152,45 @@ def possible_pairs(rows):
                 yield left, right
 
 
-def question(records):
-    a, b = [words(m.content) for m in records]
+def numeric_pairs(rows):
+    # "has 2 cats" vs "has three cats": same sentence once numbers are masked, numbers differ.
+    buckets = defaultdict(list)
+    for row in rows:
+        tokens = canon_tokens(row.content)
+        mask = tuple("<num>" if t.isdigit() else t for t in tokens)
+        if any(t.isdigit() for t in tokens) and any(t != "<num>" for t in mask):
+            buckets[mask].append((row, tuple(t for t in tokens if t.isdigit())))
+    for bucket in buckets.values():
+        bucket.sort(key=lambda item: (item[0].created_at, item[0].id), reverse=True)
+        for (left, a), (right, b) in combinations(bucket[:5], 2):
+            if a != b:
+                yield left, right
+
+
+def conflict_pairs(rows):
+    # One stable attribute with two different current values: ask about the two newest.
+    keyed = defaultdict(list)
+    for row in rows:
+        if row.fact_key:
+            keyed[row.fact_key].append(row)
+    for group in keyed.values():
+        group.sort(key=lambda m: (m.created_at, m.id), reverse=True)
+        newest = group[0]
+        other = next((m for m in group[1:] if canon(m.content) != canon(newest.content)), None)
+        if other:
+            yield other, newest
+
+
+def question(records, kind="spelling"):
+    a, b = [canon_tokens(m.content) for m in records]
     differences = [(x, y) for x, y in zip(a, b) if x != y] if len(a) == len(b) else []
     if len(differences) == 1:
         x, y = differences[0]
+        if kind != "spelling" or (x.isdigit() and y.isdigit()):
+            return f'Which is right, "{x}" or "{y}", or are these separate facts?'
         return f'Is the wording "{x}" or "{y}", or are these separate facts?'
+    if kind == "conflict":
+        return "These saved facts disagree. Which one is current, or are both true?"
     return "Do these describe the same thing? What should I remember?"
 
 
@@ -164,7 +198,7 @@ def review_data(db, review):
     records = review_candidates(db, review)
     return {
         **serial(review),
-        "question": question(records) if records else "",
+        "question": question(records, review.kind) if records else "",
         "candidates": [serial(m) for m in records],
     }
 
@@ -202,7 +236,7 @@ def _review(job_id):
         scanned, merged = len(rows), 0
         duplicates = defaultdict(list)
         for row in rows:
-            duplicates[normalized(row.content)].append(row)
+            duplicates[canon(row.content) or normalized(row.content)].append(row)
         for candidates in duplicates.values():
             if len(candidates) < 2:
                 continue
@@ -215,8 +249,18 @@ def _review(job_id):
                 merged += 1
         existing = set(db.scalars(select(MemoryReview.pair_key).where(MemoryReview.owner_id == owner)))
         created = 0
-        for left, right in possible_pairs([m for m in rows if not m.suppressed]):
+        active = [m for m in rows if not m.suppressed]
+        pairs = [
+            *((pair, "conflict") for pair in conflict_pairs(active)),
+            *((pair, "numeric") for pair in numeric_pairs(active)),
+            *((pair, "spelling") for pair in possible_pairs(active)),
+        ]
+        paired = set()
+        for (left, right), kind in pairs:
             ordered = sorted([left, right], key=lambda m: m.id)
+            if (ids := tuple(m.id for m in ordered)) in paired:
+                continue
+            paired.add(ids)
             key = hashlib.sha256(json.dumps([(m.id, m.revision) for m in ordered]).encode()).hexdigest()
             if key in existing:
                 continue
@@ -226,7 +270,7 @@ def _review(job_id):
                     pair_key=key,
                     memory_ids=[m.id for m in ordered],
                     memory_revisions=[m.revision for m in ordered],
-                    kind="spelling",
+                    kind=kind,
                 )
             )
             existing.add(key)
@@ -267,6 +311,8 @@ def resolve(db, owner, args, command_id):
             tags=sorted({tag for m in candidates for tag in m.tags}),
             revision=max(m.revision for m in candidates) + 1,
             supersedes_id=candidates[0].id,
+            # Keep the stable attribute so later conflicts and extraction reuse it.
+            fact_key=keys.pop() if len(keys := {m.fact_key for m in candidates if m.fact_key}) == 1 else "",
         )
         db.add(row)
         db.flush()
@@ -329,14 +375,15 @@ def record_question(db, owner, text):
     Transcript production does not establish that its audio was heard by the owner.
     """
     advisory(db, f"memory:{owner}")
-    tokens = set(words(text))
+    # Number-normalized: a spoken "two or three" matches stored "2" and "3".
+    tokens = set(canon_tokens(text))
     if "?" not in text and not ({"or", "which"} & tokens):
         return
     for review in pending_reviews(db, owner):
         records = review_candidates(db, review)
-        a, b = [words(m.content) for m in records]
-        differences = [(x, y) for x, y in zip(a, b) if x != y]
-        if len(differences) == 1 and set(differences[0]) <= tokens:
+        a, b = [set(canon_tokens(m.content)) for m in records]
+        sides = [side for side in (a - b, b - a) if side]
+        if sides and all(side & tokens for side in sides):
             # Do not extend the cooldown each time a cumulative transcript is saved.
             if not review.last_offered_at or review.last_offered_at < now() - timedelta(days=1):
                 review.last_offered_at = now()

@@ -72,3 +72,12 @@ apps/web/playwright-report/
 .wrangler/
 .railway/*.plan.json
 .railway/*.lock.json
+
+# Local evaluation evidence and dedicated connected-test credentials
+/artifacts/app-evals/
+.env.eval
+.env.eval.*
+!evals/app/live-services.example.json
+
+# Remote agent attachment cache
+.codex-remote-attachments/

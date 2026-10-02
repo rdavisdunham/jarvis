@@ -159,6 +159,13 @@ def regressions(url, output, scope):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "langfuse":
+        from .langfuse_export import main as langfuse_main
+
+        return langfuse_main(sys.argv[2:])
+    if len(sys.argv) > 1 and sys.argv[1] in {"plan", "run", "resume", "report", "import-evidence", "coverage", "compare"}:
+        from .campaign import main as campaign_main
+        return campaign_main(sys.argv[1:])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-url", default=DEFAULT_URL, help="Dedicated local corpus URL only.")
     sub = parser.add_subparsers(dest="mode", required=True)
@@ -179,12 +186,13 @@ def main():
     p.add_argument("--models", default="luna", help="Comma-separated profiles; defaults to Luna only. Gemini comparisons are paused.")
     p.add_argument("--run-paid", action="store_true")
     p.add_argument("--max-provider-requests", type=int, default=20)
-    p.add_argument("--max-usd-per-model", type=float, default=2.0)
+    p.add_argument("--max-usd-per-model", type=float, default=10.0)
     p.add_argument("--output")
     p.add_argument("--repeats", type=int, default=1)
     args = parser.parse_args()
     if args.mode == "validate":
-        print(json.dumps(validate()))
+        from .registry import validate_registry
+        print(json.dumps({**validate(), "automation": validate_registry()}))
         return 0
     if args.mode == "case":
         _, cases = load()
@@ -202,24 +210,27 @@ def main():
         data = ensure_corpus(args.database_url)
         print(json.dumps({k: v for k, v in data.items() if k != "refs"}, indent=2))
         return 0
+    if args.mode == "models":
+        # Backward-compatible command, now using the single durable campaign budget.
+        if args.models != "luna":
+            parser.error("Gemini comparisons are paused. Use Luna for current campaigns.")
+        if not args.run_paid:
+            parser.error("Paid execution requires --run-paid")
+        from .campaign import main as campaign_main
+        from .model_runner import PROBES
+        command = ["run", "--mode", "live-model", "--model", "luna", "--run-paid", "--no-support",
+                   "--cases", args.cases or ",".join(sorted(PROBES)), "--database-url", args.database_url,
+                   "--max-usd", str(args.max_usd_per_model), "--repeats", str(args.repeats),
+                   "--max-provider-requests", str(args.max_provider_requests)]
+        if args.output:
+            command += ["--output", args.output]
+        return campaign_main(command)
     output = artifacts(args.output)
     print("Evidence directory: " + str(output), flush=True)
     if args.mode == "contracts":
         return contracts(args.database_url, args.cases, output)
     if args.mode == "regressions":
         return regressions(args.database_url, output, args.scope)
-    if args.mode == "models":
-        if not args.run_paid:
-            parser.error(
-                "Real inference requires explicit --run-paid; catalog/contract checks never spend API credits."
-            )
-        if not 1 <= args.max_provider_requests <= 1000:
-            parser.error("Provider request limit must be 1–1000")
-        if not 1 <= args.repeats <= 10:
-            parser.error("Repeats must be 1–10")
-        from .model_runner import run
-
-        return run(args, output)
     return 0
 
 

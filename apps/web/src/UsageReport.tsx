@@ -14,8 +14,8 @@ export function costLabel(value: number) {
 export function UsageReport({ report }: { report: CostReport }) {
   return <div className="usage-report">
     <div className="usage-totals">
-      <div><small>Last 7 days</small><strong>{costLabel(report.last_7_days_usd)}</strong>{report.partial_7_days && <small>Partial history</small>}</div>
-      <div><small>Last 30 days</small><strong>{costLabel(report.last_30_days_usd)}</strong>{report.partial_30_days && <small>Partial history</small>}</div>
+      <div><small>Last 7 days</small><strong>{costLabel(report.last_7_days_usd)}</strong>{report.partial_7_days && <span className="chip">Partial history</span>}</div>
+      <div><small>Last 30 days</small><strong>{costLabel(report.last_30_days_usd)}</strong>{report.partial_30_days && <span className="chip">Partial history</span>}</div>
     </div>
     {report.features.length ? <div className="usage-breakdown">
       <table>

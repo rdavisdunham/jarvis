@@ -219,6 +219,11 @@ Local API, worker and backup containers are stopped. The Windows Startup `Jarvis
 
 Still required from the owner: actual Google browser sign-in, spoken voice/microphone checks, Android notifications and any desired controlled integration writes. Desktop and phone-sized login-page checks passed without page errors or horizontal overflow. R2 exports remain deferred pending bucket-scoped credentials; native PITR is active and its restore drill passed.
 
+## Key escrow and infrastructure plan safety
+
+- **Key escrow:** before relying on any backup, complete the [key escrow checklist](R2_BACKUPS.md#key-escrow-checklist): name who holds `JARVIS_BACKUP_KEY` and `JARVIS_INTEGRATION_ENCRYPTION_KEY` outside Railway, test-decrypt a real archive using only the escrowed copies, and run a restore drill into a disposable database. PITR lives in the same Railway project, so it is not independent of a project-level mistake.
+- **Whole-project plan:** `.railway/railway.ts` reconciles the entire project; omitted resources may be deleted. `Postgres16` is the active database; the PG18 `Postgres` service and `postgres-volume` are retired but preserved (stopped) and must stay declared. Only apply a plan that a second person has reviewed and that shows no unapproved deletes/replaces.
+
 ## Keeping PostgreSQL versions aligned
 
 Keep the major version **16** in the local Compose image, backup client image and cloud infrastructure image. Railway's recovery-enabled image uses its supported major tag; development pins the tested minor (`16.15-bookworm`). Before redeploying PostgreSQL, check the candidate image's actual `SHOW server_version`, test migrations and a logical restore on that version, then update the development/backup minor pins in the same reviewed change. A major upgrade is a separate restore/upgrade procedure, never a tag swap against an existing volume. The pgvector candidate stays deferred until indexing is implemented and its native recovery behavior is verified.

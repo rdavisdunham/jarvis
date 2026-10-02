@@ -7,9 +7,10 @@ from sqlalchemy import delete, select
 
 from .cost_features import feature
 from .db import session_scope
-from .memory_learning import EMBEDDING_MODEL, EXTRACTION_MODEL, cosine, embeddings, extraction_request
+from .memory_learning import EMBEDDING_MODEL, EXTRACTION_MODEL, cosine, embeddings, extraction_request, query_embedding
 from .models import Conversation, Job, Note, NoteEmbedding, NoteTaskLink, Project, Task, now
 from .note_schema import Suggestions
+from .text_normalize import canon
 
 
 def note_data(db, row, *, preview=False):
@@ -150,8 +151,10 @@ def mutate_note(db, owner, tool, args):
         values = args.model_dump(
             exclude_unset=True, exclude={"note_id", "expected_revision", "task_ids"} | link_keys
         )
-        if any(values.get(k) is None for k in ("title", "content", "tags", "archived") if k in values):
-            raise DomainError("INVALID_ARGUMENT", "Title, content, tags and archive state cannot be null.")
+        from .domain import nulls
+
+        # Shared policy: absent keeps; title/content/tags/archived reject an explicit null.
+        values = nulls(tool, values)
         task_ids = args.task_ids if "task_ids" in args.model_fields_set else None
         tags_changed = "tags" in values and values["tags"] != row.tags
         values = home_changes(db, owner, values, row)
@@ -307,17 +310,10 @@ def list_notes(
     if task_id:
         q = q.join(NoteTaskLink).where(NoteTaskLink.task_id == task_id, NoteTaskLink.linked.is_(True))
     if query:
-        # Literal substring search; SQL wildcards in user text have no special meaning.
-        term = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        from sqlalchemy import Text, cast, or_
+        # Literal substring (SQL wildcards inert) or every word in any spoken/written number form.
+        from .text_normalize import sql_filter
 
-        q = q.where(
-            or_(
-                Note.title.ilike("%" + term + "%", escape="\\"),
-                Note.content.ilike("%" + term + "%", escape="\\"),
-                cast(Note.tags, Text).ilike("%" + term + "%", escape="\\"),
-            )
-        )
+        q = q.where(sql_filter(query, Note.title, Note.content, Note.tags))
     from .note_lists import filtered
     q = filtered(db, owner, q, list_id, uncategorized)
     rows = list(db.scalars(q.order_by(Note.updated_at.desc(), Note.id).offset(offset).limit(limit + 1)))
@@ -347,7 +343,7 @@ def search_notes(owner, query, project_id=None, task_id=None, space_id=None, are
         return {"items":items,"mode":found["mode"],"truncated":any(found[g]["next_offset"] is not None for g in ("structured","possible")) or len(matches)>30,"index":found["index"]}
     vector, fallback = None, False
     try:
-        vector = embeddings(owner, [query[:500]])[0]
+        vector = query_embedding(owner, query[:500], 20, embeddings)
     except Exception:  # noqa: BLE001 - keyword search survives a cloud provider failure
         fallback = True
     with session_scope() as db:
@@ -374,21 +370,22 @@ def search_notes(owner, query, project_id=None, task_id=None, space_id=None, are
         from .note_lists import filtered
         q = filtered(db, owner, q, list_id, uncategorized)
         notes = list(db.scalars(q.order_by(Note.updated_at.desc()).limit(1001)))
+        chunks_by_note = {}
+        if vector and notes:
+            revisions = {row.id: row.revision for row in notes[:1000]}
+            for chunk in db.scalars(
+                select(NoteEmbedding).where(
+                    NoteEmbedding.note_id.in_(list(revisions)), NoteEmbedding.model == EMBEDDING_MODEL
+                )
+            ):
+                if chunk.revision == revisions[chunk.note_id]:
+                    chunks_by_note.setdefault(chunk.note_id, []).append(chunk.embedding)
+        words = canon(query).split()
         matches = []
         for row in notes[:1000]:
-            haystack = (row.title + " " + row.content + " " + " ".join(row.tags)).casefold()
-            words = query.casefold().split()
+            haystack = " " + canon(row.title + " " + row.content + " " + " ".join(row.tags)) + " "
             lexical = sum(word in haystack for word in words) / max(1, len(words))
-            semantic = 0.0
-            if vector:
-                for chunk in db.scalars(
-                    select(NoteEmbedding).where(
-                        NoteEmbedding.note_id == row.id,
-                        NoteEmbedding.revision == row.revision,
-                        NoteEmbedding.model == EMBEDDING_MODEL,
-                    )
-                ):
-                    semantic = max(semantic, cosine(vector, chunk.embedding))
+            semantic = max((cosine(vector, v) for v in chunks_by_note.get(row.id, [])), default=0.0)
             if lexical > 0 or semantic >= 0.3:
                 matches.append({**note_data(db, row, preview=True), "score": max(lexical, semantic)})
         matches.sort(key=lambda n: n["score"], reverse=True)

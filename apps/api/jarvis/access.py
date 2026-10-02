@@ -131,6 +131,12 @@ def request_access(request, namespace, permission, account):
         "/api/v1/task-views",
         "/api/v1/task-views/remove",
         "/api/v1/bot-keys",
+        # Search and its learning signals are read-equivalent: they write only per-account state.
+        "/api/v1/search/records",
+        "/api/v1/search/selection",
+        "/api/v1/search/feedback",
+        "/api/v1/search/events",
+        "/api/v1/search/preferences",
     }
     if (
         permission == "viewer"

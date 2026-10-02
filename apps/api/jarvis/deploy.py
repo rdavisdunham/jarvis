@@ -211,13 +211,31 @@ def main():
     except DeploymentConfigurationError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None
-    except Exception:  # noqa: BLE001 - never expose credentials from provider/subprocess errors
-        # Detailed failure types are useful; payloads may contain secrets.
+    except Exception as exc:  # noqa: BLE001 - never expose credentials from provider/subprocess errors
+        # Log the failure type and target revision only; messages/reprs may contain connection details.
         print(
-            "Deployment command failed. Check configuration, database access and the migration runbook.",
+            f"Deployment command '{args.mode}' failed ({failure_type(exc)}; target revision {target_revision()}). "
+            "Check configuration, database access and the migration runbook.",
             file=sys.stderr,
         )
         raise SystemExit(1) from None
+
+
+def failure_type(exc):
+    """Qualified exception class names along the cause chain; never the message."""
+    names, seen = [], set()
+    while exc is not None and id(exc) not in seen and len(names) < 4:
+        seen.add(id(exc))
+        names.append(f"{type(exc).__module__}.{type(exc).__qualname__}")
+        exc = exc.__cause__ or exc.__context__
+    return " <- ".join(names)
+
+
+def target_revision():
+    try:
+        return ",".join(sorted(expected_heads())) or "none"
+    except Exception:  # noqa: BLE001 - diagnostics must not mask the original failure
+        return "unknown"
 
 
 if __name__ == "__main__":

@@ -1,18 +1,247 @@
 # Eridani / Jarvis — progress and next steps
 
-Updated September 20, 2026. Eridani (Eri) is the assistant's name.
+Updated September 27, 2026. Eridani (Eri) is the assistant's name.
 Jarvis remains the repository and infrastructure project name.
 
 Completed implementation is marked **[x]**. **[ ]** means work or verification is
 still pending; automated checks do not mark physical-device acceptance complete.
 The newest batches are near the top; earlier sections retain release history.
 
+## Quick lists / quick projects — September 27
+
+Proposed experience: call it **Quick list** in the UI, and let Eri recognize
+"quick project", "packing list", and "a few things to do before I leave" as the
+same lightweight workflow. This is a persistent checklist for one immediate
+outcome, without requiring a space, client, project, goal, or custom-field setup.
+It can cross personal and work topics without forcing everything into one category.
+
+- [ ] Add a one-step Quick list entry point on Tasks and creation through Eri.
+  Only a title and the items the user supplies are needed; allow an empty list
+  for manual capture. Eri can suggest a title from context and ask for missing
+  content conversationally, without delegating an empty request or interviewing
+  the user about organizational fields.
+- [ ] Provide a compact mobile checklist: inline item entry/editing, completion
+  checkboxes, drag reordering, optional simple section headings, and a remaining
+  count (for example, 4 of 9 done). Keep completed items available but collapsed.
+  Sections are local headings, not new organizational fields or projects.
+- [ ] Offer an optional target such as "before I leave" or "in three hours".
+  Store a real deadline when one is specified; otherwise retain the label without
+  inventing a time. Reminders are opt-in. Passing the target must not delete,
+  hide, or auto-complete unfinished items.
+- [ ] Keep the active list easy to return to from Tasks/Today with an optional pin
+  and a focused checklist view. Show it as one list summary by default, rather
+  than scattering every checklist item across the main task views. Keep its
+  contents searchable and available to Eri.
+- [ ] Support conversational updates: "add the charger to my Houston list",
+  "I've packed Hayes's food", "what's left?", and "move that to moped equipment".
+  Use the currently open/recently discussed list as context; clarify only when
+  several lists or items plausibly match. Handle follow-ups as edits to the same
+  list and preserve the existing action history/revert behavior.
+- [ ] Example acceptance scenario: create "Get ready for Houston" for the next
+  three hours, optionally grouped into Hayes, my packing, moped equipment, and
+  work essentials. Capture the user's actual items, add more while packing,
+  check them off, and resume after closing the app. Suggested supplies must be
+  presented as suggestions rather than silently recorded as user commitments.
+- [ ] Implementation direction: reuse existing task/subtask and saved-record
+  capabilities where practical, with a lightweight list presentation and stable
+  list/item IDs. Inspect the current schema before choosing storage; avoid a
+  second independent task engine. Do not require organizational links or silently
+  create permanent projects, clients, routing rules, or inferred assignments
+  from temporary section headings.
+- [ ] Allow optional promotion later: move an unfinished item into normal Tasks,
+  or organize the list as a project using the user's configured schema. Preserve
+  completion state and history without duplicate tasks. Finishing or archiving
+  the list keeps it recoverable; reusable checklist templates can follow later.
+- [ ] Verify rapid capture, persistence, item completion/reopening, reordering,
+  voice follow-ups without duplicates, mobile usability, optional deadlines,
+  search, access isolation, and promotion without data loss. Ship the simple
+  checklist first; keep templates and richer scheduling outside the first pass.
+
+## Voice clarification ownership and faster backend option — September 24
+
+- [ ] Have Eri gather the minimum actionable task details in the live conversation
+  before delegating. Requests such as "add this to Todo" or "let's add a Todo"
+  without a resolvable subject should prompt one direct question from Eri; do not
+  enqueue empty work or trigger a second backend clarification. Resolve "this"
+  from available conversation context when possible, and do not require optional
+  fields before acting.
+- [ ] Keep clarification ownership and state consistent across voice and backend.
+  Once the user supplies the missing details, delegate one complete request.
+  If work is already waiting for clarification, route the answer to that same
+  work item and resolve its pending question instead of creating an orphaned
+  waiting card. Suppress stale clarification delivery after the answer or task
+  completion. Link this regression to EVAL-003 and the existing continuation work.
+- [ ] Add a regression for the September 24 screenshot: "Hey Eri, add this to-do"
+  -> Eri asks what the task is -> "Introduction email to Greg, head of marketing
+  at ABC" -> exactly one task is created, one completed action card, no leftover
+  waiting card, and no later repeat of the answered question.
+- [ ] Offer Luna without reasoning as a selectable backend option for lower
+  latency, alongside the current reasoning-enabled option. Verify the provider's
+  supported configuration, expose a clear Settings choice, and ensure the selected
+  mode reaches the actual request without silently falling back to reasoning.
+  Compare response time and tool correctness on representative task operations;
+  retain the current default until an explicit choice or measured decision.
+
+## Langfuse eval integration — September 23
+
+- [x] Verify project-scoped credentials for My Project in Davis's Organization.
+- [x] Add an explicit completed-campaign export command with a no-network dry run,
+  raw code versus external-grader scores, full selected-case coverage, tool/model
+  observations, recorded costs, secret redaction, and resumable upload receipts.
+  See [setup and usage](LANGFUSE.md). Keep model execution and the $10 budget in
+  the existing isolated harness.
+- [x] Upload and independently read back the corrected half-suite: 501 experiment
+  items, 937 observations, 256 separate code/review scores, and 104 real model calls.
+  Imported model cost matches the $0.055128104 ledger exactly. Repeating the export
+  was verified with zero write requests and no score-value mismatches.
+  Current export: eri-eval-82fb37d8bf2e95a717fcad0b in
+  [the Langfuse project](https://us.cloud.langfuse.com/project/cmtz0kofn00mrad0cqoefpl6h).
+- [x] Verify exporter and harness safeguards: 82 tests passed, two optional skips.
+  Cache bookkeeping must never count as a new provider call or acquire an
+  automatically estimated model cost.
+- [ ] Optional follow-up: add live tracing across voice handoff, queue continuations,
+  background tools, memory retrieval and learning, with request correlation and
+  production-content redaction. The current integration exports synthetic evals only.
+- [x] Removed the superseded first Langfuse test import
+  (eri-eval-52354b9ff7fcfd85f5835826) with explicit approval on September 23.
+  Verified its observations, scores, and experiment are gone; the corrected v2
+  import retains all 937 observations and 256 scores. Local evidence and the
+  deletion audit remain in the half-suite artifacts.
+
+## Balanced half-suite and independent grading — September 23
+
+- [ ] Review the September 23 half-suite results together with
+  [GPT-6 Sol's grading report](../artifacts/app-evals/half-20260923-sol-graded/grader.md),
+  its [case-level judgments](../artifacts/app-evals/half-20260923-sol-graded/grader.json),
+  the [automated report](../artifacts/app-evals/half-20260923-sol-graded/report.html),
+  and the [recorded findings](../evals/app/FINDINGS.md). Reconcile automated versus
+  reviewed outcomes, distinguish app failures from incomplete test coverage, and
+  prioritize the next fixes and acceptance checks.
+- [x] Verify prior eval findings EVAL-001 through EVAL-007 are recorded; retain
+  historical failures even when a later sample passes.
+- [x] Run the frozen 501-case selection across all 40 features: all 153 available
+  execution jobs finished; raw results were 139 passed, five failed, five deferred
+  semantic judgments, four blocked. Backend regressions: 634 passed; six browser fixtures passed.
+  Estimated application API cost $0.055128104, under the shared $10 cap.
+- [x] Add external semantic-grader mode so Luna is not judging its own pipeline
+  output; retain raw evidence and incomplete acceptance coverage.
+- [x] Complete independent GPT-6 Sol grading of all 501 cases: 42 passed, four
+  failed, six need review, 75 partial, one component failure, 373 unassessable.
+  All five deferred semantic judgments met their criteria. Preserve raw results.
+- [ ] Strengthen six overbroad acceptance bindings identified by Sol:
+  memory_dream.09/.12/.14/.16/.25 and task_lifecycle.09. Exercise retrieval and
+  prompt removal, actual scheduler ticks, microphone behavior, and active-view
+  archive/recovery as applicable. These are verification gaps, not proven bugs.
+- [ ] Fix new EVAL-008: task resolution must use flexible organization relationships,
+  not only legacy project fields. A project-linked duplicate title was missed and
+  its requested rename remained unfinished; no wrong task was changed.
+- [ ] Fix reproduced EVAL-001, EVAL-003, EVAL-005 and EVAL-006; retain EVAL-002 and
+  EVAL-007 as intermittent despite this sample's recovered/passing results.
+  See [findings](../evals/app/FINDINGS.md).
+- [ ] Close acceptance coverage gaps: this sample contains only 52 fully bound
+  scenarios, 448 needing complete assertions and one requiring device evidence.
+  Keep dedicated connected-service and real-audio acceptance separate.
+
+## Search and spoken-title matching — September 22
+
+- [ ] Fix search/entity resolution across Eri's action tools and the search UI
+  so punctuation, whitespace, case and spoken-number variations do not prevent
+  finding the intended record. Preserve original titles; normalize matching and
+  rank likely equivalents rather than requiring an exact title string.
+- [ ] Add the reported regression: "delete test test 123 note" must find the note
+  titled "test, test, one, two, three". Cover digit sequences versus number words,
+  punctuation differences, and similar titles. Resolve a unique confident match
+  to its saved record ID; ask for disambiguation when several plausible targets
+  exist, especially before deletion.
+
+## Source identifiers and private task notes — September 22
+
+- [ ] Show a source badge/name and color across task views so Eridani, Linear
+  and Google Calendar items are easy to distinguish. Suggested colors: grey or
+  orange for Linear, pink for Google Calendar. Keep colors editable in Settings,
+  and include a text/icon identifier so color is not the only distinction.
+- [ ] Show the source clearly in the task/event detail view, with a link to the
+  original source item when available.
+- [ ] Include all available Linear issue fields in the task detail view, rather
+  than only Eridani's shared task fields. Audit source payloads and sync coverage
+  for missing details; organize fields into readable groups and distinguish
+  editable fields from source-controlled/read-only metadata. Keep Eridani-private
+  notes separate from Linear's description and other synced fields.
+- [ ] Add a collapsible private notes section in the detail view, stored separately
+  in Eridani from the source-synced description. These notes must never be sent
+  to Linear, Google Calendar or another source, and incoming sync must preserve them.
+
+## Visual organization editor / Structure tab — September 22
+
+- [ ] Overhaul how the organizational system is displayed while retaining the
+  existing flexible model. Add a dedicated Structure tab with an expandable tree
+  that makes the overall organization and nesting easy to understand.
+- [ ] Show record types, custom fields, their definitions and relationships in
+  context. Clearly distinguish schema/field definitions from actual records and
+  cross-links, so the tree does not imply everything has only one parent.
+- [ ] Allow editing directly from the tree, with drag-and-drop for reordering and
+  supported nesting/reparenting of fields and organizational elements. Make valid
+  drop targets and the effect of a move clear; preserve linked data and prevent
+  invalid relationships or cycles.
+- [ ] Make the tree and its detail controls usable on mobile/foldables, with an
+  accessible alternative to dragging. Aim for a compact visual overview that
+  explains how the user's system fits together.
+
+## Full available Luna evaluation — September 22
+
+- [x] Run all 245 currently available jobs against the marked synthetic corpus: 233 passed, eight failed, four blocked after retaining and retrying one provider connection error. Backend regressions: 634 passed, one optional blocked; six synthetic browser fixtures passed. See the [new findings](../evals/app/FINDINGS.md).
+- [x] Correct the offset-aware local-time grader for `task_capture.05`; its focused Luna rerun passed. Keep the original false failure and corrected run as separate harness fingerprints. September 22 spending totals $0.074527800 estimated, $0.086131450 including uncertain reservations.
+- [ ] Fix the reproduced app/architecture findings EVAL-001, EVAL-002, EVAL-003, EVAL-005, EVAL-006 and new EVAL-007 (After Yang omitted from recommendation extraction). EVAL-004 passed one continuation but remains variable; retain its earlier failure.
+- [ ] Bind the remaining 900 catalog cases completely, obtain physical-device evidence for three explicit cases, and configure dedicated Google/Linear/R2 test resources before claiming connected acceptance. Real GPT-Live audio and restore/PITR remain separate verification.
+## On-demand evaluation automation — September 20
+
+- [x] Index all 1,001 scenarios in six execution types; select by type, feature or
+  case without scheduling runs. Export the exact coverage/backlog manifest.
+- [x] Isolate each job in a fresh process and owned PostgreSQL clone. Deduplicate
+  shared regression/browser suites within a repeat; preserve case-level evidence.
+- [x] Share a durable $10 maximum across Luna, learning, embeddings, semantic
+  judging, concurrent jobs and retries. Judge sublimit $1; Gemini remains paused.
+  Uncertain calls retain their reservations; resume never grants a fresh budget.
+- [x] Add 41 real queued-Luna probes (including multi-turn clarifications),
+  43 memory/note pipeline adapters, 108 deterministic command/recovery cases,
+  44 reusable backend suites, six browser fixtures and opt-in Google/Linear/R2 probes.
+- [x] JSON, searchable HTML, JUnit, cost attribution, source/fixture fingerprints,
+  compatible-run comparison, STOP/resume, and explicit physical-evidence import.
+- [x] Add no-paid CI registry/coverage checks and harness regression tests.
+  Final checks: 63 harness tests; 634 backend regressions; six browser fixtures;
+  136 frontend unit tests and frontend build. Optional checks remain skipped.
+  The 177-job offline plan retains three product/architecture failures.
+- [x] Verify resume reuses completed evidence without another provider call;
+  disposable trial databases are cleaned up and the reusable corpus is retained.
+- [ ] Complete individual acceptance assertions for the remaining catalog:
+  **98 fully bound scenarios**, **224 cases with component bindings** (overlapping);
+  900 cases still need complete bindings and three require physical-device evidence.
+  Related regression success never substitutes for those missing assertions.
+- [ ] Expand live rule-dream, retrieval/alias, linked-note extraction and current
+  GPT-Live quality adapters; calibrate semantic graders on reviewed good/bad examples.
+  Deterministic regressions exist, but do not prove live model quality.
+- [ ] Supply dedicated Google/Linear/R2 test resources and run connected probes.
+  Keep full database restore/PITR and physical phone acceptance separate.
+- [ ] Fix app failures found by the campaign in a subsequent product batch:
+  EVAL-003 structured clarification state, EVAL-004 project disambiguation/context,
+  EVAL-005 numeric memory contradictions, and review EVAL-006 extraction/embedding
+  persistence. EVAL-001 remains reproduced; EVAL-002 remains open historically.
+  Do not weaken evaluation assertions or quietly mark missing coverage passed.
+- [x] Exercise the available paid pipeline/backend adapters and preserve full plus
+  targeted correction reports. Recorded estimate $0.06932; $0.70825 including
+  uncertain diagnostic reservations. No Gemini or live-service writes.
+
+Commands and evidence semantics: [eval guide](../evals/app/README.md).
+This is automation scaffolding across the catalog, not a claim that all 1,001
+acceptance scenarios are now automated.
+
 ## Luna-only paid evaluations — September 20
 
 - [x] Pause Gemini comparisons; make Luna the paid-eval runner default. The app
   already prefers Luna when an OpenAI key is configured.
-- [x] Retain the $2 default text-eval cap and document the measured estimate:
-  about $1.18 for 1,001 comparable Luna text-agent cases, one pass.
+- [x] Replace the earlier $2 default with the requested $10 shared campaign cap.
+  The earlier ~$1.18 text-only extrapolation remains an estimate, not the mixed
+  catalog price or the spending limit.
 - [ ] Measure dream/learning and real voice costs separately before estimating
   a complete mixed-catalog run. Do not label the whole catalog confirmed under $2.
 - [x] Railway CI gating enabled and read back on both production services.
@@ -44,7 +273,7 @@ automated evidence, and real-device/provider acceptance separate.
   labels, separate uncertain amounts and no invented historical charges.
 - [x] Attribute assistant, voice, memory, note organization, field/rule learning,
   indexing and search; record known usage even on incomplete answers.
-- [x] Paid evals capped at $2 per model ($10 maximum), with preflight bounds and
+- [x] Historical initial comparison used $2 per model, with preflight bounds and
   durable journals. Luna $0.02352; Gemini $0.49767; 19/20 complete outcomes each.
 - [x] Both production services deployed with recording on and enforcement off;
   Railway health checks passed. Earlier missing usage cannot be reconstructed.

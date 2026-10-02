@@ -47,7 +47,7 @@ try {
   await page.getByLabel("Pairing code").fill("planner-fixture");
   await page.locator(".login-card button.primary").click();
   await expect(
-    page.getByRole("heading", { name: "Tasks", exact: true }),
+    page.getByRole("region", { name: "Today", exact: true }),
   ).toBeVisible();
   const goal = await cmd("goal.create", { name: "A calmer week" });
   const project = await cmd("project.create", {

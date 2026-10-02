@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api, post } from "./api";
 import { startGoogle } from "./GoogleSettings";
+import { SettingRow, SettingsGroup } from "./SettingsLayout";
+// Imported here (after App.tsx pulls in shell.css) so settings rules win over the shell defaults.
+import "./settings.css";
 type Workspace = { id: string; name: string; kind: string; role: string };
 type Invite = {
   id: string;
@@ -65,7 +68,7 @@ export function AccountSwitcher({
           <option value="">Personal</option>
           {data.workspaces.map((w) => (
             <option key={w.id} value={w.id}>
-              {w.name} · {w.role}
+              {w.name} ({w.role})
             </option>
           ))}
         </select>
@@ -143,38 +146,42 @@ export function SharingSettings() {
   }
   const owned = data?.workspaces.filter((w) => w.role === "owner") ?? [];
   return (
-    <section className="sharing-settings">
-      <h2>People & sharing</h2>
-      <div className="sharing-overview"><div><strong>Personal workspace</strong><p>Your own tasks, notes, memory and connected accounts.</p></div><div><strong>Shared workspace</strong><p>A separate set of tasks, notes and local calendar entries for invited people.</p></div></div>
-      <p className="footnote">Assignment organizes responsibility; it never grants access.</p>
-      {error && (
-        <p className="error-banner" role="alert">
-          {error}
+    <div className="sharing-settings">
+      <SettingsGroup title="People & sharing" description="Assignment organizes responsibility; it never grants access.">
+        <div className="sharing-overview"><div><strong>Personal workspace</strong><p>Your own tasks, notes, memory and connected accounts.</p></div><div><strong>Shared workspace</strong><p>A separate set of tasks, notes and local calendar entries for invited people.</p></div></div>
+        {error && (
+          <p className="error-banner" role="alert">
+            {error}
+          </p>
+        )}
+        {message && <p role="status" className="settings-callout">{message}</p>}
+        <p className="footnote">
+          Shared workspaces start empty. Switch to one before adding shared work.
+          Private records and external calendars are never moved automatically.
+          Shared chats are temporary and don’t teach personal memory. Google and
+          Linear connections are managed in Personal.
         </p>
-      )}
-      {message && <p role="status">{message}</p>}
-      {inviteId && <section className="invitation-card">
-        <h3>Your invitation</h3>
-        <p className="footnote">Signed in as {data?.email ?? data?.name}.</p>
-        {inviteError ? <><p role="alert">{inviteError}</p><button onClick={() => void startGoogle("login").catch(e => setInviteError(e.message))}>Use another Google account</button></> : focusedInvite ? <>
-          <strong>{focusedInvite.workspace}</strong><p>{focusedInvite.email} · {focusedInvite.role}</p>
-          {focusedInvite.status === "pending" ? <button className="primary compact" disabled={busy} onClick={() => void act(async () => {
+      </SettingsGroup>
+      {inviteId && <SettingsGroup className="invitation-card" title="Your invitation" description={"Signed in as " + (data?.email ?? data?.name ?? "") + "."}>
+        {inviteError ? <><p role="alert" className="error-banner">{inviteError}</p><div className="setting-actions"><button className="btn" onClick={() => void startGoogle("login").catch(e => setInviteError(e.message))}>Use another Google account</button></div></> : focusedInvite ? <>
+          <div className="settings-item"><div className="settings-item-main"><strong className="settings-item-title">{focusedInvite.workspace}</strong><span className="settings-item-meta"><span>{focusedInvite.email}</span><span className="chip">{humanize(focusedInvite.role)}</span></span></div>
+          {focusedInvite.status === "pending" && <div className="settings-item-actions"><button className="btn btn-primary" disabled={busy} onClick={() => void act(async () => {
             await post("/accounts/accept", {invite_id:focusedInvite.id}); setMessage("Invitation accepted. Choose your workspace in the navigation menu.");
-          })}>Accept invitation</button> : <p>{focusedInvite.status === "accepted" ? "You have already accepted this invitation. Choose the workspace in the navigation menu." : "This invitation expired or was revoked. Ask its sender for a new one."}</p>}
-        </> : <p role="status">Checking your invitation…</p>}
-      </section>}
+          })}>Accept invitation</button></div>}</div>
+          {focusedInvite.status !== "pending" && <p className="settings-callout">{focusedInvite.status === "accepted" ? "You have already accepted this invitation. Choose the workspace in the navigation menu." : "This invitation expired or was revoked. Ask its sender for a new one."}</p>}
+        </> : <p role="status" className="settings-empty">Checking your invitation…</p>}
+      </SettingsGroup>}
       {!!data?.invitations.filter(i => i.id !== inviteId).length && (
-        <section>
-          <h3>Invitations for you</h3>
+        <SettingsGroup title="Invitations for you">
+          <div className="settings-list">
           {data.invitations.filter(i => i.id !== inviteId).map((i) => (
-            <div className="sharing-row" key={i.id}>
-              <span>
-                <strong>{i.workspace}</strong>
-                <small>
-                  {i.email} · {i.role}
-                </small>
+            <div className="settings-item" key={i.id}>
+              <span className="settings-item-main">
+                <strong className="settings-item-title">{i.workspace}</strong>
+                <span className="settings-item-meta"><span>{i.email}</span><span className="chip">{humanize(i.role)}</span></span>
               </span>
-              <button
+              <span className="settings-item-actions"><button
+                className="btn btn-primary btn-sm"
                 disabled={busy}
                 onClick={() =>
                   void act(async () => {
@@ -186,12 +193,15 @@ export function SharingSettings() {
                 }
               >
                 Accept invitation
-              </button>
+              </button></span>
             </div>
           ))}
-        </section>
+          </div>
+        </SettingsGroup>
       )}
+      <SettingsGroup title="Create a shared workspace" description="A new, empty workspace you can invite people to.">
       <form
+        className="settings-form"
         onSubmit={(e) => {
           e.preventDefault();
           void act(async () => {
@@ -212,10 +222,8 @@ export function SharingSettings() {
           });
         }}
       >
-        <h3>1. Create a shared workspace</h3>
-        <div className="sharing-fields">
-          <label>
-            Name
+          <label className="field">
+            <span className="field-label-text">Name</span>
             <input
               aria-label="Shared workspace name"
               required
@@ -224,8 +232,8 @@ export function SharingSettings() {
               onChange={(e) => setName(e.target.value)}
             />
           </label>
-          <label>
-            Kind
+          <label className="field">
+            <span className="field-label-text">Kind</span>
             <select
               aria-label="Shared workspace kind"
               value={kind}
@@ -235,15 +243,13 @@ export function SharingSettings() {
               <option value="project">Project</option>
             </select>
           </label>
-          <button className="primary compact" disabled={busy || !name.trim()}>
+          <div className="settings-form-actions"><button className="btn btn-primary" disabled={busy || !name.trim()}>
             Create workspace
-          </button>
-        </div>
+          </button></div>
       </form>
-      <section>
-        <h3>2. Invite people & manage access</h3>
-        <label>
-          Manage sharing
+      </SettingsGroup>
+      <SettingsGroup title="Invite people and manage access" description="No email is sent. After creating an invitation, copy its message and share it with the person yourself.">
+        <SettingRow label="Manage sharing for" hint="Choose the workspace whose people you want to manage.">
           <select
             aria-label="Manage sharing"
             value={target}
@@ -260,10 +266,9 @@ export function SharingSettings() {
               </option>
             ))}
           </select>
-        </label>
-        <p className="footnote">No email is sent. After creating an invitation, copy its message and share it with the person yourself.</p>
+        </SettingRow>
         <form
-          className="sharing-fields"
+          className="settings-form"
           onSubmit={(e) => {
             e.preventDefault();
             void act(async () => {
@@ -280,8 +285,8 @@ export function SharingSettings() {
             });
           }}
         >
-          <label>
-            Google email
+          <label className="field">
+            <span className="field-label-text">Google email</span>
             <input
               aria-label="Invite Google email"
               type="email"
@@ -290,8 +295,8 @@ export function SharingSettings() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </label>
-          <label>
-            Role
+          <label className="field">
+            <span className="field-label-text">Role</span>
             <select
               aria-label="Invitation role"
               value={role}
@@ -301,34 +306,38 @@ export function SharingSettings() {
               <option value="viewer">Viewer</option>
             </select>
           </label>
-          <button disabled={busy || (!target && !data?.can_invite_accounts)}>
-            Create invitation
-          </button>
+          <div className="settings-form-actions">
+            <button className="btn btn-primary" disabled={busy || (!target && !data?.can_invite_accounts)}>
+              Create invitation
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(location.origin + "/?view=settings&sharing=1")
+                  .then(() => setMessage("Sign-in link copied."))
+                  .catch(() => setMessage("Share this address: " + location.origin))
+              }
+            >
+              Copy sign-in link
+            </button>
+          </div>
         </form>
-        {invitationMessage && <div className="invitation-copy"><label>Invitation message<textarea readOnly value={invitationMessage}/></label>
-          <button className="secondary compact" onClick={() => void navigator.clipboard.writeText(invitationMessage)
+        {invitationMessage && <div className="invitation-copy"><label className="field"><span className="field-label-text">Invitation message</span><textarea readOnly value={invitationMessage}/></label>
+          <button className="btn btn-soft btn-sm" style={{alignSelf:"flex-start"}} onClick={() => void navigator.clipboard.writeText(invitationMessage)
             .then(() => setMessage("Invitation message copied.")).catch(() => setMessage("Select and copy the invitation message above."))}>Copy invitation</button></div>}
-        <button
-          className="text-button"
-          onClick={() =>
-            void navigator.clipboard
-              .writeText(location.origin + "/?view=settings&sharing=1")
-              .then(() => setMessage("Sign-in link copied."))
-              .catch(() => setMessage("Share this address: " + location.origin))
-          }
-        >
-          Copy sign-in link
-        </button>
         <p className="role-guide"><strong>Viewer:</strong> can read. <strong>Editor:</strong> can add and change records. <strong>Owner:</strong> also manages invitations and access.</p>
         {!!members.length && <h4>Members</h4>}
+        <div className="settings-list">
         {members.map((m) => (
-          <div className="sharing-row" key={m.account_id}>
-            <span>
-              <strong>{m.name}</strong>
-              <small>{m.active ? m.role : "Access revoked"}</small>
+          <div className="settings-item" key={m.account_id}>
+            <span className="settings-item-main">
+              <strong className="settings-item-title">{m.name}</strong>
+              <span className="settings-item-meta"><span className="chip">{m.active ? humanize(m.role) : "Access revoked"}</span></span>
             </span>
             {m.role !== "owner" && (
-              <>
+              <span className="settings-item-actions">
                 <select
                   aria-label={"Role for " + m.name}
                   disabled={busy || !m.active}
@@ -350,6 +359,7 @@ export function SharingSettings() {
                 </select>
                 {m.active && (
                   <button
+                    className="btn btn-danger btn-sm"
                     disabled={busy}
                     onClick={() =>
                       void act(async () => {
@@ -366,18 +376,21 @@ export function SharingSettings() {
                     Revoke access
                   </button>
                 )}
-              </>
+              </span>
             )}
           </div>
         ))}
+        </div>
         {!!invites.length && <h4>Pending invitations</h4>}
+        <div className="settings-list">
         {invites.map((i) => (
-          <div className="sharing-row" key={i.id}>
-            <span>
-              {i.email}
-              <small>Pending · {i.role} · expires {new Date(i.expires_at).toLocaleDateString()}</small>
+          <div className="settings-item" key={i.id}>
+            <span className="settings-item-main">
+              <span className="settings-item-title">{i.email}</span>
+              <span className="settings-item-meta"><span className="chip">Pending</span><span className="chip">{humanize(i.role)}</span><span>Expires {new Date(i.expires_at).toLocaleDateString()}</span></span>
             </span>
-            <button
+            <span className="settings-item-actions"><button
+              className="btn btn-ghost btn-sm"
               disabled={busy}
               onClick={() =>
                 void act(async () => {
@@ -388,16 +401,12 @@ export function SharingSettings() {
               }
             >
               Revoke invitation
-            </button>
+            </button></span>
           </div>
         ))}
-      </section>
-      <p className="footnote">
-        Shared workspaces start empty. Switch to one before adding shared work.
-        Private records and external calendars are never moved automatically.
-        Shared chats are temporary and don’t teach personal memory. Google and
-        Linear connections are managed in Personal.
-      </p>
-    </section>
+        </div>
+      </SettingsGroup>
+    </div>
   );
 }
+const humanize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1).replaceAll("_", " ");

@@ -8,6 +8,7 @@ from .config import get_settings
 from .search_models import SearchAlias, SearchSession, SearchPreference
 from .search_index import snapshot, digest
 from .search_service import normalize, contains, permitted
+from .text_normalize import plain
 from .domain import DomainError, advisory, check_revision, serial
 
 
@@ -225,7 +226,7 @@ def observe_source(db, source):
         return
     if row.signal == "possible_correction:" + source.id or row.signal == "continued:" + source.id:
         return
-    if CORRECTION.search(normalize(source.content)) or normalize(source.content) == "no":
+    if CORRECTION.search(plain(source.content)) or normalize(source.content) == "no":
         # Conservative: an ambiguous correction never increases confidence.
         reject_search(db, row, "possible_correction:" + source.id)
     else:

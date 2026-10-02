@@ -326,8 +326,13 @@ async def test_pending_question_keeps_exact_identity_and_cleared_work_is_not_spo
         db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
     await c.report_work()
     events = [call.args[0] for call in c.send.await_args_list]
-    assert any(e["type"] == "session.thinking.append" and question["id"] in e["content"] and question["request_id"] in e["content"] for e in events)
-    assert any(e["type"] == "session.commentary.append" and "What time" in e["content"] for e in events)
+    # One spoken channel: the question goes out once, as commentary, with no IDs read aloud.
+    assert [e["type"] for e in events] == ["session.commentary.append"]
+    assert "What time" in events[0]["content"] and question["id"] not in events[0]["content"]
+    assert "Do not announce" not in events[0]["content"]
+    with session_scope() as db:
+        assert unseal(db.get(VoiceInbox, c.id).content_ciphertext)["asked"] == [question["id"]]
+    assert c.pending_question
     c.send.reset_mock()
     await c.report_work()
     c.send.assert_not_awaited()

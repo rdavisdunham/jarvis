@@ -37,7 +37,10 @@ class CalendarClient:
         )
         try:
             token.refresh(VerificationRequest())
-        except RefreshError:
+        except RefreshError as error:
+            # google-auth marks 5xx/transient token failures retryable; only a rejected grant needs consent.
+            if getattr(error, "retryable", False):
+                raise SyncFailure("unavailable") from None
             raise SyncFailure("reconnect", 401) from None
         except TransportError:
             raise SyncFailure("unavailable") from None
@@ -143,9 +146,9 @@ def queue_sync(db, owner, force=False):
     if pending:
         if now() - pending.created_at < timedelta(minutes=15):
             return pending.id
+        # Fence by job identity: a late response from that attempt finds its job no longer running.
+        # The connection generation is untouched so queued writes and edit tokens survive.
         pending.status, pending.finished_at, pending.result = "failed", now(), {"error": "sync_timed_out"}
-        # A late response from that attempt must never overwrite the next snapshot.
-        account.generation += 1
     if not force and account.next_sync_at and account.next_sync_at > now():
         return None
     job = enqueue_job(db, owner, "google_sync", {"generation": account.generation})
@@ -278,6 +281,8 @@ def process(job_id):
         with session_scope() as db:
             advisory(db, f"google:{owner}")
             account, job = db.get(GoogleIdentity, owner), db.get(Job, job_id)
+            if job.status != "running":
+                return  # Superseded by a newer sync while Google answered.
             if not account or not account.calendar_enabled or account.generation != generation:
                 job.status, job.finished_at = "cancelled", now()
                 return
@@ -356,6 +361,8 @@ def process(job_id):
         with session_scope() as db:
             advisory(db, f"google:{owner}")
             account, job = db.get(GoogleIdentity, owner), db.get(Job, job_id)
+            if job.status != "running":
+                return
             job.status, job.finished_at, job.result = "failed", now(), {"error": code}
             if account and account.calendar_enabled and account.generation == generation:
                 account.status = "needs_reconnect" if code == "reconnect" else "error"

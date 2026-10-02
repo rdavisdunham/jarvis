@@ -13,11 +13,23 @@ function normalize(text: string): string {
     .replace(/\s+(?:eri|eridani)$/, "");
 }
 
-// Complete standalone endings only; never close on quoted words or an added request.
-export function isVoiceEnding(text: string): boolean {
-  const value = normalize(text)
+function ending(text: string): string {
+  return normalize(text)
     .replace(/^(?:(?:okay|ok|alright|yes|yeah|yep|no|nope|please)\s+)+/, "")
     .replace(/\s+(?:please|thanks|thank you)(?:\s+(?:very much|so much))?$/, "");
+}
+
+// An unmistakable farewell or stop request. While backend work runs or its question is
+// pending, only these close voice: "thanks", "that's all", "no" may be an answer.
+export function isExplicitFarewell(text: string): boolean {
+  return /^(?:goodbye|good bye|bye|bye bye|goodnight|good night|see you later|talk to you later|(?:you can |lets )?(?:end|stop|close)(?: (?:the|this|our))? (?:conversation|voice chat|voice session|voice mode)|(?:you can )?stop listening(?: now)?)$/.test(
+    ending(text),
+  );
+}
+
+// Complete standalone endings only; never close on quoted words or an added request.
+export function isVoiceEnding(text: string): boolean {
+  const value = ending(text);
   return /^(?:goodbye|good bye|bye|bye bye|goodnight|good night|see you later|talk to you later|thank you|thanks|thank you very much|thanks so much|thanks for (?:your|the) help|(?:i think )?(?:thats|that is) (?:all|everything|it)(?: for (?:now|today|me))?|that(?:ll| will| would) (?:be all|do)(?: for (?:now|today))?|(?:im|i am|were|we are) (?:done|finished)(?: (?:talking|chatting|with (?:this|the|our) (?:conversation|chat)))?(?: for (?:now|today))?|(?:im|i am|were|we are) (?:all set|good)(?: for (?:now|today))|i dont need anything else|nothing else(?: for (?:now|today))?|(?:you can |lets )?(?:end|stop|close)(?: (?:the|this|our))? (?:conversation|voice chat|voice session|voice mode)|(?:you can )?stop listening(?: now)?)$/.test(value);
 }
 
@@ -119,7 +131,8 @@ export class VoiceEnding {
       : null;
   }
 
-  user(message: ChatMessage, now = Date.now()): boolean {
+  // busy: backend work is running or its clarification awaits the user's answer.
+  user(message: ChatMessage, now = Date.now(), busy = false): boolean {
     if (!message.content.trim()) return false;
     const { id, content } = message;
     if (
@@ -157,6 +170,7 @@ export class VoiceEnding {
     const reply = content.startsWith(this.answer?.prefix ?? "")
       ? content.slice(this.answer?.prefix.length ?? 0)
       : content;
+    if (busy) return isExplicitFarewell(reply);
     return confirmsEnding(reply, this.answer?.kind ?? null);
   }
 }

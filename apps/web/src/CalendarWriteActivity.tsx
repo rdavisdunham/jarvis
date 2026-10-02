@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { api } from "./api";
 type Row = {
   job_id: string;
@@ -6,6 +7,12 @@ type Row = {
   operation: string;
   created_at: string;
   result?: { message?: string; title?: string };
+};
+const statusChip: Record<string, [string, string]> = {
+  succeeded: ["chip chip-done", "Confirmed"],
+  failed: ["chip chip-due-overdue", "Failed"],
+  cancelled: ["chip", "Cancelled"],
+  unconfirmed: ["chip chip-due-today", "Not confirmed"],
 };
 export function CalendarWriteActivity() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -28,32 +35,47 @@ export function CalendarWriteActivity() {
   }, []);
   return (
     <details className="calendar-write-activity">
-      <summary>Recent calendar changes</summary>
+      <summary>
+        <ChevronRight size={15} aria-hidden="true" />
+        Recent calendar changes
+      </summary>
       {!rows.length && (
-        <p className="footnote">
+        <p className="field-hint">
           Calendar saves and their Google confirmation appear here.
         </p>
       )}
-      {rows.map((row) => (
-        <div key={row.job_id} className="calendar-write-row">
-          <strong>
-            {row.result?.title ||
-              (row.operation === "create"
-                ? "New event"
-                : row.operation === "delete"
-                  ? "Delete event"
-                  : "Edit event")}
-          </strong>
-          <span>
-            {row.status === "succeeded"
-              ? "Confirmed by Google"
-              : row.result?.message || "Waiting for Google…"}
-          </span>
-          <small>
-            {new Date(row.created_at).toLocaleString()} · {row.status}
-          </small>
+      {!!rows.length && (
+        <div className="calendar-write-list">
+          {rows.map((row) => {
+            const [chipClass, chipText] = statusChip[row.status] ?? [
+              "chip",
+              "Waiting for Google",
+            ];
+            return (
+              <div key={row.job_id} className="calendar-write-row">
+                <strong>
+                  {row.result?.title ||
+                    (row.operation === "create"
+                      ? "New event"
+                      : row.operation === "delete"
+                        ? "Delete event"
+                        : "Edit event")}
+                </strong>
+                <span className={chipClass}>{chipText}</span>
+                <time dateTime={row.created_at}>
+                  {new Date(row.created_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </time>
+                {row.status !== "succeeded" && row.result?.message && (
+                  <span className="write-message">{row.result.message}</span>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
     </details>
   );
 }

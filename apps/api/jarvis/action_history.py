@@ -1,15 +1,16 @@
 """Saved changes and explicit, revision-checked compensating commands."""
 
+import re
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from uuid import uuid4
 
-from fastapi.encoders import jsonable_encoder
 from sqlalchemy import event, inspect, or_, select
 
 from . import models
 from .access import actor, authorize_execution, role
 from .config import get_settings
-from .domain import DomainError, advisory, emit, owned
+from .domain import DomainError, advisory, emit, encode, owned
 from .models import ActionChange, Command, Job
 from .work_crypto import seal, unseal
 
@@ -41,6 +42,11 @@ SKIP = {
 }
 
 
+def request_of(command_id):
+    # Agent-driven browser edits are ui-agent:<work_id>:<index>:<uuid>.
+    return command_id.split(":")[1 if command_id.startswith("ui-agent:") else 0]
+
+
 def ignored(kind):
     return SKIP | ({"task_id", "note_id"} if kind == "record" else set())
 
@@ -51,7 +57,21 @@ def snapshot(obj, *, before=False):
         history = state.attrs[column.name].history
         value = history.deleted[0] if before and history.deleted else getattr(obj, column.name)
         values[column.name] = value
-    return jsonable_encoder(values)
+    return encode(values)
+
+
+INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})")
+
+
+def instants(value):
+    # Older journal rows rendered equivalent instants with the session offset.
+    if isinstance(value, str) and INSTANT.fullmatch(value):
+        return datetime.fromisoformat(value).astimezone(UTC).isoformat()
+    if isinstance(value, dict):
+        return {k: instants(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [instants(v) for v in value]
+    return value
 
 
 @contextmanager
@@ -133,6 +153,7 @@ def inverse(db, change, *, lock=False):
     before, after = unseal(change.before_ciphertext), unseal(change.after_ciphertext)
     if change.reverted_by:
         return None, "Already reverted."
+    before, after = instants(before), instants(after)
     if change.entity_kind == "record_link":
         return inverse_link(db, change, before, after, lock=lock)
     if after.get("_undo_blocked"):
@@ -154,7 +175,7 @@ def inverse(db, change, *, lock=False):
     if not before:
         if not hasattr(row, "archived"):
             return None, "Open this record to cancel or remove it."
-        if snapshot(row) != after:
+        if instants(snapshot(row)) != after:
             return None, "This record changed after it was created. Review it before archiving."
         if has_linked_records(db, model, row.id):
             return None, "Other records are linked to this creation. Review those links before archiving it."
@@ -163,7 +184,7 @@ def inverse(db, change, *, lock=False):
         changes = {key: before.get(key) for key in after if key not in ignored(change.entity_kind) and before.get(key) != after[key]}
         if not changes:
             return None, "This receipt has no reversible field changes."
-        current = snapshot(row)
+        current = instants(snapshot(row))
         if any(current.get(key) != after.get(key) for key in changes):
             return None, "One of these fields changed later. Open the record to compare changes."
     kind = change.entity_kind
@@ -190,7 +211,7 @@ def inverse(db, change, *, lock=False):
 
 
 def public_change(db, row):
-    before, after = unseal(row.before_ciphertext), unseal(row.after_ciphertext)
+    before, after = instants(unseal(row.before_ciphertext)), instants(unseal(row.after_ciphertext))
     if row.entity_kind == "record_link":
         return public_link(db, row, before, after)
     try:
@@ -274,7 +295,7 @@ def public_change(db, row):
         "title": title,
         "operation": operation,
         "summary": f"{operation.capitalize()} {label}: {title}",
-        "request_id": row.command_id.split(":")[0],
+        "request_id": request_of(row.command_id),
         "revert_command_id": row.reverted_by,
         "fields": fields,
         "can_revert": bool(command),
@@ -365,7 +386,7 @@ def revert(db, owner, account, change_id, command_id):
         raise DomainError("REVISION_CONFLICT", reason, 409)
     result = execute(db, owner, command_id, action[0], action[1])
     change.reverted_by = command_id
-    emit(db, owner, "work.changed", change.command_id.split(":")[0])
+    emit(db, owner, "work.changed", request_of(change.command_id))
     return result
 
 
@@ -397,4 +418,4 @@ def public_link(db, change, before, after):
     source = db.get(models.StructureRecord, saved["source_id"])
     target = db.get(models.StructureRecord, saved["target_id"])
     operation = "linked" if after else "unlinked"
-    return {"id":change.id,"command_id":change.command_id,"kind":"record","entity_id":saved["source_id"],"title":source.title if source else "Record","operation":operation,"summary":f"{operation.capitalize()}: {source.title if source else 'Record'} → {target.title if target else 'Record'}","request_id":change.command_id.split(":")[0],"revert_command_id":change.reverted_by,"fields":{"relationship":{"before":saved["relationship_id"] if before else None,"after":saved["relationship_id"] if after else None}},"can_revert":bool(command),"revert_reason":reason,"reverted":bool(change.reverted_by)}
+    return {"id":change.id,"command_id":change.command_id,"kind":"record","entity_id":saved["source_id"],"title":source.title if source else "Record","operation":operation,"summary":f"{operation.capitalize()}: {source.title if source else 'Record'} → {target.title if target else 'Record'}","request_id":request_of(change.command_id),"revert_command_id":change.reverted_by,"fields":{"relationship":{"before":saved["relationship_id"] if before else None,"after":saved["relationship_id"] if after else None}},"can_revert":bool(command),"revert_reason":reason,"reverted":bool(change.reverted_by)}

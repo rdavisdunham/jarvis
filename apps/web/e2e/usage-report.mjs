@@ -25,7 +25,7 @@ try {
   await page.goto(base);
   await page.getByLabel("Pairing code").fill("planner-fixture");
   await page.locator(".login-card button.primary").click();
-  await expect(page.getByRole("heading", { name: "Tasks", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Today", exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const b = await (await fetch("/api/v1/bootstrap")).json();
     const r = await fetch("/api/v1/__test_ui", {method: "POST", headers: {"Content-Type": "application/json", "X-CSRF-Token": b.csrf},
@@ -38,11 +38,11 @@ try {
   await expect(page.getByRole("button", {name: "Save limit", exact: true})).toHaveCount(0);
   await expect(page.getByText("$0.0010", {exact: true})).toHaveCount(2);
   await expect(page.getByText("At this month's pace:", {exact: false})).toHaveCount(0);
-  mkdirSync("../../artifacts/usage-report", {recursive: true});
+  mkdirSync((process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/usage-report"), {recursive: true});
   for (const [name, width] of [["phone", 390], ["fold", 820], ["desktop", 1440]]) {
     await page.setViewportSize({width, height: 1000});
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-    await page.locator(".usage-report").screenshot({path: "../../artifacts/usage-report/" + name + ".png"});
+    await page.locator(".usage-report").screenshot({path: (process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/usage-report") + "/" + name + ".png"});
   }
   if (errors.length) throw Error(errors.join("\n"));
   console.log("Usage Settings passed: phone/fold/desktop, partial history, tiny charges, no false budget blocking or projection.");

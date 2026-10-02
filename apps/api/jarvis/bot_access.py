@@ -17,8 +17,8 @@ principal = ContextVar("eridani_bot_credential", default=None)
 SCOPES = {
     "schema:read": "Read type, field and relationship definitions",
     "schema:write": "Preview and apply workspace schema changes (owner only)",
-    "records:read": "Read custom records, including their configured work and content fields",
-    "records:write": "Create and edit custom records and their relationships",
+    "records:read": "Read custom records; task/note content also needs tasks:read/notes:read",
+    "records:write": "Create and edit custom records; task/note-backed records also need tasks:write/notes:write",
     "tasks:read": "Read tasks",
     "tasks:write": "Create and edit tasks",
     "organization:read": "Read spaces, areas, goals, projects and assignees",
@@ -181,7 +181,33 @@ def check_command(db, owner, tool, arguments):
         raise DomainError(
             "INSUFFICIENT_SCOPE", "Use existing project/assignee IDs, or grant organization:write.", 403
         )
+    # Mirrored records write through to core Tasks/Notes; records:write alone must not widen that.
+    for core in core_scopes(db, owner, tool, arguments):
+        if core not in row.scopes:
+            raise DomainError("INSUFFICIENT_SCOPE", f"This record is backed by core data; grant {core}.", 403)
     return row
+
+
+def core_scopes(db, owner, tool, arguments):
+    if tool not in {"record.create", "record.update"}:
+        return set()
+    from .structure import default_definition
+    from .structure_models import StructureRecord, StructureSchema
+
+    schema = db.get(StructureSchema, owner)
+    types = {t["id"]: t for t in (schema.definition if schema else default_definition())["types"]}
+    row = None
+    if tool == "record.update":
+        row = db.get(StructureRecord, str(arguments.get("record_id") or ""))
+        if not row or row.owner_id != owner:
+            return set()  # The command itself reports NOT_FOUND.
+    caps = set(types.get(row.type_id if row else arguments.get("type_id"), {}).get("capabilities", ()))
+    needed = set()
+    if "work" in caps or (row and row.task_id):
+        needed.add("tasks:write")
+    if "content" in caps or (row and row.note_id):
+        needed.add("notes:write")
+    return needed
 
 
 def tool_allowed(name, scopes):

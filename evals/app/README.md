@@ -1,95 +1,203 @@
 # Eridani app evaluations
 
-Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md), [Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
+Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md),
+[Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
 
-This version contains **1,001 acceptance scenarios across 40 feature areas**: 25 per area, plus a 26th date/time case for an observed database-timezone defect. The catalog covers existing functionality, disabled-feature boundaries, failure recovery, permissions and device behavior. It is not a claim that all 1,001 scenarios are automated or passing.
+The catalog contains **1,001 scenarios across 40 features**. The on-demand runner
+indexes every scenario, selects its available adapters, and reports unmet criteria.
+It does **not** mean all 1,001 scenarios are automated. Current bindings cover
+98 complete acceptance scenarios, with component evidence available for 224 cases
+(overlapping those 98). Nine hundred cases still lack complete acceptance bindings;
+three explicitly require physical-device evidence. Every feature has supporting
+regressions. See [automation-coverage.json](automation-coverage.json) for the exact
+per-feature backlog.
 
-## What is executable now
+## Execution types
 
-- The existing backend regression suite, frontend unit tests and six desktop/mobile browser suites.
-- 88 additional database component checks against a populated Rowan corpus. Each gets a fresh PostgreSQL clone and preserves before/after state and tool evidence.
-- Twenty paired Luna/Gemini queued-backend probes with state-based graders, alternating model order, repetitions, provider request limits and a stop file.
-- Meta-tests for dataset integrity, exposed-surface drift, database boundaries, graders and the production queue adapter.
+- **contracts:** task/record commands, dates, recurrence, schema, permissions,
+  notifications, budgets and recovery.
+- **agent:** queued conversations, clarifications and action receipts.
+- **pipeline:** memories, both dream systems, notes/list organization and retrieval.
+- **integration:** Google Calendar, Linear and scoped external-agent API/MCP.
+- **browser:** navigation, settings and site controls, using synthetic provider/media fixtures.
+- **voice:** current Live/idle/wake/shutdown regressions; actual microphone, OS
+  permissions, background behavior and real GPT-Live quality remain separate evidence.
 
-The remaining catalog entries are detailed acceptance protocols. Device, real OAuth and deployment scenarios need their named environment and evidence. Pipeline model-quality cases need gold-label review and dedicated live adapters before unattended scoring. A component pass does not mark the corresponding complete conversational/browser scenario passed.
+A type identifies a scenario’s primary feature, not its only implementation layer:
+task cases can have both deterministic and real queued-Luna variants.
 
-## Quick start
+## Run on demand
 
-Run from the repository root inside Linux/WSL with locked project dependencies installed.
+Run from the repository root in Linux/WSL with locked Python and web dependencies.
+No scheduler, new production endpoint, or paid CI job is installed.
 
 ~~~sh
 docker compose -f compose.eval.yml up -d
-.venv/bin/python -m scripts.app_eval.runner seed
 .venv/bin/python -m scripts.app_eval.runner validate
-.venv/bin/python -m scripts.app_eval.runner catalog
-.venv/bin/python -m scripts.app_eval.runner case routing_dream.04
-.venv/bin/python -m scripts.app_eval.runner contracts
-.venv/bin/python -m scripts.app_eval.runner regressions --scope all
-.venv/bin/python -m pytest -q evals/test_app_eval.py
+.venv/bin/python -m scripts.app_eval.runner coverage --output artifacts/eval-coverage.json
+
+# Inspect execution and cost limits without connecting to a database/provider.
+.venv/bin/python -m scripts.app_eval.runner plan --mode offline,live-model,live-service
+
+# Offline components and existing regression/browser suites.
+.venv/bin/python -m scripts.app_eval.runner run --mode offline
+
+# Available paid Luna and learning trials. ONE allowance includes all workers,
+# embeddings, judge calls and retries. Gemini is excluded.
+.venv/bin/python -m scripts.app_eval.runner run --mode offline,live-model --run-paid --max-usd 10
+
+# Narrow a run; comma-separated selectors can be combined.
+.venv/bin/python -m scripts.app_eval.runner run --types pipeline --features memory_dream --mode offline
+.venv/bin/python -m scripts.app_eval.runner run --cases task_capture.01,clarifications.01 --mode live-model --run-paid --repeats 3 --max-usd 10
+
+# --no-support omits related whole-suite evidence; explicit case bindings still run.
+.venv/bin/python -m scripts.app_eval.runner plan --features memory_capture --no-support
 ~~~
 
-The latest component baseline has 87 passes and one reproduced app defect. The contracts command currently returns a nonzero exit for the reproducible EVAL-001 defect. Keep that failure visible. Individual cases can be selected with a comma-separated --cases argument.
+Defaults: four worker processes, at most two simultaneous paid jobs and two browser
+jobs, one repetition, a $10 campaign ceiling and a $1 judge sublimit within that
+ceiling. A request count limit is also enforced. A supplied lower dollar cap lowers
+the judge ceiling too. These are maximum allowances, not cost predictions.
 
-The Docker service uses PostgreSQL 16.15, a localhost-only port 54340, the dedicated eridani_eval role, database eridani_eval_corpus and persistent volume eridani-eval-postgres. The password is synthetic-eval-only and must never be used for a public service. No production env file, application worker or external account credentials are mounted.
+The plan currently expands to 245 reusable jobs: 108 command contracts, 41 queued
+agent trials, 43 memory/note pipeline trials, 44 backend test files, six browser
+fixtures and three opt-in connected-service smoke probes. Sixty-five jobs use paid
+inference. Suite results are reused within a repetition without reusing mutable
+application state. There are no real GPT-Live/audio provider calls in this runner yet.
 
-At authoring time Docker Desktop could not start. An isolated native PostgreSQL 16 instance was provisioned at .runtime/eval-postgres on the same local port. Its role uses UTC, matching Docker CI. Do not start both on the same port. The corpus is already seeded there; the reproducible Compose file is the portable path when Docker is available.
+The legacy `models` command delegates to the same campaign ledger and only accepts
+Luna. Its old request-count flags remain supported. Historical paired-model reports
+are retained as historical evidence, not current defaults.
 
-## Baseline versus accumulated data
+Exit codes: **0** means all selected acceptance evidence passed; **1** means an
+assertion, component/suite, safety or infrastructure failure; **2** means incomplete
+coverage or prerequisites without a recorded failure. An unimplemented scenario
+cannot silently pass because a related test file passed.
 
-The marked corpus contains Rowan’s organization, 151 tasks, 26 notes, five memory assertions and four fictional identities. It includes 125 pagination rows, ambiguous task/contact names, correct and incorrect client assignments, negative/quoted recommendations, duplicate film editions and conflicting memory spellings.
+## Isolation and costs
 
-The corpus is a **golden baseline**, not a scratch workspace. Trial databases have generated eridani_eval_trial_UUID names and are dropped only by the process that created them. Failures retain JSON evidence; they do not contaminate the next trial.
+`compose.eval.yml` owns a dedicated PostgreSQL volume, role and localhost port
+54340. The marked Rowan corpus persists. Each job receives a fresh, randomly named
+clone and its own process; the parent drops only that validated clone. Production
+and ordinary development database URLs are refused. Existing pytest/browser
+fixtures use the owned clone rather than silently targeting a second database.
 
-Keep exploratory synthetic history in a separate database or run artifacts. Promote useful findings into a reviewed fixture/case version. This allows the suite to grow without model A and model B being evaluated on different accumulated histories.
+Corpus, fixture, grader, dependency and application fingerprints are retained.
+Relative user dates use the existing fixed persona clock; real lease/network clocks
+remain real. Model tests inspect saved state and cross-account canaries instead
+of trusting “Done.” Fault tests explicitly state whether the provider is real or mocked.
 
-The harness checks the local hostname, dedicated database role, namespace, synthetic marker and corpus hash. It refuses production/remote URLs, arbitrary databases and unmarked occupied databases. A partial seed gets a building marker and requires deliberate recovery; the seed command does not erase it. Export old data before intentionally creating a new baseline. Do not run compose down -v unless you mean to remove the synthetic corpus.
+Offline workers block outbound provider access and use synthetic credentials.
+Paid workers load only the configured OpenAI key from the local environment/.env.
+Synchronous and asynchronous HTTP calls share a transactional SQLite allowance;
+each call reserves a conservative bound before network contact. Unknown usage keeps
+its reservation after process death or timeout. There is no automatic forgiveness
+of uncertain charges or resetting of the allowance on resume.
 
-Relative-date truth is January 14, 2030, 09:00 America/Chicago. The live backend adapter freezes the instruction clock and uses absolute dates in its dated probes. It does not freeze runtime leases. Broader relative-date protocols must freeze the time-resolver clock as well.
+The ledger includes estimated actual cost, uncertain reservations, request counts
+and attribution to agent/pipeline/embedding/judge. It is separate from the production
+app’s weekly/monthly usage history. The old extrapolation from twenty text probes is
+not a measured cost for all 1,001 mixed scenarios.
 
-## Paid backend evaluations — Luna by default
+A per-campaign embedding cache reuses identical text/model/dimension inputs without
+reusing mutable retrieval state. Fault and stale-index checks use separate fixtures.
+Semantic Luna judging is restricted to supplied criteria and saved evidence, cannot
+override a code assertion failure, and can return `needs_review`. Broader judge
+calibration and retrieval-quality adapters remain on the coverage backlog.
 
-No paid inference is needed to build, inspect or validate the dataset.
-
-As of September 20, paid runs default to Luna only. Gemini comparisons are paused
-at the owner's request; the adapter and historical results remain available.
-The app already selects Luna by default when an OpenAI key is configured.
-
-The measured Luna sample cost $0.02352348 for 20 cases. At the same average,
-1,001 comparable text-agent cases would cost about $1.18 for one pass. This is
-an extrapolation, not an estimate for the complete mixed catalog: real GPT-Live
-sessions and unmeasured dream/learning/embedding workloads are additional.
-The $2 default text-run ceiling stops before a request would exceed its bound;
-it does not guarantee all selected cases finish. Only 20 paid probes are currently
-wired into this runner; the full catalog still includes manual/unimplemented adapters.
+## Stop, resume and compare
 
 ~~~sh
-.venv/bin/python -m scripts.app_eval.runner models \
-  --run-paid --models luna \
-  --cases task_capture.01,task_edit.19 \
-  --repeats 3 --max-provider-requests 40 --max-usd-per-model 2
+# Replace RUN with the directory printed by the runner.
+touch artifacts/app-evals/RUN/STOP
+
+# After correcting a missing prerequisite, remove only this STOP file.
+rm artifacts/app-evals/RUN/STOP
+.venv/bin/python -m scripts.app_eval.runner resume artifacts/app-evals/RUN
+.venv/bin/python -m scripts.app_eval.runner report artifacts/app-evals/RUN
+
+.venv/bin/python -m scripts.app_eval.runner compare artifacts/app-evals/BASELINE artifacts/app-evals/CANDIDATE --output artifacts/comparison.json
 ~~~
 
-Only the selected provider endpoint/model is allowed; Google, Linear, push and storage calls are blocked. Only provider keys are read from the local env file. The agent uses the actual durable queue, current production prompts, lazy tool discovery and real database commands. Persona oracle-only truth is never injected. Memory retrieval uses the real lexical fallback; this corpus intentionally has no paid embedding vectors. This subset is not a semantic-retrieval quality benchmark.
+Completed passes **and failures** are preserved; resume retries only incomplete,
+blocked or infrastructure outcomes. Prior attempts remain on disk. Resume refuses
+source/fixture changes or changed connected-resource configuration. A code change
+requires a new campaign: subtract all previous estimated and uncertain charges from
+the still-authorized allowance, rather than resetting to $10.
 
-The request limit counts actual HTTP attempts, including production retries. A separate per-model dollar ceiling defaults to $2 and cannot exceed $10. Each text request reserves a conservative UTF-8 input/output bound, including cache-write and long-context premiums, before network traffic. Reported token usage settles that bound; missing/error responses retain it. The journal is saved as spending.json before each request. Limits apply per invocation: include earlier runs when deciding a new allowance. The default is not renewed permission to spend. Creating a file named STOP in the displayed evidence directory prevents the next provider call. Already issued requests cannot be unspent.
+Orphan cleanup requires matching campaign/job/attempt markers in the database.
+A worker is signaled only if its PID still belongs to that precise worker command.
+Service cleanup journals are retained; unresolved remote cleanup requires inspection
+before retrying with live credentials.
 
-Compare all planned trials, not only successful ones. Keep provider errors and cap interruptions in the denominator, report repeats separately, and preserve clean versus recovered execution. Token usage, latency, request context metrics and prompt hashes are recorded; provider hidden reasoning and credentials are not.
+Comparisons require the same catalog, corpus, harness/oracles, selections, model,
+modes and repeat count. Application revisions may differ. One sample does not
+establish a stable model ranking.
 
-The five end-of-feature cases are a frozen evaluation partition. They are visible in this repository, so this is not a secret or statistically unseen holdout. Do not tune prompts repeatedly on them and then describe the result as generalization.
+## Connected integrations
 
-## Results and continuation
+Simulated Google/Linear/API/MCP and backup regressions run offline by default.
+Connected smoke probes require `--mode live-service --live-config PATH`.
+Copy [live-services.example.json](live-services.example.json) outside tracked files
+and export the named `ERIDANI_EVAL_*` credential variables. Never put credential values
+in the configuration file or use production resources.
 
-Artifacts are written to artifacts/app-evals/<timestamp>-<id>/. Keep these local; raw state snapshots can become sensitive if you later add non-synthetic data. Generated HTML provides a searchable catalog. JSON evidence remains the authoritative run record.
+- Google: a dedicated secondary calendar whose name starts with “Eridani Eval.”
+  The probe creates, reads, edits and removes a generated event, with no attendees.
+- Linear: the exact configured organization and a dedicated team whose name starts
+  with “Eridani Eval.” Cleanup capability is checked before creating an issue.
+- R2: a dedicated test bucket and the `eridani-eval/` prefix; an encrypted synthetic
+  object is uploaded, downloaded, verified and removed. This is not a full database
+  restore/PITR acceptance test. The optional backup runtime dependencies must exist.
 
-- acceptance: the entire specified scenario was checked.
-- command_contract: typed effects and database invariants were checked.
-- queued_backend: natural language went through the current backend queue.
-- existing_regressions: a named existing suite ran, without implying a new scenario passed.
+Only resource IDs generated and journaled by the probe are deleted. Missing credentials
+are reported as blocked. These smoke probes are supporting service evidence, not
+proof that all Google/Linear sync or recovery scenarios passed.
 
-Never replace not_run, not_completed or infra_error with passed. Never grade only from “Done” in the assistant’s reply.
+## Evidence and extending coverage
 
-Use --scope backend, frontend or browser for existing regressions. Backend provider code is enabled with fake credentials but cloud sockets are blocked by the offline pytest plugin. Browser tests use their existing synthetic provider fixtures. The optional ERIDANI_EVAL_INTEGRATION=1 meta-test runs a scripted provider through a real disposable database and queue.
+Each campaign writes `manifest.json`, `report.json`, `report.html`, `junit.xml`,
+`spending.json`, a durable budget database and per-attempt state/tool/provider/browser
+evidence. HTML filters by case, feature, type and status. JSON is authoritative.
+JUnit includes acceptance outcomes **and** execution failures, so a component
+failure cannot disappear behind a skipped acceptance scenario.
 
-[Findings](FINDINGS.md) and docs/TODO.md track actual gaps. CI validates the catalog, checks that exposed tools/routes still match the inventory, and runs the no-paid harness self-tests.
+Keep generated artifacts local: they contain synthetic conversation and database
+snapshots. The artifact directory is gitignored.
 
-The first paid comparison is in [paid-baseline-2026-09-19.json](paid-baseline-2026-09-19.json): Luna $0.02352 and Gemini $0.49767, 19/20 complete queue outcomes each. See FINDINGS.md for failed mutations versus recovered work still marked partial. This is one repeat, not a broad quality ranking.
+To automate another scenario:
+1. Add its isolated adapter/oracle to contracts, model_runner, pipelines, a named
+   pytest node, or a browser fixture.
+2. Add an explicit entry to `bindings.json`, listing exactly which `expected.N`
+   and `invariants.N` criteria the assertion checks.
+3. Use `component` while only part of the protocol is exercised. Whole related
+   suites stay `supporting`; do not relabel them acceptance to inflate coverage.
+4. Run validate, the harness tests and a targeted trial. Regenerate coverage:
+   `python -m scripts.app_eval.runner coverage --output evals/app/automation-coverage.json`.
+
+Physical evidence can be imported with `runner import-evidence RUN evidence.json`.
+It must name case_id, criteria, status, observed_at, observer, device, commit,
+fingerprint and attachment paths inside the campaign. Observations must match the
+campaign revision and time. Manual evidence cannot erase a failed automated repeat.
+
+CI validates catalog/tool-surface drift, binding targets, coverage plans, budget
+concurrency, transport guards and report integrity without provider secrets.
+[Findings](FINDINGS.md) and [TODO](../../docs/TODO.md) track failures and unfinished
+automation separately.
+
+### External semantic grading
+
+Use `--judge external` on a campaign to save semantic grading requests with raw state evidence instead of calling the built-in Luna judge. The judge API sublimit becomes zero. Automated reports retain `needs_review` until an external review is supplied separately; external review must preserve hard failures and incomplete acceptance coverage. External Codex usage is separate from the application API ledger.
+
+### Langfuse export
+
+The opt-in command exports completed saved evidence without rerunning models:
+
+    python -m scripts.app_eval.runner langfuse --status
+    python -m scripts.app_eval.runner langfuse RUN_DIRECTORY --dry-run
+    python -m scripts.app_eval.runner langfuse RUN_DIRECTORY
+    python -m scripts.app_eval.runner langfuse RUN_DIRECTORY --verify
+
+See [setup, evidence scope, and recovery](../../docs/LANGFUSE.md). All selected
+cases remain visible, while code outcomes, external grades, and missing coverage
+remain distinct. Local receipts prevent blind replay of immutable observations.

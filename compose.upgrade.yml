@@ -1,3 +1,16 @@
+# RETIRED local stack (pre-Railway). Production runs on Railway at https://app.eridani.app
+# (see docs/CLOUD_MIGRATION.md). This file is kept for local development and restore drills.
+#
+# Safe by default: `docker compose -f compose.upgrade.yml up` starts only postgres, migrate and
+# api, with the worker and external services (Google/Linear sync, Web Push, model providers)
+# forced OFF, and nothing auto-restarts. Never point this stack at data restored from production
+# and then opt in to the live writer: it would send reminders and sync live accounts in parallel
+# with the cloud deployment.
+#
+# Explicit opt-in only (local data you own, cloud writer stopped):
+#   ERIDANI_LOCAL_LIVE_WRITER=true docker compose -f compose.upgrade.yml --profile worker up
+# Encrypted local backups (writes to JARVIS_BACKUP_HOST_DIRECTORY):
+#   docker compose -f compose.upgrade.yml --profile backup up backup
 name: jarvis-next
 services:
   postgres:
@@ -15,8 +28,8 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    restart: unless-stopped
   backup:
+    profiles: [backup]
     build:
       context: .
       dockerfile: Dockerfile.backup
@@ -31,7 +44,7 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
+    restart: "no"
   migrate:
     build:
       context: .
@@ -54,6 +67,9 @@ services:
       - .env.upgrade
     environment:
       JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
+      # Opt-in via a dedicated variable (not JARVIS_*) so a copied production .env cannot enable it.
+      JARVIS_WORKER_ENABLED: ${ERIDANI_LOCAL_LIVE_WRITER:-false}
+      JARVIS_EXTERNAL_SERVICES_ENABLED: ${ERIDANI_LOCAL_LIVE_WRITER:-false}
     ports:
       - "127.0.0.1:8765:8765"
     healthcheck:
@@ -64,8 +80,10 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
+    restart: "no"
   worker:
+    # Live writer: sends reminders/push, syncs Google Calendar and Linear. Requires --profile worker.
+    profiles: [worker]
     image: jarvis-core:local
     env_file:
       - path: .env
@@ -73,6 +91,9 @@ services:
       - .env.upgrade
     environment:
       JARVIS_DATABASE_URL: postgresql+psycopg://jarvis:${JARVIS_POSTGRES_PASSWORD}@postgres:5432/jarvis
+      # Even with --profile worker, the worker idles unless ERIDANI_LOCAL_LIVE_WRITER=true.
+      JARVIS_WORKER_ENABLED: ${ERIDANI_LOCAL_LIVE_WRITER:-false}
+      JARVIS_EXTERNAL_SERVICES_ENABLED: ${ERIDANI_LOCAL_LIVE_WRITER:-false}
     command: ["/app/.venv/bin/python", "-m", "jarvis.worker"]
     healthcheck:
       test: ["CMD", "/app/.venv/bin/python", "-c", "from jarvis.db import session_scope; from jarvis.models import WorkerHealth, now; from datetime import timedelta; db=session_scope(); s=db.__enter__(); h=s.get(WorkerHealth,'worker'); assert h and now()-h.last_scan_at<timedelta(seconds=30); db.__exit__(None,None,None)"]
@@ -82,6 +103,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    restart: unless-stopped
+    restart: "no"
 volumes:
   core-postgres:

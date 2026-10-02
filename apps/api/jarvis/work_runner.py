@@ -2,16 +2,19 @@
 
 import asyncio
 import json
+import logging
 import time
+from contextvars import ContextVar
+from uuid import uuid4
 
 import httpx
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 
 from . import agent_models, budget, work_continuation, work_coordination
 from .access import assert_current, execution, person_preferences
 from .agent_work import checkpoint, finish, principal_for, reschedule
 from .config import get_settings, require_external_services
-from .db import session_scope
+from .db import engine, session_scope
 from .domain import DomainError, advisory, capture_source, preferences
 from .memory_service import prompt_context
 from .models import AgentWork, Command, Conversation, Job, Source, now
@@ -21,25 +24,39 @@ from .ui_control import get_context
 from .voice_control import VOICE_END_POLICY, VOICE_END_TOOL
 from .work_crypto import unseal
 
+logger = logging.getLogger("jarvis.work")
+provider_client = ContextVar("provider_client", default=None)
+QUESTION_CHECK = (
+    "Your reply ends by asking the user a question. If you need the user's answer to finish this request, "
+    "call work_needs_input with that one question now. Otherwise give the final answer without asking a question."
+)
+
 
 async def request_model(agent, messages, definitions, *, limited=False):
     """Only provider calls retry here; application effects use saved command IDs."""
+    client = provider_client.get()
+    if client is None:
+        async with httpx.AsyncClient(timeout=60) as client:
+            token = provider_client.set(client)
+            try:
+                return await request_model(agent, messages, definitions, limited=limited)
+            finally:
+                provider_client.reset(token)
     tools = [
         {"type": "function", "function": {k: v for k, v in item.items() if k != "type"}}
         for item in definitions
     ]
-    async with httpx.AsyncClient(timeout=60) as client:
-        for attempt in range(3):
-            response = await client.post(
-                agent.endpoint,
-                headers={"Authorization": f"Bearer {agent.api_key}"},
-                json=agent.request(messages, tools, limited),
-            )
-            if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
-                response.raise_for_status()
-                data = agent.normalize(response.json())
-                return data
-            await asyncio.sleep(2**attempt)
+    for attempt in range(3):
+        response = await client.post(
+            agent.endpoint,
+            headers={"Authorization": f"Bearer {agent.api_key}"},
+            json=agent.request(messages, tools, limited),
+        )
+        if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
+            response.raise_for_status()
+            data = agent.normalize(response.json())
+            return data
+        await asyncio.sleep(2**attempt)
     raise RuntimeError("Provider retry exhausted")
 
 
@@ -69,7 +86,7 @@ def input_state(row):
     return unseal(row.input_ciphertext)
 
 
-async def initial_state(row, agent):
+async def initial_state(row, agent, reservation=None):
     with session_scope() as db:
         prefs = person_preferences(db, row.owner_id, row.device_id, preferences(db, row.owner_id))
         history = []
@@ -87,7 +104,7 @@ async def initial_state(row, agent):
                 )
             )
             history = [{"role": s.role, "content": s.content[:4000]} for s in reversed(sources)]
-        budget.reserve(db, row.owner_id, row.id, 0.10, agent.model)
+        budget.reserve(db, row.owner_id, reservation or row.id, 0.10, agent.model)
     data = input_state(row)
     with session_scope() as db:
         saved = committed(db, row)
@@ -189,17 +206,129 @@ NEEDS_INPUT = {
 }
 
 
+def model_for(profile):
+    # A retired saved profile resolves like a saved preference instead of failing outside the loop.
+    try:
+        return agent_models.selected({"agent_profile": profile})
+    except DomainError:
+        return agent_models.selected({})
+
+
+def reservation_for(db, row, state):
+    """One budget session per run; a finished revision's closed session is never reopened."""
+    from .models import BudgetReservation
+
+    for identity in (state.get("reservation"), row.id if row.revision == 1 else None, f"{row.id}:{row.revision}"):
+        if identity:
+            existing = db.get(BudgetReservation, identity)
+            if not existing or (existing.owner_id == row.owner_id and existing.state == "reserved"):
+                return identity
+    return f"{row.id}:{row.revision}:{uuid4().hex[:12]}"
+
+
+def acquire_run(request_id):
+    """Session lock held for a whole invocation so one request never executes twice concurrently."""
+    connection = engine().connect()
+    try:
+        held = connection.scalar(
+            text("SELECT pg_try_advisory_lock(hashtextextended(:key, 0))"), {"key": "work-run:" + request_id}
+        )
+        connection.commit()
+    except Exception:
+        connection.close()
+        raise
+    if not held:
+        connection.close()
+        return None
+    return connection
+
+
+def release_run(connection, request_id):
+    try:
+        connection.execute(
+            text("SELECT pg_advisory_unlock(hashtextextended(:key, 0))"), {"key": "work-run:" + request_id}
+        )
+        connection.commit()
+    except Exception:  # noqa: BLE001 - a broken connection must not return to the pool holding the lock
+        connection.invalidate()
+    finally:
+        connection.close()
+
+
+def asks_user(reply, state, row):
+    if not reply.rstrip().rstrip("\"'”’»)").rstrip().endswith("?"):
+        return False
+    if state.get("needs_input") or state["actions"] or state["ui_actions"] or state["errors"]:
+        return False
+    used_tools = any(message.get("role") == "tool" for message in state["messages"])
+    return used_tools or bool(state["tool_names"]) or bool(row.voice_session_id)
+
+
+def entities(owner, args):
+    """Affected records, normalized so a backing record and its core task/note share one key."""
+    from .structure_models import StructureRecord
+
+    if not isinstance(args, dict):
+        return []
+    keys = set()
+    values = [args, *[item for item in args.get("items", []) if isinstance(item, dict)]]
+    for value in values:
+        for key in ("task_id", "note_id"):
+            if isinstance(value.get(key), str):
+                keys.add(key[:-3] + ":" + value[key])
+        for identity in value.get("task_ids", []) if isinstance(value.get("task_ids"), list) else []:
+            if isinstance(identity, str):
+                keys.add("task:" + identity)
+        if isinstance(value.get("record_id"), str):
+            with session_scope() as db:
+                record = db.get(StructureRecord, value["record_id"])
+                record = record and (record.owner_id, record.task_id, record.note_id)
+            if record and record[0] == owner and (record[1] or record[2]):
+                keys.add("task:" + record[1] if record[1] else "note:" + record[2])
+            else:
+                keys.add("record:" + value["record_id"])
+    return sorted(keys)
+
+
 async def run(request_id):
     require_external_services()
+    lock = None
+    for attempt in range(10):
+        lock = acquire_run(request_id)
+        if lock or attempt == 9:
+            break
+        await asyncio.sleep(0.5)
+    if lock is None:
+        with session_scope() as db:
+            advisory(db, "work:" + request_id)
+            row = db.get(AgentWork, request_id)
+            job = db.get(Job, request_id)
+            # The holder is finishing or rescheduled itself; retry under a fresh durable invocation.
+            if row and job and job.status in {"queued", "dispatched"}:
+                reschedule(db, row)
+        return
+    try:
+        # One connection pool per invocation; provider rounds reuse it.
+        async with httpx.AsyncClient(timeout=60) as client:
+            token = provider_client.set(client)
+            try:
+                await perform(request_id)
+            finally:
+                provider_client.reset(token)
+    finally:
+        release_run(lock, request_id)
+
+
+async def perform(request_id):
     with session_scope() as db:
         row = db.get(AgentWork, request_id)
         job = db.get(Job, request_id)
-        if not row or job.status not in {"queued", "dispatched", "running"}:
+        if not row or not job or job.status not in {"queued", "dispatched", "running"}:
             return
         if row.cancel_requested:
             finish(db, row, "cancelled", "Cancelled. Previously saved changes remain.")
             return
-        agent = agent_models.catalog()[job.payload["profile"]]
+        profile = job.payload.get("profile")
         state = unseal(row.checkpoint_ciphertext)
         if state and "messages" not in state:
             state = {}  # Legacy intake checkpoints contain a routing plan, not a tool loop.
@@ -210,15 +339,19 @@ async def run(request_id):
     started = time.monotonic()
     settings = get_settings()
     final_status, failure = "succeeded", None
+    provider_pending, reservation = False, None
     with principal_for(row):
         try:
             assert_current(row.owner_id, row.device_id)
+            agent = model_for(profile)
             # A durable checkpoint may predate cost tracking being enabled.
             with session_scope() as db:
-                budget.reserve(db, row.owner_id, row.id, 0.10, agent.model)
+                reservation = reservation_for(db, row, state)
+                budget.reserve(db, row.owner_id, reservation, 0.10, agent.model)
             if not state:
-                state = await initial_state(row, agent)
-                checkpoint(row.id, state)
+                state = await initial_state(row, agent, reservation)
+            state["reservation"] = reservation
+            checkpoint(row.id, state)
             definitions = registry()
             if row.credential_id:
                 from .external_service import backend_registry
@@ -290,20 +423,28 @@ async def run(request_id):
                             "LIMIT_EXCEEDED", "This request needs a narrower scope. Saved changes remain."
                         )
                     with session_scope() as db:
-                        budget.ensure_room(db, row.owner_id, row.id, agent.reserve_cost(size + 1024))
-                    result = await request_model(agent, state["messages"], definitions, limited=limited)
+                        budget.ensure_room(db, row.owner_id, reservation, agent.reserve_cost(size + 1024))
+                    provider_pending = True
+                    try:
+                        result = await request_model(agent, state["messages"], definitions, limited=limited)
+                    except httpx.HTTPStatusError as rejected:
+                        code = rejected.response.status_code
+                        if 400 <= code < 500 and code != 408:
+                            provider_pending = False  # Explicit rejection, not an unknown outcome.
+                        raise
                     usage = result.get("usage", {})
                     with session_scope() as db:
                         budget.record_usage(
                             db,
                             row.owner_id,
-                            row.id,
+                            reservation,
                             result["id"],
                             agent.model,
                             usage,
                             agent.usage_cost(usage),
                             feature="assistant",
                         )
+                    provider_pending = False
                     try:
                         assert_current(row.owner_id, row.device_id)
                     except DomainError as changed:
@@ -329,11 +470,21 @@ async def run(request_id):
                         reply = message.get("content")
                         if not isinstance(reply, str) or not reply.strip():
                             raise DomainError("INVALID_RESPONSE", "The model did not return a usable answer.")
+                        if asks_user(reply, state, row):
+                            if state.get("question_checked"):
+                                # A prose question still needs the user's answer: keep it durable.
+                                reply, state["needs_input"] = reply.strip()[:1000], True
+                            else:
+                                state["question_checked"] = True
+                                state["messages"].append({"role": "system", "content": QUESTION_CHECK})
+                                reply = None
                         state["reply"] = reply
                     # The complete tool plan is durable BEFORE any tool executes.
                     checkpoint(row.id, state)
                     if state["reply"]:
                         break
+                    if not state["pending"]:
+                        continue
                 call = state["pending"][state["offset"]]
                 fn = call["function"]
                 args = {}
@@ -429,14 +580,18 @@ async def run(request_id):
                     if isinstance(args, dict)
                     else {}
                 )
+                affected = entities(row.owner_id, args)
                 if outcome.get("error") or outcome.get("status") == "failed":
-                    state["errors"].append({"tool": fn["name"], "target": target, **outcome})
+                    state["errors"].append({"tool": fn["name"], "target": target, **outcome, "entities": affected})
                 else:
-                    state["errors"] = [
+                    # A later saved change to the same record recovers an earlier failure on it.
+                    touched = set(affected) if outcome.get("command_id") else set()
+                    kept = [
                         error
                         for error in state["errors"]
                         if not (
-                            error["tool"] == fn["name"]
+                            touched & set(error.get("entities", []))
+                            or error["tool"] == fn["name"]
                             and (
                                 error.get("target") == target
                                 or error.get("error") == "TOOL_NOT_LOADED"
@@ -444,6 +599,8 @@ async def run(request_id):
                             )
                         )
                     ]
+                    state["recovered"] = state.get("recovered", 0) + len(state["errors"]) - len(kept)
+                    state["errors"] = kept
                 state["messages"].append(
                     {
                         "role": "tool",
@@ -466,7 +623,7 @@ async def run(request_id):
                 current = db.get(AgentWork, request_id)
                 if current.cancel_requested:
                     finish(db, current, "cancelled", "Cancelled. Saved changes remain.")
-                    budget.close(db, current.owner_id, current.id)
+                    budget.close(db, current.owner_id, reservation)
                 else:
                     work_coordination.park(db, current, state, deferred.dependencies)
             return
@@ -483,6 +640,10 @@ async def run(request_id):
             failure = (
                 "The task model could not finish this request. Saved actions remain; use Continue to resume."
             )
+            final_status = "failed"
+        except Exception:  # noqa: BLE001 - never leave accepted work running without a terminal status
+            logger.exception("Agent request %s failed unexpectedly", request_id)
+            failure = "This request stopped unexpectedly. Saved actions remain; use Continue to resume."
             final_status = "failed"
         # Process cancellation/termination is intentionally NOT caught. DBOS resumes its saved plan.
         with session_scope() as db:
@@ -510,6 +671,7 @@ async def run(request_id):
                 actions=[{"command_id": c["command_id"], "status": c["status"]} for c in saved],
                 tool_calls=state.get("tool_index", 0),
                 errors=state.get("errors", []),
+                recovered_errors=state.get("recovered", 0),
                 quiet=final_status == "succeeded" and not saved and not state.get("ui_actions"),
                 navigation_only=bool(state.get("ui_actions")) and not saved,
                 waiting_for=[],
@@ -524,4 +686,6 @@ async def run(request_id):
                     role="assistant",
                     conversation=conv,
                 )
-            budget.close(db, current.owner_id, current.id, uncertain=bool(failure))
+            if reservation:
+                # Only a sent request without a recorded response can have unknown spend.
+                budget.close(db, current.owner_id, reservation, uncertain=provider_pending)

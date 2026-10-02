@@ -63,16 +63,16 @@ export function Availability({
   return (
     <details className="availability-panel">
       <summary>
-        <Clock3 size={16} />
+        <Clock3 size={15} aria-hidden="true" />
         Find an open time
       </summary>
-      <p className="footnote">
-        Check Eridani appointments, work blocks and connected Google calendars.
+      <p className="field-hint">
+        Checks Eridani appointments, work blocks and connected Google calendars.
         Task deadlines and reminders don’t reserve time.
       </p>
       <div className="availability-controls">
-        <label>
-          From
+        <label className="field">
+          <span className="field-label-text">From</span>
           <input
             aria-label="Availability from"
             type="time"
@@ -83,8 +83,8 @@ export function Availability({
             }}
           />
         </label>
-        <label>
-          Until
+        <label className="field">
+          <span className="field-label-text">Until</span>
           <input
             aria-label="Availability until"
             type="time"
@@ -95,8 +95,8 @@ export function Availability({
             }}
           />
         </label>
-        <label>
-          At least
+        <label className="field">
+          <span className="field-label-text">At least</span>
           <select
             aria-label="Minimum free time"
             value={minutes}
@@ -112,35 +112,37 @@ export function Availability({
           </select>
         </label>
         <button
-          className="secondary compact"
+          className="btn btn-soft"
           disabled={busy || !start || !end || end <= start}
           onClick={() => void check()}
         >
-          <Search size={15} />
+          <Search size={15} aria-hidden="true" />
           {busy ? "Checking…" : "Check availability"}
         </button>
       </div>
       {error && (
-        <p className="error-banner" role="alert">
+        <p className="error-banner availability-result" role="alert">
           {error}
         </p>
       )}
       {result && (
-        <div role="status">
+        <div role="status" className="availability-result">
           {result.status !== "fresh" ? (
             <p>{result.reason}</p>
           ) : (
             <>
-              <p className="footnote">
-                {result.source === "eridani_only"
-                  ? "Eridani only"
-                  : "Google and Eridani"}{" "}
-                · Checked {fmt(result.checked_at!)} · {timezone}
-                {result.source === "eridani_only"
-                  ? " · Google is not connected."
-                  : ""}
+              <p>
+                {result.free.length
+                  ? "Open times"
+                  : "No opening of that length in this window."}{" "}
+                <span className="chip">
+                  {result.source === "eridani_only"
+                    ? "Eridani only, Google is not connected"
+                    : "Google and Eridani"}
+                </span>{" "}
+                <span className="chip">Checked {fmt(result.checked_at!)}</span>
               </p>
-              {result.free.length ? (
+              {!!result.free.length && (
                 <ul className="available-times">
                   {result.free.map((slot) => (
                     <li key={slot.start}>
@@ -148,8 +150,6 @@ export function Availability({
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p>No opening of that length in this window.</p>
               )}
             </>
           )}

@@ -685,3 +685,7 @@ def non_utc_revert(h, identity):
     finally:
         event.remove(eng, "connect", zone)
         eng.dispose()
+
+
+# Register the additional adapters after Harness and case are defined.
+from . import scenarios  # noqa: E402,F401

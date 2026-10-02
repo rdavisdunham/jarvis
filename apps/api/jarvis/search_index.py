@@ -307,11 +307,15 @@ def index_workspace(job_id):
             with session_scope() as db:
                 advisory(db, "search-index:" + owner)
                 state = db.get(SearchIndexState, owner)
-                if state.generation != generation:
-                    break
+                # A newer generation does not invalidate paid vectors for unchanged text.
+                current = snapshot(db, owner)[0] if state.generation != generation else None
                 for (doc, _), vector in zip(batch, vectors, strict=True):
                     accumulated.setdefault(doc["key"], []).append(vector)
                     if len(accumulated[doc["key"]]) != counts[doc["key"]]:
+                        continue
+                    if current is not None and (
+                        doc["key"] not in current or current[doc["key"]]["fingerprint"] != doc["fingerprint"]
+                    ):
                         continue
                     stored = db.scalar(
                         select(SearchDocument).where(
@@ -327,6 +331,8 @@ def index_workspace(job_id):
                         accumulated.pop(doc["key"]),
                         now(),
                     )
+                if current is not None:
+                    break
         with session_scope() as db:
             advisory(db, "search-index:" + owner)
             state, job = db.get(SearchIndexState, owner), db.get(Job, job_id)

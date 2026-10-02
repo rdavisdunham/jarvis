@@ -79,7 +79,7 @@ export function ReminderList({
             ? mutate(
                 "notification.complete",
                 { notification_id: occurrence.id },
-                "Occurrence completed · routine continues",
+                "Occurrence completed. The routine continues.",
               )
             : mutate(
                 "schedule.complete",
@@ -106,16 +106,18 @@ export function ReminderList({
             </span>
             <div className="grow">
               <strong>{s.title}</strong>
-              <span>
-                {s.completed_at
-                  ? "Completed " + timeLabel(s.completed_at, zone)
-                  : s.status === "finished"
-                    ? "Delivered · waiting for you"
-                    : s.next_run_at
-                      ? timeLabel(s.next_run_at, zone)
-                      : "Cancelled"}
-                {" · " + recurrenceLabel(s.recurrence)}
-                {s.kind === "recurring_task" ? " · New task each time" : ""}
+              <span className="meta-line">
+                <span>
+                  {s.completed_at
+                    ? "Completed " + timeLabel(s.completed_at, zone)
+                    : s.status === "finished"
+                      ? "Delivered, waiting for you"
+                      : s.next_run_at
+                        ? timeLabel(s.next_run_at, zone)
+                        : "Cancelled"}
+                </span>
+                <span>{recurrenceLabel(s.recurrence)}</span>
+                {s.kind === "recurring_task" && <span>New task each time</span>}
               </span>
             </div>
             {tab === "pending" && (
@@ -162,8 +164,9 @@ export function ReminderList({
           </span>
           <div className="grow">
             <strong>{n.title}</strong>
-            <span>
-              Completed {timeLabel(n.completed_at!, zone)} · Routine continues
+            <span className="meta-line">
+              <span>Completed {timeLabel(n.completed_at!, zone)}</span>
+              <span>Routine continues</span>
             </span>
           </div>
         </article>

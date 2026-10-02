@@ -202,7 +202,7 @@ def snapshot(db, owner):
 
 
 def mutate(db, owner, tool, args):
-    from .domain import DomainError, check_revision, emit, owned
+    from .domain import DomainError, check_revision, emit, nulls, owned
 
     kind, action = tool.split(".")
     model = {"space": Space, "area": Area, "goal": Goal, "project": Project, "actor": Actor}[kind]
@@ -214,16 +214,8 @@ def mutate(db, owner, tool, args):
     else:
         row = owned(db, model, getattr(args, key), owner, lock=True)
         check_revision(row, args.expected_revision)
-    for field in (
-        "name",
-        "description",
-        "success_criteria",
-        "status",
-        "horizon",
-        "metric_baseline",
-        "metric_unit",
-        "archived",
-    ):
+    nulls(tool, values)
+    for field in ("success_criteria", "status", "horizon", "metric_baseline", "metric_unit"):
         if field in values and values[field] is None:
             raise DomainError("INVALID_ARGUMENT", f"{field} cannot be null.")
     if kind in {"goal", "project"}:

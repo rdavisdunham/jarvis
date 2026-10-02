@@ -1,13 +1,64 @@
-> **Current app:** Eridani runs from `compose.upgrade.yml` with FastAPI,
-> PostgreSQL, DBOS and a React web app. See [implementation and operations](docs/JARVIS_IMPLEMENTATION.md)
-> and [TODO](docs/TODO.md). The Mem0/Qdrant architecture below describes the
-> original Jarvis prototype; its legacy reader has been retired from the current app.
+# Eridani
 
-Progress and next steps: [docs/TODO.md](docs/TODO.md). Assistant personality: [Eridani / Eri](apps/api/jarvis/personality.py).
+Eridani ("Eri") is a durable personal assistant: tasks, reminders, calendar blocks,
+notes and lists, source-backed memory, text chat and GPT-Live voice, with Google
+Calendar and Linear integrations.
 
-# J.A.R.V.I.S.
+**Production runs on Railway at https://app.eridani.app.** See the
+[cloud runbook](docs/CLOUD_MIGRATION.md). The old local production stack
+(`compose.upgrade.yml`) is retired; never start it as a live writer against its stale data.
 
-The new durable Jarvis app runs separately as `jarvis-next`: tasks, reminders, text chat, private sessions, source-backed memory and encrypted backups. Read [implementation and operating notes](docs/JARVIS_IMPLEMENTATION.md) for the private app address, selected design decisions, validation results and remaining voice/device release gates. The original voice stack is documented below and remains available.
+## Architecture
+
+- **Web:** React 19 + TypeScript, built with Vite (`apps/web`). Served by the API on the same origin.
+- **API:** Python 3.12, FastAPI/Uvicorn, SQLAlchemy 2, Alembic (`apps/api/jarvis`, `migrations/`).
+- **Worker:** DBOS durable worker (same image) for accepted requests, reminders, integration
+  sync/writes, extraction, indexing and Web Push.
+- **Database:** PostgreSQL 16 (canonical store, including DBOS state). Railway PITR plus
+  planned independent encrypted R2 exports ([R2 backups](docs/R2_BACKUPS.md)).
+- **Deploy:** `Dockerfile.upgrade`; Railway services start via `python -m jarvis.deploy api|worker`
+  with `jarvis.deploy migrate` as pre-deploy ([.railway/railway.ts](.railway/railway.ts) is a
+  whole-project plan; read its header before applying anything).
+
+Start with the [audit handoff](docs/CLAUDE_AUDIT_HANDOFF.md) for a full map, then
+[implementation notes](docs/JARVIS_IMPLEMENTATION.md), [CI](docs/CI.md),
+[app evals](evals/app/README.md) and [TODO](docs/TODO.md).
+Assistant personality: [Eridani / Eri](apps/api/jarvis/personality.py).
+
+## Local development and tests
+
+Use a disposable/development database only. Never point local tooling at production
+or at a restored production copy with the worker or external services enabled.
+
+```sh
+uv sync --locked --group dev
+# Backend tests need a throwaway PostgreSQL 16; fixtures create/remove their own databases.
+JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://USER:PASS@127.0.0.1:PORT/postgres \
+  uv run --no-sync pytest -q
+uv run --no-sync python -m pytest -q evals          # offline eval harness tests
+cd apps/web && npm ci && npm test && npm run build   # frontend
+npm run dev                                          # Vite on 127.0.0.1, proxies /api to :8765
+```
+
+`compose.upgrade.yml` is kept for local development and restore drills and is safe by
+default: `docker compose -f compose.upgrade.yml up` starts only PostgreSQL, migrations and
+the API, with `JARVIS_WORKER_ENABLED` and `JARVIS_EXTERNAL_SERVICES_ENABLED` forced to
+`false` and no automatic restarts. The worker (reminders, push, Google/Linear sync) and the
+local backup job sit behind compose profiles and an explicit opt-in:
+
+```sh
+ERIDANI_LOCAL_LIVE_WRITER=true docker compose -f compose.upgrade.yml --profile worker up   # own local data only
+docker compose -f compose.upgrade.yml --profile backup up backup
+```
+
+---
+
+# Legacy prototype (archived)
+
+> **Not part of the current app.** Everything below describes the original J.A.R.V.I.S.
+> voice prototype in `backend/`, `client/` and the GPU `docker-compose.yml` (Node.js
+> middleware, Mem0/Qdrant memory, Kokoro/Orpheus TTS). It is unmaintained, is not deployed,
+> and its memory reader has been retired from Eridani. Kept for reference only.
 
 A real-time voice AI assistant you can actually talk to. It listens, thinks, speaks back, and remembers what you've discussed across conversations.
 

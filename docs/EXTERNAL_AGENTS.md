@@ -116,7 +116,10 @@ MCP uses the official Python SDK, pinned in the lockfile. [SDK documentation](ht
 
 New keys can opt into `schema:read`/`schema:write` and
 `records:read`/`records:write` in Connected agents. Existing keys are unchanged.
-Custom records can include authored note content; grant that scope deliberately.
+Records mirrored from core Tasks/Notes follow the core scopes: without `tasks:read`
+or `notes:read`, record reads, search hits and change-feed entries omit `body` (and a
+task's bound field values). Creating or editing a record of a work/content type, or one
+backed by a task/note, also requires `tasks:write`/`notes:write`.
 Schema writes require workspace ownership and the normal preview/later-confirmed
 apply flow. Read the current schema revision before creating or updating records.
 

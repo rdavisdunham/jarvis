@@ -28,6 +28,16 @@ The container's temporary disk is sufficient: a run succeeds only after the encr
 4. Restore into a **disposable empty database**, compare application and DBOS table counts, and verify a synthetic credential can authenticate. Preserve the application's integration encryption key for encrypted connections, work, and action history. Never restore over the active writer.
 5. Enable the daily schedule and observe its first scheduled success. Retain Railway PITR for recovery between daily exports.
 
+## Key escrow checklist
+
+Backups are only recoverable if the keys survive the loss of Railway and of this machine. Two keys matter: `JARVIS_BACKUP_KEY` (decrypts backup archives) and `JARVIS_INTEGRATION_ENCRYPTION_KEY` (decrypts Google/Linear credentials, work and action history inside a restored database). Record the answers here (names/locations only, never key material):
+
+- [ ] **Holders.** Primary holder: ______. Second holder or sealed location (e.g. password manager vault shared with a trusted person, offline printed copy in a safe): ______. Neither copy may live only in Railway or only on this laptop.
+- [ ] **Versions.** Each escrowed copy is labelled with its key fingerprint (first 8 hex of SHA-256 of the key) and the date it became active. Retired keys stay escrowed while any backup or PITR window encrypted under them is retained.
+- [ ] **Test decrypt from escrow.** Using only the escrowed copy (not Railway variables), download the latest R2 archive with `download --object` and confirm checksum + authenticated decryption pass. Record date and result: ______.
+- [ ] **Restore drill.** Restore that archive into a disposable empty database with the escrowed integration key; run `python -m jarvis.deploy preflight --database` with worker and external services disabled; confirm table counts and `integration_decryption: passed`. Record date and result: ______. Repeat at least quarterly and after any key rotation.
+- [ ] **Rotation rule.** Never rotate either key without escrowing the new one and re-running the test decrypt first.
+
 Still outstanding: credentials, actual R2 upload/download/restore drill, and scheduled production run. No R2 credentials were requested or created in this batch.
 
 Sources: [Cloudflare S3 access](https://developers.cloudflare.com/r2/get-started/s3/), [bucket-scoped tokens](https://developers.cloudflare.com/r2/api/tokens/), [Railway scheduled jobs](https://docs.railway.com/cron-jobs), [configuration reference](https://docs.railway.com/config-as-code/reference).

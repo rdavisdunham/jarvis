@@ -4,6 +4,9 @@ import hashlib
 import json
 import math
 import re
+import time
+from datetime import timedelta
+from functools import lru_cache
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -180,6 +183,17 @@ def embeddings(owner, texts, timeout=20):
     return vectors
 
 
+@lru_cache(maxsize=256)
+def _query_vector(owner, query, model, period, provider, timeout):
+    return provider(owner, [query], timeout)[0]
+
+
+def query_embedding(owner, query, timeout=3, provider=None):
+    """Short-lived, owner-scoped reuse of query vectors; failures are never cached."""
+    period = int(time.monotonic() // 120)
+    return _query_vector(owner, query, EMBEDDING_MODEL, period, provider or embeddings, timeout)
+
+
 def eligible(db, source, owner):
     if not source or source.owner_id != owner or source.deleted_at or source.role != "user":
         return False
@@ -247,6 +261,39 @@ def verified_facts(content, facts):
     return result
 
 
+def blocks(db, match, rows, source):
+    """An identical earlier fact blocks relearning unless it was superseded before this source.
+    Forgotten facts (cleared content or deleted source) always block, so forgetting sticks.
+    """
+    if not match.suppressed:
+        return True
+    origin = db.get(Source, match.source_id)
+    if not match.content or not origin or origin.deleted_at:
+        return True
+    successor = next(
+        (m for m in rows if m.supersedes_id == match.id or (match.merged_into_id and m.id == match.merged_into_id)),
+        None,
+    )
+    later = db.get(Source, successor.source_id) if successor else None
+    # "lives in Austin" -> "Denver" -> "moved back to Austin": a newer reassertion is a new fact.
+    return not (later and source.created_at > later.created_at)
+
+
+def duplicate_of(row, rows):
+    return next(
+        (
+            m
+            for m in rows
+            if m.id != row.id
+            and not m.suppressed
+            and row.fact_key
+            and m.fact_key == row.fact_key
+            and cosine(m.embedding, row.embedding) > 0.94
+        ),
+        None,
+    )
+
+
 def apply_facts(db, owner, source, facts, vectors):
     """Recheck source, learning settings and tombstones AFTER the provider call."""
     if not eligible(db, source, owner):
@@ -256,11 +303,8 @@ def apply_facts(db, owner, source, facts, vectors):
     saved = 0
     for fact, vector in zip(facts, vectors):
         digest = fingerprint(fact.content)
-        # Suppressed memories participate in deduplication, so forgetting never relearns them.
-        if any(
-            m.fingerprint == digest or (m.content and normalized(m.content) == normalized(fact.content))
-            for m in rows
-        ):
+        if any(blocks(db, m, rows, source) for m in rows
+               if m.fingerprint == digest or (m.content and normalized(m.content) == normalized(fact.content))):
             continue
         old = next((m for m in rows if m.id == fact.supersedes_id), None)
         if old and (
@@ -287,13 +331,16 @@ def apply_facts(db, owner, source, facts, vectors):
             fingerprint=digest,
             fact_key=fact.fact_key,
             embedding=vector,
-            embedding_model=EMBEDDING_MODEL,
+            embedding_model=EMBEDDING_MODEL if vector else None,
         )
         if old:
             old.suppressed, old.embedding = True, None
             row.supersedes_id, row.revision = old.id, old.revision + 1
         db.add(row)
         db.flush()
+        if not vector:
+            # Embedding outage: the fact is durable now; indexing retries separately.
+            enqueue_job(db, owner, "embed_memory", {"memory_id": row.id, "dedupe": True})
         rows.append(row)
         saved += 1
     source.memory_version = VERSION
@@ -333,7 +380,13 @@ def process(job_id):
     try:
         if kind == "extract_memory":
             facts = verified_facts(content, extract(owner, content, existing))
-            vectors = embeddings(owner, [f.content for f in facts])
+            try:
+                vectors = embeddings(owner, [f.content for f in facts])
+            except Exception as exc:  # noqa: BLE001 - keep paid extraction; embed_memory retries
+                __import__("logging").getLogger("jarvis.memory").warning(
+                    "Memory embedding deferred (%s)", getattr(exc, "code", type(exc).__name__)
+                )
+                vectors = [None] * len(facts)
             with session_scope() as db:
                 source = db.get(Source, source_id, with_for_update=True)
                 saved = (
@@ -361,6 +414,19 @@ def process(job_id):
                 ):
                     memory.embedding, memory.embedding_model = vector, EMBEDDING_MODEL
                     memory.fingerprint = fingerprint(memory.content)
+                    if payload.get("dedupe"):
+                        advisory(db, f"memory:{owner}")
+                        others = db.scalars(
+                            select(Memory).where(
+                                Memory.owner_id == owner,
+                                Memory.fact_key == memory.fact_key,
+                                Memory.created_at <= memory.created_at,
+                            )
+                        )
+                        # The extraction-time near-duplicate check needed a vector it did not have.
+                        if twin := duplicate_of(memory, list(others)):
+                            memory.suppressed, memory.embedding, memory.merged_into_id = True, None, twin.id
+                            memory.revision += 1
                     emit(db, owner, "memory.changed", memory.id)
                 job = db.get(Job, job_id)
                 job.status, job.finished_at, job.result = "succeeded", now(), {"indexed": True}
@@ -372,8 +438,13 @@ def process(job_id):
                 job.result = {"error": "BUDGET_DEFERRED"}
                 return
             job.status = "failed" if job.payload.get("attempts", 0) >= 10 else "retrying"
+            job.finished_at = now() if job.status == "failed" else None
             job.result = {"error": getattr(exc, "code", type(exc).__name__)}
         raise
+
+
+PENDING = {"queued", "dispatched", "running", "retrying", "deferred_budget"}
+RETRIES = 3
 
 
 def queue_backfill(db, limit=10):
@@ -397,22 +468,28 @@ def queue_backfill(db, limit=10):
         if not eligible(db, source, source.owner_id):
             continue
         advisory(db, f"memory-source:{source.id}")
-        pending = db.scalar(
-            select(Job.id)
-            .where(
-                Job.owner_id == source.owner_id,
-                Job.kind == "extract_memory",
-                Job.payload["source_id"].astext == source.id,
-                (
-                    (Job.status.in_(["queued", "running", "retrying", "deferred_budget"]))
-                    | (Job.payload["version"].astext == str(VERSION))
-                ),
+        jobs = list(
+            db.scalars(
+                select(Job).where(
+                    Job.owner_id == source.owner_id,
+                    Job.kind == "extract_memory",
+                    Job.payload["source_id"].astext == source.id,
+                )
             )
-            .limit(1)
         )
-        if not pending:
-            enqueue_job(db, source.owner_id, "extract_memory", {"source_id": source.id, "version": VERSION})
-            queued += 1
+        current = [j for j in jobs if j.payload.get("version") == VERSION]
+        failed = sorted(
+            (j.finished_at or j.created_at for j in current if j.status == "failed"), reverse=True
+        )
+        if any(j.status in PENDING for j in jobs) or any(j.status not in PENDING | {"failed"} for j in current):
+            continue
+        # Failed extractions retry with backoff (6h, 24h), then stop; the source stays retained.
+        if failed and (len(failed) >= RETRIES or now() - failed[0] < timedelta(hours=6 * 4 ** (len(failed) - 1))):
+            continue
+        enqueue_job(
+            db, source.owner_id, "extract_memory", {"source_id": source.id, "version": VERSION, "requeue": len(failed)}
+        )
+        queued += 1
         if queued >= limit:
             break
     return queued

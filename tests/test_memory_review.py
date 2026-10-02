@@ -197,7 +197,10 @@ def test_similarity_never_merges_different_numbers_or_unrelated_facts():
     run()
     with session_scope() as db:
         assert len(review.active_memories(db, "davin")) == 4
-        assert list(db.scalars(select(MemoryReview))) == []
+        # EVAL-005: different numbers are never merged, but the owner is asked once.
+        reviews = list(db.scalars(select(MemoryReview)))
+        assert [r.kind for r in reviews] == ["numeric"]
+        assert {'"2"', '"3"'} <= set(review.review_data(db, reviews[0])["question"].replace(",", "").split())
 
 
 async def test_startup_context_does_not_consume_the_clarification_offer():

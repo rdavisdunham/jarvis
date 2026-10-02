@@ -106,9 +106,15 @@ from .search_schema import SearchQuery
 async def semantic_search(body: SearchQuery, identity: Bot):
     with session_scope() as db:
         bot=bot_access.authorize(db,required="records:read")
-        owner,account=bot.owner_id,bot.account_id
+        owner,account,scopes=bot.owner_id,bot.account_id,list(bot.scopes)
     from .search_service import search
-    return await run_in_threadpool(search,owner,account,body,track=False)
+    result = await run_in_threadpool(search,owner,account,body,track=False,withhold=service.withheld(scopes))
+
+    def scrubbed():
+        with session_scope() as db:
+            return service.custom_scrub(db, owner, result, scopes)
+
+    return await run_in_threadpool(scrubbed)
 
 
 @external.get("/records/{kind}")
@@ -163,12 +169,8 @@ def reply(request_id: UUID, body: service.ReplyInput, identity: Bot):
 
 @external.post("/requests/{request_id}/cancel")
 def cancel(request_id: UUID, identity: Bot):
-    from .agent_work import cancel as cancel_work
-
     with session_scope() as db:
-        advisory(db, "work:" + str(request_id))
-        bot = bot_access.authorize(db, required="work:run", write=True)
-        return cancel_work(db, service.get_work(db, bot, request_id))
+        return service.cancel_work(db, bot_access.authorize(db), request_id)
 
 
 class RevertInput(service.Input):
@@ -194,19 +196,16 @@ def external_structure(identity: Bot):
         return schema_data(db,key.owner_id)
 
 @external.get("/structure/records")
-def external_records(identity: Bot,type_id: str | None=None,capability: str | None=None,query: str="",limit: int=Query(100,ge=1,le=200),offset: int=Query(0,ge=0)):
-    from .structure import records
+def external_records(identity: Bot,type_id: str | None=None,capability: str | None=None,query: str="",limit: int=Query(25,ge=1,le=50),offset: int=Query(0,ge=0)):
     with session_scope() as db:
         key=bot_access.authorize(db,required="records:read")
-        return records(db,key.owner_id,type_id=type_id,capability=capability,query=query,limit=limit,offset=offset)
+        arguments={k:v for k,v in dict(type_id=type_id,capability=capability,query=query,limit=limit,offset=offset).items() if v is not None}
+        return service.custom_read(db,key,"record_list",arguments)
 
 @external.get("/structure/records/{record_id}")
 def external_record(record_id: UUID,identity: Bot):
-    from .structure import data,ensure
-    from .structure_models import StructureRecord
-    from .domain import owned
     with session_scope() as db:
-        key=bot_access.authorize(db,required="records:read");ensure(db,key.owner_id)
-        return data(db,owned(db,StructureRecord,str(record_id),key.owner_id))
+        key=bot_access.authorize(db,required="records:read")
+        return service.custom_read(db,key,"record_get",{"record_id":str(record_id)})
 
 router.include_router(external)

@@ -54,7 +54,7 @@ def touch_root(db, row):
 
 
 def answer(row, arguments):
-    from .agent_work import require_work, reschedule
+    from .agent_work import require_work
     from .db import session_scope
     from .work_coordination import order
 
@@ -80,37 +80,60 @@ def answer(row, arguments):
         if current.parent_id or current.resources or current.result.get("receipt_ids") or db.scalar(select(Command.id).where(
             Command.owner_id == row.owner_id, Command.id.startswith(row.id + ":")).limit(1)):
             raise DomainError("INVALID_DEPENDENCY", "Answer the clarification before performing any other actions.")
-        root = root_for(db, target)
-        data = unseal(current.input_ciphertext)
-        earlier = unseal(root.input_ciphertext)
-        if not earlier or not data:
-            raise DomainError("REQUEST_EXPIRED", "The original context expired. Ask for a new request.", 409)
-        # Keep the captured turn verbatim; the model cannot substitute its own answer.
-        history = []
-        for attempt in attempts(db, target):
-            previous = unseal(attempt.input_ciphertext)
-            if previous.get("clarification_answer"):
-                history.append(previous["clarification_answer"])
-        data["continuation_request"] = earlier["message"]
-        data["clarification_history"] = history
-        data["clarification_answer"] = {"question": question["question"], "answer": data["message"]}
-        current.input_ciphertext = seal(data)
-        current.parent_id = root.id
-        current.result = {**current.result, "continuation_root": root.id,
-            "answered_clarification_id": question["id"], "related_request_id": root.id}
-        current.checkpoint_ciphertext = None
-        current.revision += 1
-        current.dependencies = list(dict.fromkeys([*current.dependencies, target.id]))
-        # The old attempt is never executed again. Its receipts stay immutable.
-        old_job = db.get(Job, target.id)
-        old_job.status, old_job.finished_at = "continued", now()
-        old_job.result = {"work_id": target.id, "status": "continued"}
-        target.checkpoint_ciphertext = None
-        target.result = {**target.result, "continued_as": current.id}
-        target.updated_at = now()
-        root.expires_at = max(root.expires_at, current.expires_at)
-        root.result = {**root.result, "continuation_ids": [*root.result.get("continuation_ids", []), current.id]}
-        touch_root(db, current)
-        reschedule(db, current)
-        emit(db, current.owner_id, "work.changed", current.id, current.revision)
+        adopt(db, current, target, question)
     raise WorkContinued()
+
+
+def pending_for_voice(db, account, asked):
+    """The single clarification this voice session heard and has not answered, if any."""
+    if not asked:
+        return None
+    rows = list(db.scalars(select(AgentWork).join(Job, Job.id == AgentWork.id).where(
+        AgentWork.account_id == account, Job.status == "needs_input",
+        AgentWork.result["archived_at"].as_string().is_(None))))
+    found = []
+    for target in rows:
+        question = question_for(db, target)
+        if (question and question["id"] in asked and question.get("revision") == target.revision
+                and not target.cancel_requested and target.expires_at > now()
+                and latest(db, target).id == target.id):
+            found.append((target, question))
+    return found[0] if len(found) == 1 else None
+
+
+def adopt(db, current, target, question):
+    """Bind a fresh, effect-free attempt to a pending question. Caller holds work-order."""
+    from .agent_work import reschedule
+    root = root_for(db, target)
+    data = unseal(current.input_ciphertext)
+    earlier = unseal(root.input_ciphertext)
+    if not earlier or not data:
+        raise DomainError("REQUEST_EXPIRED", "The original context expired. Ask for a new request.", 409)
+    # Keep the captured turn verbatim; the model cannot substitute its own answer.
+    history = []
+    for attempt in attempts(db, target):
+        previous = unseal(attempt.input_ciphertext)
+        if previous.get("clarification_answer"):
+            history.append(previous["clarification_answer"])
+    data["continuation_request"] = earlier["message"]
+    data["clarification_history"] = history
+    data["clarification_answer"] = {"question": question["question"], "answer": data["message"]}
+    current.input_ciphertext = seal(data)
+    current.parent_id = root.id
+    current.result = {**current.result, "continuation_root": root.id,
+        "answered_clarification_id": question["id"], "related_request_id": root.id}
+    current.checkpoint_ciphertext = None
+    current.revision += 1
+    current.dependencies = list(dict.fromkeys([*current.dependencies, target.id]))
+    # The old attempt is never executed again. Its receipts stay immutable.
+    old_job = db.get(Job, target.id)
+    old_job.status, old_job.finished_at = "continued", now()
+    old_job.result = {"work_id": target.id, "status": "continued"}
+    target.checkpoint_ciphertext = None
+    target.result = {**target.result, "continued_as": current.id}
+    target.updated_at = now()
+    root.expires_at = max(root.expires_at, current.expires_at)
+    root.result = {**root.result, "continuation_ids": [*root.result.get("continuation_ids", []), current.id]}
+    touch_root(db, current)
+    reschedule(db, current)
+    emit(db, current.owner_id, "work.changed", current.id, current.revision)

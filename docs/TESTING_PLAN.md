@@ -1,8 +1,52 @@
-# Eridani verification plan — September 20, 2026
+# Eridani verification plan — September 23, 2026
 
 This is the current testing order. [TODO.md](TODO.md) remains the work ledger;
 [APP_FUNCTIONALITY.md](APP_FUNCTIONALITY.md) maps the implemented features.
 Unchecked acceptance items below need recorded evidence, even when a related unit test passes.
+
+## On-demand automation update
+
+The current [eval guide](../evals/app/README.md) supersedes the older runner counts
+and $2 default below. The CLI now selects six types, deduplicates shared suites,
+isolates worker processes/databases, supports resume and reports exact evidence
+coverage. No schedule was added.
+
+All 1,001 cases are represented in the plan. Ninety-eight have complete acceptance
+bindings and 224 have component bindings (these counts overlap). Nine hundred
+still need complete individual assertions; three explicitly need physical-device
+evidence. The report keeps those gaps in the denominator. There are 245 execution
+jobs for the currently available full-catalog run, including 65 paid trials.
+This is not 1,001 automated passing tests.
+
+Use a **$10 maximum for the entire campaign**, including Luna, pipelines,
+embeddings and judges (judge subcap $1). Gemini is paused. Retain all uncertain
+charges across interruptions and subtract previous expenditure before starting a
+replacement campaign. App failures are recorded during this batch, not repaired.
+
+## Independent semantic grading — September 23
+
+The balanced half-suite selected 501 cases across all 40 features and executed all
+153 available jobs. Selection and raw evidence are saved under
+artifacts/app-evals/half-20260923-selection.json and half-20260923-sol-graded/.
+Known failures were forced into the sample, so it is a regression sample rather
+than an unbiased estimate. Estimated application API usage was $0.055128104.
+
+Use --judge external to defer built-in semantic judgments to independent review.
+This reserves zero judge API budget and saves exact criteria and evidence next to
+the attempt's state and tool traces. GPT-6 Sol's grader.json and grader.md are
+separate from the unmodified automated report. An external review may identify
+incomplete evidence even where declared acceptance bindings pass; preserve both
+outcomes and explain the disagreement. Codex grader usage is outside the app API
+cost ledger. No scheduled runs are configured.
+
+## Langfuse export — September 23
+
+Completed synthetic campaigns can now be exported using
+python -m scripts.app_eval.runner langfuse RUN_DIRECTORY. Use --dry-run first,
+and --verify for readback without further writes. See [LANGFUSE.md](LANGFUSE.md).
+This is explicit post-run export; CI, reports and ordinary tests do not send data.
+It preserves missing acceptance coverage and separate code/Sol verdicts.
+No model calls or cloud judges are triggered by the exporter itself.
 
 ## Where we are
 
@@ -11,10 +55,12 @@ task views, notes/lists, hybrid search, learning and dream passes, voice, durabl
 parallel work with clarification continuations, action history, notifications,
 Google/Linear connections, sharing and scoped bot API/MCP access.
 
-The next priority is reliability across those features, rather than another
-large expansion. Two known eval failures remain: timestamp-equivalent Revert
-conflicts (EVAL-001) and clearing task notes/recovered-error queue status
-(EVAL-002). See [the findings](../evals/app/FINDINGS.md).
+The next priority is reliability across those features. The current findings
+include timestamp-equivalent Revert conflicts, intermittent note clearing,
+clarification continuity, memory contradictions and embedding-failure persistence,
+incomplete recommendation extraction, and task resolution missing flexible project
+relationships. See [the dated findings](../evals/app/FINDINGS.md) for reproduced,
+intermittent, and component-only evidence; later single passes do not close them.
 
 The catalog contains 1,001 scenarios across 40 feature areas. That is authored
 coverage, not 1,001 passed tests. The additional component baseline was 87/88.
@@ -71,8 +117,8 @@ IDs. A dropped network connection is distinct from an idle timeout.
   boundaries, before re-running receipt/Revert cases. Preserve stale-change guards.
 - [ ] Fix EVAL-002: explicit empty-note semantics and honest final status after a
   recovered tool error. Verify Luna through the real queue; Gemini comparisons are paused.
-- [ ] Re-run all 88 component checks; any remaining failure stays visible.
-- [ ] Re-run the 20 backend probes with Luna and three independent repetitions where
+- [ ] Re-run the expanded command/recovery components; any remaining failure stays visible.
+- [ ] Re-run the expanded 41 backend probes with Luna and three independent repetitions where
   the remaining dollar allowance permits. Compare saved state, receipts, unresolved
   errors, latency and tokens; retain cap interruptions and provider failures.
 - [ ] Add reviewed live-pipeline adapters/gold labels for memory extraction and
@@ -88,21 +134,12 @@ exploratory data separate; promote regression fixtures through explicit review.
 Record prompt/model/catalog versions and ground truth, rather than grading an
 assistant's “Done” message.
 
-Default to offline checks. Paid runs now default to Luna only; Gemini comparisons
-are paused at the owner's request (September 20). Aim below $2 and never exceed the
-user's $10/model allowance; subtract prior runs rather than treating each command
-as a new allowance. The previous sample spent $0.02352348 on Luna and $0.497667 on
-Gemini. Request caps and the durable spend journal remain mandatory. This fix
-batch makes no paid model calls.
-
-At the measured Luna average, 1,001 comparable text-agent cases cost about $1.18
-for one pass. The $2 text-run cap is retained. The complete mixed catalog is not
-confirmed under $2: GPT-Live sessions and unmeasured learning/embedding work are
-separate, and only 20 paid probes currently have runnable adapters.
-
-Pass gate: all deterministic checks pass; permission, duplicate-write and wrong-
-target failures are zero. Report model success and recovery rates separately;
-do not conceal a failing critical case behind a high average.
+Default to offline checks. Paid runs use Luna only and a shared $10 campaign
+ceiling. The twenty-case historical sample cost $0.02352348 on Luna and $0.497667
+on Gemini; it does not price the full mixed catalog. Real GPT-Live audio, embedding
+retrieval quality and broader pipeline trials need their own measured evidence.
+The current harness records paid text/pipeline/judge costs separately from app
+usage. See its guide for STOP/resume, uncertainty and connected-resource handling.
 
 ## Batch 3 — one focused physical-device and connected-account round
 
@@ -183,3 +220,9 @@ Current change evidence:
 Local full-backend evidence: artifacts/app-evals/calendar-voice-fix-20260920/.
 Google nested PATCH semantics:
 https://developers.google.com/workspace/calendar/api/guides/performance#patch
+
+## September 22 current full-run evidence
+
+The current available full-catalog run is `artifacts/app-evals/full-20260922-localpg-luna/`: 245 jobs, 233 passed, eight failed, four blocked after a retained provider-error retry. Its 1,001 acceptance classifications are 92 passed, six failed, 146 partial, 755 blocked and two component-failed. A separate corrected-oracle trial at `artifacts/app-evals/due-time-oracle-20260922/` passed the offset-aware 16:00 Chicago case that the original raw-string grader falsely failed. See [findings](../evals/app/FINDINGS.md) for failures, costs and limits. Eval self-tests pass (64, with two opt-in skips); frontend tests pass (136, one paused-Realtime skip) and its production build succeeds.
+
+Next product work remains EVAL-001 through EVAL-006 plus EVAL-007's missed After Yang extraction. The three connected smoke probes need dedicated test credentials/resources; actual phone, real GPT-Live/audio, and full restore/PITR evidence remain separate gates. No result in this run closes those gates.

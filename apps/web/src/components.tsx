@@ -1,15 +1,15 @@
-import { useBodyLock, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
+import { useBodyLock, useDialogFocus, Dialog, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
 import { emptyOrganization, type Organization } from "./productivity";
 import { UsageReport } from "./UsageReport";
 import { BudgetHolds } from "./BudgetHolds";
+import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CalendarDays,
   Check,
-  ChevronRight,
   Clock3,
   Download,
   MoreHorizontal,
@@ -20,35 +20,8 @@ import {
   Brain,
 } from "lucide-react";
 import type { Bootstrap, Task, Project, Schedule } from "./types";
-export function useDialogFocus() {
-  useBodyLock(true);
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const trap = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || event.defaultPrevented) return;
-      const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(el => el.getClientRects().length).at(-1);
-      const items = Array.from(
-        dialog?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex="0"]',
-        ) ?? [],
-      ).filter(el => el.getClientRects().length && el.tabIndex >= 0);
-      const first = items[0],
-        last = items.at(-1);
-      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener("keydown", trap);
-    return () => {
-      document.removeEventListener("keydown", trap);
-      if (previous?.isConnected) previous.focus({preventScroll: true});
-    };
-  }, []);
-}
+// Kept here for existing importers; the implementation lives with the Dialog primitive.
+export { useDialogFocus };
 export function dayInZone(zone: string) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: zone,
@@ -130,9 +103,9 @@ export function TaskRow({
         <span className="task-title">
           {task.title}
           {task.external?.identifier && (
-            <small> · {task.external.identifier}</small>
+            <small className="chip">{task.external.identifier}</small>
           )}
-          {task.is_template && <small> · Routine</small>}
+          {task.is_template && <small className="chip">Routine</small>}
         </span>
         {(task.notes ||
           task.project ||
@@ -179,7 +152,7 @@ export function TaskRow({
           {task.due_time && (
             <span title={task.due_timezone ?? undefined}>
               {" "}
-              · {task.due_time.slice(0, 5)}
+              {task.due_time.slice(0, 5)}
             </span>
           )}
         </button>
@@ -225,7 +198,6 @@ export function TaskDialog({
   onSave: (args: unknown) => Promise<unknown>;
   onArchive: () => Promise<void>;
 }) {
-  useDialogFocus();
   const [draft, setDraft] = useState(task);
   useEffect(() => setDraft(task), [task]);
   async function save() {
@@ -310,16 +282,8 @@ export function TaskDialog({
     close: onClose,
   });
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
+    <Dialog onBackdrop={() => onClose()} as="form"
         className="dialog task-create-dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="task-dialog-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -567,7 +531,8 @@ export function TaskDialog({
                 onClick={() => onReminder(r)}
               >
                 <Clock3 size={14} />
-                {r.title} · {r.status}
+                {r.title}
+                <span className="chip">{r.status}</span>
               </button>
             ))}
             <button
@@ -605,8 +570,7 @@ export function TaskDialog({
             {busy ? "Saving…" : task.id === "new" ? "Create task" : "Save task"}
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
 export function ReminderDialog({
@@ -620,22 +584,13 @@ export function ReminderDialog({
   onClose: () => void;
   onSave: (args: unknown) => Promise<void>;
 }) {
-  useDialogFocus();
   const [title, setTitle] = useState(""),
     [when, setWhen] = useState(""),
     [repeat, setRepeat] = useState(""),
     [kind, setKind] = useState("reminder");
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
+    <Dialog onBackdrop={() => onClose()} as="form"
         className="dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="reminder-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -719,8 +674,7 @@ export function ReminderDialog({
             {busy ? "Saving…" : "Save reminder"}
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
 export function MemoryCapture({
@@ -739,16 +693,15 @@ export function MemoryCapture({
         if (await onCapture(text)) setText("");
       }}
     >
-      <Brain size={20} />
+      <Brain size={18} aria-hidden="true" />
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
         aria-label="New memory"
         placeholder="Something you'd like me to remember…"
       />
-      <button disabled={busy || !text.trim()}>
+      <button className="btn btn-primary btn-sm" disabled={busy || !text.trim()}>
         Remember
-        <Plus size={15} />
       </button>
     </form>
   );
@@ -767,311 +720,294 @@ export function SettingsPanel({
   onPush: () => Promise<void>;
 }) {
   const p = boot.preferences;
+  const enforced = boot.budget.tracking_enabled !== false && boot.budget.enforcement_enabled !== false;
   return (
     <div className="settings-sections">
-      <section hidden={section !== "profile"}>
-        <h2>Your name</h2>
-        <form
-          className="setting-row"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const preferred_name = String(
-              new FormData(e.currentTarget).get("preferred_name") ?? "",
-            ).trim();
-            if (preferred_name) await onSave({ preferred_name });
-          }}
-        >
-          <label>
-            What should Eri call you?
-            <input
-              key={p.preferred_name}
-              name="preferred_name"
-              aria-label="Preferred name"
-              defaultValue={p.preferred_name}
-              required
-              maxLength={80}
-              autoComplete="nickname"
-            />
-          </label>
-          <button className="secondary" disabled={busy}>
-            Save name
-          </button>
-        </form>
-      </section>
-      <section hidden={section !== "privacy"}>
-        <h2>Conversation & memory</h2>
-        <p>
-          Choose what stays with you. New settings apply to new conversations.
-        </p>
-        {[
-          {
-            key: "history_enabled",
-            label: "Conversation history",
-            description: "Keep the words you exchange with Eridani.",
-          },
-          {
-            key: "memory_learning",
-            label: "Learn from conversations",
-            description:
-              "Automatically extract useful facts and preferences, with sources and semantic search.",
-          },
-          {
-            key: "deep_sleep_enabled",
-            label: "Weekly deep sleep",
-            description:
-              "Review memories on Sundays at 3 AM in your home time zone. Ask before resolving uncertain names.",
-          },
-        ].map((item) => (
-          <label className="setting-row" key={item.key}>
-            <span>
-              <strong>{item.label}</strong>
-              <small>{item.description}</small>
-            </span>
-            <input
-              className="switch"
-              type="checkbox"
-              role="switch"
-              checked={
-                p[
-                  item.key as
-                    | "history_enabled"
-                    | "memory_learning"
-                    | "deep_sleep_enabled"
-                ]
-              }
-              disabled={busy}
-              onChange={(e) => void onSave({ [item.key]: e.target.checked })}
-            />
-          </label>
-        ))}
-        <label className="setting-row">
-          <span>
-            <strong>Keep ordinary history</strong>
-            <small>Explicitly saved memories stay until you delete them.</small>
-          </span>
-          <select
-            value={p.history_days}
-            onChange={(e) => void onSave({ history_days: +e.target.value })}
-          >
-            <option value={0}>Until I delete it</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-            <option value={365}>1 year</option>
-          </select>
-        </label>
-        <div className="privacy-callout">
-          <Shield size={18} />
-          <p>
-            Eridani does not save raw audio. Conversation history follows these
-            settings; tasks and notes save separately. Cloud models process what
-            you send.
-          </p>
-        </div>
-      </section>
-      <section hidden={section !== "notifications"}>
-        <h2>Reminder delivery</h2>
-        <label className="setting-row">
-          <span>
-            <strong>Default reminder time</strong>
-            <small>Used when you give a date without a time.</small>
-          </span>
-          <select
-            value={p.default_reminder_hour}
-            onChange={(e) =>
-              void onSave({ default_reminder_hour: +e.target.value })
-            }
-          >
-            {Array.from({ length: 24 }, (_, i) => (
-              <option value={i} key={i}>
-                {String(i).padStart(2, "0")}:00
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="setting-row">
-          <span>
-            <strong>Phone notifications</strong>
-            <small>Receive a nudge with the app closed.</small>
-          </span>
-          <button className="secondary" onClick={() => void onPush()}>
-            Enable on this device
-          </button>
-        </div>
-        <label className="setting-row">
-          <span>
-            <strong>Show reminder details</strong>
-            <small>Include reminder text on your lock screen.</small>
-          </span>
-          <input
-            type="checkbox"
-            className="switch"
-            role="switch"
-            checked={p.detailed_notifications}
-            onChange={(e) =>
-              void onSave({ detailed_notifications: e.target.checked })
-            }
-          />
-        </label>
-        <p className="footnote">Home time zone: {p.timezone}</p>
-      </section>
-      <section hidden={section !== "system"}>
-        <h2>Task agent</h2>
-        <label className="setting-row">
-          <span>
-            <strong>Backend model</strong>
-            <small>Used for text chat and tasks delegated by GPT-Live.</small>
-          </span>
-          <select
-            aria-label="Backend model"
-            value={boot.agent_profile}
-            disabled={busy}
-            onChange={(e) => void onSave({ agent_profile: e.target.value })}
-          >
-            {boot.agent_options.map((model) => (
-              <option
-                key={model.id}
-                value={model.id}
-                disabled={!model.available}
-              >
-                {model.label}
-                {model.available ? "" : " · API key needed"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="footnote">
-          Changes apply to the next request on all your devices. Voice selection
-          is separate. Automatic memory learning and note extraction still use
-          OpenAI.
-        </p>
-        {boot.agent_profile === "luna" && (
-          <p className="footnote">
-            Luna uses low reasoning effort for task work, including tasks
-            delegated during GPT-Live conversations.
-          </p>
-        )}
-        {boot.agent_options.some(
-          (model) => model.provider === "gemini" && !model.available,
-        ) && (
-          <p className="footnote">
-            To try Gemini, add GEMINI_API_KEY to the server .env file, then
-            recreate the API and worker containers.
-          </p>
-        )}
-      </section>
-      <section hidden={section !== "system"}>
-        <h2>Model usage</h2>
-        {boot.budget.tracking_enabled === false ? (
-          <p className="footnote">
-            Cost tracking and spending limits are off during development.
-            Monitor usage in{" "}
-            <a
-              href="https://platform.openai.com/usage"
-              target="_blank"
-              rel="noreferrer"
-            >
-              OpenAI Usage
-            </a>{" "}
-            and{" "}
-            <a
-              href="https://aistudio.google.com/usage"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Google AI Studio
-            </a>
-            .
-          </p>
-        ) : (
-          <>
-            {boot.budget.report && <UsageReport report={boot.budget.report} />}
-            {boot.budget.enforcement_enabled === false && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Eri.</p>}
-            {boot.budget.enforcement_enabled !== false && <form
-              className="setting-row"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const data = new FormData(event.currentTarget);
-                void onSave({ monthly_budget_usd: Number(data.get("limit")) });
+      {section === "profile" && (
+        <SettingsGroup title="Your name">
+          <SettingRow className="setting-row-form" label="What should Eri call you?" hint="Used in greetings and conversation.">
+            <form
+              className="setting-inline-form"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const preferred_name = String(
+                  new FormData(e.currentTarget).get("preferred_name") ?? "",
+                ).trim();
+                if (preferred_name) await onSave({ preferred_name });
               }}
             >
-              <label>
-                Monthly limit ($)
-                <input
-                  name="limit"
-                  type="number"
-                  min="0"
-                  max="10000"
-                  step="1"
-                  defaultValue={boot.budget.limit_usd}
-                  key={boot.budget.limit_usd}
-                  style={{ width: "100px", marginTop: "8px" }}
-                />
-              </label>
-              <button className="secondary" disabled={busy}>
-                Save limit
+              <input
+                key={p.preferred_name}
+                name="preferred_name"
+                aria-label="Preferred name"
+                defaultValue={p.preferred_name}
+                required
+                maxLength={80}
+                autoComplete="nickname"
+              />
+              <button className="btn btn-soft" disabled={busy}>
+                Save name
               </button>
-            </form>}
-            <div className="budget-line">
-              <strong>
-                ${boot.budget.spent_usd.toFixed(2)}
-                <span>{boot.budget.enforcement_enabled !== false && " / $" + boot.budget.limit_usd.toFixed(0)} this calendar month</span>
-              </strong>
-              <span>
-                ${boot.budget.active_reserved_usd.toFixed(2)} reserved for
-                active work
-              </span>
-            </div>
-            {boot.budget.uncertain_usd > 0 && (
-              <p className="footnote">
-                ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs.
-              </p>
-            )}
-            <BudgetHolds enforced={boot.budget.enforcement_enabled !== false} />
-            {boot.budget.projected_month_usd != null && <p className="footnote">
-              At this month's pace: about $
-              {boot.budget.projected_month_usd.toFixed(2)} this month.
-            </p>}
-            {boot.budget.enforcement_enabled !== false && boot.budget.budget_mode !== "normal" && (
-              <p role="status" className="footnote">
-                {["defer_optional", "paused"].includes(boot.budget.budget_mode)
-                  ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
-                  : "Your usage and reservations have reached 80% of the monthly limit."}
-              </p>
-            )}
-            {boot.budget.enforcement_enabled !== false && <progress
-              max={Math.max(1, boot.budget.limit_usd)}
-              value={boot.budget.spent_usd + boot.budget.reserved_usd}
-            />}
-            <p className="footnote">
-              Usage is estimated from provider reports. Tasks and reminders keep
-              working when model spending stops.
+            </form>
+          </SettingRow>
+        </SettingsGroup>
+      )}
+      {section === "privacy" && (
+        <SettingsGroup
+          title="Conversation & memory"
+          description="Choose what stays with you. New settings apply to new conversations."
+        >
+          {[
+            {
+              key: "history_enabled",
+              label: "Conversation history",
+              description: "Keep the words you exchange with Eridani.",
+            },
+            {
+              key: "memory_learning",
+              label: "Learn from conversations",
+              description:
+                "Automatically extract useful facts and preferences, with sources and semantic search.",
+            },
+            {
+              key: "deep_sleep_enabled",
+              label: "Weekly deep sleep",
+              description:
+                "Review memories on Sundays at 3 AM in your home time zone. Ask before resolving uncertain names.",
+            },
+          ].map((item) => (
+            <SettingRow as="label" key={item.key} label={item.label} hint={item.description}>
+              <input
+                className="switch"
+                type="checkbox"
+                role="switch"
+                checked={
+                  p[
+                    item.key as
+                      | "history_enabled"
+                      | "memory_learning"
+                      | "deep_sleep_enabled"
+                  ]
+                }
+                disabled={busy}
+                onChange={(e) => void onSave({ [item.key]: e.target.checked })}
+              />
+            </SettingRow>
+          ))}
+          <SettingRow as="label" label="Keep ordinary history" hint="Explicitly saved memories stay until you delete them.">
+            <select
+              value={p.history_days}
+              onChange={(e) => void onSave({ history_days: +e.target.value })}
+            >
+              <option value={0}>Until I delete it</option>
+              <option value={30}>30 days</option>
+              <option value={90}>90 days</option>
+              <option value={365}>1 year</option>
+            </select>
+          </SettingRow>
+          <div className="privacy-callout">
+            <Shield size={18} />
+            <p>
+              Eridani does not save raw audio. Conversation history follows these
+              settings; tasks and notes save separately. Cloud models process what
+              you send.
             </p>
-          </>
-        )}
-      </section>
-      <section hidden={section !== "system"}>
-        <h2>Your data</h2>
-        <p className="footnote">
-          {boot.last_backup_at
-            ? "Last encrypted backup: " +
-              timeLabel(boot.last_backup_at, p.timezone)
-            : "First backup is pending. Check the backup service if this persists."}
-        </p>
-        <div className="setting-row">
-          <span>
-            <strong>Take it with you</strong>
-            <small>Download your tasks, reminders, sources and memories.</small>
-          </span>
-          <a href="/api/v1/export" className="secondary">
-            <Download size={15} />
-            Export JSON
-          </a>
-        </div>
-        <a className="text-button" href="/api/v1/export?format=csv">
-          Download tasks as CSV
-          <ChevronRight size={14} />
-        </a>
-      </section>
+          </div>
+        </SettingsGroup>
+      )}
+      {section === "notifications" && (
+        <SettingsGroup
+          title="Reminder delivery"
+          description={"Reminders use your home time zone, " + p.timezone + "."}
+        >
+          <SettingRow as="label" label="Default reminder time" hint="Used when you give a date without a time.">
+            <select
+              value={p.default_reminder_hour}
+              onChange={(e) =>
+                void onSave({ default_reminder_hour: +e.target.value })
+              }
+            >
+              {Array.from({ length: 24 }, (_, i) => (
+                <option value={i} key={i}>
+                  {String(i).padStart(2, "0")}:00
+                </option>
+              ))}
+            </select>
+          </SettingRow>
+          <SettingRow label="Phone notifications" hint="Receive a nudge with the app closed.">
+            <button className="btn btn-soft" onClick={() => void onPush()}>
+              Enable on this device
+            </button>
+          </SettingRow>
+          <SettingRow as="label" label="Show reminder details" hint="Include reminder text on your lock screen.">
+            <input
+              type="checkbox"
+              className="switch"
+              role="switch"
+              checked={p.detailed_notifications}
+              onChange={(e) =>
+                void onSave({ detailed_notifications: e.target.checked })
+              }
+            />
+          </SettingRow>
+        </SettingsGroup>
+      )}
+      {section === "system" && (
+        <SettingsGroup title="Task agent">
+          <SettingRow as="label" label="Backend model" hint="Used for text chat and tasks delegated by GPT-Live.">
+            <select
+              aria-label="Backend model"
+              value={boot.agent_profile}
+              disabled={busy}
+              onChange={(e) => void onSave({ agent_profile: e.target.value })}
+            >
+              {boot.agent_options.map((model) => (
+                <option
+                  key={model.id}
+                  value={model.id}
+                  disabled={!model.available}
+                >
+                  {model.label}
+                  {model.available ? "" : " (API key needed)"}
+                </option>
+              ))}
+            </select>
+          </SettingRow>
+          <p className="footnote">
+            Changes apply to the next request on all your devices. Voice selection
+            is separate. Automatic memory learning and note extraction still use
+            OpenAI.
+          </p>
+          {boot.agent_profile === "luna" && (
+            <p className="footnote">
+              Luna uses low reasoning effort for task work, including tasks
+              delegated during GPT-Live conversations.
+            </p>
+          )}
+          {boot.agent_options.some(
+            (model) => model.provider === "gemini" && !model.available,
+          ) && (
+            <p className="footnote">
+              To try Gemini, add GEMINI_API_KEY to the server .env file, then
+              recreate the API and worker containers.
+            </p>
+          )}
+        </SettingsGroup>
+      )}
+      {section === "system" && (
+        <SettingsGroup title="Model usage">
+          {boot.budget.tracking_enabled === false ? (
+            <p className="footnote">
+              Cost tracking and spending limits are off during development.
+              Monitor usage in{" "}
+              <a
+                href="https://platform.openai.com/usage"
+                target="_blank"
+                rel="noreferrer"
+              >
+                OpenAI Usage
+              </a>{" "}
+              and{" "}
+              <a
+                href="https://aistudio.google.com/usage"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Google AI Studio
+              </a>
+              .
+            </p>
+          ) : (
+            <>
+              {boot.budget.report && <UsageReport report={boot.budget.report} />}
+              {!enforced && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Eri.</p>}
+              {enforced && (
+                <SettingRow className="setting-row-form" label="Monthly limit ($)" labelId="monthly-limit-label" hint="Eri pauses optional model work near this limit.">
+                  <form
+                    className="setting-inline-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const data = new FormData(event.currentTarget);
+                      void onSave({ monthly_budget_usd: Number(data.get("limit")) });
+                    }}
+                  >
+                    <input
+                      name="limit"
+                      type="number"
+                      aria-labelledby="monthly-limit-label"
+                      min="0"
+                      max="10000"
+                      step="1"
+                      defaultValue={boot.budget.limit_usd}
+                      key={boot.budget.limit_usd}
+                      className="setting-number"
+                    />
+                    <button className="btn btn-soft" disabled={busy}>
+                      Save limit
+                    </button>
+                  </form>
+                </SettingRow>
+              )}
+              <div className="budget-line">
+                <strong>
+                  ${boot.budget.spent_usd.toFixed(2)}
+                  <span>{enforced && " / $" + boot.budget.limit_usd.toFixed(0)} this calendar month</span>
+                </strong>
+                <span>
+                  ${boot.budget.active_reserved_usd.toFixed(2)} reserved for
+                  active work
+                </span>
+              </div>
+              {boot.budget.uncertain_usd > 0 && (
+                <p className="footnote">
+                  ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs.
+                </p>
+              )}
+              <BudgetHolds enforced={enforced} />
+              {boot.budget.projected_month_usd != null && <p className="footnote">
+                At this month's pace: about $
+                {boot.budget.projected_month_usd.toFixed(2)} this month.
+              </p>}
+              {enforced && boot.budget.budget_mode !== "normal" && (
+                <p role="status" className="footnote">
+                  {["defer_optional", "paused"].includes(boot.budget.budget_mode)
+                    ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
+                    : "Your usage and reservations have reached 80% of the monthly limit."}
+                </p>
+              )}
+              {enforced && <progress
+                max={Math.max(1, boot.budget.limit_usd)}
+                value={boot.budget.spent_usd + boot.budget.reserved_usd}
+              />}
+              <p className="footnote">
+                Usage is estimated from provider reports. Tasks and reminders keep
+                working when model spending stops.
+              </p>
+            </>
+          )}
+        </SettingsGroup>
+      )}
+      {section === "system" && (
+        <SettingsGroup
+          title="Your data"
+          description={
+            boot.last_backup_at
+              ? "Last encrypted backup: " +
+                timeLabel(boot.last_backup_at, p.timezone)
+              : "First backup is pending. Check the backup service if this persists."
+          }
+        >
+          <SettingRow label="Take it with you" hint="Download your tasks, reminders, sources and memories.">
+            <a href="/api/v1/export" className="btn btn-soft">
+              <Download size={15} />
+              Export JSON
+            </a>
+            <a className="btn btn-ghost" href="/api/v1/export?format=csv">
+              Tasks as CSV
+            </a>
+          </SettingRow>
+        </SettingsGroup>
+      )}
     </div>
   );
 }

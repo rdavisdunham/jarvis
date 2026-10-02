@@ -10,7 +10,7 @@ import pytest
 
 from scripts.app_eval import catalog
 from scripts.app_eval.environment import DEFAULT_URL, settings_env, validate_url
-from scripts.app_eval.model_runner import PROBES, grade
+from scripts.app_eval.model_runner import PROBES, field_matches, grade
 
 
 def test_every_feature_has_25_to_50_distinct_evidence_based_cases():
@@ -237,3 +237,14 @@ def test_seeded_receipts_are_decryptable_in_a_fresh_clone():
         change = db.scalar(select(ActionChange).where(ActionChange.after_ciphertext.is_not(None)))
         assert change is not None
         assert unseal(change.after_ciphertext)
+
+
+def test_due_time_oracle_accepts_equivalent_local_time_only():
+    row = {
+        "due_date": "2030-01-18",
+        "due_timezone": "America/Chicago",
+    }
+    assert field_matches("due_time", "16:00-06:00", "16:00", row)
+    assert not field_matches("due_time", "16:00-05:00", "16:00", row)
+    assert not field_matches("due_time", "15:00-06:00", "16:00", row)
+    assert not field_matches("due_time", "16:00-06:00", "16:00", {**row, "due_date": "2030-07-18"})

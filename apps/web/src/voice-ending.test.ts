@@ -203,3 +203,17 @@ test("a closing answer is valid after a long spoken reply and the 30-second wind
   ending.assistant("a","Will that be all?",0);
   expect(ending.user({id:"u",role:"user",content:"Yes.",pending:false},45000)).toBe(true);
 });
+
+test.each([
+  ["Thanks.", false],
+  ["That's all.", false],
+  ["No.", false],
+  ["Yes, thank you.", false],
+  ["Goodbye.", true],
+  ["Okay, bye", true],
+  ["Stop listening", true],
+])("while work is busy only an explicit farewell ends voice: %s", (text, ends) => {
+  const ending = new VoiceEnding();
+  ending.assistant("a", "Anything else?");
+  expect(ending.user({ id: "u", role: "user", content: text } as never, Date.now(), true)).toBe(ends);
+});

@@ -1,9 +1,8 @@
-import { priorityLabels } from "./ux";
+import { priorityLabels, Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
 import { useState } from "react";
 import { X } from "lucide-react";
-import { useDialogFocus } from "./components";
 import type { Task, Project } from "./types";
 
 export function BulkTaskDialog({
@@ -23,7 +22,6 @@ export function BulkTaskDialog({
   onClose: () => void;
   onSave: (items: Record<string, unknown>[]) => Promise<unknown>;
 }) {
-  useDialogFocus();
   const [status, setStatus] = useState(""),
     [project, setProject] = useState("unchanged");
   const [setDate, changeDate] = useState(false),
@@ -93,11 +91,8 @@ export function BulkTaskDialog({
     },
   });
   return (
-    <div className="modal-backdrop">
-      <form
+    <Dialog as="form"
         className="dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="bulk-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -226,7 +221,6 @@ export function BulkTaskDialog({
             Apply changes
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
