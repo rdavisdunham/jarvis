@@ -470,14 +470,13 @@ async def perform(request_id):
                         reply = message.get("content")
                         if not isinstance(reply, str) or not reply.strip():
                             raise DomainError("INVALID_RESPONSE", "The model did not return a usable answer.")
-                        if asks_user(reply, state, row):
-                            if state.get("question_checked"):
-                                # A prose question still needs the user's answer: keep it durable.
-                                reply, state["needs_input"] = reply.strip()[:1000], True
-                            else:
-                                state["question_checked"] = True
-                                state["messages"].append({"role": "system", "content": QUESTION_CHECK})
-                                reply = None
+                        if asks_user(reply, state, row) and not state.get("question_checked"):
+                            # One nudge: a needed answer goes through work_needs_input. A reply that
+                            # still ends in a question afterwards is an optional offer, not a
+                            # pending clarification, so it must not capture the user's next request.
+                            state["question_checked"] = True
+                            state["messages"].append({"role": "system", "content": QUESTION_CHECK})
+                            reply = None
                         state["reply"] = reply
                     # The complete tool plan is durable BEFORE any tool executes.
                     checkpoint(row.id, state)

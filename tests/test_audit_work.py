@@ -218,23 +218,25 @@ async def test_round_limit_closes_the_budget_session(client, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_prose_question_after_tools_becomes_needs_input(client, monkeypatch):
-    work = action(client, "Move the report task")
+async def test_offer_after_one_nudge_stays_a_finished_answer(client, monkeypatch):
+    # Regression (2026-10-02): "...want me to reschedule any?" was forced into a pending
+    # question, which then swallowed the user's next request. One nudge, then trust the reply.
+    work = action(client, "Summarize my overdue tasks")
     seen = []
     responder(
         monkeypatch,
         [
             response([("task_list", {})]),
-            response(message="Which report task do you mean?"),
-            response(message="Which report task do you mean, Q3 or Q4?"),
+            response(message="You have 3 overdue tasks. Want me to reschedule any?"),
+            response(message="You have 3 overdue tasks. Want me to reschedule any of them?"),
         ],
         seen,
     )
     await work_runner.run(work["id"])
     assert seen[-1][-1] == {"role": "system", "content": work_runner.QUESTION_CHECK}
     card = client.get("/api/v1/work/" + work["id"]).json()
-    assert card["status"] == "needs_input"
-    assert card["clarification"]["question"] == "Which report task do you mean, Q3 or Q4?"
+    assert card["status"] == "succeeded"
+    assert not card.get("clarification")
 
 
 @pytest.mark.asyncio
