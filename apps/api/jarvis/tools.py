@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy import select
 
 from .db import session_scope
-from .domain import COMMANDS, DomainError, execute, owned, serial
+from .domain import COMMANDS, NOT_NULL, DomainError, execute, owned, serial
 from .memory_service import semantic_search
 from .models import Memory, Note, Notification, Occurrence, Project, Schedule, Task
 from .planner_schema import PlanRequest
@@ -228,6 +228,7 @@ READ_TOOLS.update(
                 "properties": {
                     "scope": {"type": "string", "enum": ["selected", "visible", "recent", "search"]},
                     "query": {"type": "string", "maxLength": 300},
+                    "home_id": {"type": "string", "maxLength": 36, "description": "Structure record ID from a task's home chain or record_list; matches tasks anywhere below it."},
                 },
                 "required": ["scope"],
                 "additionalProperties": False,
@@ -407,6 +408,7 @@ READ_TOOLS["task_list"]["parameters"]["properties"].update(
         "due_through": {"type": "string", "format": "date"},
         "selection_id": {"type": "string"},
         "detail": {"type": "string", "enum": ["compact", "full"]},
+        "home_id": {"type": "string", "maxLength": 36, "description": "Structure record ID (project, client, area...) from a home chain or record_list; matches tasks anywhere below it, including legacy project/area/space links."},
     }
 )
 READ_TOOLS["time_resolve"] = {
@@ -425,10 +427,11 @@ READ_TOOLS["time_resolve"] = {
 
 READ_TOOLS.update({
     "structure_schema": {"description": "Read the current user-defined types, fields, workflows, relationships, meaning and schema revision. Names are customizable; never assume Project or Client exists. Structural changes require a preview and a later explicit user confirmation.", "parameters": {"type":"object","properties":{},"additionalProperties":False}},
-    "record_list": {"description": "Find user-defined records by type, capability, main parent or title. Get exact IDs before linking records. Follow next_offset when has_more is true.", "parameters": {"type":"object","properties":{
+    "record_list": {"description": "Find user-defined records by type, capability, main parent or title. Returns 25 compact rows by default (max 50); use record_get or detail=full for bodies and values. Get exact IDs before linking records. Follow next_offset when has_more is true.", "parameters": {"type":"object","properties":{
         "type_id":{"type":"string"},"capability":{"type":"string","enum":["work","content","timeline","metric"]},
         "parent_id":{"type":"string","format":"uuid"},"query":{"type":"string","maxLength":300},
-        "archived":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":200},"offset":{"type":"integer","minimum":0,"maximum":100000}},"additionalProperties":False}},
+        "archived":{"type":"boolean"},"limit":{"type":"integer","minimum":1,"maximum":50},"offset":{"type":"integer","minimum":0,"maximum":100000},
+        "detail":{"type":"string","enum":["compact","full"],"description":"compact (default) returns IDs, titles, home and status; full adds bodies, values and links."}},"additionalProperties":False}},
     "record_get": {"description":"Read a record's current fields, main home, links and revision. Inherited properties follow the main home; additional links never silently change that home.","parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},"required":["record_id"],"additionalProperties":False}},
 })
 READ_TOOLS.update({
@@ -482,7 +485,19 @@ def registry():
     for tool in result:
         tool["description"] = DESCRIPTIONS.get(tool["name"], tool["description"])
         tool["parameters"] = annotated_schema(tool["parameters"])
+        non_nullable(tool["parameters"], NOT_NULL.get(tool["name"].replace("_", ".", 1), ()))
     return [loader_definition(), *result]
+
+
+def non_nullable(schema, fields):
+    """Advertise null only where the command clears the value (see domain.NOT_NULL)."""
+    nested = {"TaskUpdate": NOT_NULL["task.update"], "TaskChanges": NOT_NULL["task.update"]}
+    for node, keys in [(schema, fields), *((d, nested[n]) for n, d in schema.get("$defs", {}).items() if n in nested)]:
+        for key in keys:
+            prop = node.get("properties", {}).get(key)
+            if prop and "anyOf" in prop:
+                options = [o for o in prop.pop("anyOf") if o.get("type") != "null"]
+                prop.update(options[0]) if len(options) == 1 else prop.update(anyOf=options)
 
 
 def instructions(owner_prefs, focus=None, ui_context=None):
@@ -506,9 +521,13 @@ async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conv
         check_device(owner,device)
         if current_id():
             from .bot_access import authorize
-            from .external_service import scrub
+            from .external_service import custom_scrub, scrub
             with session_scope() as db:
-                result = scrub(result, authorize(db, owner).scopes)
+                scopes = authorize(db, owner).scopes
+                result = scrub(result, scopes)
+                if name.startswith("record_"):
+                    # Record replies can embed a backing task/note body; core scopes still govern it.
+                    result = custom_scrub(db, owner, result, scopes)
         return result
     finally:
         if token is not None:principal.reset(token)
@@ -595,7 +614,7 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
         from .structure_models import StructureRecord
         with session_scope() as db:
             if name == "structure_schema": return structure.schema_data(db,owner)
-            if name == "record_list": return structure.records(db,owner,**arguments)
+            if name == "record_list": return structure.records(db,owner,**{"detail":"compact",**arguments})
             structure.ensure(db,owner)
             return structure.data(db,owned(db,StructureRecord,arguments["record_id"],owner))
     if name == "ui_state":
@@ -737,9 +756,11 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
 
                 return note_data(db, owned(db, Note, arguments["note_id"], owner))
             if name == "task_get":
+                from .task_tools import with_homes
+
                 row = owned(db, Task, arguments["task_id"], owner)
                 remember(db, owner, conversation_id, [row.id])
-                return serial(row)
+                return with_homes(db, owner, [serial(row)])[0]
             result = resolve(
                 db,
                 owner,
@@ -747,6 +768,7 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 conversation_id,
                 arguments["scope"],
                 arguments.get("query", ""),
+                arguments.get("home_id"),
             )
             if len(result["tasks"]) == 1:
                 remember(db, owner, conversation_id, [result["tasks"][0]["id"]])

@@ -5,7 +5,7 @@ import time
 from collections import OrderedDict
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from .domain import DomainError, TaskUpdate, serial
 from .models import GoalProjectLink, Task, uid
@@ -40,6 +40,60 @@ COMPACT_FIELDS = (
 
 def compact(row):
     return {key: row.get(key) for key in COMPACT_FIELDS if key in row}
+
+
+def with_homes(db, owner, rows):
+    """Attach the flexible record and its main-home chain; legacy project fields may be blank."""
+    from .structure_models import StructureRecord
+
+    ids = [r["id"] for r in rows]
+    records = {
+        r.task_id: r
+        for r in db.scalars(
+            select(StructureRecord).where(StructureRecord.owner_id == owner, StructureRecord.task_id.in_(ids))
+        )
+    } if ids else {}
+    cache = {}
+
+    def chain(parent_id):
+        result, seen = [], set()
+        while parent_id and parent_id not in seen and len(result) < 20:
+            seen.add(parent_id)
+            if parent_id not in cache:
+                cache[parent_id] = db.get(StructureRecord, parent_id)
+            parent = cache[parent_id]
+            if not parent or parent.owner_id != owner:
+                break
+            result.append({"id": parent.id, "title": parent.title, "type_id": parent.type_id})
+            parent_id = parent.parent_id
+        return result[::-1]
+
+    for row in rows:
+        record = records.get(row["id"])
+        row["record_id"] = record.id if record else None
+        row["home"] = chain(record.parent_id) if record else []
+    return rows
+
+
+def under_home(owner, home_id):
+    """Task IDs whose record sits anywhere below home_id, plus legacy project/area/space matches."""
+    from .structure_models import StructureRecord
+
+    tree = (
+        select(StructureRecord.id, StructureRecord.task_id)
+        .where(StructureRecord.owner_id == owner, StructureRecord.parent_id == home_id)
+        .cte("home_tree", recursive=True)
+    )
+    child = select(StructureRecord.id, StructureRecord.task_id).where(
+        StructureRecord.owner_id == owner, StructureRecord.parent_id == tree.c.id
+    )
+    tree = tree.union(child)
+    return or_(
+        Task.id.in_(select(tree.c.task_id).where(tree.c.task_id.is_not(None))),
+        Task.project_id == home_id,
+        Task.area_id == home_id,
+        Task.space_id == home_id,
+    )
 
 
 def selection(owner, selection_id):
@@ -78,11 +132,14 @@ def list_tasks(db, owner, args):
     else:
         q = select(Task).where(Task.owner_id == owner, Task.archived.is_(False))
         if args.get("query"):
-            term = args["query"].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            q = q.where(Task.title.ilike("%" + term + "%", escape="\\"))
+            from .text_normalize import sql_filter
+
+            q = q.where(sql_filter(args["query"], Task.title))
         for field in ("project_id", "space_id", "area_id", "assignee_id", "work_type", "status", "assignee"):
             if field in args:
                 q = q.where(getattr(Task, field) == args[field])
+        if args.get("home_id"):
+            q = q.where(under_home(owner, args["home_id"]))
         if args.get("goal_id"):
             q = q.where(
                 Task.project_id.in_(
@@ -123,7 +180,7 @@ def list_tasks(db, owner, args):
                 snapshots.popitem(last=False)
     page = records[offset : offset + limit]
     return {
-        "tasks": page if args.get("detail") == "full" else [compact(r) for r in page],
+        "tasks": with_homes(db, owner, [dict(r) if args.get("detail") == "full" else compact(r) for r in page]),
         "match_count": total,
         "returned_count": len(page),
         "selection_id": sid,

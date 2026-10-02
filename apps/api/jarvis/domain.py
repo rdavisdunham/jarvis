@@ -226,8 +226,44 @@ COMMANDS = {
 }
 
 
+# Update null policy: absent keeps, null clears. Fields here cannot be cleared, so
+# generated tool schemas omit null for them; CLEARED maps null to the empty value.
+NOT_NULL = {
+    "task.update": {"title", "status", "archived"},
+    "schedule.update": {"title", "when", "timezone", "task_id"},
+    "space.update": {"name", "archived"},
+    "area.update": {"name", "archived", "space_id"},
+    "goal.update": {"name", "archived"},
+    "project.update": {"name", "archived"},
+    "actor.update": {"name", "archived"},
+    "record.update": {"title"},
+    "note.update": {"title", "content", "tags", "archived"},
+}
+CLEARED = {
+    "task.update": {"notes": "", "priority": 0},
+    "space.update": {"description": ""},
+    "area.update": {"description": ""},
+    "record.update": {"body": ""},
+}
+
+
+def nulls(tool, values):
+    for key in NOT_NULL.get(tool, ()):
+        if key in values and values[key] is None:
+            raise DomainError("INVALID_ARGUMENT", f"{key} cannot be cleared; omit it to keep the current value.")
+    for key, empty in CLEARED.get(tool, {}).items():
+        if key in values and values[key] is None:
+            values[key] = empty
+    return values
+
+
+def encode(value):
+    """JSON-encode with aware datetimes normalized to UTC, independent of session time zone."""
+    return jsonable_encoder(value, custom_encoder={datetime: lambda v: (v.astimezone(UTC) if v.tzinfo else v).isoformat()})
+
+
 def serial(record):
-    return jsonable_encoder(
+    return encode(
         {
             c.name: getattr(record, c.name)
             for c in record.__table__.columns
@@ -607,17 +643,19 @@ def mutate(db, owner, tool, args, command_id):
             "cancelled",
         }:
             raise DomainError("INVALID_ARGUMENT", "Unknown task status.")
-        for key in ("title", "notes", "priority", "archived"):
-            if key in changes and changes[key] is None:
-                raise DomainError("INVALID_ARGUMENT", f"{key} cannot be empty.")
+        nulls("task.update", changes)
         if any(key in changes for key in ("due_date", "due_time", "due_timezone")):
             changes = task_timing(db, owner, changes, task)
         changes = project_changes(db, owner, changes, task)
         from .linear_sync import before_task_update
 
         before_task_update(db, owner, task, changes)
+        moved = "project_id" in changes and changes["project_id"] != task.project_id
         for key, value in changes.items():
             setattr(task, key, value)
+        if moved:
+            # The flexible record home follows legacy project moves (structure.observe_core).
+            db.info.setdefault("task_project_moves", set()).add(task.id)
         if "status" in changes:
             task.completed_at = (task.completed_at or now()) if task.status == "completed" else None
         if task.status in {"completed", "cancelled"} or task.archived:
@@ -672,9 +710,7 @@ def mutate(db, owner, tool, args, command_id):
         check_revision(row, args.expected_revision)
         if tool == "schedule.update":
             changes = args.model_dump(exclude_unset=True, exclude={"schedule_id", "expected_revision"})
-            for key in ("title", "when", "timezone"):
-                if key in changes and changes[key] is None:
-                    raise DomainError("INVALID_ARGUMENT", f"{key} cannot be null.")
+            nulls("schedule.update", {k: v for k, v in changes.items() if k != "task_id"})
             if row.status != "active" and any(k in changes for k in ("when", "timezone", "recurrence")):
                 raise DomainError(
                     "INVALID_ARGUMENT", "Reschedule a finished reminder explicitly before editing its timing."

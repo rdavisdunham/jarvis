@@ -67,8 +67,28 @@ export async function api<T>(
 export function post<T>(url: string, data: unknown = {}) {
   return api<T>(url, { method: "POST", body: JSON.stringify(data) });
 }
+// Commands issued while an assistant UI action runs are tagged so the server
+// never records them as the owner's own routing evidence.
+let agentAction: string | null = null;
+export async function asAgent<T>(
+  actionId: string | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
+  if (!actionId) return run();
+  const previous = agentAction;
+  agentAction = actionId;
+  try {
+    return await run();
+  } finally {
+    agentAction = previous;
+  }
+}
+export function commandId() {
+  const id = crypto.randomUUID();
+  return agentAction ? `ui-agent:${agentAction.slice(0, 54)}:${id}` : id;
+}
 export function command<T>(tool: string, args: unknown) {
-  const body = { command_id: crypto.randomUUID(), tool, arguments: args };
+  const body = { command_id: commandId(), tool, arguments: args };
   const send = () => post<{ data: T; command_id: string }>("/commands", body);
   return { send, id: body.command_id };
 }

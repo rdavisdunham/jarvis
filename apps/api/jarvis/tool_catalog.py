@@ -203,7 +203,8 @@ TASK_TIMING = (
 )
 TASK_UPDATE = (
     "Read the current ID/revision first. Supply only requested fields; omission preserves, explicit null clears "
-    "nullable fields, and an empty list clears a list. Clearing due_date also clears its clock time. "
+    "nullable fields, and an empty list clears a list. Null notes clears them (same as \"\"); null priority resets to 0. "
+    "Title, status and archived cannot be null. Clearing due_date also clears its clock time. "
     "Preserve unmentioned notes, links, reminders and planned work. Assignment labels responsibility and does not run an agent. "
 )
 NOTE_LINKS = (
@@ -235,7 +236,7 @@ DESCRIPTIONS = {
     "structure_preview": "Prepare a structural change for the owner to review. Read structure_schema first, preserve unaffected definitions and stable IDs. Show impact and ask for explicit confirmation; do not apply in the same request.",
     "structure_apply": "Apply the exact reviewed proposal only after the user explicitly confirms it in a later turn. Never use this for an unreviewed schema change. A stale proposal needs a new preview.",
     "record_create": "Create a record under a current type definition. Read structure_schema for field IDs and schema_revision. Use a main parent for inherited home and separate named links for other associations. No approval step for ordinary record creation.",
-    "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value; omission preserves it.",
+    "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value (null body clears it); omission preserves it. Title cannot be null; actionable types always need a status.",
     "record_link": "Add or remove a named relationship allowed by the schema. Additional links do not change the main home. Validate source/target IDs and use the source's current revision.",
     "planning_commit": "Save a planning_suggest proposal only when the owner requested scheduling. Rechecks current task revisions and fresh availability, then saves all local blocks atomically; conflicts save none. Copy the short plan_token reference exactly from planning_suggest. Reusing it cannot duplicate blocks, even with a new command ID. Does not publish to Google or change task deadlines/alerts. Expired/conflicting plans need a new proposal.",
     "task_list": "Find TASK records with structured filters; authored notes use note_search/note_read. "
@@ -244,12 +245,16 @@ DESCRIPTIONS = {
     "Results include match_count, compact records and an owner-scoped immutable selection_id. "
     "For the same edit on every match use task_selection_update, including unseen pages. "
     "For pagination retain selection_id and next_offset; detail=full on a fresh query retrieves full stored fields; saved selections are compact. "
-    "An incomplete selection cannot be applied; narrow the filters. Never infer completion counts.",
+    "An incomplete selection cannot be applied; narrow the filters. Never infer completion counts. "
+    "Each task includes record_id and home: its main-home chain [{id,title,type_id}] from the flexible structure (project, client, area...). Legacy project/space/area fields may be blank when home is set; trust home. home_id filters to tasks anywhere below a structure record.",
     "task_get": "Read one task's current data and revision by its exact returned UUID. "
-    "If MALFORMED_ID, copy the reference from a fresh lookup; it does not mean the task was deleted.",
+    "If MALFORMED_ID, copy the reference from a fresh lookup; it does not mean the task was deleted. "
+    "Includes record_id and home (main-home chain in the flexible structure).",
     "task_resolve": "Resolve conversational task references without editing: selected means explicit selected IDs, "
     "visible means current screen records, recent means this conversation, search uses descriptive keywords. "
-    "A singular request matching multiple tasks needs clarification; visible is never automatically singular.",
+    "A singular request matching multiple tasks needs clarification; visible is never automatically singular. "
+    "Returns compact rows with notes_preview, record_id and home chain; to tell duplicates apart compare home, or pass home_id "
+    "(a project/client record ID) to narrow. Use task_get for full notes.",
     "task_create": "Create one standalone task on a clear owner request. "
     "Status defaults to open (ready to start); use backlog for ideas or work captured for later. "
     "For commitments extracted from a note use note_tasks instead: text copied into notes is not a source link. "

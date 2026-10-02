@@ -83,7 +83,19 @@ def validate_assignment(db, owner, schema, type_id, assignment):
             raise DomainError("INVALID_RULE", "Rules add classifications, never clear them.")
 
 
+AGENT_UI = "ui-agent:"
+
+
+def human_command(command_id):
+    """Only plain browser command IDs are owner evidence; agent-driven UI edits carry ui-agent:."""
+    from .bot_access import current_id
+
+    return ":" not in command_id and not command_id.startswith(AGENT_UI) and not current_id()
+
+
 def observe(db, row, command_id, *, human=False):
+    if command_id.startswith(AGENT_UI):
+        human = False
     prefs = preferences(db, row.owner_id)
     if not prefs["routing_learning"] or db.get(SharedWorkspace, row.owner_id):
         return
