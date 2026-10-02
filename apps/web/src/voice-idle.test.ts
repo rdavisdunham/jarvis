@@ -29,3 +29,12 @@ test("audio playout activity extends the deadline beyond early response completi
   expect(idle.expired(51999)).toBe(false);
   expect(idle.expired(52000)).toBe(true);
 });
+test("busy work suspends the countdown for at most two minutes", () => {
+  const idle = new VoiceIdle();
+  idle.start(0);
+  idle.state("working", 1000);
+  expect(idle.remaining(120_999)).toBe(null);
+  expect(idle.remaining(121_000)).toBe(30);
+  expect(idle.expired(150_999)).toBe(false);
+  expect(idle.expired(151_000)).toBe(true);
+});

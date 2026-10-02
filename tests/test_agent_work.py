@@ -231,10 +231,8 @@ def test_voice_capture_survives_close_and_deduplicates(client):
         captured = work_intake.claim_voice(db, inbox, close=True)
         assert "Alpha" in unseal(captured.input_ciphertext)["message"]
         turns = list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == sid)))
-        assert sorted(unseal(t.input_ciphertext)["message"] for t in turns) == [
-            "Add Alpha.",
-            "Also add Beta.",
-        ]
+        # Undelegated actionable speech at close becomes ONE request, never one per pause.
+        assert [unseal(t.input_ciphertext)["message"] for t in turns] == ["Add Alpha.\nAlso add Beta."]
         assert all(db.get(Job, t.id).kind == "agent_action" for t in turns)
         assert work_intake.claim_voice(db, inbox) is None
         assert db.get(VoiceInbox, sid).closed

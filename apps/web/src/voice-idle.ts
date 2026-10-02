@@ -1,11 +1,17 @@
 export const VOICE_IDLE_SECONDS = 30;
+// Busy work suspends the countdown for at most this long; then the quiet window resumes.
+export const VOICE_BUSY_CAP_SECONDS = 120;
 // The deadline follows actual playout, not the arrival of generated text.
 export class VoiceIdle {
   private lastActivity = 0;
   private active = false;
   private busy = false;
   private speaking = false;
-  constructor(private timeout = VOICE_IDLE_SECONDS * 1000) {}
+  private busySince = 0;
+  constructor(
+    private timeout = VOICE_IDLE_SECONDS * 1000,
+    private busyCap = VOICE_BUSY_CAP_SECONDS * 1000,
+  ) {}
   start(now: number) {
     this.active = true;
     this.touch(now);
@@ -24,6 +30,7 @@ export class VoiceIdle {
       "speaking",
     ].includes(state);
     if (this.busy && !busy) this.touch(now);
+    if (!this.busy && busy) this.busySince = now;
     this.busy = busy;
   }
   speech(active: boolean, now: number) {
@@ -31,12 +38,12 @@ export class VoiceIdle {
     this.touch(now);
   }
   remaining(now: number) {
-    return !this.active || this.busy || this.speaking
-      ? null
-      : Math.max(
-          0,
-          Math.ceil((this.timeout - (now - this.lastActivity)) / 1000),
-        );
+    const capped = this.busy && now - this.busySince >= this.busyCap;
+    if (!this.active || this.speaking || (this.busy && !capped)) return null;
+    const last = capped
+      ? Math.max(this.lastActivity, this.busySince + this.busyCap)
+      : this.lastActivity;
+    return Math.max(0, Math.ceil((this.timeout - (now - last)) / 1000));
   }
   expired(now: number) {
     return this.remaining(now) === 0;

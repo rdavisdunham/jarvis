@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { Voice } from "./voice";
+import { POLL_ACTIVE_MS, POLL_HIDDEN_MS, POLL_STABLE_MS, Voice } from "./voice";
 import { api, post } from "./api";
 
 vi.mock("./api", async (importOriginal) => ({
@@ -449,7 +449,8 @@ test("queued backend work suspends idle shutdown and completion starts a fresh 3
   vi.mocked(api).mockResolvedValue({
     state: "listening", closed: false, error: null, text: "", receipts: [],
   });
-  await vi.advanceTimersByTimeAsync(400);
+  // Stable status backs off to the slower lease cadence before noticing completion.
+  await vi.advanceTimersByTimeAsync(POLL_STABLE_MS);
   await vi.advanceTimersByTimeAsync(29000);
   expect(stopped).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1200);
@@ -472,4 +473,50 @@ test("explicit goodbye still ends voice while queued backend work is pending", a
   expect(changed).toHaveBeenCalledWith(
     expect.objectContaining({ state: "ended", closed: true }),
   );
+});
+
+test.each([
+  ["working", false],
+  ["listening", true],
+])(
+  "a bare thanks does not hang up while backend work or its question is pending (%s)",
+  async (state, awaiting) => {
+    const changed = vi.fn();
+    vi.mocked(api).mockResolvedValue({
+      state, awaiting_answer: awaiting, closed: false, error: null, text: "", receipts: [],
+    });
+    const voice = await startVoice("live", changed);
+    await vi.advanceTimersByTimeAsync(500);
+    userReply("live", "Thanks.");
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(stopped).not.toHaveBeenCalled();
+    await voice.stop();
+  },
+);
+
+test("status changes are published once and stable polling backs off", async () => {
+  const changed = vi.fn();
+  const voice = await startVoice("live", changed);
+  await vi.advanceTimersByTimeAsync(10_000);
+  // The idle countdown changes once per second; identical poll results add nothing.
+  expect(changed.mock.calls.length).toBeLessThanOrEqual(12);
+  const polls = vi.mocked(api).mock.calls.length;
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(vi.mocked(api).mock.calls.length - polls).toBeLessThanOrEqual(
+    Math.ceil(10_000 / POLL_STABLE_MS) + 1,
+  );
+  expect(POLL_ACTIVE_MS).toBeLessThan(POLL_STABLE_MS);
+  await voice.stop();
+});
+
+test("a hidden tab polls slowly but well inside the 30 second lease", async () => {
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { visibilityState: "hidden" }));
+  const voice = await startVoice("live");
+  vi.mocked(api).mockClear();
+  await vi.advanceTimersByTimeAsync(20_000);
+  const polls = vi.mocked(api).mock.calls.length;
+  expect(polls).toBeGreaterThanOrEqual(3);
+  expect(polls).toBeLessThanOrEqual(5);
+  expect(POLL_HIDDEN_MS).toBeLessThanOrEqual(10_000);
+  await voice.stop();
 });

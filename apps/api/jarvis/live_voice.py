@@ -17,10 +17,10 @@ from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import prompt_context, semantic_search
-from .models import AgentWork, Conversation, Source, VoiceInbox, now, uid
+from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
 from .ui_control import get_context
 from .voice import Controller, controllers
-from .work_intake import append_voice, claim_voice, open_voice
+from .work_intake import append_voice, claim_voice, mark_asked, open_voice
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
@@ -50,6 +50,12 @@ class LiveController(Controller):
         self.context_pending = set()
         self.announced_work = set()
         self.pending_work = False
+        self.pending_question = False  # A heard backend question owns the next delegated turn.
+        self.asked = set()
+        self.unclaimed = set()  # Delegations still waiting for their final transcript.
+        self.last_user_delta = 0.0
+        # Claim after the current utterance's transcript lands: min wait, then this much quiet.
+        self.settle_min, self.settle_quiet, self.settle_max = 0.6, 0.8, 4.0
 
     def display_state(self):
         if self.closed or self.state == "closed":
@@ -210,6 +216,7 @@ class LiveController(Controller):
             group["received_at"] = time.monotonic()
             group["end"] = max(group["end"], end)
             if role == "user":
+                self.last_user_delta = time.monotonic()
                 self.input_revision += 1
                 if self.memory_task:
                     self.memory_task.cancel()
@@ -332,25 +339,45 @@ class LiveController(Controller):
                 "Live memory refresh unavailable (%s)", type(exc).__name__
             )
 
+    async def settle(self):
+        """Wait for the delegated utterance's final transcript instead of a fixed delay."""
+        started = time.monotonic()
+        await asyncio.sleep(self.settle_min)
+        while time.monotonic() - started < self.settle_max and time.monotonic() - self.last_user_delta < self.settle_quiet:
+            await asyncio.sleep(0.1)
+
+    def claim(self):
+        with session_scope() as db:
+            inbox = db.get(VoiceInbox, self.id)
+            accepted = claim_voice(db, inbox) if inbox else None
+            return accepted and (accepted.id, bool(accepted.result.get("answered_clarification_id")))
+
     async def delegate(self, delegation_id):
         # Only intake is attached to the media lifecycle. Saved work belongs to the worker.
+        self.unclaimed.add(delegation_id)
         try:
-            await asyncio.sleep(0.6)
-            with session_scope() as db:
-                inbox = db.get(VoiceInbox, self.id)
-                accepted = claim_voice(db, inbox) if inbox else None
+            await self.settle()
+            accepted = self.claim()
+            self.unclaimed.discard(delegation_id)
             if accepted:
                 # Bridge the handoff to the next durable-queue snapshot.
                 self.pending_work = True
+                if accepted[1]:
+                    self.pending_question = False
             if not self.closed and not self.closing:
                 await self.send({"type": "session.thinking.append", "event_id": uid(),
                     "delegation_id": delegation_id,
-                    "content": "Request saved for the backend. Keep listening. The activity cards show progress; do not claim saved changes until a verified result arrives."
-                    if accepted else "This input is already being handled. Keep listening; do not repeat earlier actions."})
+                    "content": ("This reply was attached to the backend's pending question. " if accepted and accepted[1] else
+                        "Request saved for the backend. " if accepted else
+                        "This input is already being handled. Do not repeat earlier actions. ")
+                    + "Keep listening. The activity cards show progress; do not claim saved changes until a verified result arrives."})
             self.state, self.error = "listening", None
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001 - do not log speech
             logging.getLogger("jarvis.voice").warning("Live intake failed (%s)", type(exc).__name__)
             self.error = "This request could not be accepted. Check Activity or send it as text."
+            self.unclaimed.discard(delegation_id)
 
     async def report_work(self):
         from .agent_work import ACTIVE, public
@@ -384,16 +411,29 @@ class LiveController(Controller):
                 snapshot["status"] in busy_statuses
                 for _, _, _, snapshots in entries for snapshot in snapshots
             )
+            self.pending_question = any(
+                (snapshot.get("clarification") or {}).get("id") in self.asked
+                for _, _, _, snapshots in entries for snapshot in snapshots
+            )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
-            notices, stamps = [], []
+            notices, stamps, asking = [], [], None
             for root, children, leaves, snapshots in entries:
                 if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
                     continue
-                stamp = (root.id, root.revision, tuple((snapshot["id"], snapshot["revision"], snapshot["status"]) for snapshot in snapshots))
+                # Content, not root.revision: touch_root/continuation bumps must not re-announce.
+                stamp = (root.id, tuple((snapshot["id"], snapshot["status"], snapshot.get("message", ""),
+                    (snapshot.get("clarification") or {}).get("id"),
+                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"])) for snapshot in snapshots))
                 if stamp in self.announced_work:
                     continue
-                if not children and (root.result.get("route_kinds") == ["conversation"] or (
+                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
+                if questions and self.superseded(db, root, questions[0]):
+                    # The conversation already moved on to later voice work; never ask a stale question.
+                    self.announced_work.add(stamp)
+                    continue
+                # A backend question is never a quiet result, however it was produced.
+                if not children and not questions and (root.result.get("route_kinds") == ["conversation"] or (
                     root.result.get("quiet") and not root.result.get("tool_calls")
                 )):
                     self.announced_work.add(stamp)
@@ -410,12 +450,8 @@ class LiveController(Controller):
                 # One result per tick: never mark a question announced after truncating it out.
                 notices.extend(t for t in texts if t)
                 stamps.append(stamp)
-                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
                 if questions:
-                    question = questions[0]
-                    await self.send({"type": "session.thinking.append", "event_id": uid(),
-                        "delegation_id": None, "content": "Pending clarification DATA; ask its question, never read IDs aloud: "
-                        + json.dumps({"request_id": question["request_id"], "clarification_id": question["id"], "question": question["question"][:700]})})
+                    asking = questions[0]
                 for snapshot in snapshots:
                     self.receipts.extend(a["command_id"] for a in snapshot["actions"]
                         if a["command_id"] not in self.receipts)
@@ -425,9 +461,28 @@ class LiveController(Controller):
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
+        # One spoken channel: a backend question is conveyed once, here, and owns the reply.
+        suffix = (" The backend is waiting for the user's answer to this question. Ask it once, add no question of "
+            "your own, then delegate the reply." if asking else " Full details are in Activity.")
         await self.send({"type": "session.commentary.append", "event_id": uid(),
-            "delegation_id": None, "content": content + " Full details are in Activity."})
+            "delegation_id": None, "content": content + suffix})
         self.announced_work.update(stamps)
+        if asking:
+            self.asked.add(asking["id"])
+            self.pending_question = True
+            with session_scope() as db:
+                mark_asked(db, self.id, asking["id"])
+
+    def superseded(self, db, root, question):
+        asked = db.get(Job, question["request_id"])
+        if not asked:
+            return False
+        return db.scalar(select(AgentWork.id).join(Job, Job.id == AgentWork.id).where(
+            AgentWork.owner_id == self.owner, AgentWork.conversation_id == root.conversation_id,
+            AgentWork.voice_session_id.is_not(None), AgentWork.id != question["request_id"],
+            or_(AgentWork.parent_id.is_(None), AgentWork.parent_id != root.id),
+            AgentWork.result["archived_at"].as_string().is_(None),
+            Job.created_at > asked.created_at, Job.status.notin_(["queued", "dispatched"])).limit(1)) is not None
 
     async def interrupt(self):
         self.error = None
@@ -479,9 +534,13 @@ class LiveController(Controller):
                 return
             self.closing = True
             try:
+                if self.unclaimed:
+                    # Live explicitly delegated this speech; closing must not demote it.
+                    self.claim()
                 with session_scope() as db:
                     inbox = db.get(VoiceInbox, self.id)
                     if inbox:
+                        # Undelegated remainder: farewell/chit-chat dropped, an action becomes one request.
                         claim_voice(db, inbox, close=True)
             except DomainError as exc:
                 logging.getLogger("jarvis.voice").warning("Final intake unavailable (%s)", exc.code)

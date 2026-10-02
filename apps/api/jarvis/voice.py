@@ -638,6 +638,8 @@ async def status(session_id: str, user: User):
         "text_id": c.text_id,
         "can_submit": c.can_submit(),
         "closed": c.closed,
+        # A backend question is pending: the browser must not auto-close on a bare "thanks".
+        "awaiting_answer": bool(getattr(c, "pending_question", False)),
         "receipts": [r for r in c.receipts[-10:] if r],
     }
 
