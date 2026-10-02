@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -54,6 +55,44 @@ def normalized(value):
 
 def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str).encode()).hexdigest()
+
+
+FOCUS = """
+Second pass: the earlier answer may have missed items in a list. Consider ONLY the supplied
+possibly_omitted segments, using the same rules. Return an entry only when the source clearly
+saves or recommends that thing; passing, negative or hypothetical mentions return nothing.
+"""
+
+
+def accepted(entry, source):
+    return entry.save_intent and entry.confidence >= 0.90 and entry.evidence.strip() and entry.evidence in source
+
+
+def omissions(source, entries):
+    """Deterministic coverage: capitalized list segments near accepted evidence with no extracted title."""
+    kept = [e for e in entries if accepted(e, source)]
+    titles = [normalized(e.title) for e in kept]
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+|\n+", source) if s.strip()]
+    spans = dict.fromkeys(s for e in kept for s in sentences if e.evidence in s or s in e.evidence)
+    missing = []
+    for span in spans:
+        segments = [p for p in re.split(r",|;|&|\band\b", span) if p.strip()]
+        if len(segments) < 2:
+            continue
+        for index, segment in enumerate(segments):
+            names = re.findall(r"[^\W\d_][\w'’-]*", segment)[1 if index == 0 else 0 :]
+            if not any(n[0].isupper() and n != "I" for n in names):
+                continue
+            text = normalized(segment)
+            if not any(t and t in text for t in titles):
+                missing.append(segment.strip(" \t\"'“”()—–-.!?:"))
+    return list(dict.fromkeys(m for m in missing if m))[:10]
+
+
+def merged(result, extra):
+    seen = {normalized(e.title) for e in result.entries}
+    result.entries = [*result.entries, *(e for e in extra.entries if normalized(e.title) not in seen)]
+    return result
 
 
 def active_lists(db, owner):
@@ -452,7 +491,7 @@ def allowed(db, job):
     return True
 
 
-def apply_result(db, job, note, result, payload, lists):
+def apply_result(db, job, note, result, payload, lists, possible_omissions=()):
     from .action_history import journal
     from .note_schema import NoteCreate
     from .notes import mutate_note
@@ -470,7 +509,10 @@ def apply_result(db, job, note, result, payload, lists):
     ]
     extracted_lists = set()
     command_id = "notes:auto:" + job.id
-    saved, uncertain = [], 0
+    saved, rejections = [], []
+
+    def reject(entry, reason):
+        rejections.append({"title": entry.title[:200] if entry else None, "reason": reason})
     # Internal changes never recursively schedule extraction or become human training data.
     db.info["note_organization"] = True
     try:
@@ -479,16 +521,17 @@ def apply_result(db, job, note, result, payload, lists):
                 choices = [
                     by_id[i] for i in dict.fromkeys(entry.list_ids) if i in by_id and by_id[i].extract_entries
                 ]
-                if (
-                    not choices
-                    or not entry.save_intent
-                    or entry.confidence < 0.90
-                    or entry.evidence not in source
-                    or not entry.evidence.strip()
-                    or normalized(entry.title) not in normalized(entry.evidence)
-                    or normalized(entry.title) == normalized(note.title)
-                ):
-                    uncertain += 1
+                reason = (
+                    "no_extracting_list" if not choices
+                    else "no_save_intent" if not entry.save_intent
+                    else "low_confidence" if entry.confidence < 0.90
+                    else "evidence_not_in_source" if entry.evidence not in source or not entry.evidence.strip()
+                    else "title_not_in_evidence" if normalized(entry.title) not in normalized(entry.evidence)
+                    else "same_as_source_note" if normalized(entry.title) == normalized(note.title)
+                    else None
+                )
+                if reason:
+                    reject(entry, reason)
                     continue
                 key = digest(normalized(entry.title))
                 old = db.scalar(
@@ -511,7 +554,7 @@ def apply_result(db, job, note, result, payload, lists):
                             conflict = True
                         selected_values[name] = value
                 if conflict or len({tag for item in choices for tag in item.filters.get("tags", [])}) > 20:
-                    uncertain += 1
+                    reject(entry, "conflicting_list_filters")
                     continue
                 target = None
                 if entry.existing_note_id:
@@ -533,7 +576,7 @@ def apply_result(db, job, note, result, payload, lists):
                         or len(same_name) != 1
                         or entry.confidence < 0.95
                     ):
-                        uncertain += 1
+                        reject(entry, "existing_note_mismatch")
                         continue
                 else:
                     # An existing name requires explicit, validated reuse, never a blind duplicate.
@@ -542,11 +585,11 @@ def apply_result(db, job, note, result, payload, lists):
                             Note.owner_id == job.owner_id, func.lower(Note.title) == entry.title.lower()
                         )
                     ):
-                        uncertain += 1
+                        reject(entry, "title_exists")
                         continue
                     types = {r.filters.get("type_id") for r in choices if r.filters.get("type_id")}
                     if len(types) > 1:
-                        uncertain += 1
+                        reject(entry, "multiple_collection_types")
                         continue
                     if types:
                         schema = ensure(db, job.owner_id)
@@ -603,9 +646,14 @@ def apply_result(db, job, note, result, payload, lists):
                 command_id,
                 automatic=True,
             ):
-                uncertain += 1
+                reject(None, "classification_conflict")
             state.status = "ready"
-            state.result = {"saved_count": len(set(saved)), "uncertain_count": uncertain}
+            state.result = {
+                "saved_count": len(set(saved)),
+                "uncertain_count": len(rejections),
+                "rejections": rejections[:20],
+                "possible_omissions": list(possible_omissions),
+            }
             state.updated_at = now()
             emit(db, job.owner_id, "note.changed", note.id, note.revision)
     finally:
@@ -646,6 +694,16 @@ def process(job_id):
         owner = job.owner_id
     try:
         result = infer(owner, OrganizationResult, PROMPT, payload)
+        text = payload["title"] + "\n" + payload["content"]
+        if missing := omissions(text, result.entries):
+            # One focused pass for list items the first answer skipped ("Arrival and After Yang").
+            try:
+                result = merged(result, infer(owner, OrganizationResult, PROMPT + FOCUS, {**payload, "possibly_omitted": missing}))
+            except Exception as exc:  # noqa: BLE001 - the first answer is still valid
+                __import__("logging").getLogger("jarvis.notes").warning(
+                    "Coverage pass unavailable (%s)", type(exc).__name__
+                )
+            missing = omissions(text, result.entries)
         with session_scope() as db:
             advisory(db, "workspace:" + owner)
             job = db.get(Job, job_id, with_for_update=True)
@@ -664,7 +722,7 @@ def process(job_id):
                 if state.fingerprint == job.payload["fingerprint"]:
                     state.status = "stale"
                 return
-            job.result = apply_result(db, job, note, result, payload, lists)
+            job.result = apply_result(db, job, note, result, payload, lists, missing)
             job.status, job.finished_at = "succeeded", now()
     except Exception:
         with session_scope() as db:

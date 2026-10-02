@@ -1,6 +1,5 @@
 """Canonical structured retrieval plus a separate, non-authoritative semantic lane."""
 
-import re
 import time
 from functools import lru_cache
 from uuid import uuid4
@@ -14,6 +13,7 @@ from .memory_learning import EMBEDDING_MODEL, cosine, embeddings
 from .search_index import snapshot, queue_index
 from .search_models import SearchDocument, SearchIndexState, SearchAlias, SearchSession
 from .search_schema import SearchQuery
+from .text_normalize import canon, tsquery
 
 STOP = set(
     "a an the me my please show find search get give all any for of to in on with about and or that this these those task tasks note notes record records company".split()
@@ -29,7 +29,8 @@ def query_vector(owner, query, model, period, provider):
 
 
 def normalize(value):
-    return " ".join(re.findall(r"\w+", value.casefold()))
+    # Spoken numbers and punctuation compare equal: "test, one, two" == "test 1 2".
+    return canon(value)
 
 
 def terms(value):
@@ -37,6 +38,7 @@ def terms(value):
 
 
 def contains(text, phrase):
+    phrase = canon(phrase or "")
     return bool(phrase and (" " + phrase + " ") in (" " + normalize(text) + " "))
 
 
@@ -79,7 +81,9 @@ def search(
     request_key=None,
     track=True,
     note_filters=None,
+    withhold=frozenset(),
 ):
+    """withhold: core kinds ("task", "note") whose bodies the caller may not read or probe."""
     args = arguments if isinstance(arguments, SearchQuery) else SearchQuery.model_validate(arguments)
     enabled = get_settings().semantic_search_enabled
     with session_scope() as db:
@@ -132,7 +136,7 @@ def search(
             and a.target_fingerprint == documents[a.target_key]["definition_fingerprint"]
             and contains(args.query, a.phrase)
         ]
-        tsq = func.websearch_to_tsquery("english", args.query)
+        tsq = tsquery(args.query) if canon(args.query) else func.websearch_to_tsquery("english", args.query)
         tsv = func.to_tsvector("english", SearchDocument.content)
         fts = dict(
             db.execute(
@@ -141,6 +145,13 @@ def search(
                 )
             ).all()
         )
+        for identity, data in records.items():
+            r, key = data["record"], "record:" + identity
+            if key in documents and any(r.get(kind + "_id") and kind in withhold for kind in ("task", "note")):
+                # Rank on the name alone, so a records-only caller cannot probe core content.
+                documents[key] = {**documents[key], "text": documents[key]["label"]}
+                stored.pop(key, None)
+                fts.pop(key, None)
         candidates = []
         for key, doc in documents.items():
             value, lexical, semantic = score(args.query, doc, vector, stored.get(key), fts.get(key, 0))
