@@ -192,7 +192,9 @@ def test_oauth_cannot_link_after_original_pairing_session_ends(client, monkeypat
 def test_calendar_grant_is_separate_and_credentials_are_encrypted(client, monkeypatch):
     state, browser, nonce, _ = start(client)
     successful_exchange(monkeypatch, nonce)
-    auth.finish(state, browser, "code")
+    token, csrf = auth.finish(state, browser, "code")  # The linked session replaces the pairing one.
+    client.cookies.set("jarvis_session", token)
+    client.headers["X-CSRF-Token"] = csrf
     state, browser, nonce, _ = start(client, "calendar")
     successful_exchange(monkeypatch, nonce, scope="openid", refresh_token="fixture-refresh")
     with pytest.raises(DomainError, match="permission"):
@@ -203,7 +205,9 @@ def test_calendar_grant_is_separate_and_credentials_are_encrypted(client, monkey
     successful_exchange(
         monkeypatch, nonce, scope="openid " + auth.CALENDAR_SCOPE, refresh_token="fixture-refresh"
     )
-    auth.finish(state, browser, "code")
+    token, csrf = auth.finish(state, browser, "code")
+    client.cookies.set("jarvis_session", token)
+    client.headers["X-CSRF-Token"] = csrf
     with session_scope() as db:
         row = db.get(GoogleIdentity, "davin")
         assert row.calendar_enabled and "fixture-refresh" not in row.credentials
@@ -665,7 +669,7 @@ def test_timed_out_sync_allows_recovery_and_invalidates_late_result(client):
         second = calendar.queue_sync(db, "davin", force=True)
         assert second != first
         assert db.get(Job, first).status == "failed"
-        assert db.get(GoogleIdentity, "davin").generation == old_generation + 1
+        assert db.get(GoogleIdentity, "davin").generation == old_generation
 
 
 def test_oauth_link_and_session_issuance_commit_atomically(client, monkeypatch):

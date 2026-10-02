@@ -17,6 +17,9 @@ from .models import (
     now,
 )
 
+# Deadline and explicit reminder for the same task within this window are one alert.
+SAME_ALERT = timedelta(seconds=60)
+
 
 def deadline(task, prefs):
     if (
@@ -79,13 +82,15 @@ def sync_deadlines(db, owner, instant=None):
             notice.target = {k: v for k, v in notice.target.items() if k != "inactive"}
         notice.title = task.title
         notice.importance = "urgent" if task.alert_urgent else "normal"
-        # An explicit alert at this instant is the one notification for that task.
+        # An explicit alert at (about) this instant is the one notification for that task.
         explicit = db.scalar(
-            select(Notification.id).where(
+            select(Notification.id)
+            .where(
                 Notification.task_id == task.id,
                 Notification.category == "reminder",
-                Notification.scheduled_at == due,
+                Notification.scheduled_at.between(due - SAME_ALERT, due + SAME_ALERT),
             )
+            .limit(1)
         )
         if explicit:
             notice.dismissed_at = notice.dismissed_at or instant
@@ -149,7 +154,8 @@ def eligible(db, n, instant=None):
                 .where(
                     Schedule.task_id == task.id,
                     Schedule.status.in_(["active", "finished"]),
-                    ((Schedule.anchor_at == n.scheduled_at) | (Schedule.next_run_at == n.scheduled_at)),
+                    (Schedule.anchor_at.between(n.scheduled_at - SAME_ALERT, n.scheduled_at + SAME_ALERT))
+                    | (Schedule.next_run_at.between(n.scheduled_at - SAME_ALERT, n.scheduled_at + SAME_ALERT)),
                 )
                 .limit(1)
             )
@@ -158,7 +164,7 @@ def eligible(db, n, instant=None):
                 .join(Schedule)
                 .where(
                     Schedule.task_id == task.id,
-                    Occurrence.scheduled_at == n.scheduled_at,
+                    Occurrence.scheduled_at.between(n.scheduled_at - SAME_ALERT, n.scheduled_at + SAME_ALERT),
                     Occurrence.status.not_in(["cancelled", "expired"]),
                 )
                 .limit(1)
@@ -171,10 +177,11 @@ def eligible(db, n, instant=None):
             task = db.get(Task, identity)
             if task and not task.archived and task.status not in {"completed", "cancelled"}:
                 task_ids.append(identity)
-        if not task_ids and not n.target.get("work_ids"):
+        held = n.target.get("held_count", 0)
+        if not task_ids and not n.target.get("work_ids") and not held:
             return False
         n.body = f"{len(task_ids)} planned, due or overdue tasks" + (
-            " · overnight updates" if n.target.get("work_ids") else ""
+            f" · {held} overnight updates" if held else " · overnight updates" if n.target.get("work_ids") else ""
         )
     work_ids = n.target.get("work_ids", []) if n.target else []
     if work_ids:
@@ -190,7 +197,7 @@ def eligible(db, n, instant=None):
                 and (n.category != "question" or job.status == "needs_input")
             ):
                 unseen.append(identity)
-        if not unseen and not (n.category == "morning" and task_ids):
+        if not unseen and not (n.category == "morning" and (task_ids or n.target.get("held_count"))):
             return False
     return True
 
@@ -312,6 +319,8 @@ def morning(db, owner, instant=None):
                 "tab": "today",
                 "task_ids": [t.id for t in tasks],
                 "work_ids": list({identity for n in held for identity in n.target.get("work_ids", [])}),
+                # Held reminders are marked read above; the summary itself must stay deliverable.
+                "held_count": len(held),
             },
         )
     )

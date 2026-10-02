@@ -226,7 +226,7 @@ def mutate(db, owner, tool, args):
                 "LINEAR_MISSING", "The issue is unavailable. Unlink to keep working locally.", 409
             )
         if args.choice == "linear":
-            apply_remote(db, conn, link, remote)
+            apply_remote(db, conn, link, remote, force=True)  # The owner reviewed this exact version.
             return serial(task)
         # Republish the owner's current shared fields against the freshly reviewed version.
         link.snapshot = remote

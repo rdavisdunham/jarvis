@@ -51,9 +51,37 @@ def bind_task(db, owner, task_id, kind):
             raise DomainError("INVALID_ARGUMENT", "Choose an active task occurrence for a work block.")
 
 
+def unpublished(db, row):
+    # A create that definitely failed or was cancelled never reached Google; its identity is reusable.
+    job = db.get(Job, row.google_job_id) if row.google_job_id else None
+    return bool(
+        row.google_calendar_id
+        and not row.google_snapshot
+        and job
+        and job.payload.get("operation") == "create"
+        and job.status in {"failed", "cancelled"}
+    )
+
+
 def queue_publication(db, row, operation, calendar_id=None):
     mutable(db, row)
-    if operation == "create":
+    if operation == "update" and unpublished(db, row):
+        # Retry the original create with the same provider event id, so a replay never duplicates.
+        account, source = account_source(db, row.owner_id, row.google_calendar_id, writing=True)
+        job = enqueue_job(
+            db,
+            row.owner_id,
+            "google_write",
+            {
+                "operation": "create",
+                "calendar_id": source.id,
+                "provider_calendar": source.provider_id,
+                "generation": account.generation,
+                "provider_event": row.google_event_id,
+                "body": event_body(EventFields(**row.fields)),
+            },
+        )
+    elif operation == "create":
         receipt = queue_write(
             db, row.owner_id, "calendar.create", CalendarCreate(**row.fields, calendar_id=calendar_id)
         )
@@ -64,7 +92,9 @@ def queue_publication(db, row, operation, calendar_id=None):
         account, source = account_source(db, row.owner_id, row.google_calendar_id, writing=True)
         if not row.google_snapshot or not row.google_snapshot.get("etag"):
             raise DomainError(
-                "CALENDAR_CONFLICT", "Review the linked Google event before publishing changes.", 409
+                "CALENDAR_CONFLICT",
+                "Google has not confirmed this entry's calendar copy. Check Google Calendar, then unlink the copy to change it here.",
+                409,
             )
         payload = {
             "operation": operation,
@@ -110,7 +140,7 @@ def mutate(db, owner, tool, args):
             row.task_id = args.task_id
             row.revision += 1
             if row.google_calendar_id:
-                if row.google_state in {"conflict", "missing", "disconnected"}:
+                if row.google_state in {"conflict", "missing", "disconnected"} and not unpublished(db, row):
                     raise DomainError(
                         "CALENDAR_CONFLICT",
                         "Resolve the Google difference or unlink the copy before editing.",
@@ -141,7 +171,14 @@ def mutate(db, owner, tool, args):
             row.google_snapshot = token["base_event"]
             row.revision += 1
             if args.choice == "google":
-                row.fields = token["event_fields"]
+                try:
+                    row.fields = fields(EventFields(**token["event_fields"]))
+                except (DomainError, ValueError, TypeError):
+                    raise DomainError(
+                        "CALENDAR_CONFLICT",
+                        "This Google event cannot be copied here. Keep your version or unlink the copy.",
+                        409,
+                    ) from None
                 row.google_state = "synced"
                 row.google_job_id = None
             else:
@@ -149,7 +186,11 @@ def mutate(db, owner, tool, args):
         elif tool == "planning.delete":
             row.status = "cancelled"
             row.revision += 1
-            if row.google_calendar_id:
+            if unpublished(db, row):
+                # Nothing exists in Google to delete; drop the dead link.
+                row.google_calendar_id = row.google_event_id = row.google_snapshot = row.google_job_id = None
+                row.google_state = "local"
+            elif row.google_calendar_id:
                 queue_publication(db, row, "delete")
     row.updated_at = now()
     emit(db, owner, "planning.changed", row.id, row.revision)
@@ -177,7 +218,7 @@ def reconcile(db, owner, calendar_id, events, full=False):
         )
     ):
         job = db.get(Job, row.google_job_id) if row.google_job_id else None
-        if job and job.status not in TERMINAL:
+        if job and job.status not in TERMINAL or unpublished(db, row):
             continue
         remote = incoming.get(row.google_event_id)
         if not remote and not full:
@@ -192,7 +233,7 @@ def reconcile(db, owner, calendar_id, events, full=False):
             emit(db, owner, "planning.changed", row.id, row.revision)
 
 
-def project(db, owner, start, end, timezone):
+def project(db, owner, start, end, timezone, warnings=None):
     from .google_projection import instant
 
     local = zone(timezone)
@@ -201,9 +242,18 @@ def project(db, owner, start, end, timezone):
     for row in db.scalars(
         select(PlanningEntry).where(PlanningEntry.owner_id == owner, PlanningEntry.status == "active")
     ):
-        payload = event_body(EventFields(**row.fields))
-        point, all_day = instant(payload["start"], row.fields["timezone"])
-        finish, _ = instant(payload["end"], row.fields["timezone"])
+        try:
+            values = EventFields(**row.fields)
+            payload = event_body(values)
+            point, all_day = instant(payload["start"], values.timezone)
+            finish, _ = instant(payload["end"], values.timezone)
+        except (DomainError, ValueError, TypeError, KeyError):
+            # One malformed entry must not take down the whole calendar.
+            if warnings is not None:
+                item = {"calendar": "Eridani", "reason": "Some entries could not be shown."}
+                if item not in warnings:
+                    warnings.append(item)
+            continue
         if all_day:
             point = datetime.combine(point.date(), time.min, local)
             finish = datetime.combine(finish.date(), time.min, local)
@@ -217,14 +267,14 @@ def project(db, owner, start, end, timezone):
                     "id": f"planning:{row.id}:{day}",
                     "entity_id": row.id,
                     "kind": row.kind,
-                    "title": row.fields["title"],
-                    "description": row.fields["description"],
-                    "location": row.fields["location"],
+                    "title": values.title,
+                    "description": values.description,
+                    "location": values.location,
                     "date": day.isoformat(),
                     "at": None if all_day else point.isoformat(),
                     "end_at": finish.isoformat(),
                     "busy_start": point.isoformat(),
-                    "busy": row.fields["busy"],
+                    "busy": values.busy,
                     "all_day": all_day,
                     "status": "active",
                     "project_id": task.project_id if task else None,

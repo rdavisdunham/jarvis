@@ -82,6 +82,24 @@ def event_body(args):
     return result
 
 
+def local_points(remote, timezone):
+    """Google dateTimes carry the calendar's offset; fields store local times in the event's zone."""
+    from dateutil import tz
+
+    from .google_projection import instant
+
+    location, result = zone(timezone), {}
+    for key in ("start", "end"):
+        value = remote[key]
+        if "date" in value:
+            result[key] = value["date"]
+            continue
+        point = instant(value, timezone)[0].astimezone(location)
+        # Keep the offset only where the wall time repeats (DST fall-back), so it stays unambiguous.
+        result[key] = (point if tz.datetime_ambiguous(point) else point.replace(tzinfo=None)).isoformat()
+    return result
+
+
 def event_path(calendar, event_id=None):
     return (
         "calendars/"
@@ -161,8 +179,7 @@ def read_event(owner, args):
                     "expires_at": (now() + timedelta(minutes=30)).isoformat(),
                     "event_fields": {
                         "title": remote.get("summary") or "Busy",
-                        "start": remote["start"].get("date") or remote["start"].get("dateTime"),
-                        "end": remote["end"].get("date") or remote["end"].get("dateTime"),
+                        **local_points(remote, remote["start"].get("timeZone") or timezone),
                         "all_day": "date" in remote["start"],
                         "timezone": remote["start"].get("timeZone") or timezone,
                         "location": remote.get("location", ""),
@@ -450,6 +467,13 @@ def process_write(job_id):
             job.finished_at = None if retry else now()
             job.result = {"attempts": attempts, "write_started": started, "message": message}
             emit(db, owner, "google.write", job.id)
+            if isinstance(error, SyncFailure) and error.code == "reconnect":
+                # Same account state the sync path records, so Settings and queueing agree.
+                advisory(db, f"google:{owner}")
+                account = db.get(GoogleIdentity, owner)
+                if account and account.calendar_enabled and account.generation == payload["generation"]:
+                    account.status, account.error = "needs_reconnect", "reconnect"
+                    emit(db, owner, "google.changed", owner)
         if retry:
             raise RuntimeError("Google Calendar write will retry with the same event identity.") from None
     finally:
