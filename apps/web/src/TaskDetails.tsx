@@ -1,15 +1,15 @@
 import { RecordTools } from "./record-links";
-import { Tabs, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
-import { useEffect, useRef, useState } from "react";
+import { Tabs, humanLabel, priorityLabels, SchedulingHelp, Dialog } from "./ux";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, X, ChevronRight, ListTodo, Bell, FileText } from "lucide-react";
 import { z } from "zod";
 import { api } from "./api";
-import { useDialogFocus, timeLabel, recurrenceLabel } from "./components";
+import { timeLabel, recurrenceLabel } from "./components";
 import { useEditor, choice, nullableId, tagsField } from "./editor-control";
-import { LinearTask } from "./Linear";
 import type { Task, Schedule } from "./types";
 import type { Organization } from "./productivity";
 import type { NoteRecord } from "./Notes";
+const LinearTask = lazy(() => import("./Linear").then((m) => ({ default: m.LinearTask })));
 type Props = {
   id: string;
   canEdit?: boolean;
@@ -26,7 +26,6 @@ type Props = {
   onBlock: (task: Task) => void;
 };
 export function TaskDetails(p: Props) {
-  useDialogFocus();
   const [customHome,setCustomHome]=useState<{id:string;type_name:string;home:{title:string}[]}|null>(null);
   useEffect(()=>{void api<{id:string;type_name:string;home:{title:string}[]}>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
   const [task, setTask] = useState<Task | null>(null),
@@ -370,17 +369,9 @@ export function TaskDetails(p: Props) {
   const parent = p.tasks.find((t) => t.id === task?.parent_task_id);
   const reminders = p.schedules.filter((s) => s.task_id === p.id);
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) close();
-      }}
-    >
-      <section
-        ref={card}
+    <Dialog onBackdrop={() => close()}
+        dialogRef={card}
         className="dialog task-detail-card"
-        role="dialog"
-        aria-modal="true"
         aria-label="Task details"
       >
         <header className="task-card-toolbar">
@@ -471,13 +462,13 @@ export function TaskDetails(p: Props) {
                         ))}
                       </section>
                     )}
-                    <LinearTask
+                    <Suspense fallback={null}><LinearTask
                       task={task}
                       mutate={p.mutate}
                       onChanged={() =>
                         void reload().catch((e) => setError(e.message))
                       }
-                    />
+                    /></Suspense>
                     {!task.is_template && (
                       <button
                         className="secondary compact"
@@ -637,7 +628,6 @@ export function TaskDetails(p: Props) {
             </aside>
           </div>
         )}
-      </section>
-    </div>
+      </Dialog>
   );
 }

@@ -69,8 +69,8 @@
  .settings-layout .settings-tabs button {min-height:44px;justify-content:flex-start;text-align:left;flex:none;border:0;border-radius:9px;padding:11px 12px;font-size:13px;white-space:normal;color:var(--muted);}
  .settings-layout .settings-tabs button[aria-selected=true] {background:var(--accent-dark);color:var(--accent);}
 }
-@media (min-width:701px) and (max-width:1200px) {.app-shell .content.settings-page {padding:26px 24px 104px;}}
-@media (max-width:700px) {
+@media (min-width: 701px) and (max-width: 1200px) {.app-shell .content.settings-page {padding:26px 24px 104px;}}
+@media (max-width: 700px) {
  .app-shell .content.settings-page {padding:22px 16px 104px;}
  .chat-launcher {right:16px;bottom:calc(16px + env(safe-area-inset-bottom));}
  .app-shell .companion.visible {right:12px;left:12px;width:auto;bottom:calc(88px + env(safe-area-inset-bottom));height:calc(100dvh - 164px);max-height:calc(100dvh - 110px);padding:0 16px 12px;border-radius:18px;}
@@ -95,6 +95,6 @@
 .chat-work-card .work-result {font-size:12px;line-height:1.5;margin:7px 0;white-space:pre-wrap;}
 .chat-work-card .work-expand {font-size:10px;gap:4px;min-height:30px;margin-top:0;padding:2px 0;color:var(--muted);}
 .chat-work-card .work-expand[aria-expanded=true] svg {transform:rotate(180deg);}
-@media(max-width:700px) {.chat-work-card .work-card-actions button,.chat-work-card .work-expand {min-height:40px;}}
+@media (max-width: 700px) {.chat-work-card .work-card-actions button,.chat-work-card .work-expand {min-height:40px;}}
 .chat-work-card .work-change-preview {font-size:11px;line-height:1.4;margin:3px 0;}
 .chat-work-card .work-card-actions .work-expand {margin-left:auto;}

@@ -1,7 +1,8 @@
+import { Dialog } from "./ux";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Clock3, Pencil, RotateCcw, X } from "lucide-react";
 import { api, post } from "./api";
-import { useDialogFocus } from "./components";
+import { eventStreamOnline, fallbackInterval } from "./events";
 
 export type ActionChange = {
   id: string; command_id: string; kind: string; entity_id: string | null;
@@ -54,10 +55,31 @@ export function useWork(enabled: boolean, scope?: string, conversation?: string 
     setItems([]); setChatItems([]);
     if (!enabled) return;
     void refresh();
-    const update = () => void refresh();
-    const timer = setInterval(update, 3000);
+    // The change feed signals work.changed; polling is only a fallback (fast while the
+    // feed is down, slow while it is healthy, paused while the tab is hidden).
+    let timer: ReturnType<typeof setTimeout> | null = null, burst: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = document.hidden ? null : setTimeout(() => { void refresh(); schedule(); }, fallbackInterval(eventStreamOnline(), 3000));
+    };
+    const update = () => {
+      // Coalesce bursts of work events into one refresh.
+      if (burst) return;
+      burst = setTimeout(() => { burst = null; void refresh(); schedule(); }, 150);
+    };
+    const visibility = () => { if (!document.hidden) update(); else schedule(); };
+    schedule();
     window.addEventListener("eri-work-changed", update);
-    return () => { current.current++; clearInterval(timer); window.removeEventListener("eri-work-changed", update); };
+    window.addEventListener("eri-events-status", schedule);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      current.current++;
+      if (timer) clearTimeout(timer);
+      if (burst) clearTimeout(burst);
+      window.removeEventListener("eri-work-changed", update);
+      window.removeEventListener("eri-events-status", schedule);
+      document.removeEventListener("visibilitychange", visibility);
+    };
   }, [enabled, scope, conversation]);
   return { items, chatItems, error, refresh };
 }
@@ -156,12 +178,10 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
 export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
   items: WorkItem[]; error: string; onClose: () => void; onRefresh: () => Promise<void>; onOpen: Props["onOpen"];
 }) {
-  useDialogFocus();
   const [clearing, setClearing] = useState(false), [clearError, setClearError] = useState("");
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
-  return <div className="modal-backdrop activity-backdrop" onClick={event => {if(event.target===event.currentTarget) onClose();}}>
-    <section className="activity-panel" role="dialog" aria-modal="true" aria-label="Eri activity"
+  return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel" aria-label="Eri activity"
       onKeyDown={event => {if(event.key === "Escape") onClose();}}>
       <header><div><h2>Activity</h2><p>Saved changes and work in progress.</p></div>
         <button ref={close} className="icon-button" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
@@ -175,6 +195,5 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
       {(error || clearError) && <p role="alert">{error || clearError}</p>}
       {!items.length && <p className="activity-empty">Ask Eri to do something. Its progress and saved changes will appear here.</p>}
       <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
-    </section>
-  </div>;
+    </Dialog>;
 }

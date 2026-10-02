@@ -1,8 +1,8 @@
+import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId } from "./editor-control";
 import { useState } from "react";
 import { X, Check, Clock3 } from "lucide-react";
-import { useDialogFocus } from "./components";
 import { localDateTime } from "./workspace";
 import type { Schedule, Task, Project, Notice } from "./types";
 export function ScheduleDialog({
@@ -30,7 +30,6 @@ export function ScheduleDialog({
   onClose: () => void;
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
 }) {
-  useDialogFocus();
   const [title, setTitle] = useState(
     schedule?.title ?? linkedTask?.title ?? "",
   );
@@ -174,16 +173,8 @@ export function ScheduleDialog({
     },
   });
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
+    <Dialog onBackdrop={() => onClose()} as="form"
         className="dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="schedule-heading"
         onSubmit={(e) => {
           e.preventDefault();
@@ -373,7 +364,6 @@ export function ScheduleDialog({
             {inactive ? "Reschedule" : "Save reminder"}
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }

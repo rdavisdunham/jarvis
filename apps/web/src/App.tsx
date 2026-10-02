@@ -3,13 +3,11 @@ import { SettingsLayout } from "./SettingsLayout";
 import { readSettingsSection, type SettingsSection } from "./settings-sections";
 import "./shell.css";
 import { NoticeSnooze } from "./NoticeSnooze";
-import { RoutingReviewPanel, NotificationPreferences } from "./PlannerPreferences";
 import { StructureWorkspace } from "./Structure";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryActions } from "./MemoryActions";
-import { humanLabel, PlannerGuide, useBodyLock } from "./ux";
-import { BotSettings } from "./BotSettings";
+import { humanLabel, PlannerGuide, useBodyLock, useMaxWidth, matchesMaxWidth, COMPACT_MAX_WIDTH, PHONE_MAX_WIDTH, NARROW_MAX_WIDTH } from "./ux";
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
@@ -23,7 +21,6 @@ import {
 } from "./saved-views";
 import { AccountSwitcher, SharingSettings } from "./Accounts";
 import { TaskDetails } from "./TaskDetails";
-import { CalendarDetails } from "./CalendarDetails";
 import { TaskTabs } from "./TaskTabs";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
@@ -47,7 +44,7 @@ import {
   scheduledBy,
   type Organization,
 } from "./productivity";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Bell,
@@ -76,7 +73,7 @@ import {
 } from "lucide-react";
 import { api, ApiError, command, post, setCsrf, setDevice } from "./api";
 import { Voice, type VoiceState } from "./voice";
-import { subscribeEvents } from "./events";
+import { bridgeInterval, createLoader, signalScope, subscribeEvents } from "./events";
 import {
   NotesPage,
   NoteEditor,
@@ -85,9 +82,6 @@ import {
   type NoteRecord,
 } from "./Notes";
 import { GoogleSettings, startGoogle } from "./GoogleSettings";
-import { GoogleEventDialog } from "./GoogleEventDialog";
-import { PlanningDialog } from "./PlanningDialog";
-import { LinearSettings, LinearTask } from "./Linear";
 import type { CalendarEntry } from "./types";
 import { BulkTaskDialog } from "./BulkTaskDialog";
 import { Workspace } from "./Workspace";
@@ -96,6 +90,7 @@ import type { Project } from "./types";
 import { MemoryReviewCard } from "./MemoryReviewCard";
 import { WakeWord, recognitionType } from "./wake-word";
 import { useSiteControl } from "./copilot";
+import { ensurePushSubscription, watchPushSubscription } from "./push-subscription";
 import type {
   Bootstrap,
   UIAction,
@@ -121,6 +116,24 @@ import {
   MemoryCapture,
   SettingsPanel,
 } from "./components";
+// Heavy views and dialogs that most sessions never open load on demand (and are
+// prefetched once the app is idle so opening them stays instant).
+const viewChunks = {
+  calendarDetails: () => import("./CalendarDetails"),
+  googleEvent: () => import("./GoogleEventDialog"),
+  planning: () => import("./PlanningDialog"),
+  linear: () => import("./Linear"),
+  bots: () => import("./BotSettings"),
+  preferences: () => import("./PlannerPreferences"),
+};
+const CalendarDetails = lazy(() => viewChunks.calendarDetails().then((m) => ({ default: m.CalendarDetails })));
+const GoogleEventDialog = lazy(() => viewChunks.googleEvent().then((m) => ({ default: m.GoogleEventDialog })));
+const PlanningDialog = lazy(() => viewChunks.planning().then((m) => ({ default: m.PlanningDialog })));
+const LinearSettings = lazy(() => viewChunks.linear().then((m) => ({ default: m.LinearSettings })));
+const LinearTask = lazy(() => viewChunks.linear().then((m) => ({ default: m.LinearTask })));
+const BotSettings = lazy(() => viewChunks.bots().then((m) => ({ default: m.BotSettings })));
+const RoutingReviewPanel = lazy(() => viewChunks.preferences().then((m) => ({ default: m.RoutingReviewPanel })));
+const NotificationPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.NotificationPreferences })));
 const nav: { id: View; label: string; icon: typeof Sun }[] = [
   { id: "all", label: "Tasks", icon: ListTodo },
   { id: "organize", label: "Organization", icon: ListTodo },
@@ -157,7 +170,7 @@ export default function App() {
     initialSavedView?.timeline_date ?? "",
   );
   const [timelineSpan, setTimelineSpan] = useState<TimelineSpan>(
-    initialSavedView?.timeline_span ?? (window.innerWidth <= 600 ? 14 : 30),
+    initialSavedView?.timeline_span ?? (matchesMaxWidth(NARROW_MAX_WIDTH) ? 14 : 30),
   );
   const [organizationTab, setOrganizationTab] = useState<
     "goal" | "project" | "area" | "space" | "actor"
@@ -286,8 +299,16 @@ export default function App() {
   const [taskSearchText, setTaskSearchText] = useState(initialSavedView?.query ?? "");
   useEffect(() => { if (isTaskTab(view)) setTaskSearchText(query); }, [view, query]);
   const [error, setError] = useState(""),
-    [toast, setToast] = useState(""),
-    [busy, setBusy] = useState(false);
+    [toast, setToast] = useState("");
+  // Count in-flight foreground operations instead of one shared flag, so overlapping
+  // saves cannot clear each other's busy state. Background work (quick captures,
+  // completion toggles) never blocks dialogs.
+  const [pendingOps, setPendingOps] = useState(0);
+  const busy = pendingOps > 0;
+  const setBusy = useCallback(
+    (on: boolean) => setPendingOps((n) => Math.max(0, n + (on ? 1 : -1))),
+    [],
+  );
   const [sidebar, setSidebar] = useState(false),
     [companion, setCompanion] = useState(false);
   const [selected, setSelected] = useState<Task | null>(null),
@@ -397,7 +418,7 @@ export default function App() {
   });
   const [memoryRevision, setMemoryRevision] = useState(0);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  const [mobile, setMobile] = useState(() => window.innerWidth <= 1000);
+  const mobile = useMaxWidth(COMPACT_MAX_WIDTH);
   useBodyLock(mobile && (companion || sidebar || searchOpen));
   const uiResults = useRef<
     { id: string; status: string; message?: string; data?: unknown }[]
@@ -470,42 +491,55 @@ export default function App() {
   }, []);
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
-  const load = useCallback(async () => {
-    const [taskData, scheduleData, noticeData, projectData, preferences] =
-      await Promise.all([
-        api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
-        api<{ items: Schedule[]; next_cursor?: string | null }>("/schedules"),
-        api<{ items: Notice[] }>("/notifications"),
-        api<Organization>("/organization"),
-        api<Bootstrap>("/bootstrap"),
-      ]);
-    let items = taskData.items,
-      cursor = taskData.next_cursor;
-    while (cursor) {
-      const page = await api<{ items: Task[]; next_cursor: string | null }>(
-        "/tasks?limit=200&before=" + cursor,
-      );
-      items = [...items, ...page.items];
-      cursor = page.next_cursor;
-    }
-    setBoot(preferences);
-    setTasks(items);
-    let scheduleItems = scheduleData.items,
-      scheduleCursor = scheduleData.next_cursor;
-    while (scheduleCursor) {
-      const page = await api<{
-        items: Schedule[];
-        next_cursor?: string | null;
-      }>("/schedules?before=" + scheduleCursor);
-      scheduleItems = [...scheduleItems, ...page.items];
-      scheduleCursor = page.next_cursor;
-    }
-    setSchedules(scheduleItems);
-    setProjects(projectData.projects);
-    setOrganization(projectData);
-    setNotices(noticeData.items);
-    setNoteRevision((n) => n + 1);
-  }, []);
+  // One coalesced, single-flight loader for the workspace snapshot (see events.ts).
+  // /bootstrap is read first so its event_cursor is a lower bound for the rest of the
+  // snapshot; change-feed signals at or below it (including our own write echoes) are dropped.
+  const loader = useRef<ReturnType<typeof createLoader> | null>(null);
+  if (!loader.current)
+    loader.current = createLoader(async ({ revision, current }) => {
+      const preferences = await api<Bootstrap>("/bootstrap");
+      const [taskData, scheduleData, noticeData, projectData] =
+        await Promise.all([
+          api<{ items: Task[]; next_cursor: string | null }>("/tasks?limit=200"),
+          api<{ items: Schedule[]; next_cursor?: string | null }>("/schedules"),
+          api<{ items: Notice[] }>("/notifications"),
+          api<Organization>("/organization"),
+        ]);
+      let items = taskData.items,
+        cursor = taskData.next_cursor;
+      while (cursor && current()) {
+        const page = await api<{ items: Task[]; next_cursor: string | null }>(
+          "/tasks?limit=200&before=" + cursor,
+        );
+        items = [...items, ...page.items];
+        cursor = page.next_cursor;
+      }
+      let scheduleItems = scheduleData.items,
+        scheduleCursor = scheduleData.next_cursor;
+      while (scheduleCursor && current()) {
+        const page = await api<{
+          items: Schedule[];
+          next_cursor?: string | null;
+        }>("/schedules?before=" + scheduleCursor);
+        scheduleItems = [...scheduleItems, ...page.items];
+        scheduleCursor = page.next_cursor;
+      }
+      // A superseded (cancelled) load must not overwrite newer state.
+      if (!current()) return;
+      setBoot(preferences);
+      setTasks(items);
+      setSchedules(scheduleItems);
+      setProjects(projectData.projects);
+      setOrganization(projectData);
+      setNotices(noticeData.items);
+      if (revision) setNoteRevision((n) => n + 1);
+      return preferences.event_cursor;
+    });
+  /** Explicit reload (user action or local change): immediate, refreshes dependent views. */
+  const load = useCallback(
+    () => loader.current!.request({ immediate: true, revision: true }),
+    [],
+  );
   const initialize = useCallback(async () => {
     try {
       const info = await api<Bootstrap>("/bootstrap");
@@ -546,35 +580,61 @@ export default function App() {
   }, [initialize]);
   useEffect(() => {
     if (!boot) return;
+    // Warm the on-demand chunks once the first screen has settled.
+    const warm = () => Object.values(viewChunks).forEach((chunk) => void chunk().catch(() => {}));
+    const idle = window.requestIdleCallback?.(warm, { timeout: 5000 });
+    const timer = idle === undefined ? setTimeout(warm, 3000) : undefined;
+    return () => {
+      if (idle !== undefined) window.cancelIdleCallback?.(idle);
+      if (timer) clearTimeout(timer);
+    };
+  }, [!!boot]);
+  const eventScope = boot
+    ? boot.account_id + ":" + (boot.workspace?.id ?? "personal")
+    : "";
+  const eventCursor = useRef(0);
+  eventCursor.current = boot?.event_cursor ?? 0;
+  useEffect(() => {
+    if (!eventScope) return;
+    const loads = loader.current!;
+    // A new scope starts from that scope's cursor; earlier snapshots say nothing about it.
+    loads.reset();
+    let online = false;
     const stopEvents = subscribeEvents(
-      boot.event_cursor,
-      () => {
-        setMemoryRevision((v) => v + 1);
-        void load().catch(() =>
-          setSyncWarning("Task updates are reconnecting…"),
-        );
+      eventCursor.current,
+      (signal) => {
+        const scope = signalScope(signal);
+        if (scope.memory) setMemoryRevision((v) => v + 1);
+        if (!scope.load && !scope.revision) return;
+        void loads
+          .request({
+            revision: scope.revision,
+            cursor: signal.reason === "event" ? signal.id : undefined,
+          })
+          .catch(() => setSyncWarning("Task updates are reconnecting…"));
       },
-      (online) =>
+      (connected) => {
+        online = connected;
         setSyncWarning(
-          online
+          connected
             ? ""
             : "Live task updates are reconnecting. Voice can continue.",
-        ),
+        );
+      },
     );
+    // Fallback poll only while the change feed is down (or the tab was hidden).
     const timer = setInterval(() => {
-      api<Bootstrap>("/bootstrap")
-        .then(async (info) => {
-          setBoot(info);
-          await load();
-          setSyncWarning("");
-        })
+      if (online || document.hidden) return;
+      loads
+        .request({ revision: true })
+        .then(() => setSyncWarning(""))
         .catch(() => {});
     }, 30000);
     return () => {
       stopEvents();
       clearInterval(timer);
     };
-  }, [!!boot, load]);
+  }, [eventScope]);
   useEffect(() => {
     if (view !== "memory" || !boot) return;
     let current = true;
@@ -599,7 +659,7 @@ export default function App() {
       current = false;
       clearTimeout(timer);
     };
-  }, [view, query, !!boot, toast, memoryRevision]);
+  }, [view, query, !!boot, memoryRevision]);
   useEffect(() => {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -631,12 +691,18 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [toast]);
+  // Follow new chat output only while the reader is at (or near) the bottom; never
+  // yank someone who scrolled up to reread. Their own new message always scrolls.
+  const chatPinned = useRef(true);
+  const lastMessage = messages.at(-1);
   useEffect(() => {
+    if (!chatPinned.current && lastMessage?.role !== "user") return;
+    chatPinned.current = true;
     messageEnd.current?.scrollIntoView({
       block: "nearest",
       behavior: "smooth",
     });
-  }, [messages]);
+  }, [messages.length, lastMessage?.id, lastMessage?.content, thinking, chatEntries.length]);
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "open-inbox") setView("notifications");
@@ -650,6 +716,7 @@ export default function App() {
     tool: string,
     args: unknown,
     success: string,
+    options: { background?: boolean } = {},
   ): Promise<T | undefined> {
     // A lost response may hide a committed write. Repeated Save must reuse its receipt.
     const key = JSON.stringify([tool, args]);
@@ -657,11 +724,15 @@ export default function App() {
       pendingCommands.current.get(key) ?? command<unknown>(tool, args);
     pendingCommands.current.set(key, request);
     async function send() {
-      setBusy(true);
-      setError("");
+      if (!options.background) {
+        setBusy(true);
+        setError("");
+      }
       try {
         const result = await request.send();
         pendingCommands.current.delete(key);
+        // The memory list is fetched separately; refresh it after memory writes.
+        if (tool.startsWith("memory.")) setMemoryRevision((v) => v + 1);
         await load().catch(() =>
           setSyncWarning(
             "Saved. The workspace will refresh when the connection returns.",
@@ -688,7 +759,7 @@ export default function App() {
           };
         return undefined;
       } finally {
-        setBusy(false);
+        if (!options.background) setBusy(false);
       }
     }
     return send();
@@ -709,13 +780,42 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function add(e: React.FormEvent) {
+  // Quick captures are queued and sent in order; nothing typed is ever dropped while
+  // another save is in flight. A failed capture is put back into the input.
+  const captureQueue = useRef<{ title: string; args: Record<string, unknown> }[]>([]);
+  const capturing = useRef(false);
+  const captureContext = useRef({ query, taskFilters, taskStatus, view });
+  captureContext.current = { query, taskFilters, taskStatus, view };
+  async function drainCaptures() {
+    if (capturing.current) return;
+    capturing.current = true;
+    try {
+      while (captureQueue.current.length) {
+        const item = captureQueue.current[0];
+        const result = await mutate<Task>("task.create", item.args, "Task added", { background: true });
+        captureQueue.current.shift();
+        if (!result) {
+          setQuick((current) => current.trim() ? current : item.title);
+          continue;
+        }
+        // Keep a newly captured record discoverable even when the current filters exclude it.
+        const { query, taskFilters, taskStatus, view } = captureContext.current;
+        const matches = (!query || result.title.toLowerCase().includes(query.toLowerCase())) && matchesTaskFilters(result, taskFilters) && (taskStatus === "active" || taskStatus === "all" || taskStatus === result.status);
+        if (!matches || (!result.planned_date && ["today", "week"].includes(view))) openTaskCard(result);
+      }
+    } finally {
+      capturing.current = false;
+    }
+  }
+  function add(e: React.FormEvent) {
     e.preventDefault();
-    if (!quick.trim() || busy) return;
-    const result = await mutate<Task>(
-      "task.create",
-      {
-        title: quick.trim(),
+    const title = quick.trim();
+    if (!title) return;
+    setError("");
+    captureQueue.current.push({
+      title,
+      args: {
+        title,
         project_id:
           view === "inbox"
             ? null
@@ -724,22 +824,36 @@ export default function App() {
         area_id: view === "inbox" ? null : organizationFilter.area || null,
         planned_date: planToday && ["today", "week"].includes(view) ? today : null,
       },
-      "Task added",
-    );
-    if (result) {
-      setQuick("");
-      // Keep a newly captured record discoverable even when the current filters exclude it.
-      const matches = (!query || result.title.toLowerCase().includes(query.toLowerCase())) && matchesTaskFilters(result, taskFilters) && (taskStatus === "active" || taskStatus === "all" || taskStatus === result.status);
-      if (!matches || (!result.planned_date && ["today", "week"].includes(view))) openTaskCard(result);
-    }
+    });
+    setQuick("");
+    void drainCaptures();
   }
+  // Completion toggles apply immediately and roll back if the server rejects them.
+  const toggling = useRef(new Set<string>());
   async function toggle(task: Task) {
+    if (toggling.current.has(task.id)) return;
+    toggling.current.add(task.id);
     const completed = task.status === "completed";
-    await mutate(
-      completed ? "task.reopen" : "task.complete",
-      { task_id: task.id, expected_revision: task.revision },
-      completed ? "Task reopened" : "Task completed",
-    );
+    const optimistic: Task = {
+      ...task,
+      status: completed ? "open" : "completed",
+      completed_at: completed ? null : new Date().toISOString(),
+    };
+    setTasks((items) => items.map((t) => (t.id === task.id ? optimistic : t)));
+    try {
+      const result = await mutate(
+        completed ? "task.reopen" : "task.complete",
+        { task_id: task.id, expected_revision: task.revision },
+        completed ? "Task reopened" : "Task completed",
+        { background: true },
+      );
+      if (result === undefined)
+        setTasks((items) =>
+          items.map((t) => (t.id === task.id && t.revision === task.revision ? task : t)),
+        );
+    } finally {
+      toggling.current.delete(task.id);
+    }
   }
   async function ensureConversation() {
     if (conversationRef.current) return conversationRef.current;
@@ -1309,29 +1423,45 @@ export default function App() {
       }
     }
   }
-  useEffect(() => {
-    const resize = () => setMobile(window.innerWidth <= 1000);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
+  // Device bridge cadence. The server keeps the screen context for 60 s and a dispatched
+  // screen action for 12 s (it waits ~10 s for our acknowledgement), so: poll fast while an
+  // agent, chat or voice turn is active; slower when idle; slowest (but well inside the
+  // 60 s context window) when hidden. Results are acknowledged immediately.
+  const bridgeActive = thinking || activeWork > 0 || (!!voiceState && !voiceState.closed);
+  const bridgeInFlight = useRef(false);
   useEffect(() => {
     if (!boot) return;
-    let inFlight = false;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const interval = () => bridgeInterval(bridgeActive, document.hidden);
+    const schedule = (wait: number) => {
+      if (timer) clearTimeout(timer);
+      if (!stopped) timer = setTimeout(sync, wait);
+    };
     const sync = async () => {
-      if (inFlight) return;
-      inFlight = true;
+      // Shared across cadence changes so a restart never overlaps an in-flight sync.
+      if (bridgeInFlight.current) return schedule(interval());
+      bridgeInFlight.current = true;
+      let failed = false;
       try {
         await syncUIRef.current();
       } catch {
-        /* retry with the same acknowledgements */
+        failed = true; /* retry with the same acknowledgements */
       } finally {
-        inFlight = false;
+        bridgeInFlight.current = false;
+        // Pending results (from an action just shown) are acknowledged right away.
+        schedule(!failed && uiResults.current.length ? 0 : interval());
       }
     };
+    const visibility = () => { if (!document.hidden) void sync(); else schedule(interval()); };
+    document.addEventListener("visibilitychange", visibility);
     void sync();
-    const timer = setInterval(sync, 700);
-    return () => clearInterval(timer);
-  }, [!!boot]);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [!!boot, bridgeActive]);
   useEffect(() => {
     if (!highlight || !["reminders", "calendar"].includes(view)) return;
     let attempts = 0;
@@ -1570,6 +1700,12 @@ export default function App() {
       document.removeEventListener("visibilitychange", begin);
     };
   }, [wakeEnabled, !!boot, !!voiceState && !voiceState.closed, thinking]);
+  const pushKey = boot?.capabilities.push ? boot.vapid_public_key : null;
+  useEffect(() => {
+    if (!pushKey) return;
+    void ensurePushSubscription(pushKey);
+    return watchPushSubscription(pushKey);
+  }, [pushKey, boot?.account_id, boot?.workspace?.id]);
   async function enablePush() {
     if (!("PushManager" in window)) {
       setError(
@@ -1966,7 +2102,7 @@ export default function App() {
               setView(target);
               setQuery("");
               setSidebar(false);
-              if (matchMedia("(max-width: 700px)").matches)
+              if (matchesMaxWidth(PHONE_MAX_WIDTH))
                 document.querySelector<HTMLButtonElement>(".mobile-menu")?.focus({preventScroll: true});
             }}
             onLogout={async () => {
@@ -2299,7 +2435,7 @@ export default function App() {
                       placeholder="Add a task…"
                       maxLength={500}
                     />
-                    <button disabled={!quick.trim() || busy} type="submit">
+                    <button disabled={!quick.trim()} type="submit">
                       Add<span>↵</span>
                     </button>
                   </form>{["today", "week"].includes(view) && <button className="plan-chip" aria-pressed={planToday} onClick={() => setPlanToday(!planToday)} title="Planned day is when you intend to work on this task">{planToday ? <>Planned today <X size={12}/></> : "Plan today"}</button>}</div>
@@ -2668,6 +2804,7 @@ export default function App() {
             {view === "settings" && (
               <>
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
+                <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
                 {settingsSection === "organization"&&!boot.workspace?.id&&<RoutingReviewPanel/>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
@@ -2823,6 +2960,7 @@ export default function App() {
                     onPush={enablePush}
                   />
                 )}
+                </Suspense>
                 </SettingsLayout>
               </>
             )}
@@ -2885,7 +3023,14 @@ export default function App() {
                 Conversation history is off · Tasks still save
               </div>
             )}
-            <div className="messages">
+            <div
+              className="messages"
+              onScroll={(event) => {
+                const el = event.currentTarget;
+                chatPinned.current =
+                  el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              }}
+            >
               {!messages.length && (
                 <div className="conversation-empty">
                   <Sparkles size={23} />
@@ -3106,14 +3251,14 @@ export default function App() {
           linkedNotes={
             selected.id !== "new" ? (
               <>
-                <LinearTask
+                <Suspense fallback={null}><LinearTask
                   task={selected}
                   mutate={mutate}
                   onChanged={() => {
                     setSelected(null);
                     void load();
                   }}
-                />
+                /></Suspense>
                 {!selected.is_template && (
                   <button
                     type="button"
@@ -3228,7 +3373,7 @@ export default function App() {
         />
       )}
       {calendarDetail && calendarDetail.kind !== "task" && (
-        <CalendarDetails
+        <Suspense fallback={null}><CalendarDetails
           key={calendarDetail.id}
           event={calendarDetail}
           allTasks={tasks}
@@ -3262,10 +3407,10 @@ export default function App() {
             else if (entry.kind === "task" && task) openTaskCard(task);
             else if (schedule) setScheduleEditor({ schedule });
           }}
-        />
+        /></Suspense>
       )}
       {googleEvent && googleEvent.kind !== "google" && (
-        <PlanningDialog
+        <Suspense fallback={null}><PlanningDialog
           key={googleEvent.entity_id}
           event={googleEvent}
           tasks={tasks}
@@ -3276,10 +3421,10 @@ export default function App() {
             setGoogleEvent(null);
             void load();
           }}
-        />
+        /></Suspense>
       )}
       {googleEvent && googleEvent.kind === "google" && (
-        <GoogleEventDialog
+        <Suspense fallback={null}><GoogleEventDialog
           key={
             googleEvent.entity_id +
             ":" +
@@ -3302,7 +3447,7 @@ export default function App() {
             setGoogleEvent(null);
             setError("");
           }}
-        />
+        /></Suspense>
       )}
       {noteEditor && (
         <NoteEditor

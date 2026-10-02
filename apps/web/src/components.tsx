@@ -1,4 +1,4 @@
-import { useBodyLock, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
+import { useBodyLock, useDialogFocus, Dialog, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
@@ -20,35 +20,8 @@ import {
   Brain,
 } from "lucide-react";
 import type { Bootstrap, Task, Project, Schedule } from "./types";
-export function useDialogFocus() {
-  useBodyLock(true);
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const trap = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || event.defaultPrevented) return;
-      const dialog = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(el => el.getClientRects().length).at(-1);
-      const items = Array.from(
-        dialog?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary, [tabindex="0"]',
-        ) ?? [],
-      ).filter(el => el.getClientRects().length && el.tabIndex >= 0);
-      const first = items[0],
-        last = items.at(-1);
-      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener("keydown", trap);
-    return () => {
-      document.removeEventListener("keydown", trap);
-      if (previous?.isConnected) previous.focus({preventScroll: true});
-    };
-  }, []);
-}
+// Kept here for existing importers; the implementation lives with the Dialog primitive.
+export { useDialogFocus };
 export function dayInZone(zone: string) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: zone,
@@ -225,7 +198,6 @@ export function TaskDialog({
   onSave: (args: unknown) => Promise<unknown>;
   onArchive: () => Promise<void>;
 }) {
-  useDialogFocus();
   const [draft, setDraft] = useState(task);
   useEffect(() => setDraft(task), [task]);
   async function save() {
@@ -310,16 +282,8 @@ export function TaskDialog({
     close: onClose,
   });
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
+    <Dialog onBackdrop={() => onClose()} as="form"
         className="dialog task-create-dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="task-dialog-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -605,8 +569,7 @@ export function TaskDialog({
             {busy ? "Saving…" : task.id === "new" ? "Create task" : "Save task"}
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
 export function ReminderDialog({
@@ -620,22 +583,13 @@ export function ReminderDialog({
   onClose: () => void;
   onSave: (args: unknown) => Promise<void>;
 }) {
-  useDialogFocus();
   const [title, setTitle] = useState(""),
     [when, setWhen] = useState(""),
     [repeat, setRepeat] = useState(""),
     [kind, setKind] = useState("reminder");
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <form
+    <Dialog onBackdrop={() => onClose()} as="form"
         className="dialog"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="reminder-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -719,8 +673,7 @@ export function ReminderDialog({
             {busy ? "Saving…" : "Save reminder"}
           </button>
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
 export function MemoryCapture({

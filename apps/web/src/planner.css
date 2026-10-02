@@ -1230,7 +1230,7 @@
 .saved-view-menu .saved-view-name {width:100%}.task-check {position:relative;width:32px;height:32px;min-width:32px;border:0;background:none!important;display:grid;place-items:center}.task-check:before {content:"";position:absolute;width:18px;height:18px;border:1px solid #637182;border-radius:5px}.task-check svg {position:relative}.task-row.done .task-check:before {background:var(--accent);border-color:var(--accent)}
 .invitation-card,.invitation-copy {padding:16px;border:1px solid var(--border);border-radius:10px;margin:16px 0;background:var(--surface)}.invitation-copy label {display:grid;gap:8px;font-size:12px}.invitation-copy textarea {width:100%;min-height:95px;resize:vertical}.invitation-copy button {margin-top:9px}
 .calendar-mobile-count {display:none}
-@media(max-width:650px) {
+@media (max-width: 650px) {
  .content .page-heading {margin-bottom:12px}.content .page-heading h1 {font-size:24px}.task-tab-description {display:none}.task-tab-header {margin-bottom:10px}.task-tabs button {min-height:40px;padding:8px 12px}
  .saved-view-menu {margin-bottom:6px}.filter-panel:not([open]) {margin-bottom:10px}.quick-add.compact-capture {margin:10px 0}.workspace-actions {gap:7px;flex-wrap:wrap;margin-bottom:10px}.board-drag-help {font-size:10px;margin:6px 0 10px}
  .task-check {width:44px;height:44px;min-width:44px;margin-left:-8px;margin-right:-5px}.task-more,.board-drag-handle,.close-companion,.calendar-nav .icon-button {min-width:44px;min-height:44px}.task-row {min-height:54px}

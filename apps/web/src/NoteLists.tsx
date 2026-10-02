@@ -156,8 +156,14 @@ export function NoteFiling({note, disabled, readOnly = false, onSaved, onOpen}: 
   useEffect(() => {
     if (disabled || !["queued", "running", "retry_waiting"].includes(note.organization?.status ?? "")) return;
     let live = true;
-    const timer = window.setTimeout(() => {api<NoteRecord>("/notes/" + note.id).then(n => {if (live) onSaved(n);}).catch(e => {if(live) setError(e.message);});}, 2500);
-    return () => {live = false;window.clearTimeout(timer);};
+    // Poll while organizing, but not from a hidden tab; resume when it becomes visible.
+    const check = () => {
+      if (document.hidden) return;
+      document.removeEventListener("visibilitychange", check);
+      api<NoteRecord>("/notes/" + note.id).then(n => {if (live) onSaved(n);}).catch(e => {if(live) setError(e.message);});
+    };
+    const timer = window.setTimeout(() => {if (document.hidden) document.addEventListener("visibilitychange", check); else check();}, 2500);
+    return () => {live = false;window.clearTimeout(timer);document.removeEventListener("visibilitychange", check);};
   }, [note, disabled, onSaved]);
   async function act(tool: string, args: unknown) {
     setBusy(true);setError("");

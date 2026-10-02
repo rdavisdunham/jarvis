@@ -1,6 +1,6 @@
 import { NoteLists, NoteFiling } from "./NoteLists";
 import { RecordTools } from "./record-links";
-import { humanLabel } from "./ux";
+import { humanLabel, Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields, LinkPicker, OrganizationFilters } from "./Productivity";
@@ -13,7 +13,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Archive, ArrowRight, FileText, Plus, Sparkles, X } from "lucide-react";
 import { api, post } from "./api";
-import { useDialogFocus } from "./components";
 import type { Project, Task } from "./types";
 
 type NoteSource = {id:string; title:string; evidence:string; source_revision:number; source_changed:boolean};
@@ -401,7 +400,6 @@ export function NoteEditor({
   onTask: (id: string) => void;
   onConversation: (id: string) => void;
 }) {
-  useDialogFocus();
   const [writing, setWriting] = useState(note.id === "new");
   const [discarding, setDiscarding] = useState(false);
   const [home, setHome] = useState<Home>({
@@ -628,12 +626,9 @@ export function NoteEditor({
     }
   }
   return (
-    <div className="modal-backdrop">
-      <form
+    <Dialog as="form"
         className={"dialog note-editor " + (!writing ? "note-detail" : "")}
         onChange={() => setWriting(true)}
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="note-title"
         onSubmit={(e) => {
           e.preventDefault();
@@ -934,8 +929,7 @@ export function NoteEditor({
           {(writing || dirty) && <button className="primary" disabled={busy || extracting || !title.trim()}>Save note</button>}
           {!writing && !dirty && <span className="footnote">Click the title or text to edit</span>}
         </div>
-      </form>
-    </div>
+      </Dialog>
   );
 }
 

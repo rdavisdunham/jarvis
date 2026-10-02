@@ -1,9 +1,9 @@
+import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, nullableId, choice } from "./editor-control";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
-import { useDialogFocus } from "./components";
 import { localDateTime, shiftDate } from "./workspace";
 import type { CalendarEntry, Task } from "./types";
 import type { GoogleStatus } from "./GoogleSettings";
@@ -44,7 +44,6 @@ export function PlanningDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  useDialogFocus();
   const fresh = event.entity_id === "new",
     task = tasks.find((t) => t.id === event.task_id);
   const [record, setRecord] = useState<PlanningRecord | null>(null),
@@ -226,16 +225,8 @@ export function PlanningDialog({
     },
   });
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <section
+    <Dialog onBackdrop={() => onClose()}
         className="dialog google-event-editor"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="planning-title"
       >
         <div className="dialog-heading">
@@ -562,7 +553,6 @@ export function PlanningDialog({
             )}
           </>
         )}
-      </section>
-    </div>
+      </Dialog>
   );
 }

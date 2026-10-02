@@ -1296,6 +1296,7 @@ progress::-webkit-progress-value {
     font-size: 8px;
   }
 }
+/* Layout tiers mirror ux.tsx: COMPACT_MAX_WIDTH=1000, PHONE_MAX_WIDTH=700, NARROW_MAX_WIDTH=600. */
 @media (max-width: 1000px) {
   .companion {
     display: none;
@@ -3058,7 +3059,7 @@ progress::-webkit-progress-value {
 .work-card-actions {display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}.work-card-actions button {font-size:12px;min-height:30px}
 .work-revert-note {display:block;color:var(--muted,#aab4be);font-size:10px;line-height:1.4;margin-top:4px}.work-error {color:#ffc2bb;line-height:1.5}
 .work-revision {display:grid;gap:8px;margin-top:10px}.work-revision label {font-size:12px;display:grid;gap:6px}.work-revision textarea {width:100%;min-height:80px;box-sizing:border-box}.work-revision button {justify-self:end}
-@media(max-width:600px) {.activity-toggle>span {display:none}.activity-toggle {min-width:40px;padding:8px}.activity-backdrop {padding:6px}.activity-panel {border-radius:12px}.work-card-actions button {min-height:44px}.work-change dl>div {grid-template-columns:80px 1fr}}
+@media (max-width: 600px) {.activity-toggle>span {display:none}.activity-toggle {min-width:40px;padding:8px}.activity-backdrop {padding:6px}.activity-panel {border-radius:12px}.work-card-actions button {min-height:44px}.work-change dl>div {grid-template-columns:80px 1fr}}
 
 .work-original {margin-top:10px;color:var(--muted);font-size:12px}
 .work-original summary {cursor:pointer;padding:6px 0}

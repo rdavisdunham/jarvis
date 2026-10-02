@@ -1,8 +1,8 @@
+import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Pencil, X } from "lucide-react";
-import { useDialogFocus } from "./components";
 import { api, post } from "./api";
 import { localDateTime, shiftDate } from "./workspace";
 import type { CalendarEntry } from "./types";
@@ -53,7 +53,6 @@ export function GoogleEventDialog({
   onSaved: () => void;
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
 }) {
-  useDialogFocus();
   const fresh = event.entity_id === "new";
   const alive = useRef(true);
   useEffect(() => {
@@ -315,11 +314,8 @@ export function GoogleEventDialog({
       timeStyle: "short",
     }).format(new Date(value));
   return (
-    <div className="modal-backdrop">
-      <section
+    <Dialog
         className="dialog google-event-editor"
-        role="dialog"
-        aria-modal="true"
         aria-labelledby="google-event-title"
       >
         <div className="dialog-heading">
@@ -680,7 +676,6 @@ export function GoogleEventDialog({
             <ExternalLink size={15} />
           </a>
         )}
-      </section>
-    </div>
+      </Dialog>
   );
 }
