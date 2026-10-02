@@ -28,8 +28,7 @@ evals/app/automation-coverage.json` and commit it; lowering the baseline must be
 explicit, reviewed diff.
 
 `.github/dependabot.yml` opens weekly update PRs for GitHub Actions, the uv lockfile and
-`apps/web` npm dependencies. Docker base images are not yet covered (they are tag-pinned;
-see the TODO in `Dockerfile.upgrade`).
+`apps/web` npm dependencies, and the digest-pinned Docker base images in `Dockerfile.upgrade`.
 
 Runtime versions match the production build: Python 3.12, Node 22, uv 0.11.16.
 PostgreSQL uses the same 16.15 image as local Compose. Update those pins together.

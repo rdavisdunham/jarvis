@@ -174,8 +174,7 @@ jobs:
         working-directory: apps/web
         run: npm audit --audit-level=high --omit=dev
       - name: Scan for committed secrets (gitleaks)
-        # TODO(supply-chain): replace the tag with the verified release commit SHA, like the other actions.
-        uses: gitleaks/gitleaks-action@v2.3.9
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
