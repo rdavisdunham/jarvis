@@ -17,8 +17,22 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # The build toolchain only works when upgraded together (e.g. Vite 8 needs plugin-react 6).
+      web-toolchain:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "vitest"
+          - "@types/*"
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # Base-image majors (Node LTS line, PostgreSQL server version) are deliberate upgrades:
+      # CI does not build these images, and Postgres must match the Railway database.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

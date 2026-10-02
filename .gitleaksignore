@@ -1,0 +1,6 @@
+# Groq API keys committed in 2024 to the original voice prototype. All three were revoked
+# with the provider on 2026-10-02 and removed from the current tree; they remain only in
+# git history. Do not add new entries here for live credentials: revoke them first.
+2230ab18a4b34b2ee37cf601ba5617fc25dd4930:OLD/JARVISv0.1.py:generic-api-key:9
+2230ab18a4b34b2ee37cf601ba5617fc25dd4930:OLD/JARVISv0.2.py:generic-api-key:11
+822dec5037751fabf13661b30863cedc7c5491cb:JARVIS.py:generic-api-key:16

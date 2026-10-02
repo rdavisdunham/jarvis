@@ -173,23 +173,19 @@ async def test_needs_input_question_is_spoken_once_and_not_on_revision_bumps(con
     c.send.assert_not_awaited()
 
 
-async def test_answer_binds_to_the_heard_clarification(controller):
+async def test_heard_question_does_not_capture_the_next_request(controller):
+    # Regression (2026-10-02): after Eri asked a question, every later spoken request was
+    # attached to it as the "answer", so new requests (e.g. Linear changes) never ran.
     c = controller
-    work_id, question = pending_question(c)
+    work_id, _ = pending_question(c)
     await c.report_work()
-    await say(c, "user", "The grocery list.", 0)
-    await c.delegate("answer")
+    await say(c, "user", "Move the Linear issue about onboarding to In Progress.", 0)
+    await c.delegate("new request")
     with session_scope() as db:
-        answer = db.scalar(select(AgentWork).where(AgentWork.id != work_id))
-        data = unseal(answer.input_ciphertext)
-        assert answer.parent_id == work_id
-        assert answer.result["answered_clarification_id"] == question["id"]
-        assert data["clarification_answer"] == {"question": "Which list should I use?", "answer": "The grocery list."}
-        assert data["continuation_request"] == "Add milk"
-        assert db.get(Job, work_id).status == "continued"
-        assert "asked" in unseal(db.get(VoiceInbox, c.id).content_ciphertext)
-        assert unseal(db.get(VoiceInbox, c.id).content_ciphertext)["asked"] == []
-    assert "attached to the backend's pending question" in c.send.await_args.args[0]["content"]
+        other = db.scalar(select(AgentWork).where(AgentWork.id != work_id))
+        assert other.parent_id is None
+        assert "answered_clarification_id" not in other.result
+        assert db.get(Job, work_id).status == "needs_input"
     await c.close()
 
 

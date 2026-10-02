@@ -429,43 +429,56 @@
   display: none;
 }
 
-/* ---- Eri orb launcher ----------------------------------------------------------------- */
+/* ---- Eri launcher (pill; becomes a round close button while the chat is open) --------- */
 .chat-launcher {
   position: fixed;
   right: max(24px, env(safe-area-inset-right));
   bottom: calc(24px + env(safe-area-inset-bottom));
   z-index: 65;
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--orbit);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 62px;
+  height: 58px;
+  padding: 0 18px;
+  border: 1px solid var(--launcher-line);
+  border-radius: 24px;
   color: var(--orb-ink);
-  box-shadow: var(--shadow-float);
-  transition: transform 0.15s;
+  background: linear-gradient(125deg, #b5e1cf, #d8d0ef 65%, #efcfdc);
+  box-shadow: var(--launcher-shadow);
+  transition: transform 0.2s, box-shadow 0.2s, border-radius 0.2s;
+  isolation: isolate;
 }
 .chat-launcher:hover {
-  transform: scale(1.04);
+  transform: translateY(-3px);
+  box-shadow: var(--launcher-shadow-hover);
 }
 .chat-launcher:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 .chat-launcher:focus-visible {
   outline-offset: 3px;
 }
-.chat-launcher-icon {
-  display: grid;
-  place-items: center;
+.chat-launcher-label {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
-.chat-launcher-star {
-  width: 12px;
-  height: 12px;
+.chat-launcher.is-open {
+  width: 58px;
+  min-width: 58px;
+  padding: 0;
   border-radius: 50%;
-  background: var(--orb-star);
-  box-shadow: 0 0 10px 3px rgb(255 255 255 / 0.85);
 }
-.chat-launcher.is-listening .chat-launcher-star {
+.chat-launcher-icon {
+  display: flex;
+  transition: transform 0.28s;
+}
+.chat-launcher.is-open .chat-launcher-icon {
+  transform: rotate(90deg);
+}
+.chat-launcher.is-listening .chat-launcher-icon {
   animation: eri-breathe 1.6s ease-in-out infinite;
 }
 @keyframes eri-breathe {
@@ -475,8 +488,8 @@
 }
 .chat-live-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 3px;
+  right: 3px;
   width: 12px;
   height: 12px;
   border: 2px solid var(--paper);
@@ -491,7 +504,7 @@
 .app-shell .companion.visible {
   position: fixed;
   right: max(24px, env(safe-area-inset-right));
-  bottom: calc(88px + env(safe-area-inset-bottom));
+  bottom: calc(94px + env(safe-area-inset-bottom));
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -1134,7 +1147,7 @@
     left: 8px;
     right: 8px;
     top: max(8px, env(safe-area-inset-top));
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(80px + env(safe-area-inset-bottom));
     width: auto;
     height: auto;
     max-height: none;
@@ -1170,6 +1183,10 @@
   .app-shell .companion.visible,
   .chat-scrim {
     animation: none;
+  }
+  .chat-launcher,
+  .chat-launcher-icon {
+    transition: none;
   }
 }
 /* Page-level filter field (non-task views): icon sits inside the input. */

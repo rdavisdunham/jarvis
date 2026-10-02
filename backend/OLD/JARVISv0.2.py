@@ -8,7 +8,7 @@ import os
 
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text):
-    client = Groq(api_key="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")
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
     messages = [
         {

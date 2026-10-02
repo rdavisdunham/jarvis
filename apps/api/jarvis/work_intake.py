@@ -136,17 +136,8 @@ def claim_voice(db, row, *, close=False):
             voice_session_id=row.id,
             context=context[-20:],
         )
-        if not close and result.revision == 1 and not result.parent_id:
-            from .work_continuation import adopt, pending_for_voice
-            # The session heard exactly one backend question: its next delegated turn answers it.
-            pending = pending_for_voice(db, row.account_id, data.get("asked", []))
-            if pending:
-                try:
-                    adopt(db, result, *pending)
-                except DomainError:
-                    pending = None  # Expired original: the backend handles this turn on its own.
-            if pending:
-                data["asked"] = [i for i in data.get("asked", []) if i != pending[1]["id"]]
+    # A delegated turn is always a new request. Pending questions reach the backend as context,
+    # and it answers one with work_answer only when this turn actually is that answer.
     row.cursor = len(entries)
     if close:
         row.closed = True

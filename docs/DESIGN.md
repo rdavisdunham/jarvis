@@ -4,7 +4,7 @@ Eridani is a personal planner, task tracker, linked notebook and calendar with a
 
 **Spend the boldness in one place.** The iridescent orbit appears only in three spots:
 - the day ring on Today,
-- the Eri orb (chat launcher and assistant avatar),
+- Eri: the chat launcher's pastel gradient and the assistant avatar orb in the chat panel,
 - the brand mark.
 
 Everything else is quiet: paper surfaces, charcoal ink, a single violet action color, and hairlines. Never use gradient washes as decoration on cards, buttons or backgrounds.
@@ -100,7 +100,7 @@ desktop ≥ 1000px
 │ ✎ Notes    │                                                       │
 │            │                                                       │
 │ workspace ▾│                                                       │
-│ (D) Davin ▴│                                             (orb Eri) │
+│ (D) Davin ▴│                                             ( 💬 Eri ) │
 └────────────┴───────────────────────────────────────────────────────┘
 ```
 
@@ -110,7 +110,7 @@ desktop ≥ 1000px
   - Counts (open tasks, inbox) appear as small ink-3 tabular numbers.
   - The workspace switcher is a compact select near the bottom, above the profile.
 - **Phones:** the sidebar becomes a bottom tab bar (Today, Tasks, Calendar, Notes, More). The top bar shows only the page title, search and notifications.
-- **Eri orb:** a 52px circle filled with `--orbit`, a white star dot, and the float shadow, bottom-right. It's the only gradient-filled control. The chat panel is a floating surface (380×min(720px, 100vh − 120px)) anchored above it, which becomes a full sheet on phones.
+- **Eri launcher:** the original pill, kept by request. It is 58px tall with a chat-bubble icon and the label "Eri", on a mint → lavender → blush linear gradient (`#b5e1cf`, `#d8d0ef`, `#efcfdc`), sitting bottom-right. While the chat is open it becomes a 58px round close button with an X that rotates in. Its shadow and border come from `--launcher-shadow` and `--launcher-line`, which have separate light and dark values. It is the only gradient-filled control. The chat panel is a floating surface (380×min(720px, 100vh − 120px)) anchored just above it, and becomes a full sheet on phones.
 
 ## Pages
 

@@ -3063,7 +3063,8 @@ export default function App() {
       <button type="button" className={"chat-launcher" + (companion ? " is-open" : "") + (voiceState && !voiceState.closed ? " is-listening" : "")}
         aria-label={companion ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={companion}
         onClick={() => setCompanion(!companion)}>
-        <span className="chat-launcher-icon" aria-hidden="true">{companion ? <X size={22}/> : <span className="chat-launcher-star"/>}</span>
+        <span className="chat-launcher-icon" aria-hidden="true">{companion ? <X size={23}/> : <MessageCircle size={24}/>}</span>
+        {!companion && <span className="chat-launcher-label">Eri</span>}
         {voiceState && !voiceState.closed && <span className="chat-live-dot" aria-label="Voice active"/>}
       </button>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
