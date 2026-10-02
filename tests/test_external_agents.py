@@ -543,7 +543,7 @@ def test_direct_command_cannot_be_requeued_as_an_agent(client):
 
 def test_custom_record_routes_scopes_receipts_and_change_feed(client):
     external=TestClient(app)
-    _,headers=key(client,["schema:read","records:write"])
+    _,headers=key(client,["schema:read","records:write","tasks:write"])
     schema=external.get("/api/v1/external/structure",headers=headers)
     assert schema.status_code==200,schema.text
     created=call(headers,"record.create",{"type_id":"task","title":"Custom bot task","schema_revision":schema.json()["revision"]})

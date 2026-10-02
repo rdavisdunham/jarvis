@@ -223,8 +223,10 @@ def finish(state, browser, code=None, error=None):
             if linked:
                 owner=linked.owner_id
             else:
+                # New server accounts are operator-funded: only the server owner's invites mint them.
                 invited=db.scalar(select(WorkspaceInvite).where(
-                    WorkspaceInvite.email==email.casefold(),WorkspaceInvite.status=="pending",WorkspaceInvite.expires_at>now()))
+                    WorkspaceInvite.email==email.casefold(),WorkspaceInvite.status=="pending",WorkspaceInvite.expires_at>now(),
+                    WorkspaceInvite.inviter_id==get_settings().owner_id).limit(1))
                 if not invited:
                     raise DomainError("GOOGLE_ACCOUNT","This Google account needs an invitation to Eridani.",403)
                 owner=uid()
@@ -286,6 +288,10 @@ def finish(state, browser, code=None, error=None):
             identity.generation += 1
             identity.next_sync_at = now()
         emit(db, owner, "google.changed", owner)
+        if purpose != "login":
+            # The browser receives a replacement cookie; the session it replaces must not stay usable.
+            db.execute(delete(GoogleOAuthAttempt).where(GoogleOAuthAttempt.session_hash == values["session_hash"]))
+            db.delete(session)
         # Keep issuance under the same lock/transaction so unlink cannot precede a late session.
         return new_session(owner, "google", db=db)
 

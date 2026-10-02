@@ -92,6 +92,82 @@ def scrub(data, scopes):
     return result
 
 
+def custom_scrub(db, owner, data, scopes):
+    """records:read never exposes core task/note content without tasks:read/notes:read."""
+    hidden = {k for k, scope in (("task_id", "tasks:read"), ("note_id", "notes:read")) if scope not in scopes}
+    if not hidden:
+        return data
+    from .structure_models import StructureRecord, StructureSchema
+
+    schema = db.get(StructureSchema, owner)
+    # Bound field values on a task-backed record are read from the task itself.
+    bindings = {
+        t["id"]: {f["id"] for f in t["fields"] if f.get("binding")}
+        for t in (schema.definition["types"] if schema else [])
+    }
+    keys = set()
+
+    def collect(value):
+        if isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            if str(value.get("key", "")).startswith("record:"):
+                keys.add(value["key"][7:])
+            for item in value.values():
+                collect(item)
+
+    collect(data)
+    restricted = {
+        r.id: r
+        for r in db.scalars(select(StructureRecord).where(StructureRecord.owner_id == owner, StructureRecord.id.in_(keys)))
+        if any(getattr(r, k) for k in hidden)
+    } if keys else {}
+
+    def record(item):
+        if not any(item.get(k) for k in hidden):
+            return item
+        item = {k: v for k, v in item.items() if k != "body"}
+        if "task_id" in hidden and item.get("task_id"):
+            item.pop("task_revision", None)
+            for key in ("values", "inherited"):
+                if isinstance(item.get(key), dict):
+                    item[key] = {k: v for k, v in item[key].items() if k not in bindings.get(item.get("type_id"), ())}
+        if "note_id" in hidden and item.get("note_id"):
+            item.pop("note_revision", None)
+        return item
+
+    def walk(value):
+        if isinstance(value, list):
+            return [walk(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        if "evidence" in value and isinstance(value.get("record"), dict) and "type_id" in value["record"]:
+            # Search hits: evidence and field labels are derived from the hidden content.
+            hit = {k: walk(v) for k, v in value.items() if k != "record"}
+            hit["record"] = record(value["record"])
+            if hit["record"] is not value["record"]:
+                hit["evidence"] = hit["record"].get("title", "")
+                assignment = hit.get("current_assignment")
+                if isinstance(assignment, dict) and isinstance(assignment.get("fields"), dict):
+                    hit["current_assignment"] = {
+                        **assignment,
+                        "fields": {
+                            k: v
+                            for k, v in assignment["fields"].items()
+                            if k not in bindings.get(hit["record"].get("type_id"), ())
+                        },
+                    }
+            return hit
+        if "type_id" in value and ("task_id" in value or "note_id" in value):
+            return record(value)
+        if str(value.get("key", "")).startswith("record:") and value["key"][7:] in restricted:
+            return {**value, "evidence": value.get("label", "")}
+        return {k: walk(v) for k, v in value.items()}
+
+    return walk(data)
+
+
 def record_data(db, row, scopes):
     from .notes import note_data
     from .productivity import data
@@ -196,6 +272,12 @@ def request_identity(bot, request_id):
     return stable_id(f"bot-request:{bot.id}:{request_id}")
 
 
+def revert_command(change):
+    if change.entity_kind == "record_link":
+        return "record.link", {}
+    return change.entity_kind + ".update", {"record_id": change.entity_id} if change.entity_kind == "record" else {}
+
+
 def direct(db, bot, request_id, tool, arguments):
     """Receipt, journal, feed event and Activity item commit atomically with the effect."""
     identity = request_identity(bot, request_id)
@@ -207,7 +289,7 @@ def direct(db, bot, request_id, tool, arguments):
             bot_access.check_command(db, bot.owner_id, tool, arguments)
         else:
             change = owned(db, models.ActionChange, arguments["action_id"], bot.owner_id)
-            bot_access.check_command(db, bot.owner_id, ("record.link" if change.entity_kind == "record_link" else change.entity_kind + ".update"), {})
+            bot_access.check_command(db, bot.owner_id, *revert_command(change))
         if existing.input_hash != fingerprint:
             raise DomainError(
                 "REVISION_CONFLICT", "This request ID was already used for different instructions.", 409
@@ -218,7 +300,7 @@ def direct(db, bot, request_id, tool, arguments):
         source = db.get(models.AgentWork, change.command_id.split(":")[0])
         if not source or source.credential_id != bot.id:
             raise DomainError("NOT_FOUND", "Only this bot's own actions can be reverted with its key.", 404)
-        bot_access.check_command(db, bot.owner_id, ("record.link" if change.entity_kind == "record_link" else change.entity_kind + ".update"), {})
+        bot_access.check_command(db, bot.owner_id, *revert_command(change))
     else:
         bot_access.check_command(db, bot.owner_id, tool, arguments)
     conv = conversation(db, bot)
@@ -265,13 +347,16 @@ def direct_result(db, bot, row):
     receipt = db.get(models.Command, (bot.owner_id, receipt_ids[0])) if receipt_ids else None
     if not receipt:
         raise DomainError("REVISION_CONFLICT", "That request ID belongs to queued work.", 409)
-    return scrub({**receipt.result, "request_id": row.id, "activity": public_work(db, row)}, bot.scopes)
+    result = {**receipt.result, "request_id": row.id, "activity": public_work(db, row)}
+    return custom_scrub(db, bot.owner_id, scrub(result, bot.scopes), bot.scopes)
 
 
 def submit(db, bot, body):
     from .agent_work import enqueue
 
     identity = request_identity(bot, body.request_id)
+    # Same order as cancel/revise/running commands: work-order before work.
+    advisory(db, "work-order:" + bot.owner_id)
     advisory(db, "work:" + identity)
     bot_access.authorize(db, bot.owner_id, "work:run", write=True)
     conv = conversation(db, bot, body.thread_id)
@@ -299,6 +384,7 @@ def reply(db, bot, identity, body):
     from .agent_work import revise
     from .domain import check_revision
 
+    advisory(db, "work-order:" + bot.owner_id)
     advisory(db, "work:" + str(identity))
     bot_access.authorize(db, bot.owner_id, "work:run", write=True)
     row = get_work(db, bot, identity)
@@ -361,7 +447,7 @@ def changes(db, bot, after=0, limit=100):
         custom_data = None
         if kind == "record" and record and record.owner_id == bot.owner_id:
             from .structure import data
-            custom_data = data(db, record)
+            custom_data = custom_scrub(db, bot.owner_id, data(db, record), bot.scopes)
         elif kind == "structure":
             from .structure import schema_data
             custom_data = schema_data(db, bot.owner_id)
@@ -384,6 +470,42 @@ def changes(db, bot, after=0, limit=100):
         "next_cursor": rows[limit - 1].id if more else high,
         "has_more": more,
     }
+
+
+CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search"}
+
+
+def withheld(scopes):
+    return frozenset(kind for kind in ("task", "note") if kind + "s:read" not in scopes)
+
+
+def custom_read(db, bot, name, arguments):
+    """Custom-record reads shared by MCP and queued work; core content follows core scopes."""
+    from . import structure
+    from .structure_models import StructureRecord
+
+    if name == "structure_schema":
+        return structure.schema_data(db, bot.owner_id)
+    if name == "record_search":
+        from .search_service import search as semantic_records
+
+        result = semantic_records(bot.owner_id, bot.account_id, arguments, track=False, withhold=withheld(bot.scopes))
+    elif name == "record_list":
+        result = structure.records(db, bot.owner_id, **arguments)
+    else:
+        structure.ensure(db, bot.owner_id)
+        result = structure.data(db, owned(db, StructureRecord, arguments["record_id"], bot.owner_id))
+    return custom_scrub(db, bot.owner_id, result, bot.scopes)
+
+
+def cancel_work(db, bot, identity):
+    from .agent_work import cancel
+
+    bot_access.authorize(db, bot.owner_id, "work:run")
+    advisory(db, "work-order:" + bot.owner_id)
+    advisory(db, "work:" + str(identity))
+    bot_access.authorize(db, bot.owner_id, "work:run", write=True)
+    return cancel(db, get_work(db, bot, identity))
 
 
 def backend_registry(row):
@@ -412,9 +534,25 @@ def backend_read(name, arguments, conversation_id):
         raise DomainError("INVALID_ARGUMENT", "Check the read-tool arguments.") from None
     with session_scope() as db:
         bot = bot_access.check_tool(db, None, name)
-        if name == "record_search":
-            from .search_service import search as semantic_records
-            return semantic_records(bot.owner_id,bot.account_id,arguments,track=False)
+        if name in CUSTOM_READS:
+            return custom_read(db, bot, name, arguments)
+        if name in {"note_lists", "note_list_items"}:
+            from .note_lists import all_lists
+            from .notes import list_notes
+
+            if name == "note_lists":
+                return scrub(all_lists(db, bot.owner_id), bot.scopes)
+            return scrub(
+                list_notes(
+                    db,
+                    bot.owner_id,
+                    list_id=arguments["list_id"],
+                    query=arguments.get("query", ""),
+                    limit=arguments.get("limit", 50),
+                    offset=arguments.get("offset", 0),
+                ),
+                bot.scopes,
+            )
         if name == "time_resolve":
             from .time_tools import resolve_time
 

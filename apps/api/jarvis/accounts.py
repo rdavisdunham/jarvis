@@ -361,6 +361,19 @@ def change_member(body: MemberChange, user: User):
         row.revision += 1
         if row.actor_id:
             db.get(Actor, row.actor_id).archived = not body.active
+        if not body.active:
+            # Removal ends bot access for good; a later re-invite must not revive old keys.
+            from .models import BotCredential
+
+            for key in db.scalars(
+                select(BotCredential).where(
+                    BotCredential.owner_id == body.workspace_id,
+                    BotCredential.account_id == body.account_id,
+                    BotCredential.revoked_at.is_(None),
+                )
+            ):
+                advisory(db, "bot:" + key.id)
+                key.revoked_at = now()
         # Personal push destinations are never added to a shared namespace.
         emit(db, body.workspace_id, "membership.changed", body.workspace_id)
         return {"updated": True, "revision": row.revision}

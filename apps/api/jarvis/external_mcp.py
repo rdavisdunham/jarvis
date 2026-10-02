@@ -18,7 +18,7 @@ from . import bot_access
 from . import external_service as service
 from .config import get_settings
 from .db import session_scope
-from .domain import COMMANDS, DomainError, advisory
+from .domain import COMMANDS, DomainError
 
 UUID_SCHEMA = {"type": "string", "format": "uuid"}
 
@@ -147,17 +147,8 @@ def dispatch(name, arguments):
             )
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Check the tool's required arguments and types.") from None
-        if name == "record_search":
-            from .search_service import search as semantic_records
-            return semantic_records(bot.owner_id,bot.account_id,arguments,track=False)
-        if name in {"structure_schema","record_list","record_get"}:
-            from . import structure
-            from .structure_models import StructureRecord
-            from .domain import owned
-            if name == "structure_schema": return structure.schema_data(db,bot.owner_id)
-            if name == "record_list": return structure.records(db,bot.owner_id,**arguments)
-            structure.ensure(db,bot.owner_id)
-            return structure.data(db,owned(db,StructureRecord,arguments["record_id"],bot.owner_id))
+        if name in service.CUSTOM_READS:
+            return service.custom_read(db, bot, name, arguments)
         args = copy.deepcopy(arguments)
         if name == "records_list":
             kind = args.pop("kind")
@@ -174,11 +165,7 @@ def dispatch(name, arguments):
             work_id = args.pop("work_id")
             return service.reply(db, bot, work_id, service.ReplyInput.model_validate(args))
         if name == "request_cancel":
-            from .agent_work import cancel
-
-            advisory(db, "work:" + args["request_id"])
-            bot_access.authorize(db, bot.owner_id, "work:run", write=True)
-            return cancel(db, service.get_work(db, bot, args["request_id"]))
+            return service.cancel_work(db, bot, args["request_id"])
         request_id = args.pop("request_id")
         command = "action.revert" if name == "action_revert" else name.replace("_", ".", 1)
         return service.direct(db, bot, UUID(request_id), command, args)
