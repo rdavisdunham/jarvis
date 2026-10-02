@@ -13,7 +13,7 @@ Three independent Linux jobs:
   tests; type-check/build; install Chromium; run desktop/mobile planner acceptance
   against a disposable database and the synthetic API fixture.
 - **Security audit:** `pip-audit` over the full locked Python environment
-  (`uv export --frozen --all-groups`, hashed, blocking); `npm audit --audit-level=high
+  (`uv export --all-groups` with `UV_LOCKED`, hashed, blocking); `npm audit --audit-level=high
   --omit=dev` for `apps/web` (blocking; clean as of 2026-10-02); and a gitleaks secret
   scan over full history (blocking). All actions are pinned to release commit SHAs.
 
