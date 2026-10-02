@@ -1,5 +1,9 @@
 # Eridani independent audit — findings and repair sequence
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Prepared 2026-10-01 by Claude against the local working tree at HEAD `35a8ec9` plus uncommitted changes, using [CLAUDE_AUDIT_HANDOFF.md](CLAUDE_AUDIT_HANDOFF.md) as a map. Read-only: no files were changed, no secrets read, no production access, no paid calls. Frontend `tsc`, `vitest` (136 pass / 1 skip) and `vite build` were run offline; backend tests were not run (they need PostgreSQL).
 
 **Evidence labels.** *Proven* = established by reading the code path end to end (several were spot-rechecked by a second reader). *Hypothesis* = plausible from code but depends on runtime/provider behaviour; write the regression test first. Paths are relative to `apps/api/jarvis/` unless prefixed `web/` (`apps/web/src/`) or repo-root.

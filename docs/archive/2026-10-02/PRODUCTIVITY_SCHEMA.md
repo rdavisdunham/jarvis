@@ -1,5 +1,9 @@
 # Eridani productivity schema
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Status: deployed as schema 0012; release and backup validation are recorded in TODO.md.
 
 ## Organization and outcomes
@@ -158,7 +162,7 @@ can leave a saved detail card, while unsaved forms retain their existing guard.
 
 ## Invited accounts and shared workspaces (September 14, 2026)
 
-See [Accounts and sharing](ACCOUNTS_AND_SHARING.md) for the current access model.
+See [Accounts and sharing](../../ACCOUNTS_AND_SHARING.md) for the current access model.
 A shared space/project is a distinct record namespace with explicit membership;
 existing personal records are not made shared by assigning them to another actor.
 Personal memory and integration credentials remain separate. Command receipts

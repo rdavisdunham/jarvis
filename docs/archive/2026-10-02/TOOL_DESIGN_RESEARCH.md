@@ -1,5 +1,9 @@
 # Tool interface revision — September 13, 2026
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 The implementation follows official provider guidance, with a shared portable
 discovery mechanism so Luna and Gemini see the same app capabilities.
 
@@ -52,7 +56,7 @@ The previous expert traces remain immutable. The completed follow-up uses twenty
 selected scenarios, including every earlier failing scenario, with the same
 fixtures and three repetitions per model. This is a targeted regression comparison,
 not an unbiased estimate of general ability. Actual tool/prompt bytes and provider
-usage are recorded in [the results](TOOL_REFINEMENT_RESULTS.md).
+usage are recorded in [the results](../../TOOL_REFINEMENT_RESULTS.md).
 
 ## Implemented interface
 

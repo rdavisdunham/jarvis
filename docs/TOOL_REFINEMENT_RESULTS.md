@@ -7,7 +7,7 @@ baseline. This is a development regression after several iterations on these
 cases, not a held-out benchmark.
 
 [Interactive report and full traces](evals/tool-refinement-report-2026-09-13.html) ·
-[Research and implementation](TOOL_DESIGN_RESEARCH.md) ·
+[Research and implementation](archive/2026-10-02/TOOL_DESIGN_RESEARCH.md) ·
 [Fixed evaluation protocol](TOOL_REFINEMENT_EVAL_PLAN.md)
 
 ## Results

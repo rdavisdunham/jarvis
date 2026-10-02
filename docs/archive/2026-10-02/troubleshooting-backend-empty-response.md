@@ -1,5 +1,9 @@
 # Jarvis Backend - Empty Response on Port 3000
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 **Date:** 2026-06-11
 
 ## Issue

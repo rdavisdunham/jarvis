@@ -1,5 +1,9 @@
 # Planner workspace release
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Requested September 13, 2026. Preserve existing personal data, active integration
 bindings, disabled cost accounting and the paused Realtime implementation.
 
@@ -38,6 +42,6 @@ to discard an unsaved edit. Avoid arbitrary DOM selectors or executable UI actio
 
 Implementation/review: [PLANNER_UX_ARCHITECTURE_REVIEW.md](PLANNER_UX_ARCHITECTURE_REVIEW.md).
 Verification: [PLANNER_VALIDATION.md](PLANNER_VALIDATION.md).
-Paid paired evidence: [RELIABILITY_HELDOUT_RESULTS.md](RELIABILITY_HELDOUT_RESULTS.md).
+Paid paired evidence: [RELIABILITY_HELDOUT_RESULTS.md](../../RELIABILITY_HELDOUT_RESULTS.md).
 Physical-device acceptance is distinguished from the completed generated-audio
 and protocol checks; ongoing phone/network testing remains in TODO.

@@ -4,7 +4,7 @@ Status: deployed to production September 17, 2026, in `8e63e95`. Both Railway
 services report SUCCESS for that commit. The local development database has not
 been migrated in this batch. Database and browser acceptance used disposable databases and synthetic
 records. This document supersedes the fixed classification design in the original
-[TASK_ROUTING_PRD.md](TASK_ROUTING_PRD.md).
+[TASK_ROUTING_PRD.md](archive/2026-10-02/TASK_ROUTING_PRD.md).
 
 ## What is available
 

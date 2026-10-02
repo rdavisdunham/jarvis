@@ -1,8 +1,12 @@
 # Eridani task routing and organizational learning PRD
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Status: **Historical September 15 proposal, superseded by the user-configurable
 planner implemented locally on September 17.** See
-[CUSTOM_PLANNER_IMPLEMENTATION.md](CUSTOM_PLANNER_IMPLEMENTATION.md) for the current
+[CUSTOM_PLANNER_IMPLEMENTATION.md](../../CUSTOM_PLANNER_IMPLEMENTATION.md) for the current
 schema, learning behavior, validation and deployment status. The sections below
 retain the original requirements and architecture snapshot; statements about
 missing features or fixed fields describe that earlier snapshot.
@@ -67,12 +71,12 @@ The original upgrade PRD's Mem0/Qdrant descriptions refer to historical code.
 
 ### Memory context reaches the conversational backend
 
-Yes: [conversation.py](../apps/api/jarvis/conversation.py) calls prompt_context
+Yes: [conversation.py](../../../apps/api/jarvis/conversation.py) calls prompt_context
 before the first backend model request, then assembles instructions, retrieved
 facts and history. This includes task work delegated by Live and both supported
 backend providers.
 
-[memory_service.py](../apps/api/jarvis/memory_service.py) retrieves up to six
+[memory_service.py](../../../apps/api/jarvis/memory_service.py) retrieves up to six
 relevant facts with source references, using lexical matching and embedding
 similarity. It rechecks canonical revisions and source deletion after the
 provider wait. Currently the labeled memory data is appended to the system
@@ -80,7 +84,7 @@ message. New routing context should use a separate structured data channel,
 rather than expanding that system message with raw task text.
 
 Shared-workspace conversations omit private personal memory. The
-[access layer](../apps/api/jarvis/access.py) also disables personal history/learning
+[access layer](../../../apps/api/jarvis/access.py) also disables personal history/learning
 there. Routing must preserve this boundary.
 
 “Background agent” can mean this conversational backend or durable worker jobs.
@@ -89,7 +93,7 @@ source and existing facts for deduplication; other jobs have purpose-specific in
 
 ### Learning and storage
 
-[memory_learning.py](../apps/api/jarvis/memory_learning.py) extracts explicitly
+[memory_learning.py](../../../apps/api/jarvis/memory_learning.py) extracts explicitly
 stated durable personal facts from eligible saved user conversation sources.
 It excludes task requests themselves, though stable facts embedded in a request
 can qualify. There is no learner over canonical task assignments for routing.
@@ -100,14 +104,14 @@ stored in PostgreSQL. Memory vectors are JSONB and similarity is calculated in
 application code; a pgvector index remains planned. Mem0 and Qdrant are not
 required for this proposal.
 
-[live_voice.py](../apps/api/jarvis/live_voice.py) also sends bounded relevant-memory
+[live_voice.py](../../../apps/api/jarvis/live_voice.py) also sends bounded relevant-memory
 refreshes to Live, separately from retrieval before delegated backend work.
 
 ### Organization
 
 The [productivity schema](PRODUCTIVITY_SCHEMA.md) already has spaces, areas,
 projects, goals, tasks and informal tags. A selected project determines its task's
-space/area, enforced in [productivity.py](../apps/api/jarvis/productivity.py).
+space/area, enforced in [productivity.py](../../../apps/api/jarvis/productivity.py).
 There is no first-class Client field or routing-rule store.
 
 A **workspace** is an access boundary. A **space** organizes records within an
@@ -464,7 +468,7 @@ Langfuse is optional.
 ## 11. Migration sequencing
 
 This PRD is not a dependency for cloud cutover. Finish discussion, park
-implementation, and resume the [cloud migration runbook](CLOUD_MIGRATION.md).
+implementation, and resume the [cloud migration runbook](../../CLOUD_MIGRATION.md).
 
 Keep PostgreSQL authoritative with the existing PITR/backup plan. Routing records
 and a vector index can be added after migration through ordinary schema changes.

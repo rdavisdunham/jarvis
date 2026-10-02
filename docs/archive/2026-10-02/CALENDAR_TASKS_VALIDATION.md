@@ -1,5 +1,9 @@
 # Task tabs, calendar details and touch boards
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 September 13, 2026. Deployed on the existing schema 0011_productivity_graph.
 No database migration, new drag library or new agent runtime.
 

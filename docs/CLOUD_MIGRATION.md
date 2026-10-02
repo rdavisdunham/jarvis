@@ -2,7 +2,7 @@
 
 Updated September 16, 2026. **Production is live at https://app.eridani.app.** The user approved the full private-data transfer. The final frozen source and cloud restore matched all **55 tables / 11,245 rows** before cloud workers resumed. API and worker now use the private `eridani` database on PostgreSQL 16.15. Google Calendar synchronized successfully from Railway. Local API/worker/backup containers are stopped; their database and encrypted snapshot are preserved.
 
-Use Railway for the web/API, worker and PostgreSQL, with Railway point-in-time recovery (PITR) plus independent encrypted exports to Cloudflare R2. The [hosting plan](CLOUD_HOSTING_PLAN.md) explains the cost assumptions and Neon alternative.
+Use Railway for the web/API, worker and PostgreSQL, with Railway point-in-time recovery (PITR) plus independent encrypted exports to Cloudflare R2. The [hosting plan](archive/2026-10-02/CLOUD_HOSTING_PLAN.md) explains the cost assumptions and Neon alternative.
 
 ## Owner setup and remaining input
 

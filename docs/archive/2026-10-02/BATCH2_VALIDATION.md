@@ -1,5 +1,9 @@
 # Invited accounts and sharing release validation
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 September 14, 2026.
 
 - 471 backend tests passed, with one optional skip. The paused Realtime suite remains excluded.
@@ -17,4 +21,4 @@ September 14, 2026.
 - Planner, notes, memory, settings and cost-record hashes are unchanged across deployment. Google connection fields match the encrypted pre-deployment backup; sync state may advance during routine polling.
 - Development cost tracking remains off. GPT-Live remains the only offered voice mode.
 
-See [Accounts and sharing](ACCOUNTS_AND_SHARING.md) for onboarding, role boundaries and explicitly deferred sharing extensions.
+See [Accounts and sharing](../../ACCOUNTS_AND_SHARING.md) for onboarding, role boundaries and explicitly deferred sharing extensions.

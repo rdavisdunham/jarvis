@@ -1,8 +1,12 @@
 # Jarvis upgrade: decision brief
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Implementation update: the owner delegated the choices and confirmed an always-on host. The selected architecture, deployed foundation, evidence and remaining release gates are recorded in [JARVIS_IMPLEMENTATION.md](JARVIS_IMPLEMENTATION.md). The proposal below is preserved as the design baseline.
 
-September 10, 2026. Read this first, then use the [full PRD](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md) for detailed requirements, source citations, data contracts, alternatives, and acceptance tests. This is a proposed design, not an implementation report.
+September 10, 2026. Read this first, then use the [full PRD](JARVIS_UPGRADE_PRD.md) for detailed requirements, source citations, data contracts, alternatives, and acceptance tests. This is a proposed design, not an implementation report.
 
 ## The recommendation
 
@@ -16,7 +20,7 @@ This retains the useful Python and retrieval ecosystem without carrying the curr
 
 The existing application is a voice prototype: one large React component, Express audio middleware, a shared Python conversation process, and Mem0/Qdrant. Accepted work, session isolation, and recovery need new foundations. There is no application task database or durable job system to extend today.
 
-The most important migration risks are shared audio/text broadcasts, process-local conversation state, non-durable background threads, and legacy memory that lacks complete source provenance. The existing port-9001 transcription path may have a glasses client, so it should remain until that consumer is checked. The [architecture inventory](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md:28) links each finding to the inspected code. Existing uncommitted changes were left untouched.
+The most important migration risks are shared audio/text broadcasts, process-local conversation state, non-durable background threads, and legacy memory that lacks complete source provenance. The existing port-9001 transcription path may have a glasses client, so it should remain until that consumer is checked. The [architecture inventory](JARVIS_UPGRADE_PRD.md) links each finding to the inspected code. Existing uncommitted changes were left untouched.
 
 ## Choices worth making first
 
@@ -33,11 +37,11 @@ These are recommendations for review, not choices you need to answer before the 
 
 ## Findings that materially affect the design
 
-Silence needs more than semantic VAD. VAD decides whether speech has ended; the response policy decides whether Jarvis should speak. An application-controlled gate gives silence an enforceable meaning, but its extra latency must be measured. This is the highest-priority experiment, not a solved performance claim. [Voice design and supporting documentation](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md:143).
+Silence needs more than semantic VAD. VAD decides whether speech has ended; the response policy decides whether Jarvis should speak. An application-controlled gate gives silence an enforceable meaning, but its extra latency must be measured. This is the highest-priority experiment, not a solved performance claim. [Voice design and supporting documentation](JARVIS_UPGRADE_PRD.md).
 
 A reminder is not permission to perform its contents. “Remind me to email Josh” creates a notification, not an email. Simple reminder delivery needs no planner call. More complex scheduled work stores intent and selects a model when execution begins; an already-running job records its model/workflow version so recovery stays consistent.
 
-Home Assistant reduces device-specific code, but it does not automatically import every Google Home device. The adapter must distinguish a requested action from observed device state. Calendar push callbacks also cannot directly reach a private tailnet server, so the proposed calendar adapter polls outbound. Browser Web Push is a different mechanism and does not require a public Jarvis callback. [Home integration evidence](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md:561), [calendar and notification design](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md:236).
+Home Assistant reduces device-specific code, but it does not automatically import every Google Home device. The adapter must distinguish a requested action from observed device state. Calendar push callbacks also cannot directly reach a private tailnet server, so the proposed calendar adapter polls outbound. Browser Web Push is a different mechanism and does not require a public Jarvis callback. [Home integration evidence](JARVIS_UPGRADE_PRD.md), [calendar and notification design](JARVIS_UPGRADE_PRD.md).
 
 The 3080 reports 10 GB VRAM. Use it first for local embeddings and reranking, with resource limits and a fallback that leaves tasks/reminders operational. Do not require a local conversational model or custom model training for the first release. Personalize ranking only after collecting enough reliable relevance feedback to evaluate an improvement.
 
@@ -45,7 +49,7 @@ Keep original sources where capture and retention are enabled. Imported legacy f
 
 ## Budget and privacy
 
-Treat $150/month as a monitored operating limit, not an assumed bill. The [budget section](/home/davin/jarvis/docs/JARVIS_UPGRADE_PRD.md:596) includes current model candidates and a speech-only cost table; repeated context, the silence classifier, research, retries, and extraction add costs beyond that table. A seven-day metered pilot determines whether the proposed allocation fits your actual use.
+Treat $150/month as a monitored operating limit, not an assumed bill. The [budget section](JARVIS_UPGRADE_PRD.md) includes current model candidates and a speech-only cost table; repeated context, the silence classifier, research, retries, and extraction add costs beyond that table. A seven-day metered pilot determines whether the proposed allocation fits your actual use.
 
 Reserve spending before paid work begins, share limits across delegated jobs, and stop accepting new paid work at the configured limit. Local task editing and deterministic reminder delivery should still work. Increasing the budget is an explicit setting change.
 

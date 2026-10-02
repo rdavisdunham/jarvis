@@ -1,9 +1,9 @@
 # Claude session summary: audit, repairs, CI hardening and UI redesign
 
-Covers the Claude Code session of 2026-10-01 to 2026-10-02 that began from [CLAUDE_AUDIT_HANDOFF.md](CLAUDE_AUDIT_HANDOFF.md). Prepared as the starting point for a follow-up audit. Treat it as a map, not proof: verify against the code.
+Covers the Claude Code session of 2026-10-01 to 2026-10-02 that began from [CLAUDE_AUDIT_HANDOFF.md](archive/2026-10-02/CLAUDE_AUDIT_HANDOFF.md). Prepared as the starting point for a follow-up audit. Treat it as a map, not proof: verify against the code.
 
 Related documents:
-- [CLAUDE_AUDIT_FINDINGS.md](CLAUDE_AUDIT_FINDINGS.md): every finding with file:line, plus repair status in section 8.
+- [CLAUDE_AUDIT_FINDINGS.md](archive/2026-10-02/CLAUDE_AUDIT_FINDINGS.md): every finding with file:line, plus repair status in section 8.
 - [DESIGN.md](DESIGN.md): the new UI design system.
 - [CI.md](CI.md): the CI jobs, the coverage ratchet and the branch-protection ruleset.
 

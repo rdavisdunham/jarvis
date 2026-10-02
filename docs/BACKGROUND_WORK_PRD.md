@@ -1,6 +1,6 @@
 # Reliable background work and action cards
 
-Status: implemented September 16; intake model replaced by direct execution September 16; see [release validation](BACKGROUND_WORK_VALIDATION.md)
+Status: implemented September 16; intake model replaced by direct execution September 16; see [release validation](archive/2026-10-02/BACKGROUND_WORK_VALIDATION.md)
 for shipped behavior, verification and remaining actual-device acceptance.
 Updated: September 16, 2026.
 
@@ -258,7 +258,7 @@ Private content deletion still wins over retaining an undo history forever.
   of UX-26 into this batch: global pending/attention visibility, accurate worker/
   connection/provider/sync state, cloud-appropriate integration copy and public
   onboarding. Broader task/calendar/note/settings density work stays in the next
-  focused UX batch. See [recommendations.md](../recommendations.md).
+  focused UX batch. See [recommendations.md](archive/2026-10-02/recommendations.md).
 - Update Eri's tool descriptions/site context for jobs, cards and navigation only
   after the UI and action contracts are final.
 - Harden wake-word and shutdown behavior: recognize "Eri" and "hey Eri" reliably,
