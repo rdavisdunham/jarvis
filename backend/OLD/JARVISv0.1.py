@@ -1,3 +1,4 @@
+import os
 # v0.1 is a simple script that transcribes a single audio file and sends the transcribed text to Groq for processing.
 import torch
 from transformers import pipeline
@@ -6,7 +7,7 @@ from groq import Groq  # Make sure to import Groq
 
 # Function to handle chat with Groq based on transcribed text
 def handle_chat_with_groq(transcribed_text):
-    client = Groq(api_key="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")
+    client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     
     messages = [
         {
