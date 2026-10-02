@@ -61,7 +61,10 @@ records or infrastructure were changed by this batch, and no paid model calls we
 All database tests used disposable databases under **local PostgreSQL 16.15**, with
 `JARVIS_ENV_FILE=` so personal `.env` credentials could not be loaded.
 
-- Full backend suite: **797 passed, 1 skipped**; report `artifacts/batch-a/backend.xml`.
+- Full backend suite on current main dependency locks: **802 passed, 1 skipped**;
+  report `artifacts/batch-a/backend-pr.xml`.
+- Separate meta-eval suite: **82 passed, 2 skipped**. The new draft endpoints are
+  registered in the surface inventory; draft/wakeup tests are included in feature suites.
 - After the final short-answer/timing refinements: **104 affected tests passed**.
 - Frontend unit suite: **166 passed, 1 skipped**. TypeScript/Vite production build passed.
 - Mobile chat acceptance: reload an unsent draft, edit and send it once, discard another;

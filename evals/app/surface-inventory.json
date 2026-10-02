@@ -1180,6 +1180,27 @@
       "feature": "site_controls"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/voice/drafts",
+      "handler": "voice_drafts",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/drafts/{identity}/discard",
+      "handler": "voice_draft_discard",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/voice/drafts/{identity}/send",
+      "handler": "voice_draft_send",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "live_voice"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/voice/sessions",
       "handler": "start",

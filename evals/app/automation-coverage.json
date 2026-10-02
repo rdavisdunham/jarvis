@@ -12,7 +12,7 @@
     },
     "fully_bound": 100,
     "component_cases": 224,
-    "sha256": "8c4664929bdef55a376f91b6fb5889d93505452a8e352bebb65002490dd67bc3"
+    "sha256": "705879142fec20f07d2fc570a3626a87fced18835a216d1cc6dee7483e0dd9f7"
   },
   "features": {
     "accounts": {
@@ -3427,6 +3427,7 @@
       "supporting_suites": [
         "tests/test_live_voice.py",
         "tests/test_voice.py",
+        "tests/test_voice_drafts.py",
         "tests/test_voice_settlement.py"
       ],
       "remaining": [
@@ -6923,7 +6924,8 @@
       "component_cases": 15,
       "supporting_suites": [
         "tests/test_action_limits.py",
-        "tests/test_agent_work.py"
+        "tests/test_agent_work.py",
+        "tests/test_work_wakeup.py"
       ],
       "remaining": [
         {
