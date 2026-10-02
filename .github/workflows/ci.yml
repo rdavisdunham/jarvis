@@ -169,8 +169,6 @@ jobs:
         with:
           node-version: "22"
       - name: Audit production npm dependencies
-        # Non-blocking until the first clean baseline is recorded; flip to blocking afterwards (docs/CI.md).
-        continue-on-error: true
         working-directory: apps/web
         run: npm audit --audit-level=high --omit=dev
       - name: Scan for committed secrets (gitleaks)

@@ -12,8 +12,7 @@ import { EditorProvider } from "./editor-control";
 
 // The existing authenticated chat/voice transports deliver tool calls. This is only the
 // browser-side registry of typed handlers; there is no second model runtime or cloud
-// service. (It replaced a CopilotKit registry that pulled ~700 KB of unused runtime into
-// the bundle; @copilotkit/react-core can be removed from package.json.)
+// service. (It replaced a CopilotKit registry that pulled ~700 KB of unused runtime.)
 export type SiteTool = {
   name: string;
   description: string;

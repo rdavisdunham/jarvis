@@ -14,10 +14,8 @@ Three independent Linux jobs:
   against a disposable database and the synthetic API fixture.
 - **Security audit:** `pip-audit` over the full locked Python environment
   (`uv export --frozen --all-groups`, hashed, blocking); `npm audit --audit-level=high
-  --omit=dev` for `apps/web` (non-blocking via `continue-on-error` until a clean baseline
-  is recorded; then delete that line); and a gitleaks secret scan over full history
-  (blocking). The gitleaks action is pinned by tag; replace it with its verified release
-  commit SHA like the other actions.
+  --omit=dev` for `apps/web` (blocking; clean as of 2026-10-02); and a gitleaks secret
+  scan over full history (blocking). All actions are pinned to release commit SHAs.
 
 The backend job also enforces an **eval coverage ratchet**: `runner coverage --baseline
 evals/app/automation-coverage.json` exits non-zero if the total or any feature's
