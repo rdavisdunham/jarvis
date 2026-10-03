@@ -3,13 +3,14 @@
 import copy
 
 GROUPS = {
+    "contents": ("Browse actual homes, inspect child progress and advisory blockers, move with or without contents, or locally archive and restore a subtree. Preview contents first; remote source records are never silently deleted.", ["structure_schema","record_get","record_browse","record_contents_preview","record_contents","record_restore_contents","work_revert"]),
     "quick_capture": ("Quick checklists: capture only requested commitments, add/check/reorder items, read what remains. Sections are labels, not learned classifications. Reminders opt in; expired deadlines retain unfinished items. Promotion keeps IDs/history as a normal parent task and subtasks, optionally in an existing project.", ["quicklist_list","quicklist_get","quicklist_create","quicklist_item","quicklist_promote","task_update"]),
     "setup": ("Skippable personal onboarding with name, timezone, goals and editable organization defaults. Save progress; clarify group descriptions/examples; show preview before separate confirmed schema apply. Existing users resume in Settings. Do not treat examples as tasks or silence as rule approval.", ["onboarding_state","onboarding_save","onboarding_preview","structure_schema","structure_apply","routing_state","routing_understand"]),
     "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
     "search": ("Semantic retrieval, search vocabulary and correcting a previous interpretation.", ["record_search", "search_select", "search_feedback", "record_get", "ui_records"]),
     "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
     "structure": ("Discover or redesign user-defined types, fields, workflows and relationships. Preview structural edits and wait for explicit confirmation before applying.", ["ui_records", "structure_schema", "structure_preview", "structure_apply", "structure_restore"]),
-    "records": ("Find records by meaning and learned vocabulary; create, read and edit using the current schema.", ["record_search", "search_select", "ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link", "record_browse", "record_contents_preview", "record_contents", "record_restore_contents"]),
+    "records": ("Find records by meaning and learned vocabulary; create, read and edit using the current schema.", ["record_search", "search_select", "ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link"]),
     "activity": ("Inspect accepted work and pending clarification IDs (use work_answer to resume them), cancel a named request, explicitly revert supported saved changes, or show Activity.", ["work_list", "work_cancel", "work_revert", "ui_activity"]),
     "tasks": (
         "Find, create, update, complete, reopen and batch-edit tasks.",

@@ -230,6 +230,8 @@ def plan(db, owner, args):
     root = owned(db, StructureRecord, args.record_id, owner)
     structure.reconcile_core(db, root, schema)
     check_revision(root, args.expected_revision)
+    if args.operation == "archive" and root.archived:
+        raise DomainError("ALREADY_ARCHIVED", "This record is already archived.")
     descendants = rows_under(db, owner, root.id)
     for row in descendants:
         structure.reconcile_core(db, row, schema)
@@ -257,7 +259,7 @@ def plan(db, owner, args):
     changed = (
         [root, *children]
         if args.mode == "item"
-        else [root, *descendants]
+        else [r for r in [root, *descendants] if not r.archived]
         if args.operation == "archive"
         else [root]
     )
@@ -329,6 +331,8 @@ def apply(db, owner, args, command_id):
                 )
     targets = [root, *descendants] if args.operation == "archive" and args.mode == "subtree" else [root]
     for row in targets:
+        if args.operation == "archive" and row.archived:
+            continue
         patch = {"parent_id": args.parent_id} if args.operation == "move" else {"archived": True}
         changed.append(
             structure.mutate(

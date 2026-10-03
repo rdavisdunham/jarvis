@@ -263,3 +263,15 @@ def test_contents_bot_scope_includes_nested_note_and_task():
             "tasks:write",
             "notes:write",
         }
+
+
+def test_archive_subtree_preserves_already_archived_children_on_revert():
+    from jarvis.action_history import revert
+    a,b,p,t,sub,n=tree()
+    change(n,archived=True)
+    act(p,operation="archive")
+    with session_scope() as db:
+        receipt=db.scalar(select(ActionChange).where(ActionChange.tool=="record.contents",ActionChange.entity_id==p["id"]))
+        revert(db,OWNER,OWNER,receipt.id,str(uuid4()))
+    assert saved(n["id"])["archived"]
+    assert not saved(t["id"])["archived"]
