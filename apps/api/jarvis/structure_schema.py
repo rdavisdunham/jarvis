@@ -66,6 +66,7 @@ class RecordType(Input):
     parent_types: list[Key] = Field(default_factory=list, max_length=50)
     fields: list[FieldDefinition] = Field(default_factory=list, max_length=60)
     statuses: list[Status] = Field(default_factory=list, max_length=40)
+    opens_as: Literal["auto", "container", "item"] = "auto"
     archived: bool = False
 
 

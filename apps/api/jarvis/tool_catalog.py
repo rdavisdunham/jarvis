@@ -3,7 +3,7 @@
 import copy
 
 GROUPS = {
-    "contents": ("Browse actual homes, inspect child progress and advisory blockers, move with or without contents, or locally archive and restore a subtree. Preview contents first; remote source records are never silently deleted.", ["structure_schema","record_get","record_browse","record_contents_preview","record_contents","record_restore_contents","work_revert"]),
+    "contents": ("Browse actual homes (records whose opens_as is container open as contents; items open their details), inspect child progress and advisory blockers, move with or without contents, or locally archive and restore a subtree. Preview contents first; remote source records are never silently deleted.", ["structure_schema","record_get","record_browse","record_contents_preview","record_contents","record_restore_contents","work_revert"]),
     "quick_capture": ("Quick checklists: capture only requested commitments, add/check/reorder items, read what remains. Sections are labels, not learned classifications. Reminders opt in; expired deadlines retain unfinished items. Promotion keeps IDs/history as a normal parent task and subtasks, optionally in an existing project.", ["quicklist_list","quicklist_get","quicklist_create","quicklist_item","quicklist_promote","task_update"]),
     "setup": ("Skippable personal onboarding with name, timezone, goals and editable organization defaults. Save progress; clarify group descriptions/examples; show preview before separate confirmed schema apply. Existing users resume in Settings. Do not treat examples as tasks or silence as rule approval.", ["onboarding_state","onboarding_save","onboarding_preview","structure_schema","structure_apply","routing_state","routing_understand"]),
     "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
@@ -399,6 +399,7 @@ DESCRIPTIONS = {
     "ui_show": "Open a page or highlight a saved record. Resolve its current ID first. "
     "Use the matching view (all for tasks, notes for notes, organize for goals/projects, reminders for schedules, memory for facts). "
     "For a request to show/open a specific record, pass its entity_id; opening only the page is incomplete. "
+    "For Organization records (clients, projects, tasks...) use ui_records(record_id): it follows opens_as, so \"show me ABC\" opens its contents and a task opens its details. "
     "Wait for displayed acknowledgement; queued/refused is not displayed. Never discard an unsaved edit.",
     "ui_calendar": "Use open_details=true with a record ID/date to open a saved detail card. Use ui_form to edit it. Open month/week/day at a date and optionally highlight its saved event/task. "
     "Calendar facts come from calendar_list. Navigation may refuse if an editor has unsaved changes.",
