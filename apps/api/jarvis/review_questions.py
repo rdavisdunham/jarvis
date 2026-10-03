@@ -146,10 +146,10 @@ def learning(db, owner):
             .limit(1)
         )
         result = row.result if row else None
-        if row and kind == "review_routing":
+        if row and kind == "review_routing" and row.payload.get("review_id"):
             review = db.get(RoutingReview, row.payload.get("review_id"))
             if review and review.owner_id == owner:
-                result = {"review_id": review.id, **review.summary}
+                result = {"review_id": review.id, "summary": review.summary, "job_result": result}
         runs.append(
             {
                 "kind": kind,

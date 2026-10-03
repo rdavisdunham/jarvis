@@ -287,3 +287,31 @@ def test_read_does_not_offer_or_resolve(client):
         assert client.get("/api/v1/questions").json()["counts"]["pending"] == 1
     with session_scope() as db:
         assert db.scalar(select(ReviewDelivery)) is None
+
+
+def test_routing_run_keeps_job_error_alongside_review_summary():
+    setup_question()
+    with session_scope() as db:
+        review = RoutingReview(
+            owner_id=OWNER,
+            period="failed:test",
+            status="failed",
+            summary={"message": "Review needs retry"},
+            questions=[],
+        )
+        db.add(review)
+        db.flush()
+        job = Job(
+            owner_id=OWNER,
+            kind="review_routing",
+            payload={"review_id": review.id},
+            status="failed",
+            result={"error": "UNDERSTANDING_UNAVAILABLE"},
+        )
+        db.add(job)
+        db.flush()
+        run = next(r for r in q.learning(db, OWNER)["runs"] if r["kind"] == "review_routing")
+        assert run["id"] == job.id and run["status"] == "failed"
+        assert run["result"]["review_id"] == review.id
+        assert run["result"]["job_result"]["error"] == "UNDERSTANDING_UNAVAILABLE"
+        assert run["result"]["summary"]["message"] == "Review needs retry"
