@@ -61,7 +61,7 @@ def with_homes(db, owner, rows):
 
     def chain(parent_id):
         result, seen = [], set()
-        while parent_id and parent_id not in seen and len(result) < 20:
+        while parent_id and parent_id not in seen and len(result) < 100:
             seen.add(parent_id)
             if parent_id not in cache:
                 cache[parent_id] = db.get(StructureRecord, parent_id)
@@ -76,6 +76,10 @@ def with_homes(db, owner, rows):
         record = records.get(row["id"])
         row["record_id"] = record.id if record else None
         row["home"] = chain(record.parent_id) if record else []
+        if record:
+            from .record_contents import blocking
+            from .structure import ensure
+            row["blockers"] = blocking(db,record,ensure(db,owner))
     return rows
 
 
@@ -92,11 +96,12 @@ def under_home(owner, home_id):
         StructureRecord.owner_id == owner, StructureRecord.parent_id == tree.c.id
     )
     tree = tree.union(child)
+    established = select(StructureRecord.id).where(
+        StructureRecord.owner_id==owner, StructureRecord.task_id==Task.id,
+        StructureRecord.provenance["home_version"].as_integer()==1).exists()
     return or_(
         Task.id.in_(select(tree.c.task_id).where(tree.c.task_id.is_not(None))),
-        Task.project_id == home_id,
-        Task.area_id == home_id,
-        Task.space_id == home_id,
+        (~established) & or_(Task.project_id==home_id,Task.area_id==home_id,Task.space_id==home_id),
     )
 
 

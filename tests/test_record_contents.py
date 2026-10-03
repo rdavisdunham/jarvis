@@ -275,3 +275,22 @@ def test_archive_subtree_preserves_already_archived_children_on_revert():
         revert(db,OWNER,OWNER,receipt.id,str(uuid4()))
     assert saved(n["id"])["archived"]
     assert not saved(t["id"])["archived"]
+
+
+def test_task_recommendations_receive_advisory_blockers():
+    from jarvis.task_tools import with_homes
+    a=create("task","Approve");b=create("task","Ship");link(a,b)
+    with session_scope() as db:
+        result=with_homes(db,OWNER,[{"id":b["task_id"]}])
+        assert result[0]["blockers"][0]["title"]=="Approve"
+
+def test_canonical_home_filter_ignores_stale_legacy_project():
+    from jarvis.task_tools import under_home
+    old=run("project.create",{"name":"Old project"})
+    a=create("client","New home")
+    t=create("task","Moved",parent_id=a["id"])
+    with session_scope() as db:
+        db.get(Task,t["task_id"]).project_id=old["id"]
+    with session_scope() as db:
+        assert not list(db.scalars(select(Task.id).where(Task.owner_id==OWNER,under_home(OWNER,old["id"]))))
+        assert t["task_id"] in list(db.scalars(select(Task.id).where(Task.owner_id==OWNER,under_home(OWNER,a["id"]))))

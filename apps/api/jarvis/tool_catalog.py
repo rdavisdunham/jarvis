@@ -259,7 +259,7 @@ DESCRIPTIONS = {
     "For the same edit on every match use task_selection_update, including unseen pages. "
     "For pagination retain selection_id and next_offset; detail=full on a fresh query retrieves full stored fields; saved selections are compact. "
     "An incomplete selection cannot be applied; narrow the filters. Never infer completion counts. "
-    "Each task includes record_id and home: its main-home chain [{id,title,type_id}] from the flexible structure (project, client, area...). Legacy project/space/area fields may be blank when home is set; trust home. home_id filters to tasks anywhere below a structure record.",
+    "Each task includes record_id and home: its main-home chain [{id,title,type_id}] from the flexible structure (project, client, area...). Legacy project/space/area fields may be blank when home is set; trust home. home_id filters to tasks anywhere below a structure record. Unfinished blockers are advisory: consider them when recommending work, explain them before starting blocked work, and permit explicit progress without completing prerequisites.",
     "task_get": "Read one task's current data and revision by its exact returned UUID. "
     "If MALFORMED_ID, copy the reference from a fresh lookup; it does not mean the task was deleted. "
     "Includes record_id and home (main-home chain in the flexible structure).",
