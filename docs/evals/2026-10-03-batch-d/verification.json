@@ -1,0 +1,4800 @@
+{
+  "date": "2026-10-03",
+  "base_commit": "ca79dc8f0c1ed09be5776070fa75548289053fff",
+  "synthetic_only": true,
+  "production_mutations": false,
+  "total_paid_cap_usd": "10",
+  "campaigns": [
+    {
+      "name": "batch-d-critical-baseline",
+      "created_at": "2026-10-03T07:22:08.383969+00:00",
+      "fingerprint": "323cdc169adf49aa7c1e5d4c05fa4c4318e15363a7a535ef75e1dec43dc36329",
+      "harness_sha256": "7509f88a180859c57c616d137d8986d62c0060c45d287fbcb6a254324df05195",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 5,
+      "case_summary": {
+        "passed": 1,
+        "partial": 1,
+        "failed": 3
+      },
+      "job_summary": {
+        "failed": 6,
+        "passed": 9
+      },
+      "spending": {
+        "cap_usd": "10",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0.071434363",
+        "including_uncertain_usd": "0.071434363",
+        "requests": 72,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "task_edit.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.01",
+          "status": "failed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.03",
+          "status": "failed",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "clarifications.20",
+          "status": "failed",
+          "missing_criteria": []
+        }
+      ],
+      "jobs": [
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/91b038754bf4794a6839/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/9641eec3300bdf680630/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/187e1574010a3fd42cc9/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "failed",
+          "failures": [
+            "Wrong queue outcome: succeeded",
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/29d63c516b1055b67266/001/result.json",
+          "sha256": "285ce16b74b01696e91c60ae62c0505d2e3a89bbe4ec92e67785d2296efca476"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/17137b27dbfca15dee49/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/d48e062e6493e1f57d0e/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/622e5a4dddc851009193/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "failed",
+          "failures": [
+            "Wrong queue outcome: partial"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/9672f7277708aab4411e/001/result.json",
+          "sha256": "e79b16c492caf3c315ae8c474eaccaedfd1e9e5594fa430c3ca2f43455b63d97"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/226255d4894ca0cace95/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/86a6ce6f2faccf53a620/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/cef8479b7def1ae58844/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/88efe19c60b38b90ca63/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "failed",
+          "failures": [
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/050729753cc1d9edc595/001/result.json",
+          "sha256": "d1bafccae26714372fa3982dc9727d6fa112abcff21abee8c650f3db0181cb32"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/ef297d7da6a1b82a65e7/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-baseline/attempts/e04c9316e1c8dbef5627/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-critical-repaired",
+      "created_at": "2026-10-03T07:32:34.480833+00:00",
+      "fingerprint": "e714ea792f7bb84b3c8e8135579b4ac451c3f5295b4065be6d2edcebda048766",
+      "harness_sha256": "60aa473e30a17486d2b45dbfc1c4739ef0780b0fe50a3a29000081d46adb343d",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 5,
+      "case_summary": {
+        "passed": 2,
+        "partial": 1,
+        "failed": 2
+      },
+      "job_summary": {
+        "passed": 9,
+        "failed": 6
+      },
+      "spending": {
+        "cap_usd": "9.928565637",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0.057181993",
+        "including_uncertain_usd": "0.057181993",
+        "requests": 70,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "task_edit.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.03",
+          "status": "failed",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "clarifications.20",
+          "status": "failed",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        }
+      ],
+      "jobs": [
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/91b038754bf4794a6839/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/9641eec3300bdf680630/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/187e1574010a3fd42cc9/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "failed",
+          "failures": [
+            "Wrong queue outcome: succeeded",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/29d63c516b1055b67266/001/result.json",
+          "sha256": "1b6c07145256db5df9c6c30c68fcdf15b6b70fd536927b4a7597bc32c14431f6"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/17137b27dbfca15dee49/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/d48e062e6493e1f57d0e/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/622e5a4dddc851009193/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/9672f7277708aab4411e/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/226255d4894ca0cace95/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/86a6ce6f2faccf53a620/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/cef8479b7def1ae58844/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/88efe19c60b38b90ca63/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/050729753cc1d9edc595/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "failed",
+          "failures": [
+            "Wrong queue outcome: succeeded",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/ef297d7da6a1b82a65e7/001/result.json",
+          "sha256": "1b6c07145256db5df9c6c30c68fcdf15b6b70fd536927b4a7597bc32c14431f6"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "failed",
+          "failures": [
+            "First turn did not ask the required clarification",
+            "Clarification stranded or duplicated an activity card"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-critical-repaired/attempts/e04c9316e1c8dbef5627/001/result.json",
+          "sha256": "faf56f10f4bbc70e8f8c2ffae75b4615ea895de283d623450082ffb672f79d89"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-critical-final",
+      "created_at": "2026-10-03T07:36:09.993639+00:00",
+      "fingerprint": "36648882b09d3bb1f623fa2ab6d7454386a5bea1eca112c646fe76d77d6c924a",
+      "harness_sha256": "038bcdfda6328ac4a3735b0f6b87d388e2766574fd4b7bbdd7d007765a59ce38",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 5,
+      "case_summary": {
+        "passed": 4,
+        "partial": 1
+      },
+      "job_summary": {
+        "passed": 15
+      },
+      "spending": {
+        "cap_usd": "9.871383644",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0.061528338",
+        "including_uncertain_usd": "0.061528338",
+        "requests": 73,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "task_edit.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.20",
+          "status": "passed",
+          "missing_criteria": []
+        }
+      ],
+      "jobs": [
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/91b038754bf4794a6839/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/9641eec3300bdf680630/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/187e1574010a3fd42cc9/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/29d63c516b1055b67266/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/17137b27dbfca15dee49/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/d48e062e6493e1f57d0e/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/622e5a4dddc851009193/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/9672f7277708aab4411e/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/226255d4894ca0cace95/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 2,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/86a6ce6f2faccf53a620/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/cef8479b7def1ae58844/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/88efe19c60b38b90ca63/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/050729753cc1d9edc595/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/ef297d7da6a1b82a65e7/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 3,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-critical-final/attempts/e04c9316e1c8dbef5627/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-offline",
+      "created_at": "2026-10-03T07:47:58.158924+00:00",
+      "fingerprint": "4845947222d62d70c785093b20efd0287ada66f7f047d66effc076586289dc19",
+      "harness_sha256": "b64971899b5bd916b93b5a8b61a27d8ccd8bbeec4731dbb6583f6783de6f2752",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 1051,
+      "case_summary": {
+        "partial": 153,
+        "not_run": 16,
+        "blocked": 720,
+        "passed": 161,
+        "component_failed": 1
+      },
+      "job_summary": {
+        "passed": 186,
+        "blocked": 1,
+        "failed": 1
+      },
+      "spending": {
+        "cap_usd": "10",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0",
+        "including_uncertain_usd": "0",
+        "requests": 0,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "task_capture.01",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.02",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.03",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.04",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.05",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "expected.3",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.06",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.07",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.10",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.15",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_capture.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.01",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.04",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.05",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.06",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.08",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.10",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.11",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.12",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.13",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.15",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.19",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_edit.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.24",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.25",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.02",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.03",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.04",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.05",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.06",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.07",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.08",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "task_lifecycle.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.10",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.03",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.04",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.05",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.12",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.13",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.18",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.20",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "time_deadlines.26",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_schema.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.24",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "custom_records.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "notes.02",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.01",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.02",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.03",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.04",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.05",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.06",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.07",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.08",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.10",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.18",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.19",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.20",
+          "status": "blocked",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.24",
+          "status": "component_failed",
+          "missing_criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "memory_capture.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_dream.24",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "notifications.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "queue.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.01",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "clarifications.03",
+          "status": "partial",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "clarifications.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.20",
+          "status": "not_run",
+          "missing_criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "id": "accounts.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "accounts.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.17",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "workspaces.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.16",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.21",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.22",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "external_agents.23",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "privacy.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "privacy.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "privacy.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "privacy.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "privacy.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.09",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.14",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "operations.24",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "quick_capture.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "onboarding.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "onboarding.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "onboarding.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "onboarding.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "onboarding.20",
+          "status": "passed",
+          "missing_criteria": []
+        }
+      ],
+      "jobs": [
+        {
+          "target": "task_capture.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/40d3c61e7635f7d2df36/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_domain.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/793e090e3cf715cc6f26/001/result.json",
+          "sha256": "9509ab8c47ec4a8ead2d07eaabd1e6a2258a0fa946dc0e576c1690fdfa32218a"
+        },
+        {
+          "target": "tests/test_tool_refinement.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/827ebcbf5927af153bc8/001/result.json",
+          "sha256": "fcd0d17167a4103b9f8f023c070f73922b58bd4a57d8475633e8c74a62f6457b"
+        },
+        {
+          "target": "task_capture.02",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6e6c2e82dc9a88e26418/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/72220d3c1639724c440d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.06",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4b9fde7a5675c88dec46/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.07",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6f4f9e71de91c60cae78/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.15",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/57137c0292527f5123ed/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.17",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e7c700434f9e97f171cb/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.18",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f443ebd6c720dc84da06/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.19",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9ef808ca3cd0033bc88c/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.20",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/180aecb532b5fed0f5ce/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.21",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/1edba62b72cc1223052f/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_capture.23",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8fcca04646873bcd09a7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ba366b731a933741d25e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_batch1.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/68a489b8c47cc66559fa/001/result.json",
+          "sha256": "c1f1b7b1d56d45aa2a1c8ac19f7b4b805b75c3e6d798d2d050a47b268e10b25b"
+        },
+        {
+          "target": "task_edit.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e1f48725d7d79faebc6b/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.11",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c9756fe015f762068e30/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.12",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/706ab39ed93e7cc7d9ff/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.13",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/0359890f375b33245bfe/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.15",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f720dd2d41af30afe4e1/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.21",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/22c865836e75e8cce284/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.23",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8b869150cac88ed3b68a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.24",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/1d88965c3384992c633c/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/373b313e26c0cc9a8e4e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/996af3a2d222e346a0d5/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_backlog.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/96f6352c2212f96065e6/001/result.json",
+          "sha256": "de7fd717c4a2d074290eb212b41e75675577777db7702c68606bc5db997022bc"
+        },
+        {
+          "target": "tests/test_workspace.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f7594880353632c98bc7/001/result.json",
+          "sha256": "13eb7b0c7953cf87151507a6a09fb77af744c7e835ae09935a1b22187e15c21f"
+        },
+        {
+          "target": "tests/test_recurrence_edges.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/1c69d6f7d30916f53aec/001/result.json",
+          "sha256": "3502df2fb59b3be4368453846340002794b0720d5b0ccfc8429e377dce5b2ea9"
+        },
+        {
+          "target": "task_lifecycle.02",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6c2397f032cb57b4cbd5/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/13dd4089453265a45709/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/929d7da0cc281ed10562/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.05",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/a77a9e3d7cf50dfd819c/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.06",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4d5f5503c32fd396e1e3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.07",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/91713c8f4818ccb34e0d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.08",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/3b53faa1523515ca02b3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_release_core.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/29cd0362c928ccc7dc19/001/result.json",
+          "sha256": "c33f736588de909cd79e162fd2d87702ec9975f0a6b58ca4d0ce220d09156482"
+        },
+        {
+          "target": "task_lifecycle.10",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/27b6d44d2566859a52dd/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.12",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/39add71030ae8b617b5a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "task_lifecycle.25",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/471b0dad9306a4b163e3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "time_deadlines.26",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ad4f19b6f21799789366/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_daily_polish.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6c96bf838855631a8e61/001/result.json",
+          "sha256": "ecb31d077f09d2a01d1cdf2e0d667578756adc640e1e5571d0ba70446d2dfc6e"
+        },
+        {
+          "target": "tests/test_productivity.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c1a778ccfb6c378e4d7e/001/result.json",
+          "sha256": "0d7e24c3a308886e76455046eda14dc5e256982d4b85a1dab6dc843025d41578"
+        },
+        {
+          "target": "tests/test_planner_release.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8a630c7fa2fac717b1f6/001/result.json",
+          "sha256": "cea7098fd09841c30d19bb38d6fe8fa97c611f349b52231258670711e3fee691"
+        },
+        {
+          "target": "tests/test_structure.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9dd26593266c288be7f3/001/result.json",
+          "sha256": "37bcc8e7704386f12df34ec9ba410702b1091fd33dc1769189df5a9011fe6db1"
+        },
+        {
+          "target": "tests/test_accounts.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/296846c0a24a72c70ee9/001/result.json",
+          "sha256": "90e336db785ecfd80bd57b3ae8eb87778baad911069ad61627409fbfeaacaae3"
+        },
+        {
+          "target": "tests/test_batch_b.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8f602f2e10b335369a36/001/result.json",
+          "sha256": "489ffdf6bab623065bf235a80349111dacaa3746caf8723acfa05ef51b18e87e"
+        },
+        {
+          "target": "custom_records.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/fd5116065e4f422b810f/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4c9ec3dd4b7bbf17b57d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.05",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/29b968616346d907659a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.08",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/18c8c6621081145c02a7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.09",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7c0eadf3285d41e6b241/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.10",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/b65ad1400a451481245b/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.11",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/07fa684a45422824c9b3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.12",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/bb0da403beae5de2b60c/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.15",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7cd55046fb57768688f2/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.19",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/3d4326ce9b33639e99c2/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.20",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/fc3677256351ca8c60ea/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom_records.22",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/5a1974e85b0e721430c2/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "custom-planner.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4d7115baae06d3e9a114/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "batch-b.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/b5bc0f1a91e1287f914a/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "tests/test_planning.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/63444c01f9eee9a3539a/001/result.json",
+          "sha256": "13904d0fc11bb59e9196a860beb37daed71cd62eaff06f3260db3cb9d8549714"
+        },
+        {
+          "target": "tests/test_reliability_eval_cases.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/d0aed68222dfad637762/001/result.json",
+          "sha256": "2307b1c760fd962983e5064f3db8eb7247963c188f17b1fdf8de93dda0760edf"
+        },
+        {
+          "target": "notes.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/def690329c08b1ecdf7b/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_notes_context.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/98b3f7f545f791a340a0/001/result.json",
+          "sha256": "a996ff8c7baedf7cfa9f759fe315350df5a961cafc124d1698da44c63a74c5e4"
+        },
+        {
+          "target": "notes.02",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/08a71cb61056af3925af/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6c9a8256862a4d52c504/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c2a1dd8180acf0b60fc0/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.05",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/60edb736acce2d94de1d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.06",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e1ef5d46d288171090e7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.07",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/817fbf6cb44bb0114946/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.08",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/dbb3315c9f18ad4afba5/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.10",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e98dc93cc9582676460a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.11",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c612c3ed633c02dec011/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.18",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/599cec67c792818775d1/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.20",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/d20eeb541b3b7fa82f39/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.21",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/78b1d2c40ea91046c0f7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.22",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/3c39be12264cd0f491a5/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.23",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/75fc43e091f55be0f0cd/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "notes.24",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/d5df7c49806d3cf4b0ea/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_expert_eval_cases.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6c390ff6aecf855ebe13/001/result.json",
+          "sha256": "f58c7ed8ae16cd976acb0cd89019e39a086a2994ff8082488ce4da1b27db26d9"
+        },
+        {
+          "target": "note_lists.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/cdbfab208788f3d2d9ca/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_note_lists.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6463ef46c363a8166690/001/result.json",
+          "sha256": "a18134e7e31d5e3c4c671491385e8d685e30d9a8c5956651846a77b9116989d7"
+        },
+        {
+          "target": "note-lists.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ed56898f4ed83a04cf60/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "note_lists.02",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4a167058e4129f4d7b58/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_lists.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/a2bd21494f5a4218acba/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_lists.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c90c6e8d215802ffdfe4/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_lists.05",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/5f0e58146aadea5f977e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_lists.06",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/89074fd8bf911ad24b28/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_lists.15",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4ac54cf42bcf6e6d5589/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "note_organization.08",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/b733a654d664b78dd8b1/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.09",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ea242e70a769368817a0/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.10",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/2236fee113283bccacf1/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.15",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/2e40640f053e05c8daef/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.16",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/06a643fa1d414989f65b/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.17",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7a61948e19f5a0c0f362/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.18",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/3ac744dbcef83609149c/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "note_organization.22",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/fac14426bba775966682/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "tests/test_semantic_search.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/febeadaeed1eef6a46cd/001/result.json",
+          "sha256": "ee0d16b5f8355a31ef0150c8272d1a14779099d9bdb7ba9274ec09ded20d287e"
+        },
+        {
+          "target": "semantic-search.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9314d16e548058fa5b39/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "tests/test_memory_learning.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e2e7ee071f41e6960dd0/001/result.json",
+          "sha256": "6324edb1b419742a4df1bc92e6de740e6c8c34f048144de5ac78781bce4c4201"
+        },
+        {
+          "target": "tests/test_memory_cloud.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "blocked",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/21eea02435ab237ca710/001/result.json",
+          "sha256": "36a2da1c17598da487e480a039322d4b3f54b1bec35564fbcef3452e60d49f0f"
+        },
+        {
+          "target": "memory_capture.11",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/195c220225deb10a03e2/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.12",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/2a60e58f86dbd0a08bf6/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.13",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/df0cffc62786bcaf3fc9/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.14",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8f6cb958e44b760953a0/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.15",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9c11573e407679473ec2/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.16",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/14e4e884dcd985bf902b/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.21",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/45380b77ab0ca4715ff1/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.22",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/b5c7a777ac65824fe319/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.23",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/95d1ef3b9a5e30d0ab41/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "memory_capture.24",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "failed",
+          "failures": [
+            "Embedding outage did not preserve a durable fact plus honest retry state"
+          ],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/fb482c5dcb5d6959aacc/001/result.json",
+          "sha256": "1027edbe63ba8d5e6674bb8361c4e083baaebf29ef226e25eff8eed2389e01fb"
+        },
+        {
+          "target": "memory_capture.25",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/0542892021a5967c0d25/001/result.json",
+          "sha256": "a7b65ec6339a3eb92e5fc5d70391d19592d30ecb94c05d20b9f27a547bbe2b24"
+        },
+        {
+          "target": "tests/test_privacy.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/51d264a4d9e0ff521f32/001/result.json",
+          "sha256": "90fc01b8d1d2ea705e4fc6bbff557579d4cc59eb7f621d15a2cc807692ec8404"
+        },
+        {
+          "target": "memory_dream.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ce27113b4e8cfd3bf5fa/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_memory_review.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/255d013d65eeab89b29e/001/result.json",
+          "sha256": "6474099b6a7f61a8cce5d915acf3f0655c88f7680f98adb11c5765f51eccb0e3"
+        },
+        {
+          "target": "tests/test_release_dream.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/782524474796ec6f0320/001/result.json",
+          "sha256": "817f0922edacb2b67733525d8c47f0c491bbcbc0bf4a68182c9d597341b8cfd2"
+        },
+        {
+          "target": "memory_dream.02",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/a1df537ca3b85f3c5931/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.03",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/a18d752a159ec825d8d1/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/198f66aee0c773582e8e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.05",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ca4c950832d59ed2a275/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.06",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c8ca3e3c87173176d14d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.07",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6680bec883da844343c9/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.08",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/fb8a0a431154dace06d8/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.09",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/897997f00b2de6a2a42e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.10",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/bad27c6a60494cb88aff/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.11",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/93a61329a5c48288220f/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.12",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/615bbee6dc6fe0460de7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.13",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4c7fb35c2e81e201192e/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.14",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/c982b4caa06fde591418/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.15",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9f8ab88fc4d00cf80885/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.16",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/cd33c1264a9151281288/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.17",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/8bda2a45e7aabdffd9f1/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.18",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/cb96a88239744d8fe0f8/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.19",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7ae7d573c58f26986e59/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.20",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/13a39bf0793e63dc0ffe/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.21",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ca3d4b965ded65489ef4/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.22",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/796515a940034a29bede/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.23",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/6aa2029baddd1bbf5c4b/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.24",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ccfcee3a4eb5495f006a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "memory_dream.25",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f5e4faac312c62085307/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/eaed93958b01df4e9dc8/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_routing.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/52930bfa6508a6b67d52/001/result.json",
+          "sha256": "7bfb305cfe81fa3d69e3418acf830b75653bf259f95fca0f62ec862865eb2f5f"
+        },
+        {
+          "target": "routing_rules.09",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/91fbda70015a60262f2f/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.10",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4f2e1e6486a536220be3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.11",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/514350209a11fab498b3/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.12",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f4c7894b5ab6892bd815/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.13",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/087591a9fe496fed522c/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.18",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/472b703c93a1ea368767/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.19",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/05cd14e6e67d2c8c7f14/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_rules.20",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e32e3346a20e31ac88e7/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_dream.01",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/3ab7a65841a174a8032f/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_dream.04",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/99ffe6442090535453db/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_dream.14",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/d2baa8e720a95b7a836a/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_dream.23",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4a1327a8417d0bd4fc7d/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "routing_dream.24",
+          "adapter": "contract",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f0038965360338f193f8/001/result.json",
+          "sha256": "0d8fdd87211df1785979fb9c8098f25c3f8954cd10834f44cff41f1090f2e056"
+        },
+        {
+          "target": "tests/test_smart_notifications.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/36e36f4861da75d406f8/001/result.json",
+          "sha256": "7b5febfabaa64f147247c369b963257c57b2c5abfca72caa9b360d14912f25e8"
+        },
+        {
+          "target": "tests/test_api.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/25e5f2baab919b72ab2f/001/result.json",
+          "sha256": "76fc34a04a22b7a0cb770c8f18d55dd461e5dd0191d3258bb323063da9d8b83b"
+        },
+        {
+          "target": "tests/test_google_calendar.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7a9e851143d337802e35/001/result.json",
+          "sha256": "77b169f42afba7d1e79f93ad0b0ee5c12badb5af3d5a8d9e6038aad41c4d8fe4"
+        },
+        {
+          "target": "tests/test_google_writes.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/48de68c31299382b8221/001/result.json",
+          "sha256": "679874315b1e32e916a39401b5504d83b6e9505a7b9d0d1ef65192fbca779044"
+        },
+        {
+          "target": "tests/test_eval_integrations.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/1a8a062605a3215595fe/001/result.json",
+          "sha256": "daa780e0de41f35d6d1353e8dd61937d999cd9157624aa582546cdbfa64dec7f"
+        },
+        {
+          "target": "tests/test_linear.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/4c1b6a5cbbe0e75a49c6/001/result.json",
+          "sha256": "75b1000a7cc603c6b76b87c9d6967c0f0fad1ec6549b24121c489c5aeb2ece88"
+        },
+        {
+          "target": "tests/test_agent_work.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/bba899c8dad04d4ed811/001/result.json",
+          "sha256": "fd7d6779fed1cd9962bd4d4b98806ec2881029127d687c05e992b05876472f0a"
+        },
+        {
+          "target": "tests/test_action_limits.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/531ad741a4e52acab527/001/result.json",
+          "sha256": "f0743faf4173a687313b0c11fdd1231ad963b21a30539edc77571a50574c51af"
+        },
+        {
+          "target": "tests/test_work_wakeup.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/375958031ffa27c7a6cf/001/result.json",
+          "sha256": "c36f5043e395be70cb2e4dcafb521fea033bad7f2939f0d3a7970f9e7a751663"
+        },
+        {
+          "target": "tests/test_work_continuation.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/18004bb3524d921be978/001/result.json",
+          "sha256": "a59c657aee07bb6726c41893ab7012106948b1b206bdd23b5161dc83d3bb53f7"
+        },
+        {
+          "target": "chat-activity.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/f37d8a34d58746aba8d8/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "tests/test_audit_voice.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/972fa6cf694a414ba8e8/001/result.json",
+          "sha256": "9129236eb9c7e4c833816213bbc4e12827f9272e3ceec83318acc8754c75dff8"
+        },
+        {
+          "target": "tests/test_external_agents.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/1d69c289ab2359ee34e6/001/result.json",
+          "sha256": "56953de8779a5c8f9e74583146bfb348619689fe435a2fef0f998ab422540b87"
+        },
+        {
+          "target": "tests/test_agent_models.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/69502dc9f6eb8de09c2a/001/result.json",
+          "sha256": "df84479bd699b5a9ba9c49dac3ea1e131409f20a97ac1dca777b4cd6163f1af7"
+        },
+        {
+          "target": "tests/test_responses_agent.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/ee01539c6a22fdc3366e/001/result.json",
+          "sha256": "46899c30fa7d3b044bf9542e499df9d9de2e5e0f7d22d3b086025f0c2437657f"
+        },
+        {
+          "target": "tests/test_ui_control.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/7827e6d1cdf4d3503530/001/result.json",
+          "sha256": "6041b49bea2e935883655efd08b125f2bff5f922e86c83feafd3ec0653fcdba7"
+        },
+        {
+          "target": "shell-navigation.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/97f54a4e2372e7cd1465/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "usage-report.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/17f3c8957ad7c25c7fa8/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        },
+        {
+          "target": "tests/test_live_voice.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/62c10e58a4a1362f6bae/001/result.json",
+          "sha256": "fa8c9f7c3ceb0d9fcc158a16fd9a987684261605d93336a21af8a92784069d2e"
+        },
+        {
+          "target": "tests/test_voice_settlement.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/9a0ef41b2af76e9f66e8/001/result.json",
+          "sha256": "5cb46b2a7909f3253401e9b48f667a39ef1d412ee69f3e8cdfce0d3527d43e90"
+        },
+        {
+          "target": "tests/test_voice.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/887d8e9841514660d39c/001/result.json",
+          "sha256": "6ea111b5b254b5c86b3fb6e3115b3b719cfc39b0696f4d9f0d9b9c0a169dcd70"
+        },
+        {
+          "target": "tests/test_voice_drafts.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/26580622e8258ea47aff/001/result.json",
+          "sha256": "d4cf5d366e53df2e73ae7e4f7bd67cf64f2da19694ffd8b23ed5f697e2bd1928"
+        },
+        {
+          "target": "tests/test_audit_auth.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/61061b3e868272028d85/001/result.json",
+          "sha256": "08418f4aed115e8f640ab1e4901e94a3ba1fcfcd68d5f44a6ed0e17e5e7de79e"
+        },
+        {
+          "target": "tests/test_cloud_backups.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/970f204a8e675e7b8831/001/result.json",
+          "sha256": "6c4d7fcc218695db6254dedc150c0d9010dfc67395073fa90882a83394f16758"
+        },
+        {
+          "target": "tests/test_cloud_deployment.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/53ea8bf5e1e7eb205cbe/001/result.json",
+          "sha256": "e14e87b84895d6e5a96c73cab566462e81e7b14c297eeb1aef37ba1a81f8861d"
+        },
+        {
+          "target": "tests/test_worker_recovery.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/87d87b0ca4ee0108ee99/001/result.json",
+          "sha256": "f454dc98865bc8aeaa40686564d4d74286242f467e5dd276c120244c3e7c87ba"
+        },
+        {
+          "target": "tests/test_release_migrations.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/344587ea94f4d09f3d00/001/result.json",
+          "sha256": "ca09b22d99a2b81cf1fe940fc41d9537e2dbd7dd48fb462153afa543c610ba34"
+        },
+        {
+          "target": "tests/test_budget_guard.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/bcd3a660a5950fd50093/001/result.json",
+          "sha256": "76779745ae8f670cbb656ff1f1fa02aed21fde1f57fac7ae18eb68b918e9b367"
+        },
+        {
+          "target": "tests/test_budget_controls.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/d32c086f9f5f481c0877/001/result.json",
+          "sha256": "d58786b4a19bbc9399cb478de844b2e983f29d7a0a81d25731aa90ce1af0d486"
+        },
+        {
+          "target": "tests/test_budget_reconciliation.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/184b5229e14752f6cbc4/001/result.json",
+          "sha256": "83f299bb65de542067387141386f6f8fe4c0c0f136df2a9391b81bca66582096"
+        },
+        {
+          "target": "tests/test_batch_c.py",
+          "adapter": "pytest",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/acfd0c5f90d0f319738f/001/result.json",
+          "sha256": "6a38c2369df904aee8d6cd377d8b7394c1133eaec6f954c0feca4571a0722a98"
+        },
+        {
+          "target": "batch-c.mjs",
+          "adapter": "browser",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-offline/attempts/e6ab51d9a9b2a0d3a5e7/001/result.json",
+          "sha256": "881be922002acb6c7ed07386616c8efa418e793554654ab6579a05da2d8b6b08"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-embedding-recovery",
+      "created_at": "2026-10-03T07:54:56.187706+00:00",
+      "fingerprint": "5096f5c9f98e1206a69e7e027d1fed6204481ff2736f6dbc3a20885cb44f4338",
+      "harness_sha256": "5df9a8d40a4dd8542fc167aab4bd2b8788c259574339011f60dbc23042d6d95a",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 1,
+      "case_summary": {
+        "partial": 1
+      },
+      "job_summary": {
+        "passed": 1
+      },
+      "spending": {
+        "cap_usd": "10",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0",
+        "including_uncertain_usd": "0",
+        "requests": 0,
+        "stopped": null
+      },
+      "cases": [],
+      "jobs": [
+        {
+          "target": "memory_capture.24",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-embedding-recovery/attempts/fb482c5dcb5d6959aacc/001/result.json",
+          "sha256": "8ead7640dac5e72f807814d095c840e866e164916b97428e6f985990851e7106"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-model-core",
+      "created_at": "2026-10-03T07:56:13.519686+00:00",
+      "fingerprint": "407bed9efaecb832d5fb1d0ec9b99a087d4f517c36cdc084aa30fd0097eb03bb",
+      "harness_sha256": "6c4b01abd38bc181fc14e568b120fa01ac23a9818a30d0a40ac6c0f93202e38c",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 53,
+      "case_summary": {
+        "passed": 53
+      },
+      "job_summary": {
+        "passed": 53
+      },
+      "spending": {
+        "cap_usd": "9.809855306",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0.078634697",
+        "including_uncertain_usd": "0.078634697",
+        "requests": 178,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "task_capture.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_capture.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.11",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.15",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_edit.25",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "task_lifecycle.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.12",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.13",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "time_deadlines.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "notes.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "note_organization.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.02",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.04",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.05",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.06",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.07",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.08",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.10",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.18",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.19",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "memory_capture.20",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.01",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.03",
+          "status": "passed",
+          "missing_criteria": []
+        },
+        {
+          "id": "clarifications.20",
+          "status": "passed",
+          "missing_criteria": []
+        }
+      ],
+      "jobs": [
+        {
+          "target": "task_capture.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/4c369db468a0e771c6e9/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.02",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/b3d536fa9a8844f1e223/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/e99efc84d4d6c3e5a131/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.04",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/4da821701abe2c32e488/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.05",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/b86560b2d63c3e2a5a0b/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.06",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/05d62cef3e3b0e1e6c06/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.07",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/614e56429a06b7d17df3/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.10",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/d63b4c9bc241e52e23be/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_capture.15",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/93f6d9a16020cbd9a0ae/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/bf8aad8c072f310e8d5c/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.04",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/14e5b1a3edff6a63e1b5/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.05",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/a9f34651a169c470df88/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.06",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/ec050e8e221d7870d5e6/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.08",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/e16a17e430043907b4d3/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.10",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/9cad6d9ffbef8dec5713/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.11",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/9b948f2c54e4e0a44648/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.12",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/41e6838d15755a328857/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.13",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/2229999c94f6048b2e05/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.15",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/8ba3be416dd1b5b387a0/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_edit.19",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/a404a430ee6d390d5aad/001/result.json",
+          "sha256": "9934478fc45239cde9e4caaad85e479a3a60c3693e3c3de309599f892d391028"
+        },
+        {
+          "target": "task_edit.25",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/91b038754bf4794a6839/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.02",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/10d79041cd25b09bcde2/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/40509c5a90e2e568b781/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.04",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/dff3326351ab5b11a21f/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.05",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/c12512989650879bd625/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.06",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/16a93bf69a5608645ccd/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.07",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/163781c11d9d928de3cd/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.08",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/485776b6e16bed888171/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "task_lifecycle.10",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/a412b52ad1eccaee6f7b/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/f395866767c104eb6e54/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.04",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/69fa1b2df96dee33d657/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.05",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/7b8471c7a602cdd77efe/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.12",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/ef73b274d8fa2ecae09e/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.13",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/85fa668592f9e63101a1/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.18",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/0842aa7389e35f07c0d1/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "time_deadlines.20",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/ef501ae92e293040ae5e/001/result.json",
+          "sha256": "9934478fc45239cde9e4caaad85e479a3a60c3693e3c3de309599f892d391028"
+        },
+        {
+          "target": "notes.02",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/41623b7376a36050f860/001/result.json",
+          "sha256": "90f28ded3eb8f0b803a17a989a04eeae55c11ff0d8b02ad08ec17cb45e88591b"
+        },
+        {
+          "target": "note_organization.01",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/9641eec3300bdf680630/001/result.json",
+          "sha256": "bcd464e63f162fb2a4a4123470bd5fe4e2c1ee3ee8915906d803c56f67d396f9"
+        },
+        {
+          "target": "memory_capture.01",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/e61bdfd3664481e386d7/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.02",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/3c40f040dcb4537263b3/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.03",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/25ab1050ac1e4273d096/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.04",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/9204f1f3e6c2c94a6c3b/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.05",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/f71c3e6495bf5bd7e0fe/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.06",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/58d94e87337b45fc81e3/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.07",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/c85e7e94a93758f08e92/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.08",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/31d82300aa5702ce9c39/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.10",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/065fd35272bc54cdcf4a/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.18",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/dd1945a3311f64a34163/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.19",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/8e34d3428adaf49e96a5/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "memory_capture.20",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/22e5e546d1de733fa3bb/001/result.json",
+          "sha256": "3c9dd384cbbba114a56b1d3d35c39585ac4146a3d7e039cc784d047e8867bfba"
+        },
+        {
+          "target": "clarifications.01",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/187e1574010a3fd42cc9/001/result.json",
+          "sha256": "1aac4ab593807c8e9789409bde225f4740bdf05637d1fb433bf3398d8869f198"
+        },
+        {
+          "target": "clarifications.03",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/29d63c516b1055b67266/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        },
+        {
+          "target": "clarifications.20",
+          "adapter": "agent",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-model-core/attempts/17137b27dbfca15dee49/001/result.json",
+          "sha256": "0d9fff1602a048682d5d0933bfd05ba619903bc2226081ce663be35bb93e6046"
+        }
+      ]
+    },
+    {
+      "name": "batch-d-embedding-final",
+      "created_at": "2026-10-03T08:01:51.259498+00:00",
+      "fingerprint": "407bed9efaecb832d5fb1d0ec9b99a087d4f517c36cdc084aa30fd0097eb03bb",
+      "harness_sha256": "6c4b01abd38bc181fc14e568b120fa01ac23a9818a30d0a40ac6c0f93202e38c",
+      "corpus_sha256": "99119aa9b709a33dca14a7d605a82303e6d9e569ac341e2a479b971b8a49a059",
+      "selected": 1,
+      "case_summary": {
+        "passed": 1
+      },
+      "job_summary": {
+        "passed": 1
+      },
+      "spending": {
+        "cap_usd": "10",
+        "judge_cap_usd": "1",
+        "estimated_usd": "0",
+        "including_uncertain_usd": "0",
+        "requests": 0,
+        "stopped": null
+      },
+      "cases": [
+        {
+          "id": "memory_capture.24",
+          "status": "passed",
+          "missing_criteria": []
+        }
+      ],
+      "jobs": [
+        {
+          "target": "memory_capture.24",
+          "adapter": "pipeline",
+          "repeat": 1,
+          "status": "passed",
+          "failures": [],
+          "result_path": "artifacts/app-evals/batch-d-embedding-final/attempts/fb482c5dcb5d6959aacc/001/result.json",
+          "sha256": "11d91afe4692b185915c70de8f22314779257e5e95b04ff6dde3270a2171e34b"
+        }
+      ]
+    }
+  ],
+  "including_uncertain_total_usd": "0.268779391",
+  "release_core": {
+    "fully_bound": 215,
+    "passed_across_recorded_campaigns": 215,
+    "missing": [],
+    "features_with_fully_bound_cases": 20,
+    "catalog_features": 42,
+    "catalog_cases": 1051,
+    "evidence_by_case": {
+      "accounts.03": "batch-d-offline",
+      "accounts.05": "batch-d-offline",
+      "accounts.06": "batch-d-offline",
+      "accounts.07": "batch-d-offline",
+      "accounts.12": "batch-d-offline",
+      "accounts.13": "batch-d-offline",
+      "accounts.14": "batch-d-offline",
+      "accounts.16": "batch-d-offline",
+      "accounts.17": "batch-d-offline",
+      "accounts.19": "batch-d-offline",
+      "accounts.22": "batch-d-offline",
+      "accounts.25": "batch-d-offline",
+      "clarifications.01": "batch-d-model-core",
+      "clarifications.03": "batch-d-model-core",
+      "clarifications.10": "batch-d-offline",
+      "clarifications.20": "batch-d-model-core",
+      "custom_records.01": "batch-d-offline",
+      "custom_records.03": "batch-d-offline",
+      "custom_records.04": "batch-d-offline",
+      "custom_records.05": "batch-d-offline",
+      "custom_records.06": "batch-d-offline",
+      "custom_records.07": "batch-d-offline",
+      "custom_records.08": "batch-d-offline",
+      "custom_records.09": "batch-d-offline",
+      "custom_records.12": "batch-d-offline",
+      "custom_records.13": "batch-d-offline",
+      "custom_records.15": "batch-d-offline",
+      "custom_records.16": "batch-d-offline",
+      "custom_records.17": "batch-d-offline",
+      "custom_records.19": "batch-d-offline",
+      "custom_records.20": "batch-d-offline",
+      "custom_records.21": "batch-d-offline",
+      "custom_records.22": "batch-d-offline",
+      "custom_records.24": "batch-d-offline",
+      "custom_records.25": "batch-d-offline",
+      "custom_schema.01": "batch-d-offline",
+      "custom_schema.03": "batch-d-offline",
+      "custom_schema.04": "batch-d-offline",
+      "custom_schema.05": "batch-d-offline",
+      "custom_schema.06": "batch-d-offline",
+      "custom_schema.07": "batch-d-offline",
+      "custom_schema.09": "batch-d-offline",
+      "custom_schema.10": "batch-d-offline",
+      "custom_schema.11": "batch-d-offline",
+      "custom_schema.12": "batch-d-offline",
+      "custom_schema.13": "batch-d-offline",
+      "custom_schema.17": "batch-d-offline",
+      "custom_schema.18": "batch-d-offline",
+      "custom_schema.19": "batch-d-offline",
+      "custom_schema.20": "batch-d-offline",
+      "custom_schema.21": "batch-d-offline",
+      "custom_schema.22": "batch-d-offline",
+      "custom_schema.23": "batch-d-offline",
+      "external_agents.01": "batch-d-offline",
+      "external_agents.02": "batch-d-offline",
+      "external_agents.03": "batch-d-offline",
+      "external_agents.04": "batch-d-offline",
+      "external_agents.05": "batch-d-offline",
+      "external_agents.06": "batch-d-offline",
+      "external_agents.07": "batch-d-offline",
+      "external_agents.08": "batch-d-offline",
+      "external_agents.09": "batch-d-offline",
+      "external_agents.10": "batch-d-offline",
+      "external_agents.11": "batch-d-offline",
+      "external_agents.12": "batch-d-offline",
+      "external_agents.14": "batch-d-offline",
+      "external_agents.15": "batch-d-offline",
+      "external_agents.16": "batch-d-offline",
+      "external_agents.18": "batch-d-offline",
+      "external_agents.19": "batch-d-offline",
+      "external_agents.20": "batch-d-offline",
+      "external_agents.21": "batch-d-offline",
+      "external_agents.22": "batch-d-offline",
+      "external_agents.23": "batch-d-offline",
+      "memory_capture.01": "batch-d-model-core",
+      "memory_capture.02": "batch-d-model-core",
+      "memory_capture.03": "batch-d-model-core",
+      "memory_capture.04": "batch-d-model-core",
+      "memory_capture.05": "batch-d-model-core",
+      "memory_capture.06": "batch-d-model-core",
+      "memory_capture.07": "batch-d-model-core",
+      "memory_capture.08": "batch-d-model-core",
+      "memory_capture.10": "batch-d-model-core",
+      "memory_capture.11": "batch-d-offline",
+      "memory_capture.12": "batch-d-offline",
+      "memory_capture.13": "batch-d-offline",
+      "memory_capture.14": "batch-d-offline",
+      "memory_capture.15": "batch-d-offline",
+      "memory_capture.16": "batch-d-offline",
+      "memory_capture.18": "batch-d-model-core",
+      "memory_capture.19": "batch-d-model-core",
+      "memory_capture.20": "batch-d-model-core",
+      "memory_capture.21": "batch-d-offline",
+      "memory_capture.22": "batch-d-offline",
+      "memory_capture.23": "batch-d-offline",
+      "memory_capture.24": "batch-d-embedding-final",
+      "memory_capture.25": "batch-d-offline",
+      "memory_dream.01": "batch-d-offline",
+      "memory_dream.02": "batch-d-offline",
+      "memory_dream.03": "batch-d-offline",
+      "memory_dream.04": "batch-d-offline",
+      "memory_dream.05": "batch-d-offline",
+      "memory_dream.06": "batch-d-offline",
+      "memory_dream.07": "batch-d-offline",
+      "memory_dream.08": "batch-d-offline",
+      "memory_dream.09": "batch-d-offline",
+      "memory_dream.10": "batch-d-offline",
+      "memory_dream.11": "batch-d-offline",
+      "memory_dream.12": "batch-d-offline",
+      "memory_dream.13": "batch-d-offline",
+      "memory_dream.14": "batch-d-offline",
+      "memory_dream.15": "batch-d-offline",
+      "memory_dream.16": "batch-d-offline",
+      "memory_dream.17": "batch-d-offline",
+      "memory_dream.18": "batch-d-offline",
+      "memory_dream.19": "batch-d-offline",
+      "memory_dream.20": "batch-d-offline",
+      "memory_dream.21": "batch-d-offline",
+      "memory_dream.22": "batch-d-offline",
+      "memory_dream.23": "batch-d-offline",
+      "memory_dream.24": "batch-d-offline",
+      "note_organization.01": "batch-d-model-core",
+      "notes.02": "batch-d-model-core",
+      "notifications.18": "batch-d-offline",
+      "onboarding.01": "batch-d-offline",
+      "onboarding.02": "batch-d-offline",
+      "onboarding.03": "batch-d-offline",
+      "onboarding.04": "batch-d-offline",
+      "onboarding.20": "batch-d-offline",
+      "operations.06": "batch-d-offline",
+      "operations.09": "batch-d-offline",
+      "operations.10": "batch-d-offline",
+      "operations.11": "batch-d-offline",
+      "operations.13": "batch-d-offline",
+      "operations.14": "batch-d-offline",
+      "operations.18": "batch-d-offline",
+      "operations.19": "batch-d-offline",
+      "operations.24": "batch-d-offline",
+      "privacy.02": "batch-d-offline",
+      "privacy.04": "batch-d-offline",
+      "privacy.05": "batch-d-offline",
+      "privacy.07": "batch-d-offline",
+      "privacy.14": "batch-d-offline",
+      "queue.08": "batch-d-offline",
+      "quick_capture.01": "batch-d-offline",
+      "quick_capture.02": "batch-d-offline",
+      "quick_capture.03": "batch-d-offline",
+      "quick_capture.04": "batch-d-offline",
+      "quick_capture.05": "batch-d-offline",
+      "quick_capture.06": "batch-d-offline",
+      "quick_capture.07": "batch-d-offline",
+      "quick_capture.08": "batch-d-offline",
+      "quick_capture.20": "batch-d-offline",
+      "task_capture.01": "batch-d-model-core",
+      "task_capture.02": "batch-d-model-core",
+      "task_capture.03": "batch-d-model-core",
+      "task_capture.04": "batch-d-model-core",
+      "task_capture.05": "batch-d-model-core",
+      "task_capture.06": "batch-d-model-core",
+      "task_capture.07": "batch-d-model-core",
+      "task_capture.10": "batch-d-model-core",
+      "task_capture.15": "batch-d-model-core",
+      "task_capture.17": "batch-d-offline",
+      "task_capture.18": "batch-d-offline",
+      "task_capture.19": "batch-d-offline",
+      "task_capture.20": "batch-d-offline",
+      "task_capture.21": "batch-d-offline",
+      "task_capture.23": "batch-d-offline",
+      "task_edit.01": "batch-d-model-core",
+      "task_edit.04": "batch-d-model-core",
+      "task_edit.05": "batch-d-model-core",
+      "task_edit.06": "batch-d-model-core",
+      "task_edit.08": "batch-d-model-core",
+      "task_edit.10": "batch-d-model-core",
+      "task_edit.11": "batch-d-model-core",
+      "task_edit.12": "batch-d-model-core",
+      "task_edit.13": "batch-d-model-core",
+      "task_edit.15": "batch-d-model-core",
+      "task_edit.19": "batch-d-model-core",
+      "task_edit.21": "batch-d-offline",
+      "task_edit.23": "batch-d-offline",
+      "task_edit.24": "batch-d-offline",
+      "task_edit.25": "batch-d-model-core",
+      "task_lifecycle.02": "batch-d-model-core",
+      "task_lifecycle.03": "batch-d-model-core",
+      "task_lifecycle.04": "batch-d-model-core",
+      "task_lifecycle.05": "batch-d-model-core",
+      "task_lifecycle.06": "batch-d-model-core",
+      "task_lifecycle.07": "batch-d-model-core",
+      "task_lifecycle.08": "batch-d-model-core",
+      "task_lifecycle.09": "batch-d-offline",
+      "task_lifecycle.10": "batch-d-model-core",
+      "time_deadlines.03": "batch-d-model-core",
+      "time_deadlines.04": "batch-d-model-core",
+      "time_deadlines.05": "batch-d-model-core",
+      "time_deadlines.12": "batch-d-model-core",
+      "time_deadlines.13": "batch-d-model-core",
+      "time_deadlines.18": "batch-d-model-core",
+      "time_deadlines.20": "batch-d-model-core",
+      "time_deadlines.26": "batch-d-offline",
+      "workspaces.01": "batch-d-offline",
+      "workspaces.03": "batch-d-offline",
+      "workspaces.04": "batch-d-offline",
+      "workspaces.05": "batch-d-offline",
+      "workspaces.06": "batch-d-offline",
+      "workspaces.08": "batch-d-offline",
+      "workspaces.10": "batch-d-offline",
+      "workspaces.11": "batch-d-offline",
+      "workspaces.12": "batch-d-offline",
+      "workspaces.15": "batch-d-offline",
+      "workspaces.16": "batch-d-offline",
+      "workspaces.17": "batch-d-offline",
+      "workspaces.18": "batch-d-offline",
+      "workspaces.22": "batch-d-offline",
+      "workspaces.23": "batch-d-offline"
+    },
+    "qualification_limit": "These are bound automated scenarios, not a whole-app/device/provider qualification. Offline and paid reports have distinct source fingerprints because the binding/oracle repairs occurred between them; product code remained unchanged after the critical-final campaign."
+  },
+  "product_source_sha256": {
+    "apps/api/jarvis/work_runner.py": "21e0afc24271382d6f7dbe435ea0a4f244e1ebcb96866fb2680b75e8ea7ae3e5",
+    "apps/api/jarvis/tools.py": "f40c7d6c5c39e0f2c0aff23e1bbd752c581115b4f48643d81431f9c936a598b4"
+  },
+  "local_suites": {
+    "backend": {
+      "passed": 863,
+      "skipped": 1
+    },
+    "eval_meta": {
+      "passed": 82,
+      "skipped": 2
+    },
+    "frontend": {
+      "passed": 175,
+      "skipped": 1
+    },
+    "frontend_build": "passed",
+    "browser_fixtures": 8,
+    "lint": "passed"
+  },
+  "cloud": {
+    "observed_commit": "ca79dc8f0c1ed09be5776070fa75548289053fff",
+    "web_deployment": "a28e12aa-e971-4fee-aa04-3d759a8d49f1",
+    "worker_deployment": "bba07ee4-7f2d-413f-95b1-748f609ddeb3",
+    "postgres_image": "ghcr.io/railwayapp-templates/postgres-ssl:16.15",
+    "sleeping": false,
+    "readiness": {
+      "url": "https://app.eridani.app/health/ready",
+      "http_status": 200,
+      "body": {
+        "status": "ready"
+      }
+    },
+    "sql_version_and_worker_heartbeat": "not verified: no public DB URL and no Railway SSH key",
+    "pr_only_rule": false,
+    "required_checks": [
+      "Backend and migrations",
+      "Frontend and browser",
+      "Security audit"
+    ]
+  }
+}

@@ -873,6 +873,21 @@
         "expected.2"
       ],
       "scope": "Production memory job with exact source evidence; real Luna/embeddings for inference and scripted responses only for explicit fault cases."
+    },
+    {
+      "id": "release:durable-fact-index-retry",
+      "adapter": "pipeline",
+      "target": "memory_capture.24",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Extraction outage preserves lexical fact, separately queued embedding records retry failure, subsequent index recovery preserves identity and source."
     }
   ],
   "memory_capture.25": [
@@ -913,6 +928,20 @@
         "expected.1"
       ],
       "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "release:two-films-reuse",
+      "adapter": "pipeline",
+      "target": "note_organization.01",
+      "mode": "live-model",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Real inference; exactly Arrival and After Yang, original film ID/body retained, exact source links and foreign-account canary."
     }
   ],
   "note_organization.02": [
@@ -1552,16 +1581,23 @@
       "target": "tests/test_memory_review.py::test_deleted_or_corrected_candidate_cannot_be_resolved_or_injected",
       "mode": "offline",
       "level": "component",
-      "criteria": [
-        "expected.1"
-      ],
-      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     },
     {
       "id": "scenario:memory_dream.09",
       "mode": "offline",
       "adapter": "contract",
       "target": "memory_dream.09",
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
+    },
+    {
+      "id": "release:test_forget_source_removes_review_vector_retrieval_and_prompt",
+      "adapter": "pytest",
+      "target": "tests/test_release_dream.py::test_forget_source_removes_review_vector_retrieval_and_prompt",
+      "mode": "offline",
       "level": "acceptance",
       "criteria": [
         "expected.1",
@@ -1569,7 +1605,7 @@
         "invariants.2",
         "invariants.3"
       ],
-      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
   ],
   "memory_dream.10": [
@@ -1660,16 +1696,23 @@
       "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
       "mode": "offline",
       "level": "component",
-      "criteria": [
-        "expected.1"
-      ],
-      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     },
     {
       "id": "scenario:memory_dream.12",
       "mode": "offline",
       "adapter": "contract",
       "target": "memory_dream.12",
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
+    },
+    {
+      "id": "release:test_disabled_dream_scheduler_never_queues_on_worker_ticks",
+      "adapter": "pytest",
+      "target": "tests/test_release_dream.py::test_disabled_dream_scheduler_never_queues_on_worker_ticks",
+      "mode": "offline",
       "level": "acceptance",
       "criteria": [
         "expected.1",
@@ -1677,7 +1720,7 @@
         "invariants.2",
         "invariants.3"
       ],
-      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
   ],
   "memory_dream.14": [
@@ -1687,16 +1730,23 @@
       "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
       "mode": "offline",
       "level": "component",
-      "criteria": [
-        "expected.1"
-      ],
-      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     },
     {
       "id": "scenario:memory_dream.14",
       "mode": "offline",
       "adapter": "contract",
       "target": "memory_dream.14",
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
+    },
+    {
+      "id": "release:test_offline_week_catches_up_once_across_worker_ticks",
+      "adapter": "pytest",
+      "target": "tests/test_release_dream.py::test_offline_week_catches_up_once_across_worker_ticks",
+      "mode": "offline",
       "level": "acceptance",
       "criteria": [
         "expected.1",
@@ -1704,7 +1754,7 @@
         "invariants.2",
         "invariants.3"
       ],
-      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
   ],
   "memory_dream.16": [
@@ -1714,16 +1764,23 @@
       "target": "tests/test_memory_review.py::test_weekly_slot_catches_up_once_and_respects_timezone_and_disable",
       "mode": "offline",
       "level": "component",
-      "criteria": [
-        "expected.1"
-      ],
-      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     },
     {
       "id": "scenario:memory_dream.16",
       "mode": "offline",
       "adapter": "contract",
       "target": "memory_dream.16",
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
+    },
+    {
+      "id": "release:test_dst_review_worker_ticks_keep_one_job_per_local_week",
+      "adapter": "pytest",
+      "target": "tests/test_release_dream.py::test_dst_review_worker_ticks_keep_one_job_per_local_week",
+      "mode": "offline",
       "level": "acceptance",
       "criteria": [
         "expected.1",
@@ -1731,7 +1788,7 @@
         "invariants.2",
         "invariants.3"
       ],
-      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
   ],
   "memory_dream.19": [
@@ -1768,26 +1825,17 @@
       "target": "tests/test_memory_review.py::test_unasked_review_remains_available_and_private_output_records_question",
       "mode": "offline",
       "level": "component",
-      "criteria": [
-        "expected.1",
-        "expected.2"
-      ],
-      "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     },
     {
       "id": "scenario:memory_dream.25",
       "mode": "offline",
       "adapter": "contract",
       "target": "memory_dream.25",
-      "level": "acceptance",
-      "criteria": [
-        "expected.1",
-        "expected.2",
-        "invariants.1",
-        "invariants.2",
-        "invariants.3"
-      ],
-      "scope": "Actual deterministic weekly review with per-case overlays, provenance assertions and task/voice non-mutation."
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
     }
   ],
   "clarifications.01": [
@@ -3273,6 +3321,15 @@
       "adapter": "agent",
       "target": "task_lifecycle.09",
       "mode": "live-model",
+      "level": "component",
+      "criteria": [],
+      "scope": "Component evidence only after Sol review; see Batch D validation for missing assertions and replacement evidence."
+    },
+    {
+      "id": "release:test_custom_archive_restore_keeps_backing_task_and_active_reads",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_custom_archive_restore_keeps_backing_task_and_active_reads",
+      "mode": "offline",
       "level": "acceptance",
       "criteria": [
         "expected.1",
@@ -3280,7 +3337,7 @@
         "invariants.2",
         "invariants.3"
       ],
-      "scope": "Real Luna queued request with exact saved-state and unrelated mutation assertions."
+      "scope": "Active/archived collection and same-ID recovery checked through canonical API backing; model archive tool selection remains a separate component probe."
     }
   ],
   "task_lifecycle.10": [
@@ -3594,6 +3651,1636 @@
         "invariants.1"
       ],
       "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "accounts.17": [
+    {
+      "id": "release:test_private_accounts_do_not_share_records_or_profile",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_private_accounts_do_not_share_records_or_profile",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.01": [
+    {
+      "id": "release:test_private_accounts_do_not_share_records_or_profile",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_private_accounts_do_not_share_records_or_profile",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.05": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.06": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.07": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.19": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.12": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.22": [
+    {
+      "id": "release:test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_invites_bound_to_verified_email_expire_revoke_and_do_not_grant_by_assignment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.22": [
+    {
+      "id": "release:test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.04": [
+    {
+      "id": "release:test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.05": [
+    {
+      "id": "release:test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_editor_viewer_revocation_api_tools_receipts_and_notes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.08": [
+    {
+      "id": "release:test_revocation_during_tool_retrieval_discards_result",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_revocation_during_tool_retrieval_discards_result",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.10": [
+    {
+      "id": "release:test_old_device_requests_rejected_after_workspace_switch",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_old_device_requests_rejected_after_workspace_switch",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.06": [
+    {
+      "id": "release:test_member_cannot_manage_roles_or_bypass_csrf_or_claim_private_namespace",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_member_cannot_manage_roles_or_bypass_csrf_or_claim_private_namespace",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.11": [
+    {
+      "id": "release:test_shared_default_assignee_is_requesting_member_and_project_is_root",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_default_assignee_is_requesting_member_and_project_is_root",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.16": [
+    {
+      "id": "release:test_shared_search_indexes_do_not_include_private_vectors_and_recheck_revocation",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_search_indexes_do_not_include_private_vectors_and_recheck_revocation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.18": [
+    {
+      "id": "release:test_shared_commands_preserve_requesting_account_attribution",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_commands_preserve_requesting_account_attribution",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.03": [
+    {
+      "id": "release:test_shared_commands_preserve_requesting_account_attribution",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_shared_commands_preserve_requesting_account_attribution",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.25": [
+    {
+      "id": "release:test_private_interactive_tools_stop_after_session_revocation",
+      "adapter": "pytest",
+      "target": "tests/test_accounts.py::test_private_interactive_tools_stop_after_session_revocation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.12": [
+    {
+      "id": "release:test_auth_csrf_and_cross_origin",
+      "adapter": "pytest",
+      "target": "tests/test_api.py::test_auth_csrf_and_cross_origin",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.13": [
+    {
+      "id": "release:test_auth_csrf_and_cross_origin",
+      "adapter": "pytest",
+      "target": "tests/test_api.py::test_auth_csrf_and_cross_origin",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "notifications.18": [
+    {
+      "id": "release:test_push_destination_restrictions",
+      "adapter": "pytest",
+      "target": "tests/test_api.py::test_push_destination_restrictions",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "privacy.14": [
+    {
+      "id": "release:test_push_destination_restrictions",
+      "adapter": "pytest",
+      "target": "tests/test_api.py::test_push_destination_restrictions",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.14": [
+    {
+      "id": "release:test_viewer_and_revoked_member_can_log_out_and_viewer_can_search",
+      "adapter": "pytest",
+      "target": "tests/test_audit_auth.py::test_viewer_and_revoked_member_can_log_out_and_viewer_can_search",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.16": [
+    {
+      "id": "release:test_google_link_and_consent_delete_the_replaced_session",
+      "adapter": "pytest",
+      "target": "tests/test_audit_auth.py::test_google_link_and_consent_delete_the_replaced_session",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "accounts.03": [
+    {
+      "id": "release:test_oauth_wrong_browser_denial_expiry_and_nonce_never_link",
+      "adapter": "pytest",
+      "target": "tests/test_google_calendar.py::test_oauth_wrong_browser_denial_expiry_and_nonce_never_link",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.01": [
+    {
+      "id": "release:test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.02": [
+    {
+      "id": "release:test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.03": [
+    {
+      "id": "release:test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.06": [
+    {
+      "id": "release:test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_credentials_are_one_time_hashed_scoped_and_revocable",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.04": [
+    {
+      "id": "release:test_workspace_membership_scope_and_expiry",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_workspace_membership_scope_and_expiry",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.11": [
+    {
+      "id": "release:test_workspace_membership_scope_and_expiry",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_workspace_membership_scope_and_expiry",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.17": [
+    {
+      "id": "release:test_workspace_membership_scope_and_expiry",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_workspace_membership_scope_and_expiry",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.05": [
+    {
+      "id": "release:test_read_only_queued_agent_cannot_load_or_execute_mutations",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_read_only_queued_agent_cannot_load_or_execute_mutations",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.07": [
+    {
+      "id": "release:test_read_only_queued_agent_cannot_load_or_execute_mutations",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_read_only_queued_agent_cannot_load_or_execute_mutations",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.08": [
+    {
+      "id": "release:test_commands_retry_and_revision_conflict_and_actor_activity",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_commands_retry_and_revision_conflict_and_actor_activity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.09": [
+    {
+      "id": "release:test_commands_retry_and_revision_conflict_and_actor_activity",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_commands_retry_and_revision_conflict_and_actor_activity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.10": [
+    {
+      "id": "release:test_commands_retry_and_revision_conflict_and_actor_activity",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_commands_retry_and_revision_conflict_and_actor_activity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.12": [
+    {
+      "id": "release:test_record_queries_and_incremental_feed_are_scoped_and_paginated",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_record_queries_and_incremental_feed_are_scoped_and_paginated",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.14": [
+    {
+      "id": "release:test_mcp_real_transport_lists_scoped_tools_and_shares_receipts",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_mcp_real_transport_lists_scoped_tools_and_shares_receipts",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.18": [
+    {
+      "id": "release:test_mcp_real_transport_lists_scoped_tools_and_shares_receipts",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_mcp_real_transport_lists_scoped_tools_and_shares_receipts",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.15": [
+    {
+      "id": "release:test_mcp_invalid_input_origin_and_expired_key",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_mcp_invalid_input_origin_and_expired_key",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.16": [
+    {
+      "id": "release:test_mcp_invalid_input_origin_and_expired_key",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_mcp_invalid_input_origin_and_expired_key",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.19": [
+    {
+      "id": "release:test_bot_clarification_retries_and_other_bot_isolation",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_bot_clarification_retries_and_other_bot_isolation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.20": [
+    {
+      "id": "release:test_bot_clarification_retries_and_other_bot_isolation",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_bot_clarification_retries_and_other_bot_isolation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.21": [
+    {
+      "id": "release:test_revocation_between_queued_tool_calls_stops_next_write",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_revocation_between_queued_tool_calls_stops_next_write",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.22": [
+    {
+      "id": "release:test_bot_revert_and_owner_revert_preserve_later_changes",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_bot_revert_and_owner_revert_preserve_later_changes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "external_agents.23": [
+    {
+      "id": "release:test_bot_revert_and_owner_revert_preserve_later_changes",
+      "adapter": "pytest",
+      "target": "tests/test_external_agents.py::test_bot_revert_and_owner_revert_preserve_later_changes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.01": [
+    {
+      "id": "release:test_schema_preview_rename_stable_ids_and_full_definition",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_preview_rename_stable_ids_and_full_definition",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.12": [
+    {
+      "id": "release:test_schema_preview_rename_stable_ids_and_full_definition",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_preview_rename_stable_ids_and_full_definition",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.03": [
+    {
+      "id": "release:test_invalid_schema_is_atomic",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_schema_is_atomic",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.17": [
+    {
+      "id": "release:test_invalid_schema_is_atomic",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_schema_is_atomic",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.18": [
+    {
+      "id": "release:test_invalid_schema_is_atomic",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_schema_is_atomic",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.19": [
+    {
+      "id": "release:test_invalid_schema_is_atomic",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_schema_is_atomic",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.04": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.05": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.06": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.20": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.21": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.09": [
+    {
+      "id": "release:test_schema_options_scalars_content_and_rename_preserve_identity",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_options_scalars_content_and_rename_preserve_identity",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.07": [
+    {
+      "id": "release:test_invalid_custom_values_reject_without_effect",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_custom_values_reject_without_effect",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.08": [
+    {
+      "id": "release:test_invalid_custom_values_reject_without_effect",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_custom_values_reject_without_effect",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.12": [
+    {
+      "id": "release:test_invalid_custom_values_reject_without_effect",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_invalid_custom_values_reject_without_effect",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.04": [
+    {
+      "id": "release:test_client_lineage_override_reset_move_and_wrong_type",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_client_lineage_override_reset_move_and_wrong_type",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.05": [
+    {
+      "id": "release:test_client_lineage_override_reset_move_and_wrong_type",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_client_lineage_override_reset_move_and_wrong_type",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.06": [
+    {
+      "id": "release:test_client_lineage_override_reset_move_and_wrong_type",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_client_lineage_override_reset_move_and_wrong_type",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.07": [
+    {
+      "id": "release:test_client_lineage_override_reset_move_and_wrong_type",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_client_lineage_override_reset_move_and_wrong_type",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.22": [
+    {
+      "id": "release:test_client_lineage_override_reset_move_and_wrong_type",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_client_lineage_override_reset_move_and_wrong_type",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.03": [
+    {
+      "id": "release:test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.19": [
+    {
+      "id": "release:test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.20": [
+    {
+      "id": "release:test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_classification_record_has_no_phantom_task_and_stale_edits_reject",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.17": [
+    {
+      "id": "release:test_custom_archive_restore_keeps_backing_task_and_active_reads",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_custom_archive_restore_keeps_backing_task_and_active_reads",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.24": [
+    {
+      "id": "release:test_custom_records_paginate_past_100_without_loss",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_custom_records_paginate_past_100_without_loss",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.09": [
+    {
+      "id": "release:test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.10": [
+    {
+      "id": "release:test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.11": [
+    {
+      "id": "release:test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_status_labels_change_without_operational_drift_and_used_status_mapping",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.13": [
+    {
+      "id": "release:test_schema_apply_after_concurrent_schema_change_rejects",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_apply_after_concurrent_schema_change_rejects",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.22": [
+    {
+      "id": "release:test_schema_viewer_editor_cannot_redesign_via_tools",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_viewer_editor_cannot_redesign_via_tools",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_schema.23": [
+    {
+      "id": "release:test_schema_viewer_editor_cannot_redesign_via_tools",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_viewer_editor_cannot_redesign_via_tools",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.23": [
+    {
+      "id": "release:test_schema_viewer_editor_cannot_redesign_via_tools",
+      "adapter": "pytest",
+      "target": "tests/test_release_core.py::test_schema_viewer_editor_cannot_redesign_via_tools",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.01": [
+    {
+      "id": "release:test_custom_type_and_status_work_without_changing_task_engine",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_custom_type_and_status_work_without_changing_task_engine",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.21": [
+    {
+      "id": "release:test_custom_type_and_status_work_without_changing_task_engine",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_custom_type_and_status_work_without_changing_task_engine",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.15": [
+    {
+      "id": "release:test_parent_cycle_and_cross_owner_links_rejected",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_parent_cycle_and_cross_owner_links_rejected",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.16": [
+    {
+      "id": "release:test_parent_cycle_and_cross_owner_links_rejected",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_parent_cycle_and_cross_owner_links_rejected",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "workspaces.15": [
+    {
+      "id": "release:test_parent_cycle_and_cross_owner_links_rejected",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_parent_cycle_and_cross_owner_links_rejected",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.13": [
+    {
+      "id": "release:test_relation_cardinality_and_extra_link_does_not_move_home",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_relation_cardinality_and_extra_link_does_not_move_home",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "custom_records.25": [
+    {
+      "id": "release:test_source_task_and_note_edits_are_not_overwritten_by_record_property_edit",
+      "adapter": "pytest",
+      "target": "tests/test_structure.py::test_source_task_and_note_edits_are_not_overwritten_by_record_property_edit",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "quick_capture.20": [
+    {
+      "id": "release:test_shared_list_roles_and_personal_setup_boundary",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_shared_list_roles_and_personal_setup_boundary",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "onboarding.20": [
+    {
+      "id": "release:test_explicit_rules_work_without_waiting_for_model_assessment",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_explicit_rules_work_without_waiting_for_model_assessment",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.10": [
+    {
+      "id": "release:test_remote_export_is_encrypted_verified_then_marks_health",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_remote_export_is_encrypted_verified_then_marks_health",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.11": [
+    {
+      "id": "release:test_failed_upload_does_not_mark_backup_healthy_or_prune",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_failed_upload_does_not_mark_backup_healthy_or_prune",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.13": [
+    {
+      "id": "release:test_retention_only_deletes_exact_names_in_configured_prefix",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_retention_only_deletes_exact_names_in_configured_prefix",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.14": [
+    {
+      "id": "release:test_restore_empty_refuses_occupied_database_before_restoring",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_restore_empty_refuses_occupied_database_before_restoring",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.18": [
+    {
+      "id": "release:test_cloud_handoff_preserves_keys_and_never_overwrites",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_cloud_handoff_preserves_keys_and_never_overwrites",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.19": [
+    {
+      "id": "release:test_configuration_check_reports_only_variable_names_and_does_not_connect",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_configuration_check_reports_only_variable_names_and_does_not_connect",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.24": [
+    {
+      "id": "release:test_configuration_check_reports_only_variable_names_and_does_not_connect",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_backups.py::test_configuration_check_reports_only_variable_names_and_does_not_connect",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.09": [
+    {
+      "id": "release:test_paused_worker_does_not_initialize_dbos",
+      "adapter": "pytest",
+      "target": "tests/test_cloud_deployment.py::test_paused_worker_does_not_initialize_dbos",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "operations.06": [
+    {
+      "id": "release:test_lost_lease_stops_dispatch",
+      "adapter": "pytest",
+      "target": "tests/test_work_wakeup.py::test_lost_lease_stops_dispatch",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "privacy.02": [
+    {
+      "id": "release:test_history_setting_applies_to_existing_conversation",
+      "adapter": "pytest",
+      "target": "tests/test_privacy.py::test_history_setting_applies_to_existing_conversation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "privacy.04": [
+    {
+      "id": "release:test_deleted_source_redacts_memory_command_receipts",
+      "adapter": "pytest",
+      "target": "tests/test_privacy.py::test_deleted_source_redacts_memory_command_receipts",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "privacy.07": [
+    {
+      "id": "release:test_untrusted_csv_cells_and_malformed_push_endpoint",
+      "adapter": "pytest",
+      "target": "tests/test_privacy.py::test_untrusted_csv_cells_and_malformed_push_endpoint",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
+    }
+  ],
+  "privacy.05": [
+    {
+      "id": "release:test_forget_source_removes_review_vector_retrieval_and_prompt",
+      "adapter": "pytest",
+      "target": "tests/test_release_dream.py::test_forget_source_removes_review_vector_retrieval_and_prompt",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
   ]
 }

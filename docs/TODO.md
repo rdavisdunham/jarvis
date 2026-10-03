@@ -122,7 +122,7 @@ This batch does not change the backend model default or bypass CI.
 
 ## Batch C — quick capture and first-use setup
 
-Implemented on `codex/batch-c-capture-setup`; see [Batch C verification](BATCH_C_VALIDATION.md).
+Merged as PR #24; see [Batch C verification](BATCH_C_VALIDATION.md).
 Implementation/offline checks are distinct from real voice and new-user acceptance.
 
 - [x] **C1 — Quick lists.** Title/checklist capture with optional sections, deadline
@@ -158,12 +158,34 @@ Implementation/offline checks are distinct from real voice and new-user acceptan
 
 ## Batch D — verify, then pilot
 
-- [ ] **D1 — release-core evaluations.** Fully bind about 200 risk-weighted cases
+Automated verification is implemented on `codex/batch-d-release-verification`.
+See [Batch D results](BATCH_D_VALIDATION.md) and the [real acceptance/pilot checklist](RELEASE_ACCEPTANCE.md).
+The physical/provider gates and pilot below remain pending.
+
+- [x] Bind 215 exact automated scenarios (20 of 42 feature groups) and record passing
+  evidence across offline and Luna campaigns. The remaining groups have supporting
+  regressions and/or acceptance gaps; this is not whole-app qualification.
+- [x] Address Sol's six disputed bindings: five stronger oracles; withdraw the
+  microphone pass claim and retain physical acceptance. Preserve historical reports.
+- [x] Regrade EVAL-001–008; final critical Luna probes pass 15/15 (three repeats each),
+  broader model core 53/53. Total estimated spend including earlier failed attempts:
+  **$0.268779391** of the shared $10 cap; no uncertain charges. No Gemini calls.
+- [x] Fix tool-free/trailing-text clarification checks, explicit partial-answer handoff,
+  optional null home filters, and the outdated embedding-outage grader.
+- [x] Automate populated N-1 migration/old SQL-shape compatibility and B/C access
+  regressions for source annotations, quick lists and account setup. These run in CI.
+- [x] Full backend 863 passed / 1 skipped; frontend 175 / 1; eval harness 82 / 2;
+  all eight browser fixtures and build passed. Read back Batch C deployed on API/worker,
+  ready endpoint and sleeping disabled. Direct SQL/heartbeat still needs access.
+
+- [ ] **D1 — full release acceptance coverage.** Automated binding/regrades above are done;
+  close the remaining feature-specific, connected and device evidence gaps before release.
+  Original target: fully bind about 200 risk-weighted cases
   from the 1,051-case catalog. Fix Sol's six weak bindings; regrade EVAL-001–008 and
   repeat critical stochastic Luna cases at least three times. Preserve old reports.
   Default to offline checks; paid campaigns use the existing **$10 total ceiling**,
   including pipelines/embeddings/judges/retries and uncertain spend. Gemini stays paused.
-- [ ] **D2 — migrations and access.** N-1 compatibility, account/workspace
+- [x] **D2 — automated migrations and access.** Populated N-1 SQL-shape compatibility, account/workspace
   isolation, viewer/editor boundaries, removed members and scoped/revoked bot keys,
   including source annotations and new capture/onboarding paths.
 - [ ] **D3 — real acceptance.** Pixel folded/unfolded plus desktop: rapid requests,
