@@ -1,3 +1,4 @@
+import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { Dialog } from "./ux";
 import { z } from "zod";
 import { useEditor, choice } from "./editor-control";
@@ -49,7 +50,7 @@ const terminal = (status: string) =>
 export function GoogleEventDialog({
   event,
   timezone,
-  onClose,
+  onClose: closeParent,
   onSettings,
   onSaved,
   mutate,
@@ -61,6 +62,8 @@ export function GoogleEventDialog({
   onSaved: () => void;
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
 }) {
+  const annotation=useInlineGuard();
+  const onClose=()=>void annotation.flush().then(closeParent).catch(()=>{});
   const fresh = event.entity_id === "new";
   const alive = useRef(true);
   useEffect(() => {
@@ -288,7 +291,7 @@ export function GoogleEventDialog({
   useEditor({
     kind: "google_event",
     record_id: fresh ? null : event.entity_id,
-    dirty:
+    dirty: annotation.dirty ||
       JSON.stringify(comparable) !== JSON.stringify(baseForm) ||
       repeat !== "none",
     busy: busy || !!pending || !!blocked || !canEdit,
@@ -313,6 +316,7 @@ export function GoogleEventDialog({
       if (!canEdit || !form.title.trim()) return;
       return submit(false, false);
     },
+    beforeLeave: annotation.flush,
     close: onClose,
   });
   const fmt = (value: string) =>
@@ -680,7 +684,8 @@ export function GoogleEventDialog({
       ) : (
         !fresh && (
           <div className="cal-detail-layout">
-            <div className="cal-detail-main">
+                        <div className="cal-detail-main">
+              <SourceDetails source={event.source}/><SourceNotes kind="google" id={event.entity_id} onGuard={annotation.update}/>
               <div className="cal-when">
                 <CalendarDays size={18} aria-hidden="true" />
                 <div>

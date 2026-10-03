@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
+import { SourceDetails } from "./SourceDetails";
+import { validHomes } from "./OrganizationTree";
 import { RecordTools } from "./record-links";
 import { useEditor } from "./editor-control";
 import { Link2, X } from "lucide-react";
@@ -42,8 +44,11 @@ function FieldValue({field,value,choices,disabled,onSave,className}:{field:Schem
 
 const DUE = ["due_date","due_time","due_timezone"];
 
-export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>}){
+export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged,onOpen}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>;onOpen?:(r:CustomRecord)=>void}){
   const [row,setRow]=useState(initial);const [body,setBody]=useState(initial.body);const [title,setTitle]=useState(initial.title);const [relation,setRelation]=useState("");const [target,setTarget]=useState("");const {run,busy,error,setError}=useStructureActions();
+  const [localNotes,setLocalNotes]=useState(initial.local_notes??"");
+  const [failed,setFailed]=useState<Record<string,unknown>|null>(null);
+  const [comparison,setComparison]=useState<CustomRecord|null>(null);
   const current=useRef(row);current.current=row;const flight=useRef<Promise<unknown>|null>(null);
   const [alert,setAlert]=useState<{revision:number;deadline_alert:string;alert_urgent:boolean}|null>(null);
   useEffect(()=>{if(row.task_id)void api<{revision:number;deadline_alert:string;alert_urgent:boolean}>("/tasks/"+row.task_id).then(setAlert);},[row.task_id,row.revision]);
@@ -52,16 +57,16 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged}:{s
   const save=async(changes:Record<string,unknown>)=>{
     if(flight.current)await flight.current;
     const op=run<CustomRecord>("record.update",{record_id:current.current.id,expected_revision:current.current.revision,schema_revision:schema.revision,...changes});flight.current=op;
-    try{const result=await op;current.current=result;setRow(result);setTitle(result.title);setBody(result.body);await onChanged();return result;}finally{flight.current=null;}
+    try{const result=await op;current.current=result;setRow(result);setTitle(result.title);setBody(result.body);setLocalNotes(result.local_notes??"");setFailed(null);setComparison(null);await onChanged();return result;}catch(e){setFailed(changes);throw e;}finally{flight.current=null;}
   };
   const finish=async()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur();await new Promise(r=>setTimeout(r,0));if(flight.current)await flight.current;if(error)throw new Error(error);};
   const close=()=>void finish().then(onClose).catch(()=>{});
-  useEditor({kind:"record",record_id:row.id,mode:"detail",auto_save:true,dirty:title!==row.title||body!==row.body,busy,
-    schema:z.object({title:z.string().min(1).max(500),body:z.string().max(30000),parent_id:z.string().nullable(),status_id:z.string().nullable(),values:z.record(z.string(),z.unknown()),archived:z.boolean()}).partial(),
-    values:{title:row.title,body:row.body,parent_id:row.parent_id,status_id:row.status_id,values:row.values,archived:row.archived},beforeLeave:finish,patch:async v=>{if(!canEdit)throw new Error("Read-only workspace");await finish();return save(v);},close:onClose});
+  useEditor({kind:"record",record_id:row.id,mode:"detail",auto_save:true,dirty:!!failed||title!==row.title||body!==row.body||localNotes!==(row.local_notes??""),busy,
+    schema:z.object({title:z.string().min(1).max(500),body:z.string().max(30000),local_notes:z.string().max(30000),parent_id:z.string().nullable(),status_id:z.string().nullable(),values:z.record(z.string(),z.unknown()),archived:z.boolean()}).partial(),
+    values:{title:row.title,body:row.body,local_notes:row.local_notes??"",parent_id:row.parent_id,status_id:row.status_id,values:row.values,archived:row.archived},beforeLeave:finish,patch:async v=>{if(!canEdit)throw new Error("Read-only workspace");await finish();return save(v);},close:onClose});
   const link=async(remove=false,relationship_id=relation,target_id=target)=>{await run("record.link",{source_id:row.id,target_id,relationship_id,expected_revision:row.revision,schema_revision:schema.revision,remove});setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();setTarget("");};
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy&&!e.defaultPrevented)close();};document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);},[busy,onClose]);
-  const locked=!canEdit||busy;
+  const locked=!canEdit||busy||!!failed;
   const fields=t.fields.filter(f=>f.visible&&!f.archived);
   const byBinding=(binding:string)=>fields.find(f=>f.binding===binding);
   const field=(f:SchemaField,className?:string)=><FieldValue key={f.id} className={className} field={f} value={row.values[f.id]} choices={choices} disabled={locked} onSave={v=>void save({values:{[f.id]:v}}).catch(()=>{})}/>;
@@ -79,17 +84,25 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged}:{s
       <span className={"detail-save-state"+(busy?" busy":error?" attention":"")} aria-live="polite">{busy?"Saving…":error?"Changes need attention":canEdit?"Changes save automatically":"View only"}</span>
       <button className="btn-icon" aria-label="Close record" disabled={busy} onClick={close}><X size={20}/></button>
     </header>
-    {error&&<div role="alert" className="detail-alert"><p>{error}</p><button className="btn btn-sm" onClick={()=>void api<CustomRecord>("/structure/records/"+row.id).then(r=>{setRow(r);current.current=r;setTitle(r.title);setBody(r.body);setError("");})}>Reload saved record</button></div>}
+    {error&&<div role="alert" className="detail-alert"><p>{error} Your draft is kept here.</p>
+      <button className="btn btn-sm" onClick={()=>void api<CustomRecord>("/structure/records/"+row.id).then(setComparison).catch(e=>setError(e.message))}>Compare saved version</button>
+      {comparison&&<><details open><summary>Saved version</summary><strong>{comparison.title}</strong><p>{comparison.body}</p><pre>{JSON.stringify({values:comparison.values,local_notes:comparison.local_notes,parent_id:comparison.parent_id,status_id:comparison.status_id},null,2)}</pre></details>
+        <button className="btn btn-sm" onClick={()=>{setRow(comparison);current.current=comparison;setTitle(comparison.title);setBody(comparison.body);setLocalNotes(comparison.local_notes??"");setError("");setFailed(null);setComparison(null);}}>Use saved version</button>
+        {failed&&canEdit&&comparison.schema_revision===schema.revision&&<button className="btn btn-sm" onClick={()=>{current.current=comparison;void save(failed).catch(()=>{});}}>Reapply my change</button>}</>}
+    </div>}
     <div className="detail-grid">
       <div className="detail-main">
         <textarea rows={1} className="detail-title" aria-label="Record title" value={title} disabled={locked} onChange={e=>setTitle(e.target.value)} onBlur={()=>{if(title.trim()&&title!==row.title)void save({title}).catch(()=>{});}}/>
         <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={4} placeholder="Add details" onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
+        <details className="detail-section"><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
+        <SourceDetails source={row.source}/>
         <RecordTools kind="record" id={row.id}/>
+        {choices.some(r=>r.home.some(h=>h.id===row.id))&&<section className="detail-section" aria-label="Work in this home"><h3>In this home</h3>{choices.filter(r=>r.home.some(h=>h.id===row.id)).map(r=><div className="detail-link-row" key={r.id}><button className="text-button" onClick={()=>void finish().then(()=>onOpen?.(r)).catch(()=>{})}>{r.title}</button><span className="chip">{r.type_name}</span><span>{r.status_meaning?.replaceAll("_"," ")}</span></div>)}</section>}
         <section className="detail-section" aria-label="Related records">
           <div className="detail-section-head"><h3>Related records</h3>{!!links.length&&<span className="detail-count">{links.length}</span>}</div>
           {!links.length&&<p className="detail-empty">No related records yet.</p>}
           {links.map(({l,other})=><div className="detail-link-row" key={l.id}><Link2 size={15}/>
-            <span className="detail-link-title">{choices.find(r=>r.id===other)?.title??"Linked record"}</span>
+            <button className="text-button detail-link-title" onClick={()=>{const next=choices.find(r=>r.id===other);if(next)void finish().then(()=>onOpen?.(next)).catch(()=>{});}}>{choices.find(r=>r.id===other)?.title??"Linked record"}</button>
             <span className="chip">{schema.relationships.find(r=>r.id===l.relationship_id)?.name}</span>
             {canEdit&&l.source_id===row.id&&<span className="row-actions"><button className="btn-icon" aria-label="Remove link" onClick={()=>void link(true,l.relationship_id,other).catch(()=>{})}><X size={14}/></button></span>}
           </div>)}
@@ -99,7 +112,7 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged}:{s
       </div>
       <aside className="detail-props" aria-label={t.name+" properties"}>
         <div className="prop-list">
-          <Prop label="Main home"><select aria-label="Main home" value={row.parent_id??""} disabled={locked} onChange={e=>void save({parent_id:e.target.value||null}).catch(()=>{})}><option value="">Unfiled</option>{choices.filter(r=>r.id!==row.id&&t.parent_types.includes(r.type_id)).map(r=><option key={r.id} value={r.id}>{r.title} ({r.type_name})</option>)}</select></Prop>
+          <Prop label="Main home"><select aria-label="Main home" value={row.parent_id??""} disabled={locked} onChange={e=>void save({parent_id:e.target.value||null}).catch(()=>{})}><option value="">Unfiled</option>{validHomes(row,choices,schema).map(r=><option key={r.id} value={r.id}>{r.title} ({r.type_name})</option>)}</select></Prop>
           {!!t.statuses.length&&<Prop label="Status"><select aria-label="Status" value={row.status_id??""} disabled={locked} onChange={e=>void save({status_id:e.target.value||null}).catch(()=>{})}>{!t.capabilities.includes("work")&&<option value="">Empty</option>}{t.statuses.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>}
           {!!due.length&&<Prop label="Due" hint={due.map(f=>f.description).join(" ")}><div className="prop-inline">
             {due.map(f=>field(f,f.binding==="due_date"?"prop-date":f.binding==="due_time"?"prop-time":"prop-zone"))}</div>{due.map(f=><span key={f.id}>{inherited(f)}</span>)}</Prop>}

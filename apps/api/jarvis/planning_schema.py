@@ -42,3 +42,12 @@ PLANNING_COMMANDS = {
     "planning.unlink": PlanningChange,
     "planning.resolve": PlanningResolve,
 }
+
+
+class PlanningAnnotation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entry_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=1)
+    local_notes: str = Field(max_length=30000)
+
+PLANNING_COMMANDS["planning.annotate"] = PlanningAnnotation

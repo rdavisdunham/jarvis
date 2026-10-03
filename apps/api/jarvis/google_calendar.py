@@ -506,6 +506,9 @@ def event_detail(db, owner, event_id):
     ).first()
     if not row or row[0].payload.get("status") == "cancelled":
         raise DomainError("NOT_FOUND", "Calendar event is no longer available.", 404)
+    from .models import GoogleEventAnnotation
+    from .sources import google_source
+    annotation = db.get(GoogleEventAnnotation, (owner, row[2].subject, row[1].provider_id, row[0].provider_id))
     return {
         **row[0].payload,
         "provider_id": row[0].provider_id,
@@ -513,5 +516,8 @@ def event_detail(db, owner, event_id):
         "id": row[0].id,
         "calendar_id": row[1].id,
         "calendar_title": row[1].title,
+        "local_notes": annotation.local_notes if annotation else "",
+        "annotation_revision": annotation.revision if annotation else 0,
+        "source": google_source(db, row[1], row[0].payload),
         "last_sync_at": row[1].last_sync_at,
     }

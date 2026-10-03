@@ -88,7 +88,7 @@ def read_availability(owner, request):
     return {**data, "free_intervals": free, "busy_intervals": merged}
 
 
-def solve(request, free):
+def solve(request, free, task_free=None):
     """Enumerate chronological task orders, using earliest placement per order.
 
     For this non-preemptive single-person model with release times, deadlines,
@@ -116,7 +116,7 @@ def solve(request, free):
                 continue
             earliest = max(cursor, rule["start"])
             duration = timedelta(minutes=rule["minutes"])
-            for a, b in free:
+            for a, b in (task_free.get(key, free) if task_free else free):
                 start = max(a, earliest)
                 finish = start + duration
                 if finish <= min(b, rule["end"], end):
@@ -148,12 +148,20 @@ def propose(owner, arguments):
     available = read_availability(owner, request)
     if available["status"] != "fresh":
         return {**available, "blocks": [], "saved": False}
-    placed, proven, nodes = solve(request, available["free_intervals"])
+    from .domain import preferences
+    from .scheduling_windows import task_intervals
+    with session_scope() as db:
+        prefs = preferences(db, owner)
+    task_free = task_intervals(request, available["free_intervals"], prefs)
+    applied = {"timezone":prefs["timezone"],"windows":prefs["scheduling_windows"],
+               "tasks":{t.task_id:t.availability for t in request.tasks},"override_reason":request.override_reason}
+    placed, proven, nodes = solve(request, available["free_intervals"], task_free)
     if not placed:
         return {
             "status": "infeasible" if proven else "search_limit", "saved": False, "blocks": [],
             "reason": "The required durations, time windows and dependencies do not fit the confirmed free time."
             if proven else "No plan was found within the search limit; infeasibility is not proven.",
+            "scheduling": applied,
             "required_minutes": sum(t.minutes for t in request.tasks),
             "available_minutes": sum(int((b-a).total_seconds() / 60) for a, b in available["free_intervals"]),
             "source": available["source"], "timezone": request.timezone,
@@ -169,7 +177,7 @@ def propose(owner, arguments):
     expires = now() + timedelta(minutes=15)
     plan_id = uid()
     sealed = seal({"purpose": "planning_proposal", "owner": owner, "plan_id": plan_id,
-                   "expires_at": expires.isoformat(), "request": request.model_dump(), "blocks": blocks})
+                   "expires_at": expires.isoformat(), "request": request.model_dump(), "blocks": blocks, "scheduling": applied})
     # Keep the large encrypted payload server-side. Models copy one short ID.
     # Uncommitted proposals expire; committed plan receipts remain replayable.
     with session_scope() as db:
@@ -181,7 +189,7 @@ def propose(owner, arguments):
                        result={"command_id": "planning-proposal:" + plan_id, "status": "succeeded",
                                "data": {"sealed_proposal": sealed}, "committed_at": now().isoformat()}))
     return {
-        "status": "ready", "saved": False, "blocks": blocks, "timezone": request.timezone,
+        "status": "ready", "scheduling": applied, "saved": False, "blocks": blocks, "timezone": request.timezone,
         "scope": request.scope, "source": available["source"], "checked_at": available.get("checked_at"),
         "optimality": "proven_earliest_finish" if proven else "feasible_not_proven_optimal",
         "finish": blocks[-1]["end"], "search_nodes": nodes, "plan_token": plan_id,
@@ -229,13 +237,16 @@ def commit(db, owner, token):
     if availability["status"] != "fresh":
         raise DomainError("AVAILABILITY_UNKNOWN", availability["reason"], 409)
     _, _, rules = constraints(request)
+    from .domain import preferences
+    from .scheduling_windows import task_intervals
+    task_free = task_intervals(request, availability["free_intervals"], preferences(db, owner))
     intervals = {}
     for block in proposal["blocks"]:
         a, b = instant(block["start"]), instant(block["end"])
         key = block["task_id"]
         rule = rules[key]
-        if not any(start <= a < b <= end for start, end in availability["free_intervals"]):
-            raise DomainError("PLAN_CONFLICT", "A proposed block is no longer free. Generate a new plan.", 409)
+        if not any(start <= a < b <= end for start, end in task_free[key]):
+            raise DomainError("PLAN_CONFLICT", "A proposed block no longer fits free time or saved scheduling hours. Generate a new plan.", 409)
         if b-a != timedelta(minutes=rule["minutes"]) or a < rule["start"] or b > rule["end"]:
             raise DomainError("PLAN_INVALID", "The block does not satisfy its time constraints.")
         intervals[key] = (a, b)
@@ -254,6 +265,7 @@ def commit(db, owner, token):
             start=block["start"], end=block["end"], timezone=request.timezone)))
     result = {"plan_id": proposal["plan_id"], "entries": saved, "saved_count": len(saved),
               "scope": request.scope, "source": availability["source"], "google_published": False,
+              "scheduling": proposal.get("scheduling"), "override_reason": request.override_reason,
               "note": "Local blocks saved; task deadlines, planned dates and alerts are unchanged."}
     # Token-level idempotency survives new client command IDs and process restarts.
     # This receipt and all blocks commit in the same database transaction.

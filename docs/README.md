@@ -56,3 +56,5 @@ The [archive index](archive/README.md) contains superseded plans, old release
 validation, earlier audits, the complete prior TODO ledger and the retired
 prototype README. These are evidence and context, not active operating instructions.
 No requirement is considered completed merely because its old document was archived.
+
+- [Batch B verification](BATCH_B_VALIDATION.md) — organization tree, source ownership/local notes, scheduling and acceptance boundaries.

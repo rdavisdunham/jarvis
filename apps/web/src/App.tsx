@@ -1,3 +1,4 @@
+import { SourceColorSettings } from "./SourceDetails";
 import { VoiceDrafts } from "./VoiceDrafts";
 import { useAppHistory } from "./app-history";
 import { SettingsLayout, SettingsGroup, SettingRow } from "./SettingsLayout";
@@ -136,6 +137,7 @@ const LinearSettings = lazy(() => viewChunks.linear().then((m) => ({ default: m.
 const LinearTask = lazy(() => viewChunks.linear().then((m) => ({ default: m.LinearTask })));
 const BotSettings = lazy(() => viewChunks.bots().then((m) => ({ default: m.BotSettings })));
 const RoutingReviewPanel = lazy(() => viewChunks.preferences().then((m) => ({ default: m.RoutingReviewPanel })));
+const SchedulingPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.SchedulingPreferences })));
 const NotificationPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.NotificationPreferences })));
 const ThemeSetting = lazy(() => viewChunks.preferences().then((m) => ({ default: m.ThemeSetting })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
@@ -357,6 +359,7 @@ export default function App() {
   const activeWork = work.items.filter(workActive).length;
   const attentionWork = work.items.filter(item => workAttention(item) && !item.seen).length;
   const [voiceState, setVoiceState] = useState<VoiceState | null>(null);
+  useEffect(()=>{const colors=boot?.preferences.source_colors??{};for(const [key,value] of Object.entries({eridani:"#9edac8",linear:"#e4a261",google:"#e995bd",...colors}))document.documentElement.style.setProperty("--source-"+key,value);},[boot?.preferences.source_colors]);
   // Realtime is paused. Old device preferences must not start a disabled session.
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("live");
   const [voiceName, setVoiceName] = useState(
@@ -1096,10 +1099,15 @@ export default function App() {
         throw new Error("Choose Notes for note search mode.");
       if (action.settings_section && target !== "settings")
         throw new Error("Choose Settings for that section.");
-      if (action.layout)
-        (target === "organize" ? setOrganizationLayout : setWorkLayout)(
-          action.layout,
-        );
+      if (action.layout) {
+        if(target === "organize") {
+          setRecordControl({nonce:crypto.randomUUID(),layout:action.layout});
+          if(action.layout!=="tree")setOrganizationLayout(action.layout);
+        } else {
+          if(action.layout==="tree")throw new Error("The tree layout belongs to Organization.");
+          setWorkLayout(action.layout);
+        }
+      }
       if (action.sort) setWorkSort(action.sort);
       if (action.group_by) setWorkGroup(action.group_by);
       if (action.timeline_date) setTimelineDate(action.timeline_date);
@@ -1792,7 +1800,7 @@ export default function App() {
     done = filtered.filter((t) => t.status === "completed"),
     unread = notices.filter((n) => !n.read_at).length;
   const uiContext: UIContext = {
-    layout: view === "organize" ? organizationLayout : workLayout,
+    layout: view === "organize" ? (organizationEditor ? organizationLayout : (collectionContext.layout??"tree") as "tree"|WorkLayout) : workLayout,
     sort: workSort,
     group_by: workGroup,
     timeline_date: timelineDate || today,
@@ -2694,7 +2702,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<RoutingReviewPanel/>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
                   ["profile", "organization", "notifications", "privacy", "system", "integrations"].includes(
@@ -2708,6 +2716,7 @@ export default function App() {
                 {settingsSection === "profile" && (
                   <SettingsGroup className="density-setting" title="Display">
                     <ThemeSetting />
+                    {!boot.workspace?.id&&<SourceColorSettings/>}
                     <SettingRow as="label" label="Display density" hint="Compact fits more rows on screen.">
                       <select
                         aria-label="Display density"

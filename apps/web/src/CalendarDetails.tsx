@@ -1,3 +1,4 @@
+import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
@@ -33,7 +34,7 @@ export function CalendarDetails({
   allTasks,
   allSchedules,
   zone,
-  onClose,
+  onClose: closeParent,
   onEdit,
   onTask,
   onNote,
@@ -70,6 +71,8 @@ export function CalendarDetails({
     [error, setError] = useState("");
   const [retry, setRetry] = useState(0),
     [notesError, setNotesError] = useState("");
+  const annotation=useInlineGuard();
+  const onClose=()=>void annotation.flush().then(closeParent).catch(()=>{});
   const local = event.kind === "event" || event.kind === "block";
   useEffect(() => {
     let active = true;
@@ -171,10 +174,11 @@ export function CalendarDetails({
     kind: local ? "event" : event.kind === "task" ? "task" : "reminder",
     record_id: event.entity_id,
     mode: "detail",
-    dirty: false,
+    dirty: annotation.dirty,
     busy: loading || saving,
     schema: z.object({}),
     values: summary,
+    beforeLeave: annotation.flush,
     close: onClose,
     patch: () => {
       throw new Error("This is a saved detail card. Open its form to edit.");
@@ -343,7 +347,9 @@ export function CalendarDetails({
           </p>
         )}
         <div className={"cal-detail-layout" + (props.length ? "" : " single")}>
-          <div className="cal-detail-main">
+                      <div className="cal-detail-main">
+              <SourceDetails source={event.source}/>
+              {local&&<SourceNotes kind="planning" id={event.entity_id} canEdit={canEdit} onGuard={annotation.update}/> }
             <div className="cal-when">
               <CalendarDays size={18} aria-hidden="true" />
               <div>

@@ -1,7 +1,7 @@
 """User-defined organization; typed task/note capabilities retain their services."""
 
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base, now, uid
@@ -35,6 +35,8 @@ class StructureRecord(Base):
     type_id: Mapped[str] = mapped_column(String(80), index=True)
     title: Mapped[str] = mapped_column(String(500))
     body: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    local_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     values: Mapped[dict] = mapped_column(JSONB, default=dict)
     status_id: Mapped[str | None] = mapped_column(String(80))
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("structure_records.id"), index=True)

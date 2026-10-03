@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { api, post } from "./api";
 import { useStructureActions } from "./structure-actions";
+import { OrganizationTree } from "./OrganizationTree";
+import { SourceBadge } from "./SourceDetails";
 import { RecordCard } from "./RecordCard";
 import { StructureEditor } from "./StructureEditor";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
@@ -32,7 +34,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const [schema,setSchema]=useState<Schema|null>(null);const [items,setItems]=useState<CustomRecord[]>([]);
   const [resultIds,setResultIds]=useState<string[]|null>(null);
   const [resultSearch,setResultSearch]=useState<string|null>(null);
-  const [typeId,setTypeId]=useState("");const [layout,setLayout]=useState("list");const [parent,setParent]=useState("");
+  const [typeId,setTypeId]=useState("");const [layout,setLayout]=useState(capability?"list":"tree");const [parent,setParent]=useState("");
   const [selected,setSelected]=useState<CustomRecord|null>(null);const [design,setDesign]=useState(false);const [designDirty,setDesignDirty]=useState(false);
   const [title,setTitle]=useState("");const [archived,setArchived]=useState(false);const [group,setGroup]=useState("status");
   const [proposal,setProposal]=useState<Proposal>();
@@ -135,7 +137,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     const Icon=typeIcon(r.type_id);return <span className="row-glyph" aria-hidden="true"><Icon size={17}/></span>;
   };
   const chips=(r:CustomRecord,{home=true}:{home?:boolean}={})=>{
-    const rt=typeOf(r);const out:ReactNode[]=[];
+    const rt=typeOf(r);const out:ReactNode[]=[<SourceBadge key="source" source={r.source}/>];
     const showType=!typeId&&(!capability||r.type_id!=="task");
     if(home&&(r.home.length||showType)){const Icon=typeIcon(r.home.at(-1)?.type_id??r.type_id);
       out.push(<span key="home" className="chip chip-home" title={[r.type_name,...r.home.map(p=>p.title)].join(" in ")}>
@@ -186,7 +188,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     filterField&&filterValue&&{key:"field",label:(field?.name??"Field")+": "+((field?.kind==="relation"?items.find(r=>r.id===filterValue)?.title:field?.options.find(o=>o.id===filterValue)?.name)??filterValue),clear:()=>{setFilterField("");setFilterValue("");}},
     archived&&{key:"archived",label:"Archived",clear:()=>setArchived(false)},
   ].filter(Boolean) as {key:string;label:string;clear:()=>void}[];
-  const layoutIcons={list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
+  const layoutIcons={tree:Layers,list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
   const toolbar=<div className={"work-toolbar"+(tabs?" has-tabs":"")}>
     {tabs}
     <div className="work-toolbar-controls">
@@ -220,9 +222,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         </>}
       </Popover>
       <div className="segmented work-layout" role="group" aria-label="Layout">
-        {(["list","board","timeline"] as const).map(value=>{const Icon=layoutIcons[value];const label=value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
+        {((capability?["list","board","timeline"]:["tree","list","board","timeline"]) as (keyof typeof layoutIcons)[]).map(value=>{const Icon=layoutIcons[value];const label=value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
       </div>
-      {canDesign&&<button type="button" className="btn btn-ghost toolbar-button" aria-label="Structure" title="Shape your workspace structure" onClick={()=>{setProposal(undefined);setDesign(true);}}><Settings2 size={16} aria-hidden="true"/><span className="toolbar-label">Structure</span></button>}
+      {canDesign&&<button type="button" className="btn btn-ghost toolbar-button" aria-label="Structure" title="Shape your workspace structure" onClick={()=>{setProposal(undefined);setDesign(true);}}><Settings2 size={16} aria-hidden="true"/><span className="toolbar-label">Types & fields</span></button>}
     </div>
   </div>;
 
@@ -305,9 +307,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       {!selecting&&onSelecting&&canEdit&&layout!=="timeline"&&<button type="button" className="btn btn-ghost btn-sm work-select" onClick={()=>onSelecting(true)}>Select tasks</button>}
     </div>
     <div className="work-body" id={tabs?"task-workspace":undefined} role={tabs?"tabpanel":undefined} aria-labelledby={tabs?"task-tab-"+tab:undefined}>
-      {!visible.length?empty:layout==="board"?board:layout==="timeline"?timeline:list}
+      {!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("list");}} onMove={edit}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
-    {selected&&<RecordCard schema={schema} initial={selected} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
+    {selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={open} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
     {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} schema={schema} onClose={()=>setDesign(false)} onApplied={async()=>{setDesign(false);await refreshAll();}}/>}
   </section>;
 }

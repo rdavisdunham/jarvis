@@ -165,7 +165,11 @@ def read_event(owner, args):
         reason = blocked_event(remote)
         editable = bool(write_enabled and remote.get("etag") and not reason)
         with session_scope() as db:
-            account_source(db, owner, source_id, generation=generation)
+            _, current_calendar = account_source(db, owner, source_id, generation=generation)
+            from .google_calendar import event_detail
+            from .sources import google_source
+            cached_detail = event_detail(db, owner, args.event_id)
+            source_metadata = google_source(db, current_calendar, remote)
         token = (
             seal(
                 {
@@ -200,6 +204,9 @@ def read_event(owner, args):
 
         return {
             **details(remote),
+            "local_notes": cached_detail["local_notes"],
+            "annotation_revision": cached_detail["annotation_revision"],
+            "source": source_metadata,
             "event_id": args.event_id,
             "calendar_id": source_id,
             "calendar_title": title,

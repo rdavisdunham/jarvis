@@ -174,11 +174,13 @@ class WorkWindow(Args):
 
 
 class SettingsUpdate(Args):
+    source_colors: dict[str, str] | None = None
     routing_mode: Literal["off", "suggest", "automatic"] | None = None
     routing_learning: bool | None = None
     routing_review_enabled: bool | None = None
     routing_review_day: int | None = Field(default=None, ge=0, le=6)
     routing_review_hour: int | None = Field(default=None, ge=0, le=23)
+    scheduling_windows: dict[str, list[WorkWindow]] | None = None
     work_windows: list[WorkWindow] | None = Field(default=None, max_length=14)
     deadline_alerts: bool | None = None
     quiet_enabled: bool | None = None
@@ -236,7 +238,7 @@ NOT_NULL = {
     "goal.update": {"name", "archived"},
     "project.update": {"name", "archived"},
     "actor.update": {"name", "archived"},
-    "record.update": {"title"},
+    "record.update": {"title", "sort_order", "local_notes"},
     "note.update": {"title", "content", "tags", "archived"},
 }
 CLEARED = {
@@ -263,13 +265,21 @@ def encode(value):
 
 
 def serial(record):
-    return encode(
+    result = encode(
         {
             c.name: getattr(record, c.name)
             for c in record.__table__.columns
             if c.name not in {"owner_id", "token_hash", "embedding", "fingerprint"}
         }
     )
+
+    if isinstance(record, Task):
+        from sqlalchemy.orm import object_session
+        from .sources import task_source
+        db = object_session(record)
+        if db:
+            result["source"] = task_source(db, record)
+    return result
 
 
 def owned(db, model, record_id, owner, lock=False):
@@ -308,6 +318,8 @@ def preferences(db, owner):
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
         "routing_review_day": 0, "routing_review_hour": 3,
+        "scheduling_windows": {"work":[{"days":[0,1,2,3,4],"start":"08:00","end":"17:00"}],"personal":[]},
+        "source_colors": {"eridani":"#9edac8","linear":"#e4a261","google":"#e995bd"},
         "work_windows": [{"days": [0,1,2,3,4], "start": "08:00", "end": "17:00"}],
         "deadline_alerts": True, "quiet_enabled": True, "quiet_start": "22:00", "quiet_end": "08:00",
         "morning_summary": False, "morning_hour": 8,
@@ -499,7 +511,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
+        ("settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -570,6 +582,25 @@ def mutate(db, owner, tool, args, command_id):
         from .planning import mutate as planning_mutate
 
         return planning_mutate(db, owner, tool, args)
+    if tool == "calendar.annotate":
+        from .google_calendar import event_detail
+        from .models import GoogleCalendarEvent, GoogleCalendar, GoogleIdentity, GoogleEventAnnotation
+        event_detail(db, owner, args.event_id)
+        event_row = db.get(GoogleCalendarEvent, args.event_id)
+        calendar = db.get(GoogleCalendar, event_row.calendar_id)
+        account = db.get(GoogleIdentity, owner)
+        key = (owner, account.subject, calendar.provider_id, event_row.provider_id)
+        advisory(db, "google-annotation:" + ":".join(key))
+        row = db.get(GoogleEventAnnotation, key, with_for_update=True)
+        if (row.revision if row else 0) != args.expected_revision:
+            raise DomainError("REVISION_CONFLICT", "These local notes changed. Compare the saved version.", 409)
+        if not row:
+            row = GoogleEventAnnotation(owner_id=owner,account_subject=account.subject,calendar_id=calendar.provider_id,event_id=event_row.provider_id,revision=0)
+            db.add(row)
+        row.local_notes = args.local_notes
+        row.revision += 1
+        emit(db, owner, "google.changed", args.event_id)
+        return {"local_notes":row.local_notes,"annotation_revision":row.revision}
     if tool in {"calendar.create", "calendar.update", "calendar.delete"}:
         from .google_writes import queue_write
 
@@ -899,6 +930,16 @@ def mutate(db, owner, tool, args, command_id):
                 raise DomainError("INVALID_ARGUMENT", "The selected model and provider do not match.")
             # Older clients can still select a provider; new clients select a model profile.
             values.update(agent_profile=agent.profile_id, agent_provider=agent.provider)
+        if "scheduling_windows" in values:
+            windows = values["scheduling_windows"]
+            if set(windows) - {"work", "personal"} or any(len(rows)>14 or any(not w["days"] or any(d<0 or d>6 for d in w["days"]) or w["start"]==w["end"] for w in rows) for rows in windows.values()):
+                raise DomainError("INVALID_ARGUMENT", "Use work/personal windows with valid days and different start/end times; an empty list means unrestricted.")
+            values["scheduling_windows"] = {**preferences(db, owner)["scheduling_windows"], **windows}
+        if "source_colors" in values:
+            import re
+            if any(k not in {"eridani","linear","google"} or not re.fullmatch(r"#[0-9a-fA-F]{6}", v) for k,v in values["source_colors"].items()):
+                raise DomainError("INVALID_ARGUMENT", "Use a six-digit hex color for each supported source.")
+            values["source_colors"] = {**preferences(db, owner)["source_colors"], **values["source_colors"]}
         if "timezone" in values:
             zone(values["timezone"])
         if "work_windows" in values and any(any(day<0 or day>6 for day in w["days"]) for w in values["work_windows"]):raise DomainError("INVALID_ARGUMENT","Work days must be Monday through Sunday.")
@@ -1022,3 +1063,6 @@ COMMANDS.update(ROUTING_COMMANDS)
 
 from .note_list_schema import COMMANDS as NOTE_LIST_COMMANDS
 COMMANDS.update(NOTE_LIST_COMMANDS)
+
+from .google_schema import CalendarAnnotation
+COMMANDS["calendar.annotate"] = CalendarAnnotation

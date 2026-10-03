@@ -129,12 +129,12 @@ def test_project_moves_and_record_homes_stay_in_sync():
     run("record.update", {"record_id": record["id"], "expected_revision": record["revision"], "schema_revision": d["revision"], "parent_id": alpha["id"]})
     with session_scope() as db:
         assert db.get(models.Task, task["id"]).project_id == alpha["id"]
-    # A custom (non-legacy) home leaves the legacy project untouched.
+    # A custom home clears stale native project membership; external projects stay connector-owned.
     client = run("record.create", {"type_id": "client", "title": "ABC", "schema_revision": d["revision"]})
     record = record_for(task["id"])
     run("record.update", {"record_id": record["id"], "expected_revision": record["revision"], "schema_revision": d["revision"], "parent_id": client["id"]})
     with session_scope() as db:
-        assert db.get(models.Task, task["id"]).project_id == alpha["id"]
+        assert db.get(models.Task, task["id"]).project_id is None
     assert moved["project_id"] == beta["id"]
 
 

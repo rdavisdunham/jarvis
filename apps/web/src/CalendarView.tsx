@@ -1,3 +1,4 @@
+import { SourceBadge } from "./SourceDetails";
 import {
   calendarKind,
   clockLabel,
@@ -230,7 +231,7 @@ export function CalendarView(p: Props) {
                     <KindIcon kind={e.kind} size={15} />
                   </span>
                   <span className="agenda-main">
-                    <strong>{e.title}</strong>
+                    <strong>{e.title}</strong><SourceBadge source={e.source}/>
                     <span className="chip-row">
                       <span className="chip calendar-type-badge">
                         {kind.label}
@@ -438,7 +439,7 @@ export function CalendarView(p: Props) {
                       }
                     >
                       {!spansTime(e) && <KindIcon kind={e.kind} size={12} />}
-                      <span className="cal-pill-name">{e.title}</span>
+                      <span className="cal-pill-name">{e.title}</span><SourceBadge source={e.source}/>
                     </button>
                   ))}
                   {entries.length > shown.length && (
@@ -626,7 +627,7 @@ function HourGrid({
                   onClick={() => onEntry(e)}
                 >
                   {!spansTime(e) && <KindIcon kind={e.kind} size={12} />}
-                  <span className="cal-pill-name">{e.title}</span>
+                  <span className="cal-pill-name">{e.title}</span><SourceBadge source={e.source}/>
                 </button>
               ))}
             </div>
@@ -685,7 +686,7 @@ function HourGrid({
                   >
                     <span className="cal-block-title">
                       {!spansTime(e) && <KindIcon kind={e.kind} size={12} />}
-                      <span>{e.title}</span>
+                      <span>{e.title}</span><SourceBadge source={e.source}/>
                     </span>
                     <time className="cal-block-time">{time}</time>
                   </button>

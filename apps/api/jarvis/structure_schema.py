@@ -174,6 +174,9 @@ class RecordCreate(Input):
 
 
 class RecordUpdate(Input):
+    sort_order: float | None = Field(default=None, allow_inf_nan=False, description="Internal order restored by Revert; prefer move_before_id for ordinary moves.")
+    move_before_id: str | None = Field(default=None, description="Move before this sibling, or null to the end. Combine with parent_id to change home.")
+    local_notes: str | None = Field(default=None, max_length=30000, description="Eridani-only notes, never synced to a provider. Visible to this workspace.")
     reset_fields: list[Key] = Field(default_factory=list, max_length=60)
     record_id: str = Field(min_length=36, max_length=36)
     expected_revision: int = Field(ge=1)

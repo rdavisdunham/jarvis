@@ -39,6 +39,9 @@ def original_key(value, timezone):
     return point.date().isoformat() if all_day else point.astimezone(UTC).isoformat()
 
 
+from .sources import google_source
+
+
 def project(db, owner, start, end, timezone, warnings=None):
     account = db.get(GoogleIdentity, owner)
     if not account or not account.calendar_enabled:
@@ -95,6 +98,7 @@ def project(db, owner, start, end, timezone, warnings=None):
             last_day = min(
                 (finish.astimezone(local) - timedelta(microseconds=1)).date(), end - timedelta(days=1)
             )
+            metadata = google_source(db, source, item)
             while day <= last_day:
                 if len(output) >= 2000:
                     incomplete = True
@@ -105,6 +109,8 @@ def project(db, owner, start, end, timezone, warnings=None):
                         "entity_id": row.id,
                         "provider_id": row.provider_id,
                         "kind": "google",
+                        "source": {**metadata, "item_id": row.provider_id,
+                                   "occurrence_start": item.get("originalStartTime") or point.isoformat()},
                         "title": item.get("summary") or "Busy",
                         "date": day.isoformat(),
                         "at": None if all_day else point.isoformat(),

@@ -22,7 +22,7 @@ READ_TOOLS = {
         "parameters":{"type":"object","properties":{"action_id":{"type":"string","format":"uuid"}},"required":["action_id"],"additionalProperties":False}},
 
     "planning_suggest": {
-        "description": "Propose a verified local work-block plan for up to eight active tasks. Supply exact requested durations, release/deadline windows and dependencies; the server computes earliest finish against fresh availability. Returns an unsaved proposal and a short plan_token reference, or explicit infeasibility/unknown availability. local_only requires the owner to choose Eridani-only availability. Never claim saved before planning_commit succeeds.",
+        "description": "Propose a verified local work-block plan for up to eight active tasks. Choose work or personal availability for each task. Saved scheduling hours use the profile timezone; only explicit owner exceptions set override_reason. Supply exact requested durations, release/deadline windows and dependencies; the server computes earliest finish against fresh availability. Returns an unsaved proposal and a short plan_token reference, or explicit infeasibility/unknown availability. local_only requires the owner to choose Eridani-only availability. Never claim saved before planning_commit succeeds.",
         "parameters": PlanRequest.model_json_schema(),
     },
     "calendar_connection": {
@@ -355,6 +355,7 @@ VOICE_MUTATIONS = {
     "calendar.update",
     "calendar.delete",
     "calendar.select",
+    "calendar.annotate",
     "task.batch",
     "task.selection_update",
     "note.create",
@@ -435,7 +436,7 @@ READ_TOOLS.update({
     "record_get": {"description":"Read a record's current fields, main home, links and revision. Inherited properties follow the main home; additional links never silently change that home.","parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},"required":["record_id"],"additionalProperties":False}},
 })
 READ_TOOLS.update({
-    "ui_records":{"description":"Show a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
+    "ui_records":{"description":"Show the Organization tree, a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["tree","list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
     "routing_state":{"description":"Read separate organization rules, evidence, field understanding questions and weekly review. Ask at most one review question at a time; after three offer to stop. Never answer or activate a learned rule without the user. Manual review can resume any time.","parameters":{"type":"object","properties":{},"additionalProperties":False}}
 })
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.","notelist.")))
