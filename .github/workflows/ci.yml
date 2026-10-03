@@ -139,6 +139,7 @@ jobs:
             artifacts/batch-b/
             artifacts/batch-c/
             artifacts/organization/
+            artifacts/questions/
             artifacts/custom-planner/
             artifacts/chat-activity/
             artifacts/semantic-search/

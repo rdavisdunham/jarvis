@@ -129,6 +129,10 @@ GROUPS = {
             "linear_resolve",
         ],
     ),
+    "reviews": (
+        "Optional personal Questions: memory, organization patterns and field clarifications. An invitation is not an answer.",
+        ["review_questions","review_defer","memory_resolve","routing_answer","routing_understand"],
+    ),
     "memory": (
         "Read, capture, correct, forget and resolve learned personal facts.",
         [

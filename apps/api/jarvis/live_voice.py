@@ -50,6 +50,10 @@ class LiveController(Controller):
         self.context_signature = None
         self.context_pending = set()
         self.announced_work = set()
+        self.review_delivery = None
+        self.review_event = None
+        self.review_offered = False
+        self.review_checked = 0.0
         self.pending_work = False
         self.pending_question = False  # A heard backend question owns the next delegated turn.
         self.asked = set()
@@ -217,6 +221,7 @@ class LiveController(Controller):
             group["received_at"] = time.monotonic()
             group["end"] = max(group["end"], end)
             if role == "user":
+                self.release_review()
                 self.last_user_delta = time.monotonic()
                 self.input_revision += 1
                 if self.memory_task:
@@ -245,6 +250,9 @@ class LiveController(Controller):
             self.state = "closed"
         elif kind == "error":
             context_id = event.get("client_event_id") or event.get("error", {}).get("event_id")
+            if context_id == self.review_event and self.review_delivery:
+                self.release_review()
+                return
             if context_id in self.context_pending:
                 self.context_pending.discard(context_id)
                 logging.getLogger("jarvis.voice").warning("Live memory context was not acknowledged")
@@ -490,7 +498,45 @@ class LiveController(Controller):
             AgentWork.result["archived_at"].as_string().is_(None),
             Job.created_at > asked.created_at, Job.status.notin_(["queued", "dispatched"])).limit(1)) is not None
 
+    def release_review(self):
+        if not self.review_delivery:return
+        identity,self.review_delivery=self.review_delivery,None
+        from .review_questions import acknowledge
+        try:
+            with session_scope() as db:
+                acknowledge(db,self.owner,self.device,identity,"interrupted")
+        except Exception:
+            # An optional receipt must never prevent microphone shutdown. Its lease expires.
+            logging.getLogger("jarvis.voice").warning("Review invitation release unavailable")
+
+    async def offer_review(self):
+        # Silence is only an opportunity to invite, never consent or a review answer.
+        if (self.review_offered or self.closed or self.closing or self.end_requested
+                or self.pending_work or self.pending_question or self.unclaimed
+                or any(not task.done() for task in self.work) or not self.groups):
+            return
+        last=max(g.get("received_at",time.monotonic()) for g in self.groups)
+        if time.monotonic()-last<8 or time.monotonic()-self.review_checked<30:return
+        self.review_checked=time.monotonic()
+        from .review_questions import reserve,acknowledge
+        with session_scope() as db:
+            invitation=reserve(db,self.owner,self.device,self.conversation_id,"voice")
+        if not invitation:return
+        self.review_delivery=invitation["id"]
+        self.review_offered=True
+        self.review_event=uid()
+        try:
+            await self.send({"type":"session.commentary.append","event_id":self.review_event,"delegation_id":None,
+                "content":"Optional review invitation, not a task result: "+invitation["message"]+
+                " You may ask if the user wants to review it. If they agree, delegate a request to open the personal Questions review; the backend should load review tools and ask the full question before resolving anything. Do not treat unrelated speech as an answer."})
+            with session_scope() as db:
+                acknowledge(db,self.owner,self.device,invitation["id"],"forwarded")
+        except Exception:
+            self.release_review()
+            raise
+
     async def interrupt(self):
+        self.release_review()
         self.error = None
         await self.send(
             {
@@ -513,6 +559,7 @@ class LiveController(Controller):
                 return
             try:
                 await self.report_work()
+                await self.offer_review()
             except Exception as exc:  # noqa: BLE001 - optional result reporting
                 logging.getLogger("jarvis.voice").warning("Work result update unavailable (%s)", type(exc).__name__)
             if self.end_requested:
@@ -539,6 +586,7 @@ class LiveController(Controller):
             if self.closed:
                 return
             self.closing = True
+            self.release_review()
             try:
                 if self.unclaimed:
                     # Live explicitly delegated this speech; closing must not demote it.

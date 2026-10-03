@@ -62,6 +62,7 @@ class StructureLink(Base):
 
 
 class FieldUnderstanding(Base):
+    deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __tablename__ = "field_understandings"
     owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     definition_id: Mapped[str] = mapped_column(String(180), primary_key=True)

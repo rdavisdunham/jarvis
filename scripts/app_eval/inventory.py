@@ -15,6 +15,7 @@ PREFIX = {
     "calendar": "google_sync",
     "linear": "linear_sync",
     "memory": "memory_management",
+    "review": "memory_dream",
     "note": "notes",
     "notelist": "note_lists",
     "notification": "notifications",
@@ -69,6 +70,7 @@ def owner(name):
 
 
 def route_owner(path, source):
+    if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):

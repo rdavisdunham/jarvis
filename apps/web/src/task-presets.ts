@@ -55,6 +55,7 @@ export function initialView(search: string): View {
     "calendar",
     "notes",
     "memory",
+    "questions",
     "notifications",
     "settings",
     "reminders",

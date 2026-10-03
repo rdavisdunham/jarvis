@@ -1,6 +1,6 @@
 """Typed device controls. No selectors, script execution or credential fields."""
 
-VIEWS = ["today", "inbox", "week", "all", "organize", "calendar", "notes", "memory", "notifications", "settings", "reminders"]
+VIEWS = ["today", "inbox", "week", "all", "organize", "calendar", "notes", "memory", "questions", "notifications", "settings", "reminders"]
 EDITOR_KINDS = ["task", "reminder", "note", "goal", "project", "area", "space", "actor", "event", "google_event", "bulk", "memory"]
 
 

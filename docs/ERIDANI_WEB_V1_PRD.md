@@ -712,3 +712,33 @@ independent Do/Due; make Client actionable; add a subtask without type creation;
 nested assignees/timelines; carry/promote/delete/restore including notes/grandchildren;
 invalid destinations and stale Revert; recurrence lineage; Quick-list sections;
 Linear refresh after local filing; and old/core API commands reaching the same Home.
+
+
+### 10.9 Implementation and acceptance evidence — October 3
+
+The foundation, contents backend and Organization UI shipped through PRs #26–#28,
+each merged after required CI passed. The final review-delivery batch uses the
+existing memory/routing/field question sources and resolution tools. It adds a
+personal Questions page (plus an Organization subset), source-revision snoozing,
+and a separate invitation table with two-minute leases. Concurrent devices reserve
+one invitation; presentation never implies an answer. A text invitation needs a
+visible-element acknowledgement. Live records only forwarding/interruption, never
+a claim that audio was heard. A failed optional receipt must not stop voice shutdown.
+
+Normal personal facts still enter model context. Optional questions do not enter
+that factual bundle and no longer append to task-result prose. Required work
+clarifications take priority. Explicit review interest loads the existing backend
+review tools; a yes to the invitation does not approve any rule or memory merge.
+There is no new interpreter or agent runtime.
+
+Questions shows the latest recorded extraction, embedding, memory-review,
+organization-review and field-understanding jobs, including IDs, results and errors.
+Production usefulness remains unverified: the October 3 read-only attempt reached
+the linked Railway project, but private database access needs a configured SSH key.
+Synthetic fixtures establish behavior, not the quality of the owner's learned facts.
+
+Local regression coverage includes schema reuse, container navigation/Back/deep
+links, subtree versus item-only moves, direct subtasks, nested timelines, review
+source adapters, stale answers, cross-device reservations, long Live results and
+interruption. Browser fixtures cover 390/892/1440px. Physical Pixel Fold, real Live
+playback and connector-side write acceptance remain explicit release checks.

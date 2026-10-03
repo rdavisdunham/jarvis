@@ -703,3 +703,19 @@ class GoogleEventAnnotation(Base):
     event_id: Mapped[str] = mapped_column(String(500), primary_key=True)
     local_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+
+class ReviewDelivery(Base):
+    """An invitation attempt, never proof of an answer or completed voice playback."""
+    __tablename__ = "review_deliveries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    device_id: Mapped[str] = mapped_column(String(36))
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    question_key: Mapped[str] = mapped_column(String(300))
+    question_revision: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(20))
+    state: Mapped[str] = mapped_column(String(20), default="reserved")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

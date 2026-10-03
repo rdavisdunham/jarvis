@@ -87,3 +87,24 @@ def send_voice_draft(identity: str, body: dict, user: User):
     from jarvis.work_intake import resolve_draft
     with patch('jarvis.config.require_external_services'), patch('jarvis.agent_models.selected', return_value=agent_work.agent_models.catalog()['luna']), session_scope() as db:
         return resolve_draft(db, user.owner_id, user.account_id, user.device_id, identity, message=body['message'])
+
+
+@app.post("/api/v1/__test_reviews")
+def seed_reviews(user: User):
+    from jarvis import structure
+    from jarvis.models import Memory,MemoryReview,Job,now
+    from jarvis.structure_models import FieldUnderstanding
+    from uuid import uuid4
+    with session_scope() as db:
+        structure.ensure(db,user.owner_id)
+        field=db.get(FieldUnderstanding,(user.owner_id,"type:client"))
+        field.status="needs_input";field.questions=["Does Client mean a company or a person?"];field.revision+=1
+        memories=[]
+        for name in ("Hayes","Haze"):
+            source=capture_source(db,user.owner_id,"My cat is "+name,str(uuid4()),explicit=True)
+            m=Memory(owner_id=user.owner_id,source_id=source.id,content=source.content,fingerprint=str(uuid4()))
+            db.add(m);db.flush();memories.append(m)
+        review=MemoryReview(owner_id=user.owner_id,pair_key=str(uuid4()),memory_ids=[m.id for m in memories],memory_revisions=[m.revision for m in memories])
+        db.add(review)
+        db.add(Job(owner_id=user.owner_id,kind="review_memory",payload={},status="succeeded",finished_at=now(),result={"scanned":2,"merged":0,"queued_questions":1}))
+        return {"seeded":True}
