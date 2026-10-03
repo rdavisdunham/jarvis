@@ -284,3 +284,11 @@ def test_old_journal_offsets_compare_as_instants():
     assert encode({"next_run_at": chicago}) == {"next_run_at": "2030-03-09T15:00:00+00:00"}
     old = {"anchor_at": "2030-03-09T09:00:00-06:00", "values": {"at": ["2030-03-09T20:30:00+05:30"]}, "title": "2030"}
     assert instants(old) == {"anchor_at": "2030-03-09T15:00:00+00:00", "values": {"at": ["2030-03-09T15:00:00+00:00"]}, "title": "2030"}
+
+
+@pytest.mark.asyncio
+async def test_null_optional_home_filter_means_no_filter():
+    from jarvis.tools import call_tool
+    row = run("task.create", {"title": "Optional home"})
+    found = await call_tool(OWNER,"null-filter",0,"task_resolve",{"scope":"search","query":"Optional home","home_id":None})
+    assert [t["id"] for t in found["tasks"]] == [row["id"]]

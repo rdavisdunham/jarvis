@@ -108,7 +108,8 @@
       "apps/api/jarvis/structure_schema.py"
     ],
     "regression_files": [
-      "tests/test_structure.py"
+      "tests/test_structure.py",
+      "tests/test_release_core.py"
     ],
     "status": "active"
   },
@@ -126,7 +127,8 @@
     "regression_files": [
       "tests/test_structure.py",
       "tests/test_accounts.py",
-      "tests/test_batch_b.py"
+      "tests/test_batch_b.py",
+      "tests/test_release_core.py"
     ],
     "status": "active"
   },
@@ -297,7 +299,8 @@
       "apps/api/jarvis/memory_review.py"
     ],
     "regression_files": [
-      "tests/test_memory_review.py"
+      "tests/test_memory_review.py",
+      "tests/test_release_dream.py"
     ],
     "status": "active"
   },
@@ -629,7 +632,8 @@
     "regression_files": [
       "tests/test_cloud_backups.py",
       "tests/test_cloud_deployment.py",
-      "tests/test_worker_recovery.py"
+      "tests/test_worker_recovery.py",
+      "tests/test_release_migrations.py"
     ],
     "status": "active"
   },

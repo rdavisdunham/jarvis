@@ -255,9 +255,9 @@ async def test_corrective_round_can_answer_without_question(client, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_plain_conversation_question_is_not_rechecked(client, monkeypatch):
+async def test_plain_conversation_question_does_not_create_pending_work(client, monkeypatch):
     work = action(client, "Hello")
-    responder(monkeypatch, [response(message="Hi! How can I help?")])
+    responder(monkeypatch, [response(message="Hi! How can I help?"), response(message="Hi! How can I help?")])
     await work_runner.run(work["id"])
     assert status(work["id"]) == "succeeded"
 
@@ -333,3 +333,23 @@ def test_one_failing_scan_does_not_block_dispatch(client, monkeypatch):
     monkeypatch.setattr("jarvis.notices.scan", broken)
     worker.supervisor_cycle(Client(), 1)
     assert work["id"] in enqueued
+
+
+@pytest.mark.asyncio
+async def test_required_question_with_trailing_timezone_uses_structured_clarification(client, monkeypatch):
+    work = action(client, "Set an exact deadline; ask me for the time")
+    responder(monkeypatch, [response([("task_list", {})]),
+        response(message="What time should I use? Your timezone is America/Chicago."),
+        response([("work_needs_input", {"question": "What exact time should I use?"})])])
+    await work_runner.run(work["id"])
+    card = client.get("/api/v1/work/" + work["id"]).json()
+    assert card["status"] == "needs_input" and card["clarification"]
+
+
+@pytest.mark.asyncio
+async def test_required_question_before_first_tool_gets_one_nudge(client, monkeypatch):
+    work = action(client, "Schedule a work block, ask for its duration first")
+    responder(monkeypatch, [response(message="How long should it be?"),
+        response([("work_needs_input", {"question": "How long should it be?"})])])
+    await work_runner.run(work["id"])
+    assert status(work["id"]) == "needs_input"

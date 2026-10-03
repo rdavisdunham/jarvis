@@ -1,0 +1,41 @@
+[
+  {
+    "repeat": 1,
+    "status": "passed",
+    "state_path": "artifacts/app-evals/batch-d-critical-final/attempts/9641eec3300bdf680630/001/state.json",
+    "sha256": "7d8aad0e1c0ee716ad92239f7c19253a71be83534682cb196908b2531f1a6014",
+    "assertions": [
+      "two exact films",
+      "original Arrival ID/body preserved",
+      "original recommendation body preserved",
+      "each entry links to the exact source with nonempty quote",
+      "foreign notes unchanged"
+    ]
+  },
+  {
+    "repeat": 2,
+    "status": "passed",
+    "state_path": "artifacts/app-evals/batch-d-critical-final/attempts/622e5a4dddc851009193/001/state.json",
+    "sha256": "8f22c76e90e118c922145cf5d34300f21d44b9df221e41273cb1a59a887b66f9",
+    "assertions": [
+      "two exact films",
+      "original Arrival ID/body preserved",
+      "original recommendation body preserved",
+      "each entry links to the exact source with nonempty quote",
+      "foreign notes unchanged"
+    ]
+  },
+  {
+    "repeat": 3,
+    "status": "passed",
+    "state_path": "artifacts/app-evals/batch-d-critical-final/attempts/88efe19c60b38b90ca63/001/state.json",
+    "sha256": "1ac51bb59730a82e2c8dff38879a14f4d051ccd4549ff1e82ccd3e4f7e5bf301",
+    "assertions": [
+      "two exact films",
+      "original Arrival ID/body preserved",
+      "original recommendation body preserved",
+      "each entry links to the exact source with nonempty quote",
+      "foreign notes unchanged"
+    ]
+  }
+]

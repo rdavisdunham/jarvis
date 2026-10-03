@@ -1,5 +1,28 @@
 # Findings from establishing the eval baseline
 
+## October 3 Batch D regrade
+
+[Batch D verification](../../docs/BATCH_D_VALIDATION.md) supersedes the historical
+“fix pending” status below without changing the original failure evidence.
+EVAL-001 and EVAL-005 pass offline; EVAL-006 now checks durable extraction plus
+separate embedding retry/recovery. EVAL-002/003/004/008 pass final three-repeat Luna
+probes, and EVAL-007 passes three saved-trace regrades (two films, original Arrival
+ID/body and exact source links), plus the strengthened live oracle.
+
+Baseline repeats reproduced orphan questions and null-filter errors; the runner's
+bounded question nudge and explicit pending-answer handoff were repaired. Optional
+offers still do not force a clarification or absorb unrelated work. Final critical
+executions: 15/15. Broader model core: 53/53. Total estimated spend: $0.268779391,
+including failed baselines and retries, with no uncertain charges.
+
+215 scenarios now have exact bindings and passing evidence across the recorded
+campaigns. The catalog is still 1,051 cases; unbound and real-device/provider cases
+are not passes. Sol's `.09/.12/.14/.16` dream checks and archive case have stronger
+oracles; `memory_dream.25` is explicitly downgraded to component/physical acceptance.
+No new independent Sol review is claimed. See the committed
+[evidence summary](../../docs/evals/2026-10-03-batch-d/verification.json).
+
+
 ## October 2 repair reconciliation — historical results preserved
 
 The statuses and traces below describe the September runs. They have not been

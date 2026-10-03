@@ -21,7 +21,7 @@ FEATURE_TYPE = {feature: group for group, features in GROUPS.items() for feature
 MODES = ("offline", "live-model", "live-service")
 BROWSERS = {
     "quick_capture":["batch-c.mjs"], "onboarding":["batch-c.mjs"],
-    "planner_views": ["custom-planner.mjs"],
+    "planner_views": ["custom-planner.mjs", "batch-b.mjs"],
     "browser_settings": ["shell-navigation.mjs", "usage-report.mjs"],
     "site_controls": ["custom-planner.mjs", "shell-navigation.mjs"],
     "note_lists": ["note-lists.mjs"],
@@ -32,7 +32,7 @@ BROWSERS = {
     "clarifications": ["chat-activity.mjs"],
     "budget": ["usage-report.mjs"],
 }
-DEVICE_CASES = {"live_voice.25", "wake_shutdown.25", "browser_settings.24"}
+DEVICE_CASES = {"live_voice.25", "wake_shutdown.25", "browser_settings.24", "memory_dream.25", "notifications.22", "quick_capture.24"}
 PROVIDER_FEATURES = {
     "google_sync": "google",
     "google_writes": "google",

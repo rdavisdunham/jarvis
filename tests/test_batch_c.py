@@ -166,6 +166,7 @@ def test_shared_list_roles_and_personal_setup_boundary(client):
     from jarvis.models import WorkspaceMember
     with session_scope() as db:
         member=db.scalar(select(WorkspaceMember).where(WorkspaceMember.account_id=="guest"));member.role="viewer"
+    assert guest.get("/api/v1/quick-lists/"+row["id"]).status_code==200
     assert guest.post("/api/v1/commands",json={"command_id":str(uuid4()),"tool":"quicklist.item","arguments":{"list_id":row["id"],"expected_revision":row["revision"],"operation":"add","title":"No"}}).status_code==403
     personal=client_for("stranger")
     assert personal.get("/api/v1/quick-lists/"+row["id"]).status_code==404

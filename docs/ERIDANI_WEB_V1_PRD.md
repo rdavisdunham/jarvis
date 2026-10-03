@@ -337,8 +337,14 @@ list, explain their chosen structure, and return later without a guided develope
 
 ### Batch D — qualify the release, then pilot
 
+October 3: [automated verification](BATCH_D_VALIDATION.md) binds and passes 215
+scenarios across recorded offline/Luna campaigns. Twenty feature groups have fully
+bound cases; remaining feature-specific acceptance gaps, physical/provider checks
+and the pilot are explicit in [the acceptance checklist](RELEASE_ACCEPTANCE.md).
+This is not a whole-app release sign-off.
+
 **D1. Risk-weighted eval core.** Select approximately 200 scenarios from the existing
-1,001-case catalog; retain the rest as exploratory/expansion coverage. Cover every
+1,051-case catalog; retain the rest as exploratory/expansion coverage. Cover every
 currently shipped feature, weighted toward authority, mutation/Revert, queue/voice,
 data-loss recovery, integrations, search/learning and UX. Fully bind each core criterion
 or explicitly identify connected/device evidence. A component test cannot pass a

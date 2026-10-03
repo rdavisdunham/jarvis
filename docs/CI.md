@@ -124,3 +124,15 @@ The first GitHub run passed frontend/browser checks and exposed one additional
 clean-checkout assumption: the worker recovery test wrote to a pre-existing local
 `.runtime` folder. It now uses pytest's temporary directory. Subsequent CI runs
 verify that regression together with the full suite.
+
+## Batch D verification additions (October 3)
+
+The normal backend suite now runs populated N-1 migration/old-column compatibility,
+source-annotation role/revocation checks, cross-device setup and the scheduled memory
+review regressions. No new CI secret or paid inference is required.
+
+The reviewed coverage baseline is 215 fully bound scenarios. `memory_dream.25` was
+intentionally returned to the physical-device backlog: an unchanged inbox does not
+prove microphone behavior. This correction is documented in [Batch D](BATCH_D_VALIDATION.md);
+the ratchet itself was not loosened. Green CI does not start the pilot or certify
+real Google/Linear writes, phone voice, notification delivery or cloud restart.

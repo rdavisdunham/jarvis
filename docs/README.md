@@ -14,6 +14,7 @@ the [response-speed plan](ERI_LATENCY_PLAN.md) defines the audited latency work.
 | Batch A implementation and pending real-device checks | [Batch A verification](BATCH_A_VALIDATION.md) |
 | Batch B organization/source checks | [Batch B verification](BATCH_B_VALIDATION.md) |
 | Batch C capture/setup checks | [Batch C verification](BATCH_C_VALIDATION.md) |
+| Batch D eval regrades, release evidence and pending real acceptance | [Batch D verification](BATCH_D_VALIDATION.md), [acceptance/pilot log](RELEASE_ACCEPTANCE.md) |
 | Production logo and PWA assets | [Brand](BRAND.md) |
 | Latest audit/repair handoff | [Claude session summary](CLAUDE_SESSION_SUMMARY.md) |
 | Feature and evaluation map, dated September 19 | [App functionality](APP_FUNCTIONALITY.md) |

@@ -228,7 +228,7 @@ READ_TOOLS.update(
                 "properties": {
                     "scope": {"type": "string", "enum": ["selected", "visible", "recent", "search"]},
                     "query": {"type": "string", "maxLength": 300},
-                    "home_id": {"type": "string", "maxLength": 36, "description": "Structure record ID from a task's home chain or record_list; matches tasks anywhere below it."},
+                    "home_id": {"type": ["string", "null"], "maxLength": 36, "description": "Structure record ID from a task's home chain or record_list; matches tasks anywhere below it."},
                 },
                 "required": ["scope"],
                 "additionalProperties": False,
@@ -409,7 +409,7 @@ READ_TOOLS["task_list"]["parameters"]["properties"].update(
         "due_through": {"type": "string", "format": "date"},
         "selection_id": {"type": "string"},
         "detail": {"type": "string", "enum": ["compact", "full"]},
-        "home_id": {"type": "string", "maxLength": 36, "description": "Structure record ID (project, client, area...) from a home chain or record_list; matches tasks anywhere below it, including legacy project/area/space links."},
+        "home_id": {"type": ["string", "null"], "maxLength": 36, "description": "Structure record ID (project, client, area...) from a home chain or record_list; matches tasks anywhere below it, including legacy project/area/space links."},
     }
 )
 READ_TOOLS["time_resolve"] = {

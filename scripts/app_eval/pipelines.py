@@ -119,6 +119,7 @@ def memory(identity, owner, live):
     if n == 23:
         proposed = proposed.model_copy(update={"confidence": 0.5})
     execution_before = snapshot()
+    embedding_retries = []
     with ExitStack() as stack:
         if not live:
             stack.enter_context(patch.object(learning, "extract", lambda *a: [proposed]))
@@ -136,6 +137,23 @@ def memory(identity, owner, live):
                 raise
         if n == 17:
             learning.process(jid)
+        if n == 24:
+            with session_scope() as db:
+                retry_ids = list(db.scalars(select(Job.id).where(Job.owner_id == owner, Job.kind == "embed_memory")))
+            for retry_id in retry_ids:
+                try:
+                    learning.process(retry_id)
+                except RuntimeError:
+                    pass
+            with session_scope() as db:
+                from jarvis.memory_service import search
+                embedding_retries = [{"id": key, "status": db.get(Job, key).status} for key in retry_ids]
+                durable_ids = {m.id for m in db.scalars(select(Memory).where(Memory.owner_id == owner))}
+                lexical_ids = {m["id"] for m in search(db, owner, "Miso")}
+            # Recover the separate indexing job without repeating paid extraction.
+            with patch.object(learning, "embeddings", lambda _owner, texts, *a: [[0.1] * 512 for _ in texts]):
+                for retry_id in retry_ids:
+                    learning.process(retry_id)
     with session_scope() as db:
         memories = list(
             db.scalars(select(Memory).where(Memory.owner_id == owner, Memory.suppressed.is_(False)))
@@ -163,8 +181,13 @@ def memory(identity, owner, live):
             if any(not m.evidence or m.evidence not in content for m in memories):
                 failures.append("Third-party fact has no exact source evidence")
         elif n == 24:
-            if not memories or outcome != "retrying":
-                failures.append("Embedding outage did not preserve a durable fact plus honest retry state")
+            if (not memories or outcome != "succeeded" or not embedding_retries
+                or any(r["status"] != "retrying" for r in embedding_retries)
+                or not durable_ids <= lexical_ids
+                or {m.id for m in memories} != durable_ids
+                or any(len(m.embedding or []) != 512 for m in memories)
+                or any(db.get(Job, r["id"]).status != "succeeded" for r in embedding_retries)):
+                failures.append("Embedding outage must keep a searchable fact, retry indexing separately, then recover without duplicate extraction")
         else:
             new = [m for m in memories if m.content != "The user's cat is named Mizo."]
             if not new:
@@ -209,6 +232,7 @@ def memory(identity, owner, live):
         "fixture_private": private_state(execution_before),
         "source": content,
         "job_status": outcome,
+        "embedding_retries": embedding_retries,
     }
 
 
@@ -223,6 +247,9 @@ def notes(identity, owner, live):
     h = Harness({"owner": owner, "refs": {}})
     definitions = h.command("notelist.setup", {})["items"]
     movies = next(x for x in definitions if x["name"] == "Movies")
+    with session_scope() as db:
+        existing_films = [(m.id, m.content) for m in db.scalars(select(Note).where(
+            Note.owner_id == owner, Note.title == "Arrival", Note.archived.is_(False)))]
     content = NOTE_TEXT.get(n, "Save Arrival as a movie to watch.")
     title = "Arrival" if n == 5 else "Evaluation recommendations"
     original = h.command(
@@ -331,6 +358,10 @@ def notes(identity, owner, live):
             failure.append("Expected saved recommendation entries")
         if n == 1 and {c["title"].lower() for c in children} != {"arrival", "after yang"}:
             failure.append("Wrong recommendation identities")
+        if n == 1 and len(existing_films) == 1:
+            film_id, authored_body = existing_films[0]
+            if not any(c["id"] == film_id for c in children) or db.get(Note, film_id).content != authored_body:
+                failure.append("Unambiguous existing film was duplicated or its authored body changed")
         if n == 5 and children:
             failure.append("Duplicated source note instead of classifying it")
         if n in {15, 16} and source.tags != (["personal"] if n == 15 else []):
@@ -341,9 +372,8 @@ def notes(identity, owner, live):
             failure.append("Retry did not preserve exactly two recommendation links")
         for child in children:
             links = list(db.scalars(select(NoteEntrySource).where(NoteEntrySource.entry_id == child["id"])))
-            if not links or any(
-                link.evidence not in content for link in links if link.source_id == original["id"]
-            ):
+            source_links = [link for link in links if link.source_id == original["id"]]
+            if not source_links or any(not link.evidence or link.evidence not in content for link in source_links):
                 failure.append("Child missing exact source evidence")
     return {
         "status": "failed" if failure else "passed",
