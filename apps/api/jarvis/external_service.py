@@ -127,7 +127,7 @@ def custom_scrub(db, owner, data, scopes):
     def record(item):
         if not any(item.get(k) for k in hidden):
             return item
-        item = {k: v for k, v in item.items() if k != "body"}
+        item = {k: v for k, v in item.items() if k not in {"body", "source", "local_notes"}}
         if "task_id" in hidden and item.get("task_id"):
             item.pop("task_revision", None)
             for key in ("values", "inherited"):

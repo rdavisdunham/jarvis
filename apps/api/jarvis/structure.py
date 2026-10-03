@@ -6,7 +6,7 @@ import math
 from uuid import NAMESPACE_URL, uuid5
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from .domain import DomainError, advisory, check_revision, emit, nulls, owned, serial
 from .models import (
@@ -265,6 +265,7 @@ def ensure(db, owner):
                 status_id=old.status if kind == "task" else None,
                 task_id=old.id if kind == "task" else None,
                 note_id=old.id if kind == "note" else None,
+                sort_order=(len(imports)+1)*1024,
                 legacy_kind=kind,
                 archived=old.archived,
                 provenance={"origin": "legacy_unknown", "automatic_learning": False},
@@ -413,10 +414,14 @@ def data(db, row, schema=None):
     t = record_type(schema, row.type_id, archived=True)
     result = serial(row)
     result["schema_revision"] = schema.revision
+    from .sources import native
+    result["source"] = native(row.id)
     values = dict(row.values)
     task = db.get(Task, row.task_id) if row.task_id else None
     note = db.get(Note, row.note_id) if row.note_id else None
     if task:
+        from .sources import task_source
+        result["source"] = task_source(db, task)
         result.update(title=task.title, body=task.notes, archived=task.archived, task_revision=task.revision)
         result["status_id"] = task_status(t, task.status, row.status_id)
         result["status_meaning"] = task.status
@@ -463,7 +468,7 @@ def data(db, row, schema=None):
     return result
 
 
-COMPACT = ("id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
+COMPACT = ("source", "id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
 
 
 def records(
@@ -492,9 +497,16 @@ def records(
             q.order_by(StructureRecord.updated_at.desc(), StructureRecord.id).offset(offset).limit(limit + 1)
         )
     )
+    def present(row):
+        item = data(db, row, schema)
+        if detail == "full":
+            return item
+        from .sources import compact_source
+        return {k: compact_source(v) if k == "source" else v for k,v in item.items() if k in COMPACT}
+
     return {
         "items": [
-            data(db, r, schema) if detail == "full" else {k: v for k, v in data(db, r, schema).items() if k in COMPACT}
+            present(r)
             for r in rows[:limit]
         ],
         "has_more": len(rows) > limit,
@@ -812,9 +824,12 @@ def sync_capabilities(db, owner, row, t, supplied, command_id, *, status=True, p
             # A workflow without the task's meaning shows the nearest status; only an explicit choice moves the task.
             if status and task.status != meaning:
                 changes["status"] = meaning
-            project = db.get(Project, row.parent_id) if parent and row.parent_id else None
-            if project and project.owner_id == owner and task.project_id != project.id:
-                changes["project_id"] = project.id
+            if parent and not task.external:
+                chain = parent_chain(db, owner, row.parent_id, self_id=row.id)
+                project = next((p for home in chain if (p := db.get(Project, home.id)) and p.owner_id == owner), None)
+                project_id = project.id if project else None
+                if task.project_id != project_id:
+                    changes["project_id"] = project_id
             if task.archived != row.archived:
                 changes["archived"] = row.archived
             if changes:
@@ -969,6 +984,10 @@ def mutate(db, owner, tool, args, command_id):
     if "parent_id" in args.model_fields_set:
         validate_parent(db, owner, row, t, args.parent_id)
         row.parent_id = args.parent_id
+    if tool == "record.update" and "local_notes" in args.model_fields_set:
+        row.local_notes = args.local_notes
+    if tool == "record.update" and "sort_order" in args.model_fields_set:
+        row.sort_order = args.sort_order
     clean = validate_values(db, owner, t, args.values)
     if tool == "record.create":
         from .routing import suggest
@@ -980,6 +999,21 @@ def mutate(db, owner, tool, args, command_id):
             if "parent_id" in inferred:
                 row.parent_id = inferred["parent_id"]
             clean = {**inferred.get("values", {}), **clean}
+    if creating or "move_before_id" in args.model_fields_set or ("parent_id" in args.model_fields_set and "sort_order" not in args.model_fields_set):
+        siblings = list(db.scalars(select(StructureRecord).where(
+            StructureRecord.owner_id == owner, StructureRecord.parent_id == row.parent_id,
+            StructureRecord.id != row.id).order_by(StructureRecord.sort_order, StructureRecord.id)))
+        before = getattr(args, "move_before_id", None)
+        if before and before not in {s.id for s in siblings}:
+            raise DomainError("INVALID_PARENT", "Choose a record in the destination home.")
+        index = next((i for i, s in enumerate(siblings) if s.id == before), len(siblings))
+        left = siblings[index-1].sort_order if index else None
+        right = siblings[index].sort_order if index < len(siblings) else None
+        rank = (left / 2 + right / 2 if left is not None and right is not None else
+                right - 1024 if right is not None else (left or 0) + 1024)
+        if rank in (left, right):
+            raise DomainError("ORDER_DENSE", "These positions are too close. Move this item to the end first.")
+        row.sort_order = rank
     row.values = {**row.values, **clean}
     if tool == "record.update" and args.reset_fields:
         permitted = {f["id"] for f in t["fields"] if not f["binding"]}
@@ -1072,6 +1106,7 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
             title=core.title,
             body=core.notes if kind == "task" else core.content,
             parent_id=parent,
+            sort_order=(db.scalar(select(func.max(StructureRecord.sort_order)).where(StructureRecord.owner_id == owner, StructureRecord.parent_id == parent)) or 0)+1024,
             task_id=core.id if kind == "task" else None,
             note_id=core.id if kind == "note" else None,
             status_id=task_status(t, core.status) if kind == "task" else None,

@@ -814,3 +814,27 @@ button.row-title:hover {
     height: 36px;
   }
 }
+
+.organization-branch {list-style:none;margin:0;padding-left:1.2rem;border-left:1px solid var(--border,#303943)}
+.organization-tree>.organization-branch {padding-left:0;border:0}
+.organization-branch li {position:relative;min-width:0}
+.organization-branch summary {cursor:pointer;list-style:disclosure-closed}.organization-branch details[open]>summary{list-style:disclosure-open}.organization-branch summary .organization-node{display:inline-flex;width:calc(100% - 1rem)}
+.organization-node {display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.6rem .4rem .6rem 1.2rem;min-width:0;border-bottom:1px solid var(--border,#303943)}
+.organization-node .row-title {flex:1;min-width:8rem;text-align:left;overflow-wrap:anywhere}
+.organization-branch details:not([open])>.organization-node {display:flex}
+.organization-node .chip {font-size:.7rem}
+@media(max-width:700px){.organization-branch{padding-left:.7rem}.chip-row,.row-meta{flex-wrap:wrap}.detail-alert pre{max-width:100%;overflow:auto}.work-layout .toolbar-label{display:none}}
+
+.source-badge {border-color:var(--source-color);gap:.3rem;white-space:nowrap}
+.source-dot {width:.5rem;height:.5rem;flex:none;border-radius:50%;background:var(--source-color)}
+.source-details dd {margin:0;overflow-wrap:anywhere}.source-details dl>div{padding:.3rem 0}
+.cal-pill .source-badge,.cal-timed-event .source-badge {font-size:.6rem;padding:0 .2rem;max-width:100%;overflow:hidden}
+.cal-pill {flex-wrap:wrap}.cal-pill-name {min-width:0}
+
+.scheduling-window {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem;margin:.7rem 0;padding:1rem;border:1px solid var(--border,#d9dbe8);border-radius:.7rem;min-width:0}
+.scheduling-window .day-choices {grid-column:1/-1;display:flex;flex-wrap:wrap;gap:.5rem}
+.scheduling-window .day-choices label {display:inline-flex;align-items:center;gap:.25rem;font-size:.8rem;padding:.2rem 0}
+.scheduling-window .btn {grid-column:1/-1;justify-self:start}
+.scheduling-window .field {min-width:0}.scheduling-window input[type=time] {min-width:0;width:100%}
+.source-state {font-size:.65rem;opacity:.8}.cal-block .source-badge {font-size:.6rem;padding:0 .2rem;line-height:1.1}
+.cal-block.is-short .source-badge {max-width:5rem;overflow:hidden;text-overflow:ellipsis}

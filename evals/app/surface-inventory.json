@@ -18,6 +18,10 @@
       "feature": "organization"
     },
     {
+      "name": "calendar.annotate",
+      "feature": "google_sync"
+    },
+    {
       "name": "calendar.create",
       "feature": "google_writes"
     },
@@ -128,6 +132,10 @@
     {
       "name": "notification.snooze",
       "feature": "notifications"
+    },
+    {
+      "name": "planning.annotate",
+      "feature": "planning"
     },
     {
       "name": "planning.commit",

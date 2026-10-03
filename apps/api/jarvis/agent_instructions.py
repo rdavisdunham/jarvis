@@ -37,6 +37,7 @@ def identity_context(prefs):
                 "preferred_name": prefs.get("preferred_name", get_settings().owner_name),
                 "timezone": prefs["timezone"],
                 "date_only_reminder_hour": prefs["default_reminder_hour"],
+                "scheduling_windows_enforced_by_planner": prefs.get("scheduling_windows",{}),
                 "work_windows_weak_hint_only": prefs.get("work_windows",[]),
                 "workspace":prefs.get("shared_workspace","Personal"),
                 "access_role":prefs.get("shared_role","owner"),

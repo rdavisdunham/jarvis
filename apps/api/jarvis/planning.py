@@ -14,6 +14,10 @@ from .models import GoogleCalendarEvent, Job, PlanningEntry, Task, now
 
 def data(db, row):
     result = serial(row)
+    from .sources import native, google_source
+    from .models import GoogleCalendar
+    calendar = db.get(GoogleCalendar, row.google_calendar_id) if row.google_calendar_id else None
+    result["source"] = google_source(db, calendar, row.google_snapshot or {}, row.google_state) if calendar else native(row.id)
     job = db.get(Job, row.google_job_id) if row.google_job_id else None
     result.pop("google_snapshot", None)
     if row.google_calendar_id:
@@ -27,6 +31,8 @@ def data(db, row):
         result["write_message"] = (job.result or {}).get("message", "")
         if job.status in TERMINAL and job.status != "succeeded" and result["google_state"] == "pending":
             result["google_state"] = job.status
+    if row.google_calendar_id:
+        result["source"]["sync_state"] = result["google_state"]
     return result
 
 
@@ -131,6 +137,11 @@ def mutate(db, owner, tool, args):
     else:
         row = owned(db, PlanningEntry, args.entry_id, owner, lock=True)
         check_revision(row, args.expected_revision)
+        if tool == "planning.annotate":
+            row.local_notes = args.local_notes
+            row.revision += 1
+            emit(db, owner, "planning.changed", row.id, row.revision)
+            return data(db, row)
         mutable(db, row)
         if tool == "planning.update":
             if row.status != "active":
@@ -267,6 +278,7 @@ def project(db, owner, start, end, timezone, warnings=None):
                     "id": f"planning:{row.id}:{day}",
                     "entity_id": row.id,
                     "kind": row.kind,
+                    "source": data(db, row)["source"],
                     "title": values.title,
                     "description": values.description,
                     "location": values.location,

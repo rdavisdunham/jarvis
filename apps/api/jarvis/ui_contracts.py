@@ -22,7 +22,7 @@ UI_TOOLS = {
     "ui_state": definition("Read the current device's actual page, view options, filters, selected/visible records, editor and non-secret device preferences. Context is ephemeral; no connected device means no verified screen.", {}),
     "ui_workspace": definition(
         "Configure the current site's list/board/timeline, sorting/grouping, timeline dates, organization tab, notes mode/archive filter or Settings section. UI-only; does not edit records or dates. Read ui_state first when preserving other view choices matters.",
-        {"view": enum(VIEWS), "layout": enum(["list", "board", "timeline"]),
+        {"view": enum(VIEWS), "layout": enum(["tree", "list", "board", "timeline"]),
          "sort": enum(["priority", "due", "planned", "title", "updated"]),
          "group_by": enum(["status", "project", "assignee"]),
          "timeline_date": {"type": "string", "format": "date"}, "timeline_span": {"type": "integer", "enum": [14, 30, 90]},

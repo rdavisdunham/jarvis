@@ -270,6 +270,10 @@ def public_change(db, row):
                         return [names.get(v,v) for v in value] if isinstance(value,list) else names.get(value,value)
                     return value
                 fields[field.get("binding") or field["name"]] = {"before":display(old.get(key)),"after":display(new.get(key))}
+        if fields.pop("sort_order", None):
+            fields["Order"] = {"before":"Previous position", "after":"Moved within home"}
+        if "local_notes" in fields:
+            fields["Eridani-only notes"] = fields.pop("local_notes")
         home = fields.pop("parent_id", None)
         if home:
             fields["Main home"] = {side:(target.title if (target:=db.get(models.StructureRecord, identity)) and target.owner_id==row.owner_id else None) if identity else None for side,identity in home.items()}

@@ -16,7 +16,9 @@ def calendar(db, owner, start: date, end: date, timezone: str):
     until = datetime.combine(end, time.min, local).astimezone(UTC)
     tasks = list(db.scalars(select(Task).where(Task.owner_id == owner, Task.archived.is_(False))))
     task_map = {t.id: t for t in tasks}
+    from .sources import task_source
     events = []
+    task_sources = {t.id: task_source(db, t) for t in tasks}
     for task in tasks:
         if task.planned_date and not task.is_template and start <= task.planned_date < end:
             events.append(
@@ -24,6 +26,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                     "id": "planned:" + task.id,
                     "entity_id": task.id,
                     "kind": "task",
+                    "source": task_sources[task.id],
                     "timing": "planned",
                     "title": "Planned: " + task.title,
                     "date": task.planned_date.isoformat(),
@@ -58,6 +61,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                 "timing": "deadline",
                 "entity_id": task.id,
                 "kind": "task",
+                    "source": task_sources[task.id],
                 "title": task.title,
                 "date": day.isoformat(),
                 "at": instant.isoformat() if instant else None,

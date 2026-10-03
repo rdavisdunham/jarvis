@@ -474,6 +474,7 @@ class GoogleCalendarEvent(Base):
 
 
 class PlanningEntry(Base):
+    local_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
     __tablename__ = "planning_entries"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
@@ -688,3 +689,14 @@ from .structure_models import (StructureSchema, StructureProposal, StructureReco
 from .search_models import SearchDocument, SearchIndexState, SearchPreference, SearchAlias, SearchSession  # noqa: E402,F401
 
 from .note_list_models import NoteList, NoteOrganization, NoteEntrySource  # noqa: E402,F401
+
+
+class GoogleEventAnnotation(Base):
+    """Durable owner/account/source identity, deliberately independent of the replaceable event cache."""
+    __tablename__ = "google_event_annotations"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    account_subject: Mapped[str] = mapped_column(String(255), primary_key=True)
+    calendar_id: Mapped[str] = mapped_column(String(500), primary_key=True)
+    event_id: Mapped[str] = mapped_column(String(500), primary_key=True)
+    local_notes: Mapped[str] = mapped_column(Text, default="", server_default="")
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")

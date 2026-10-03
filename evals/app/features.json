@@ -120,11 +120,13 @@
     "target_cases": 25,
     "source_files": [
       "apps/api/jarvis/structure.py",
-      "apps/api/jarvis/structure_routes.py"
+      "apps/api/jarvis/structure_routes.py",
+      "apps/web/src/OrganizationTree.tsx"
     ],
     "regression_files": [
       "tests/test_structure.py",
-      "tests/test_accounts.py"
+      "tests/test_accounts.py",
+      "tests/test_batch_b.py"
     ],
     "status": "active"
   },
@@ -154,11 +156,13 @@
     "target_cases": 25,
     "source_files": [
       "apps/api/jarvis/planner.py",
-      "apps/api/jarvis/planning.py"
+      "apps/api/jarvis/planning.py",
+      "apps/api/jarvis/scheduling_windows.py"
     ],
     "regression_files": [
       "tests/test_planning.py",
-      "tests/test_reliability_eval_cases.py"
+      "tests/test_reliability_eval_cases.py",
+      "tests/test_batch_b.py"
     ],
     "status": "active"
   },
@@ -353,10 +357,12 @@
     "source_files": [
       "apps/api/jarvis/google_calendar.py",
       "apps/api/jarvis/google_auth.py",
-      "apps/api/jarvis/google_projection.py"
+      "apps/api/jarvis/google_projection.py",
+      "apps/api/jarvis/sources.py"
     ],
     "regression_files": [
-      "tests/test_google_calendar.py"
+      "tests/test_google_calendar.py",
+      "tests/test_batch_b.py"
     ],
     "status": "active"
   },
@@ -384,10 +390,12 @@
     "target_cases": 25,
     "source_files": [
       "apps/api/jarvis/linear_sync.py",
-      "apps/api/jarvis/linear_client.py"
+      "apps/api/jarvis/linear_client.py",
+      "apps/api/jarvis/sources.py"
     ],
     "regression_files": [
-      "tests/test_linear.py"
+      "tests/test_linear.py",
+      "tests/test_batch_b.py"
     ],
     "status": "active"
   },
@@ -499,11 +507,13 @@
     "target_cases": 25,
     "source_files": [
       "apps/api/jarvis/api.py",
-      "apps/api/jarvis/saved_views.py"
+      "apps/api/jarvis/saved_views.py",
+      "apps/web/src/SourceDetails.tsx"
     ],
     "regression_files": [
       "tests/test_planner_release.py",
-      "tests/test_api.py"
+      "tests/test_api.py",
+      "tests/test_batch_b.py"
     ],
     "status": "active"
   },

@@ -3,6 +3,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CalendarAnnotation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=0)
+    local_notes: str = Field(max_length=30000)
+
+
 class CalendarSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
     calendar_id: str

@@ -39,7 +39,11 @@ COMPACT_FIELDS = (
 
 
 def compact(row):
-    return {key: row.get(key) for key in COMPACT_FIELDS if key in row}
+    result = {key: row.get(key) for key in COMPACT_FIELDS if key in row}
+    if row.get("source"):
+        from .sources import compact_source
+        result["source"] = compact_source(row["source"])
+    return result
 
 
 def with_homes(db, owner, rows):

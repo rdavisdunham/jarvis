@@ -1,3 +1,4 @@
+import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { RecordTools } from "./record-links";
 import { humanLabel, SchedulingHelp, Dialog } from "./ux";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -30,6 +31,7 @@ type Props = {
 export function TaskDetails(p: Props) {
   const [customHome,setCustomHome]=useState<{id:string;type_name:string;home:{title:string}[]}|null>(null);
   useEffect(()=>{void api<{id:string;type_name:string;home:{title:string}[]}>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
+  const annotation=useInlineGuard();
   const [task, setTask] = useState<Task | null>(null),
     [notes, setNotes] = useState<NoteRecord[]>([]);
   const current = useRef<Task | null>(null),
@@ -154,6 +156,7 @@ export function TaskDetails(p: Props) {
     }
   }
   async function finish() {
+    await annotation.flush();
     if (flight.current) await flight.current;
     const item = pending.current;
     if (!item) return;
@@ -191,7 +194,7 @@ export function TaskDetails(p: Props) {
         pending.current = null;
         setEditing(null);
         setError("");
-      } else if (!flight.current) p.onClose();
+      } else if (!flight.current) close();
     };
     document.addEventListener("keydown", escape, true);
     return () => document.removeEventListener("keydown", escape, true);
@@ -234,7 +237,8 @@ export function TaskDetails(p: Props) {
     record_id: p.id,
     mode: "detail",
     auto_save: true,
-    dirty: !!pending.current,
+    dirty: !!pending.current || annotation.dirty,
+    // Nested annotation saves are awaited by finish; do not block navigation before it runs.
     busy: busy || !task,
     schema,
     values: task
@@ -451,6 +455,7 @@ export function TaskDetails(p: Props) {
             <div className="detail-main">
               {text("title", "Task", "text", "title", "Add a title")}
               {text("notes", "Description", "textarea", "body", "Add details")}
+              <SourceDetails source={task.source}/><SourceNotes kind="task" id={p.id} canEdit={p.canEdit!==false} onGuard={annotation.update}/>
               <RecordTools kind="task" id={p.id}/>
               {(parent || !!children.length) && (
                 <section className="detail-section" aria-label="Related tasks">

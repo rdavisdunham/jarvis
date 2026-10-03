@@ -33,7 +33,7 @@ Android follows the release checks and seven-day/50-interaction pilot.
 
 ## Batch A — baseline, voice recovery and operations
 
-Implementation started October 2 on `codex/batch-a-reliability`; not deployed.
+Merged as PR #22 on October 2. Production/device acceptance below remains separate from the merge.
 See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaining checks.
 
 - [x] Implement encrypted Send/Discard voice recovery, commit-delivered queue wakeups,
@@ -74,30 +74,36 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
 
 ## Batch B — organization, sources and daily workflows
 
-- [ ] **B1 — understandable Organization.** Establish canonical reads/writes, then
+Implementation on `codex/batch-b-workspace`; PR validation in [Batch B verification](BATCH_B_VALIDATION.md).
+This batch does not change the backend model default or bypass CI.
+
+- [x] **B1 — understandable Organization (implementation).** Establish canonical reads/writes, then
   present an actual record hierarchy with safe moves and a separate types/fields/
   relationships editor. Opening a client/project should reveal its related work.
   Preserve flexible defaults, inheritance, links, revision checks and touch/keyboard
   alternatives to dragging. Explain “main home” versus additional links.
-- [ ] **B2 — shared external-source contract.** Apply to every current/future
+- [x] **B2 — shared external-source contract (implementation).** Apply to every current/future
   connector and supported record kind, including Google Calendar and Linear:
   literal provider badge, editable color, original link and distinguishable
   account/calendar/team context across views and details.
 - [ ] Source-backed edits from inline cards, boards, calendar, bulk, Eri and API/MCP
-  automatically update the same remote item where supported. Completion, deletion
+  automatically update the same remote item where supported (implemented and mock-tested;
+  dedicated real-provider acceptance still pending). Completion, deletion
   and Revert obey source semantics; local archive is not remote deletion.
   Show pending/confirmed/error/conflict states and provider-specific fields.
   Clearly distinguish unsupported/read-only and local-only fields.
-- [ ] Add collapsible **Eridani-only notes**, stored separately from synced
+- [x] Add collapsible **Eridani-only notes**, stored separately from synced
   descriptions. Never send them to any provider; sync/source Revert preserves them.
   “Private” means not externally synced, with existing workspace visibility.
-  Require remote readback, retry/conflict and local-annotation acceptance per connector.
-- [ ] **B3 — scheduling and notifications.** Apply editable scheduling windows,
+  Mock-provider readback/retry/conflict and annotation preservation are tested.
+  Real-provider readback/acceptance remains below.
+- [x] **B3 — scheduling and notifications (implementation/offline checks).** Apply editable scheduling windows,
   timezone and task constraints separately from weak work/personal routing hints.
   Complete natural-language snooze, quiet hours, priority and summary controls;
-  verify real delivery and no duplicate deadline/reminder alerts.
+  verify real delivery and no duplicate deadline/reminder alerts. Offline deadline,
+  snooze, quiet-hour and summary regressions are covered; locked-phone delivery is pending.
   Agent completions stay in chat/Activity, not notifications.
-- [ ] **B4 — focused UX reliability.** Preserve drafts during conflicts and offer
+- [x] **B4 — focused UX reliability (implementation/browser checks).** Preserve drafts during conflicts and offer
   compare/reload/reapply where allowed. Fix crowded controls, week-view/due-chip
   collisions and foldable layouts; preserve Back, scroll, keyboard focus and
   autosave/dirty-editor protection. Verify guarded note edits, canonical assignees

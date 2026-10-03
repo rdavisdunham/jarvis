@@ -1,4 +1,6 @@
+import type { SourceInfo } from "./SourceDetails";
 export interface Task {
+  source?: SourceInfo;
   deadline_alert?: "default"|"on"|"off";
   alert_urgent?: boolean;
   space_id?: string | null;
@@ -57,6 +59,7 @@ export interface Project {
   revision: number;
 }
 export interface CalendarEntry {
+  source?: SourceInfo;
   timing?: "planned" | "deadline";
   space_id?: string | null;
   area_id?: string | null;
@@ -148,6 +151,7 @@ export type AgentProvider = "openai" | "gemini" | "groq";
 export type AgentProfile = AgentProvider | "luna";
 export interface Preferences {
   agent_profile: AgentProfile;
+  source_colors?: Record<string,string>;
   agent_provider: AgentProvider;
   preferred_name: string;
   history_enabled: boolean;
@@ -242,7 +246,7 @@ export type UIAction = import("zod").input<
 
 export interface UIContext {
   collection?:Record<string,string|number|null>;
-  layout?: "list" | "board" | "timeline";
+  layout?: "tree" | "list" | "board" | "timeline";
   sort?: string;
   group_by?: string;
   timeline_date?: string;

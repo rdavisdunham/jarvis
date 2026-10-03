@@ -3,6 +3,7 @@
 import copy
 
 GROUPS = {
+    "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
     "search": ("Semantic retrieval, search vocabulary and correcting a previous interpretation.", ["record_search", "search_select", "search_feedback", "record_get", "ui_records"]),
     "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
     "structure": ("Discover or redesign user-defined types, fields, workflows and relationships. Preview structural edits and wait for explicit confirmation before applying.", ["ui_records", "structure_schema", "structure_preview", "structure_apply", "structure_restore"]),
@@ -226,6 +227,8 @@ REMOTE = (
     "Never create another record to retry an unknown write. "
 )
 DESCRIPTIONS = {
+    "calendar_annotate": "Save Eridani-only notes on the cached event/series identity. Read calendar_event_read for annotation_revision. These notes survive sync and never go to Google; they are not occurrence-specific notes unless the event_id is itself an imported occurrence.",
+    "planning_annotate": "Save local notes on an appointment/work block with its current revision. Does not update its description or its Google copy.",
     "routing_create":"Save an organization rule the user explicitly requested. Phrase matching only sets home and classification fields. Never use to confirm your own inference. Do not alter dates, assignees or integrations.",
     "routing_change":"On explicit user instruction activate, pause or forget a rule; read routing_state first. Activation confirms the rule as explicit. Forget suppresses its supporting evidence.",
     "routing_answer":"Record an explicit answer to one weekly review question, or defer the interview. Ask one question at a time; after three offer to stop. Never infer acceptance.",
@@ -236,7 +239,7 @@ DESCRIPTIONS = {
     "structure_preview": "Prepare a structural change for the owner to review. Read structure_schema first, preserve unaffected definitions and stable IDs. Show impact and ask for explicit confirmation; do not apply in the same request.",
     "structure_apply": "Apply the exact reviewed proposal only after the user explicitly confirms it in a later turn. Never use this for an unreviewed schema change. A stale proposal needs a new preview.",
     "record_create": "Create a record under a current type definition. Read structure_schema for field IDs and schema_revision. Use a main parent for inherited home and separate named links for other associations. No approval step for ordinary record creation.",
-    "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value (null body clears it); omission preserves it. Title cannot be null; actionable types always need a status.",
+    "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value (null body clears it); omission preserves it. Title cannot be null; actionable types always need a status. Main home controls containment and inherited classification; links do not move records. Moving home never changes a connected provider project. body syncs a linked description; local_notes never syncs. move_before_id orders siblings; null appends.",
     "record_link": "Add or remove a named relationship allowed by the schema. Additional links do not change the main home. Validate source/target IDs and use the source's current revision.",
     "planning_commit": "Save a planning_suggest proposal only when the owner requested scheduling. Rechecks current task revisions and fresh availability, then saves all local blocks atomically; conflicts save none. Copy the short plan_token reference exactly from planning_suggest. Reusing it cannot duplicate blocks, even with a new command ID. Does not publish to Google or change task deadlines/alerts. Expired/conflicting plans need a new proposal.",
     "task_list": "Find TASK records with structured filters; authored notes use note_search/note_read. "
