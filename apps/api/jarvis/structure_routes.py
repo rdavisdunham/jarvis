@@ -1,6 +1,7 @@
 """Authenticated schema discovery and generic record reads; writes use commands."""
 
-from typing import Annotated
+from typing import Annotated, Literal
+from .record_contents import ContentsPlan
 from fastapi import APIRouter, Depends, Query
 from .auth import Identity, authenticate
 from .db import session_scope
@@ -47,7 +48,11 @@ def records(
 def record(record_id: str, user: User):
     with session_scope() as db:
         structure.ensure(db, user.owner_id)
-        return structure.data(db, owned(db, StructureRecord, record_id, user.owner_id))
+        row = owned(db, StructureRecord, record_id, user.owner_id)
+        from .record_contents import summary
+        schema = structure.ensure(db,user.owner_id)
+        structure.reconcile_core(db,row,schema)
+        return {**structure.data(db,row,schema), "contents":summary(db,row,schema)}
 
 
 @router.get("/proposals/{proposal_id}")
@@ -113,3 +118,22 @@ def hierarchy_status(user: User):
     with session_scope() as db:
         structure.schema_data(db, user.owner_id)
         return report(db, user.owner_id)
+
+
+@router.get("/browse")
+def browse(user: User, parent_id: str | None = None,
+           scope: Literal["children","subtree","related"] = "children",
+           section: Literal["all","groups","work","content"] = "all",
+           archived: bool = False, status: str = "all", query: str = "",
+           limit: int = Query(default=50,ge=1,le=100), offset: int = Query(default=0,ge=0,le=1000000)):
+    from .record_contents import browse
+    with session_scope() as db:
+        return browse(db,user.owner_id,parent_id=parent_id,scope=scope,section=section,
+                      archived=archived,status=status,query=query,limit=limit,offset=offset)
+
+
+@router.post("/contents/preview")
+def contents_preview(args: ContentsPlan, user: User):
+    from .record_contents import plan
+    with session_scope() as db:
+        return plan(db,user.owner_id,args)

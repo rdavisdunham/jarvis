@@ -575,6 +575,9 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    if tool in {"record.contents", "record.restore_contents"}:
+        from . import record_contents
+        return (record_contents.apply if tool == "record.contents" else record_contents.restore)(db, owner, args, command_id)
     if tool.startswith("quicklist."):
         from .quick_lists import mutate as capture_mutate
         return capture_mutate(db, owner, tool, args, command_id)

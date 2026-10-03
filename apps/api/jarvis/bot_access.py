@@ -30,7 +30,7 @@ SCOPES = {
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
-    **{f"record.{op}": "records:write" for op in ("create", "update", "link")},
+    **{f"record.{op}": "records:write" for op in ("create", "update", "link", "contents", "restore_contents")},
     **{f"task.{op}": "tasks:write" for op in ("create", "update", "complete", "reopen")},
     **{
         f"{kind}.{op}": "organization:write"
@@ -43,6 +43,8 @@ READ_SCOPES = {
     "quicklist_list":"tasks:read", "quicklist_get":"tasks:read",
     "structure_schema": "schema:read",
     "record_list": "records:read",
+    "record_browse": "records:read",
+    "record_contents_preview": "records:read",
     "record_search": "records:read",
     "record_get": "records:read",
     "task_list": "tasks:read",
@@ -191,6 +193,16 @@ def check_command(db, owner, tool, arguments):
 
 
 def core_scopes(db, owner, tool, arguments):
+    if tool == "record.contents":
+        from .record_contents import rows_under
+        from .structure_models import StructureRecord
+        root=db.get(StructureRecord,str(arguments.get("record_id") or ""))
+        if not root or root.owner_id!=owner:return set()
+        records=[root,*rows_under(db,owner,root.id)]
+        return ({"tasks:write"} if any(r.task_id for r in records) else set()) | ({"notes:write"} if any(r.note_id for r in records) else set())
+    if tool == "record.restore_contents":
+        # Restoration may touch descendants of several capabilities.
+        return {"tasks:write","notes:write"}
     if tool not in {"record.create", "record.update"}:
         return set()
     from .structure import default_definition

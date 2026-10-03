@@ -62,7 +62,7 @@ are engineering work, not outstanding owner decisions.
   presentation metadata where needed. Preserve IDs, descriptions, preview/revisions,
   provider ownership and access checks. Cosmetic changes must not retrain rules.
   Update Eri's navigation map after the UI settles.
-- [ ] **ORG4 — nested work and contents operations.** Actionable Project preset,
+- [ ] **ORG4 — nested work and contents operations.** Backend implemented; UI follows. Actionable Project preset,
   same-type subtasks without a new Subtask type, nested timeline/progress and explicit
   parent completion. Carry contents by default; move-only promotes direct children
   to the old home. Container deletion offers subtree removal versus preserving
@@ -70,6 +70,8 @@ are engineering work, not outstanding owner decisions.
   picker drills through actual records; Extras contains links and directed blockers.
   Blocking is advisory: warn about unfinished prerequisites but allow explicit
   start/completion; reject self/cyclic links and never auto-complete prerequisites.
+  Contents commands now provide counts/source effects, stale-preview guards and
+  grouped Revert; scoped children/subtree/related reads expose complete totals.
 - [ ] **REV1 — visible questions and reliable delivery.** One personal inbox adapts
   memory/routing/field reviews; Organization shows its relevant subset. Separate
   unanswered questions from invitation delivery. Fix omitted Live memory questions,

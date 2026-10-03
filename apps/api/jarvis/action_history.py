@@ -146,9 +146,18 @@ def has_linked_records(db, model, identity):
     return False
 
 
-def inverse(db, change, *, lock=False):
+def inverse(db, change, *, lock=False, group=True):
     from .domain import COMMANDS
 
+    if group and change.tool == "record.contents":
+        from .record_contents import check_restore_guard
+        check_restore_guard(db,change.owner_id,db.get(Command,(change.owner_id,change.command_id)))
+        changes=list(db.scalars(select(ActionChange).where(
+            ActionChange.owner_id==change.owner_id,ActionChange.command_id==change.command_id)))
+        for other in changes:
+            action, reason=inverse(db,other,lock=lock,group=False)
+            if not action:return None,reason
+        return ("record.restore_contents",{"source_command_id":change.command_id}),"Restore this entire contents operation"
     model = MODELS.get(change.entity_kind)
     before, after = unseal(change.before_ciphertext), unseal(change.after_ciphertext)
     if change.reverted_by:
@@ -329,6 +338,17 @@ def changes_for_work(db, work):
         if change.entity_kind not in {"actor", "space", "area"}
         or change.tool.startswith(change.entity_kind + ".")
     ]
+    grouped={}
+    for item, saved in zip(result,[r for r in rows if r.entity_kind not in {"actor","space","area"} or r.tool.startswith(r.entity_kind+".")]):
+        if saved.tool=="record.contents":
+            grouped.setdefault(saved.command_id,[]).append(item)
+    for command, items in grouped.items():
+        receipt=db.get(Command,(work.owner_id,command))
+        root_id=receipt.result.get("data",{}).get("id") if receipt else None
+        primary=next((i for i in items if i["entity_id"]==root_id),items[0])
+        primary["summary"]="Updated contents: "+primary["title"]
+        primary["fields"]["Affected records"]={"before":None,"after":len(items)}
+        result=[i for i in result if i not in items or i is primary]
     # Include integration receipts and other non-reversible effects truthfully.
     known = {r.command_id for r in rows}
     for receipt in db.scalars(
