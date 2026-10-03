@@ -44,6 +44,14 @@ def records(
         )
 
 
+@router.get("/atlas")
+def atlas(user: User, limit: int = Query(default=5000, ge=1, le=5000)):
+    """Bounded skeleton for the visual Atlas; viewers may read it like Browse."""
+    from .atlas import skeleton
+    with session_scope() as db:
+        return skeleton(db, user.owner_id, limit=limit)
+
+
 @router.get("/records/{record_id}")
 def record(record_id: str, user: User):
     with session_scope() as db:
