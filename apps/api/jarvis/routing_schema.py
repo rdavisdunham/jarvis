@@ -21,7 +21,11 @@ class PatternCreate(Input):
 class PatternChange(Input):
     pattern_id: str
     expected_revision: int = Field(ge=1)
-    action: Literal["activate", "pause", "forget"]
+    action: Literal["activate", "pause", "forget", "edit"]
+    phrase: str | None = Field(default=None,min_length=2,max_length=200)
+    parent_id: str | None = None
+    values: dict | None = None
+    reason: str | None = Field(default=None,min_length=1,max_length=2000)
 
 
 class ReviewAnswer(Input):

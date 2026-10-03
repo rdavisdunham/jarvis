@@ -650,5 +650,33 @@
       "tests/test_action_limits.py"
     ],
     "status": "implemented_disabled_by_default"
+  },
+  {
+    "id": "quick_capture",
+    "title": "Quick lists",
+    "description": "Batch C capture and setup with stable identities, explicit confirmation and account boundaries.",
+    "order": 41,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/quick_lists.py"
+    ],
+    "regression_files": [
+      "tests/test_batch_c.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "onboarding",
+    "title": "Guided account setup",
+    "description": "Batch C capture and setup with stable identities, explicit confirmation and account boundaries.",
+    "order": 42,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/onboarding.py"
+    ],
+    "regression_files": [
+      "tests/test_batch_c.py"
+    ],
+    "status": "active"
   }
 ]

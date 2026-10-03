@@ -314,6 +314,24 @@ def organization(user: User):
         return snapshot(db, user.owner_id)
 
 
+@app.get("/api/v1/quick-lists")
+def quick_lists(user: User, query: str = Query(default="", max_length=300)):
+    from .quick_lists import listing
+    with session_scope() as db:
+        return listing(db,user.owner_id,query)
+
+@app.get("/api/v1/quick-lists/{list_id}")
+def quick_list(list_id: str, user: User):
+    from .quick_lists import read
+    with session_scope() as db:
+        return read(db,user.owner_id,list_id)
+
+@app.get("/api/v1/onboarding")
+def onboarding(user: User):
+    from .onboarding import state
+    with session_scope() as db:
+        return state(db,user.owner_id)
+
 @app.get("/api/v1/projects")
 def projects(user: User):
     from .productivity import data

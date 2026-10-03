@@ -1,6 +1,6 @@
 # Eridani — active roadmap
 
-Updated October 2, 2026. This is the single active work checklist.
+Updated October 3, 2026. This is the single active work checklist.
 The [web v1 PRD](ERIDANI_WEB_V1_PRD.md) defines scope and acceptance;
 the [latency plan](ERI_LATENCY_PLAN.md) defines the response-speed work.
 Start with the [documentation index](README.md) for implementation and operations guides.
@@ -70,11 +70,11 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   outbox recovery, speech completeness and conversational turn protection.
   Do not remove the durable queue or promise savings from timer arithmetic.
 - [x] Begin binding release-core eval cases and add regression coverage with Batch A.
-  Continue toward the release-core target in Batch D; 100 cases are now fully bound.
+  Continue toward the release-core target in Batch D; Batch C raises the current count to 112.
 
 ## Batch B — organization, sources and daily workflows
 
-Implementation on `codex/batch-b-workspace`; PR validation in [Batch B verification](BATCH_B_VALIDATION.md).
+Merged as PR #23. Validation in [Batch B verification](BATCH_B_VALIDATION.md).
 This batch does not change the backend model default or bypass CI.
 
 - [x] **B1 — understandable Organization (implementation).** Establish canonical reads/writes, then
@@ -122,34 +122,44 @@ This batch does not change the backend model default or bypass CI.
 
 ## Batch C — quick capture and first-use setup
 
-- [ ] **C1 — Quick lists.** One-step title/checklist capture with optional sections,
-  deadline and Today pin; inline completion/reordering, persistence and search.
-  Show one list summary rather than scatter every item across Tasks. No mandatory
-  client/project/schema setup; reminders are opt-in and passing a deadline never
-  deletes or completes unfinished items.
-- [ ] Support Eri follow-ups and promotion into normal tasks/projects without
-  duplicate items or lost IDs/history. Use the Houston packing scenario: Hayes,
-  personal packing, moped equipment and work essentials; suggest supplies without
-  silently creating commitments. [Full capture requirements](archive/2026-10-02/TODO_HISTORY.md#quick-lists--quick-projects--september-27).
-- [ ] **C2 — guided conversational onboarding.** Ask name/preferences and how the
-  person wants to organize; offer editable defaults and require meaningful field
-  descriptions. Ask useful clarifying questions, preview before applying schema,
-  support skip/resume/later edits, and persist progress per account.
-- [ ] Make invitation/login destinations explicit: a standalone account has its
-  own records; joining a shared workspace grants only the selected membership/role.
-  Test a new person on a phone without developer explanation.
-- [ ] **C3 — useful organization learning.** Connect field understanding,
-  correction and weekly rule interviews. Explicitly confirmed rules work immediately;
-  automated learning retains held-out quality gates and abstention. Keep routing
-  knowledge separate from personal memory; silence is weak search evidence, not
-  authoritative approval of a rule.
-- [ ] **C4 — production logo.** Select/finalize the peeling-note design and produce
-  vector/PWA assets. Generated concepts are not installed app assets.
+Implemented on `codex/batch-c-capture-setup`; see [Batch C verification](BATCH_C_VALIDATION.md).
+Implementation/offline checks are distinct from real voice and new-user acceptance.
+
+- [x] **C1 — Quick lists.** Title/checklist capture with optional sections, deadline
+  and Today pin; inline completion/reordering, persistence and searchable task IDs.
+  One summary in ordinary Tasks/Today views; search can still find individual items.
+  No required client/project or schema setup. Alerts are opt-in; expired deadlines
+  do not delete or complete items.
+- [x] Add Eri tools for capture, reading, editing and reordering. Promote the same
+  list to an ordinary parent task/subtasks, optionally in an existing project.
+  No copies or lost IDs/history. Creating a new project uses the normal project tools.
+- [ ] Real voice Houston packing acceptance: Hayes, personal packing, moped equipment
+  and work essentials; Eri follows corrections and suggests supplies without silently
+  creating commitments. [Full requirements](archive/2026-10-02/TODO_HISTORY.md#quick-lists--quick-projects--september-27).
+- [x] **C2 — guided setup (implementation).** Name, timezone and purpose; editable
+  defaults or a custom group with a description/example. Per-account skip/resume,
+  separate schema preview/confirmation, existing field clarification tools, text/voice
+  setup tools. No sample work is silently created.
+- [x] Explain personal-account ownership versus selected shared-workspace membership
+  in setup/login/invitation copy.
+- [ ] Test setup with a new person on a phone without developer explanation,
+  including real conversational clarification and later resume.
+- [x] **C3 — organization learning.** Explicitly confirmed rules work immediately;
+  show destination, reason, evidence and edit/confirm/pause/forget controls.
+  Automated rules retain field-understanding and held-out quality gates. Edits resolve
+  matching weekly questions; personal memory remains separate. Silence is not approval.
+- [ ] Accept the combined weekly rule interview and field-clarification experience
+  in actual conversation; offline regressions do not establish model quality.
+- [x] **C4 — production logo.** Install the selected v19 soft-square peeling-note
+  concept as vector, monochrome and PWA assets. See [brand assets](BRAND.md).
+- [x] Add 25 Quick-capture and 25 setup eval scenarios. Bind 12 exact deterministic
+  scenarios; ratchet to **112/1,051** fully bound cases across **42 features**.
+  Remaining model/voice/device cases retain unrun acceptance status.
 
 ## Batch D — verify, then pilot
 
 - [ ] **D1 — release-core evaluations.** Fully bind about 200 risk-weighted cases
-  from the 1,001-case catalog. Fix Sol's six weak bindings; regrade EVAL-001–008 and
+  from the 1,051-case catalog. Fix Sol's six weak bindings; regrade EVAL-001–008 and
   repeat critical stochastic Luna cases at least three times. Preserve old reports.
   Default to offline checks; paid campaigns use the existing **$10 total ceiling**,
   including pipelines/embeddings/judges/retries and uncertain spend. Gemini stays paused.

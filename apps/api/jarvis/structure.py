@@ -422,6 +422,8 @@ def data(db, row, schema=None):
     if task:
         from .sources import task_source
         result["source"] = task_source(db, task)
+        capture=serial(task)
+        result.update({k:capture.get(k) for k in ("is_quick_list","quick_list_parent_id","quick_done","quick_total")})
         result.update(title=task.title, body=task.notes, archived=task.archived, task_revision=task.revision)
         result["status_id"] = task_status(t, task.status, row.status_id)
         result["status_meaning"] = task.status

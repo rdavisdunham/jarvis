@@ -3427,5 +3427,173 @@
       ],
       "scope": "Real multi-turn Luna conversation; persisted clarification handoff, saved-state and one-original-card assertions."
     }
+  ],
+  "quick_capture.01": [
+    {
+      "id": "batch-c:quick_capture.01",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_houston_capture_is_atomic_idempotent_searchable_and_no_alerts",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.02": [
+    {
+      "id": "batch-c:quick_capture.02",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_check_add_reorder_and_reopen_keep_item_ids",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.03": [
+    {
+      "id": "batch-c:quick_capture.03",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_stale_list_or_item_never_overwrites",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.04": [
+    {
+      "id": "batch-c:quick_capture.04",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_invalid_reorder_is_atomic",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.05": [
+    {
+      "id": "batch-c:quick_capture.05",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_promote_preserves_ids_completion_and_history",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.06": [
+    {
+      "id": "batch-c:quick_capture.06",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_foreign_list_item_and_project_are_rejected",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.07": [
+    {
+      "id": "batch-c:quick_capture.07",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_past_deadline_is_retained_with_opt_in_alert",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "quick_capture.08": [
+    {
+      "id": "batch-c:quick_capture.08",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_capture_limit_rejects_whole_transaction",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "onboarding.01": [
+    {
+      "id": "batch-c:onboarding.01",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_setup_is_account_scoped_skip_resume_and_stale_protected",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "onboarding.02": [
+    {
+      "id": "batch-c:onboarding.02",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_setup_requires_explanation_and_separate_confirmation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "onboarding.03": [
+    {
+      "id": "batch-c:onboarding.03",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_changed_setup_answers_invalidate_preview",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
+  ],
+  "onboarding.04": [
+    {
+      "id": "batch-c:onboarding.04",
+      "adapter": "pytest",
+      "target": "tests/test_batch_c.py::test_setup_invalid_timezone_never_changes_profile",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic command/account scenario; does not claim model, device or voice acceptance."
+    }
   ]
 }

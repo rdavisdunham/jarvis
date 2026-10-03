@@ -3,14 +3,15 @@
 Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md),
 [Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
 
-The catalog contains **1,001 scenarios across 40 features**. The on-demand runner
+The catalog contains **1,051 scenarios across 42 features**. The on-demand runner
 indexes every scenario, selects its available adapters, and reports unmet criteria.
-It does **not** mean all 1,001 scenarios are automated. Current bindings cover
-98 complete acceptance scenarios, with component evidence available for 224 cases
-(overlapping those 98). Nine hundred cases still lack complete acceptance bindings;
-three explicitly require physical-device evidence. Every feature has supporting
-regressions. See [automation-coverage.json](automation-coverage.json) for the exact
-per-feature backlog.
+This does **not** mean every scenario is automated. Current bindings cover **112**
+complete acceptance scenarios; component evidence is available for **224** cases
+(overlapping acceptance coverage). Remaining scenarios retain incomplete or physical
+acceptance requirements. Batch C adds 25 Quick-capture and 25 onboarding scenarios,
+with 12 exact deterministic bindings. See
+[automation-coverage.json](automation-coverage.json) for the per-feature backlog.
+Historical reports keep their original scenario counts and outcomes.
 
 ## Execution types
 

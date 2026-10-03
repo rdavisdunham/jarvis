@@ -1,18 +1,18 @@
 {
   "version": 2,
   "registry": {
-    "cases": 1001,
+    "cases": 1051,
     "types": {
-      "contracts": 401,
+      "contracts": 451,
       "pipeline": 275,
       "integration": 125,
       "agent": 100,
       "browser": 50,
       "voice": 50
     },
-    "fully_bound": 100,
+    "fully_bound": 112,
     "component_cases": 224,
-    "sha256": "705879142fec20f07d2fc570a3626a87fced18835a216d1cc6dee7483e0dd9f7"
+    "sha256": "ee194f3f52b78a976174a6e181ce79657134dc7211d3c3b78126ad329c233c99"
   },
   "features": {
     "accounts": {
@@ -309,6 +309,7 @@
       "supporting_suites": [
         "shell-navigation.mjs",
         "tests/test_api.py",
+        "tests/test_batch_b.py",
         "tests/test_planner_release.py",
         "usage-report.mjs"
       ],
@@ -1418,6 +1419,7 @@
       "component_cases": 12,
       "supporting_suites": [
         "tests/test_accounts.py",
+        "tests/test_batch_b.py",
         "tests/test_structure.py"
       ],
       "remaining": [
@@ -2278,6 +2280,7 @@
       "component_cases": 0,
       "supporting_suites": [
         "google",
+        "tests/test_batch_b.py",
         "tests/test_google_calendar.py"
       ],
       "remaining": [
@@ -2853,6 +2856,7 @@
       "component_cases": 0,
       "supporting_suites": [
         "linear",
+        "tests/test_batch_b.py",
         "tests/test_linear.py"
       ],
       "remaining": [
@@ -5480,6 +5484,206 @@
         }
       ]
     },
+    "onboarding": {
+      "catalog": 25,
+      "fully_bound": 4,
+      "component_cases": 0,
+      "supporting_suites": [
+        "batch-c.mjs",
+        "tests/test_batch_c.py"
+      ],
+      "remaining": [
+        {
+          "case_id": "onboarding.05",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.06",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.07",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.08",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.09",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.10",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.11",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.12",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.13",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.14",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.15",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.16",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.17",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.18",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.19",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.20",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.21",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.22",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.23",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.24",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "onboarding.25",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        }
+      ]
+    },
     "operations": {
       "catalog": 25,
       "fully_bound": 0,
@@ -6350,6 +6554,7 @@
       "fully_bound": 0,
       "component_cases": 0,
       "supporting_suites": [
+        "tests/test_batch_b.py",
         "tests/test_planning.py",
         "tests/test_reliability_eval_cases.py"
       ],
@@ -7193,6 +7398,170 @@
             "invariants.1",
             "invariants.2",
             "invariants.3"
+          ]
+        }
+      ]
+    },
+    "quick_capture": {
+      "catalog": 25,
+      "fully_bound": 8,
+      "component_cases": 0,
+      "supporting_suites": [
+        "batch-c.mjs",
+        "tests/test_batch_c.py"
+      ],
+      "remaining": [
+        {
+          "case_id": "quick_capture.09",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.10",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.11",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.12",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.13",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.14",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.15",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.16",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.17",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.18",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.19",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.20",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.21",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.22",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.23",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.24",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
+          ]
+        },
+        {
+          "case_id": "quick_capture.25",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1"
           ]
         }
       ]

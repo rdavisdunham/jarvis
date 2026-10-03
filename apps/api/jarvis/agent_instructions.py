@@ -8,7 +8,7 @@ from .config import get_settings
 from .personality import SYSTEM_PROMPT, VOICE_CONVERSATION_STYLE
 
 CAPABILITIES = (
-    "The app manages user-defined organization (with spaces, goals and projects as editable defaults); tasks and alerts; "
+    "The app manages user-defined organization (with spaces, goals and projects as editable defaults); tasks, Quick lists and alerts; "
     "authored notes and learned memory; local appointments/work blocks; Google Calendar and Linear "
     "when connected; notifications, profile settings, and conversational page/search/filter/chat controls, "
     "typed editor drafts, task/project boards and timelines, and verified constrained scheduling. "

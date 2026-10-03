@@ -164,7 +164,7 @@ def suggest(db, owner, type_id, title, explicit):
             or not matches(title, rule.condition["phrase"])
         ):
             continue
-        if not ready(
+        if rule.origin != "explicit" and not ready(
             db, schema, type_id, rule.assignment.get("values", {}), rule.assignment.get("parent_id")
         ):
             continue
@@ -483,6 +483,7 @@ def process(job_id):
             if not support or any(not agrees(e.evidence["assignment"], assignment) for e in support):
                 continue
             condition = {"type_id": candidate.type_id, "phrase": " ".join(tokens(candidate.phrase))}
+            if not condition["phrase"]:continue
             digest = fingerprint({"condition": condition, "assignment": assignment})
             rule = db.scalar(
                 select(RoutingPattern).where(
@@ -567,9 +568,19 @@ def state(db, owner):
             .limit(20)
         )
     )
+    def explain(rule):
+        schema=ensure(db,owner)
+        available=rule.schema_revision==schema.revision
+        reason="Confirmed by you; works immediately on new matching records." if rule.origin=="explicit" else "Automatic learning needs reviewed evidence and understood fields."
+        if not available:reason="Organization changed; review and confirm this rule again."
+        elif rule.status=="paused":reason="Paused by you. Confirm & enable to resume."
+        elif rule.status=="candidate":reason="Waiting for your confirmation or the automatic quality gate."
+        parent=db.get(StructureRecord,rule.assignment.get("parent_id")) if rule.assignment.get("parent_id") else None
+        evidence=list(db.scalars(select(RoutingObservation).where(RoutingObservation.owner_id==owner,RoutingObservation.id.in_(rule.evidence_ids)).limit(5)))
+        return {**serial(rule),"explanation":reason,"destination":parent.title if parent and parent.owner_id==owner else "Unfiled / fields only","evidence":[{"record_id":e.record_id,"origin":e.origin,"details":e.evidence} for e in evidence]}
     return {
         "patterns": [
-            serial(r)
+            explain(r)
             for r in db.scalars(
                 select(RoutingPattern)
                 .where(RoutingPattern.owner_id == owner, RoutingPattern.status != "forgotten")
@@ -638,6 +649,7 @@ def mutate(db, owner, tool, args, command_id):
             assignment["parent_id"] = args.parent_id
         validate_assignment(db, owner, schema, args.type_id, assignment)
         condition = {"phrase": " ".join(tokens(args.phrase)), "type_id": args.type_id}
+        if not condition["phrase"]:raise DomainError("INVALID_RULE","Use a phrase containing letters or numbers.")
         digest = fingerprint({"condition": condition, "assignment": assignment})
         rule = db.scalar(
             select(RoutingPattern).where(
@@ -666,7 +678,27 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "routing.change":
         rule = owned(db, RoutingPattern, args.pattern_id, owner, lock=True)
         check_revision(rule, args.expected_revision)
-        if args.action == "activate":
+        if args.action == "edit":
+            condition={**rule.condition}
+            assignment={**rule.assignment}
+            if args.phrase is not None:condition["phrase"]=" ".join(tokens(args.phrase))
+            if not condition["phrase"]:raise DomainError("INVALID_RULE","Use a phrase containing letters or numbers.")
+            if "parent_id" in args.model_fields_set:assignment["parent_id"]=args.parent_id
+            if args.values is not None:assignment["values"]=args.values
+            validate_assignment(db,owner,schema,condition["type_id"],assignment)
+            digest=fingerprint({"condition":condition,"assignment":assignment})
+            duplicate=db.scalar(select(RoutingPattern).where(RoutingPattern.owner_id==owner,RoutingPattern.fingerprint==digest,RoutingPattern.id!=rule.id))
+            if duplicate:raise DomainError("DUPLICATE_RULE","That rule already exists; review it instead.",409)
+            rule.condition=condition;rule.assignment=assignment;rule.fingerprint=digest
+            rule.origin="explicit";rule.status="active";rule.schema_revision=schema.revision
+            rule.evidence_ids=[]
+            if args.reason is not None:rule.reason=args.reason
+            for review in db.scalars(select(RoutingReview).where(RoutingReview.owner_id==owner,RoutingReview.status=="pending")):
+                questions=[q for q in review.questions if q["id"]!=rule.id]
+                if len(questions)!=len(review.questions):
+                    review.questions=questions;review.revision+=1;review.status="pending" if questions else "completed"
+                    review.answers=[*review.answers,{"question_id":rule.id,"answer":"edited_explicitly"}]
+        elif args.action == "activate":
             validate_assignment(db, owner, schema, rule.condition["type_id"], rule.assignment)
             rule.status = "active"
             rule.origin = "explicit"

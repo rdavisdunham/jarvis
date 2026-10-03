@@ -12,6 +12,9 @@ the [response-speed plan](ERI_LATENCY_PLAN.md) defines the audited latency work.
 | Release scope and product decisions | [Web v1 PRD](ERIDANI_WEB_V1_PRD.md) |
 | Latency measurements and safe optimization sequence | [Latency plan](ERI_LATENCY_PLAN.md) |
 | Batch A implementation and pending real-device checks | [Batch A verification](BATCH_A_VALIDATION.md) |
+| Batch B organization/source checks | [Batch B verification](BATCH_B_VALIDATION.md) |
+| Batch C capture/setup checks | [Batch C verification](BATCH_C_VALIDATION.md) |
+| Production logo and PWA assets | [Brand](BRAND.md) |
 | Latest audit/repair handoff | [Claude session summary](CLAUDE_SESSION_SUMMARY.md) |
 | Feature and evaluation map, dated September 19 | [App functionality](APP_FUNCTIONALITY.md) |
 | UI conventions and design tokens | [Orbit design system](DESIGN.md) |

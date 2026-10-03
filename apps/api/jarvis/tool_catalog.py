@@ -3,6 +3,8 @@
 import copy
 
 GROUPS = {
+    "quick_capture": ("Quick checklists: capture only requested commitments, add/check/reorder items, read what remains. Sections are labels, not learned classifications. Reminders opt in; expired deadlines retain unfinished items. Promotion keeps IDs/history as a normal parent task and subtasks, optionally in an existing project.", ["quicklist_list","quicklist_get","quicklist_create","quicklist_item","quicklist_promote","task_update"]),
+    "setup": ("Skippable personal onboarding with name, timezone, goals and editable organization defaults. Save progress; clarify group descriptions/examples; show preview before separate confirmed schema apply. Existing users resume in Settings. Do not treat examples as tasks or silence as rule approval.", ["onboarding_state","onboarding_save","onboarding_preview","structure_schema","structure_apply","routing_state","routing_understand"]),
     "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
     "search": ("Semantic retrieval, search vocabulary and correcting a previous interpretation.", ["record_search", "search_select", "search_feedback", "record_get", "ui_records"]),
     "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
@@ -227,6 +229,11 @@ REMOTE = (
     "Never create another record to retry an unknown write. "
 )
 DESCRIPTIONS = {
+    "quicklist_create":"Capture one compact checklist using only requested items; optional sections are display labels, never classification rules. No schema setup. Reminders default off. Suggest additional supplies in conversation without saving unless requested.",
+    "quicklist_item":"Read quicklist_get first. Add, edit/check or reorder existing item IDs; use list revision and item revision for edits. Reorder supplies all active item IDs once. Unknown or stale writes save nothing.",
+    "quicklist_promote":"Only on request, expose the same checklist items as normal subtasks under the same parent task. IDs, completion and history survive. Optional project_id must be an existing owned project; do not invent it.",
+    "onboarding_save":"Save actual user answers and progress in Personal. Skip preserves progress; resume uses in_progress. Never infer field descriptions or mark completed before the reviewed schema was applied.",
+    "onboarding_preview":"Preview the saved setup using editable existing defaults plus an optional described grouping type. Requires current progress revision, meaningful description and example for a new group. Show the example and impact; wait for a separate user confirmation before structure_apply.",
     "calendar_annotate": "Save Eridani-only notes on the cached event/series identity. Read calendar_event_read for annotation_revision. These notes survive sync and never go to Google; they are not occurrence-specific notes unless the event_id is itself an imported occurrence.",
     "planning_annotate": "Save local notes on an appointment/work block with its current revision. Does not update its description or its Google copy.",
     "routing_create":"Save an organization rule the user explicitly requested. Phrase matching only sets home and classification fields. Never use to confirm your own inference. Do not alter dates, assignees or integrations.",

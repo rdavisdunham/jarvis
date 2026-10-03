@@ -215,6 +215,8 @@ def fingerprint(data):
     for row in baseline.get("tasks",{}).values():
         if row.get("deadline_alert")=="default":row.pop("deadline_alert")
         if row.get("alert_urgent") is False:row.pop("alert_urgent")
+        for field,default in (("is_quick_list",False),("quick_section",""),("quick_order",0)):
+            if row.get(field)==default:row.pop(field,None)
     return hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
 
 

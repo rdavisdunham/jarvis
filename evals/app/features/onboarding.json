@@ -1,0 +1,852 @@
+[
+  {
+    "id": "onboarding.01",
+    "feature": "onboarding",
+    "title": "Save Morgan\u2019s setup, skip, resume and submit a stale revision.",
+    "inputs": [
+      "Save Morgan\u2019s setup, skip, resume and submit a stale revision."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Name and purpose persist on resume; stale overwrite rejects."
+    ],
+    "invariants": [
+      "Another account has independent progress."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Save Morgan\u2019s setup, skip, resume and submit a stale revision.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.02",
+    "feature": "onboarding",
+    "title": "Describe a Client grouping, preview it, then confirm in a later request.",
+    "inputs": [
+      "Describe a Client grouping, preview it, then confirm in a later request."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Insufficient description and premature completion reject; confirmed schema includes the new described type."
+    ],
+    "invariants": [
+      "No example Task or Note is created; field understanding is queued."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Describe a Client grouping, preview it, then confirm in a later request.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.03",
+    "feature": "onboarding",
+    "title": "Change setup answers while trying to complete an older applied preview.",
+    "inputs": [
+      "Change setup answers while trying to complete an older applied preview."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject completion until the revised answers are previewed."
+    ],
+    "invariants": [
+      "Do not mark changed setup completed."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Change setup answers while trying to complete an older applied preview.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.04",
+    "feature": "onboarding",
+    "title": "Save an invalid timezone with a name change.",
+    "inputs": [
+      "Save an invalid timezone with a name change."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject the whole update."
+    ],
+    "invariants": [
+      "No partial profile or progress write."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Save an invalid timezone with a name change.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.05",
+    "feature": "onboarding",
+    "title": "Skip setup immediately.",
+    "inputs": [
+      "Skip setup immediately."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "App stays usable with editable defaults."
+    ],
+    "invariants": [
+      "No schema apply."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Skip setup immediately.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.06",
+    "feature": "onboarding",
+    "title": "Resume setup on another device.",
+    "inputs": [
+      "Resume setup on another device."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Read the same account progress and revision."
+    ],
+    "invariants": [
+      "No copied device-only wizard state."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Resume setup on another device.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.07",
+    "feature": "onboarding",
+    "title": "Return after completing setup.",
+    "inputs": [
+      "Return after completing setup."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "No automatic replay; review is available in Settings."
+    ],
+    "invariants": [
+      "No duplicate grouping type."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Return after completing setup.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.08",
+    "feature": "onboarding",
+    "title": "Ask Eri in voice to help set up the account.",
+    "inputs": [
+      "Ask Eri in voice to help set up the account."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Ask one useful question at a time and save actual answers."
+    ],
+    "invariants": [
+      "No invented preferences."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask Eri in voice to help set up the account.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.09",
+    "feature": "onboarding",
+    "title": "Use text instead of voice for setup.",
+    "inputs": [
+      "Use text instead of voice for setup."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Same saved progress and confirmation rules."
+    ],
+    "invariants": [
+      "No microphone permission required."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Use text instead of voice for setup.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.10",
+    "feature": "onboarding",
+    "title": "Choose no extra grouping.",
+    "inputs": [
+      "Choose no extra grouping."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Preview the existing editable defaults."
+    ],
+    "invariants": [
+      "No forced client relation."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Choose no extra grouping.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.11",
+    "feature": "onboarding",
+    "title": "Describe Course with Biology and a lab project.",
+    "inputs": [
+      "Describe Course with Biology and a lab project."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Preview a described grouping with optional project/task/note containment."
+    ],
+    "invariants": [
+      "Examples remain preview data."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Describe Course with Biology and a lab project.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.12",
+    "feature": "onboarding",
+    "title": "Set up while viewing a shared workspace.",
+    "inputs": [
+      "Set up while viewing a shared workspace."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Explain switching to Personal for account setup."
+    ],
+    "invariants": [
+      "No write to shared owner preferences."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Set up while viewing a shared workspace.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.13",
+    "feature": "onboarding",
+    "title": "Accept an account-only invitation.",
+    "inputs": [
+      "Accept an account-only invitation."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Explain own Personal records and sign-in destination."
+    ],
+    "invariants": [
+      "No access to inviter data."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Accept an account-only invitation.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.14",
+    "feature": "onboarding",
+    "title": "Accept a shared workspace invitation as viewer.",
+    "inputs": [
+      "Accept a shared workspace invitation as viewer."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Explain selected membership and read-only role."
+    ],
+    "invariants": [
+      "Personal records remain separate."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Accept a shared workspace invitation as viewer.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.15",
+    "feature": "onboarding",
+    "title": "A schema changes after setup preview.",
+    "inputs": [
+      "A schema changes after setup preview."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Refuse stale apply and request a fresh preview."
+    ],
+    "invariants": [
+      "No stale-schema overwrite."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "A schema changes after setup preview.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.16",
+    "feature": "onboarding",
+    "title": "An existing record changes after setup preview.",
+    "inputs": [
+      "An existing record changes after setup preview."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Existing snapshot guard rejects stale proposal."
+    ],
+    "invariants": [
+      "The concurrent record edit survives."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "An existing record changes after setup preview.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.17",
+    "feature": "onboarding",
+    "title": "Eri receives an instruction inside a grouping example.",
+    "inputs": [
+      "Eri receives an instruction inside a grouping example."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Treat example content as data."
+    ],
+    "invariants": [
+      "No delegated action from injected text."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Eri receives an instruction inside a grouping example.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.18",
+    "feature": "onboarding",
+    "title": "Provide a vague grouping definition.",
+    "inputs": [
+      "Provide a vague grouping definition."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Ask what belongs in it and for one example."
+    ],
+    "invariants": [
+      "Do not apply without meaningful description."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Provide a vague grouping definition.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.19",
+    "feature": "onboarding",
+    "title": "Field assessment asks a targeted follow-up after setup.",
+    "inputs": [
+      "Field assessment asks a targeted follow-up after setup."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Show question in organization learning and save the real answer."
+    ],
+    "invariants": [
+      "Personal memory remains separate."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Field assessment asks a targeted follow-up after setup.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.20",
+    "feature": "onboarding",
+    "title": "Confirm a rule with no model assessment yet.",
+    "inputs": [
+      "Confirm a rule with no model assessment yet."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Explicit rule applies immediately if structurally valid."
+    ],
+    "invariants": [
+      "Learned rule still requires its quality gates."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Confirm a rule with no model assessment yet.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.21",
+    "feature": "onboarding",
+    "title": "Weekly interview proposes a rule with evidence.",
+    "inputs": [
+      "Weekly interview proposes a rule with evidence."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Show destination, reason and evidence with confirm/edit/dismiss."
+    ],
+    "invariants": [
+      "Silence does not activate it."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Weekly interview proposes a rule with evidence.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.22",
+    "feature": "onboarding",
+    "title": "Correct the phrase and home of a proposed rule.",
+    "inputs": [
+      "Correct the phrase and home of a proposed rule."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Save an explicit revision-checked rule and resolve its pending question."
+    ],
+    "invariants": [
+      "Old phrase no longer matches."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Correct the phrase and home of a proposed rule.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.23",
+    "feature": "onboarding",
+    "title": "Pause or forget an organization rule.",
+    "inputs": [
+      "Pause or forget an organization rule."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "State explains why it is inactive."
+    ],
+    "invariants": [
+      "No personal memory deletion."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Pause or forget an organization rule.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.24",
+    "feature": "onboarding",
+    "title": "Use setup with phone Back and a failed save.",
+    "inputs": [
+      "Use setup with phone Back and a failed save."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Keep pending answers recoverable; clearly identify unsaved values."
+    ],
+    "invariants": [
+      "No false saved claim."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Use setup with phone Back and a failed save.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "onboarding.25",
+    "feature": "onboarding",
+    "title": "Inspect the production mark on login, desktop and installed PWA.",
+    "inputs": [
+      "Inspect the production mark on login, desktop and installed PWA."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Peeling note and three stars remain legible in vector and raster icons."
+    ],
+    "invariants": [
+      "No dependency on concept-image files."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Inspect the production mark on login, desktop and installed PWA.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  }
+]
