@@ -31,6 +31,58 @@ Android follows the release checks and seven-day/50-interaction pilot.
   as part of that audit.
 - [x] Separate current documentation from historical plans, audits and release reports.
 
+## Next — Organization browsing, visual customization and review delivery
+
+October 3 follow-up: the owner approved this direction after A–D. Implementation is
+in progress; unchecked items below are not claims of shipped behavior. See [the follow-up plan](ERIDANI_WEB_V1_PRD.md#10-organization-and-review-delivery-follow-up).
+The guided structure interview is deferred. Flexible types, modular reusable fields,
+one Home plus extra links, actionable projects and subtree move choices are accepted.
+See PRD section 10.8 for the accepted single-hierarchy subtask design and advisory
+blocking. The product plan is ready to implement; migration preflight and verification
+are engineering work, not outstanding owner decisions.
+
+- [x] **ORG0 — canonical records and reusable fields.** Keep generic records; any
+  type can enable completion. Add reusable field definitions/attachments and default
+  Due date plus Do date (existing planned_date). Build schemas in Types & fields;
+  edit values in details. Reconcile Home versus task/subtask/Quick-list ancestry,
+  recurrence lineage and source parent mappings before cutting over consumers. The
+  foundation adds a reusable library, finite type layout and Home adapters with
+  conflict reporting. Existing customized types keep their behavior; completion can
+  be enabled through the schema editor. No data reset or bulk legacy conversion.
+- [ ] **ORG1 — Browse by default.** Organization opens on compact actual containers
+  and Unfiled. Container pages show groups, tasks, notes and related items with
+  breadcrumbs and Add here. Keep actual-record Structure and collection layouts;
+  support custom types, remembered expansion, Back and foldable layouts.
+- [ ] **ORG2 — visual Types & fields.** Default to a type/field tree with focused
+  editing and contextual Add. Keep the complete editor as Advanced, editing the
+  same draft. Show multiple permitted homes and extra links; distinguish diagram
+  arrangement, placement restrictions and actual record moves.
+- [ ] **ORG3 — backend contracts and Eri controls.** Reuse canonical records,
+  schema and connector writes. Add scoped/paginated container reads and optional
+  presentation metadata where needed. Preserve IDs, descriptions, preview/revisions,
+  provider ownership and access checks. Cosmetic changes must not retrain rules.
+  Update Eri's navigation map after the UI settles.
+- [ ] **ORG4 — nested work and contents operations.** Actionable Project preset,
+  same-type subtasks without a new Subtask type, nested timeline/progress and explicit
+  parent completion. Carry contents by default; move-only promotes direct children
+  to the old home. Container deletion offers subtree removal versus preserving
+  children, with reversible local changes and explicit provider semantics. Home
+  picker drills through actual records; Extras contains links and directed blockers.
+  Blocking is advisory: warn about unfinished prerequisites but allow explicit
+  start/completion; reject self/cyclic links and never auto-complete prerequisites.
+- [ ] **REV1 — visible questions and reliable delivery.** One personal inbox adapts
+  memory/routing/field reviews; Organization shows its relevant subset. Separate
+  unanswered questions from invitation delivery. Fix omitted Live memory questions,
+  hidden/truncated result-tail offers and incomplete acknowledgement. Preserve
+  explicit answer IDs, required-clarification priority and cross-device behavior.
+- [ ] **REV2 — inspect actual learning results.** With authorized account access,
+  verify last runs, extracted facts, merges, proposals, errors and unanswered reviews.
+  Worker activity and synthetic tests do not prove production usefulness.
+- [ ] **Acceptance before pilot.** Cover multiple legal homes, self-nesting, custom
+  types, source-backed edits, access, pagination, deep links, Back/drafts and folded/
+  unfolded layouts. Test Live-only review offers, long results, interrupted voice,
+  two devices and unrelated task requests without accidental review answers.
+
 ## Batch A — baseline, voice recovery and operations
 
 Merged as PR #22 on October 2. Production/device acceptance below remains separate from the merge.
@@ -158,7 +210,7 @@ Implementation/offline checks are distinct from real voice and new-user acceptan
 
 ## Batch D — verify, then pilot
 
-Automated verification is implemented on `codex/batch-d-release-verification`.
+Merged as PR #25. October 3 Railway readback confirms merge `29d5d870` deployed successfully on web and worker; account dream results remain unverified.
 See [Batch D results](BATCH_D_VALIDATION.md) and the [real acceptance/pilot checklist](RELEASE_ACCEPTANCE.md).
 The physical/provider gates and pilot below remain pending.
 
@@ -213,14 +265,22 @@ A checked implementation task never replaces connected-provider or physical-devi
 
 ## Explicitly deferred, not forgotten
 
+- **Chat about it — guided task-space design (later).** A future Types & fields
+  entry point starts a resumable Eri interview using the current structure and
+  concrete examples. Clarify types, fields, homes and links; preview before/after
+  and require explicit apply. Support skip/resume and preserve existing data.
+  Reuse the current agent/tool runtime. Defer both button and interview, with no
+  inert CTA in the current UI/backend batch.
+
 - Independent R2 exports, isolated restore drills, key escrow and stale/failed-backup
   alerts remain deferred under the recorded owner decision. Revisit before broader
   multi-user/public release; preserve current recovery facilities and verification limits.
   [Prepared backup guide](R2_BACKUPS.md).
 - pgvector/index scaling after measured need; advanced memory/entity/alias
   reconciliation, linked-fact correction and retrieval/context feedback.
-- Task dependencies/blocked reasons and metric history when warranted; Quick-list
-  templates; richer note-source lifecycle and opt-in note-to-memory review.
+- Metric history when warranted; Quick-list templates; richer note-source lifecycle
+  and opt-in note-to-memory review. Directed Blocks/Blocked by relationships move
+  into the current organization plan; automatic dependency rescheduling stays deferred.
 - Broader Linear project/label/cycle controls, an Eri agent inside Linear, native
   recurring appointments, MCP OAuth and signed webhooks.
 - Public self-service, broader tenancy/RLS/encryption and sharing permissions;

@@ -105,3 +105,11 @@ def history(user: User):
                 )
             ]
         }
+
+
+@router.get("/hierarchy/status")
+def hierarchy_status(user: User):
+    from .hierarchy import report
+    with session_scope() as db:
+        structure.schema_data(db, user.owner_id)
+        return report(db, user.owner_id)

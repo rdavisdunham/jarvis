@@ -698,6 +698,8 @@ def mutate(db, owner, tool, args, command_id):
         from .linear_sync import before_task_update
 
         before_task_update(db, owner, task, changes)
+        if "parent_task_id" in changes:
+            db.info.setdefault("task_parent_moves", set()).add(task.id)
         moved = "project_id" in changes and changes["project_id"] != task.project_id
         for key, value in changes.items():
             setattr(task, key, value)

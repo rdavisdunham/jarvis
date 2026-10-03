@@ -38,7 +38,8 @@ class Promote(Change):
 COMMANDS={"quicklist.create":Create,"quicklist.item":ItemChange,"quicklist.promote":Promote}
 
 def children(db, owner, identity):
-    return list(db.scalars(select(Task).where(Task.owner_id==owner,Task.parent_task_id==identity,Task.archived.is_(False)).order_by(Task.quick_order,Task.created_at,Task.id)))
+    from .hierarchy import children as canonical_children
+    return canonical_children(db, owner, identity)
 
 def read(db,owner,identity):
     row=owned(db,Task,identity,owner)
@@ -90,7 +91,15 @@ def mutate(db,owner,tool,args,command_id):
         for task in [row,*items]:
             patch={"is_quick_list":False} if task.id==row.id else {}
             if args.project_id is not None:patch["project_id"]=args.project_id
+            from .hierarchy import for_task, project_parent
+            record = for_task(db, owner, task.id)
+            home = record.parent_id if record else None
             if patch:core(db,owner,"task.update",TaskUpdate(task_id=task.id,expected_revision=task.revision,**patch),command_id)
+            # Legacy project_id remains a compatibility classification; promotion
+            # must not flatten the list's canonical children into sibling tasks.
+            if task.id != row.id and record:
+                record.parent_id = home
+                project_parent(db, record)
         db.flush()
         return {"task":serial(row),"task_ids":[x.id for x in items],"promoted":True,"note":"Same IDs and history; the list is now a normal parent task and its subtasks."}
     if args.operation=="add":

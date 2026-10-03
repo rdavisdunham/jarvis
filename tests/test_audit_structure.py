@@ -202,8 +202,9 @@ async def test_task_reads_expose_flexible_home_for_duplicate_titles(client):
     narrowed = await call_tool(OWNER, "turn", 1, "task_resolve", {"scope": "search", "query": "review proposal", "home_id": beacon["id"]})
     assert [t["id"] for t in narrowed["tasks"]] == [target["task_id"]] and not narrowed["ambiguous"]
     listed = await call_tool(OWNER, "turn", 2, "task_list", {"home_id": acme["id"]})
-    assert [t["id"] for t in listed["tasks"]] == [target["task_id"]]
-    assert listed["tasks"][0]["record_id"] == target["id"]
+    # Projects are actionable now and belong to the same subtree.
+    assert {t["id"] for t in listed["tasks"]} == {target["task_id"], beacon["task_id"]}
+    assert next(t for t in listed["tasks"] if t["id"] == target["task_id"])["record_id"] == target["id"]
     detail = await call_tool(OWNER, "turn", 3, "task_get", {"task_id": target["task_id"]})
     assert detail["home"][-1]["id"] == beacon["id"] and len(detail["notes"]) == 5000
 
