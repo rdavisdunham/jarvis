@@ -2,7 +2,7 @@ import {useEffect,useState} from "react";
 import {ChevronRight,FolderOpen,Info,Plus} from "lucide-react";
 import {api} from "./api";
 import {SourceBadge} from "./SourceDetails";
-import type {CustomRecord,Schema} from "./structure-types";
+import {openTarget,type CustomRecord,type Schema} from "./structure-types";
 
 type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;next_offset:number|null};
 export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible}:{
@@ -27,7 +27,8 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
    {page?.parent&&<span><ChevronRight size={13}/><strong>{page.parent.title}</strong></span>}
   </nav>
   <div className="org-container-head"><div><h2>{page?.parent?.title??(section==="all"?"Unfiled":"Your organization")}</h2>
-   <p>{page?.parent?.body||(!parent?"Open a group to find the work and notes that live there.":"Direct contents of this home. Extra links live under Related.")}</p></div>
+   <p>{page?.parent?.body||(!parent?"Open a group to find the work and notes that live there.":"Direct contents of this home. Extra links live under Related.")}</p>
+   {!!page?.parent?.contents?.work_total&&<div className="org-progress"><span className="chip">{page.parent.contents.work_done}/{page.parent.contents.work_total} complete</span>{page.parent.contents.ready_to_complete&&<span className="chip chip-done">Ready for your final check</span>}</div>}</div>
    {page?.parent&&<button className="btn btn-sm" onClick={()=>onOpen(page.parent!)}><Info size={15}/>Details</button>}
    {canEdit&&!archived&&<button className="btn btn-soft btn-sm" onClick={()=>setAdding(v=>!v)}><Plus size={15}/>Add here</button>}
   </div>
@@ -42,7 +43,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
   {error&&<p role="alert">{error}</p>}
   <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")}</p>
   <div className="org-tiles">{children.map(r=>{
-   const container=(r.contents?.direct??0)>0||r.capabilities.includes("timeline")||!r.capabilities.some(c=>["work","content"].includes(c));
+   const container=openTarget(r,schema)==="contents";
    return <article key={r.id} className="org-tile" data-record-id={r.id}>
     <div className="org-tile-kind"><span>{r.type_name}</span><SourceBadge source={r.source}/></div>
     <button className="org-tile-title" onClick={()=>container?onBrowse(r.id):onOpen(r)}>{container&&<FolderOpen size={17}/>}<strong>{r.title}</strong>{container&&<ChevronRight size={16}/>}</button>
