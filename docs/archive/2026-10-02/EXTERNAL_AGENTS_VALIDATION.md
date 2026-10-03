@@ -1,5 +1,9 @@
 # External-agent release validation — September 16, 2026
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 ## Verified
 
 - The full backend regression run passed 576 tests with one existing skip. The final focused run passed 77 tests, including resumed receipt filtering and preventing direct commands from being requeued as model jobs.

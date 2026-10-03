@@ -1,5 +1,32 @@
 # Findings from establishing the eval baseline
 
+## October 2 repair reconciliation — historical results preserved
+
+The statuses and traces below describe the September runs. They have not been
+rewritten as passes. Source review against `e734f7f` and
+[Claude's session summary](../../docs/CLAUDE_SESSION_SUMMARY.md) shows subsequent
+repairs; this reconciliation did not rerun paid trials or production acceptance.
+
+- **EVAL-001/002:** UTC instant comparison, nullable-field agreement and recovered
+  error handling have implementations and audit regression tests.
+- **EVAL-003:** voice clarification ownership changed, then the broad deterministic
+  answer binding was removed after a production regression. Still an open real
+  voice/continuation acceptance concern; optional offers must not capture new requests.
+- **EVAL-004/008:** task tools now expose flexible record/home paths and compact
+  results, with minimal legacy/record sync. Repeat model disambiguation trials;
+  canonical organization cleanup remains a distinct workstream.
+- **EVAL-005/006:** numeric conflict questions and fact persistence with separate
+  embedding retry have code repairs and targeted tests.
+- **EVAL-007:** a recovery pass and explicit omission reporting exist. Reporting an
+  omission is not the same as satisfying the original complete-extraction criterion.
+
+Claude reports successful automated suites; this document does not independently
+re-certify those runs. Re-run/regrade the original cases, including stochastic repeats,
+and link new evidence before closing acceptance. Sol's six downgraded bindings are
+still evidence gaps, not newly proven app bugs. The [completion PRD](../../docs/ERIDANI_WEB_V1_PRD.md)
+defines the risk-weighted release core; the rest of the catalog remains available.
+
+
 ## EVAL-001 — equivalent timestamp offsets can block Revert
 
 Status: reproduced; app fix pending. Case: time_deadlines.26.

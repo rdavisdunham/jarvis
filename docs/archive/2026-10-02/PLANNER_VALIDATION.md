@@ -1,5 +1,9 @@
 # Conversational planner release validation
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 September 13, 2026. This release adds shared task/project projections, typed site
 controls, compact organization and verified local scheduling. Schema remains
 0011_productivity_graph; no record migration or new service is introduced.
@@ -46,7 +50,7 @@ controls, compact organization and verified local scheduling. Schema remains
   all 48 trials / 66 turns independently reviewed by a Codex subagent. A separate
   six-trial diagnostic verifies the short-reference fix. Original scores,
   failure cases, source snapshots, usage, grader corrections and synthetic-service
-  limits remain visible in [RELIABILITY_HELDOUT_RESULTS.md](RELIABILITY_HELDOUT_RESULTS.md).
+  limits remain visible in [RELIABILITY_HELDOUT_RESULTS.md](../../RELIABILITY_HELDOUT_RESULTS.md).
 
 ## Deployed verification
 

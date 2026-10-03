@@ -3,16 +3,19 @@
 import asyncio
 import json
 import logging
+import threading
+import time
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 from dbos import DBOS, DBOSClient, Queue
 from pywebpush import WebPushException, webpush
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select, text, tuple_
 
 from . import budget
 from .config import get_settings
 from .db import session_scope
+from .latency import mark
 from .domain import advisory, delete_source, deliver_occurrence, preferences, scan_schedules
 from .models import (
     Delivery,
@@ -103,11 +106,17 @@ def run_job(job_id):
     perform_job(job_id)
 
 
-def dispatch_outbox(client):
+def dispatch_outbox(client, after=None):
     with session_scope() as db:
-        rows = db.scalars(
-            select(Outbox).join(Job).where(Outbox.submitted_at.is_(None)).order_by(Job.created_at).limit(1000).with_for_update(skip_locked=True)
-        ).all()
+        query = select(Outbox).join(Job).where(Outbox.submitted_at.is_(None))
+        if after:
+            query = query.where(tuple_(Job.created_at, Job.id) > after)
+        rows = db.scalars(query.order_by(Job.created_at, Job.id).limit(1000)
+                          .with_for_update(skip_locked=True)).all()
+        cursor = None
+        if len(rows) == 1000:
+            last = db.get(Job, rows[-1].job_id)
+            cursor = (last.created_at, last.id)
         for row in rows:
             job = db.get(Job, row.job_id)
             if job.kind in {"agent_intake", "agent_action"}:
@@ -120,6 +129,7 @@ def dispatch_outbox(client):
                     if job.status not in {"queued", "running", "dispatched"}:
                         row.submitted_at = now()
                     continue
+                mark("dispatch_precommit", job.id, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
                 job.status = "dispatched"
                 job.payload = {**job.payload, "dispatched_at": now().isoformat()}
                 db.flush()
@@ -142,6 +152,7 @@ def dispatch_outbox(client):
                 row.job_id,
             )
             row.submitted_at = now()
+        return cursor
 
 
 def notification_url(notification):
@@ -367,7 +378,7 @@ def mark_health(db):
         db.add(WorkerHealth(id="worker", last_scan_at=now()))
 
 
-def supervisor_cycle(client, iteration):
+def supervisor_cycle(client, iteration, *, dispatch=True):
     from .device_bridge import cleanup
     from .google_calendar import queue_sync
     from .linear_sync import queue_sync as linear_queue_sync
@@ -380,7 +391,8 @@ def supervisor_cycle(client, iteration):
     from .work_intake import flush_voice
 
     # Already-queued work is submitted before any scan can fail.
-    isolated("dispatch", dispatch_outbox, client)
+    if dispatch:
+        isolated("dispatch", dispatch_outbox, client)
     for name, scan_fn in (
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
@@ -392,7 +404,8 @@ def supervisor_cycle(client, iteration):
         for account in accounts:
             isolated(queue.__module__, in_session, queue, account)
     isolated("health", in_session, mark_health)
-    isolated("dispatch", dispatch_outbox, client)
+    if dispatch:
+        isolated("dispatch", dispatch_outbox, client)
     isolated("prepare_deliveries", prepare_deliveries)
     isolated("send_deliveries", send_deliveries)
     if iteration % 12 == 0:
@@ -478,24 +491,57 @@ def run_supervisor(stop, lease):
     client = DBOSClient(
         system_database_url=settings.database_url, system_database_pool_size=settings.dbos_client_pool_size
     )
-    lease_pid = lease.scalar(text("SELECT pg_backend_pid()"))
-    lease.commit()
-    iteration = 0
+    maintenance = threading.Thread(target=maintenance_loop, args=(stop,),
+                                   name="eridani-maintenance", daemon=True)
+    maintenance.start()
     try:
-        while not stop.is_set():
-            # A lost lease must stop the supervisor, not silently reconnect without its lock.
-            if lease.invalidated or lease.scalar(text("SELECT pg_backend_pid()")) != lease_pid:
-                raise RuntimeError("Worker lease was lost.")
-            lease.commit()
-            try:
-                supervisor_cycle(client, iteration)
-                iteration += 1
-            except Exception:
-                logger.exception("Worker cycle failed; will retry")
-            stop.wait(settings.worker_interval_seconds)
+        dispatch_loop(client, stop, lease)
     finally:
+        stop.set()
+        maintenance.join(timeout=15)
         client.destroy()
         DBOS.destroy(workflow_completion_timeout_sec=10)
+
+
+def maintenance_loop(stop):
+    """Slow scans and delivery must not delay user-request dispatch."""
+    iteration = 0
+    while not stop.is_set():
+        try:
+            supervisor_cycle(None, iteration, dispatch=False)
+            iteration += 1
+        except Exception:
+            logger.exception("Worker maintenance failed; will retry")
+        stop.wait(get_settings().worker_interval_seconds)
+
+
+def dispatch_loop(client, stop, lease):
+    """LISTEN on the singleton lease: any lost connection exits; restart reacquires it.
+
+    Start/resume with a full scan. Notifications are hints, never the queue. A bounded
+    fallback scan recovers lost hints, and keyset pages prevent blocked work starving
+    eligible work beyond the first 1,000 rows.
+    """
+    lease_pid = lease.scalar(text("SELECT pg_backend_pid()"))
+    lease.execute(text("LISTEN eridani_outbox"))
+    lease.commit()
+    deadline, cursor, awakened = 0.0, None, True
+    while not stop.is_set():
+        if lease.invalidated or lease.scalar(text("SELECT pg_backend_pid()")) != lease_pid:
+            raise RuntimeError("Worker lease was lost.")
+        lease.commit()
+        if awakened or time.monotonic() >= deadline:
+            try:
+                cursor = dispatch_outbox(client, after=cursor)
+            except Exception:
+                logger.exception("Outbox dispatch failed; persisted work will be retried")
+                cursor = None
+            deadline = time.monotonic() + (0 if cursor else get_settings().worker_interval_seconds)
+            awakened = False
+        # Keep shutdown/lease checks responsive even if no notifications arrive.
+        delay = max(0.01, min(0.5, deadline - time.monotonic()))
+        for _ in lease.connection.driver_connection.notifies(timeout=delay, stop_after=1):
+            awakened = True
 
 
 if __name__ == "__main__":

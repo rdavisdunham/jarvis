@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from .access import actor, execution, identity
 from .db import session_scope
+from .latency import mark
 from .domain import DomainError
 from .models import AuthSession, DeviceAction, DeviceBridge, now
 from .work_crypto import seal, unseal
@@ -69,6 +70,7 @@ def sync(owner, device, body):
                 and action.expires_at > now()
             ):
                 action.result_ciphertext = seal({**result, "screen": body.context.model_dump()})
+                mark("ui_ack_precommit", action.id)
         # Only one action at a time on a device; the next can appear after acknowledgement.
         action = db.scalar(
             select(DeviceAction)
@@ -84,6 +86,8 @@ def sync(owner, device, body):
         )
         if not action:
             return []
+        if not action.sent_at:
+            mark("ui_delivery_precommit", action.id)
         action.sent_at = action.sent_at or now()
         return [unseal(action.action_ciphertext)]
 

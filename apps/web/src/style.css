@@ -859,3 +859,8 @@
 
 .work-change-preview {font-size:12px;color:var(--ink-2);margin:6px 0;line-height:1.5}
 
+/* Unsent voice recovery is separate from saved action receipts. */
+.voice-draft { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 12px 0; }
+.voice-draft p { font-size: .85rem; margin: 6px 0 10px; }
+.voice-draft textarea { width: 100%; resize: vertical; min-height: 80px; }
+.voice-draft > div { display: flex; gap: 12px; margin-top: 8px; }

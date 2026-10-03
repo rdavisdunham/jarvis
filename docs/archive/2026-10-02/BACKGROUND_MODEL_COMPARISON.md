@@ -1,14 +1,18 @@
 # Background model candidates
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Historical model-selection research and prior evaluation evidence. GPT-5.4 mini
 was retired on September 13; current behavior and follow-up results are tracked
-in [TOOL_DESIGN_RESEARCH.md](TOOL_DESIGN_RESEARCH.md) and [TODO.md](TODO.md).
+in [TOOL_DESIGN_RESEARCH.md](TOOL_DESIGN_RESEARCH.md) and [TODO.md](TODO_HISTORY.md).
 
 Checked September 12, 2026 against official model and pricing documentation.
 Update September 13: Gemini 3.8 Flash is integrated as an optional task agent in
-Settings; GPT-5.4 mini remains the default. See [GEMINI_SETUP.md](GEMINI_SETUP.md).
+Settings; GPT-5.4 mini remains the default. See [GEMINI_SETUP.md](../../GEMINI_SETUP.md).
 Real Gemini and Luna checks completed September 13. Reasoning-enabled Luna is
-now also integrated and selectable; see [LUNA_SETUP.md](LUNA_SETUP.md). The Gemini key is loaded
+now also integrated and selectable; see [LUNA_SETUP.md](../../LUNA_SETUP.md). The Gemini key is loaded
 in API/worker; production still defaults to GPT-5.4 mini.
 
 Standard text prices, USD per million tokens, uncached input / output:
@@ -96,7 +100,7 @@ its reasoning-enabled behavior before choosing a long-term default.
 
 ## Evidence and limits
 
-[Machine-readable results and synthetic tool traces](evals/task-agents-2026-09-13.json)
+[Machine-readable results and synthetic tool traces](../../evals/task-agents-2026-09-13.json)
 include per-case grades, returned model IDs, latency and usage. Reproduce with:
 
 ```bash
@@ -135,7 +139,7 @@ grader issue, not a model mistake. The original raw grade is retained, the grade
 now compares resolved instants, and an additional fresh timed-task/reminder check
 passed.
 
-[Reasoning-enabled results](evals/luna-reasoning-2026-09-13.json) include the
+[Reasoning-enabled results](../../evals/luna-reasoning-2026-09-13.json) include the
 original run and follow-up. The earlier Luna reasoning-none comparison above is
 historical evidence; it has not been replaced. Luna with reasoning is now
 available in Settings for real-use comparison. The production default remains
@@ -157,7 +161,7 @@ replies. The small authored suite does not establish a universal quality winner.
 I lean toward Gemini for the next primary-agent trial, followed by paired
 validation after the documented tool improvements. No production choice changed.
 
-[Full expert results](EXPERT_AGENT_RESULTS.md) explain failures, uncertainty,
+[Full expert results](../../EXPERT_AGENT_RESULTS.md) explain failures, uncertainty,
 pricing assumptions and qualitative-review limits. The linked report preserves
 every scored conversation/tool trace, all paired fixtures and separate diagnostic
 runs. Earlier acceptance results above remain historical evidence.

@@ -1,11 +1,15 @@
 # Jarvis upgrade: implementation and operation
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Started September 10–11, 2026; updated September 13. The owner delegated the design choices and confirmed that the host PC stays awake.
 
 ## Notes lists update — September 19, 2026
 
 Self-organizing Notes lists, source-linked saved entries and reviewed note rules
-are documented in [NOTE_LISTS.md](NOTE_LISTS.md). Use the current cloud app at
+are documented in [NOTE_LISTS.md](../../NOTE_LISTS.md). Use the current cloud app at
 https://app.eridani.app; the local deployment directions below are historical.
 Migration 0018 adds list/provenance metadata without changing existing notes.
 
@@ -20,12 +24,12 @@ OpenAI authentication and model access are verified using `OPENAI_API_KEY` in th
 ## Assistant identity and progress
 
 The assistant is **Eridani**, or **Eri**. Her shared text/voice personality lives in
-[personality.py](../apps/api/jarvis/personality.py): polished, warm, witty and
+[personality.py](../../../apps/api/jarvis/personality.py): polished, warm, witty and
 lightly playful, with useful assistance ahead of entertainment. The old
 `JARVIS_SYSTEM_PROMPT` environment entry has been removed to prevent conflicting
 identities. Jarvis remains the repository/infrastructure name.
 
-[TODO.md](TODO.md) records completed work and the remaining roadmap, including
+[TODO.md](TODO_HISTORY.md) records completed work and the remaining roadmap, including
 Google account sign-in already requested by the owner.
 
 ## Decisions made
@@ -772,7 +776,7 @@ No worker was started on the restore; its temporary database was removed.
 Migration 0008_google_calendar adds google_identities, google_oauth_attempts,
 google_calendars and google_calendar_events, plus auth_sessions.auth_method.
 Google is optional: pairing works while the client credentials are absent.
-[GOOGLE_SETUP.md](GOOGLE_SETUP.md) contains the exact callback and setup steps.
+[GOOGLE_SETUP.md](../../GOOGLE_SETUP.md) contains the exact callback and setup steps.
 
 FastAPI owns OAuth authorization-code exchange using google-auth-oauthlib and
 ID-token verification using google-auth. Linking starts from a current owner session
@@ -937,7 +941,7 @@ identity, cursor and directory. LinearIssue maps the stable provider UUID to one
 Task and stores shared/pending/conflicting snapshots. Polling and writes use a
 dedicated DBOS queue, the existing transactional outbox and shared domain commands.
 Eri and UI task edits use the same write path. No Slack relay or second MCP writer
-is introduced. Read [LINEAR_SETUP.md](LINEAR_SETUP.md) for setup, mappings and the
+is introduced. Read [LINEAR_SETUP.md](../../LINEAR_SETUP.md) for setup, mappings and the
 provider's conditional-write limitation.
 
 Langfuse remains deferred. The external bot API/MCP and notification expansion
@@ -1057,8 +1061,8 @@ The report retains complete observable traces, 72 paired expected-state
 fixtures, provider usage/timing, diagnostics and review rationale. Seven tool
 improvement candidates include exact task filters, reliable references, batch
 counts, DST resolution, retry semantics, peer revisions and note provenance.
-See [EXPERT_AGENT_RESULTS.md](EXPERT_AGENT_RESULTS.md) and
-[AGENT_TOOL_IMPROVEMENTS.md](AGENT_TOOL_IMPROVEMENTS.md).
+See [EXPERT_AGENT_RESULTS.md](../../EXPERT_AGENT_RESULTS.md) and
+[AGENT_TOOL_IMPROVEMENTS.md](../../AGENT_TOOL_IMPROVEMENTS.md).
 
 Verification: 115 evaluation tests across scenario/oracle, runner and summary
 suites; Ruff; paired fixture/system-prompt hashes; cleanup and artifact integrity;
@@ -1110,7 +1114,7 @@ retry status, relationship diffs/peer revisions, and source-note evidence.
 The fixed twenty expert scenarios ran three times per model. Reviewed workflow
 completion was Gemini 58/60 and Luna 57/60; native grades, every failed attempt,
 three explicit phrase-grader corrections and a separate six-trial validation
-feedback diagnostic remain in [the results](TOOL_REFINEMENT_RESULTS.md).
+feedback diagnostic remain in [the results](../../TOOL_REFINEMENT_RESULTS.md).
 Scheduling and malformed-link recovery still need further hardening.
 
 Validation: 379 backend tests passed and one optional test skipped, excluding the

@@ -68,7 +68,7 @@ memory context is synthetic; real-device audio and connected-service acceptance
 remain separate checks.
 
 [Detailed results](evals/luna-reasoning-2026-09-13.json) preserve the evidence.
-[Earlier model comparison](BACKGROUND_MODEL_COMPARISON.md) remains available.
+[Earlier model comparison](archive/2026-10-02/BACKGROUND_MODEL_COMPARISON.md) remains available.
 
 References: [Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
 [reasoning state](https://developers.openai.com/api/docs/guides/reasoning),

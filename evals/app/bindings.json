@@ -1946,6 +1946,20 @@
         "expected.1"
       ],
       "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "batch-a:clarifications.10",
+      "adapter": "pytest",
+      "target": "tests/test_audit_voice.py::test_heard_question_does_not_capture_the_next_request",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact durable API/controller regression in a disposable synthetic database with stubbed providers; not a model-quality or physical-microphone pass."
     }
   ],
   "clarifications.12": [
@@ -2077,6 +2091,20 @@
         "expected.1"
       ],
       "scope": "Named scenario assertions; inference quality is separate from injected provider behavior."
+    },
+    {
+      "id": "batch-a:queue.08",
+      "adapter": "pytest",
+      "target": "tests/test_agent_work.py::test_acceptance_is_idempotent_and_input_encrypted",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2",
+        "invariants.3"
+      ],
+      "scope": "Exact durable API/controller regression in a disposable synthetic database with stubbed providers; not a model-quality or physical-microphone pass."
     }
   ],
   "queue.11": [

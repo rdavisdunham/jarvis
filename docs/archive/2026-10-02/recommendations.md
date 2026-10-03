@@ -1,5 +1,9 @@
 # Eridani UX recommendations
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Audit date: 2026-09-16. Scope: the whole site, desktop and mobile, screenshots, and prioritized recommendations.
 
 ## Findings and limits
@@ -22,7 +26,7 @@ Initial audit-selector assumptions and a later unavailable assertion helper were
 
 **Change during audit:** the parent task separately removed the personal private-chat control locally. A labeled post-change UI check confirms that control is absent and New chat remains. It was not deployed during this audit. Earlier chat screenshots show the baseline. This does not recommend removing shared-workspace, account, or history-retention privacy.
 
-Screenshots and raw evidence are in the ignored local directory [.runtime/ux-audit](.runtime/ux-audit/); they will not appear in a fresh Git checkout. Full-page screenshots of fixed overlays may include background below the viewport. That alone does not prove the overlay is broken.
+Screenshots and raw evidence are in the ignored local directory [.runtime/ux-audit](../../../.runtime/ux-audit); they will not appear in a fresh Git checkout. Full-page screenshots of fixed overlays may include background below the viewport. That alone does not prove the overlay is broken.
 
 ## Priority and delivery order
 
@@ -32,12 +36,12 @@ Screenshots and raw evidence are in the ignored local directory [.runtime/ux-aud
 
 Current batch: UX-01–09 and the onboarding portion of UX-26. Small accompanying fixes: UX-10 and stale labels. Next compact/mobile batch: UX-11–25 and remaining UX-26–31. Later: UX-32–34.
 
-Recommendations are proposals and acceptance criteria, not claims these features already exist. The separate [background-work draft](docs/BACKGROUND_WORK_PRD.md) contains execution design.
+Recommendations are proposals and acceptance criteria, not claims these features already exist. The separate [background-work draft](../../BACKGROUND_WORK_PRD.md) contains execution design.
 
 ## Implementation follow-through — September 16
 
 The background-work/onboarding batch now implements UX-01–10 and the invitation
-portion of UX-26. See [release validation](docs/BACKGROUND_WORK_VALIDATION.md).
+portion of UX-26. See [release validation](BACKGROUND_WORK_VALIDATION.md).
 Follow-up browser checks captured 13 public/activity/task/calendar states at desktop
 and mobile sizes, with no application JavaScript errors or page-width overflow.
 Edit opened the correct inline task detail; Revert archived its unchanged creation;
@@ -66,7 +70,7 @@ writes and OAuth consent are not exercised by a synthetic UX test.
 UX-31/34 physical Android behavior, actual microphones, lock-screen notifications,
 formal screen-reader and contrast acceptance remain manual checks. Large-data,
 responsive, keyboard and draft-recovery browser coverage is recorded separately
-in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
+in [UX_POLISH_VALIDATION.md](UX_POLISH_VALIDATION.md).
 
 ## Current batch — dependable work and onboarding
 
@@ -80,7 +84,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-02 · P1 · Action cards need exact Edit and Revert semantics
 
-**Evidence:** the owner requested persistent summaries; ordinary mutations currently have brief feedback and generic autosave wording. [Task details](.runtime/ux-audit/task-details-desktop.png).
+**Evidence:** the owner requested persistent summaries; ordinary mutations currently have brief feedback and generic autosave wording. [Task details](../../../.runtime/ux-audit/task-details-desktop.png).
 
 **Change:** group committed changes by request, show important task fields and before/after values, and open the existing inline detail card from Edit. Batch actions need per-item outcomes. Revert must describe the concrete reversal and preserve unrelated later changes. An external reversal may be a compensating action, not a true undo.
 
@@ -88,7 +92,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-03 · P1 · Show pending work even with chat closed
 
-**Evidence:** chat can close and notifications are separate, but there is no durable work overview. [Mobile chat](.runtime/ux-audit/chat-mobile.png), [notifications](.runtime/ux-audit/notifications-desktop.png).
+**Evidence:** chat can close and notifications are separate, but there is no durable work overview. [Mobile chat](../../../.runtime/ux-audit/chat-mobile.png), [notifications](../../../.runtime/ux-audit/notifications-desktop.png).
 
 **Change:** add a small global activity entry with a pending count and needs-attention badge. Cards update immediately. Combine spoken confirmations at natural pauses instead of interrupting the user for every parallel completion.
 
@@ -104,7 +108,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-05 · P1 · Correct timeout copy and explain wake-listening state
 
-**Evidence:** settings visibly says 15 quiet seconds, while actual intended/configured timeout is 30. The terminal idle label also says 15. [Voice settings](.runtime/ux-audit/settings-voice-mobile.png); source: App.tsx and voice-idle.ts.
+**Evidence:** settings visibly says 15 quiet seconds, while actual intended/configured timeout is 30. The terminal idle label also says 15. [Voice settings](../../../.runtime/ux-audit/settings-voice-mobile.png); source: App.tsx and voice-idle.ts.
 
 **Change:** use one timeout value for behavior and copy. Show wake listening as On, Paused during voice, Unsupported, or Permission needed. After a natural goodbye, re-arm wake listening only when enabled. Keep concise voice controls/glow available with chat closed.
 
@@ -112,7 +116,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-06 · P1 · Provide a working public front door
 
-**Evidence:** app.eridani.app is a login-only card; the apex failed DNS resolution. No product overview, help, privacy, or terms links are visible. [Production login](.runtime/ux-audit/production-app-desktop.png).
+**Evidence:** app.eridani.app is a login-only card; the apex failed DNS resolution. No product overview, help, privacy, or terms links are visible. [Production login](../../../.runtime/ux-audit/production-app-desktop.png).
 
 **Change:** put the landing page at eridani.app and authenticated work at app.eridani.app. Explain tasks/calendar/notes/voice with a real product example. Make Sign in primary; clearly disclose invite-only access. Add public privacy, terms, and support pages.
 
@@ -120,7 +124,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-07 · P1 · Design the complete Google/invitation journey
 
-**Evidence:** production Google button reaches real sign-in. Sharing says after invitation creation that no email was sent. [Google sign-in](.runtime/ux-audit/production-google-signin.png), [invitation](.runtime/ux-audit/sharing-invitation.png).
+**Evidence:** production Google button reaches real sign-in. Sharing says after invitation creation that no email was sent. [Google sign-in](../../../.runtime/ux-audit/production-google-signin.png), [invitation](../../../.runtime/ux-audit/sharing-invitation.png).
 
 **Change:** cover Sign in, Accept invitation, Wrong account, Expired/revoked invitation, and Request access. Make “no email is sent” clear before submission; offer a copyable invitation message/link. Show intended account/workspace before acceptance.
 
@@ -128,7 +132,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-08 · P2 · Remove misleading home-server and pairing copy
 
-**Evidence:** Google setup refers to a home server and “Pairing still works”; Linear says credentials are encrypted on a home server. These edge states are exposed in the isolated fixture and confirmed in source. [Integrations](.runtime/ux-audit/settings-integrations-mobile.png).
+**Evidence:** Google setup refers to a home server and “Pairing still works”; Linear says credentials are encrypted on a home server. These edge states are exposed in the isolated fixture and confirmed in source. [Integrations](../../../.runtime/ux-audit/settings-integrations-mobile.png).
 
 **Change:** use cloud-appropriate language such as “Stored encrypted in Eridani.” Unavailable integration setup should direct the user to the workspace owner, not to local-server configuration.
 
@@ -136,7 +140,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 
 ### UX-09 · P1 · Make availability/completion labels truthful
 
-**Evidence:** broad Connected, Up to date, and Thinking labels do not describe individual jobs. The disabled-provider fixture simultaneously says a key is required and “Text is ready.” Memory shows learning while its test worker is deliberately paused. [Chat](.runtime/ux-audit/chat-mobile.png), [memory](.runtime/ux-audit/memory-mobile.png).
+**Evidence:** broad Connected, Up to date, and Thinking labels do not describe individual jobs. The disabled-provider fixture simultaneously says a key is required and “Text is ready.” Memory shows learning while its test worker is deliberately paused. [Chat](../../../.runtime/ux-audit/chat-mobile.png), [memory](../../../.runtime/ux-audit/memory-mobile.png).
 
 **Change:** distinguish browser connection, worker availability, external sync, and model availability. Prefer contextual states: Saved; syncing to Google, Background work paused, or Reconnect to receive updates.
 
@@ -145,11 +149,11 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 ## Compact UX polish recommendations
 
 ### UX-10 · P2 · Fix task breadcrumbs
-**Observed:** Today shows “Your space › Notifications”; the source fallback also applies to Inbox/Next 7 days. [Today](.runtime/ux-audit/tasks-today-desktop.png).
+**Observed:** Today shows “Your space › Notifications”; the source fallback also applies to Inbox/Next 7 days. [Today](../../../.runtime/ux-audit/tasks-today-desktop.png).
 **Change/acceptance:** resolve all presets to Tasks, optionally including the active tab. Direct links, clicks, and shared-workspace entry must agree.
 
 ### UX-11 · P1 mobile · Reduce the control stack before tasks
-**Observed:** title, tabs, explanation, saved views, filters, quick add, layout, and creation buttons occupy roughly 500px before the mobile board begins. [Board mobile](.runtime/ux-audit/tasks-board-mobile.png).
+**Observed:** title, tabs, explanation, saved views, filters, quick add, layout, and creation buttons occupy roughly 500px before the mobile board begins. [Board mobile](../../../.runtime/ux-audit/tasks-board-mobile.png).
 **Change/acceptance:** combine view/filter controls; move Save view/Copy link into a view menu; retain one clear capture action. At 390×844, useful task content should be visible initially without losing advanced filters.
 
 ### UX-12 · P1 · Enlarge hit areas without enlarging every row
@@ -157,7 +161,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 **Change/acceptance:** retain compact visuals but enlarge touch regions, especially completion/close/drag/overflow. Aim for at least 44px intended touch regions for essential mobile actions; check 320/390px, 200% zoom, contrast, focus, and screen readers separately.
 
 ### UX-13 · P2 · Simplify task creation
-**Observed:** the new-task form exposes almost every property immediately; Save is below the initial mobile viewport. [Creation](.runtime/ux-audit/task-create-mobile.png).
+**Observed:** the new-task form exposes almost every property immediately; Save is below the initial mobile viewport. [Creation](../../../.runtime/ux-audit/task-create-mobile.png).
 **Change/acceptance:** title plus a few optional chips, then the existing inline detail card; advanced organization collapses. A simple task takes a title and one submit. Keep the primary action usable with the mobile keyboard open.
 
 ### UX-14 · P2 · Explain planned date, deadline, reminder, and time block
@@ -165,55 +169,55 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 **Change/acceptance:** show a removable “Planned today” chip and consistent capture defaults. Explain deadline = due, planned day = intended work day, reminder = notification, block = reserved time. Successful creation should leave the item visible or link to where it went.
 
 ### UX-15 · P2 · Improve autosave feedback and conflict recovery
-**Observed:** inline description saving persisted correctly; the header is a generic “Changes save automatically.” [Details](.runtime/ux-audit/task-inline-edit-desktop.png).
+**Observed:** inline description saving persisted correctly; the header is a generic “Changes save automatically.” [Details](../../../.runtime/ux-audit/task-inline-edit-desktop.png).
 **Change/acceptance:** field-level Saving/Saved/Failed, retain drafts on errors, explain Enter/blur/Escape, and compare conflicting versions before reload. Navigation must wait for an active commit without silently losing either version.
 
 ### UX-16 · P2 · Make boards practical on phones
-**Observed:** mobile starts at Backlog with only part of Open visible; active work is offscreen. Empty project columns occupy large areas. Keyboard task movement successfully persisted In progress. [Task board](.runtime/ux-audit/tasks-board-mobile.png), [project board](.runtime/ux-audit/projects-board-desktop.png).
+**Observed:** mobile starts at Backlog with only part of Open visible; active work is offscreen. Empty project columns occupy large areas. Keyboard task movement successfully persisted In progress. [Task board](../../../.runtime/ux-audit/tasks-board-mobile.png), [project board](../../../.runtime/ux-audit/projects-board-desktop.png).
 **Change/acceptance:** column switcher/counts, remembered horizontal position, hideable empty/terminal columns, and preferred active-column focus. Preserve status selectors and keyboard movement as alternatives to drag. Errors and action feedback must match across interaction methods.
 
 ### UX-17 · P2 · Improve timeline legibility
-**Observed:** narrow task labels truncate heavily; date markers require horizontal exploration. [Timeline mobile](.runtime/ux-audit/tasks-timeline-mobile.png).
+**Observed:** narrow task labels truncate heavily; date markers require horizontal exploration. [Timeline mobile](../../../.runtime/ux-audit/tasks-timeline-mobile.png).
 **Change/acceptance:** shorter default mobile span, sticky names, full label on focus/tap, persistent Today/navigation controls. Clearly retain the distinction between date markers and reserved blocks, and explain Unscheduled items.
 
 ### UX-18 · P2 · Standardize labels and account context
-**Observed:** detail cards show lowercase open and owner; priority terms vary between forms/cards/bulk editing. “Personal” names both a private workspace and an organization space. [Task details](.runtime/ux-audit/task-details-desktop.png), [bulk editor](.runtime/ux-audit/bulk-task-mobile.png).
+**Observed:** detail cards show lowercase open and owner; priority terms vary between forms/cards/bulk editing. “Personal” names both a private workspace and an organization space. [Task details](../../../.runtime/ux-audit/task-details-desktop.png), [bulk editor](../../../.runtime/ux-audit/bulk-task-mobile.png).
 **Change/acceptance:** one status/priority dictionary; Me/person's name instead of owner; clear workspace versus classification wording. Rename Business to Work with the accepted routing work while preserving IDs. Lists, cards, action receipts, and spoken confirmations should agree.
 
 ### UX-19 · P2 · Make filter effects obvious
-**Observed:** All still applies active filters; many controls sit in an expandable panel. [Filters](.runtime/ux-audit/tasks-filters-desktop.png).
+**Observed:** All still applies active filters; many controls sit in an expandable panel. [Filters](../../../.runtime/ux-audit/tasks-filters-desktop.png).
 **Change/acceptance:** removable chips, Reset to this tab, and empty-result explanations that distinguish no records from filtered-out records. Mark saved views as modified when appropriate. Preserve the observed clearing of incompatible search when navigating to Notes.
 
 ### UX-20 · P1 mobile · Shorten the monthly calendar
-**Observed:** the tall month grid pushes selected-day entries far below the initial viewport; narrow cells show mostly icons. [Month mobile](.runtime/ux-audit/calendar-month-mobile.png).
+**Observed:** the tall month grid pushes selected-day entries far below the initial viewport; narrow cells show mostly icons. [Month mobile](../../../.runtime/ux-audit/calendar-month-mobile.png).
 **Change/acceptance:** compact month picker plus visible agenda, or a phone-specific agenda/week default. Keep Open day discoverable; double-tap is an extra shortcut. Show the first selected-day event without passing a screen of empty cells, and retain date/scroll during refresh.
 
 ### UX-21 · P2 · Connect a task's calendar appearances
-**Observed:** one task appears as planned work, reminder, and deadline on the same day. Existing type badges help, but the rows can look like separate work. [Calendar](.runtime/ux-audit/calendar-month-mobile.png).
+**Observed:** one task appears as planned work, reminder, and deadline on the same day. Existing type badges help, but the rows can look like separate work. [Calendar](../../../.runtime/ux-audit/calendar-month-mobile.png).
 **Change/acceptance:** optionally group related entries or show a common task link. Detail cards show linked scheduling together. Completion changes the single task; pure events have no task-completion control; reminder rules remain distinct from tasks.
 
 ### UX-22 · P2 · Unify record detail behavior
-**Observed:** tasks open readable inline cards; notes open a Save form; project/goal titles open editors. [Task](.runtime/ux-audit/task-details-desktop.png), [note](.runtime/ux-audit/note-detail-mobile.png).
+**Observed:** tasks open readable inline cards; notes open a Save form; project/goal titles open editors. [Task](../../../.runtime/ux-audit/task-details-desktop.png), [note](../../../.runtime/ux-audit/note-detail-mobile.png).
 **Change/acceptance:** a shared detail shell with type/title, content, attribution, relationships, and predictable close/back. Reading a record must not create an edit blocker. Long-note drafts may still use explicit Save, with clear dirty state and preserved drafts during Eri navigation.
 
 ### UX-23 · P2 · Explain goals and projects in context
-**Observed:** organization views have counters/links but little onboarding; cards show “1 goals” and multiple terse actions. [Goals](.runtime/ux-audit/organization-goals-desktop.png).
+**Observed:** organization views have counters/links but little onboarding; cards show “1 goals” and multiple terse actions. [Goals](../../../.runtime/ux-audit/organization-goals-desktop.png).
 **Change/acceptance:** short outcome-versus-deliverable examples, next deadline/open tasks on projects, success criterion/progress on goals, correct plurals, and secondary actions in overflow. Do not equate task-completion percentage with a measured goal outcome unless configured.
 
 ### UX-24 · P2 · Make notes readable before showing metadata
-**Observed:** a short mobile note is surrounded by a large textarea and many metadata fields. [Note mobile](.runtime/ux-audit/note-detail-mobile.png).
+**Observed:** a short mobile note is surrounded by a large textarea and many metadata fields. [Note mobile](../../../.runtime/ux-audit/note-detail-mobile.png).
 **Change/acceptance:** prioritize reading/writing; compact secondary attribution/links. Keep Find to-dos visible with a review-before-create explanation. Show existing task links, avoid duplicate suggestions, and preserve return-to-note navigation.
 
 ### UX-25 · P2 · Explain memory sources and processing
-**Observed:** “Source-backed,” a learning count, View source, Correct, and an icon-only forget action need more context. [Memory](.runtime/ux-audit/memory-mobile.png).
+**Observed:** “Source-backed,” a learning count, View source, Correct, and an icon-only forget action need more context. [Memory](../../../.runtime/ux-audit/memory-mobile.png).
 **Change/acceptance:** You told Eri/Learned from with date/source; separate queued/active/failed/review-needed processing; explain correction and forgetting scope. Future task-routing learning should stay separate from personal facts, as already proposed in the routing PRD.
 
 ### UX-26 · P1 onboarding · Polish sharing
-**Observed:** sharing works with synthetic data but its long paragraphs and plain stacked forms are visually less finished than task cards. [Sharing mobile](.runtime/ux-audit/settings-sharing-mobile.png).
+**Observed:** sharing works with synthetic data but its long paragraphs and plain stacked forms are visually less finished than task cards. [Sharing mobile](../../../.runtime/ux-audit/settings-sharing-mobile.png).
 **Change/acceptance:** clear steps for private account versus shared workspace, name, access, invitation, and copied handoff. Show members/pending invitations/role meaning. Clearly state no email is sent; assignment never grants access; first workspace switch explains why it is empty and retains visible workspace identity.
 
 ### UX-27 · P2 · Make integration status actionable
-**Observed:** unconfigured Google/Linear cards contain long technical copy. Real connected-provider screens were not authenticated in production during this audit. [Integrations](.runtime/ux-audit/settings-integrations-mobile.png).
+**Observed:** unconfigured Google/Linear cards contain long technical copy. Real connected-provider screens were not authenticated in production during this audit. [Integrations](../../../.runtime/ux-audit/settings-integrations-mobile.png).
 **Change/acceptance:** Connected account, calendars/teams, last successful sync, read/write permissions, pending changes, one next action. Separate Google login from Calendar read/edit access. External failures link to action cards instead of looking complete.
 
 ### UX-28 · P2 · Complete tab keyboard semantics
@@ -221,7 +225,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 **Change/acceptance:** one accessible tab component with roving focus, Arrow/Home/End behavior and associated panels. Validate focus restoration, visible rings and modal trapping; complete a separate keyboard/screen-reader pass.
 
 ### UX-29 · P3 · Scope search and shortcut hints
-**Observed:** the desktop hint always shows ⌘ K; mobile search is cramped; Search work remains in Settings. [Empty desktop](.runtime/ux-audit/local-empty-desktop.png).
+**Observed:** the desktop hint always shows ⌘ K; mobile search is cramped; Search work remains in Settings. [Empty desktop](../../../.runtime/ux-audit/local-empty-desktop.png).
 **Change/acceptance:** platform-correct shortcut, mobile search sheet, and explicit per-section search or actual grouped global search. Hide irrelevant search where it has no effect.
 
 ### UX-30 · P2 · Make archive/delete/recovery language consistent
@@ -229,7 +233,7 @@ in [UX_POLISH_VALIDATION.md](docs/UX_POLISH_VALIDATION.md).
 **Change/acceptance:** shared wording/placement, Undo for reversible local changes, and explicit scope for recurring-series/external/source deletion. Never claim irreversible side effects were restored. Action history records actor, time and outcome.
 
 ### UX-31 · P2 · Clarify phone setup, chat overlay, and permission recovery
-**Observed:** the mobile chat consumes most of the viewport; full-page captures also contain background tasks below it. That capture artifact alone does not prove scrolling is broken. Real microphone/push use was not tested. [Post-change mobile chat](.runtime/ux-audit/post-change-chat-mobile.png).
+**Observed:** the mobile chat consumes most of the viewport; full-page captures also contain background tasks below it. That capture artifact alone does not prove scrolling is broken. Real microphone/push use was not tested. [Post-change mobile chat](../../../.runtime/ux-audit/post-change-chat-mobile.png).
 **Change/acceptance:** make mobile chat visibly a sheet/fullscreen mode with consistent body-scroll behavior and an obvious return to work. Offer optional microphone/wake/notification setup with useful denied/unsupported states. Test real Android keyboards, background scroll, locked-screen notifications and permission recovery.
 
 ## Later refinements
@@ -249,17 +253,17 @@ R2 backups remain an operational TODO, not a landing-page feature. Keep the back
 
 Preserve what already works: inline task cards, keyboard board movement, consistent event-type badges, explicit linked records, and account/workspace isolation. Prioritize visibility and clear behavior before adding more navigation.
 
-The separately implemented local private-chat-control removal is confirmed in [post-change desktop](.runtime/ux-audit/post-change-chat-desktop.png) and [post-change mobile](.runtime/ux-audit/post-change-chat-mobile.png). Preserve established history-off/shared-workspace behavior as designed; this report does not request its removal.
+The separately implemented local private-chat-control removal is confirmed in [post-change desktop](../../../.runtime/ux-audit/post-change-chat-desktop.png) and [post-change mobile](../../../.runtime/ux-audit/post-change-chat-mobile.png). Preserve established history-off/shared-workspace behavior as designed; this report does not request its removal.
 
 ## Screenshot index
 
 All authenticated screenshots below are from the isolated synthetic environment; only the production-prefixed login images are production.
 
-- Public: [desktop login](.runtime/ux-audit/production-app-desktop.png), [mobile login](.runtime/ux-audit/production-app-mobile.png), [Google login](.runtime/ux-audit/production-google-signin.png).
-- Tasks: [Today](.runtime/ux-audit/tasks-today-desktop.png), [All](.runtime/ux-audit/tasks-all-desktop.png), [filters](.runtime/ux-audit/tasks-filters-desktop.png), [desktop detail](.runtime/ux-audit/task-details-desktop.png), [mobile detail](.runtime/ux-audit/task-details-mobile.png), [new task](.runtime/ux-audit/task-create-mobile.png), [bulk edit](.runtime/ux-audit/bulk-task-mobile.png).
-- Work views: [task board mobile](.runtime/ux-audit/tasks-board-mobile.png), [keyboard move result](.runtime/ux-audit/board-keyboard-moved.png), [timeline mobile](.runtime/ux-audit/tasks-timeline-mobile.png), [project board](.runtime/ux-audit/projects-board-desktop.png), [project timeline](.runtime/ux-audit/projects-timeline-desktop.png).
-- Organization: [goals](.runtime/ux-audit/organization-goals-desktop.png), [projects](.runtime/ux-audit/organization-projects-desktop.png), [areas](.runtime/ux-audit/organization-areas-desktop.png), [spaces](.runtime/ux-audit/organization-spaces-desktop.png).
-- Calendar: [month](.runtime/ux-audit/calendar-month-mobile.png), [week](.runtime/ux-audit/calendar-week-mobile.png), [day](.runtime/ux-audit/calendar-day-mobile.png), [task details](.runtime/ux-audit/calendar-task-detail.png), [new event](.runtime/ux-audit/calendar-new-event-mobile.png), [time block](.runtime/ux-audit/task-time-block.png).
-- Knowledge: [notes](.runtime/ux-audit/notes-desktop.png), [note detail](.runtime/ux-audit/note-detail-mobile.png), [memory](.runtime/ux-audit/memory-mobile.png), [corrected memory](.runtime/ux-audit/memory-corrected.png).
-- Settings: [profile](.runtime/ux-audit/settings-profile-mobile.png), [voice](.runtime/ux-audit/settings-voice-mobile.png), [integrations](.runtime/ux-audit/settings-integrations-mobile.png), [privacy](.runtime/ux-audit/settings-privacy-mobile.png), [system](.runtime/ux-audit/settings-system-mobile.png), [sharing](.runtime/ux-audit/settings-sharing-mobile.png), [invitation](.runtime/ux-audit/sharing-invitation-mobile.png).
-- Navigation/conversation: [baseline desktop chat](.runtime/ux-audit/chat-desktop.png), [baseline mobile chat](.runtime/ux-audit/chat-mobile.png), [mobile navigation](.runtime/ux-audit/navigation-mobile.png), [shared empty workspace](.runtime/ux-audit/shared-workspace-empty.png), [landscape task detail](.runtime/ux-audit/task-details-mobile-landscape.png).
+- Public: [desktop login](../../../.runtime/ux-audit/production-app-desktop.png), [mobile login](../../../.runtime/ux-audit/production-app-mobile.png), [Google login](../../../.runtime/ux-audit/production-google-signin.png).
+- Tasks: [Today](../../../.runtime/ux-audit/tasks-today-desktop.png), [All](../../../.runtime/ux-audit/tasks-all-desktop.png), [filters](../../../.runtime/ux-audit/tasks-filters-desktop.png), [desktop detail](../../../.runtime/ux-audit/task-details-desktop.png), [mobile detail](../../../.runtime/ux-audit/task-details-mobile.png), [new task](../../../.runtime/ux-audit/task-create-mobile.png), [bulk edit](../../../.runtime/ux-audit/bulk-task-mobile.png).
+- Work views: [task board mobile](../../../.runtime/ux-audit/tasks-board-mobile.png), [keyboard move result](../../../.runtime/ux-audit/board-keyboard-moved.png), [timeline mobile](../../../.runtime/ux-audit/tasks-timeline-mobile.png), [project board](../../../.runtime/ux-audit/projects-board-desktop.png), [project timeline](../../../.runtime/ux-audit/projects-timeline-desktop.png).
+- Organization: [goals](../../../.runtime/ux-audit/organization-goals-desktop.png), [projects](../../../.runtime/ux-audit/organization-projects-desktop.png), [areas](../../../.runtime/ux-audit/organization-areas-desktop.png), [spaces](../../../.runtime/ux-audit/organization-spaces-desktop.png).
+- Calendar: [month](../../../.runtime/ux-audit/calendar-month-mobile.png), [week](../../../.runtime/ux-audit/calendar-week-mobile.png), [day](../../../.runtime/ux-audit/calendar-day-mobile.png), [task details](../../../.runtime/ux-audit/calendar-task-detail.png), [new event](../../../.runtime/ux-audit/calendar-new-event-mobile.png), [time block](../../../.runtime/ux-audit/task-time-block.png).
+- Knowledge: [notes](../../../.runtime/ux-audit/notes-desktop.png), [note detail](../../../.runtime/ux-audit/note-detail-mobile.png), [memory](../../../.runtime/ux-audit/memory-mobile.png), [corrected memory](../../../.runtime/ux-audit/memory-corrected.png).
+- Settings: [profile](../../../.runtime/ux-audit/settings-profile-mobile.png), [voice](../../../.runtime/ux-audit/settings-voice-mobile.png), [integrations](../../../.runtime/ux-audit/settings-integrations-mobile.png), [privacy](../../../.runtime/ux-audit/settings-privacy-mobile.png), [system](../../../.runtime/ux-audit/settings-system-mobile.png), [sharing](../../../.runtime/ux-audit/settings-sharing-mobile.png), [invitation](../../../.runtime/ux-audit/sharing-invitation-mobile.png).
+- Navigation/conversation: [baseline desktop chat](../../../.runtime/ux-audit/chat-desktop.png), [baseline mobile chat](../../../.runtime/ux-audit/chat-mobile.png), [mobile navigation](../../../.runtime/ux-audit/navigation-mobile.png), [shared empty workspace](../../../.runtime/ux-audit/shared-workspace-empty.png), [landscape task detail](../../../.runtime/ux-audit/task-details-mobile-landscape.png).

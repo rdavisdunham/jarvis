@@ -1,3 +1,4 @@
+import { VoiceDrafts } from "./VoiceDrafts";
 import { useAppHistory } from "./app-history";
 import { SettingsLayout, SettingsGroup, SettingRow } from "./SettingsLayout";
 import { readSettingsSection, type SettingsSection } from "./settings-sections";
@@ -2927,6 +2928,7 @@ export default function App() {
                   Sending your request…
                 </div>
               )}
+              <VoiceDrafts key={(boot.account_id ?? "") + ":" + (boot.workspace?.id ?? "personal")} />
               <div ref={messageEnd} />
             </div>
             {voiceState && !voiceState.closed && (

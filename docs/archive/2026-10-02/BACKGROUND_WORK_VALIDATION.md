@@ -1,5 +1,9 @@
 # Background-work batch validation — September 16, 2026
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Released to production September 16, 2026. Implementation commit: `e5d9234`.
 
 ## Direct-execution correction — September 16
@@ -71,7 +75,7 @@ Edit opened the intended record; Revert archived the unchanged creation; Cancel
 stopped the queued request. Personal private-chat controls were absent.
 
 Screenshots/results are ignored local evidence in `.runtime/batch-verify/`.
-The earlier full-site audit remains in [recommendations.md](../recommendations.md),
+The earlier full-site audit remains in [recommendations.md](recommendations.md),
 with its 76 screenshots and explicit production-login versus synthetic-app limits.
 
 ## Operational boundaries and follow-ups

@@ -228,15 +228,11 @@ def test_voice_capture_survives_close_and_deduplicates(client):
             ("b", " Also add Beta.", 3000),
         ]:
             work_intake.append_voice(db, sid, event_id, "user", delta, start, start + 1000)
-        captured = work_intake.claim_voice(db, inbox, close=True)
-        assert "Alpha" in unseal(captured.input_ciphertext)["message"]
-        turns = list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == sid)))
-        # Undelegated actionable speech at close becomes ONE request, never one per pause.
-        assert [unseal(t.input_ciphertext)["message"] for t in turns] == ["Add Alpha.\nAlso add Beta."]
-        assert all(db.get(Job, t.id).kind == "agent_action" for t in turns)
+        assert work_intake.claim_voice(db, inbox, close=True) is None
+        assert unseal(inbox.content_ciphertext)["draft"]["message"] == "Add Alpha.\nAlso add Beta."
+        assert list(db.scalars(select(AgentWork).where(AgentWork.voice_session_id == sid))) == []
         assert work_intake.claim_voice(db, inbox) is None
         assert db.get(VoiceInbox, sid).closed
-        assert db.get(Outbox, captured.id)
 
 
 def test_explicit_cancel_keeps_saved_actions(client):
@@ -272,7 +268,7 @@ def test_execution_survives_cookie_expiry_but_checks_account_scope(client):
         assert len(list(db.scalars(select(Task)))) == 1
 
 
-def test_voice_preserves_long_input_and_clears_closed_capture(client):
+def test_voice_preserves_long_input_in_recoverable_draft(client):
     work, _ = accept(client)
     text = "Add a task with notes " + ("exact words " * 2500) + " END"
     with session_scope() as db:
@@ -286,9 +282,9 @@ def test_voice_preserves_long_input_and_clears_closed_capture(client):
             accepted.conversation_id,
         )
         work_intake.append_voice(db, inbox.id, "long", "user", text, 0, 1000)
-        captured = work_intake.claim_voice(db, inbox, close=True)
-        assert unseal(captured.input_ciphertext)["message"] == text
-        assert unseal(inbox.content_ciphertext) == {"entries": []}
+        assert work_intake.claim_voice(db, inbox, close=True) is None
+        assert unseal(inbox.content_ciphertext)["draft"]["message"] == text
+        assert unseal(inbox.content_ciphertext)["entries"] == []
 
 
 @pytest.mark.asyncio

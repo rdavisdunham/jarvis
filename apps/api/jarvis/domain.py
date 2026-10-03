@@ -466,6 +466,8 @@ def enqueue_job(db, owner, kind, payload):
     db.add(job)
     db.flush()
     db.add(Outbox(job_id=job.id))
+    from .work_wakeup import wake_dispatch
+    wake_dispatch(db)
     return job
 
 

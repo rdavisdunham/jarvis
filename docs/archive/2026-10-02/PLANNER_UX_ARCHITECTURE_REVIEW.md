@@ -1,5 +1,9 @@
 # Planner UX and architecture review
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Reviewed September 13, 2026 against the implemented application, schema 0011,
 the upgrade PRD, and the owner's subsequent decisions. This is a code and
 rendered-browser review, not a user study.
@@ -210,7 +214,7 @@ site controls or verified local planning. They operate on the existing records.
 ## Validation and remaining tool risks
 
 The full held-out run and the separate short-reference diagnostic are retained in
-[RELIABILITY_HELDOUT_RESULTS.md](RELIABILITY_HELDOUT_RESULTS.md). Both models
+[RELIABILITY_HELDOUT_RESULTS.md](../../RELIABILITY_HELDOUT_RESULTS.md). Both models
 passed all three repeated scheduling cases after the short-reference change.
 That targeted result does not replace the overall held-out scores.
 

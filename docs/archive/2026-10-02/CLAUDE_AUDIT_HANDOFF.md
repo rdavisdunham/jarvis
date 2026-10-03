@@ -1,5 +1,9 @@
 # Eridani architecture and audit handoff
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Prepared October 1, 2026, for an independent Claude audit. This describes the inspected local working tree, not a freshly verified production deployment.
 
 Eridani is a voice-enabled productivity application: a planner, task tracker, linked notebook, calendar, and configurable organizational system. Its assistant is Eridani, or Eri. The product goal is to let a person organize work in their own vocabulary and use conversation to capture, find, change, and schedule it. The assistant should be witty, playful but formal, and primarily useful. It should act on clear requests and report actual saved changes rather than require routine approval.
@@ -12,16 +16,16 @@ The checked-out HEAD is `35a8ec9bcf5fd56a53866695efcf47a8dafc89fc`, titled “De
 
 This handoff was built by reading source, configuration, migrations, documentation, and saved evaluation findings. No production database was queried, no current cloud settings were inspected, and no fresh full test suite or paid campaign was run for this document. Historical deployment and test evidence is identified as such. Model names and prices mentioned here describe repository configuration, not an independent October 1 verification of provider availability or pricing.
 
-Use [the accompanying source snapshot](AUDIT_SOURCE_SNAPSHOT.json) to identify the source state and local changes. It contains file names, hashes, and Git status, not credentials or user records. The source tree is authoritative when older prose disagrees.
+Use [the accompanying source snapshot](../../AUDIT_SOURCE_SNAPSHOT.json) to identify the source state and local changes. It contains file names, hashes, and Git status, not credentials or user records. The source tree is authoritative when older prose disagrees.
 
 Recommended accompanying material for Claude:
 
 - This document and the current source tree, including local eval additions.
-- [TODO](TODO.md), the work ledger. Completed implementation, pending fixes, and device acceptance are distinct.
-- [Functionality inventory](APP_FUNCTIONALITY.md), covering 40 feature areas.
-- [Evaluation findings](../evals/app/FINDINGS.md) and [verification plan](TESTING_PLAN.md).
-- The September 23 [independent grader report](../artifacts/app-evals/half-20260923-sol-graded/grader.md) and adjacent grader.json, if sharing the locally retained synthetic evidence.
-- [UX recommendations](../recommendations.md), as historical audit input rather than a claim that every suggestion is outstanding.
+- [TODO](TODO_HISTORY.md), the work ledger. Completed implementation, pending fixes, and device acceptance are distinct.
+- [Functionality inventory](../../APP_FUNCTIONALITY.md), covering 40 feature areas.
+- [Evaluation findings](../../../evals/app/FINDINGS.md) and [verification plan](TESTING_PLAN.md).
+- The September 23 [independent grader report](../../../artifacts/app-evals/half-20260923-sol-graded/grader.md) and adjacent grader.json, if sharing the locally retained synthetic evidence.
+- [UX recommendations](recommendations.md), as historical audit input rather than a claim that every suggestion is outstanding.
 - Relevant feature documents linked below. Older PRDs explain intent, not necessarily current behavior.
 
 Do not bundle `.env*`, `.runtime`, database dumps, provider keys, account exports, or personal attachments. The ignored artifacts directory contains more than the chosen audit evidence; select the synthetic report files deliberately.
@@ -41,7 +45,7 @@ The same container image runs in two roles:
 - API: HTTP endpoints, authentication, frontend static assets, SSE events, active voice-session controllers, and browser control coordination.
 - Worker: durable accepted requests, reminder delivery, integration sync/writes, extraction, indexing, and periodic review work.
 
-The multistage [Dockerfile](../Dockerfile.upgrade) builds the web bundle with Node 22, installs the locked Python environment, copies migrations and the bundle, then runs as a non-root user. The API serves the bundle and its own routes on the same origin.
+The multistage [Dockerfile](../../../Dockerfile.upgrade) builds the web bundle with Node 22, installs the locked Python environment, copies migrations and the bundle, then runs as a non-root user. The API serves the bundle and its own routes on the same origin.
 
 ### Interconnection
 
@@ -77,7 +81,7 @@ The cloud runbook records a successful Railway migration to `https://app.eridani
 
 The September 16 records document PostgreSQL 16.15, private database connectivity, working native PITR, and a successful timestamp recovery drill. Those are historical observations, not a fresh assertion of current backup health.
 
-[deploy.py](../apps/api/jarvis/deploy.py) validates cloud configuration, requires HTTPS and Google credentials, prohibits public pairing login, checks encryption configuration, and exposes migration/preflight entry points. The cloud entry point honors Railway's PORT. API and worker run the same migration head; readiness compares the database Alembic version with the release.
+[deploy.py](../../../apps/api/jarvis/deploy.py) validates cloud configuration, requires HTTPS and Google credentials, prohibits public pairing login, checks encryption configuration, and exposes migration/preflight entry points. The cloud entry point honors Railway's PORT. API and worker run the same migration head; readiness compares the database Alembic version with the release.
 
 Two important limits:
 
@@ -88,9 +92,9 @@ Staging is deliberately constrained: both the worker and external services must 
 
 The old local production stack was retired after cloud cutover. Do not start it as an independent live writer against its stale data.
 
-**Infrastructure audit warning:** [.railway/railway.ts](../.railway/railway.ts) still contains both PostgreSQL 16 and 18 service declarations and template references. Treat it as a potentially stale whole-project plan, not proof of the actual active database or an instruction to apply it. Reconcile with the provider before any infrastructure change.
+**Infrastructure audit warning:** [.railway/railway.ts](../../../.railway/railway.ts) still contains both PostgreSQL 16 and 18 service declarations and template references. Treat it as a potentially stale whole-project plan, not proof of the actual active database or an instruction to apply it. Reconcile with the provider before any infrastructure change.
 
-Sources: [cloud runbook](CLOUD_MIGRATION.md), [config.py](../apps/api/jarvis/config.py), [deploy.py](../apps/api/jarvis/deploy.py), [worker.py](../apps/api/jarvis/worker.py), [Compose](../compose.upgrade.yml).
+Sources: [cloud runbook](../../CLOUD_MIGRATION.md), [config.py](../../../apps/api/jarvis/config.py), [deploy.py](../../../apps/api/jarvis/deploy.py), [worker.py](../../../apps/api/jarvis/worker.py), [Compose](../../../compose.upgrade.yml).
 
 ## 2. Database model and organizational flexibility
 
@@ -153,7 +157,7 @@ Ordinary authorized task/note/record edits execute directly. Redesigning the sch
 
 Archiving definitions preserves old data instead of silently dropping it. Conversions are rejected when operational behavior or existing data would become incompatible.
 
-Sources: [structure models](../apps/api/jarvis/structure_models.py), [schema validation](../apps/api/jarvis/structure_schema.py), [structure service](../apps/api/jarvis/structure.py), [implementation guide](CUSTOM_PLANNER_IMPLEMENTATION.md), [core models](../apps/api/jarvis/models.py).
+Sources: [structure models](../../../apps/api/jarvis/structure_models.py), [schema validation](../../../apps/api/jarvis/structure_schema.py), [structure service](../../../apps/api/jarvis/structure.py), [implementation guide](../../CUSTOM_PLANNER_IMPLEMENTATION.md), [core models](../../../apps/api/jarvis/models.py).
 
 ## 3. Tasks, reminders, calendar blocks, and planner views
 
@@ -179,7 +183,7 @@ The calendar combines imported Google events, local appointments/work blocks, an
 
 ### Verified scheduling
 
-[planner.py](../apps/api/jarvis/planner.py) implements a bounded deterministic scheduling solver behind the agent:
+[planner.py](../../../apps/api/jarvis/planner.py) implements a bounded deterministic scheduling solver behind the agent:
 
 1. Read current task revisions and explicit durations/constraints.
 2. Fetch confirmed availability from selected Google calendars, or use local-only availability when explicitly requested.
@@ -190,7 +194,7 @@ The calendar combines imported Google events, local appointments/work blocks, an
 
 The request is limited to eight tasks within a seven-day window. It is a single-person fixed-duration scheduler with a search bound, not a general multi-resource optimization engine. It does not automatically publish to Google or modify task deadlines. Reusing a proposal is deduplicated.
 
-Sources: [domain.py](../apps/api/jarvis/domain.py), [task tools](../apps/api/jarvis/task_tools.py), [task alerts](../apps/api/jarvis/task_alerts.py), [planning.py](../apps/api/jarvis/planning.py), [planner schema](../apps/api/jarvis/planner_schema.py), [time tools](../apps/api/jarvis/time_tools.py).
+Sources: [domain.py](../../../apps/api/jarvis/domain.py), [task tools](../../../apps/api/jarvis/task_tools.py), [task alerts](../../../apps/api/jarvis/task_alerts.py), [planning.py](../../../apps/api/jarvis/planning.py), [planner schema](../../../apps/api/jarvis/planner_schema.py), [time tools](../../../apps/api/jarvis/time_tools.py).
 
 ## 4. API, commands, consistency, and event propagation
 
@@ -213,7 +217,7 @@ PostgreSQL Events drive SSE refreshes. The API streams monotonically identified 
 
 This gives strong retry protection for local effects. It does not make an arbitrary external HTTP operation exactly-once; Google/Linear write reconciliation is a separate layer.
 
-Sources: [domain.execute](../apps/api/jarvis/domain.py), [database sessions](../apps/api/jarvis/db.py), [API](../apps/api/jarvis/api.py), [browser event client](../apps/web/src/events.ts).
+Sources: [domain.execute](../../../apps/api/jarvis/domain.py), [database sessions](../../../apps/api/jarvis/db.py), [API](../../../apps/api/jarvis/api.py), [browser event client](../../../apps/web/src/events.ts).
 
 ## 5. Backend model, instructions, and tool exposure
 
@@ -227,9 +231,9 @@ Background extraction is also distinct from the interactive backend choice: pers
 
 ### Prompt construction
 
-- [personality.py](../apps/api/jarvis/personality.py) is the shared versioned identity/style source. The old environment system prompt is retired for this app.
-- [agent_instructions.py](../apps/api/jarvis/agent_instructions.py) supplies global capability and behavior policies, preferred name, time zone, current time, work-window hints, workspace/role, and focused UI context.
-- [work_runner.py](../apps/api/jarvis/work_runner.py) adds the current accepted request, previous verified receipts, recent work/dependencies, clarification history, search context, and bounded earlier conversation context.
+- [personality.py](../../../apps/api/jarvis/personality.py) is the shared versioned identity/style source. The old environment system prompt is retired for this app.
+- [agent_instructions.py](../../../apps/api/jarvis/agent_instructions.py) supplies global capability and behavior policies, preferred name, time zone, current time, work-window hints, workspace/role, and focused UI context.
+- [work_runner.py](../../../apps/api/jarvis/work_runner.py) adds the current accepted request, previous verified receipts, recent work/dependencies, clarification history, search context, and bounded earlier conversation context.
 - Personal memory is retrieved before the initial backend request in a personal workspace. It is not supplied to shared-workspace or bot work.
 
 Earlier conversation and retrieved material are labeled as data, not new instructions. The model is instructed to use real record IDs/revisions, preserve unrequested fields, distinguish queued from completed actions, and never claim an unobserved effect.
@@ -244,7 +248,7 @@ The backend normalizes provider tool calls, validates availability and argument 
 
 There is no general shell tool, email-sending tool, or arbitrary web-search tool in this agent. External content, notes, memory, and UI data do not grant new capabilities.
 
-Sources: [model catalog](../apps/api/jarvis/agent_models.py), [Responses adapter](../apps/api/jarvis/responses_adapter.py), [tool catalog](../apps/api/jarvis/tool_catalog.py), [tools](../apps/api/jarvis/tools.py).
+Sources: [model catalog](../../../apps/api/jarvis/agent_models.py), [Responses adapter](../../../apps/api/jarvis/responses_adapter.py), [tool catalog](../../../apps/api/jarvis/tool_catalog.py), [tools](../../../apps/api/jarvis/tools.py).
 
 ## 6. Durable background work and concurrency
 
@@ -298,7 +302,7 @@ The server validates identity, question, state, ordering, revision, and prior re
 
 This machinery exists and has targeted tests, but model trajectories still sometimes fail to use it. The audit must inspect both deterministic guards and instruction/tool affordances.
 
-Sources: [agent_work.py](../apps/api/jarvis/agent_work.py), [work_runner.py](../apps/api/jarvis/work_runner.py), [work_coordination.py](../apps/api/jarvis/work_coordination.py), [work_continuation.py](../apps/api/jarvis/work_continuation.py), [continuation guide](CLARIFICATION_CONTINUATIONS.md).
+Sources: [agent_work.py](../../../apps/api/jarvis/agent_work.py), [work_runner.py](../../../apps/api/jarvis/work_runner.py), [work_coordination.py](../../../apps/api/jarvis/work_coordination.py), [work_continuation.py](../../../apps/api/jarvis/work_continuation.py), [continuation guide](../../CLARIFICATION_CONTINUATIONS.md).
 
 ## 7. Voice and GPT-Live
 
@@ -336,7 +340,7 @@ Wake recognition uses browser SpeechRecognition/webkitSpeechRecognition, opt-in 
 
 Closing voice releases that session's media; enabled wake listening may resume. Process restart loses the active media controller, but durable work can survive. Test these as separate recovery properties.
 
-Sources: [Live controller](../apps/api/jarvis/live_voice.py), [voice endpoints](../apps/api/jarvis/voice.py), [voice intake](../apps/api/jarvis/work_intake.py), [voice controls](../apps/api/jarvis/voice_control.py), [browser voice](../apps/web/src/voice.ts), [idle](../apps/web/src/voice-idle.ts), [wake word](../apps/web/src/wake-word.ts).
+Sources: [Live controller](../../../apps/api/jarvis/live_voice.py), [voice endpoints](../../../apps/api/jarvis/voice.py), [voice intake](../../../apps/api/jarvis/work_intake.py), [voice controls](../../../apps/api/jarvis/voice_control.py), [browser voice](../../../apps/web/src/voice.ts), [idle](../../../apps/web/src/voice-idle.ts), [wake word](../../../apps/web/src/wake-word.ts).
 
 ## 8. Action cards and Revert
 
@@ -358,7 +362,7 @@ Local planning events deliberately require their own editor rather than generic 
 
 Successful agent actions no longer create notifications. Questions and failed/partial work can. Correctly rooted continuations dismiss superseded question notices.
 
-Sources: [action_history.py](../apps/api/jarvis/action_history.py), [Activity.tsx](../apps/web/src/Activity.tsx), [chat-timeline.ts](../apps/web/src/chat-timeline.ts), [notices.py](../apps/api/jarvis/notices.py).
+Sources: [action_history.py](../../../apps/api/jarvis/action_history.py), [Activity.tsx](../../../apps/web/src/Activity.tsx), [chat-timeline.ts](../../../apps/web/src/chat-timeline.ts), [notices.py](../../../apps/api/jarvis/notices.py).
 
 ## 9. Browser and conversational site controls
 
@@ -383,7 +387,7 @@ Bridge context/actions expire. A disconnected page cannot truthfully be navigate
 
 The service worker handles push and record-aware navigation. It intentionally does not cache private API responses or transcript/task bodies. This is not an offline-first app with offline write synchronization.
 
-Sources: [App.tsx](../apps/web/src/App.tsx), [PlannerApp.tsx](../apps/web/src/PlannerApp.tsx), [copilot.tsx](../apps/web/src/copilot.tsx), [site-actions.ts](../apps/web/src/site-actions.ts), [editor-control.tsx](../apps/web/src/editor-control.tsx), [app-history.ts](../apps/web/src/app-history.ts), [ui_control.py](../apps/api/jarvis/ui_control.py), [device_bridge.py](../apps/api/jarvis/device_bridge.py).
+Sources: [App.tsx](../../../apps/web/src/App.tsx), [PlannerApp.tsx](../../../apps/web/src/PlannerApp.tsx), [copilot.tsx](../../../apps/web/src/copilot.tsx), [site-actions.ts](../../../apps/web/src/site-actions.ts), [editor-control.tsx](../../../apps/web/src/editor-control.tsx), [app-history.ts](../../../apps/web/src/app-history.ts), [ui_control.py](../../../apps/api/jarvis/ui_control.py), [device_bridge.py](../../../apps/api/jarvis/device_bridge.py).
 
 ## 10. Personal memory and its dream pass
 
@@ -425,7 +429,7 @@ The current memory dream is primarily deterministic, not a general LLM reflectio
 
 The spelling-focused candidate generator misses some numeric contradictions. EVAL-005 documents this. Do not describe it as a completed general contradiction detector.
 
-Sources: [memory_learning.py](../apps/api/jarvis/memory_learning.py), [memory_service.py](../apps/api/jarvis/memory_service.py), [memory_review.py](../apps/api/jarvis/memory_review.py).
+Sources: [memory_learning.py](../../../apps/api/jarvis/memory_learning.py), [memory_service.py](../../../apps/api/jarvis/memory_service.py), [memory_review.py](../../../apps/api/jarvis/memory_review.py).
 
 ## 11. Organization rules and the organization dream
 
@@ -445,7 +449,7 @@ Corrections can pause conflicting rules. Forgetting suppresses evidence. Relevan
 
 Review offers are bounded, present one question at a time, and support deferral. They do not autonomously open the microphone. General spontaneous learning questions during ordinary conversation remain future work.
 
-Sources: [routing.py](../apps/api/jarvis/routing.py), [routing schemas](../apps/api/jarvis/routing_schema.py), [structure models](../apps/api/jarvis/structure_models.py), [custom planner guide](CUSTOM_PLANNER_IMPLEMENTATION.md).
+Sources: [routing.py](../../../apps/api/jarvis/routing.py), [routing schemas](../../../apps/api/jarvis/routing_schema.py), [structure models](../../../apps/api/jarvis/structure_models.py), [custom planner guide](../../CUSTOM_PLANNER_IMPLEMENTATION.md).
 
 ## 12. Authored notes and self-organizing lists
 
@@ -467,7 +471,7 @@ The newer tables are note_lists, note_organizations, and note_entry_sources. Sav
 
 Known limitation: real extraction has sometimes omitted one of multiple explicit items. One later passing sample does not fix that omission.
 
-Sources: [notes.py](../apps/api/jarvis/notes.py), [note_lists.py](../apps/api/jarvis/note_lists.py), [list models](../apps/api/jarvis/note_list_models.py), [Notes guide](NOTE_LISTS.md).
+Sources: [notes.py](../../../apps/api/jarvis/notes.py), [note_lists.py](../../../apps/api/jarvis/note_lists.py), [list models](../../../apps/api/jarvis/note_list_models.py), [Notes guide](../../NOTE_LISTS.md).
 
 ## 13. Semantic search and vocabulary learning
 
@@ -491,7 +495,7 @@ Source defaults semantic_search_enabled to false; historical rollout docs record
 
 Spoken numbers/punctuation remain an open resolution defect: “test test 123” may fail to find “test, test, one, two, three.” Search existing does not mean every legacy tool uses it correctly.
 
-Sources: [search_index.py](../apps/api/jarvis/search_index.py), [search_service.py](../apps/api/jarvis/search_service.py), [search_learning.py](../apps/api/jarvis/search_learning.py), [search models](../apps/api/jarvis/search_models.py), [search guide](SEMANTIC_SEARCH.md).
+Sources: [search_index.py](../../../apps/api/jarvis/search_index.py), [search_service.py](../../../apps/api/jarvis/search_service.py), [search_learning.py](../../../apps/api/jarvis/search_learning.py), [search models](../../../apps/api/jarvis/search_models.py), [search guide](../../SEMANTIC_SEARCH.md).
 
 ## 14. Google Calendar and Linear
 
@@ -507,7 +511,7 @@ Local appointments/work blocks can stay Eridani-only or be published. Linked cop
 
 Guest invitations and specialized event operations are outside the supported write surface. Google Calendar events are not a complete Google Tasks integration.
 
-Sources: [Google guide](GOOGLE_SETUP.md), [google_calendar.py](../apps/api/jarvis/google_calendar.py), [google_writes.py](../apps/api/jarvis/google_writes.py), [google_projection.py](../apps/api/jarvis/google_projection.py).
+Sources: [Google guide](../../GOOGLE_SETUP.md), [google_calendar.py](../../../apps/api/jarvis/google_calendar.py), [google_writes.py](../../../apps/api/jarvis/google_writes.py), [google_projection.py](../../../apps/api/jarvis/google_projection.py).
 
 ### Linear
 
@@ -523,7 +527,7 @@ Disconnect retains local records. Full Linear detail metadata, editable source c
 
 Cloud cutover docs recorded no configured Linear connection at that time; current connection state was not inspected.
 
-Sources: [Linear guide](LINEAR_SETUP.md), [linear_sync.py](../apps/api/jarvis/linear_sync.py), [linear_commands.py](../apps/api/jarvis/linear_commands.py).
+Sources: [Linear guide](../../LINEAR_SETUP.md), [linear_sync.py](../../../apps/api/jarvis/linear_sync.py), [linear_commands.py](../../../apps/api/jarvis/linear_commands.py).
 
 ## 15. Notifications
 
@@ -537,7 +541,7 @@ Success stays in chat/Activity. Questions and failures can notify. Shared worksp
 
 Synthetic browser tests cannot prove locked-phone delivery, operating-system behavior, real microphone wake/shutdown, or fold-device ergonomics.
 
-Sources: [notices.py](../apps/api/jarvis/notices.py), [worker.py](../apps/api/jarvis/worker.py), [service worker](../apps/web/public/sw.js).
+Sources: [notices.py](../../../apps/api/jarvis/notices.py), [worker.py](../../../apps/api/jarvis/worker.py), [service worker](../../../apps/web/public/sw.js).
 
 ## 16. Authentication, sharing, and external agents
 
@@ -555,7 +559,7 @@ Membership is rechecked on requests, commands, around provider waits, and during
 
 Personal memory, private integration credentials, and external calendar data stay personal. Shared conversations are transient and excluded from personal-memory learning. Saved views are private to a person within a workspace. Removing the private-chat UI did not remove every historical private/transient field.
 
-Sources: [auth.py](../apps/api/jarvis/auth.py), [access.py](../apps/api/jarvis/access.py), [accounts.py](../apps/api/jarvis/accounts.py), [account guide](ACCOUNTS_AND_SHARING.md).
+Sources: [auth.py](../../../apps/api/jarvis/auth.py), [access.py](../../../apps/api/jarvis/access.py), [accounts.py](../../../apps/api/jarvis/accounts.py), [account guide](../../ACCOUNTS_AND_SHARING.md).
 
 ### External HTTP and MCP
 
@@ -571,7 +575,7 @@ Bots cannot use this surface to read personal memory/conversations, manipulate b
 
 Direct bot writes use domain commands, revisions, and action receipts identifying the bot. They do not insert an interpretation/review model.
 
-Sources: [bot_access.py](../apps/api/jarvis/bot_access.py), [external_service.py](../apps/api/jarvis/external_service.py), [external_mcp.py](../apps/api/jarvis/external_mcp.py), [external guide](EXTERNAL_AGENTS.md).
+Sources: [bot_access.py](../../../apps/api/jarvis/bot_access.py), [external_service.py](../../../apps/api/jarvis/external_service.py), [external_mcp.py](../../../apps/api/jarvis/external_mcp.py), [external guide](../../EXTERNAL_AGENTS.md).
 
 ## 17. Privacy, accounting, and backup recovery
 
@@ -595,7 +599,7 @@ Settings exposes rolling 7-day/30-day estimates and calendar-month totals. A tra
 
 Code estimates Luna/Gemini by tokens and GPT-Live by session seconds. Rate constants are dated configuration, not an invoice. Audit accounting across retries/timeouts as well as happy-path calls.
 
-Sources: [budget.py](../apps/api/jarvis/budget.py), [cost guide](COST_TRACKING.md), [work_crypto.py](../apps/api/jarvis/work_crypto.py).
+Sources: [budget.py](../../../apps/api/jarvis/budget.py), [cost guide](../../COST_TRACKING.md), [work_crypto.py](../../../apps/api/jarvis/work_crypto.py).
 
 ### Backups
 
@@ -605,7 +609,7 @@ The separate backup service creates encrypted PostgreSQL exports, verifies check
 
 Bucket credentials and backup key belong to the backup service, not API/worker. The application integration-encryption key separately enables recovery of encrypted tokens/work. A restored copy must not start live workers alongside the original.
 
-Sources: [R2 guide](R2_BACKUPS.md), [cloud runbook](CLOUD_MIGRATION.md), [backup image](../Dockerfile.backup).
+Sources: [R2 guide](../../R2_BACKUPS.md), [cloud runbook](../../CLOUD_MIGRATION.md), [backup image](../../../Dockerfile.backup).
 
 ## 18. CI, evaluation, and Langfuse
 
@@ -667,7 +671,7 @@ The corrected import was verified at 501 items, 937 observations, and 256 scores
 
 Live tracing, worker correlation, production redaction, and trace-based evaluation remain future work.
 
-Sources: [workflow](../.github/workflows/ci.yml), [CI guide](CI.md), [eval README](../evals/app/README.md), [persona](../evals/app/personas/rowan-v1.md), [runner](../scripts/app_eval/runner.py), [bindings](../evals/app/bindings.json), [Langfuse](LANGFUSE.md), [exporter](../scripts/app_eval/langfuse_export.py).
+Sources: [workflow](../../../.github/workflows/ci.yml), [CI guide](../../CI.md), [eval README](../../../evals/app/README.md), [persona](../../../evals/app/personas/rowan-v1.md), [runner](../../../scripts/app_eval/runner.py), [bindings](../../../evals/app/bindings.json), [Langfuse](../../LANGFUSE.md), [exporter](../../../scripts/app_eval/langfuse_export.py).
 
 ## 19. Known defects and planned work
 
@@ -725,18 +729,18 @@ Read these saved outputs before drawing conclusions about reliability. They cont
 
 ### Start with the independently reviewed half-suite
 
-The most useful first stop is [Sol's readable grading report](../artifacts/app-evals/half-20260923-sol-graded/grader.md). It explains the reproduced failures and where the automated assertions claimed more than their evidence supported.
+The most useful first stop is [Sol's readable grading report](../../../artifacts/app-evals/half-20260923-sol-graded/grader.md). It explains the reproduced failures and where the automated assertions claimed more than their evidence supported.
 
 Use these together:
 
-- [Independent case-by-case grades](../artifacts/app-evals/half-20260923-sol-graded/grader.json): all 501 selected IDs, criterion judgments, reasons, scope disagreements, and evidence paths.
-- [Interactive automated report](../artifacts/app-evals/half-20260923-sol-graded/report.html): browse outcomes by feature/type/case.
-- [Authoritative automated JSON](../artifacts/app-evals/half-20260923-sol-graded/report.json): raw case outcomes, jobs, regression summaries, cost attribution, and coverage.
-- [Frozen selection](../artifacts/app-evals/half-20260923-selection.json): which cases were selected; prior failures were deliberately included.
-- [Run manifest](../artifacts/app-evals/half-20260923-sol-graded/manifest.json): model, modes, campaign limits, and source/catalog/harness/corpus fingerprints.
-- [Usage ledger summary](../artifacts/app-evals/half-20260923-sol-graded/spending.json): actual estimated usage and uncertain reservations, separate from Codex grader usage.
-- [Execution results](../artifacts/app-evals/half-20260923-sol-graded/results/): reusable job outcomes and attempt references.
-- [Raw attempts](../artifacts/app-evals/half-20260923-sol-graded/attempts/): model/tool trajectories, saved state, assertion results, logs, and supporting suite/browser evidence.
+- [Independent case-by-case grades](../../../artifacts/app-evals/half-20260923-sol-graded/grader.json): all 501 selected IDs, criterion judgments, reasons, scope disagreements, and evidence paths.
+- [Interactive automated report](../../../artifacts/app-evals/half-20260923-sol-graded/report.html): browse outcomes by feature/type/case.
+- [Authoritative automated JSON](../../../artifacts/app-evals/half-20260923-sol-graded/report.json): raw case outcomes, jobs, regression summaries, cost attribution, and coverage.
+- [Frozen selection](../../../artifacts/app-evals/half-20260923-selection.json): which cases were selected; prior failures were deliberately included.
+- [Run manifest](../../../artifacts/app-evals/half-20260923-sol-graded/manifest.json): model, modes, campaign limits, and source/catalog/harness/corpus fingerprints.
+- [Usage ledger summary](../../../artifacts/app-evals/half-20260923-sol-graded/spending.json): actual estimated usage and uncertain reservations, separate from Codex grader usage.
+- [Execution results](../../../artifacts/app-evals/half-20260923-sol-graded/results): reusable job outcomes and attempt references.
+- [Raw attempts](../../../artifacts/app-evals/half-20260923-sol-graded/attempts): model/tool trajectories, saved state, assertion results, logs, and supporting suite/browser evidence.
 
 Raw code outcomes were 44 passed, four failed, four needing review, 75 partial, 373 blocked, and one component failure. Sol's separate assessment was 42 passed, four failed, six needing review, 75 partial, 373 unassessable, and one component failure. Preserve both: external review did not rewrite the automated report.
 
@@ -744,18 +748,18 @@ Prioritize the four acceptance failures: clarifications.01, clarifications.03, m
 
 ### Compare with the full available campaign
 
-The [September 22 full report](../artifacts/app-evals/full-20260922-localpg-luna/report.html) covers the entire 1,001-case catalog using all then-available adapters. This is broader selection, not full automated acceptance coverage.
+The [September 22 full report](../../../artifacts/app-evals/full-20260922-localpg-luna/report.html) covers the entire 1,001-case catalog using all then-available adapters. This is broader selection, not full automated acceptance coverage.
 
-- [Full report JSON](../artifacts/app-evals/full-20260922-localpg-luna/report.json).
-- [Manifest and fingerprints](../artifacts/app-evals/full-20260922-localpg-luna/manifest.json).
-- [Spending and uncertain charges](../artifacts/app-evals/full-20260922-localpg-luna/spending.json).
-- [Job results](../artifacts/app-evals/full-20260922-localpg-luna/results/).
-- [Raw attempts](../artifacts/app-evals/full-20260922-localpg-luna/attempts/).
-- [JUnit output](../artifacts/app-evals/full-20260922-localpg-luna/junit.xml).
+- [Full report JSON](../../../artifacts/app-evals/full-20260922-localpg-luna/report.json).
+- [Manifest and fingerprints](../../../artifacts/app-evals/full-20260922-localpg-luna/manifest.json).
+- [Spending and uncertain charges](../../../artifacts/app-evals/full-20260922-localpg-luna/spending.json).
+- [Job results](../../../artifacts/app-evals/full-20260922-localpg-luna/results).
+- [Raw attempts](../../../artifacts/app-evals/full-20260922-localpg-luna/attempts).
+- [JUnit output](../../../artifacts/app-evals/full-20260922-localpg-luna/junit.xml).
 
 Raw outcomes: 92 passed, six failed, 146 partial, 755 blocked, two component failures. Execution jobs: 233 passed, eight failed, four blocked. Compare failures and traces with the later sample to identify intermittent behavior rather than declaring a defect fixed after one pass.
 
-The original task_capture.05 oracle incorrectly rejected an equivalent offset-aware time. Its [targeted corrected-oracle report](../artifacts/app-evals/due-time-oracle-20260922/report.json) passed. The [separate manifest](../artifacts/app-evals/due-time-oracle-20260922/manifest.json) preserves the changed oracle fingerprint; the original full report was not silently rewritten.
+The original task_capture.05 oracle incorrectly rejected an equivalent offset-aware time. Its [targeted corrected-oracle report](../../../artifacts/app-evals/due-time-oracle-20260922/report.json) passed. The [separate manifest](../../../artifacts/app-evals/due-time-oracle-20260922/manifest.json) preserves the changed oracle fingerprint; the original full report was not silently rewritten.
 
 ### How to follow a result to the underlying evidence
 
@@ -763,7 +767,7 @@ The original task_capture.05 oracle incorrectly rejected an equivalent offset-aw
 2. Follow its bound execution/evidence references into results/ and attempts/.
 3. An agent/pipeline attempt commonly contains input.json, trace.json, state.json, summary.json, and result.json. Read the actual tool responses and final saved state, not only assistant prose.
 4. A supporting regression/browser job may instead contain suite.log, junit.xml, and browser artifacts. It proves only the assertions it exercised.
-5. Compare expected/invariant criteria with [bindings.json](../evals/app/bindings.json), [coverage](../evals/app/automation-coverage.json), and [execution protocols](../evals/app/protocols.md).
+5. Compare expected/invariant criteria with [bindings.json](../../../evals/app/bindings.json), [coverage](../../../evals/app/automation-coverage.json), and [execution protocols](../../../evals/app/protocols.md).
 6. Check manifest fingerprints before comparing runs. A changed oracle/harness is not a pure product improvement.
 7. Retain blocked/unassessable cases in the explanation. They are neither demonstrated passes nor demonstrated product failures.
 
@@ -771,13 +775,13 @@ Campaign state and logs use synthetic fixtures, but manifests include local test
 
 ### Cross-reference findings and historical experiments
 
-[Findings](../evals/app/FINDINGS.md) is the dated record of EVAL-001 through EVAL-008, including reproduced, intermittent, and component-only evidence.
+[Findings](../../../evals/app/FINDINGS.md) is the dated record of EVAL-001 through EVAL-008, including reproduced, intermittent, and component-only evidence.
 
 Older experiments provide tool/model design history:
 
-- [Expert agent results](EXPERT_AGENT_RESULTS.md) and [expert report](evals/expert-agent-report-2026-09-13.html).
-- [Tool refinement results](TOOL_REFINEMENT_RESULTS.md) and [tool refinement report](evals/tool-refinement-report-2026-09-13.html).
-- [Held-out reliability results](RELIABILITY_HELDOUT_RESULTS.md).
+- [Expert agent results](../../EXPERT_AGENT_RESULTS.md) and [expert report](../../evals/expert-agent-report-2026-09-13.html).
+- [Tool refinement results](../../TOOL_REFINEMENT_RESULTS.md) and [tool refinement report](../../evals/tool-refinement-report-2026-09-13.html).
+- [Held-out reliability results](../../RELIABILITY_HELDOUT_RESULTS.md).
 
 These older paired-model experiments used earlier interfaces/fixtures and must not be treated as measurements of the current full application or evidence that Gemini evaluation is currently enabled.
 
@@ -785,7 +789,7 @@ These older paired-model experiments used earlier interfaces/fixtures and must n
 
 The corrected half-suite is also in [the Langfuse project](https://us.cloud.langfuse.com/project/cmtz0kofn00mrad0cqoefpl6h), experiment ID eri-eval-82fb37d8bf2e95a717fcad0b. Claude may need its own authorized project access; the local outputs do not require Langfuse credentials.
 
-The [experiment verification](../artifacts/app-evals/half-20260923-sol-graded/langfuse-experiment-verification.json) and [readback/replay verification](../artifacts/app-evals/half-20260923-sol-graded/langfuse-replay-verification.json) document the uploaded mirror. Local raw evidence remains authoritative and more complete; historical reconstructed spans should not be read as live provider latency.
+The [experiment verification](../../../artifacts/app-evals/half-20260923-sol-graded/langfuse-experiment-verification.json) and [readback/replay verification](../../../artifacts/app-evals/half-20260923-sol-graded/langfuse-replay-verification.json) document the uploaded mirror. Local raw evidence remains authoritative and more complete; historical reconstructed spans should not be read as live provider latency.
 
 ## Suggested prompt for Claude
 

@@ -419,7 +419,8 @@
     ],
     "regression_files": [
       "tests/test_agent_work.py",
-      "tests/test_action_limits.py"
+      "tests/test_action_limits.py",
+      "tests/test_work_wakeup.py"
     ],
     "status": "active"
   },
@@ -519,7 +520,8 @@
     "regression_files": [
       "tests/test_live_voice.py",
       "tests/test_voice_settlement.py",
-      "tests/test_voice.py"
+      "tests/test_voice.py",
+      "tests/test_voice_drafts.py"
     ],
     "status": "active"
   },

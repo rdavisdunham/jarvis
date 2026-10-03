@@ -10,9 +10,9 @@
       "browser": 50,
       "voice": 50
     },
-    "fully_bound": 98,
+    "fully_bound": 100,
     "component_cases": 224,
-    "sha256": "ff0e9c45c6debac256476febc586991af853f6bc38baa97c7c8f6f2a93e32695"
+    "sha256": "705879142fec20f07d2fc570a3626a87fced18835a216d1cc6dee7483e0dd9f7"
   },
   "features": {
     "accounts": {
@@ -1171,7 +1171,7 @@
     },
     "clarifications": {
       "catalog": 25,
-      "fully_bound": 3,
+      "fully_bound": 4,
       "component_cases": 14,
       "supporting_suites": [
         "chat-activity.mjs",
@@ -1246,17 +1246,6 @@
         },
         {
           "case_id": "clarifications.09",
-          "kind": "acceptance_binding",
-          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
-          "criteria": [
-            "expected.1",
-            "invariants.1",
-            "invariants.2",
-            "invariants.3"
-          ]
-        },
-        {
-          "case_id": "clarifications.10",
           "kind": "acceptance_binding",
           "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [
@@ -3438,6 +3427,7 @@
       "supporting_suites": [
         "tests/test_live_voice.py",
         "tests/test_voice.py",
+        "tests/test_voice_drafts.py",
         "tests/test_voice_settlement.py"
       ],
       "remaining": [
@@ -6930,11 +6920,12 @@
     },
     "queue": {
       "catalog": 25,
-      "fully_bound": 0,
+      "fully_bound": 1,
       "component_cases": 15,
       "supporting_suites": [
         "tests/test_action_limits.py",
-        "tests/test_agent_work.py"
+        "tests/test_agent_work.py",
+        "tests/test_work_wakeup.py"
       ],
       "remaining": [
         {
@@ -7006,17 +6997,6 @@
         },
         {
           "case_id": "queue.07",
-          "kind": "acceptance_binding",
-          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
-          "criteria": [
-            "expected.1",
-            "invariants.1",
-            "invariants.2",
-            "invariants.3"
-          ]
-        },
-        {
-          "case_id": "queue.08",
           "kind": "acceptance_binding",
           "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [

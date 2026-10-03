@@ -1,12 +1,16 @@
 # Eridani verification plan — September 23, 2026
 
-This is the current testing order. [TODO.md](TODO.md) remains the work ledger;
-[APP_FUNCTIONALITY.md](APP_FUNCTIONALITY.md) maps the implemented features.
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
+This is the current testing order. [TODO.md](TODO_HISTORY.md) remains the work ledger;
+[APP_FUNCTIONALITY.md](../../APP_FUNCTIONALITY.md) maps the implemented features.
 Unchecked acceptance items below need recorded evidence, even when a related unit test passes.
 
 ## On-demand automation update
 
-The current [eval guide](../evals/app/README.md) supersedes the older runner counts
+The current [eval guide](../../../evals/app/README.md) supersedes the older runner counts
 and $2 default below. The CLI now selects six types, deduplicates shared suites,
 isolates worker processes/databases, supports resume and reports exact evidence
 coverage. No schedule was added.
@@ -43,7 +47,7 @@ cost ledger. No scheduled runs are configured.
 
 Completed synthetic campaigns can now be exported using
 python -m scripts.app_eval.runner langfuse RUN_DIRECTORY. Use --dry-run first,
-and --verify for readback without further writes. See [LANGFUSE.md](LANGFUSE.md).
+and --verify for readback without further writes. See [LANGFUSE.md](../../LANGFUSE.md).
 This is explicit post-run export; CI, reports and ordinary tests do not send data.
 It preserves missing acceptance coverage and separate code/Sol verdicts.
 No model calls or cloud judges are triggered by the exporter itself.
@@ -59,7 +63,7 @@ The next priority is reliability across those features. The current findings
 include timestamp-equivalent Revert conflicts, intermittent note clearing,
 clarification continuity, memory contradictions and embedding-failure persistence,
 incomplete recommendation extraction, and task resolution missing flexible project
-relationships. See [the dated findings](../evals/app/FINDINGS.md) for reproduced,
+relationships. See [the dated findings](../../../evals/app/FINDINGS.md) for reproduced,
 intermittent, and component-only evidence; later single passes do not close them.
 
 The catalog contains 1,001 scenarios across 40 feature areas. That is authored
@@ -191,7 +195,7 @@ keep the independent-backup gap explicit.
 ## Execution and evidence
 
 Run from Linux/WSL with the locked repository dependencies and the dedicated
-localhost eval PostgreSQL instance (see [setup](../evals/app/README.md)):
+localhost eval PostgreSQL instance (see [setup](../../../evals/app/README.md)):
 
 ~~~sh
 .venv/bin/python -m scripts.app_eval.runner validate
@@ -223,6 +227,6 @@ https://developers.google.com/workspace/calendar/api/guides/performance#patch
 
 ## September 22 current full-run evidence
 
-The current available full-catalog run is `artifacts/app-evals/full-20260922-localpg-luna/`: 245 jobs, 233 passed, eight failed, four blocked after a retained provider-error retry. Its 1,001 acceptance classifications are 92 passed, six failed, 146 partial, 755 blocked and two component-failed. A separate corrected-oracle trial at `artifacts/app-evals/due-time-oracle-20260922/` passed the offset-aware 16:00 Chicago case that the original raw-string grader falsely failed. See [findings](../evals/app/FINDINGS.md) for failures, costs and limits. Eval self-tests pass (64, with two opt-in skips); frontend tests pass (136, one paused-Realtime skip) and its production build succeeds.
+The current available full-catalog run is `artifacts/app-evals/full-20260922-localpg-luna/`: 245 jobs, 233 passed, eight failed, four blocked after a retained provider-error retry. Its 1,001 acceptance classifications are 92 passed, six failed, 146 partial, 755 blocked and two component-failed. A separate corrected-oracle trial at `artifacts/app-evals/due-time-oracle-20260922/` passed the offset-aware 16:00 Chicago case that the original raw-string grader falsely failed. See [findings](../../../evals/app/FINDINGS.md) for failures, costs and limits. Eval self-tests pass (64, with two opt-in skips); frontend tests pass (136, one paused-Realtime skip) and its production build succeeds.
 
 Next product work remains EVAL-001 through EVAL-006 plus EVAL-007's missed After Yang extraction. The three connected smoke probes need dedicated test credentials/resources; actual phone, real GPT-Live/audio, and full restore/PITR evidence remain separate gates. No result in this run closes those gates.

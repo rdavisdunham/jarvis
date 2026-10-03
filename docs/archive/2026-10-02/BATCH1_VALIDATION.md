@@ -1,5 +1,9 @@
 # Daily workflow and reliability release
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 September 14, 2026.
 
 Existing tasks now open the same inline detail card from task lists, boards, timelines, calendar entries and linked records. Text saves on blur/Enter (Ctrl/Cmd+Enter for descriptions); Escape cancels a pending field. Selectors save immediately. Eri can read, change and close these cards, with revision conflicts retaining unsaved text. Task creation and other forms keep their explicit save behavior.

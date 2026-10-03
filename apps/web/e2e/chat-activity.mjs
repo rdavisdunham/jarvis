@@ -25,6 +25,36 @@ try{
  await card(first.id).getByRole("button",{name:"Revert",exact:true}).click();await expect(card(first.id).getByRole("button",{name:"Reverted",exact:true})).toBeDisabled();
  await page.reload();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Eridani",exact:true}).click();await expect(card(first.id)).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("Add a task to buy milk"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
  const notices=await page.evaluate(async()=>(await(await fetch("/api/v1/notifications")).json()).items);expect(notices.some(n=>n.category==="work_result")).toBe(false);
+
+ // Recovery uses the real encrypted inbox, listing and disposition paths. Only model-provider
+ // availability is stubbed; no provider call or external write is possible in this fixture.
+ await page.route("**/api/v1/voice/drafts/*/send", async route => {
+   const url=route.request().url().replace("/api/v1/voice/drafts/", "/api/v1/__test_voice_draft/");
+   const response=await route.fetch({url}); if(!response.ok()) console.error("Draft send failed", response.status(), await response.text()); await route.fulfill({response});
+ });
+ async function makeDraft(message) {
+   return page.evaluate(async ({conversation_id,message}) => {
+     const boot=await(await fetch("/api/v1/bootstrap")).json();
+     const response=await fetch("/api/v1/__test_voice_draft",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":boot.csrf},body:JSON.stringify({conversation_id,message})});
+     if(!response.ok)throw Error(await response.text());
+     window.dispatchEvent(new Event("eri-voice-drafts-changed"));
+     return response.json();
+   },{conversation_id:first.conversation_id,message});
+ }
+ await makeDraft("Bring the packing checklist tomorrow");
+ const recovered=page.getByRole("region",{name:"Unsent voice draft"});
+ await expect(recovered).toBeVisible();
+ await page.reload(); await page.getByRole("button",{name:"Open Eridani",exact:true}).click();
+ await expect(recovered).toBeVisible();
+ await recovered.getByRole("textbox").fill("Add a task to bring the packing checklist tomorrow");
+ await recovered.getByRole("button",{name:"Send",exact:true}).click();
+ await expect(recovered).toHaveCount(0);
+ const recoveredWork=await page.evaluate(async()=>(await(await fetch("/api/v1/work")).json()).items);
+ expect(recoveredWork.filter(w=>w.request==="Add a task to bring the packing checklist tomorrow")).toHaveLength(1);
+ await makeDraft("Actually never mind, I need to think about this");
+ await expect(recovered).toBeVisible();
+ await recovered.getByRole("button",{name:"Discard",exact:true}).click();
+ await expect(recovered).toHaveCount(0);
  await page.locator(".messages").evaluate(el=>{el.scrollTop=0;});mkdirSync((process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/chat-activity"),{recursive:true});await page.screenshot({path:(process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/chat-activity") + "/phone.png",animations:"disabled"});
  await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:(process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/chat-activity") + "/desktop.png",animations:"disabled"});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  if(errors.length)throw Error(errors.join("\n"));console.log("Chat activity acceptance passed: silent navigation, compact Edit/Revert, reverse completion order, anchored cards after another request and reload, no completion notifications.");

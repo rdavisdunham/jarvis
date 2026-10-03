@@ -57,14 +57,19 @@ The migration commands in CI run only against its disposable service database;
 never substitute a production connection. Unit fixtures and the browser script
 also create and remove their own named test databases.
 
-## Branch protection (manual, not yet applied)
+## Deployment gates (verified October 2, 2026)
 
-Creating the workflow does not enforce it. After one green run of all three jobs, apply a
-`main` ruleset requiring `Backend and migrations`, `Frontend and browser` and `Security
-audit`, blocking force-pushes and deletion. Railway's "wait for CI" is a separate
-deployment setting and must also be enabled on both services.
+GitHub ruleset `24354023` is active on `main`: the three named CI checks are
+required with strict up-to-date checks; force pushes and deletion are blocked.
+There is **no `pull_request` rule**. Required checks and PR-only changes are different
+policies; do not describe the current configuration as PR-only.
 
-Apply (repository admin only; review first):
+Railway deployment triggers for both `Eridani_Web` and `Eridani_Worker` have
+`checkSuites: true`, branch `main`. This is separate from GitHub branch rules.
+Readback is documented in [Batch A validation](BATCH_A_VALIDATION.md). Do not create
+a duplicate ruleset using the historical example below.
+
+Historical configuration example (already applied; for reference only):
 
 ```sh
 gh api --method POST repos/rdavisdunham/jarvis/rulesets --input - <<'JSON'

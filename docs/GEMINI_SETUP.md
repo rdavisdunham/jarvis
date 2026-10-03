@@ -45,7 +45,7 @@ Then try ordinary text requests and GPT-Live task delegation: find a known task,
 create a disposable task, edit its date, complete it, and open its page. Compare
 accuracy and latency with the OpenAI option. The real provider handshake and the first six-workflow/two-repeat acceptance
 run passed on September 13, 2026. See
-[the model comparison](BACKGROUND_MODEL_COMPARISON.md). Real-device voice and
+[the model comparison](archive/2026-10-02/BACKGROUND_MODEL_COMPARISON.md). Real-device voice and
 connected-service acceptance remain separate checks.
 
 ## Scope and implementation

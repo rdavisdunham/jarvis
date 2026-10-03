@@ -1,13 +1,14 @@
-"""Durable voice capture. Live owns the conversation; only its delegation (or close) creates work."""
+"""Durable voice capture. Live owns the conversation; only explicit delegation or sending a recovered draft creates work."""
 
 import re
+import hashlib
 from datetime import timedelta
 
 from sqlalchemy import or_, select, text
 
 from .agent_work import ACTIVE, enqueue, finish, stable_id
 from .db import session_scope
-from .domain import DomainError, advisory
+from .domain import DomainError, advisory, emit
 from .models import AgentWork, Job, VoiceInbox, now
 from .work_crypto import seal, unseal
 
@@ -82,29 +83,72 @@ def grouped(entries):
     return result
 
 
-# Close-time policy for user turns Live never delegated. The farewell itself and
-# chit-chat are dropped (they remain in conversation history); anything that reads
-# as an action becomes ONE request, so the backend can finish it or ask in Activity.
-CLOSING = re.compile(r"^\W*(?:(?:ok(?:ay)?|alright|great|cool|perfect|no|nope|yes|yeah|that'?s it|that'?s all(?: for now)?|"
-    r"that will be all|that'?ll be all|i'?m (?:done|good|all set)|all set|we'?re done|thanks?(?: you)?(?: so much| very much)?|"
-    r"thank you|cheers|bye(?: bye)?|goodbye|good night|see you|talk (?:to you )?later|stop|end voice|"
-    r"eri|eridani)\W*)+$", re.IGNORECASE)
-DISMISS = re.compile(r"\b(?:never ?mind|forget (?:it|that|about it)|scratch that|cancel that|don'?t (?:bother|worry about it))\b", re.IGNORECASE)
-ACTION = re.compile(r"\b(?:add|create|make|remind|schedule|reschedule|book|move|rename|delete|remove|archive|complete|finish|"
-    r"mark|set|change|update|cancel|note|remember|put|plan|assign|invite|log|save|write|draft|block|tag|file|"
-    r"turn on|turn off|enable|disable)\b", re.IGNORECASE)
+# A goodbye alone needs no recovery. Everything else remains a draft, never an action guess.
+CLOSING = re.compile(
+    r"^\W*(?:(?:ok(?:ay)?|alright|great|cool|perfect)\W+)?"
+    r"(?:(?:that'?s all(?: for now)?|that will be all|that'?ll be all|i'?m done|we'?re done|"
+    r"thanks?(?: you)?(?: so much| very much)?|thank you|cheers|bye(?: bye)?|goodbye|"
+    r"good night|see you|talk (?:to you )?later|end voice)\W*)+$", re.IGNORECASE)
 
 
 def undelegated(turns):
-    texts = [t["content"].strip() for t in turns if t["role"] == "user" and t["content"].strip()]
-    texts = [t for t in texts if not CLOSING.match(t)]
-    if not texts or DISMISS.search(texts[-1]) or not any(ACTION.search(t) for t in texts):
-        return ""
-    return "\n".join(texts)
+    """Preserve speech without guessing intent. Only standalone closing phrases are omitted."""
+    return "\n".join(t["content"].strip() for t in turns
+                     if t["role"] == "user" and t["content"].strip()
+                     and not CLOSING.fullmatch(t["content"].strip()))
+
+
+def list_drafts(db, owner, account, device):
+    rows = db.scalars(select(VoiceInbox).where(
+        VoiceInbox.owner_id == owner, VoiceInbox.account_id == account,
+        VoiceInbox.device_id == device, VoiceInbox.closed.is_(True),
+        VoiceInbox.expires_at > now()).order_by(VoiceInbox.last_input_at.desc()).limit(100))
+    items = []
+    for row in rows:
+        draft = unseal(row.content_ciphertext).get("draft")
+        if draft:
+            items.append({"id": row.id, "conversation_id": row.conversation_id,
+                          "message": draft["message"], "expires_at": row.expires_at.isoformat()})
+    return {"items": items}
+
+
+def resolve_draft(db, owner, account, device, identity, *, message=None):
+    """Same lock as capture/close; one durable disposition even after a lost HTTP response."""
+    advisory(db, "voice-inbox:" + identity)
+    row = db.get(VoiceInbox, identity, populate_existing=True)
+    if not row or (row.owner_id, row.account_id, row.device_id) != (owner, account, device):
+        raise DomainError("NOT_FOUND", "This voice draft was not found.", 404)
+    if row.expires_at <= now():
+        raise DomainError("DRAFT_EXPIRED", "This voice draft has expired.", 410)
+    data = unseal(row.content_ciphertext)
+    if "resolution" in data:
+        if (message is not None and data["resolution"]["status"] == "sent"
+                and data.get("sent_hash") != hashlib.sha256(message.strip().encode()).hexdigest()):
+            raise DomainError("DRAFT_ALREADY_SENT", "This draft was already sent. Open Activity to edit that request.", 409)
+        return data["resolution"]
+    draft = data.get("draft")
+    if not row.closed or not draft:
+        raise DomainError("NOT_FOUND", "This voice draft was not found.", 404)
+    if message is None:
+        result = {"status": "discarded"}
+    else:
+        from .config import require_external_services
+        require_external_services()
+        message = message.strip()
+        if not message:
+            raise DomainError("INVALID_ARGUMENT", "Write a request before sending it.")
+        work = enqueue(db, owner, account, device, row.conversation_id,
+                       stable_id("voice-draft:" + row.id), message,
+                       context=draft["context"])
+        result = {"status": "sent", "work_id": work.id, "conversation_id": row.conversation_id}
+    row.content_ciphertext = seal({"entries": [], "resolution": result,
+        **({"sent_hash": hashlib.sha256(message.encode()).hexdigest()} if message is not None else {})})
+    emit(db, owner, "voice.draft.changed", row.id)
+    return result
 
 
 def claim_voice(db, row, *, close=False):
-    """Claim every unclaimed user turn as ONE request. Called only on Live delegation or close."""
+    """Delegate explicitly requested work, or retain unclaimed speech as a draft on close."""
     advisory(db, "voice-inbox:" + row.id)
     db.flush()
     db.refresh(row)
@@ -120,9 +164,15 @@ def claim_voice(db, row, *, close=False):
     else:
         message = "\n".join(t["content"].strip() for t in turns if t["role"] == "user" and t["content"].strip())
     context = history + [t for t in turns if t["role"] == "assistant"]
-    if close and message:
-        context.append({"role": "system", "content": "Voice ended before Live delegated the request below. "
-            "Act only on clear explicit requests; use work_needs_input for anything incomplete."})
+    if close:
+        row.closed = True
+        row.cursor = 0
+        row.expires_at = now() + timedelta(hours=24)
+        row.content_ciphertext = seal({"entries": [], **(
+            {"draft": {"message": message, "context": context[-20:]}} if message else {})})
+        if message:
+            emit(db, row.owner_id, "voice.draft.changed", row.id)
+        return None
     result = None
     if message:
         result = enqueue(
@@ -139,11 +189,6 @@ def claim_voice(db, row, *, close=False):
     # A delegated turn is always a new request. Pending questions reach the backend as context,
     # and it answers one with work_answer only when this turn actually is that answer.
     row.cursor = len(entries)
-    if close:
-        row.closed = True
-        row.content_ciphertext = seal({"entries": []})
-        row.cursor = 0
-        return result
     # Bounded, encrypted context; unclaimed input is never removed.
     if row.cursor > 500:
         entries = entries[-100:]

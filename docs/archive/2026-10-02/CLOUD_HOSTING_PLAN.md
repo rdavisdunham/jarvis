@@ -1,5 +1,9 @@
 # Eridani cloud hosting plan
 
+> Archived October 2, 2026. Historical context and evidence; status and
+> instructions below describe that period. Use the [active TODO](../../TODO.md)
+> and [web v1 PRD](../../ERIDANI_WEB_V1_PRD.md) for current priorities.
+
 Deployment update (September 16): the actual project is colocated in Railway us-west2. The original Virginia suggestion below was an initial planning candidate.
 
 ## Recommendation
@@ -10,7 +14,7 @@ Allow **$15–25 per month for this initial hosting arrangement**, excluding AI 
 
 The preferred alternative is **Railway for the app and Neon Launch for PostgreSQL**, around **$30–40 per month** under the small-workload assumptions. Choose that arrangement if reducing database maintenance is worth about $15–20 more per month, or if Railway's image and recovery rehearsal fails. Supabase is also a sound option, especially if its Auth or Storage products become useful, but it is not necessary for the existing app.
 
-The user has accepted the migration direction and authorized code preparation. See the [migration runbook](CLOUD_MIGRATION.md) for prepared configuration, local verification and the owner setup checklist. No infrastructure has been provisioned, production settings changed or live data migrated. Prices and documentation were checked on September 14, 2026. The baseline is one owner and a small number of invited users, with hosted AI models and background work available all day.
+The user has accepted the migration direction and authorized code preparation. See the [migration runbook](../../CLOUD_MIGRATION.md) for prepared configuration, local verification and the owner setup checklist. No infrastructure has been provisioned, production settings changed or live data migrated. Prices and documentation were checked on September 14, 2026. The baseline is one owner and a small number of invited users, with hosted AI models and background work available all day.
 
 ## Actual workload and implications
 
