@@ -1,3 +1,5 @@
+import { TypeMap } from "./TypeMap";
+import { updateType } from "./field-library";
 import { api } from "./api";
 import { useState, useEffect } from "react";
 import { Check, History, Link2, Plus, X } from "lucide-react";
@@ -11,15 +13,16 @@ import "./details.css";
 const sentence = (value: string) => { const text = describe(value); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirtyChange}:{onDirtyChange?:(dirty:boolean)=>void;initialProposal?:Proposal;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
-  const [draft,setDraft]=useState(()=>structuredClone(schema));const [selected,setSelected]=useState(schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error}=useStructureActions();
+  const [draft,setDraft]=useState(()=>structuredClone(schema));const [selected,setSelected]=useState(schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error,setError}=useStructureActions();
+  const [visual,setVisual]=useState(true),[fieldId,setFieldId]=useState("");
   const [pane,setPane]=useState<"type"|"relationships"|"history">("type");
   const [history,setHistory]=useState<Proposal[]>([]);
   useEffect(()=>{void api<{items:Proposal[]}>("/structure/history/applied").then(r=>setHistory(r.items));},[]);
   const type=draft.types.find(t=>t.id===selected);const [statusMappings,setStatusMappings]=useState<Record<string,Record<string,string>>>({});
   useEffect(()=>{onDirtyChange?.(busy||JSON.stringify(draft)!==JSON.stringify(schema)||Object.keys(statusMappings).length>0);},[draft,schema,busy,statusMappings,onDirtyChange]);
-  const update=(patch:Partial<SchemaType>)=>{setDraft({...draft,types:draft.types.map(t=>t.id===selected?{...t,...patch}:t)});setProposal(null);};
-  const addType=()=>{const t:SchemaType={id:crypto.randomUUID(),name:"New type",plural:"New types",description:"",capabilities:[],parent_types:draft.types.map(t=>t.id),fields:[],statuses:[],archived:false};setDraft({...draft,types:[...draft.types,t]});setSelected(t.id);setPane("type");setProposal(null);};
-  const preview=async()=>setProposal(await run<Proposal>("structure.preview",{expected_revision:schema.revision,definition:{types:draft.types,relationships:draft.relationships},status_mappings:statusMappings}));
+  const update=(patch:Partial<SchemaType>)=>{const added=patch.fields?.find(f=>!type?.fields.some(old=>old.id===f.id));setDraft(updateType(draft,selected,patch));if(added)setFieldId(added.id);setProposal(null);};
+  const addType=(parent?:string)=>{const t:SchemaType={id:crypto.randomUUID(),name:"New type",plural:"New types",description:"",capabilities:[],parent_types:draft.types.map(t=>t.id),fields:[],statuses:[],archived:false};setDraft({...draft,types:[...draft.types,t],type_layout:[...(draft.type_layout??[]),{type_id:t.id,parent_type_id:parent??null}]});setFieldId("");setSelected(t.id);setPane("type");setProposal(null);};
+  const preview=async()=>setProposal(await run<Proposal>("structure.preview",{expected_revision:schema.revision,definition:{types:draft.types,relationships:draft.relationships,field_library:draft.field_library,type_layout:draft.type_layout},status_mappings:statusMappings}));
   const apply=async()=>{await run("structure.apply",{proposal_id:proposal!.id,expected_revision:proposal!.schema_revision});await onApplied();};
   const relation=(id:string,patch:Partial<SchemaRelation>)=>{setDraft({...draft,relationships:draft.relationships.map(r=>r.id===id?{...r,...patch}:r)});setProposal(null);};
   const typeOptions=draft.types.map(t=>({id:t.id,name:t.name}));
@@ -36,16 +39,18 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirt
       </section></div>
       <footer className="schema-dialog-foot"><button className="btn" onClick={()=>setProposal(null)}>Keep editing</button><button className="btn btn-primary" disabled={busy||!!proposal.impact.blocking_count} onClick={()=>void apply().catch(()=>{})}><Check size={17}/>Apply structure</button></footer>
     </>:<>
-      <div className="schema-dialog-body">
+      <div className="schema-view-switch"><button className="btn btn-sm" aria-pressed={visual} onClick={()=>setVisual(true)}>Visual tree</button><button className="btn btn-sm" aria-pressed={!visual} onClick={()=>setVisual(false)}>Advanced</button><button className="btn btn-sm" onClick={()=>setPane("relationships")}>Extra relationships</button>{!!history.length&&<button className="btn btn-sm" onClick={()=>setPane("history")}>Versions</button>}</div>
+      <div className={"schema-dialog-body"+(visual?" visual":"")}>
+        {visual?<TypeMap schema={draft} selected={selected} fieldId={fieldId} onSelect={(id,field="")=>{setSelected(id);setFieldId(field);setPane("type");}} onChange={s=>{setDraft(s);setProposal(null);}} onAdd={addType} onError={setError}/>:
         <nav className="schema-rail" aria-label="Record types"><span className="schema-rail-label">Record types</span>
           {draft.types.map(t=><button key={t.id} aria-current={pane==="type"&&selected===t.id} onClick={()=>{setSelected(t.id);setPane("type");}}>{t.plural}{t.archived&&<span className="chip">Archived</span>}</button>)}
-          <button className="schema-rail-add" onClick={addType}><Plus size={15}/>New type</button>
+          <button className="schema-rail-add" onClick={()=>addType()}><Plus size={15}/>New type</button>
           <div className="schema-rail-extra">
             <button aria-current={pane==="relationships"} onClick={()=>setPane("relationships")}><Link2 size={15}/>Relationships</button>
             {!!history.length&&<button aria-current={pane==="history"} onClick={()=>setPane("history")}><History size={15}/>Previous versions</button>}
           </div>
-        </nav>
-        {pane==="type"&&type&&<TypeEditor type={type} schema={draft} original={schema} update={update} mappings={statusMappings[type.id]??{}} onMappings={m=>{setStatusMappings({...statusMappings,[type.id]:m});setProposal(null);}}/>}
+        </nav>}
+        {pane==="type"&&type&&<TypeEditor compact={visual} focusedField={visual?fieldId:""} type={type} schema={draft} original={schema} update={update} mappings={statusMappings[type.id]??{}} onMappings={m=>{setStatusMappings({...statusMappings,[type.id]:m});setProposal(null);}}/>}
         {pane==="relationships"&&<div className="schema-main">
           <div className="schema-block-head"><h3>Additional relationships</h3><span className="detail-count">{draft.relationships.length}</span><button className="btn btn-soft btn-sm" onClick={()=>{setDraft({...draft,relationships:[...draft.relationships,{id:crypto.randomUUID(),name:"",description:"",source_types:[],target_types:[],cardinality:"many_to_many",archived:false}]});setProposal(null);}}><Plus size={15}/>Add relationship</button></div>
           <p className="schema-block-hint">Links between records beyond their main home, such as a project that serves a goal.</p>
@@ -55,6 +60,7 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirt
             <label className="field"><span className="field-label-text">Name</span><input value={r.name} onChange={e=>relation(r.id,{name:e.target.value})}/></label>
             <label className="field"><span className="field-label-text">Description <Required/></span><textarea rows={2} required value={r.description} onChange={e=>relation(r.id,{description:e.target.value})}/></label>
             <div className="schema-pair"><MultiSelect label="From types" values={r.source_types} options={typeOptions} onChange={v=>relation(r.id,{source_types:v})}/><MultiSelect label="To types" values={r.target_types} options={typeOptions} onChange={v=>relation(r.id,{target_types:v})}/></div>
+            <label className="field"><span className="field-label-text">Behavior</span><select aria-label="Relationship behavior" value={r.behavior??"related"} onChange={e=>relation(r.id,{behavior:e.target.value as "related"|"blocks"})}><option value="related">Extra link</option><option value="blocks">Advisory blocker</option></select></label>
             <label className="field"><span className="field-label-text">Connections</span><select value={r.cardinality} onChange={e=>relation(r.id,{cardinality:e.target.value})}>{["one_to_one","one_to_many","many_to_one","many_to_many"].map(v=><option key={v} value={v}>{sentence(v)}</option>)}</select></label>
             <div className="schema-card-foot"><label className="schema-check"><input type="checkbox" checked={r.archived} onChange={e=>relation(r.id,{archived:e.target.checked})}/>Archived</label></div>
           </fieldset>)}

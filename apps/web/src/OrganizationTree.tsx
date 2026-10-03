@@ -17,6 +17,7 @@ export function OrganizationTree({items,visible,schema,disabled,onOpen,onBrowse,
   onMove:(r:CustomRecord,changes:Record<string,unknown>)=>Promise<void>;
 }) {
   const [moving,setMoving]=useState<string|null>(null);
+  const [closed,setClosed]=useState<Set<string>>(new Set());
   const included=new Set(visible.flatMap(r=>[r.id,...r.home.map(h=>h.id)]));
   const rows=ordered(items.filter(r=>included.has(r.id)));
   const move=(r:CustomRecord,parent:string|null,before:string|null)=>{
@@ -50,7 +51,7 @@ export function OrganizationTree({items,visible,schema,disabled,onOpen,onBrowse,
           <button className="btn btn-sm" disabled={locked||index>=allSiblings.length-1} onClick={()=>{move(row,row.parent_id,allSiblings[index+2]?.id??null);close();}}><ArrowDown size={15}/>Move down</button></div>
         </>}</Popover>}
       </div>;
-      return <li key={row.id}>{descendants.length?<details open><summary>{content}</summary>{branch(row.id,depth+1)}</details>:content}</li>;
+      return <li key={row.id}>{descendants.length?<details open={!closed.has(row.id)} onToggle={e=>{const open=e.currentTarget.open;setClosed(old=>{if(old.has(row.id)===!open)return old;const next=new Set(old);if(open)next.delete(row.id);else next.add(row.id);return next;});}}><summary>{content}</summary>{branch(row.id,depth+1)}</details>:content}</li>;
     })}</ul>;
   };
   return <section className="organization-tree" aria-label="Organization tree"><p className="footnote">Each record has one main home. Drop above a record to reorder, onto its center to nest, or use Move. Additional links connect related records without moving them.</p>{branch(null)}</section>;
