@@ -27,8 +27,9 @@ def upgrade(definition):
                 identity = "field_" + sha256((signature + ("" if f.get("binding") else ":" + t["id"] + ":" + f["id"])).encode()).hexdigest()[:24]
                 shared = {**deepcopy(f), "id": identity, "library_id": None,
                           "inherit": False, "visible": True, "archived": False}
-                library.append(shared)
-                by_id[identity] = shared
+                if identity not in by_id:
+                    library.append(shared)
+                    by_id[identity] = shared
                 matches[signature] = identity
             f["library_id"] = identity
     result["field_library"] = library

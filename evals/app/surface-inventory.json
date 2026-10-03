@@ -194,11 +194,19 @@
       "feature": "quick_capture"
     },
     {
+      "name": "record.contents",
+      "feature": "custom_records"
+    },
+    {
       "name": "record.create",
       "feature": "custom_records"
     },
     {
       "name": "record.link",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record.restore_contents",
       "feature": "custom_records"
     },
     {
@@ -406,6 +414,14 @@
     {
       "name": "quicklist_list",
       "feature": "quick_capture"
+    },
+    {
+      "name": "record_browse",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record_contents_preview",
+      "feature": "custom_records"
     },
     {
       "name": "record_get",
@@ -1158,10 +1174,24 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/structure/browse",
+      "handler": "browse",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/structure/by-core/{kind}/{identity}",
       "handler": "by_core",
       "source": "apps/api/jarvis/structure_routes.py",
       "feature": "custom_records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/structure/contents/preview",
+      "handler": "contents_preview",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
     },
     {
       "method": "GET",

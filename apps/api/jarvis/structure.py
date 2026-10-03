@@ -197,6 +197,12 @@ def default_definition():
             "cardinality": "many_to_many",
         },
     ]
+    relationships.append({
+        "id":"blocks","name":"Blocks","description":"An unfinished prerequisite. Advisory: explicit progress is allowed.",
+        "source_types":[t["id"] for t in types if "work" in t["capabilities"]],
+        "target_types":[t["id"] for t in types if "work" in t["capabilities"]],
+        "cardinality":"many_to_many","behavior":"blocks",
+    })
     from .field_library import upgrade
     return upgrade(Definition(types=types, relationships=relationships).model_dump(mode="json"))
 
@@ -461,6 +467,8 @@ def data(db, row, schema=None):
                     values[f["id"]] = candidate
                     inherited[f["id"]] = parent.id
                     break
+    from .record_contents import blocking
+    result["blockers"] = blocking(db, row, schema)
     result.update(
         values=values,
         inherited=inherited,
@@ -647,6 +655,19 @@ def preview(db, owner, args, command_id):
             or db.get(StructureRecord, link.target_id).type_id not in r["target_types"]
         ):
             issues.append({"link_id": link.id, "message": "Preserve or archive relationships still in use."})
+    from types import SimpleNamespace
+    from .record_contents import validate_block
+    proposed = SimpleNamespace(definition=definition)
+    for relation in definition["relationships"]:
+        if relation.get("behavior") == "blocks" and not relation["archived"]:
+            for link in db.scalars(select(StructureLink).where(
+                StructureLink.owner_id == owner, StructureLink.relationship_id == relation["id"])):
+                try:
+                    validate_block(db, owner, proposed,
+                        owned(db, StructureRecord, link.source_id, owner),
+                        owned(db, StructureRecord, link.target_id, owner))
+                except DomainError as exc:
+                    issues.append({"link_id":link.id,"message":exc.message})
     impact = {
         "affected_count": len(affected),
         "affected_records": affected[:100],
@@ -929,6 +950,9 @@ def mutate(db, owner, tool, args, command_id):
         existing = db.scalar(
             q.where(StructureLink.source_id == source.id, StructureLink.target_id == target.id)
         )
+        if not args.remove and relation.get("behavior") == "blocks":
+            from .record_contents import validate_block
+            validate_block(db, owner, schema, source, target)
         if args.remove:
             if existing:
                 db.delete(existing)

@@ -70,6 +70,7 @@ class RecordType(Input):
 
 
 class Relationship(Input):
+    behavior: Literal["related", "blocks"] = "related"
     id: Key
     name: str = Field(min_length=1, max_length=120)
     description: Description
@@ -241,7 +242,25 @@ class SchemaRestore(Input):
     expected_revision: int = Field(ge=1)
 
 
+class ContentsPlan(Input):
+    record_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=1)
+    schema_revision: int = Field(ge=1)
+    operation: Literal["move", "archive"]
+    mode: Literal["subtree", "item"] = "subtree"
+    parent_id: str | None = None
+
+
+class ContentsApply(ContentsPlan):
+    preview_hash: str = Field(min_length=64, max_length=64)
+
+
+class ContentsRestore(Input):
+    source_command_id: str = Field(min_length=1, max_length=100)
+
+
 COMMANDS = {
+    "record.contents": ContentsApply, "record.restore_contents": ContentsRestore,
     "structure.preview": Preview,
     "structure.apply": Apply,
     "structure.restore": SchemaRestore,

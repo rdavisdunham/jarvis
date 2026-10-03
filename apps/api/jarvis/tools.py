@@ -439,6 +439,20 @@ READ_TOOLS.update({
     "ui_records":{"description":"Show the Organization tree, a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["tree","list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
     "routing_state":{"description":"Read separate organization rules, evidence, field understanding questions and weekly review. Ask at most one review question at a time; after three offer to stop. Never answer or activate a learned rule without the user. Manual review can resume any time.","parameters":{"type":"object","properties":{},"additionalProperties":False}}
 })
+from .record_contents import ContentsPlan
+READ_TOOLS["record_contents_preview"] = {
+    "description":"Preview moving or locally archiving a container. mode=subtree carries contents; mode=item promotes direct children to its old home. Read counts, conflicts and source effects, then use record_contents on a clear user request. This does not change records.",
+    "parameters":ContentsPlan.model_json_schema()}
+READ_TOOLS["record_browse"] = {
+    "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes.",
+    "parameters":{"type":"object","properties":{
+        "parent_id":{"type":["string","null"],"format":"uuid"},
+        "scope":{"type":"string","enum":["children","subtree","related"]},
+        "section":{"type":"string","enum":["all","groups","work","content"]},
+        "archived":{"type":"boolean"},"status":{"type":"string"},
+        "query":{"type":"string","maxLength":300},"limit":{"type":"integer","minimum":1,"maximum":100},
+        "offset":{"type":"integer","minimum":0,"maximum":1000000}},
+        "additionalProperties":False}}
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("structure.","record.","routing.","notelist.")))
 VOICE_MUTATIONS.update({"note.file", "note.organize"})
 READ_TOOLS["note_lists"] = {"description": "Read saved note lists, their descriptions, filters, IDs and counts. List contents use stored fields, not semantic guesses.", "parameters": {"type": "object", "properties": {}, "additionalProperties": False}}
@@ -624,6 +638,10 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
+    if name in {"record_browse","record_contents_preview"}:
+        from .record_contents import browse, plan, ContentsPlan
+        with session_scope() as db:
+            return browse(db,owner,**arguments) if name=="record_browse" else plan(db,owner,ContentsPlan.model_validate(arguments))
     if name in {"structure_schema", "record_list", "record_get"}:
         from . import structure
         from .structure_models import StructureRecord
@@ -631,7 +649,9 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             if name == "structure_schema": return structure.schema_data(db,owner)
             if name == "record_list": return structure.records(db,owner,**{"detail":"compact",**arguments})
             structure.ensure(db,owner)
-            return structure.data(db,owned(db,StructureRecord,arguments["record_id"],owner))
+            row=owned(db,StructureRecord,arguments["record_id"],owner)
+            from .record_contents import summary
+            return {**structure.data(db,row), "contents":summary(db,row,structure.ensure(db,owner))}
     if name == "ui_state":
         context = get_context(owner, device)
         return {"status": "available" if context else "unavailable", "screen": context}

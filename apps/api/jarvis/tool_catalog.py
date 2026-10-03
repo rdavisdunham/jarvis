@@ -3,6 +3,7 @@
 import copy
 
 GROUPS = {
+    "contents": ("Browse actual homes, inspect child progress and advisory blockers, move with or without contents, or locally archive and restore a subtree. Preview contents first; remote source records are never silently deleted.", ["structure_schema","record_get","record_browse","record_contents_preview","record_contents","record_restore_contents","work_revert"]),
     "quick_capture": ("Quick checklists: capture only requested commitments, add/check/reorder items, read what remains. Sections are labels, not learned classifications. Reminders opt in; expired deadlines retain unfinished items. Promotion keeps IDs/history as a normal parent task and subtasks, optionally in an existing project.", ["quicklist_list","quicklist_get","quicklist_create","quicklist_item","quicklist_promote","task_update"]),
     "setup": ("Skippable personal onboarding with name, timezone, goals and editable organization defaults. Save progress; clarify group descriptions/examples; show preview before separate confirmed schema apply. Existing users resume in Settings. Do not treat examples as tasks or silence as rule approval.", ["onboarding_state","onboarding_save","onboarding_preview","structure_schema","structure_apply","routing_state","routing_understand"]),
     "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
@@ -247,7 +248,9 @@ DESCRIPTIONS = {
     "structure_apply": "Apply the exact reviewed proposal only after the user explicitly confirms it in a later turn. Never use this for an unreviewed schema change. A stale proposal needs a new preview.",
     "record_create": "Create a record under a current type definition. Read structure_schema for field IDs and schema_revision. Use a main parent for inherited home and separate named links for other associations. No approval step for ordinary record creation.",
     "record_update": "Edit only requested fields of a current record. Copy schema_revision and expected_revision from a fresh lookup. Explicit null clears an optional value (null body clears it); omission preserves it. Title cannot be null; actionable types always need a status. Main home controls containment and inherited classification; links do not move records. Moving home never changes a connected provider project. body syncs a linked description; local_notes never syncs. move_before_id orders siblings; null appends.",
-    "record_link": "Add or remove a named relationship allowed by the schema. Additional links do not change the main home. Validate source/target IDs and use the source's current revision.",
+    "record_contents":"Apply the exact preview_hash from record_contents_preview with unchanged arguments. Carry contents by default; item mode promotes direct children to the old home. Archive is recoverable local removal, never provider deletion. Stale contents require a new preview. Never claim external operations are atomic.",
+    "record_restore_contents":"Restore a grouped contents operation only on an explicit Revert request, using its source command ID. Prefer work_revert with the action card ID.",
+    "record_link": "Blocks relationships are directed and advisory. Reject cycles; unfinished blockers inform recommendations but do not prevent explicit progress. Add or remove a named relationship allowed by the schema. Additional links do not change the main home. Validate source/target IDs and use the source's current revision.",
     "planning_commit": "Save a planning_suggest proposal only when the owner requested scheduling. Rechecks current task revisions and fresh availability, then saves all local blocks atomically; conflicts save none. Copy the short plan_token reference exactly from planning_suggest. Reusing it cannot duplicate blocks, even with a new command ID. Does not publish to Google or change task deadlines/alerts. Expired/conflicting plans need a new proposal.",
     "task_list": "Find TASK records with structured filters; authored notes use note_search/note_read. "
     "due_from/due_through are inclusive. "
@@ -256,7 +259,7 @@ DESCRIPTIONS = {
     "For the same edit on every match use task_selection_update, including unseen pages. "
     "For pagination retain selection_id and next_offset; detail=full on a fresh query retrieves full stored fields; saved selections are compact. "
     "An incomplete selection cannot be applied; narrow the filters. Never infer completion counts. "
-    "Each task includes record_id and home: its main-home chain [{id,title,type_id}] from the flexible structure (project, client, area...). Legacy project/space/area fields may be blank when home is set; trust home. home_id filters to tasks anywhere below a structure record.",
+    "Each task includes record_id and home: its main-home chain [{id,title,type_id}] from the flexible structure (project, client, area...). Legacy project/space/area fields may be blank when home is set; trust home. home_id filters to tasks anywhere below a structure record. Unfinished blockers are advisory: consider them when recommending work, explain them before starting blocked work, and permit explicit progress without completing prerequisites.",
     "task_get": "Read one task's current data and revision by its exact returned UUID. "
     "If MALFORMED_ID, copy the reference from a fresh lookup; it does not mean the task was deleted. "
     "Includes record_id and home (main-home chain in the flexible structure).",

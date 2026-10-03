@@ -75,7 +75,7 @@ def definitions(scopes):
     if not kinds and any(s in scopes for s in ("records:read", "schema:read")):
         add("changes_list", "Poll permitted custom record/schema changes after a saved cursor. Persist next_cursor and follow has_more.", schema({"after":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":200}}, []))
     from .tools import READ_TOOLS
-    for name, scope in (("structure_schema","schema:read"),("record_list","records:read"),("record_get","records:read"),("record_search","records:read")):
+    for name, scope in (("structure_schema","schema:read"),("record_list","records:read"),("record_get","records:read"),("record_search","records:read"),("record_browse","records:read"),("record_contents_preview","records:read")):
         if scope in scopes:
             definition=READ_TOOLS[name]
             add(name,definition["description"],definition["parameters"])

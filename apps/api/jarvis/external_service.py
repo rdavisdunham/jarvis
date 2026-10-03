@@ -472,7 +472,7 @@ def changes(db, bot, after=0, limit=100):
     }
 
 
-CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search"}
+CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview"}
 
 
 def withheld(scopes):
@@ -490,6 +490,9 @@ def custom_read(db, bot, name, arguments):
         from .search_service import search as semantic_records
 
         result = semantic_records(bot.owner_id, bot.account_id, arguments, track=False, withhold=withheld(bot.scopes))
+    elif name in {"record_browse","record_contents_preview"}:
+        from .record_contents import browse,plan,ContentsPlan
+        result=browse(db,bot.owner_id,**arguments) if name=="record_browse" else plan(db,bot.owner_id,ContentsPlan.model_validate(arguments))
     elif name == "record_list":
         result = structure.records(db, bot.owner_id, **arguments)
     else:
