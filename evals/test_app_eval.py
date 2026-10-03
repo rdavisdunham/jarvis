@@ -15,7 +15,7 @@ from scripts.app_eval.model_runner import PROBES, field_matches, grade
 
 def test_every_feature_has_25_to_50_distinct_evidence_based_cases():
     result = catalog.validate()
-    assert result["features"] == 40 and result["cases"] == 1001
+    assert result["features"] == 42 and result["cases"] == 1051
 
 
 def test_all_executable_case_ids_exist_in_catalog():
@@ -116,7 +116,7 @@ def test_clarification_requires_real_queue_state_and_preserves_data():
 
 def test_contract_pass_does_not_claim_acceptance_pass():
     report = catalog.report([{"case_id": "task_capture.01", "layer": "command_contract", "status": "passed"}])
-    assert report["summary"] == {"not_run": 1001}
+    assert report["summary"] == {"not_run": 1051}
 
 
 def test_oracle_persona_is_not_a_model_prompt():

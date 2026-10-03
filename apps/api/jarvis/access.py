@@ -55,7 +55,7 @@ def authorize_execution(db, owner, *, write=False):
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
     return row.account_id, permission
 
-PERSONAL_TOOLS = ("memory.", "settings.", "calendar.", "linear.")
+PERSONAL_TOOLS = ("onboarding.", "memory.", "settings.", "calendar.", "linear.")
 PERSONAL_PATHS = (
     "/api/v1/memory",
     "/api/v1/sources",
@@ -199,7 +199,7 @@ def tool_access(db, owner, name):
         check_tool(db, owner, name)
     if not db.get(SharedWorkspace, owner):
         return
-    if name.startswith(("memory_", "linear_", "settings_")) or name in {
+    if name.startswith(("onboarding_", "memory_", "linear_", "settings_")) or name in {
         "calendar_event_read",
         "calendar_connection",
         "calendar_sync",

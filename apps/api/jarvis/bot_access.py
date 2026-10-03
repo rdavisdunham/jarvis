@@ -28,6 +28,7 @@ SCOPES = {
     "work:run": "Ask Eri to work using this key's permitted records and tools",
 }
 COMMAND_SCOPES = {
+    "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
     **{f"record.{op}": "records:write" for op in ("create", "update", "link")},
     **{f"task.{op}": "tasks:write" for op in ("create", "update", "complete", "reopen")},
@@ -39,6 +40,7 @@ COMMAND_SCOPES = {
     **{f"note.{op}": "notes:write" for op in ("create", "update", "append", "replace")},
 }
 READ_SCOPES = {
+    "quicklist_list":"tasks:read", "quicklist_get":"tasks:read",
     "structure_schema": "schema:read",
     "record_list": "records:read",
     "record_search": "records:read",

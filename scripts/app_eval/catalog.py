@@ -114,8 +114,8 @@ body{font:16px/1.5 system-ui;background:#111820;color:#dfebe9;max-width:1050px;m
 h1,h2{color:#b9e0d5}h2{margin-top:40px}small{color:#9cabba;font-size:12px}
 input{box-sizing:border-box;width:100%;padding:14px;background:#233039;border:1px solid #58766b;color:white;border-radius:12px;position:sticky;top:8px}
 details{padding:12px;border-bottom:1px solid #34424b}summary{cursor:pointer}code{color:#b9cafa}li{margin:4px 0}
-</style><h1>Eridani · 1,001 evaluation scenarios</h1>
-<p>40 feature areas; 25–26 cases each. Synthetic Rowan corpus. These are acceptance specifications; unexecuted cases are not passes. Automated component evidence is reported separately.</p>
+</style><h1>Eridani · evaluation scenarios</h1>
+<p>25–50 cases per feature area. Synthetic Rowan corpus. These are acceptance specifications; unexecuted cases are not passes. Automated component evidence is reported separately.</p>
 <input aria-label="Filter scenarios" placeholder="Search a feature, case ID, or scenario…" id="search">
 """
         + "".join(rows)

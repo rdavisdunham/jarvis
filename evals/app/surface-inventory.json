@@ -134,6 +134,14 @@
       "feature": "notifications"
     },
     {
+      "name": "onboarding.preview",
+      "feature": "onboarding"
+    },
+    {
+      "name": "onboarding.save",
+      "feature": "onboarding"
+    },
+    {
       "name": "planning.annotate",
       "feature": "planning"
     },
@@ -172,6 +180,18 @@
     {
       "name": "project.update",
       "feature": "organization"
+    },
+    {
+      "name": "quicklist.create",
+      "feature": "quick_capture"
+    },
+    {
+      "name": "quicklist.item",
+      "feature": "quick_capture"
+    },
+    {
+      "name": "quicklist.promote",
+      "feature": "quick_capture"
     },
     {
       "name": "record.create",
@@ -356,6 +376,10 @@
       "feature": "notifications"
     },
     {
+      "name": "onboarding_state",
+      "feature": "onboarding"
+    },
+    {
       "name": "organization_list",
       "feature": "organization"
     },
@@ -374,6 +398,14 @@
     {
       "name": "project_list",
       "feature": "organization"
+    },
+    {
+      "name": "quicklist_get",
+      "feature": "quick_capture"
+    },
+    {
+      "name": "quicklist_list",
+      "feature": "quick_capture"
     },
     {
       "name": "record_get",
@@ -993,6 +1025,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/onboarding",
+      "handler": "onboarding",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/organization",
       "handler": "organization",
       "source": "apps/api/jarvis/api.py",
@@ -1025,6 +1064,20 @@
       "handler": "push",
       "source": "apps/api/jarvis/api.py",
       "feature": "notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/quick-lists",
+      "handler": "quick_lists",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "quick_capture"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/quick-lists/{list_id}",
+      "handler": "quick_list",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "quick_capture"
     },
     {
       "method": "GET",

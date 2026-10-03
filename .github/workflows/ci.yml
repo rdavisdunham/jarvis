@@ -137,6 +137,7 @@ jobs:
           name: browser-failure-artifacts
           path: |
             artifacts/batch-b/
+            artifacts/batch-c/
             artifacts/custom-planner/
             artifacts/chat-activity/
             artifacts/semantic-search/

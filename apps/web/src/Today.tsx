@@ -28,7 +28,7 @@ type Props = {
   onNavigate: (target: "tasks-today" | "inbox" | "calendar" | "notes") => void;
 };
 
-const isOpen = (t: Task) => !t.archived && !t.is_template && !["completed", "cancelled"].includes(t.status);
+const isOpen = (t: Task) => !t.archived && !t.quick_list_parent_id && !t.is_template && !["completed", "cancelled"].includes(t.status);
 const eventKinds = new Set(["event", "google", "block"]);
 
 function localParts(zone: string, date = new Date()) {

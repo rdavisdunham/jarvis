@@ -164,11 +164,11 @@ export function SharingSettings() {
       </SettingsGroup>
       {inviteId && <SettingsGroup className="invitation-card" title="Your invitation" description={"Signed in as " + (data?.email ?? data?.name ?? "") + "."}>
         {inviteError ? <><p role="alert" className="error-banner">{inviteError}</p><div className="setting-actions"><button className="btn" onClick={() => void startGoogle("login").catch(e => setInviteError(e.message))}>Use another Google account</button></div></> : focusedInvite ? <>
-          <div className="settings-item"><div className="settings-item-main"><strong className="settings-item-title">{focusedInvite.workspace}</strong><span className="settings-item-meta"><span>{focusedInvite.email}</span><span className="chip">{humanize(focusedInvite.role)}</span></span></div>
+          <div className="settings-item"><div className="settings-item-main"><strong className="settings-item-title">{focusedInvite.workspace}</strong><p>{focusedInvite.workspace_id?`Join only ${focusedInvite.workspace} as ${focusedInvite.role}. Your Personal records stay separate.`:"This gives you your own Personal account with your own records, not access to the inviter’s records."}</p><span className="settings-item-meta"><span>{focusedInvite.email}</span><span className="chip">{humanize(focusedInvite.role)}</span></span></div>
           {focusedInvite.status === "pending" && <div className="settings-item-actions"><button className="btn btn-primary" disabled={busy} onClick={() => void act(async () => {
-            await post("/accounts/accept", {invite_id:focusedInvite.id}); setMessage("Invitation accepted. Choose your workspace in the navigation menu.");
+            await post("/accounts/accept", {invite_id:focusedInvite.id}); setMessage(focusedInvite.workspace_id?"Invitation accepted. Choose this shared workspace in the navigation menu.":"Your Personal account is ready. Its records belong to you.");
           })}>Accept invitation</button></div>}</div>
-          {focusedInvite.status !== "pending" && <p className="settings-callout">{focusedInvite.status === "accepted" ? "You have already accepted this invitation. Choose the workspace in the navigation menu." : "This invitation expired or was revoked. Ask its sender for a new one."}</p>}
+          {focusedInvite.status !== "pending" && <p className="settings-callout">{focusedInvite.status === "accepted" ? (focusedInvite.workspace_id?"Already accepted. Choose this shared workspace in the navigation menu.":"Your own Personal account is ready; your records are separate from the inviter’s.") : "This invitation expired or was revoked. Ask its sender for a new one."}</p>}
         </> : <p role="status" className="settings-empty">Checking your invitation…</p>}
       </SettingsGroup>}
       {!!data?.invitations.filter(i => i.id !== inviteId).length && (
@@ -177,7 +177,7 @@ export function SharingSettings() {
           {data.invitations.filter(i => i.id !== inviteId).map((i) => (
             <div className="settings-item" key={i.id}>
               <span className="settings-item-main">
-                <strong className="settings-item-title">{i.workspace}</strong>
+                <strong className="settings-item-title">{i.workspace}</strong><span className="setting-hint">{i.workspace_id?`Join this workspace as ${i.role}; Personal records stay separate.`:"Your own account and records; no access to the inviter’s data."}</span>
                 <span className="settings-item-meta"><span>{i.email}</span><span className="chip">{humanize(i.role)}</span></span>
               </span>
               <span className="settings-item-actions"><button
@@ -187,7 +187,7 @@ export function SharingSettings() {
                   void act(async () => {
                     await post("/accounts/accept", { invite_id: i.id });
                     setMessage(
-                      "Invitation accepted. Choose the workspace in the navigation menu.",
+                      i.workspace_id?"Invitation accepted. Choose this shared workspace in the navigation menu.":"Your Personal account is ready with its own records.",
                     );
                   })
                 }
@@ -257,7 +257,7 @@ export function SharingSettings() {
           >
             <option value="">
               {data?.can_invite_accounts
-                ? "Standalone personal account"
+                ? "Own separate personal account"
                 : "Choose a workspace"}
             </option>
             {owned.map((w) => (

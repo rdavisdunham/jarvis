@@ -171,26 +171,9 @@ export function PlannerGuide() {
   </details>;
 }
 // ---- Brand -----------------------------------------------------------------------------
-/** The orbit epsilon: two iridescent swooshes around a small star. Decorative by default. */
+/** Production peeling-note mark; the three stars remain legible at small sizes. */
 export function BrandMark({size = 28, className = "", title}: {size?: number; className?: string; title?: string}) {
-  const id = useId().replace(/:/g, "");
-  return <svg className={"brand-mark-svg " + className} width={size} height={size} viewBox="0 0 48 48" fill="none"
-    role={title ? "img" : undefined} aria-hidden={title ? undefined : true} aria-label={title}>
-    <defs>
-      <linearGradient id={id + "a"} x1="9" y1="20" x2="40" y2="9" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stopColor="#B9A4F8"/><stop offset=".55" stopColor="#8CC8FA"/><stop offset="1" stopColor="#9BE3CF"/>
-      </linearGradient>
-      <linearGradient id={id + "b"} x1="9" y1="26" x2="40" y2="34" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stopColor="#8CC8FA"/><stop offset=".25" stopColor="#9BE3CF"/><stop offset=".6" stopColor="#B9A4F8"/><stop offset="1" stopColor="#F6B9CF"/>
-      </linearGradient>
-      <linearGradient id={id + "c"} x1="20" y1="20" x2="29" y2="29" gradientUnits="userSpaceOnUse">
-        <stop offset="0" stopColor="#B9A4F8"/><stop offset=".5" stopColor="#8CC8FA"/><stop offset="1" stopColor="#F6B9CF"/>
-      </linearGradient>
-    </defs>
-    <path fill={`url(#${id}a)`} d="M10.1 21.6c-.9-.4-.9-1.6-.5-2.6C12.6 12.2 21.6 7.4 31 7.4c5.6 0 9.4 2 9.4 5 0 1.6-1 3.3-2.6 4.6-.3.2-.6-.1-.4-.4.5-.8.7-1.5.7-2.2 0-2-2.7-3.2-6.7-3.2-7.6 0-15.6 3.7-19.3 9.4-.5.7-1.2 1.3-2 1z"/>
-    <path fill={`url(#${id}b)`} d="M16.9 21.8c.3-.2.1-.6-.2-.5-5.4 1.6-8.7 4.9-8.7 8.6 0 5.3 6.5 9.5 15.2 9.5 7.2 0 13.4-3.1 15.6-7.6.3-.6-.4-1.1-.9-.7-3 2.6-8 4.2-13.3 4.2-6.6 0-11.3-2.6-11.3-6.1 0-2.6 1.3-5 3.6-7.4z"/>
-    <circle cx="24.6" cy="24.4" r="4.3" fill={`url(#${id}c)`}/>
-  </svg>;
+  return <svg className={"brand-mark-svg " + className} width={size} height={size} viewBox="0 0 48 48" role={title?"img":undefined} aria-hidden={title?undefined:true} aria-label={title}><g transform="rotate(-5 24 24)"><path d="M12 5h22a8 8 0 0 1 8 8v20l-10 10H12a8 8 0 0 1-8-8V13a8 8 0 0 1 8-8Zm0 4a4 4 0 0 0-4 4v22a4 4 0 0 0 4 4h19V34a5 5 0 0 1 5-5h2V13a4 4 0 0 0-4-4Z" fill="#A79BDC"/><path d="M31 43v-9a5 5 0 0 1 5-5h6v4Z" fill="#8679BE"/><path d="M18 16c1.8 7 2 7.2 9 9-7 1.8-7.2 2-9 9-1.8-7-2-7.2-9-9 7-1.8 7.2-2 9-9Z" fill="#EDB2A6"/><path d="M31 12c1 4.5 1.5 5 6 6-4.5 1-5 1.5-6 6-1-4.5-1.5-5-6-6 4.5-1 5-1.5 6-6Z" fill="#A79BDC"/><path d="M32 24c.8 3.5 1.5 4.2 5 5-3.5.8-4.2 1.5-5 5-.8-3.5-1.5-4.2-5-5 3.5-.8 4.2-1.5 5-5Z" fill="#9ECBBE"/></g></svg>;
 }
 
 /** A toolbar button that toggles a floating `.popover`; closes on outside click and Escape. */

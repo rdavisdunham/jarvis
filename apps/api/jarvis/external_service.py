@@ -553,6 +553,9 @@ def backend_read(name, arguments, conversation_id):
                 ),
                 bot.scopes,
             )
+        if name in {"quicklist_list","quicklist_get"}:
+            from .quick_lists import listing,read
+            return scrub(read(db,bot.owner_id,arguments["list_id"]) if name=="quicklist_get" else listing(db,bot.owner_id,arguments.get("query","")),bot.scopes)
         if name == "time_resolve":
             from .time_tools import resolve_time
 

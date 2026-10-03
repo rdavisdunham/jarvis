@@ -1,0 +1,852 @@
+[
+  {
+    "id": "quick_capture.01",
+    "feature": "quick_capture",
+    "title": "Capture Houston with one Hayes-food item and retry the same command.",
+    "inputs": [
+      "Capture Houston with one Hayes-food item and retry the same command."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Exactly two Task rows, one list item and no duplicate from retry."
+    ],
+    "invariants": [
+      "No schedules; deadline alerts off; foreign owner cannot list it."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Capture Houston with one Hayes-food item and retry the same command.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.02",
+    "feature": "quick_capture",
+    "title": "Check Hayes food, add charger, reverse order and reopen Hayes food.",
+    "inputs": [
+      "Check Hayes food, add charger, reverse order and reopen Hayes food."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Five persistent item IDs remain in the requested order; completion returns to zero."
+    ],
+    "invariants": [
+      "No copied or replaced item IDs."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Check Hayes food, add charger, reverse order and reopen Hayes food.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.03",
+    "feature": "quick_capture",
+    "title": "Edit a list item after another writer changed it, then submit a stale list revision.",
+    "inputs": [
+      "Edit a list item after another writer changed it, then submit a stale list revision."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Both stale writes reject; the human title and the accepted new item survive."
+    ],
+    "invariants": [
+      "Failed commands do not partially change the list."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Edit a list item after another writer changed it, then submit a stale list revision.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.04",
+    "feature": "quick_capture",
+    "title": "Reorder using missing, foreign or duplicate IDs.",
+    "inputs": [
+      "Reorder using missing, foreign or duplicate IDs."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Every incomplete or invalid order rejects."
+    ],
+    "invariants": [
+      "List revision stays unchanged."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Reorder using missing, foreign or duplicate IDs.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.05",
+    "feature": "quick_capture",
+    "title": "Promote a partially completed Houston list into an existing project.",
+    "inputs": [
+      "Promote a partially completed Houston list into an existing project."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Same parent and four child Tasks, completion, IDs and history are preserved."
+    ],
+    "invariants": [
+      "All five tasks use the selected project; no duplicate rows."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Promote a partially completed Houston list into an existing project.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.06",
+    "feature": "quick_capture",
+    "title": "Read another account list, edit with a foreign item, or promote to its project.",
+    "inputs": [
+      "Read another account list, edit with a foreign item, or promote to its project."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Each foreign reference is rejected."
+    ],
+    "invariants": [
+      "The original list remains a Quick list."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Read another account list, edit with a foreign item, or promote to its project.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.07",
+    "feature": "quick_capture",
+    "title": "Capture an unfinished list with an already-passed deadline.",
+    "inputs": [
+      "Capture an unfinished list with an already-passed deadline."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "List remains open with all four items."
+    ],
+    "invariants": [
+      "No item inherits a deadline or alert without an explicit request."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Capture an unfinished list with an already-passed deadline.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.08",
+    "feature": "quick_capture",
+    "title": "Capture 101 checklist items in one request.",
+    "inputs": [
+      "Capture 101 checklist items in one request."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject the bounded request."
+    ],
+    "invariants": [
+      "No Task rows are saved."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Capture 101 checklist items in one request.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.09",
+    "feature": "quick_capture",
+    "title": "Capture a list without sections.",
+    "inputs": [
+      "Capture a list without sections."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "One compact summary and usable items, no mandatory project."
+    ],
+    "invariants": [
+      "No invented classification."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Capture a list without sections.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.10",
+    "feature": "quick_capture",
+    "title": "Ask Eri what remains on the Houston list.",
+    "inputs": [
+      "Ask Eri what remains on the Houston list."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Read current items and report only unfinished items."
+    ],
+    "invariants": [
+      "No mutation from a read."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask Eri what remains on the Houston list.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.11",
+    "feature": "quick_capture",
+    "title": "Ask for supplies ideas without asking to add them.",
+    "inputs": [
+      "Ask for supplies ideas without asking to add them."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Suggestions stay conversational."
+    ],
+    "invariants": [
+      "No new commitments saved."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask for supplies ideas without asking to add them.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.12",
+    "feature": "quick_capture",
+    "title": "Add a list item while voice work is running.",
+    "inputs": [
+      "Add a list item while voice work is running."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "One durable add receipt with stable item ID."
+    ],
+    "invariants": [
+      "No duplicate after reconnect."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Add a list item while voice work is running.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.13",
+    "feature": "quick_capture",
+    "title": "Use the same word as a section and a client name.",
+    "inputs": [
+      "Use the same word as a section and a client name."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Section is only display metadata."
+    ],
+    "invariants": [
+      "No permanent routing rule is inferred from the section."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Use the same word as a section and a client name.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.14",
+    "feature": "quick_capture",
+    "title": "Rename a completed checklist item.",
+    "inputs": [
+      "Rename a completed checklist item."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Title changes while completed state remains."
+    ],
+    "invariants": [
+      "No replacement item."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Rename a completed checklist item.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.15",
+    "feature": "quick_capture",
+    "title": "Reopen a list after a browser restart.",
+    "inputs": [
+      "Reopen a list after a browser restart."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Saved ordering, sections and completion match prior state."
+    ],
+    "invariants": [
+      "No reliance on device-only storage."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Reopen a list after a browser restart.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.16",
+    "feature": "quick_capture",
+    "title": "Pin a list to Today.",
+    "inputs": [
+      "Pin a list to Today."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Today shows one list summary."
+    ],
+    "invariants": [
+      "Children do not scatter across default task views."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Pin a list to Today.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.17",
+    "feature": "quick_capture",
+    "title": "Search for a checklist item by its title.",
+    "inputs": [
+      "Search for a checklist item by its title."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Find the saved item and its parent list context."
+    ],
+    "invariants": [
+      "Search does not create a task."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Search for a checklist item by its title.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.18",
+    "feature": "quick_capture",
+    "title": "Enable a timed deadline alert on a list.",
+    "inputs": [
+      "Enable a timed deadline alert on a list."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Existing deadline-alert system delivers once at the selected time."
+    ],
+    "invariants": [
+      "No duplicate per-item alerts."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Enable a timed deadline alert on a list.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.19",
+    "feature": "quick_capture",
+    "title": "Revert an item title edit after a newer unrelated item change.",
+    "inputs": [
+      "Revert an item title edit after a newer unrelated item change."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Revert respects current field/revision safeguards."
+    ],
+    "invariants": [
+      "Later unrelated work stays intact."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Revert an item title edit after a newer unrelated item change.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.20",
+    "feature": "quick_capture",
+    "title": "Edit a list as a shared-workspace viewer.",
+    "inputs": [
+      "Edit a list as a shared-workspace viewer."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Read succeeds; mutation refuses."
+    ],
+    "invariants": [
+      "Personal and other workspace lists remain hidden."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Edit a list as a shared-workspace viewer.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.21",
+    "feature": "quick_capture",
+    "title": "Use a revoked bot key to add an item.",
+    "inputs": [
+      "Use a revoked bot key to add an item."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Access is rejected at execution."
+    ],
+    "invariants": [
+      "No saved mutation."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Use a revoked bot key to add an item.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.22",
+    "feature": "quick_capture",
+    "title": "Navigate away while an item rename is saving.",
+    "inputs": [
+      "Navigate away while an item rename is saving."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Wait for the save before closing."
+    ],
+    "invariants": [
+      "Failure keeps the draft visible."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Navigate away while an item rename is saving.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.23",
+    "feature": "quick_capture",
+    "title": "Press mobile Back with an unsent checklist item.",
+    "inputs": [
+      "Press mobile Back with an unsent checklist item."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Keep or explicitly discard the draft through the existing editor guard."
+    ],
+    "invariants": [
+      "No silent draft loss."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Press mobile Back with an unsent checklist item.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.24",
+    "feature": "quick_capture",
+    "title": "Complete and reorder on a folded phone with keyboard open.",
+    "inputs": [
+      "Complete and reorder on a folded phone with keyboard open."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Controls stay reachable without horizontal overflow."
+    ],
+    "invariants": [
+      "Touch and keyboard have equivalent operations."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Complete and reorder on a folded phone with keyboard open.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "quick_capture.25",
+    "feature": "quick_capture",
+    "title": "Ask Eri to promote to an ambiguous project name.",
+    "inputs": [
+      "Ask Eri to promote to an ambiguous project name."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Clarify the project identity before promotion."
+    ],
+    "invariants": [
+      "Do not create a duplicate project or silently choose one."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask Eri to promote to an ambiguous project name.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  }
+]

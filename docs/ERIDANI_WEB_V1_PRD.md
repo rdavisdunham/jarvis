@@ -1,6 +1,7 @@
 # Eridani web v1 — completion PRD
 
-Status: proposed delivery plan, ready for implementation review.
+Status: active delivery plan. Batches A (#22) and B (#23) merged; Batch C implemented for PR review.
+See [current TODO](TODO.md) and [Batch C verification](BATCH_C_VALIDATION.md) for current evidence.
 Prepared October 2, 2026, against local source `e734f7f` on `fix-voice-requests`.
 This is a documentation/reconciliation pass, not a new test run or deployment.
 
@@ -45,7 +46,7 @@ Claude reports 783 backend passes/one skip under UTC and Chicago DB settings,
 82 eval-harness passes/two skips, 166 frontend passes/one skip, and six browser
 acceptance suites. Those are reported results, not rerun in this planning pass.
 The presence of a regression test is source evidence, not proof it currently passes.
-The coverage baseline still has 98 of 1,001 fully bound scenarios and 224 overlapping
+At the original planning snapshot, the coverage baseline had 98 of 1,001 fully bound scenarios and 224 overlapping
 component cases. The ratchet prevents loss of coverage; it does not establish full
 app acceptance. Sol's historical 501-case review found 42 passes, four failures,
 six needing review, 75 partial, 373 unassessable and one component failure. This

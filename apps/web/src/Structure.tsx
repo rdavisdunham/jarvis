@@ -8,6 +8,7 @@ import { api, post } from "./api";
 import { useStructureActions } from "./structure-actions";
 import { OrganizationTree } from "./OrganizationTree";
 import { SourceBadge } from "./SourceDetails";
+import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
 import { StructureEditor } from "./StructureEditor";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
@@ -73,6 +74,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const effectiveDate=(r:CustomRecord)=>sort==="planned"?bound(r,"planned_date"):bound(r,"due_date")||bound(r,"planned_date");
   const visible=items.filter(r=>{
     if(!schema)return false;
+    if(r.quick_list_parent_id&&!query&&!resultIds)return false;
     if(resultIds&&!resultIds.includes(r.id))return false;
     if(capability&&!r.capabilities.includes(capability))return false;
     if(typeId&&r.type_id!==typeId)return false;
@@ -138,6 +140,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   };
   const chips=(r:CustomRecord,{home=true}:{home?:boolean}={})=>{
     const rt=typeOf(r);const out:ReactNode[]=[<SourceBadge key="source" source={r.source}/>];
+    if(r.is_quick_list)out.push(<span key="quick" className="chip">Quick list · {r.quick_done}/{r.quick_total}</span>);
     const showType=!typeId&&(!capability||r.type_id!=="task");
     if(home&&(r.home.length||showType)){const Icon=typeIcon(r.home.at(-1)?.type_id??r.type_id);
       out.push(<span key="home" className="chip chip-home" title={[r.type_name,...r.home.map(p=>p.title)].join(" in ")}>
@@ -309,7 +312,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     <div className="work-body" id={tabs?"task-workspace":undefined} role={tabs?"tabpanel":undefined} aria-labelledby={tabs?"task-tab-"+tab:undefined}>
       {!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("list");}} onMove={edit}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
-    {selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={open} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
+    {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={open} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
     {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} schema={schema} onClose={()=>setDesign(false)} onApplied={async()=>{setDesign(false);await refreshAll();}}/>}
   </section>;
 }

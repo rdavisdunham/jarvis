@@ -129,6 +129,9 @@ class Project(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    is_quick_list: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    quick_section: Mapped[str] = mapped_column(String(120), default="", server_default="")
+    quick_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     space_id: Mapped[str | None] = mapped_column(ForeignKey("spaces.id"), index=True)

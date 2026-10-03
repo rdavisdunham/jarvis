@@ -65,6 +65,9 @@ class TaskCreate(Args):
 
 
 class TaskChanges(Args):
+    is_quick_list: bool = False
+    quick_section: str = Field(default="", max_length=120)
+    quick_order: int = Field(default=0, ge=0, le=10000)
     deadline_alert: Literal["default", "on", "off"] = "default"
     alert_urgent: bool = False
     title: str | None = Field(default=None, min_length=1, max_length=500)
@@ -279,6 +282,12 @@ def serial(record):
         db = object_session(record)
         if db:
             result["source"] = task_source(db, record)
+            if record.is_quick_list:
+                from sqlalchemy import func
+                result["quick_total"] = db.scalar(select(func.count()).select_from(Task).where(Task.owner_id==record.owner_id,Task.parent_task_id==record.id,Task.archived.is_(False)))
+                result["quick_done"] = db.scalar(select(func.count()).select_from(Task).where(Task.owner_id==record.owner_id,Task.parent_task_id==record.id,Task.archived.is_(False),Task.status=="completed"))
+            parent = db.get(Task, record.parent_task_id) if record.parent_task_id else None
+            result["quick_list_parent_id"] = parent.id if parent and parent.is_quick_list else None
     return result
 
 
@@ -511,7 +520,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
+        ("quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -566,6 +575,12 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    if tool.startswith("quicklist."):
+        from .quick_lists import mutate as capture_mutate
+        return capture_mutate(db, owner, tool, args, command_id)
+    if tool.startswith("onboarding."):
+        from .onboarding import mutate as setup_mutate
+        return setup_mutate(db, owner, tool, args, command_id)
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
@@ -1066,3 +1081,9 @@ COMMANDS.update(NOTE_LIST_COMMANDS)
 
 from .google_schema import CalendarAnnotation
 COMMANDS["calendar.annotate"] = CalendarAnnotation
+
+from .quick_lists import COMMANDS as QUICK_COMMANDS
+COMMANDS.update(QUICK_COMMANDS)
+
+from .onboarding import COMMANDS as SETUP_COMMANDS
+COMMANDS.update(SETUP_COMMANDS)

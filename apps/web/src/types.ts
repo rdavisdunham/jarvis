@@ -1,5 +1,6 @@
 import type { SourceInfo } from "./SourceDetails";
 export interface Task {
+  is_quick_list?: boolean; quick_list_parent_id?: string|null; quick_section?: string; quick_order?: number;
   source?: SourceInfo;
   deadline_alert?: "default"|"on"|"off";
   alert_urgent?: boolean;

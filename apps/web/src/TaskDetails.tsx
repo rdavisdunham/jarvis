@@ -1,3 +1,4 @@
+import {QuickListDetail} from "./QuickLists";
 import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { RecordTools } from "./record-links";
 import { humanLabel, SchedulingHelp, Dialog } from "./ux";
@@ -28,7 +29,13 @@ type Props = {
   onReminder: (schedule: Schedule | null, task: Task) => void;
   onBlock: (task: Task) => void;
 };
-export function TaskDetails(p: Props) {
+export function TaskDetails(p:Props){
+ const [quick,setQuick]=useState<boolean|null>(p.tasks.find(t=>t.id===p.id)?.is_quick_list??null);
+ useEffect(()=>{let active=true;setQuick(p.tasks.find(t=>t.id===p.id)?.is_quick_list??null);void api<Task>("/tasks/"+p.id).then(t=>{if(active)setQuick(!!t.is_quick_list);}).catch(()=>{if(active)setQuick(false);});return()=>{active=false;};},[p.id]);
+ if(quick)return <QuickListDetail refresh={p.tasks.filter(t=>t.id===p.id||t.parent_task_id===p.id).reduce((sum,t)=>sum+t.revision,0)} id={p.id} canEdit={p.canEdit} today={new Intl.DateTimeFormat("en-CA",{timeZone:p.zone}).format(new Date())} onClose={p.onClose} onChanged={()=>window.dispatchEvent(new Event("eri-quick-changed"))}/>;
+ return <StandardTaskDetails {...p}/>;
+}
+function StandardTaskDetails(p: Props) {
   const [customHome,setCustomHome]=useState<{id:string;type_name:string;home:{title:string}[]}|null>(null);
   useEffect(()=>{void api<{id:string;type_name:string;home:{title:string}[]}>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
   const annotation=useInlineGuard();

@@ -6,6 +6,8 @@ import { readSettingsSection, type SettingsSection } from "./settings-sections";
 import "./shell.css";
 import { NoticeSnooze } from "./NoticeSnooze";
 import { StructureWorkspace } from "./Structure";
+import {QuickCapture} from "./QuickLists";
+import {Onboarding} from "./Onboarding";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryRow, MemoryStatus } from "./MemoryActions";
@@ -1976,6 +1978,7 @@ export default function App() {
             <span>eridani</span>
           </div>
           <h1>A little more organized.</h1>
+          <p className="footnote">Personal-account invitations create your own space. Shared-workspace invitations grant only the named workspace and role; your personal records stay separate.</p>
           <p>
             Your day, with Eri.{" "}
             {pairingLogin ? "Sign in with Google, or pair an owner device." : "Sign in with your linked or invited Google account."}
@@ -2393,6 +2396,8 @@ export default function App() {
               </div>
             </div>}
             {!isTaskTab(view) && view !== "settings" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
+            {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>setCompanion(true)}/>}
+            {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
               onEntry={openCalendarEntry} onNote={id => void openNote(id)}
@@ -2702,7 +2707,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>setCompanion(true)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
                   ["profile", "organization", "notifications", "privacy", "system", "integrations"].includes(

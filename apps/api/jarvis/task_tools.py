@@ -34,7 +34,7 @@ COMPACT_FIELDS = (
     "planned_date",
     "priority",
     "estimate_minutes",
-    "parent_task_id",
+    "parent_task_id", "is_quick_list", "quick_list_parent_id", "quick_section", "quick_order",
 )
 
 
