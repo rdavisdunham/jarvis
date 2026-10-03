@@ -69,6 +69,8 @@ from .saved_views import router as saved_views_router
 app.include_router(saved_views_router)
 from .structure_routes import router as structure_router
 app.include_router(structure_router)
+from .review_routes import router as review_router
+app.include_router(review_router)
 from .search_routes import router as search_router
 app.include_router(search_router)
 from .note_lists import router as note_lists_router
@@ -660,9 +662,6 @@ def work_seen(request_id: str, user: User):
         from .work_continuation import attempts
         for attempt in attempts(db,row):
             attempt.seen_at=now()
-            if attempt.result.get("routing_offer_id"):
-                from .routing import mark_offer
-                mark_offer(db,attempt.owner_id,attempt.result["routing_offer_id"])
         return {"status": "seen"}
 
 

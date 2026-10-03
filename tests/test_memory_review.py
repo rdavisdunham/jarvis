@@ -208,7 +208,7 @@ async def test_startup_context_does_not_consume_the_clarification_offer():
 
     _, _, rid, _ = ambiguous()
     assert rid not in await prompt_context("davin")
-    assert rid in await prompt_context("davin", "cat")
+    assert rid not in await prompt_context("davin", "cat")
 
 
 def test_weekly_enqueue_is_unique_across_concurrent_workers():

@@ -721,11 +721,16 @@ def mutate(db, owner, tool, args, command_id):
         if not row:
             raise DomainError("NOT_FOUND", "That field no longer exists.", 404)
         check_revision(row, args.expected_revision)
+        from .structure import definition_entries
+        entry=dict(definition_entries(schema.definition)).get(row.definition_id)
+        if not entry or entry.get("archived") or fingerprint(entry)!=row.fingerprint:
+            raise DomainError("STALE_REVIEW","This definition changed. Refresh Questions first.",409)
         row.answers = [
             *row.answers,
             {"question": row.questions[0] if row.questions else "Clarification", "answer": args.answer},
         ][-10:]
         row.status = "assessing"
+        row.deferred_until = None
         field_review(db, row)
         row.revision += 1
         enqueue_job(

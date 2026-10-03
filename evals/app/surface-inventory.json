@@ -214,6 +214,10 @@
       "feature": "custom_records"
     },
     {
+      "name": "review.defer",
+      "feature": "memory_dream"
+    },
+    {
       "name": "routing.answer",
       "feature": "routing_dream"
     },
@@ -434,6 +438,10 @@
     {
       "name": "record_search",
       "feature": "search"
+    },
+    {
+      "name": "review_questions",
+      "feature": "memory_dream"
     },
     {
       "name": "routing_state",
@@ -1080,6 +1088,27 @@
       "handler": "push",
       "source": "apps/api/jarvis/api.py",
       "feature": "notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/questions",
+      "handler": "questions",
+      "source": "apps/api/jarvis/review_routes.py",
+      "feature": "memory_dream"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/questions/delivery/{identity}",
+      "handler": "acknowledge",
+      "source": "apps/api/jarvis/review_routes.py",
+      "feature": "memory_dream"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/questions/reserve",
+      "handler": "reserve",
+      "source": "apps/api/jarvis/review_routes.py",
+      "feature": "memory_dream"
     },
     {
       "method": "GET",

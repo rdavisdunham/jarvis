@@ -81,7 +81,7 @@ def main():
                     time.sleep(0.1)
             else:
                 raise RuntimeError("Isolated API did not become ready")
-            fixtures = ("custom-planner.mjs", "batch-b.mjs", "shell-navigation.mjs", "chat-activity.mjs", "semantic-search.mjs", "note-lists.mjs", "usage-report.mjs", "batch-c.mjs", "organization.mjs")
+            fixtures = ("custom-planner.mjs", "batch-b.mjs", "shell-navigation.mjs", "chat-activity.mjs", "semantic-search.mjs", "note-lists.mjs", "usage-report.mjs", "batch-c.mjs", "organization.mjs", "questions.mjs")
             for fixture in fixtures:
                 if os.environ.get("JARVIS_BROWSER_FIXTURE") and fixture != os.environ["JARVIS_BROWSER_FIXTURE"]:
                     continue

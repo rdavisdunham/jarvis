@@ -39,6 +39,12 @@ class Args(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class ReviewDefer(Args):
+    question_key: str = Field(min_length=1, max_length=300)
+    expected_revision: int = Field(ge=1)
+    until: Literal["today", "tomorrow", "week"] = "week"
+
+
 class TaskCreate(Args):
     deadline_alert: Literal["default", "on", "off"] = "default"
     alert_urgent: bool = False
@@ -206,6 +212,7 @@ class SettingsUpdate(Args):
 
 
 COMMANDS = {
+    "review.defer": ReviewDefer,
     "project.create": ProjectCreate,
     "project.update": ProjectUpdate,
     "schedule.update": ScheduleUpdate,
@@ -435,10 +442,6 @@ def check_revision(record, expected):
 
 
 def capture_source(db, owner, content, native_id, role="user", conversation=None, explicit=False):
-    if role == "assistant":
-        from .memory_review import record_question
-
-        record_question(db, owner, content)
     if (
         conversation
         and not explicit
@@ -520,7 +523,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
+        ("review.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -575,6 +578,9 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    if tool == "review.defer":
+        from .review_questions import defer
+        return defer(db, owner, args)
     if tool in {"record.contents", "record.restore_contents"}:
         from . import record_contents
         return (record_contents.apply if tool == "record.contents" else record_contents.restore)(db, owner, args, command_id)

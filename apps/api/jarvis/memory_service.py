@@ -98,15 +98,8 @@ async def prompt_context(owner, query=""):
     import json
 
     facts = await semantic_search(owner, query, 6)
-    from .db import session_scope
-    from .memory_review import context_for_agent
-
-    with session_scope() as db:
-        # A startup bundle is prepared before any user turn. Offer the question when
-        # a response can actually use it, so Realtime refreshes do not consume it early.
-        clarification = context_for_agent(db, owner) if query.strip() else ""
     if not facts:
-        return clarification
+        return ""
     evidence = [
         {
             "id": m["id"],
@@ -122,5 +115,4 @@ async def prompt_context(owner, query=""):
         "ignore irrelevant ones. Current user statements and their preferred name override old facts. "
         "Do not claim new memories were saved merely because they appear here.\n"
         + json.dumps(evidence, ensure_ascii=False)
-        + clarification
     )

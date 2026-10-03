@@ -33,8 +33,8 @@ Android follows the release checks and seven-day/50-interaction pilot.
 
 ## Next — Organization browsing, visual customization and review delivery
 
-October 3 follow-up: the owner approved this direction after A–D. Implementation is
-in progress; unchecked items below are not claims of shipped behavior. See [the follow-up plan](ERIDANI_WEB_V1_PRD.md#10-organization-and-review-delivery-follow-up).
+October 3 follow-up: the owner approved this direction after A–D. ORG0–4 and
+REV1 are implemented; production inspection and device acceptance remain below. See [the follow-up plan](ERIDANI_WEB_V1_PRD.md#10-organization-and-review-delivery-follow-up).
 The guided structure interview is deferred. Flexible types, modular reusable fields,
 one Home plus extra links, actionable projects and subtree move choices are accepted.
 See PRD section 10.8 for the accepted single-hierarchy subtask design and advisory
@@ -77,14 +77,24 @@ are engineering work, not outstanding owner decisions.
   move-only promotion, visual/Advanced draft preservation and 390/892/1440px
   layouts. Nested timelines separate own dates from child spans. Real device,
   source-provider and Live acceptance remain below.
-- [ ] **REV1 — visible questions and reliable delivery.** One personal inbox adapts
+- [x] **REV1 — visible questions and reliable delivery.** One personal inbox adapts
   memory/routing/field reviews; Organization shows its relevant subset. Separate
   unanswered questions from invitation delivery. Fix omitted Live memory questions,
   hidden/truncated result-tail offers and incomplete acknowledgement. Preserve
   explicit answer IDs, required-clarification priority and cross-device behavior.
+  Implemented personal Questions in the profile menu and the Organization subset,
+  source adapters without duplicate field mirrors, source revision checks, snoozing,
+  job/result provenance, and durable invitation leases. Text visibility and voice
+  forwarding are separate; interruption, provider ACKs and transcripts never
+  resolve a question. Optional invitations no longer ride in task-result tails.
+  Direct Add subtask also completes the accepted ordinary-record nesting flow.
 - [ ] **REV2 — inspect actual learning results.** With authorized account access,
   verify last runs, extracted facts, merges, proposals, errors and unanswered reviews.
   Worker activity and synthetic tests do not prove production usefulness.
+  October 3: Railway project/service access confirmed. Private Postgres has no
+  public URL; Railway SSH reports no configured SSH key. No account-data query
+  completed, no database port was opened and no production data was changed.
+  Questions now exposes persisted run/results for inspection in the signed-in app.
 - [ ] **Acceptance before pilot.** Cover multiple legal homes, self-nesting, custom
   types, source-backed edits, access, pagination, deep links, Back/drafts and folded/
   unfolded layouts. Test Live-only review offers, long results, interrupted voice,

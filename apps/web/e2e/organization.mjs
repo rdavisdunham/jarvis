@@ -25,6 +25,11 @@ try{
  await page.reload();await expect(browse.getByRole("heading",{name:project.title})).toBeVisible();
  await browse.getByRole("button",{name:"Add here"}).click();await page.getByLabel("New record title").fill("Added in home");await browse.getByRole("button",{name:"Add",exact:true}).click();
  await expect.poll(async()=>(await request("/structure/browse?parent_id="+project.id)).total).toBe(2);
+ await browse.getByRole("button",{name:"Details for "+task.title,exact:true}).click();
+ await page.getByLabel("New subtask").fill("Nested without a new type");await page.getByRole("button",{name:"Add subtask",exact:true}).click();
+ await expect(page.getByRole("region",{name:"Work in this home"})).toContainText("Nested without a new type");
+ expect((await request("/structure/browse?parent_id="+task.id)).items[0].type_id).toBe("task");
+ await page.getByRole("button",{name:"Close record"}).click();
  await browse.getByRole("button",{name:"Details",exact:true}).click();await page.getByRole("button",{name:"Choose main home"}).click();
  await page.getByRole("button",{name:"Leave unfiled",exact:true}).click();
  const move=page.getByRole("dialog",{name:"Move contents",exact:true});await expect(move).toBeVisible();

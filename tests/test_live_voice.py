@@ -454,3 +454,49 @@ async def test_remote_write_stays_busy_until_sync_is_confirmed(controller, monke
     action["remote_status"] = "succeeded"
     await c.report_work()
     assert await voice_state(c, monkeypatch) == "listening"
+
+
+async def test_optional_review_is_separate_from_long_work_results(controller):
+    import time
+    from jarvis import structure
+    from jarvis.structure_models import FieldUnderstanding
+    from jarvis.agent_work import finish
+    from jarvis.models import ReviewDelivery, now
+    from datetime import timedelta
+    c=controller
+    work_id=queued_voice_work(c)
+    message="Saved details. "*300
+    with session_scope() as db:
+        structure.ensure(db,c.owner)
+        field=db.get(FieldUnderstanding,(c.owner,"type:client"))
+        field.status="needs_input";field.questions=["Company or person?"]
+        finish(db,db.get(AgentWork,work_id),"succeeded",message)
+        assert db.get(AgentWork,work_id).result["message"]==message
+        db.get(VoiceInbox,c.id).last_input_at=now()-timedelta(seconds=10)
+    c.groups=[{"received_at":time.monotonic()-10}]
+    await c.report_work()
+    await c.offer_review()
+    appends=[call.args[0]["content"] for call in c.send.await_args_list if call.args[0]["type"]=="session.commentary.append"]
+    assert len(appends)==2
+    assert "Verified background results" in appends[0] and "Optional review invitation" in appends[1]
+    # Provider ACK is not proof of playback.
+    await c.event({"type":"session.commentary.appended","event_id":"provider-ack"})
+    with session_scope() as db:assert db.scalar(select(ReviewDelivery)).state=="forwarded"
+    await c.interrupt()
+    with session_scope() as db:
+        assert db.scalar(select(ReviewDelivery)).state=="interrupted"
+        assert db.get(FieldUnderstanding,(c.owner,"type:client")).status=="needs_input"
+
+async def test_unreported_required_work_question_blocks_optional_review(controller):
+    import time
+    from jarvis import structure
+    from jarvis.structure_models import FieldUnderstanding
+    from jarvis.agent_work import finish
+    c=controller;work_id=queued_voice_work(c)
+    with session_scope() as db:
+        structure.ensure(db,c.owner)
+        f=db.get(FieldUnderstanding,(c.owner,"type:client"));f.status="needs_input";f.questions=["Company?"]
+        finish(db,db.get(AgentWork,work_id),"needs_input","Which task do you mean?")
+    c.groups=[{"received_at":time.monotonic()-10}]
+    await c.offer_review()
+    c.send.assert_not_called()

@@ -48,6 +48,7 @@ const DUE = ["due_date","due_time","due_timezone"];
 
 export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClose,onChanged,onOpen}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>;onOpen?:(r:CustomRecord)=>void}){
   const [choices,setChoices]=useState(initialChoices),[relatedQuery,setRelatedQuery]=useState("");
+  const [childTitle,setChildTitle]=useState(""),[childRefresh,setChildRefresh]=useState(0);
   const [contents,setContents]=useState<ContentsSummary|undefined>(initial.contents);
   const [children,setChildren]=useState<CustomRecord[]>([]),[childOffset,setChildOffset]=useState(0),[childNext,setChildNext]=useState<number|null>(null);
   const [contentsAction,setContentsAction]=useState<{operation:"move"|"archive";parentId?:string|null}|null>(null);
@@ -62,7 +63,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   useEffect(()=>{let live=true;void api<CustomRecord>("/structure/records/"+row.id).then(r=>live&&setContents(r.contents)).catch(()=>{});
     void api<{items:CustomRecord[];next_offset:number|null}>("/structure/browse?parent_id="+row.id+"&limit=30&offset="+childOffset).then(r=>{if(live){setChildren(r.items);setChildNext(r.next_offset);}}).catch(()=>{});
     return()=>{live=false;};
-  },[row.id,row.revision,childOffset]);
+  },[row.id,row.revision,childOffset,childRefresh]);
   useEffect(()=>{let live=true;const timer=setTimeout(()=>{void (async()=>{
     const page=await api<{items:CustomRecord[]}>("/structure/records?limit=50&query="+encodeURIComponent(relatedQuery));
     const ids=new Set(row.links.flatMap(l=>[l.source_id,l.target_id]));
@@ -87,6 +88,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   const link=async(remove=false,relationship_id=relation,target_id=target)=>{await run("record.link",{source_id:row.id,target_id,relationship_id,expected_revision:row.revision,schema_revision:schema.revision,remove});setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();setTarget("");};
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy&&!e.defaultPrevented)close();};document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);},[busy,onClose]);
   const locked=!canEdit||busy||!!failed;
+  const childType=schema.types.find(v=>v.id==="task"&&!v.archived&&v.parent_types.includes(row.type_id))??schema.types.find(v=>!v.archived&&v.capabilities.includes("work")&&v.parent_types.includes(row.type_id));
   const fields=t.fields.filter(f=>f.visible&&!f.archived);
   const byBinding=(binding:string)=>fields.find(f=>f.binding===binding);
   const field=(f:SchemaField,className?:string)=><FieldValue key={f.id} className={className} field={f} value={row.values[f.id]} choices={choices} disabled={locked} onSave={v=>void save({values:{[f.id]:v}}).catch(()=>{})}/>;
@@ -119,6 +121,10 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
         <RecordTools kind="record" id={row.id}/>
         {contents&&contents.work_total>0&&<p className="detail-progress">{contents.work_done}/{contents.work_total} descendants completed{contents.ready_to_complete?" · Ready for your final check":""}. Completing this record leaves child statuses unchanged.</p>}
         {!!row.blockers?.length&&<p className="detail-alert">Unfinished prerequisites: {row.blockers.map(b=>b.title).join(", ")}. You can still record progress.</p>}
+        {childType&&canEdit&&!row.archived&&<form className="org-add detail-subtask" onSubmit={e=>{e.preventDefault();void finish().then(()=>run("record.create",{type_id:childType.id,title:childTitle,parent_id:row.id,schema_revision:schema.revision})).then(async()=>{setChildTitle("");setChildOffset(0);setChildRefresh(v=>v+1);await onChanged();}).catch(()=>{});}}>
+          <input aria-label="New subtask" placeholder={"Add "+childType.name.toLowerCase()+" inside…"} value={childTitle} maxLength={500} disabled={locked} onChange={e=>setChildTitle(e.target.value)}/>
+          <button className="btn btn-soft btn-sm" disabled={locked||!childTitle.trim()}>Add subtask</button>
+        </form>}
         {(children.length>0||childOffset>0)&&<section className="detail-section" aria-label="Work in this home"><h3>Direct contents</h3>{children.map(r=><div className="detail-link-row" key={r.id}><button className="text-button" onClick={()=>void finish().then(()=>onOpen?.(r)).catch(()=>{})}>{r.title}</button><span className="chip">{r.type_name}</span><span>{r.status_meaning?.replaceAll("_"," ")}</span></div>)}
           <div className="org-pagination">{childOffset>0&&<button className="btn btn-sm" onClick={()=>setChildOffset(Math.max(0,childOffset-30))}>Previous</button>}{childNext!==null&&<button className="btn btn-sm" onClick={()=>setChildOffset(childNext)}>More contents</button>}</div></section>}
         <details className="detail-section" aria-label="Related records"><summary>Extra relationships{links.length?" · "+links.length:""}</summary>

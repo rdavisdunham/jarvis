@@ -1,10 +1,10 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Brain, ChevronUp, LogOut, Settings2 } from "lucide-react";
+import { Brain, HelpCircle, ChevronUp, LogOut, Settings2 } from "lucide-react";
 import type { View } from "./types";
 
 export function ProfileMenu({ name, view, personal, navigationOpen, onNavigate, onLogout }: {
   name: string; view: View; personal: boolean; navigationOpen: boolean;
-  onNavigate: (view: "memory" | "settings") => void;
+  onNavigate: (view: "memory" | "settings" | "questions") => void;
   onLogout: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -26,7 +26,7 @@ export function ProfileMenu({ name, view, personal, navigationOpen, onNavigate, 
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
-  function navigate(target: "memory" | "settings") {
+  function navigate(target: "memory" | "settings" | "questions") {
     close(true);
     onNavigate(target);
   }
@@ -60,6 +60,7 @@ export function ProfileMenu({ name, view, personal, navigationOpen, onNavigate, 
       }}>
       {personal && <button type="button" role="menuitem" tabIndex={-1} disabled={busy}
         aria-current={view === "memory" ? "page" : undefined} onClick={() => navigate("memory")}><Brain size={17}/>Memory</button>}
+      {personal&&<button type="button" role="menuitem" tabIndex={-1} disabled={busy} aria-current={view==="questions"?"page":undefined} onClick={()=>navigate("questions")}><HelpCircle size={17}/>Questions</button>}
       <button type="button" role="menuitem" tabIndex={-1} disabled={busy}
         aria-current={view === "settings" ? "page" : undefined} onClick={() => navigate("settings")}><Settings2 size={17}/>Settings</button>
       <div className="profile-menu-divider" role="separator"/>

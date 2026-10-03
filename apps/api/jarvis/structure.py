@@ -789,6 +789,7 @@ def apply(db, owner, args, command_id):
             state.updated_at = now()
         state.status = "assessing"
         state.questions = []
+        state.deferred_until = None
         state.understanding = {}
         state.answers = []
         enqueue_job(db, owner, "assess_field", {"definition_id": key, "fingerprint": digest})

@@ -1,3 +1,4 @@
+import {Questions,ReviewInvitation} from "./Questions";
 import { SourceColorSettings } from "./SourceDetails";
 import { VoiceDrafts } from "./VoiceDrafts";
 import { useAppHistory } from "./app-history";
@@ -1851,7 +1852,7 @@ export default function App() {
     goal_id: organizationFilter.goal,
     work_kind: view === "reminders" ? "reminder" : workKind,
     visible_ids:
-      view === "organize"
+      view === "questions" ? [] : view === "organize"
         ? organizationVisible
         : view === "notes"
           ? noteVisible
@@ -1892,6 +1893,7 @@ export default function App() {
     calendar: "Calendar",
     notes: "Notes",
     memory: "Memory",
+    questions: "Questions",
     notifications: "Notifications",
     settings: "Settings",
   };
@@ -2400,7 +2402,7 @@ export default function App() {
                 </Popover>
               </div>
             </div>}
-            {!isTaskTab(view) && view !== "settings" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
+            {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
             {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>setCompanion(true)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy}
@@ -2630,6 +2632,8 @@ export default function App() {
                 }}
               />
             )}
+            {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
+            {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
             {view === "memory" && (
               <div className="memory-page">
                 <MemoryStatus status={memoryStatus} worker={!!boot.capabilities.worker} reviews={memoryReviews.length} maintenance={maintenance}
@@ -2947,6 +2951,7 @@ export default function App() {
                   Sending your request…
                 </div>
               )}
+              {!boot.workspace?.id&&<ReviewInvitation enabled={companion&&!thinking&&!activeWork&&!work.items.some(i=>i.status==="needs_input")&&(!voiceState||voiceState.closed)&&messages.some(m=>m.role==="assistant")} conversation={activeConversation} onOpen={()=>{setView("questions");setCompanion(false);}}/>}
               <VoiceDrafts key={(boot.account_id ?? "") + ":" + (boot.workspace?.id ?? "personal")} />
               <div ref={messageEnd} />
             </div>

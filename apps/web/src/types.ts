@@ -229,6 +229,7 @@ export type View =
   | "reminders"
   | "notes"
   | "memory"
+  | "questions"
   | "notifications"
   | "settings";
 export interface ChatMessage {

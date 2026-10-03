@@ -10,6 +10,7 @@ export const views = [
   "calendar",
   "notes",
   "memory",
+  "questions",
   "notifications",
   "settings",
 ] as const;
