@@ -247,7 +247,7 @@ export type UIAction = import("zod").input<
 
 export interface UIContext {
   collection?:Record<string,string|number|null>;
-  layout?: "tree" | "list" | "board" | "timeline";
+  layout?: "browse" | "tree" | "list" | "board" | "timeline";
   sort?: string;
   group_by?: string;
   timeline_date?: string;

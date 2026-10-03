@@ -69,7 +69,7 @@ class UIContext(BaseModel):
     calendar_date: str | None = Field(default=None, max_length=10)
     selected_schedule_id: str | None = Field(default=None, max_length=36)
     work_kind: Literal["all", "task", "reminder"] = "all"
-    layout: Literal["tree", "list", "board", "timeline"] = "list"
+    layout: Literal["browse", "tree", "list", "board", "timeline"] = "list"
     sort: Literal["priority", "due", "planned", "title", "updated"] = "priority"
     group_by: Literal["status", "project", "assignee"] = "status"
     timeline_date: str = Field(default="", max_length=10)
@@ -117,7 +117,7 @@ pending = {}
 
 APP_MAP = """Site map:
 Tasks has Today (today), Inbox (inbox), Next 7 days (week), and All (all) tabs. Today/week include planned or due work through today/today+6, including overdue. Inbox means no main home. Tasks includes every actionable type. Quick lists: Today/Tasks; setup: Settings → Organization. Load quick_capture/setup tools.
-Organization (organize) opens an actual record tree. Each record has one main home; open a home to see contained work and additional related links. Move controls support keyboard/touch and ordering. Types & fields opens the separate schema editor; list/board/timeline are optional views. Read structure_schema; use record tools for organization, ui_records for custom record cards, filters, grouping and schema previews. Workflow columns keep completion semantics under custom labels. Structural changes require reviewed confirmation. Main-home inheritance never follows extra links. Metrics remain independent of task counts.
+Organization (organize) defaults to Browse: containers, Unfiled, breadcrumbs and Add here. Structure shows actual Homes; Types & fields edits a separate visual definition tree (Advanced shares its draft). Records have one Home and extra links; inheritance follows only Home. Use ui_records for cards, filtered collections and previews; record_browse for scoped contents. Move/archive via record_contents_preview then record.contents with explicit contents choice. Schema edits require reviewed confirmation. Completion is per record; blockers are advisory. Diagram moves never move records.
 Calendar supports month/week/day, task dates, reminders, local events/work blocks and Google events. A deadline or planned date does not reserve time. Work blocks link to tasks; ordinary events cannot be completed.
 Record cards edit individual fields immediately. Wait for pending saves before navigating. ui_editor read reports detail/edit and auto_save; unsaved drafts require save or explicit discard. Existing core task cards also expose scheduling, alerts and linked notes. Notes preserve authored content; edits are drafts. Notes has saved Lists (note_lists / note_list_items). ui_workspace(view=notes, note_list_id=ID) opens a list; empty clears and uncategorized shows unfiled notes. Read source-linked entries with note_read; automatic filing uses list descriptions and stored filters. Note lists are not personal memory. Personal memories are separate learned facts with source cards and review questions.
 Activity in the top bar shows accepted work, necessary questions and saved changes with Edit/Revert. ui_activity opens/closes it. Cancel stops unfinished work; ending voice does not cancel accepted work.

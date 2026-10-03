@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
-import { validHomes } from "./OrganizationTree";
+import { HomePicker } from "./HomePicker";
+import { ContentsDialog } from "./ContentsDialog";
+import type {ContentsSummary} from "./structure-types";
 import { RecordTools } from "./record-links";
 import { useEditor } from "./editor-control";
 import { Link2, X } from "lucide-react";
@@ -44,7 +46,11 @@ function FieldValue({field,value,choices,disabled,onSave,className}:{field:Schem
 
 const DUE = ["due_date","due_time","due_timezone"];
 
-export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged,onOpen}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>;onOpen?:(r:CustomRecord)=>void}){
+export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClose,onChanged,onOpen}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>;onOpen?:(r:CustomRecord)=>void}){
+  const [choices,setChoices]=useState(initialChoices),[relatedQuery,setRelatedQuery]=useState("");
+  const [contents,setContents]=useState<ContentsSummary|undefined>(initial.contents);
+  const [children,setChildren]=useState<CustomRecord[]>([]),[childOffset,setChildOffset]=useState(0),[childNext,setChildNext]=useState<number|null>(null);
+  const [contentsAction,setContentsAction]=useState<{operation:"move"|"archive";parentId?:string|null}|null>(null);
   const [row,setRow]=useState(initial);const [body,setBody]=useState(initial.body);const [title,setTitle]=useState(initial.title);const [relation,setRelation]=useState("");const [target,setTarget]=useState("");const {run,busy,error,setError}=useStructureActions();
   const [localNotes,setLocalNotes]=useState(initial.local_notes??"");
   const [failed,setFailed]=useState<Record<string,unknown>|null>(null);
@@ -53,8 +59,22 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged,onO
   const [alert,setAlert]=useState<{revision:number;deadline_alert:string;alert_urgent:boolean}|null>(null);
   useEffect(()=>{if(row.task_id)void api<{revision:number;deadline_alert:string;alert_urgent:boolean}>("/tasks/"+row.task_id).then(setAlert);},[row.task_id,row.revision]);
   const alertSave=async(values:Record<string,unknown>)=>{if(!alert||!row.task_id)return;const task=await run<{revision:number;deadline_alert:string;alert_urgent:boolean}>("task.update",{task_id:row.task_id,expected_revision:alert.revision,...values});setAlert(task);setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();};
+  useEffect(()=>{let live=true;void api<CustomRecord>("/structure/records/"+row.id).then(r=>live&&setContents(r.contents)).catch(()=>{});
+    void api<{items:CustomRecord[];next_offset:number|null}>("/structure/browse?parent_id="+row.id+"&limit=30&offset="+childOffset).then(r=>{if(live){setChildren(r.items);setChildNext(r.next_offset);}}).catch(()=>{});
+    return()=>{live=false;};
+  },[row.id,row.revision,childOffset]);
+  useEffect(()=>{let live=true;const timer=setTimeout(()=>{void (async()=>{
+    const page=await api<{items:CustomRecord[]}>("/structure/records?limit=50&query="+encodeURIComponent(relatedQuery));
+    const ids=new Set(row.links.flatMap(l=>[l.source_id,l.target_id]));
+    for(const f of schema.types.find(t=>t.id===row.type_id)?.fields??[])if(f.kind==="relation"){const v=row.values[f.id];for(const id of Array.isArray(v)?v:[v])if(typeof id==="string"&&id)ids.add(id);}
+    const linked=await Promise.all([...ids].filter(id=>id!==row.id&&!page.items.some(r=>r.id===id)).map(id=>api<CustomRecord>("/structure/records/"+id).catch(()=>null)));
+    if(live)setChoices([...page.items,...linked.filter((r):r is CustomRecord=>r!==null)]);
+  })().catch(e=>live&&setError(e.message));},200);return()=>{live=false;clearTimeout(timer);};},[row.id,row.revision,relatedQuery,schema,setError]);
   const t=schema.types.find(t=>t.id===row.type_id)!;
   const save=async(changes:Record<string,unknown>)=>{
+    if(changes.status_id&&t.statuses.find(s=>s.id===changes.status_id)?.meaning==="completed"&&contents?.work_open){
+      if(!window.confirm("Complete only this record? "+contents.work_open+" unfinished descendants will stay open."))return current.current;
+    }
     if(flight.current)await flight.current;
     const op=run<CustomRecord>("record.update",{record_id:current.current.id,expected_revision:current.current.revision,schema_revision:schema.revision,...changes});flight.current=op;
     try{const result=await op;current.current=result;setRow(result);setTitle(result.title);setBody(result.body);setLocalNotes(result.local_notes??"");setFailed(null);setComparison(null);await onChanged();return result;}catch(e){setFailed(changes);throw e;}finally{flight.current=null;}
@@ -97,22 +117,27 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged,onO
         <details className="detail-section"><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
         <RecordTools kind="record" id={row.id}/>
-        {choices.some(r=>r.home.some(h=>h.id===row.id))&&<section className="detail-section" aria-label="Work in this home"><h3>In this home</h3>{choices.filter(r=>r.home.some(h=>h.id===row.id)).map(r=><div className="detail-link-row" key={r.id}><button className="text-button" onClick={()=>void finish().then(()=>onOpen?.(r)).catch(()=>{})}>{r.title}</button><span className="chip">{r.type_name}</span><span>{r.status_meaning?.replaceAll("_"," ")}</span></div>)}</section>}
-        <section className="detail-section" aria-label="Related records">
+        {contents&&contents.work_total>0&&<p className="detail-progress">{contents.work_done}/{contents.work_total} descendants completed{contents.ready_to_complete?" · Ready for your final check":""}. Completing this record leaves child statuses unchanged.</p>}
+        {!!row.blockers?.length&&<p className="detail-alert">Unfinished prerequisites: {row.blockers.map(b=>b.title).join(", ")}. You can still record progress.</p>}
+        {(children.length>0||childOffset>0)&&<section className="detail-section" aria-label="Work in this home"><h3>Direct contents</h3>{children.map(r=><div className="detail-link-row" key={r.id}><button className="text-button" onClick={()=>void finish().then(()=>onOpen?.(r)).catch(()=>{})}>{r.title}</button><span className="chip">{r.type_name}</span><span>{r.status_meaning?.replaceAll("_"," ")}</span></div>)}
+          <div className="org-pagination">{childOffset>0&&<button className="btn btn-sm" onClick={()=>setChildOffset(Math.max(0,childOffset-30))}>Previous</button>}{childNext!==null&&<button className="btn btn-sm" onClick={()=>setChildOffset(childNext)}>More contents</button>}</div></section>}
+        <details className="detail-section" aria-label="Related records"><summary>Extra relationships{links.length?" · "+links.length:""}</summary>
+
+          <label className="field">Find related records<input aria-label="Find related records" value={relatedQuery} onChange={e=>setRelatedQuery(e.target.value)} placeholder="Search names (first 50 matches)"/></label>
           <div className="detail-section-head"><h3>Related records</h3>{!!links.length&&<span className="detail-count">{links.length}</span>}</div>
           {!links.length&&<p className="detail-empty">No related records yet.</p>}
           {links.map(({l,other})=><div className="detail-link-row" key={l.id}><Link2 size={15}/>
             <button className="text-button detail-link-title" onClick={()=>{const next=choices.find(r=>r.id===other);if(next)void finish().then(()=>onOpen?.(next)).catch(()=>{});}}>{choices.find(r=>r.id===other)?.title??"Linked record"}</button>
-            <span className="chip">{schema.relationships.find(r=>r.id===l.relationship_id)?.name}</span>
+            <span className="chip">{(schema.relationships.find(r=>r.id===l.relationship_id)?.behavior==="blocks"&&l.target_id===row.id?"Blocked by":schema.relationships.find(r=>r.id===l.relationship_id)?.name)}</span>
             {canEdit&&l.source_id===row.id&&<span className="row-actions"><button className="btn-icon" aria-label="Remove link" onClick={()=>void link(true,l.relationship_id,other).catch(()=>{})}><X size={14}/></button></span>}
           </div>)}
           {canEdit&&<div className="detail-add-link"><select aria-label="Relationship" value={relation} onChange={e=>{setRelation(e.target.value);setTarget("");}}><option value="">Add a relationship</option>{schema.relationships.filter(r=>!r.archived&&r.source_types.includes(row.type_id)).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>
             {relation&&<><select aria-label="Related record" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Choose a record</option>{choices.filter(r=>schema.relationships.find(l=>l.id===relation)?.target_types.includes(r.type_id)).map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</select><button className="btn btn-soft" disabled={!target||busy} onClick={()=>void link().catch(()=>{})}>Link</button></>}</div>}
-        </section>
+        </details>
       </div>
       <aside className="detail-props" aria-label={t.name+" properties"}>
         <div className="prop-list">
-          <Prop label="Main home"><select aria-label="Main home" value={row.parent_id??""} disabled={locked} onChange={e=>void save({parent_id:e.target.value||null}).catch(()=>{})}><option value="">Unfiled</option>{validHomes(row,choices,schema).map(r=><option key={r.id} value={r.id}>{r.title} ({r.type_name})</option>)}</select></Prop>
+          <Prop label="Main home"><HomePicker row={row} schema={schema} disabled={locked} onChoose={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/></Prop>
           {!!t.statuses.length&&<Prop label="Status"><select aria-label="Status" value={row.status_id??""} disabled={locked} onChange={e=>void save({status_id:e.target.value||null}).catch(()=>{})}>{!t.capabilities.includes("work")&&<option value="">Empty</option>}{t.statuses.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>}
           {!!due.length&&<Prop label="Due" hint={due.map(f=>f.description).join(" ")}><div className="prop-inline">
             {due.map(f=>field(f,f.binding==="due_date"?"prop-date":f.binding==="due_time"?"prop-time":"prop-zone"))}</div>{due.map(f=><span key={f.id}>{inherited(f)}</span>)}</Prop>}
@@ -122,8 +147,9 @@ export function RecordCard({schema,initial,choices,canEdit,onClose,onChanged,onO
             <Prop label="Deadline alert"><select aria-label="Deadline alert" value={alert.deadline_alert} disabled={locked} onChange={e=>void alertSave({deadline_alert:e.target.value}).catch(()=>{})}><option value="default">Use my setting</option><option value="on">On</option><option value="off">Off</option></select></Prop>
             <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={alert.alert_urgent} disabled={locked} onChange={e=>void alertSave({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop></>}
         </div>
-        {canEdit&&<div className="detail-props-foot"><button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>void save({archived:!row.archived}).then(onClose).catch(()=>{})}>{row.archived?"Restore":"Archive"}</button></div>}
+        {canEdit&&<div className="detail-props-foot"><button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
       </aside>
     </div>
+    {contentsAction&&<ContentsDialog row={row} schema={schema} {...contentsAction} onClose={()=>setContentsAction(null)} onDone={async()=>{await onChanged();if(contentsAction.operation==="archive")onClose();else{const next=await api<CustomRecord>("/structure/records/"+row.id);setRow(next);current.current=next;}}}/>}
   </Dialog>;
 }

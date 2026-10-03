@@ -100,7 +100,7 @@ export const actionSchema = z
     work_kind: z.enum(["all", "task", "reminder"]).optional(),
     task_ids: z.array(z.string()).max(100).optional(),
     form: z.enum(editorKinds).optional(),
-    layout: z.enum(["tree", "list", "board", "timeline"]).optional(),
+    layout: z.enum(["browse", "tree", "list", "board", "timeline"]).optional(),
     sort: z.enum(["priority", "due", "planned", "title", "updated"]).optional(),
     group_by: z.enum(["status", "project", "assignee"]).optional(),
     timeline_date: date.optional(),

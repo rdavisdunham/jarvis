@@ -6,6 +6,10 @@ import {
 } from "lucide-react";
 import { api, post } from "./api";
 import { useStructureActions } from "./structure-actions";
+import { OrganizationBrowse } from "./OrganizationBrowse";
+import { ContentsDialog } from "./ContentsDialog";
+import "./organization.css";
+import { nestedRows, childSpan } from "./nested-timeline";
 import { OrganizationTree } from "./OrganizationTree";
 import { SourceBadge } from "./SourceDetails";
 import {QuickListDetail} from "./QuickLists";
@@ -19,7 +23,7 @@ import { Popover, priorityLabels } from "./ux";
 import { clockLabel, dueBucket, dueBuckets, monthDay, shortDate } from "./work-views";
 import { shiftDate } from "./workspace";
 
-type Control = {nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean};
+type Control = {nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean;section?:string};
 type SavedEntry = {id:string;name:string;revision:number;state:Record<string,unknown>};
 type Sort = "default" | "due" | "planned" | "priority" | "title";
 const sortOptions: [Sort, string][] = [["due", "Due date"], ["planned", "Planned day"], ["priority", "Priority"], ["title", "Title"], ["default", "Recently changed"]];
@@ -35,25 +39,29 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const [schema,setSchema]=useState<Schema|null>(null);const [items,setItems]=useState<CustomRecord[]>([]);
   const [resultIds,setResultIds]=useState<string[]|null>(null);
   const [resultSearch,setResultSearch]=useState<string|null>(null);
-  const [typeId,setTypeId]=useState("");const [layout,setLayout]=useState(capability?"list":"tree");const [parent,setParent]=useState("");
+  const [typeId,setTypeId]=useState("");const [layout,setLayout]=useState(capability?"list":"browse");const [parent,setParent]=useState("");
+  const [browseSection,setBrowseSection]=useState("groups");
+  const [browseRefresh,setBrowseRefresh]=useState(0);
+  const [moving,setMoving]=useState<{row:CustomRecord;parentId:string|null}|null>(null);
   const [selected,setSelected]=useState<CustomRecord|null>(null);const [design,setDesign]=useState(false);const [designDirty,setDesignDirty]=useState(false);
   const [title,setTitle]=useState("");const [archived,setArchived]=useState(false);const [group,setGroup]=useState("status");
   const [proposal,setProposal]=useState<Proposal>();
-  const [status,setStatus]=useState("active"),[filterField,setFilterField]=useState(""),[filterValue,setFilterValue]=useState("");
+  const [status,setStatus]=useState(capability?"active":"all"),[filterField,setFilterField]=useState(""),[filterValue,setFilterValue]=useState("");
   const [sort,setSort]=useState<Sort>(capability?"due":"default");
   const [saved,setSaved]=useState<SavedEntry[]>([]),[viewName,setViewName]=useState(""),[viewNotice,setViewNotice]=useState("");
   const [timelineStart,setTimelineStart]=useState(today);
+  const [timelineClosed,setTimelineClosed]=useState<Set<string>>(new Set());
   const captureInput=useRef<HTMLInputElement>(null);
   const {run,error,busy,setError}=useStructureActions();
   const load=useCallback(async()=>{
     const s=await api<Schema>("/structure");const all:CustomRecord[]=[];let offset:number|null=0;
-    while(offset!==null){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;}
+    while(offset!==null && (layout!=="browse"||!!query)){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;}
     setSchema(s);setItems(all);
     const views=await api<{items:SavedEntry[]}>("/task-views");setSaved(views.items.filter(v=>v.state.collection_view||onApplyTaskView));
-  },[archived,!!onApplyTaskView]);
+  },[archived,!!onApplyTaskView,layout,!!query]);
   useEffect(()=>{let live=true;load().catch(e=>{if(live)setError(String(e.message??e));});return()=>{live=false;};},[load,refresh,setError]);
   useEffect(()=>{const handler=(event:Event)=>{const id=(event as CustomEvent).detail?.id;if(id)api<CustomRecord>("/structure/records/"+id).then(setSelected).catch(e=>setError(e.message));};window.addEventListener("eri-open-record",handler);return()=>window.removeEventListener("eri-open-record",handler);},[setError]);
-  useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
+  useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.section!==undefined)setBrowseSection(control.section);else if(control.parent_id!==undefined)setBrowseSection(control.parent_id?"all":"groups");if(!control.layout&&!capability){if(control.type_id||control.field||control.record_ids?.length)setLayout("list");else if(control.parent_id!==undefined)setLayout("browse");}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
 
   useEffect(()=>{if(statusFilter!==undefined)setStatus(statusFilter);},[statusFilter]);
   useEffect(()=>{if(homeFilter!==undefined)setParent(homeFilter);},[homeFilter]);
@@ -62,7 +70,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   // A sort chosen elsewhere (Eri, a saved view) applies once it changes; the page keeps its own default until then.
   const firstSort=useRef(true);
   useEffect(()=>{if(firstSort.current){firstSort.current=false;return;}if(sortFilter)setSort(sortFilter==="updated"?"default":sortFilter as Sort);},[sortFilter]);
-  useEffect(()=>{onContext?.({type_id:typeId,parent_id:parent,layout,group,status,archived:Number(archived),design:Number(design),design_dirty:Number(design&&designDirty),field:filterField,value:filterValue,record_id:selected?.id??null,schema_revision:schema?.revision??0});},[typeId,parent,layout,group,status,archived,design,designDirty,filterField,filterValue,selected?.id,schema?.revision,onContext]);
+  useEffect(()=>{onContext?.({section:browseSection,type_id:typeId,parent_id:parent,layout,group,status,archived:Number(archived),design:Number(design),design_dirty:Number(design&&designDirty),field:filterField,value:filterValue,record_id:selected?.id??null,schema_revision:schema?.revision??0});},[browseSection,typeId,parent,layout,group,status,archived,design,designDirty,filterField,filterValue,selected?.id,schema?.revision,onContext]);
   const types=(schema?.types??[]).filter(t=>!t.archived&&(!capability||t.capabilities.includes(capability)));const type=types.find(t=>t.id===typeId);
   const captureType=type??types.find(t=>t.id==="task")??types[0];
   const weekEnd=new Date(today+"T12:00:00Z");weekEnd.setUTCDate(weekEnd.getUTCDate()+6);const end=weekEnd.toISOString().slice(0,10);
@@ -112,10 +120,17 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     document.querySelectorAll(".work-page [data-record-id]").forEach(el=>observer.observe(el));
     return()=>observer.disconnect();
   },[resultSearch,resultIds,visibleSearchIds]);
-  useEffect(()=>{onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible]);
+  useEffect(()=>{if(layout!=="browse")onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible,layout]);
+  useEffect(()=>{if(layout==="browse"&&(query||typeId||filterField||resultIds?.length))setLayout("list");},[query,typeId,filterField,resultIds,layout]);
   if(!schema)return <p role="status" className="work-loading">{error||"Loading your structure…"}</p>;
-  const refreshAll=async()=>{await load();onChanged?.();};
-  const edit=async(row:CustomRecord,changes:Record<string,unknown>)=>{await run("record.update",{record_id:row.id,expected_revision:row.revision,schema_revision:schema.revision,...changes});await refreshAll();};
+  const refreshAll=async()=>{await load();setBrowseRefresh(r=>r+1);onChanged?.();};
+  const edit=async(row:CustomRecord,changes:Record<string,unknown>)=>{
+    const rt=schema.types.find(t=>t.id===row.type_id);
+    if(changes.status_id&&rt?.statuses.find(s=>s.id===changes.status_id)?.meaning==="completed"){
+      const fresh=await api<CustomRecord>("/structure/records/"+row.id);
+      if(fresh.contents?.work_open&&!window.confirm("Complete only "+row.title+"? "+fresh.contents.work_open+" unfinished descendants will stay open."))return;
+    }
+    await run("record.update",{record_id:row.id,expected_revision:row.revision,schema_revision:schema.revision,...changes});await refreshAll();};
   const create=async()=>{if(!title.trim()||!captureType)return;await run<CustomRecord>("record.create",{type_id:captureType.id,title:title.trim(),schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});setTitle("");await refreshAll();};
   const gf=type?.fields.find(f=>f.id===group);
   const groups=group==="status"?(type?.statuses??meanings.filter(m=>visible.some(r=>r.status_meaning===m)).map(m=>({id:m,name:describe(m),meaning:m}))):group==="parent"?items.filter(r=>visible.some(v=>v.parent_id===r.id)).map(r=>({id:r.id,name:r.title,meaning:""})):gf?.kind==="relation"?items.filter(r=>gf.target_types.includes(r.type_id)).map(r=>({id:r.id,name:r.title,meaning:""})):(gf?.options.length?gf.options.map(o=>({...o,meaning:""})):Array.from(new Set(visible.map(r=>String(r.values[group]??"")).filter(Boolean))).map(v=>({id:v,name:v,meaning:""})));
@@ -129,6 +144,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   };
   const removeView=async(v:SavedEntry)=>{await post("/task-views/remove",{id:v.id,expected_revision:v.revision});await load();};
   const grip=(event:React.PointerEvent,id:string)=>{if(event.pointerType==="mouse")return;event.preventDefault();const target=event.currentTarget;target.setPointerCapture(event.pointerId);const up=(e:Event)=>{const point=e as PointerEvent;const col=document.elementFromPoint(point.clientX,point.clientY)?.closest<HTMLElement>("[data-record-column]");if(col)void move(id,col.dataset.recordColumn??"").catch(()=>{});target.removeEventListener("pointerup",up);};target.addEventListener("pointerup",up);};
+  const setQueryForBrowse=()=>{onQuery?.("");setTypeId("");setFilterField("");setFilterValue("");setResultIds(null);};
   const open=(r:CustomRecord)=>{setSelected(r);void semantic.used(r.id);if(resultSearch)void post("/search/events",{search_id:resultSearch,kind:"used",record_id:r.id}).catch(()=>{});};
   const complete=(r:CustomRecord)=>{const rt=schema.types.find(t=>t.id===r.type_id)!;const next=rt.statuses.find(s=>s.meaning===(r.status_meaning==="completed"?"open":"completed"))??(r.status_meaning==="completed"?rt.statuses.find(s=>s.meaning==="backlog"):undefined);if(next)void edit(r,{status_id:next.id}).catch(()=>{});};
 
@@ -191,7 +207,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     filterField&&filterValue&&{key:"field",label:(field?.name??"Field")+": "+((field?.kind==="relation"?items.find(r=>r.id===filterValue)?.title:field?.options.find(o=>o.id===filterValue)?.name)??filterValue),clear:()=>{setFilterField("");setFilterValue("");}},
     archived&&{key:"archived",label:"Archived",clear:()=>setArchived(false)},
   ].filter(Boolean) as {key:string;label:string;clear:()=>void}[];
-  const layoutIcons={tree:Layers,list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
+  const layoutIcons={browse:Compass,tree:Layers,list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
   const toolbar=<div className={"work-toolbar"+(tabs?" has-tabs":"")}>
     {tabs}
     <div className="work-toolbar-controls">
@@ -225,7 +241,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         </>}
       </Popover>
       <div className="segmented work-layout" role="group" aria-label="Layout">
-        {((capability?["list","board","timeline"]:["tree","list","board","timeline"]) as (keyof typeof layoutIcons)[]).map(value=>{const Icon=layoutIcons[value];const label=value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
+        {((capability?["list","board","timeline"]:["browse","tree","list","board","timeline"]) as (keyof typeof layoutIcons)[]).map(value=>{const Icon=layoutIcons[value];const label=value==="tree"?"Structure":value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={value==="tree"?"Tree":label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
       </div>
       {canDesign&&<button type="button" className="btn btn-ghost toolbar-button" aria-label="Structure" title="Shape your workspace structure" onClick={()=>{setProposal(undefined);setDesign(true);}}><Settings2 size={16} aria-hidden="true"/><span className="toolbar-label">Types & fields</span></button>}
     </div>
@@ -246,14 +262,15 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       </div>
       <label className="work-timeline-start">Timeline start<input type="date" value={timelineStart} onChange={e=>e.target.value&&setTimelineStart(e.target.value)}/></label>
     </div>
-    <p className="work-timeline-note">Bars run from start to target. Task dates are markers, not reserved time.</p>
+    <p className="work-timeline-note">Solid bars show this record’s own dates. The thin line shows its children’s date span. Task dates are markers, not reserved time; neither shifts the other.</p>
     <div className="work-timeline-grid">
       <div className="work-timeline-axis" aria-hidden="true"><span/>
         <div className="work-timeline-scale">{[0,7,14,21,28].map(d=><span key={d} style={{left:pct(d)}}>{monthDay(shiftDate(timelineStart,d))}</span>)}</div>
       </div>
-      {visible.map(r=>{const start=bound(r,"start_date")||bound(r,"planned_date")||bound(r,"due_date");const finish=bound(r,"target_date")||start;const a=offset(start),b=offset(finish);const Icon=typeIcon(r.type_id);
+      {nestedRows(visible,timelineClosed).map(({row:r,depth,hasChildren})=>{const span=childSpan(r,items,bound);const start=bound(r,"start_date")||bound(r,"planned_date")||bound(r,"due_date");const finish=bound(r,"target_date")||start;const a=offset(start),b=offset(finish);const Icon=typeIcon(r.type_id);
         return <div key={r.id} className="work-timeline-row">
-          <div className="work-timeline-name" data-record-id={r.id}>
+          <div className="work-timeline-name" data-record-id={r.id} style={{paddingLeft:12+Math.min(depth,8)*16}}>
+            {hasChildren&&<button className="btn-icon" aria-label={(timelineClosed.has(r.id)?"Expand ":"Collapse ")+r.title} aria-expanded={!timelineClosed.has(r.id)} onClick={()=>setTimelineClosed(v=>{const n=new Set(v);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n;})}>{timelineClosed.has(r.id)?"▸":"▾"}</button>}
             <span className="row-glyph" aria-hidden="true"><Icon size={16}/></span>
             <div className="row-main">
               <button className="row-title" onClick={()=>open(r)}>{r.title}</button>
@@ -264,6 +281,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
             </div>
           </div>
           <div className="timeline-track">
+            {span&&offset(span[1])>=0&&offset(span[0])<TIMELINE_DAYS&&<span className="timeline-child-span" title={"Children: "+span.join(" – ")} style={{left:pct(Math.max(0,offset(span[0]))),width:pct(Math.max(0,Math.min(TIMELINE_DAYS,offset(span[1])+1)-Math.max(0,offset(span[0]))))}}/>}
             {todayOffset>=0&&todayOffset<TIMELINE_DAYS&&<span className="work-timeline-today" style={{left:pct(todayOffset+.5)}}/>}
             {start?(b>=0&&a<TIMELINE_DAYS?<span className={"timeline-bar"+(r.status_meaning==="completed"?" done":"")} title={start+(finish!==start?" – "+finish:"")} style={{left:pct(Math.max(0,a)),width:"max(6px, "+pct(Math.min(TIMELINE_DAYS,b+1)-Math.max(0,a))+")"}}/>:<span className="work-timeline-out">{b<0?"Before this range":"After this range"}</span>):<span className="work-timeline-out">Unscheduled</span>}
           </div>
@@ -300,7 +318,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     {resultIds&&<div className="work-notice">{resultIds.length} search results <button type="button" className="text-button" onClick={()=>{setResultIds(null);setResultSearch(null);}}>Show all records</button></div>}
     {query&&semantic.pending&&<p role="status" className="work-notice">Searching…</p>}
     {query&&(semantic.error||semantic.result?.incomplete)&&<p className="work-notice">Showing available matches. Semantic search is still catching up.</p>}
-    <div className="work-listbar">
+    {layout!=="browse"&&<div className="work-listbar">
       {selecting?<div className="work-bulk" role="group" aria-label="Selection">
         <label className="check-label"><input type="checkbox" aria-label="Select visible tasks" checked={visibleTasks.length>0&&visibleTasks.every(r=>selectedIds.includes(r.task_id!))} onChange={e=>onSelection?.(e.target.checked?visibleTasks.map(r=>r.task_id!):[])}/>Select visible</label>
         <span className="work-bulk-count tabular">{selectedIds.length} selected</span>
@@ -309,10 +327,15 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       </div>:capture}
       {!selecting&&onSelecting&&canEdit&&layout!=="timeline"&&<button type="button" className="btn btn-ghost btn-sm work-select" onClick={()=>onSelecting(true)}>Select tasks</button>}
     </div>
+    }
     <div className="work-body" id={tabs?"task-workspace":undefined} role={tabs?"tabpanel":undefined} aria-labelledby={tabs?"task-tab-"+tab:undefined}>
-      {!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("list");}} onMove={edit}/>:layout==="board"?board:layout==="timeline"?timeline:list}
+      {layout==="browse"&&!capability?<OrganizationBrowse schema={schema} parent={parent} section={browseSection} onSection={setBrowseSection} query={query} archived={archived} status={status} refresh={refresh+browseRefresh} canEdit={canEdit}
+        onBrowse={id=>{setParent(id);setBrowseSection(id?"all":"groups");setQueryForBrowse();}} onOpen={open} onVisible={onVisible}
+        onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}}/>
+       :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
     {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={open} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
+    {moving&&<ContentsDialog row={moving.row} schema={schema} operation="move" parentId={moving.parentId} onClose={()=>setMoving(null)} onDone={refreshAll}/>}
     {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} schema={schema} onClose={()=>setDesign(false)} onApplied={async()=>{setDesign(false);await refreshAll();}}/>}
   </section>;
 }

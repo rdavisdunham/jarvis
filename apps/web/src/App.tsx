@@ -196,7 +196,7 @@ export default function App() {
   const [noteListId, setNoteListId] = useState(() => new URLSearchParams(location.search).get("note_list") ?? "");
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
-  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean}>();
+  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean;section?:string}|undefined>(()=>{const q=new URLSearchParams(location.search);if(q.get("view")!=="organize")return undefined;return {nonce:"initial",parent_id:q.get("home")??"",layout:["browse","tree","list","board","timeline"].includes(q.get("layout")??"")?q.get("layout")!:"browse",section:q.get("contents")??(q.get("home")?"all":"groups")};});
   const [taskRecordControl,setTaskRecordControl]=useState<typeof recordControl>();
   useEffect(()=>{const open=(e:Event)=>{setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:(e as CustomEvent).detail.id});};window.addEventListener("eri-open-custom-record",open);return()=>window.removeEventListener("eri-open-custom-record",open);},[]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
@@ -1104,9 +1104,9 @@ export default function App() {
       if (action.layout) {
         if(target === "organize") {
           setRecordControl({nonce:crypto.randomUUID(),layout:action.layout});
-          if(action.layout!=="tree")setOrganizationLayout(action.layout);
+          if(action.layout!=="tree"&&action.layout!=="browse")setOrganizationLayout(action.layout);
         } else {
-          if(action.layout==="tree")throw new Error("The tree layout belongs to Organization.");
+          if(action.layout==="tree"||action.layout==="browse")throw new Error("Browse and Structure layouts belong to Organization.");
           setWorkLayout(action.layout);
         }
       }
@@ -1802,7 +1802,7 @@ export default function App() {
     done = filtered.filter((t) => t.status === "completed"),
     unread = notices.filter((n) => !n.read_at).length;
   const uiContext: UIContext = {
-    layout: view === "organize" ? (organizationEditor ? organizationLayout : (collectionContext.layout??"tree") as "tree"|WorkLayout) : workLayout,
+    layout: view === "organize" ? (organizationEditor ? organizationLayout : (collectionContext.layout??"browse") as "browse"|"tree"|WorkLayout) : workLayout,
     sort: workSort,
     group_by: workGroup,
     timeline_date: timelineDate || today,
@@ -1921,9 +1921,14 @@ export default function App() {
     navigationUrl.searchParams.set("workspace", boot?.workspace?.id ?? "personal");
   } else if (!linkWorkspace) {navigationUrl.searchParams.delete("record"); navigationUrl.searchParams.delete("workspace");}
   if (view === "notes" && noteListId) navigationUrl.searchParams.set("note_list", noteListId); else navigationUrl.searchParams.delete("note_list");
+  if(view==="organize"){
+    if(collectionContext.parent_id)navigationUrl.searchParams.set("home",String(collectionContext.parent_id));else navigationUrl.searchParams.delete("home");
+    navigationUrl.searchParams.set("layout",String(collectionContext.layout??"browse"));
+    navigationUrl.searchParams.set("contents",String(collectionContext.section??"groups"));
+  }else{navigationUrl.searchParams.delete("home");navigationUrl.searchParams.delete("layout");navigationUrl.searchParams.delete("contents");}
   if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
-    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : ""),
+    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : ""),
     layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
     url: navigationUrl.href, onError: setError,
     restore: async target => {
@@ -1939,7 +1944,7 @@ export default function App() {
       setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
       const collection = target.collectionContext;
       (isTaskTab(target.view) ? setTaskRecordControl : setRecordControl)({nonce: crypto.randomUUID(), type_id: String(collection.type_id ?? ""), parent_id: String(collection.parent_id ?? ""),
-        layout: String(collection.layout ?? "list"), group: String(collection.group ?? "status"), field: String(collection.field ?? ""),
+        section:String(collection.section??"groups"), layout: String(collection.layout ?? "browse"), group: String(collection.group ?? "status"), field: String(collection.field ?? ""),
         value: String(collection.value ?? ""), status: String(collection.status ?? "active"), archived: !!collection.archived, design: !!collection.design,
         ...(detailChanged && target.detail?.kind === "record" && target.detail.record_id ? {record_id: target.detail.record_id} : {})});
       if (detailChanged) {

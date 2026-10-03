@@ -49,20 +49,20 @@ are engineering work, not outstanding owner decisions.
   foundation adds a reusable library, finite type layout and Home adapters with
   conflict reporting. Existing customized types keep their behavior; completion can
   be enabled through the schema editor. No data reset or bulk legacy conversion.
-- [ ] **ORG1 — Browse by default.** Organization opens on compact actual containers
+- [x] **ORG1 — Browse by default.** Organization opens on compact actual containers
   and Unfiled. Container pages show groups, tasks, notes and related items with
   breadcrumbs and Add here. Keep actual-record Structure and collection layouts;
   support custom types, remembered expansion, Back and foldable layouts.
-- [ ] **ORG2 — visual Types & fields.** Default to a type/field tree with focused
+- [x] **ORG2 — visual Types & fields.** Default to a type/field tree with focused
   editing and contextual Add. Keep the complete editor as Advanced, editing the
   same draft. Show multiple permitted homes and extra links; distinguish diagram
   arrangement, placement restrictions and actual record moves.
-- [ ] **ORG3 — backend contracts and Eri controls.** Reuse canonical records,
+- [x] **ORG3 — backend contracts and Eri controls.** Reuse canonical records,
   schema and connector writes. Add scoped/paginated container reads and optional
   presentation metadata where needed. Preserve IDs, descriptions, preview/revisions,
   provider ownership and access checks. Cosmetic changes must not retrain rules.
   Update Eri's navigation map after the UI settles.
-- [ ] **ORG4 — nested work and contents operations.** Backend implemented; UI follows. Actionable Project preset,
+- [x] **ORG4 — nested work and contents operations.** Actionable Project preset,
   same-type subtasks without a new Subtask type, nested timeline/progress and explicit
   parent completion. Carry contents by default; move-only promotes direct children
   to the old home. Container deletion offers subtree removal versus preserving
@@ -72,6 +72,11 @@ are engineering work, not outstanding owner decisions.
   start/completion; reject self/cyclic links and never auto-complete prerequisites.
   Contents commands now provide counts/source effects, stale-preview guards and
   grouped Revert; scoped children/subtree/related reads expose complete totals.
+  UI verification: 180 frontend tests passed (one pre-existing skip); isolated
+  browser coverage includes container Back/Forward and deep links, Add here,
+  move-only promotion, visual/Advanced draft preservation and 390/892/1440px
+  layouts. Nested timelines separate own dates from child spans. Real device,
+  source-provider and Live acceptance remain below.
 - [ ] **REV1 — visible questions and reliable delivery.** One personal inbox adapts
   memory/routing/field reviews; Organization shows its relevant subset. Separate
   unanswered questions from invitation delivery. Fix omitted Live memory questions,
