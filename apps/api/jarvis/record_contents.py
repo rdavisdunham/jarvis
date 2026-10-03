@@ -1,7 +1,7 @@
 """Scoped containment reads and atomic, revision-guarded contents operations."""
 
 from collections import Counter
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 from .domain import DomainError, owned, check_revision
 from .models import Task
 from .structure_models import StructureRecord, StructureLink
@@ -177,19 +177,20 @@ def browse(
         from sqlalchemy.orm import aliased
 
         child = aliased(StructureRecord)
-        containers = [
-            t["id"]
-            for t in schema.definition["types"]
-            if not ({"work", "content"} & set(t["capabilities"])) or "timeline" in t["capabilities"]
-        ]
+        types = schema.definition["types"]
+        containers = [t["id"] for t in types if structure.opens_as(t) == "container"]
+        inferred = [t["id"] for t in types if t.get("opens_as", "auto") == "auto"]
         q = q.where(
             or_(
                 StructureRecord.type_id.in_(containers),
-                select(child.id)
-                .where(
-                    child.owner_id == owner, child.parent_id == StructureRecord.id, child.archived == archived
-                )
-                .exists(),
+                and_(
+                    StructureRecord.type_id.in_(inferred),
+                    select(child.id)
+                    .where(
+                        child.owner_id == owner, child.parent_id == StructureRecord.id, child.archived == archived
+                    )
+                    .exists(),
+                ),
             )
         )
     if status != "all":
@@ -211,8 +212,11 @@ def browse(
         value = structure.data(db, row, schema)
         value["contents"] = summary(db, row, schema)
         items.append(value)
+    if parent:
+        parent_data = structure.data(db, parent, schema)
+        parent_data["contents"] = summary(db, parent, schema)
     return {
-        "parent": structure.data(db, parent, schema) if parent else None,
+        "parent": parent_data if parent else None,
         "items": items,
         "total": total,
         "next_offset": offset + limit if offset + limit < total else None,

@@ -777,6 +777,26 @@ button.detail-link-row:hover,
   font-size: 13px;
   line-height: 18px;
 }
+.schema-opens-as {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.schema-opens-as > legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.schema-opens-as > .schema-block-hint {
+  margin: 0;
+}
+.schema-opens-as > .segmented {
+  flex-wrap: wrap;
+}
 .schema-checks {
   display: flex;
   flex-wrap: wrap;

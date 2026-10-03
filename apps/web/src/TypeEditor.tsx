@@ -1,8 +1,13 @@
 import { canAttach,attachField } from "./field-library";
 import { ArrowUp, Plus, X } from "lucide-react";
-import type { Schema, SchemaField, SchemaType } from "./structure-types";
+import type { OpensAs, Schema, SchemaField, SchemaType } from "./structure-types";
 import { meanings, fieldKinds, describe, emptyField } from "./structure-types";
 
+const OPENS_AS: [OpensAs, string, string][] = [
+  ["container", "Container", "Opens to its contents and progress, like a folder."],
+  ["item", "Item", "Opens its details, even when other records live inside it."],
+  ["auto", "Let Eridani decide", "Opens as contents when it holds records or has no work or notes; otherwise opens its details."],
+];
 const sentence = (value: string) => { const text = describe(value); return text.charAt(0).toUpperCase() + text.slice(1); };
 
 export function MultiSelect({label,values,options,onChange}:{label:string;values:string[];options:{id:string;name:string}[];onChange:(v:string[])=>void}){
@@ -23,6 +28,10 @@ export function TypeEditor({type,schema,original,update,mappings,onMappings,comp
     {!focusedField&&<><div className="schema-pair"><label className="field"><span className="field-label-text">Singular name</span><input value={type.name} onChange={e=>update({name:e.target.value})}/></label><label className="field"><span className="field-label-text">Plural name</span><input value={type.plural} onChange={e=>update({plural:e.target.value})}/></label></div>
     <label className="field"><span className="field-label-text">Description <Required/></span><textarea required value={type.description} onChange={e=>update({description:e.target.value})} placeholder="What does this type mean? When should Eri use it?" rows={3}/></label>
     <fieldset className="schema-checks"><legend>Behaviors</legend>{[["work","Actionable work"],["content","Authored content"],["timeline","Timeline dates"],["metric","Outcome metric"]].map(([id,label])=><label className="schema-toggle" key={id}><input type="checkbox" checked={type.capabilities.includes(id)} onChange={e=>capability(id,e.target.checked)}/>{label}</label>)}</fieldset>
+    <fieldset className="schema-opens-as"><legend>Organizing container</legend>
+      <div className="segmented" role="group" aria-label="Organizing container">{OPENS_AS.map(([id,label])=><button type="button" key={id} aria-pressed={(type.opens_as??"auto")===id} onClick={()=>update({opens_as:id})}>{label}</button>)}</div>
+      <p className="schema-block-hint">{OPENS_AS.find(([id])=>id===(type.opens_as??"auto"))![2]}</p>
+    </fieldset>
     <MultiSelect label="Allowed main-home types" values={type.parent_types} options={schema.types.map(t=>({id:t.id,name:t.name}))} onChange={v=>update({parent_types:v})}/></>}
     <section className="schema-block" aria-label="Fields">
       <div className="schema-block-head"><h3>Fields</h3><span className="detail-count">{type.fields.length}</span><button className="btn btn-soft btn-sm" onClick={()=>update({fields:[...type.fields,emptyField()]})}><Plus size={15}/>Add field</button></div>

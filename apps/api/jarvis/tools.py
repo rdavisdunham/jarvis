@@ -437,7 +437,7 @@ READ_TOOLS.update({
     "record_get": {"description":"Read a record's current fields, main home, links and revision. Inherited properties follow the main home; additional links never silently change that home.","parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},"required":["record_id"],"additionalProperties":False}},
 })
 READ_TOOLS.update({
-    "ui_records":{"description":"Show Organization Browse (default) or the Structure tree, a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["browse","tree","list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
+    "ui_records":{"description":"Show Organization Browse (default) or the Structure tree, a custom record card, collection, board, timeline or structural proposal on the current website. Read schema/records first. Use record_group=status, parent or a select/single-relation field ID. record_id follows the record's opens_as: a container (\"show me ABC\") opens its Browse contents page; an item, such as a task with subtasks, opens its detail card. open_details=true opens a container's detail card instead. The detail card can be closed freely after pending field saves. proposal_id only shows the preview; it never applies changes.","parameters":{"type":"object","properties":{"type_id":{"type":"string"},"parent_id":{"type":"string"},"record_id":{"type":"string"},"open_details":{"type":"boolean"},"proposal_id":{"type":"string"},"layout":{"type":"string","enum":["browse","tree","list","board","timeline"]},"record_group":{"type":"string"},"field":{"type":"string"},"value":{"type":"string"}},"additionalProperties":False}},
     "routing_state":{"description":"Read separate organization rules, evidence, field understanding questions and weekly review. Ask at most one review question at a time; after three offer to stop. Never answer or activate a learned rule without the user. Manual review can resume any time.","parameters":{"type":"object","properties":{},"additionalProperties":False}}
 })
 from .record_contents import ContentsPlan
@@ -445,7 +445,7 @@ READ_TOOLS["record_contents_preview"] = {
     "description":"Preview moving or locally archiving a container. mode=subtree carries contents; mode=item promotes direct children to its old home. Read counts, conflicts and source effects, then use record_contents on a clear user request. This does not change records.",
     "parameters":ContentsPlan.model_json_schema()}
 READ_TOOLS["record_browse"] = {
-    "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes.",
+    "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes. groups lists records whose opens_as is container (the type's Organizing container setting; auto infers it). Each record reports opens_as: container opens as contents, item as its detail card.",
     "parameters":{"type":"object","properties":{
         "parent_id":{"type":["string","null"],"format":"uuid"},
         "scope":{"type":"string","enum":["children","subtree","related"]},
@@ -630,6 +630,11 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                     raise DomainError("INVALID_SEARCH_TARGET","Display only the selected search results, or record a new interpretation first.")
             for key,model in (("record_id",StructureRecord),("parent_id",StructureRecord),("proposal_id",StructureProposal)):
                 if arguments.get(key):owned(db,model,arguments[key],owner)
+            arguments=dict(arguments);details=arguments.pop("open_details",False)
+            if arguments.get("record_id") and not details and not arguments.get("record_ids") and arguments.get("layout") in {None,"browse"} and not arguments.get("parent_id"):
+                from .structure import data
+                if data(db,owned(db,StructureRecord,arguments["record_id"],owner),schema)["opens_as"]=="container":
+                    arguments.update(parent_id=arguments.pop("record_id"),layout="browse",type_id="",field="",value="")
         return await dispatch(owner,device,{"id":f"{turn_id}:{index}","kind":"records",**arguments})
     if name in {"note_lists", "note_list_items"}:
         from .note_lists import all_lists

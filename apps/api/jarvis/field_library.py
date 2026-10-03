@@ -4,6 +4,17 @@ from hashlib import sha256
 import json
 
 SEMANTIC = ("name", "description", "kind", "options", "target_types", "multiple", "binding")
+# Default types keep these presentation defaults only while their name and behaviors are unedited.
+DEFAULT_OPENS_AS = {
+    "space": ("Space", (), "container"), "area": ("Area", (), "container"),
+    "client": ("Client", (), "container"), "project": ("Project", ("timeline", "work"), "container"),
+    "task": ("Task", ("work",), "item"), "note": ("Note", ("content",), "item"),
+}
+
+
+def default_opens_as(t):
+    name, caps, mode = DEFAULT_OPENS_AS.get(t["id"], (None, (), "auto"))
+    return mode if t.get("name") == name and tuple(sorted(t.get("capabilities", []))) == caps else "auto"
 
 
 def upgrade(definition):
@@ -34,12 +45,21 @@ def upgrade(definition):
             f["library_id"] = identity
     result["field_library"] = library
     result.setdefault("type_layout", [])
+    for t in result["types"]:
+        if "opens_as" not in t:
+            t["opens_as"] = default_opens_as(t)
     return result
 
 
-def prepare(incoming, current, supplied):
+def prepare(incoming, current, supplied, unset_opens_as=()):
     """Older clients may edit inline fields without erasing the reusable library."""
     result = deepcopy(incoming)
+    prior = {t["id"]: t.get("opens_as") for t in current["types"]}
+    for t in result["types"]:
+        if t["id"] in unset_opens_as:
+            t.pop("opens_as", None)
+            if prior.get(t["id"]):
+                t["opens_as"] = prior[t["id"]]
     if "type_layout" not in supplied:
         result["type_layout"] = deepcopy(current.get("type_layout", []))
     if "field_library" not in supplied:

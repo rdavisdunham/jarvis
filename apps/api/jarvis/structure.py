@@ -74,6 +74,7 @@ def fingerprint(value):
 
 
 def default_definition():
+    from .field_library import DEFAULT_OPENS_AS
     statuses = [{"id": s, "name": s.replace("_", " ").capitalize(), "meaning": s} for s in MEANINGS]
 
     def field(binding, name, kind, description):
@@ -176,6 +177,7 @@ def default_definition():
             "parent_types": [r[0] for r in definitions],
             "fields": fields,
             "statuses": statuses if "work" in caps else [],
+            "opens_as": DEFAULT_OPENS_AS.get(k, (None, (), "auto"))[2],
         }
         for k, n, plural, d, caps, fields in definitions
     ]
@@ -222,7 +224,7 @@ def definition_entries(definition):
 def ensure(db, owner):
     schema = db.get(StructureSchema, owner)
     if schema:
-        if "field_library" not in schema.definition:
+        if "field_library" not in schema.definition or any("opens_as" not in t for t in schema.definition["types"]):
             from .field_library import upgrade
             schema.definition = upgrade(schema.definition)
         return schema
@@ -311,6 +313,15 @@ def ensure(db, owner):
             )
     db.flush()
     return schema
+
+
+def opens_as(t, has_children=False):
+    """Resolved presentation: explicit setting first; auto keeps the inferred container rule."""
+    mode = t.get("opens_as", "auto")
+    if mode != "auto":
+        return mode
+    caps = set(t["capabilities"])
+    return "container" if has_children or "timeline" in caps or not caps & {"work", "content"} else "item"
 
 
 def record_type(schema, type_id, *, archived=False):
@@ -469,6 +480,11 @@ def data(db, row, schema=None):
                     break
     from .record_contents import blocking
     result["blockers"] = blocking(db, row, schema)
+    result["opens_as"] = opens_as(t)
+    if result["opens_as"] == "item" and t.get("opens_as", "auto") == "auto":
+        result["opens_as"] = opens_as(t, db.scalar(select(StructureRecord.id).where(
+            StructureRecord.owner_id == row.owner_id, StructureRecord.parent_id == row.id,
+            StructureRecord.archived.is_(False)).limit(1)) is not None)
     result.update(
         values=values,
         inherited=inherited,
@@ -488,7 +504,7 @@ def data(db, row, schema=None):
     return result
 
 
-COMPACT = ("source", "id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
+COMPACT = ("source", "opens_as", "id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
 
 
 def records(
@@ -572,7 +588,8 @@ def preview(db, owner, args, command_id):
     assert_schema(schema, args.expected_revision)
     from .field_library import prepare
     definition = Definition.model_validate(prepare(
-        args.definition.model_dump(mode="json"), schema.definition, args.definition.model_fields_set
+        args.definition.model_dump(mode="json"), schema.definition, args.definition.model_fields_set,
+        {t.id for t in args.definition.types if "opens_as" not in t.model_fields_set},
     )).model_dump(mode="json")
     types = {t["id"]: t for t in definition["types"]}
     oldtypes = {t["id"]: t for t in schema.definition["types"]}

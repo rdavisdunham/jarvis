@@ -19,6 +19,14 @@ can replace that vocabulary, add types and choose their behaviors:
 - Content: authored notes using the existing note service and retrieval pipeline.
 - Timeline: start and target dates, displayed as a range rather than a busy appointment.
 - Metric: baseline, current value, target and unit, independent of task counts.
+- Organizing container (`RecordType.opens_as`: `container`, `item` or `auto`): a
+  presentation setting, not another hierarchy. Containers open to their Browse
+  contents with progress and a Details button; items open their detail card, which
+  lists a compact Contents section when records live inside. `auto` keeps the
+  inferred rule (has contents, timeline, or neither work nor content). Unedited
+  default Space/Area/Client/Project load as containers and Task/Note as items;
+  everything else stays `auto`. Records carry the resolved `opens_as`, which Browse
+  groups, the web and Eri's `ui_records(record_id)` all follow.
 
 A record has one main home, which can be another allowed record type. For example,
 Work → ABC → Transcript Intelligence → a task. Named links support additional

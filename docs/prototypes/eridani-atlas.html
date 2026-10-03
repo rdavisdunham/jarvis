@@ -1,0 +1,606 @@
+<title>Eridani Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300..700&display=swap">
+<style>
+/* Layout: one working surface. Atlas canvas (zoomable star-system map of real records) beside an inspector; Blueprint (type constellation) shares the surface in "Both" mode. Tokens follow Eridani's Orbit design system. */
+:root{
+  --paper:#F7F7FA; --surface:#FFFFFF; --sunken:#EFEEF4; --line:#E4E3EC; --line-strong:#D2D0DE;
+  --ink:#23242C; --ink-2:#50525F; --ink-3:#6E6F7C;
+  --violet:#5B4BD6; --violet-soft:#ECE9FD; --violet-ink:#FFFFFF;
+  --overdue:#C8335E; --overdue-soft:#FBE8EE; --today:#A1620B; --done:#1E8467; --done-soft:#E3F5EE;
+  --iri-1:#B9A4F8; --iri-2:#8CC8FA; --iri-3:#9BE3CF; --iri-4:#F6B9CF;
+  --region-1:#F1F0F8; --region-2:#E9E7F6; --region-3:#E1DEF3; --region-4:#D8D4EF;
+  --shadow:0 1px 2px rgb(20 18 40/.06),0 12px 32px -8px rgb(20 18 40/.18);
+  --font:"Outfit",ui-sans-serif,system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#121219; --surface:#1A1A24; --sunken:#15151E; --line:#2A2A39; --line-strong:#3A3950;
+  --ink:#ECEBF5; --ink-2:#B4B3C6; --ink-3:#8C8B9D;
+  --violet:#A99BFF; --violet-soft:#26223F; --violet-ink:#16142B;
+  --overdue:#FF8FAE; --overdue-soft:#3A1E29; --today:#F5C36B; --done:#7FDDBF; --done-soft:#16302A;
+  --region-1:#1C1C28; --region-2:#22212F; --region-3:#292738; --region-4:#302D42;
+  --shadow:0 1px 2px rgb(0 0 0/.4),0 16px 40px -8px rgb(0 0 0/.65);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#121219; --surface:#1A1A24; --sunken:#15151E; --line:#2A2A39; --line-strong:#3A3950;
+  --ink:#ECEBF5; --ink-2:#B4B3C6; --ink-3:#8C8B9D;
+  --violet:#A99BFF; --violet-soft:#26223F; --violet-ink:#16142B;
+  --overdue:#FF8FAE; --overdue-soft:#3A1E29; --today:#F5C36B; --done:#7FDDBF; --done-soft:#16302A;
+  --region-1:#1C1C28; --region-2:#22212F; --region-3:#292738; --region-4:#302D42;
+  --shadow:0 1px 2px rgb(0 0 0/.4),0 16px 40px -8px rgb(0 0 0/.65);
+  color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:14px;margin:0;display:flex;flex-direction:column;gap:12px}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+:focus-visible{outline:2px solid var(--violet);outline-offset:2px;border-radius:6px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font-size:22px;font-weight:600;letter-spacing:-.015em;margin:0}
+.brand span{font-size:13px;color:var(--ink-3)}
+.seg{display:inline-flex;background:var(--sunken);border-radius:10px;padding:3px;gap:2px}
+.seg button{padding:5px 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.lens{display:flex;gap:6px;flex-wrap:wrap}
+.lens button{font-size:13px;font-weight:500;padding:4px 10px;border-radius:999px;border:1px solid var(--line-strong);color:var(--ink-2)}
+.lens button[aria-pressed="true"]{background:var(--violet-soft);border-color:transparent;color:var(--violet)}
+.search{margin-left:auto;position:relative;flex:0 1 260px;min-width:160px}
+.search input{width:100%;height:36px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);padding:0 12px 0 32px;font:inherit;font-size:14px}
+.search svg{position:absolute;left:10px;top:10px;width:16px;height:16px;stroke:var(--ink-3)}
+.results{position:absolute;top:40px;left:0;right:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);z-index:20;padding:4px;max-height:260px;overflow:auto}
+.results button{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;padding:7px 9px;border-radius:7px;font-size:14px}
+.results button:hover,.results button:focus-visible{background:var(--sunken)}
+.results small{color:var(--ink-3)}
+.hint{font-size:13px;color:var(--ink-3);display:flex;gap:14px;flex-wrap:wrap}
+.hint b{font-weight:600;color:var(--ink-2)}
+.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px}
+.stage{min-height:0;display:grid;gap:12px;grid-template-rows:1fr}
+.stage.both{grid-template-rows:minmax(0,1.25fr) minmax(0,1fr)}
+.pane{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-height:0}
+.pane-head{position:absolute;top:10px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none;z-index:2}
+.crumbs{display:flex;gap:4px;flex-wrap:wrap;align-items:center;pointer-events:auto;font-size:14px}
+.crumbs button{padding:2px 6px;border-radius:6px;color:var(--ink-2)}
+.crumbs button:hover{background:var(--sunken)}
+.crumbs button:last-child{color:var(--ink);font-weight:600}
+.crumbs i{color:var(--ink-3);font-style:normal}
+.pane-title{font-size:13px;font-weight:600;color:var(--ink-3);pointer-events:auto}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-2);pointer-events:auto}
+.toggle input{accent-color:var(--violet)}
+svg.canvas{width:100%;height:100%;display:block;touch-action:none;user-select:none}
+.legend{position:absolute;left:14px;bottom:10px;display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--ink-3);pointer-events:none}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend em{display:inline-block;width:10px;height:10px;border-radius:50%}
+.inspector{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;overflow:auto;min-height:0;display:flex;flex-direction:column;gap:14px}
+.insp-kicker{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;background:var(--sunken);color:var(--ink-2);font-size:12px;font-weight:500}
+.chip.v{background:var(--violet-soft);color:var(--violet)}
+.chip.o{background:var(--overdue-soft);color:var(--overdue)}
+.chip.d{background:var(--done-soft);color:var(--done)}
+.chip button{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:4px;color:inherit}
+.chip button:hover{background:var(--line)}
+.inspector h2{font-size:22px;font-weight:600;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.path{font-size:13px;color:var(--ink-3);display:flex;flex-wrap:wrap;gap:4px}
+.sec{display:flex;flex-direction:column;gap:8px}
+.sec h3{font-size:14px;font-weight:600;margin:0;color:var(--ink)}
+.sec p{margin:0;font-size:14px;color:var(--ink-2)}
+.row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row span:first-child{color:var(--ink-3)}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btn{height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line-strong);background:var(--surface);font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{background:var(--sunken)}
+.btn.primary{background:var(--violet);color:var(--violet-ink);border-color:transparent}
+.btn.soft{background:var(--violet-soft);color:var(--violet);border-color:transparent}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.stamp{border:1px dashed var(--line-strong);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;text-align:left;width:100%}
+.stamp:hover{border-color:var(--violet);background:var(--violet-soft)}
+.stamp b{font-weight:600;font-size:14px}
+.stamp small{color:var(--ink-3);font-size:12px}
+.impact{border-radius:12px;background:var(--overdue-soft);color:var(--ink);padding:10px 12px;font-size:13px;display:flex;flex-direction:column;gap:6px}
+.impact b{color:var(--overdue)}
+.popover{position:fixed;z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:flex;flex-direction:column;gap:4px;width:min(300px,calc(100vw - 32px))}
+.popover .ttl{font-size:13px;color:var(--ink-3);padding:4px 8px 2px}
+.popover button.opt{text-align:left;padding:8px 10px;border-radius:9px;display:flex;flex-direction:column;gap:1px}
+.popover button.opt:hover,.popover button.opt:focus-visible{background:var(--sunken)}
+.popover button.opt b{font-weight:600;font-size:14px}
+.popover button.opt small{color:var(--ink-3);font-size:12px}
+.popover button.opt:disabled{opacity:.45;cursor:not-allowed}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--paper);border-radius:12px;padding:10px 14px;font-size:14px;display:flex;gap:12px;align-items:center;z-index:40;box-shadow:var(--shadow)}
+.toast button{color:var(--iri-1);font-weight:600}
+/* atlas marks */
+.region{transition:opacity .2s}
+.region circle.body{stroke:var(--line-strong);stroke-width:1}
+.region.legal circle.body{stroke:var(--violet);stroke-width:2;stroke-dasharray:5 4}
+.region.target circle.body{stroke:var(--violet);stroke-width:3;stroke-dasharray:none;fill:var(--violet-soft)}
+.region.illegal{opacity:.35}
+.dim{opacity:.18!important}
+.lbl{font-family:var(--font);fill:var(--ink);font-size:13px;font-weight:600;pointer-events:none;paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round}
+.lbl.sm{font-size:11.5px;font-weight:500;fill:var(--ink-2)}
+.lbl.type{font-size:10.5px;font-weight:500;fill:var(--ink-3)}
+.item{cursor:grab}
+.item:active{cursor:grabbing}
+.orbit{animation:spin 18s linear infinite;transform-box:fill-box;transform-origin:center}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pulse{animation:pulse 1.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes pulse{50%{transform:scale(1.35);opacity:.6}}
+@media (prefers-reduced-motion:reduce){.orbit,.pulse{animation:none}}
+/* blueprint */
+.tnode rect{fill:var(--surface);stroke:var(--line-strong)}
+.tnode.sel rect{stroke:var(--violet);stroke-width:2}
+.tnode.home rect{stroke:var(--violet);stroke-dasharray:4 3}
+.tnode.drop rect{fill:var(--violet-soft);stroke:var(--violet);stroke-width:2}
+.tnode{cursor:grab}
+.tname{font-family:var(--font);font-size:14px;font-weight:600;fill:var(--ink)}
+.tsmall{font-family:var(--font);font-size:11px;fill:var(--ink-3)}
+.tglyph{font-family:var(--font);font-size:11px;font-weight:600}
+@media (max-width:860px){
+  body{height:auto;min-height:100%}
+  .work{grid-template-columns:1fr}
+  .stage{height:62vh}
+  .stage.both{height:110vh}
+  .search{margin-left:0;flex:1 1 100%}
+  .inspector{max-height:none}
+}
+</style>
+
+<header class="top">
+  <div class="brand"><h1>Atlas</h1><span>Organization concept prototype with sample records</span></div>
+  <div class="seg" role="group" aria-label="View">
+    <button id="m-atlas" aria-pressed="true">Atlas</button>
+    <button id="m-both" aria-pressed="false">Both</button>
+    <button id="m-blue" aria-pressed="false">Blueprint</button>
+  </div>
+  <div class="lens" role="group" aria-label="Lens">
+    <button data-lens="status" aria-pressed="true">Status</button>
+    <button data-lens="due" aria-pressed="false">Due</button>
+    <button data-lens="review" aria-pressed="false">Reviews due</button>
+    <button data-lens="type" aria-pressed="false">Type</button>
+  </div>
+  <div class="search">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Fly to a record" autocomplete="off" aria-label="Fly to a record">
+    <div class="results" id="results" hidden></div>
+  </div>
+</header>
+<div class="hint"><span><b>Click</b> a region to fly in</span><span><b>Drag</b> a task or project onto another region to re-home it</span><span><b>Hover</b> a type in Blueprint to light up its records</span><span><b>Double-click</b> empty space to fly out</span></div>
+
+<main class="work">
+  <section class="stage" id="stage">
+    <div class="pane" id="atlas-pane">
+      <div class="pane-head"><nav class="crumbs" id="crumbs" aria-label="Path"></nav><span class="pane-title">Your records</span></div>
+      <svg class="canvas" id="atlas" role="img" aria-label="Map of records"></svg>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="pane" id="blue-pane" hidden>
+      <div class="pane-head"><span class="pane-title">Blueprint · types and where they may live</span>
+        <label class="toggle"><input type="checkbox" id="allhomes"> Show every allowed home</label></div>
+      <svg class="canvas" id="blue" role="img" aria-label="Type blueprint"></svg>
+    </div>
+  </section>
+  <aside class="inspector" id="insp" aria-live="polite"></aside>
+</main>
+<div id="pop" class="popover" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+// ---------- Sample data (example records, not real) ----------
+const TYPES = {
+  space:  {name:"Space",  plural:"Spaces",  caps:["container"], opens:"container", homes:["root"], layout:"root", fields:["Description","Color"]},
+  client: {name:"Client", plural:"Clients", caps:["container","review"], opens:"container", homes:["space"], layout:"space", review:"Monthly", fields:["Industry","Account owner","Contract renewal","Website"]},
+  project:{name:"Project",plural:"Projects",caps:["work","timeline","container"], opens:"container", homes:["client","space"], layout:"client", fields:["Status","Planned start","Target finish","Budget","Priority"]},
+  task:   {name:"Task",   plural:"Tasks",   caps:["work"], opens:"item", homes:["project","client","space","task"], layout:"project", fields:["Status","Do date","Due date","Priority","Estimate","Assignee"]},
+  note:   {name:"Note",   plural:"Notes",   caps:["content"], opens:"item", homes:["project","client","space","task"], layout:"project", fields:["Tags"]},
+  goal:   {name:"Goal",   plural:"Goals",   caps:["metric","review"], opens:"item", homes:["space"], layout:"space", review:"Weekly", fields:["Start value","Current value","Target","Unit"]},
+};
+const CAPS = {work:["✓","Actionable work"],content:["¶","Authored content"],timeline:["⟷","Timeline dates"],metric:["◎","Outcome metric"],container:["▢","Organizing container"],review:["↻","Review cadence"]};
+let R = [
+  ["work","Work","space",null],["personal","Personal","space",null],
+  ["abc","ABC Home & Commercial","client","work",{review:true}],
+  ["beacon","Beacon Dispatch","client","work"],
+  ["g1","Improve client delivery","goal","work",{review:true,metric:"3 → 8 retained clients"}],
+  ["ins","Renew business insurance","task","work",{status:"open",due:"Oct 9"}],
+  ["ti","Transcript Intelligence","project","abc"],
+  ["fcd","Finish the central docs","task","ti",{status:"in_progress",due:"Today"}],
+  ["ce","Check examples","task","fcd",{status:"done"}],
+  ["wg","Write the glossary","task","fcd",{status:"open"}],
+  ["rp","Review proposal with Janiece","task","ti",{status:"in_progress",due:"Tomorrow"}],
+  ["swd","Ship the weekly digest","task","ti",{status:"overdue",due:"Yesterday"}],
+  ["dn","Discovery notes","note","ti"],
+  ["abcn","Contract terms","note","abc"],
+  ["web","Website refresh","project","abc"],
+  ["w1","Collect brand assets","task","web",{status:"done"}],
+  ["w2","Draft sitemap","task","web",{status:"done"}],
+  ["w3","Pick hosting","task","web",{status:"open",due:"Oct 12"}],
+  ["cpr","Customer portal refresh","project","beacon"],
+  ["c1","Draft dispatch routing FAQ","task","cpr",{status:"open",due:"Oct 5"}],
+  ["c2","Audit login flow on mobile","task","cpr",{status:"open",due:"Oct 7"}],
+  ["c3","Dispatch map prototype","task","cpr",{status:"done"}],
+  ["inv","Send Q4 invoice","task","beacon",{status:"overdue",due:"Oct 1"}],
+  ["den","Denver trip","project","personal"],
+  ["d1","Book flights","task","den",{status:"done"}],
+  ["d2","Pack the bag","task","den",{status:"open",due:"Oct 15"}],
+  ["d3","Packing list","note","den"],
+  ["run","Run a half marathon","goal","personal",{metric:"6 → 13.1 miles"}],
+  ["vet","Plan Hayes's vet visit","task","personal",{status:"open"}],
+  ["mov","Movies Sam recommended","note","personal"],
+].map(([id,title,type,parent,x={}])=>({id,title,type,parent,status:x.status||null,due:x.due||null,review:!!x.review,metric:x.metric||null}));
+const LINKS = [
+  {from:"ti",to:"g1",kind:"supports"},{from:"cpr",to:"g1",kind:"supports"},
+  {from:"rp",to:"swd",kind:"blocks"},{from:"dn",to:"web",kind:"related"},
+];
+const TEMPLATES = [{name:"Client onboarding",type:"project",children:["Sign the contract","Set up shared access","Kickoff call","Discovery interviews"]}];
+
+// ---------- State ----------
+const S = {mode:"atlas", lens:"status", focus:"root", sel:"ti", selType:null, hoverType:null, allHomes:false, view:null, undo:null};
+const byId = id => R.find(r=>r.id===id);
+const kids = id => R.filter(r=>r.parent===id);
+const isContainer = r => r && (r.id==="root" || TYPES[r.type].opens==="container");
+const path = id => {const out=[];let r=byId(id);while(r){out.unshift(r);r=byId(r.parent);}return out;};
+const inSubtree = (id, root) => {let r=byId(id);while(r){if(r.id===root)return true;r=byId(r.parent);}return false;};
+const parentType = r => r.parent ? byId(r.parent).type : "root";
+const allowed = (type, homeType) => TYPES[type].homes.includes(homeType);
+const workDesc = id => { // all work items in subtree
+  const out=[]; const walk=p=>kids(p).forEach(k=>{ if(TYPES[k.type].caps.includes("work")&&k.status) out.push(k); walk(k.id);}); walk(id); return out; };
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- Atlas ----------
+const svgA = d3.select("#atlas");
+let packed = null, W = 800, H = 600;
+
+function buildHierarchy(){
+  const node = r => {
+    const c = kids(r.id);
+    if (isContainer(r)) return {rec:r, children:c.map(node)};
+    return {rec:r, sats:c}; // items keep their contents as satellites (subtasks orbit)
+  };
+  const root = {rec:{id:"root",title:"Workspace",type:null}, children:kids(null).map(node)};
+  return d3.hierarchy(root, d=>d.children).sum(d => d.children ? (d.children.length?0:1.4) : 1 + (d.sats?d.sats.length*0.35:0))
+    .sort((a,b)=>(b.value-a.value));
+}
+function layout(){
+  const box = document.getElementById("atlas").getBoundingClientRect();
+  W = Math.max(320, box.width); H = Math.max(260, box.height);
+  svgA.attr("viewBox",`0 0 ${W} ${H}`);
+  const size = Math.min(W,H) - 8;
+  packed = d3.pack().size([size,size]).padding(d=>d.depth<1?18:d.depth<3?16:9)(buildHierarchy());
+  packed.each(d=>{d.x += (W-size)/2; d.y += (H-size)/2;});
+  const f = packed.find(d=>d.data.rec.id===S.focus) || packed;
+  if (!S.view) S.view = [f.x, f.y, f.r*2.1];
+}
+const k = () => Math.min(W,H) / S.view[2];
+const sx = x => (x - S.view[0]) * k() + W/2;
+const sy = y => (y - S.view[1]) * k() + H/2;
+
+function colorFor(rec){
+  const L = S.lens;
+  if (L==="type"){ return {task:cssv("--violet"),note:cssv("--ink-2"),goal:cssv("--today"),project:cssv("--violet"),client:cssv("--violet"),space:cssv("--violet")}[rec.type]; }
+  if (L==="due"){ if(rec.status==="overdue")return cssv("--overdue"); if(rec.due==="Today")return cssv("--today"); if(rec.due)return cssv("--violet"); return cssv("--ink-3"); }
+  if (L==="review"){ return rec.review?cssv("--violet"):cssv("--ink-3"); }
+  return {done:cssv("--done"),overdue:cssv("--overdue"),in_progress:cssv("--violet"),open:cssv("--ink-3")}[rec.status] || cssv("--ink-2");
+}
+function dimmed(rec){
+  if (S.hoverType) return rec.type!==S.hoverType;
+  if (S.lens==="review") return !rec.review && rec.type!=="space";
+  if (S.lens==="due") return rec.type==="task" && !rec.due;
+  return false;
+}
+
+let drag = null;
+function renderAtlas(){
+  if (!packed) layout();
+  const focus = packed.find(d=>d.data.rec.id===S.focus) || packed;
+  svgA.selectAll("*").remove();
+  const defs = svgA.append("defs");
+  const g = defs.append("linearGradient").attr("id","orbitg").attr("x1","0").attr("y1","0").attr("x2","1").attr("y2","1");
+  ["--iri-1","--iri-2","--iri-3","--iri-4"].forEach((c,i)=>g.append("stop").attr("offset",i/3).attr("stop-color",cssv(c)));
+  defs.append("marker").attr("id","arrow").attr("viewBox","0 0 10 10").attr("refX",9).attr("refY",5).attr("markerWidth",7).attr("markerHeight",7).attr("orient","auto-start-reverse")
+    .append("path").attr("d","M0,0L10,5L0,10z").attr("fill",cssv("--overdue"));
+  const root = svgA.append("g");
+  // focus halo: the one place the orbit gradient appears on the map
+  if (focus !== packed) root.append("circle").attr("cx",sx(focus.x)).attr("cy",sy(focus.y)).attr("r",focus.r*k()+5).attr("fill","none").attr("stroke","url(#orbitg)").attr("stroke-width",3);
+  const nodes = packed.descendants().filter(d=>d!==packed);
+  // regions (containers), deepest last
+  nodes.filter(d=>d.children).forEach(d=>{
+    const rec=d.data.rec, r=d.r*k(); if (r<2) return;
+    const gr = root.append("g").attr("class","region").attr("data-id",rec.id);
+    if (dimmed(rec)) gr.classed("dim",true);
+    if (drag){ if (drag.legal.has(rec.id)) gr.classed("legal",true); else if(rec.id!==drag.id) gr.classed("illegal",true); if (drag.target===rec.id) gr.classed("target",true); }
+    gr.append("circle").attr("class","body").attr("cx",sx(d.x)).attr("cy",sy(d.y)).attr("r",r).attr("fill",cssv(`--region-${Math.min(4,d.depth)}`));
+    // progress ring over work in this region
+    const wd = workDesc(rec.id); if (wd.length && r>18){
+      const done = wd.filter(w=>w.status==="done").length/wd.length, C=2*Math.PI*(r-3);
+      gr.append("circle").attr("cx",sx(d.x)).attr("cy",sy(d.y)).attr("r",r-3).attr("fill","none").attr("stroke",cssv("--line")).attr("stroke-width",3);
+      gr.append("circle").attr("cx",sx(d.x)).attr("cy",sy(d.y)).attr("r",r-3).attr("fill","none").attr("stroke",cssv("--done")).attr("stroke-width",3)
+        .attr("stroke-dasharray",`${C*done} ${C}`).attr("transform",`rotate(-90 ${sx(d.x)} ${sy(d.y)})`).attr("stroke-linecap","round");
+    }
+    if (rec.review && (S.lens==="review"||S.lens==="status") && r>14) gr.append("circle").attr("class","pulse").attr("cx",sx(d.x)+r*0.71).attr("cy",sy(d.y)-r*0.71).attr("r",5).attr("fill",cssv("--violet"));
+    const showLabel = d.parent===focus || d===focus || (r>70 && d.depth<=focus.depth+2);
+    if (showLabel && d!==focus){
+      gr.append("text").attr("class","lbl").attr("x",sx(d.x)).attr("y",sy(d.y)-r-(r>60?20:7)).attr("text-anchor","middle").text(trim(rec.title, Math.max(12,r/3.4)));
+      if (r>60) gr.append("text").attr("class","lbl type").attr("x",sx(d.x)).attr("y",sy(d.y)-r-6).attr("text-anchor","middle").text(TYPES[rec.type].name + (wd.length?` · ${wd.filter(w=>w.status==="done").length} of ${wd.length} done`:""));
+    }
+    gr.on("click",ev=>{ev.stopPropagation(); if (d===focus){select(rec.id);return;} zoomTo(rec.id); select(rec.id);});
+    attachDrag(gr, rec);
+  });
+  // items (tasks, notes, goals)
+  nodes.filter(d=>!d.children).forEach(d=>{
+    const rec=d.data.rec; let r=Math.max(3,Math.min(d.r*k()*0.62, 22));
+    if (isContainer(rec)){ // empty container
+      const gr=root.append("g").attr("class","region").attr("data-id",rec.id);
+      if (drag){ if (drag.legal.has(rec.id)) gr.classed("legal",true); else gr.classed("illegal",true); if(drag.target===rec.id) gr.classed("target",true);}
+      gr.append("circle").attr("class","body").attr("cx",sx(d.x)).attr("cy",sy(d.y)).attr("r",d.r*k()).attr("fill",cssv("--region-2")).attr("stroke-dasharray","3 3");
+      if (d.r*k()>24) gr.append("text").attr("class","lbl sm").attr("x",sx(d.x)).attr("y",sy(d.y)+4).attr("text-anchor","middle").text(trim(rec.title,d.r*k()/3.6));
+      gr.on("click",ev=>{ev.stopPropagation();select(rec.id);}); attachDrag(gr,rec); return;
+    }
+    const gi = root.append("g").attr("class","item").attr("data-id",rec.id).attr("tabindex",0).attr("role","button").attr("aria-label",`${TYPES[rec.type].name}: ${rec.title}`);
+    if (dimmed(rec)) gi.classed("dim",true);
+    if (drag && drag.id===rec.id) gi.attr("opacity",.3);
+    const c = colorFor(rec), x=sx(d.x), y=sy(d.y);
+    if (rec.type==="note"){
+      gi.append("rect").attr("x",x-r*0.8).attr("y",y-r*0.8).attr("width",r*1.6).attr("height",r*1.6).attr("rx",r*0.3).attr("fill",cssv("--surface")).attr("stroke",S.lens==="type"?c:cssv("--ink-3")).attr("stroke-width",1.5);
+    } else if (rec.type==="goal"){
+      gi.append("circle").attr("cx",x).attr("cy",y).attr("r",r).attr("fill","none").attr("stroke",cssv("--today")).attr("stroke-width",2);
+      gi.append("circle").attr("cx",x).attr("cy",y).attr("r",r*0.5).attr("fill",cssv("--today"));
+      if (rec.review && (S.lens==="review"||S.lens==="status")) gi.append("circle").attr("class","pulse").attr("cx",x+r).attr("cy",y-r).attr("r",4).attr("fill",cssv("--violet"));
+    } else {
+      const filled = rec.status==="done";
+      gi.append("circle").attr("cx",x).attr("cy",y).attr("r",r).attr("fill",filled?c:cssv("--surface")).attr("stroke",c).attr("stroke-width",rec.status==="in_progress"?3:2);
+      if (rec.status==="in_progress") gi.append("path").attr("d",d3.arc()({innerRadius:0,outerRadius:r-2.5,startAngle:0,endAngle:Math.PI})).attr("transform",`translate(${x},${y})`).attr("fill",c);
+    }
+    // subtasks orbit their task like moons
+    if (d.data.sats && d.data.sats.length){
+      const og = gi.append("g").attr("class","orbit");
+      og.append("circle").attr("cx",x).attr("cy",y).attr("r",r+9).attr("fill","none").attr("stroke",cssv("--line-strong")).attr("stroke-dasharray","2 3");
+      d.data.sats.forEach((s,i)=>{const a=i/d.data.sats.length*2*Math.PI; og.append("circle").attr("cx",x+Math.cos(a)*(r+9)).attr("cy",y+Math.sin(a)*(r+9)).attr("r",3.2).attr("fill",s.status==="done"?cssv("--done"):cssv("--surface")).attr("stroke",colorFor(s)).attr("stroke-width",1.4);});
+    }
+    if (S.sel===rec.id) gi.append("circle").attr("cx",x).attr("cy",y).attr("r",r+(d.data.sats?.length?14:5)).attr("fill","none").attr("stroke",cssv("--violet")).attr("stroke-width",2);
+    const room = d.r*k()*2/6.4;
+    if ((d.parent===focus && room>=7) || S.sel===rec.id) gi.append("text").attr("class","lbl sm").attr("x",x).attr("y",y+r+(d.data.sats?.length?24:14)).attr("text-anchor","middle").text(S.sel===rec.id?rec.title:trim(rec.title, room));
+    gi.on("click",ev=>{ev.stopPropagation();select(rec.id);}).on("keydown",ev=>{if(ev.key==="Enter")select(rec.id);});
+    attachDrag(gi, rec);
+  });
+  // relationships for the selected record (dashed: supports/related; tether: blocks)
+  const pos = id => { const n=packed.find(d=>d.data.rec.id===id); if(n) return [sx(n.x),sy(n.y)];
+    const rec=byId(id); if(!rec||!rec.parent) return null; const p=packed.find(d=>d.data.rec.id===rec.parent); return p?[sx(p.x),sy(p.y)]:null; };
+  LINKS.filter(l=>l.from===S.sel||l.to===S.sel).forEach(l=>{
+    const a=pos(l.from), b=pos(l.to); if(!a||!b) return;
+    const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2 - Math.hypot(b[0]-a[0],b[1]-a[1])*0.25;
+    root.append("path").attr("d",`M${a}Q${mx},${my} ${b}`).attr("fill","none").attr("stroke",l.kind==="blocks"?cssv("--overdue"):cssv("--violet")).attr("stroke-width",2)
+      .attr("stroke-dasharray",l.kind==="blocks"?null:"6 5").attr("marker-end",l.kind==="blocks"?"url(#arrow)":null).attr("pointer-events","none");
+    root.append("text").attr("class","lbl type").attr("x",mx).attr("y",my+(my<a[1]?-4:12)).attr("text-anchor","middle").text(l.kind);
+  });
+  // ghost while dragging
+  if (drag && drag.pt) root.append("circle").attr("cx",drag.pt[0]).attr("cy",drag.pt[1]).attr("r",10).attr("fill",cssv("--violet")).attr("opacity",.85).attr("pointer-events","none");
+  renderCrumbs(); renderLegend();
+}
+function trim(s,n){n=Math.max(6,Math.floor(n));return s.length>n?s.slice(0,n-1)+"…":s;}
+function renderCrumbs(){
+  const el=document.getElementById("crumbs"); el.innerHTML="";
+  const items=[{id:"root",title:"Workspace"},...(S.focus==="root"?[]:path(S.focus))];
+  items.forEach((r,i)=>{ if(i){const s=document.createElement("i");s.textContent="›";el.append(s);} const b=document.createElement("button"); b.textContent=r.title; b.onclick=()=>zoomTo(r.id); el.append(b);});
+}
+function renderLegend(){
+  const L=S.lens, el=document.getElementById("legend");
+  const sets={status:[["--ink-3","Open"],["--violet","In progress"],["--done","Done"],["--overdue","Overdue"]],
+    due:[["--overdue","Overdue"],["--today","Due today"],["--violet","Has a due date"]],
+    review:[["--violet","Review due"]], type:[["--violet","Work"],["--ink-2","Note"],["--today","Goal"]]};
+  el.innerHTML=sets[L].map(([c,t])=>`<span><em style="background:var(${c})"></em>${t}</span>`).join("")+`<span><em style="background:var(--done);border-radius:2px;width:14px;height:3px"></em>Ring shows work done</span>`;
+}
+function zoomTo(id){
+  const target = packed.find(d=>d.data.rec.id===id) || packed;
+  const node = target.children ? target : (target.parent||packed);
+  S.focus = node===packed?"root":node.data.rec.id;
+  const to=[node.x,node.y,node.r*2.1], from=S.view.slice();
+  const i=d3.interpolateZoom(from,to), reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const dur = reduce?0:Math.min(900, i.duration*0.6); const t0=performance.now();
+  const step=now=>{const t=dur?Math.min(1,(now-t0)/dur):1; S.view=i(d3.easeCubicInOut(t)); renderAtlas(); if(t<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+svgA.on("dblclick",()=>{ const f=packed.find(d=>d.data.rec.id===S.focus); if(f&&f.parent) zoomTo(f.parent===packed?"root":f.parent.data.rec.id); });
+
+// ---------- Drag to re-home ----------
+function attachDrag(sel, rec){
+  sel.on("pointerdown",ev=>{
+    if (ev.button!==0) return;
+    const start=[ev.clientX,ev.clientY]; let moved=false;
+    const legal = new Set(packed.descendants().map(d=>d.data.rec).filter(c=>c.id!=="root" && isContainer(c) && c.id!==rec.id && c.id!==rec.parent && !inSubtree(c.id,rec.id) && allowed(rec.type,c.type)).map(c=>c.id));
+    const move=e=>{
+      if(!moved && Math.hypot(e.clientX-start[0],e.clientY-start[1])<6) return;
+      moved=true; const b=document.getElementById("atlas").getBoundingClientRect();
+      const pt=[(e.clientX-b.left)*W/b.width,(e.clientY-b.top)*H/b.height];
+      // smallest legal region under the pointer
+      let best=null; packed.descendants().forEach(d=>{const id=d.data.rec.id; if(!legal.has(id))return; const r=d.r*k(); if(Math.hypot(pt[0]-sx(d.x),pt[1]-sy(d.y))<=r && (!best||r<best.r)) best={id,r};});
+      drag={id:rec.id,legal,pt,target:best?.id||null}; renderAtlas();
+    };
+    const up=e=>{
+      window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up);
+      if(!moved){return;}
+      const target=drag?.target; drag=null; renderAtlas();
+      if(target) offerMove(rec, byId(target), e.clientX, e.clientY);
+      else toast(`Drop ${rec.title} on a highlighted region. ${TYPES[rec.type].plural} can live in ${TYPES[rec.type].homes.map(h=>h==="root"?"the workspace":TYPES[h].plural).join(", ")}.`);
+    };
+    window.addEventListener("pointermove",move); window.addEventListener("pointerup",up);
+  });
+}
+function offerMove(rec, target, x, y){
+  const ch = kids(rec.id), old = byId(rec.parent);
+  const opts = [{label:`Move with contents`, note: ch.length?`${ch.length} item${ch.length>1?"s":""} inside move along`:`Nothing inside to move`, run:()=>moveRec(rec,target,"with")}];
+  if (ch.length) opts.push({label:"Move only this record", note:`Its ${ch.length} item${ch.length>1?"s":""} stay in ${old?old.title:"the workspace"}`, run:()=>moveRec(rec,target,"only")});
+  popover(`Move ${rec.title} into ${target.title}`, opts, x, y);
+}
+function moveRec(rec, target, mode){
+  const snap = R.map(r=>({id:r.id,parent:r.parent}));
+  const old = rec.parent;
+  if (mode==="only") kids(rec.id).forEach(c=>c.parent=old);
+  rec.parent = target.id;
+  S.undo = snap; packed=null; layout(); S.sel=rec.id; renderAll();
+  toast(`Moved ${rec.title} to ${target.title}${mode==="only"?" without its contents":""}.`, ()=>{ S.undo.forEach(s=>byId(s.id).parent=s.parent); packed=null; layout(); renderAll(); toast("Move undone."); });
+}
+
+// ---------- Blueprint ----------
+const svgB = d3.select("#blue");
+function renderBlue(){
+  const pane=document.getElementById("blue-pane"); if (pane.hidden) return;
+  const box=document.getElementById("blue").getBoundingClientRect(); const BW=Math.max(320,box.width), BH=Math.max(240,box.height);
+  svgB.attr("viewBox",`0 0 ${BW} ${BH}`); svgB.selectAll("*").remove();
+  const rootT={id:"root",children:[]}; const mk=id=>({id,children:Object.keys(TYPES).filter(t=>TYPES[t].layout===id).map(mk)});
+  const tree=d3.hierarchy(mk("root"));
+  const vertical = BW < 620;
+  const nodeW = vertical ? Math.min(158,(BW-40)/2.25) : Math.min(176,BW/4.6), nodeH=58;
+  if (vertical) d3.tree().nodeSize([nodeW+18, nodeH+44])(tree); else d3.tree().nodeSize([nodeH+48, nodeW+46])(tree);
+  const ds=tree.descendants().filter(d=>d.data.id!=="root");
+  const P={};
+  if (vertical){
+    const xs=ds.map(d=>d.x), ys=ds.map(d=>d.y); const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys);
+    const ox=(BW-(maxX-minX+nodeW))/2-minX, oy=52-minY; ds.forEach(d=>P[d.data.id]=[d.x+ox, d.y+oy]);
+    svgB.attr("viewBox",`0 0 ${BW} ${Math.max(BH, Math.max(...ys)+oy+70)}`);
+  } else {
+    const xs=ds.map(d=>d.y), ys=ds.map(d=>d.x); const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const ox=(BW-(maxX-minX+nodeW))/2-minX, oy=(BH-(maxY-minY))/2-minY+16; ds.forEach(d=>P[d.data.id]=[d.y+ox, d.x+oy]);
+  }
+  const edge=(a,b,bend)=> vertical
+    ? `M${a[0]+nodeW/2},${a[1]+nodeH/2}C${a[0]+nodeW/2},${a[1]+nodeH/2+bend} ${b[0]+nodeW/2},${b[1]-nodeH/2-bend} ${b[0]+nodeW/2},${b[1]-nodeH/2}`
+    : `M${a[0]+nodeW},${a[1]}C${a[0]+nodeW+bend},${a[1]} ${b[0]-bend},${b[1]} ${b[0]},${b[1]}`;
+  const gB=svgB.append("g");
+  // every allowed home (thin) when toggled
+  if (S.allHomes) Object.entries(TYPES).forEach(([t,T])=>T.homes.forEach(h=>{ if(h==="root"||h===T.layout||h===t) return; const a=P[h],b=P[t]; if(!a||!b) return;
+    gB.append("path").attr("d",edge(a,b,60)).attr("fill","none").attr("stroke",cssv("--violet")).attr("stroke-opacity",.45).attr("stroke-dasharray","3 4"); }));
+  // primary diagram path (bold)
+  ds.forEach(d=>{ if(d.parent && d.parent.data.id!=="root"){ const a=P[d.parent.data.id], b=P[d.data.id];
+    gB.append("path").attr("d",edge(a,b,24)).attr("fill","none").attr("stroke",cssv("--line-strong")).attr("stroke-width",2); }});
+  const selT = S.selType || (S.sel && byId(S.sel)?.type);
+  ds.forEach(d=>{
+    const t=d.data.id, T=TYPES[t], [x,y]=P[t];
+    const g=gB.append("g").attr("class","tnode").attr("data-t",t).attr("tabindex",0).attr("role","button").attr("aria-label",`Type ${T.name}`);
+    if (t===selT) g.classed("sel",true);
+    if (selT && TYPES[selT].homes.includes(t) && t!==selT) g.classed("home",true);
+    if (bdrag && bdrag.over===t) g.classed("drop",true);
+    g.append("rect").attr("x",x).attr("y",y-nodeH/2).attr("width",nodeW).attr("height",nodeH).attr("rx",12);
+    g.append("text").attr("class","tname").attr("x",x+12).attr("y",y-6).text(T.name);
+    T.caps.forEach((c,i)=>g.append("text").attr("class","tglyph").attr("x",x+12+i*17).attr("y",y+15).attr("fill",c==="container"||c==="review"?cssv("--violet"):cssv("--ink-2")).text(CAPS[c][0]).append("title").text(CAPS[c][1]));
+    if (nodeW>=130) g.append("text").attr("class","tsmall").attr("x",x+nodeW-10).attr("y",y-6).attr("text-anchor","end").text(`${T.fields.length} fields`);
+    if (T.homes.includes(t)){ g.append("path").attr("d",`M${x+nodeW-22},${y+nodeH/2} a9,9 0 1 1 14,0`).attr("fill","none").attr("stroke",cssv("--violet")).attr("stroke-width",1.6);
+      g.append("text").attr("class","tsmall").attr("x",x+nodeW-10).attr("y",y+15).attr("text-anchor","end").attr("fill",cssv("--violet")).text("nests itself"); }
+    const also=T.homes.filter(h=>h!==T.layout && h!==t && h!=="root").map(h=>TYPES[h].name);
+    if (also.length) g.append("text").attr("class","tsmall").attr("x",x+4).attr("y",y+nodeH/2+15).text((nodeW<140?"Also in ":"Also allowed in ")+also.join(", "));
+    g.on("mouseenter",()=>{S.hoverType=t; renderAtlas();}).on("mouseleave",()=>{S.hoverType=null; renderAtlas();})
+     .on("click",()=>{S.selType=t; S.sel=null; renderAll();}).on("keydown",ev=>{if(ev.key==="Enter"){S.selType=t;S.sel=null;renderAll();}});
+    attachTypeDrag(g,t,P,nodeW,nodeH);
+  });
+}
+let bdrag=null;
+function attachTypeDrag(g,t,P,nodeW,nodeH){
+  g.on("pointerdown",ev=>{
+    const start=[ev.clientX,ev.clientY]; let moved=false;
+    const move=e=>{ if(!moved&&Math.hypot(e.clientX-start[0],e.clientY-start[1])<6)return; moved=true;
+      const b=document.getElementById("blue").getBoundingClientRect(), vb=svgB.attr("viewBox").split(" ").map(Number);
+      const px=(e.clientX-b.left)*vb[2]/b.width, py=(e.clientY-b.top)*vb[3]/b.height;
+      const over=Object.keys(P).find(o=>o!==t && px>=P[o][0]&&px<=P[o][0]+nodeW&&Math.abs(py-P[o][1])<=nodeH/2) || null;
+      if(!bdrag||bdrag.over!==over){bdrag={t,over}; renderBlue();} };
+    const up=e=>{ window.removeEventListener("pointermove",move); window.removeEventListener("pointerup",up);
+      const over=bdrag?.over; bdrag=null; renderBlue(); if(moved&&over) offerTypeMove(t,over,e.clientX,e.clientY); };
+    window.addEventListener("pointermove",move); window.addEventListener("pointerup",up);
+  });
+}
+function layoutAncestor(t,anc){let c=TYPES[t]?.layout;while(c&&c!=="root"){if(c===anc)return true;c=TYPES[c].layout;}return false;}
+function offerTypeMove(t,target,x,y){
+  const T=TYPES[t], ok=T.homes.includes(target), cyc=target===t||layoutAncestor(target,t);
+  popover(`Place ${T.name} under ${TYPES[target].name}`,[
+    {label:"Rearrange the diagram only", note: ok?"Existing records stay where they are":`${TYPES[target].name} isn't an allowed home for ${T.plural.toLowerCase()} yet`, disabled:!ok||cyc, run:()=>{T.layout=target; renderBlue(); toast(`Diagram rearranged. No records moved.`);}},
+    {label:`Also allow ${T.plural.toLowerCase()} inside ${TYPES[target].plural.toLowerCase()}`, note: ok?"Already allowed":"Adds an allowed home, then rearranges the diagram", disabled:ok||cyc, run:()=>{T.homes.push(target); T.layout=target; renderAll(); toast(`${T.plural} can now live in ${TYPES[target].plural.toLowerCase()}.`);}},
+  ],x,y);
+}
+
+// ---------- Inspector ----------
+function select(id){S.sel=id; S.selType=null; renderInspector(); renderAtlas(); renderBlue();}
+function el(html){const d=document.createElement("div");d.innerHTML=html;return d.firstElementChild;}
+function renderInspector(){
+  const box=document.getElementById("insp"); box.innerHTML="";
+  if (S.selType) return renderTypeInspector(box, S.selType);
+  const rec=byId(S.sel); if(!rec){box.append(el(`<div class="sec"><h3>Nothing selected</h3><p>Pick a record on the map, or a type in Blueprint.</p></div>`));return;}
+  const T=TYPES[rec.type], ch=kids(rec.id), wd=workDesc(rec.id);
+  const statusChip = rec.status?`<span class="chip ${rec.status==="done"?"d":rec.status==="overdue"?"o":""}">${({open:"Open",in_progress:"In progress",done:"Done",overdue:"Overdue"})[rec.status]}</span>`:"";
+  box.append(el(`<div class="insp-kicker"><span class="chip v">${T.name}</span>${statusChip}${rec.due?`<span class="chip ${rec.status==="overdue"?"o":""}">Due ${rec.due}</span>`:""}${rec.review?`<span class="chip v">↻ Review due</span>`:""}</div>`));
+  box.append(el(`<h2>${rec.title}</h2>`));
+  box.append(el(`<div class="path">${path(rec.id).map(p=>p.title).join(" › ")}</div>`));
+  const opens = T.opens==="container"?"Opens as its contents":"Opens as a detail card";
+  const info = el(`<div class="sec"></div>`);
+  info.append(el(`<div class="row"><span>Opens</span><span>${opens}</span></div>`));
+  if (ch.length) info.append(el(`<div class="row"><span>Inside</span><span>${ch.length} record${ch.length>1?"s":""}</span></div>`));
+  if (wd.length) info.append(el(`<div class="row"><span>Work done</span><span>${wd.filter(w=>w.status==="done").length} of ${wd.length}</span></div>`));
+  if (rec.metric) info.append(el(`<div class="row"><span>Metric</span><span>${rec.metric}</span></div>`));
+  if (T.review) info.append(el(`<div class="row"><span>Review</span><span>${T.review}${rec.review?", due now":", up to date"}</span></div>`));
+  const rel=LINKS.filter(l=>l.from===rec.id||l.to===rec.id);
+  rel.forEach(l=>{const other=byId(l.from===rec.id?l.to:l.from); info.append(el(`<div class="row"><span>${l.kind==="blocks"?(l.from===rec.id?"Blocks":"Blocked by"):l.kind==="supports"?(l.from===rec.id?"Supports":"Supported by"):"Related"}</span><span>${other.title}</span></div>`));});
+  box.append(info);
+  const acts=el(`<div class="btns"></div>`);
+  if (rec.review){const b=el(`<button class="btn soft">Mark reviewed</button>`); b.onclick=()=>{rec.review=false; renderAll(); toast(`${rec.title} reviewed. Next review in a ${T.review==="Weekly"?"week":"month"}.`);}; acts.append(b);}
+  if (rec.status && rec.status!=="done"){const b=el(`<button class="btn">Complete</button>`); b.onclick=()=>{rec.status="done"; renderAll(); toast(`Completed ${rec.title}.`);}; acts.append(b);}
+  if (isContainer(rec)){const b=el(`<button class="btn">Open contents</button>`); b.onclick=()=>zoomTo(rec.id); acts.append(b);}
+  const tb=el(`<button class="btn">Type: ${T.name}</button>`); tb.onclick=()=>{S.selType=rec.type; renderAll();}; acts.append(tb);
+  box.append(acts);
+  if (isContainer(rec)){
+    const add=el(`<div class="sec"><h3>Add here</h3></div>`); const row=el(`<div class="btns"></div>`);
+    Object.entries(TYPES).filter(([t,X])=>X.homes.includes(rec.type)).forEach(([t,X])=>{const b=el(`<button class="btn">+ ${X.name}</button>`); b.onclick=()=>{const id="n"+Date.now(); R.push({id,title:`New ${X.name.toLowerCase()}`,type:t,parent:rec.id,status:X.caps.includes("work")?"open":null,due:null,review:false,metric:null}); packed=null; layout(); select(id); toast(`Added a ${X.name.toLowerCase()} to ${rec.title}.`);}; row.append(b);});
+    add.append(row);
+    TEMPLATES.filter(tp=>TYPES[tp.type].homes.includes(rec.type)).forEach(tp=>{
+      const s=el(`<button class="stamp"><b>Start from template: ${tp.name}</b><small>A ${TYPES[tp.type].name.toLowerCase()} with ${tp.children.length} tasks: ${tp.children.join(", ")}</small></button>`);
+      s.onclick=()=>{const pid="p"+Date.now(); R.push({id:pid,title:`${rec.title.split(" ")[0]} onboarding`,type:tp.type,parent:rec.id,status:null,due:null,review:false,metric:null});
+        tp.children.forEach((c,i)=>R.push({id:pid+"_"+i,title:c,type:"task",parent:pid,status:"open",due:null,review:false,metric:null}));
+        packed=null; layout(); select(pid); zoomTo(pid); toast(`Created ${tp.name} with ${tp.children.length} tasks. Editing the template later won't change it.`);};
+      add.append(s);});
+    box.append(add);
+  }
+}
+function renderTypeInspector(box,t){
+  const T=TYPES[t];
+  box.append(el(`<div class="insp-kicker"><span class="chip v">Type</span><span class="chip">${R.filter(r=>r.type===t).length} records</span></div>`));
+  box.append(el(`<h2>${T.name}</h2>`));
+  const beh=el(`<div class="sec"><h3>Behaviors</h3></div>`); const bl=el(`<div class="btns"></div>`);
+  Object.entries(CAPS).forEach(([c,[g,label]])=>{const on=T.caps.includes(c); const b=el(`<button class="btn ${on?"soft":""}" aria-pressed="${on}">${g} ${label}</button>`);
+    b.onclick=()=>{ if(on) T.caps=T.caps.filter(x=>x!==c); else T.caps.push(c); if(c==="container") T.opens=T.caps.includes("container")?"container":"item"; if(c==="review" && !T.review) T.review="Monthly"; packed=null; S.view=null; S.focus="root"; layout(); renderAll();
+      toast(c==="container"?`${T.plural} now open as ${T.caps.includes("container")?"their contents":"detail cards"}.`:`${label} ${T.caps.includes(c)?"on":"off"} for ${T.plural.toLowerCase()}.`);}; bl.append(b);});
+  beh.append(bl); beh.append(el(`<p>Behaviors switch features on. Plain information like industry stays a field.</p>`)); box.append(beh);
+  const homes=el(`<div class="sec"><h3>Allowed homes</h3></div>`); const hl=el(`<div class="btns"></div>`);
+  T.homes.forEach(h=>{const c=el(`<span class="chip ${h===T.layout?"v":""}">${h==="root"?"Workspace":TYPES[h].name}${h===T.layout?" · diagram":""}<button aria-label="Remove allowed home">×</button></span>`);
+    c.querySelector("button").onclick=()=>{ const living=R.filter(r=>r.type===t && parentType(r)===h);
+      const old=box.querySelector(".impact"); if(old) old.remove();
+      if (living.length){ homes.append(el(`<div class="impact"><b>${living.length} ${living.length>1?T.plural.toLowerCase():T.name.toLowerCase()} live in ${h==="root"?"the workspace":TYPES[h].plural.toLowerCase()} today</b><span>${living.map(r=>r.title).join(", ")}</span><span>Move them first, or keep this home. Nothing changes until you apply.</span></div>`)); }
+      else { T.homes=T.homes.filter(x=>x!==h); if(T.layout===h) T.layout=T.homes[0]; renderAll(); toast(`${T.plural} can no longer live in ${TYPES[h].plural.toLowerCase()}. No records were affected.`);} };
+    hl.append(c);});
+  homes.append(hl); box.append(homes);
+  const f=el(`<details class="sec" open><summary><h3 style="display:inline">Fields · ${T.fields.length}</h3></summary></details>`);
+  T.fields.forEach(n=>f.append(el(`<div class="row"><span>${n}</span><span>${["Status","Priority","Assignee","Do date","Due date","Estimate"].includes(n)?"Operational, never inherited":"Can inherit from home"}</span></div>`)));
+  box.append(f);
+}
+
+// ---------- Popover, toast, search, modes ----------
+function popover(title,opts,x,y){
+  const p=document.getElementById("pop"); p.innerHTML=`<div class="ttl">${title}</div>`;
+  opts.forEach(o=>{const b=el(`<button class="opt"${o.disabled?" disabled":""}><b>${o.label}</b><small>${o.note||""}</small></button>`); b.onclick=()=>{p.hidden=true;o.run();}; p.append(b);});
+  const c=el(`<button class="opt"><b>Cancel</b></button>`); c.onclick=()=>p.hidden=true; p.append(c);
+  p.hidden=false; const r=p.getBoundingClientRect();
+  p.style.left=Math.max(16,Math.min(x+8,innerWidth-r.width-16))+"px"; p.style.top=Math.max(16,Math.min(y+8,innerHeight-r.height-16))+"px";
+  p.querySelector("button:not([disabled])").focus();
+}
+document.addEventListener("keydown",e=>{if(e.key==="Escape")document.getElementById("pop").hidden=true;});
+let tt; function toast(msg,undo){const t=document.getElementById("toast"); t.innerHTML=`<span>${msg}</span>`; if(undo){const b=el(`<button>Undo</button>`); b.onclick=()=>{t.hidden=true;undo();}; t.append(b);} t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>t.hidden=true,4200);}
+const q=document.getElementById("q"), res=document.getElementById("results");
+q.addEventListener("input",()=>{const v=q.value.trim().toLowerCase(); if(!v){res.hidden=true;return;}
+  const m=R.filter(r=>r.title.toLowerCase().includes(v)).slice(0,8); res.innerHTML=""; m.forEach(r=>{const b=el(`<button><span>${r.title}</span><small>${TYPES[r.type].name}</small></button>`); b.onclick=()=>{res.hidden=true;q.value=""; zoomTo(isContainer(r)?r.id:(r.parent||"root")); select(r.id);}; res.append(b);}); res.hidden=!m.length;});
+q.addEventListener("keydown",e=>{if(e.key==="Enter"){res.querySelector("button")?.click();}});
+function setMode(m){S.mode=m; ["atlas","both","blue"].forEach(x=>document.getElementById("m-"+x).setAttribute("aria-pressed",x===m));
+  document.getElementById("atlas-pane").hidden = m==="blue"; document.getElementById("blue-pane").hidden = m==="atlas";
+  document.getElementById("stage").classList.toggle("both",m==="both"); packed=null; S.view=null; requestAnimationFrame(()=>{layout(); renderAll();});}
+document.getElementById("m-atlas").onclick=()=>setMode("atlas"); document.getElementById("m-both").onclick=()=>setMode("both"); document.getElementById("m-blue").onclick=()=>setMode("blue");
+document.querySelectorAll("[data-lens]").forEach(b=>b.onclick=()=>{S.lens=b.dataset.lens; document.querySelectorAll("[data-lens]").forEach(x=>x.setAttribute("aria-pressed",x===b)); renderAtlas();});
+document.getElementById("allhomes").onchange=e=>{S.allHomes=e.target.checked; renderBlue();};
+function renderAll(){ if(!document.getElementById("atlas-pane").hidden) renderAtlas(); renderBlue(); renderInspector(); }
+new ResizeObserver(()=>{packed=null; S.view=null; layout(); renderAll();}).observe(document.getElementById("stage"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>renderAll());
+new MutationObserver(()=>renderAll()).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+// open in a realistic working state: inside ABC, with Transcript Intelligence selected
+layout(); S.focus="abc"; const f0=packed.find(d=>d.data.rec.id==="abc"); S.view=[f0.x,f0.y,f0.r*2.1]; setMode(innerWidth>1100?"both":"atlas");
+</script>

@@ -18,7 +18,7 @@ import { StructureEditor } from "./StructureEditor";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
-import { meanings, describe } from "./structure-types";
+import { meanings, describe, openTarget } from "./structure-types";
 import { Popover, priorityLabels } from "./ux";
 import { clockLabel, dueBucket, dueBuckets, monthDay, shortDate } from "./work-views";
 import { shiftDate } from "./workspace";
@@ -145,6 +145,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const removeView=async(v:SavedEntry)=>{await post("/task-views/remove",{id:v.id,expected_revision:v.revision});await load();};
   const grip=(event:React.PointerEvent,id:string)=>{if(event.pointerType==="mouse")return;event.preventDefault();const target=event.currentTarget;target.setPointerCapture(event.pointerId);const up=(e:Event)=>{const point=e as PointerEvent;const col=document.elementFromPoint(point.clientX,point.clientY)?.closest<HTMLElement>("[data-record-column]");if(col)void move(id,col.dataset.recordColumn??"").catch(()=>{});target.removeEventListener("pointerup",up);};target.addEventListener("pointerup",up);};
   const setQueryForBrowse=()=>{onQuery?.("");setTypeId("");setFilterField("");setFilterValue("");setResultIds(null);};
+  const go=(r:CustomRecord)=>{if(!capability&&openTarget(r,schema??undefined)==="contents"){setSelected(null);setParent(r.id);setLayout("browse");setBrowseSection("all");setQueryForBrowse();}else open(r);};
   const open=(r:CustomRecord)=>{setSelected(r);void semantic.used(r.id);if(resultSearch)void post("/search/events",{search_id:resultSearch,kind:"used",record_id:r.id}).catch(()=>{});};
   const complete=(r:CustomRecord)=>{const rt=schema.types.find(t=>t.id===r.type_id)!;const next=rt.statuses.find(s=>s.meaning===(r.status_meaning==="completed"?"open":"completed"))??(r.status_meaning==="completed"?rt.statuses.find(s=>s.meaning==="backlog"):undefined);if(next)void edit(r,{status_id:next.id}).catch(()=>{});};
 
@@ -334,7 +335,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}}/>
        :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
-    {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={open} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
+    {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={go} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
     {moving&&<ContentsDialog row={moving.row} schema={schema} operation="move" parentId={moving.parentId} onClose={()=>setMoving(null)} onDone={refreshAll}/>}
     {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} schema={schema} onClose={()=>setDesign(false)} onApplied={async()=>{setDesign(false);await refreshAll();}}/>}
   </section>;
