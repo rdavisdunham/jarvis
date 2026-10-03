@@ -1165,6 +1165,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/structure/hierarchy/status",
+      "handler": "hierarchy_status",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/structure/history/applied",
       "handler": "history",
       "source": "apps/api/jarvis/structure_routes.py",

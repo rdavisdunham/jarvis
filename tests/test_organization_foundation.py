@@ -177,3 +177,11 @@ def test_recurrence_origin_is_not_a_containment_edge():
             from_task(db,OWNER,row,task,structure.ensure(db,OWNER))
             assert row.parent_id is None and task.parent_task_id is None
             task.occurrence_id=None
+
+
+def test_hierarchy_status_endpoint_is_owner_scoped(client):
+    parent=create("task","Parent")
+    response=client.get("/api/v1/structure/hierarchy/status")
+    assert response.status_code==200
+    assert response.json()["records"]>=1
+    assert response.json()["conflicts"]==[]
