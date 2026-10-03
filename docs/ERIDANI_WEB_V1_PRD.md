@@ -1,7 +1,7 @@
 # Eridani web v1 — completion PRD
 
-Status: active delivery plan. Batches A (#22) and B (#23) merged; Batch C implemented for PR review.
-See [current TODO](TODO.md) and [Batch C verification](BATCH_C_VALIDATION.md) for current evidence.
+Status: active delivery plan. Batches A–D (#22–25) merged. Section 10 records the October 3 follow-up plan; its changes are not yet implemented.
+See [current TODO](TODO.md) and [Batch D verification](BATCH_D_VALIDATION.md) for current evidence.
 Prepared October 2, 2026, against local source `e734f7f` on `fix-voice-requests`.
 This is a documentation/reconciliation pass, not a new test run or deployment.
 
@@ -427,9 +427,7 @@ Remain on the backlog, not in this finish-line critical path:
 - Full legacy-directory/table removal and a whole-App refactor once parity is proven.
 - Continuous production Langfuse tracing unless diagnostics demonstrate a need.
 
-Planning defaults in this PRD can be changed before implementation. The next concrete
-batch is A, followed by B → C → D. Start release-core test binding in A and add cases
-with each feature; do not leave test scaffolding until the final week.
+The original A → B → C → D implementation sequence is complete; physical/provider acceptance remains open. Section 10 and the active TODO describe the next follow-up. Planning defaults can be revised before implementation.
 
 ## 9. Backlog maintenance
 
@@ -441,3 +439,276 @@ records changed behavior, CI evidence, deployment state and remaining manual che
 Historical eval artifacts and Sol's grading remain immutable. Append repair/rerun
 evidence instead of rewriting old failures as passes. New source fingerprints,
 trial counts and real-service/device limitations belong in each new report.
+
+## 10. Organization and review-delivery follow-up
+
+October 3 owner direction: provide useful browsing and visual customization.
+Organization opens in Browse; Types & fields opens in a tree, retaining the old
+editor. The owner also approved a visible questions inbox and reliable dream-question
+delivery. The guided structure-design interview stays backlog only. This is the
+plan before implementation, not a claim of shipped behavior or new tests.
+
+### 10.1 Two trees with different meanings
+
+The record tree contains actual things: for example Work → ABC → Transcript
+Intelligence → Finish central docs. A record has one main home and optional extra
+links. Moving it changes home/configured inheritance under existing permissions,
+revisions, source mappings and cycle checks.
+
+The type tree contains definitions and their fields. Space → Client → Project →
+Task is an illustrative arrangement, with dates/deadlines as distinct field leaves.
+It does not mean every project must have a client. Today's permitted-parent schema
+is a graph with multiple homes and type-level loops; actual record cycles remain
+invalid. Do not render every permission recursively or reduce it to one legal parent.
+
+**Accepted direction:** a flexible visual arrangement
+with optional explicit restrictions. Dragging a type changes its diagram position;
+editing “Can live inside” changes filing permissions through impact preview. Neither
+silently reparents records. Adding a nested type may prefill a proposed permitted
+relationship, but cannot silently restrict it to one parent. A diagram never chooses
+an arbitrary actual client/project for a new record.
+
+### 10.2 Organization: Browse first, Structure available
+
+- Show actual top-level containers and Unfiled, respecting custom names/types rather
+  than forcing Work/Personal or hiding nondefault types.
+- Container pages show compact description/context, contained groups, Tasks, Notes
+  and Related, with All contents for other types. Group by capabilities, not
+  hard-coded IDs; avoid duplicate counts for multi-capability records.
+- Distinguish direct children, all descendants and linked records. Related items
+  are not automatically contained. Counts/empty states match scope/status/archive filters.
+- Add here selects the actual home and valid active types using existing creation
+  tools; it does not silently publish native records to external providers.
+- Retain actual-record Structure, list/board/timeline layouts, inline detail editing,
+  source indicators and accessible Move controls. Remember branch expansion.
+- Container titles open container pages; a clear details affordance opens their
+  cards. Leaves open details. Keep these actions predictable on touch and keyboard.
+- URLs retain container/view/filter context. Back closes details or returns to the
+  previous page with scroll restored and no reload. Preserve drafts/dirty guards.
+  Folded screens use focused panels rather than cramped desktop columns.
+
+### 10.3 Types & fields: visual first, Advanced retained
+
+- A finite tree/map shows distinct type/field nodes; all custom, unplaced and
+  archived definitions remain discoverable. Show self-nesting and other legal homes
+  as connections, not infinite branches. Extra relationships are not containment.
+- Click a type/field for focused settings; contextual Add type/Add field, required
+  descriptions and plain-language behavior/status controls.
+- Advanced retains the full existing editor. Both views edit one draft with the
+  same preview/apply path; switching must not discard edits or fork the schema.
+- Reorder type presentation and fields within a type by drag plus touch/keyboard
+  alternatives. Cross-type field transfers need a data/binding migration design;
+  do not disguise them as harmless visual moves.
+- Renames preserve IDs; archives preserve history. Permission/behavior/field/status
+  removal previews affected records and required remediation before apply.
+
+### 10.4 Backend and compatibility
+
+Reuse StructureSchema, StructureRecord and StructureLink, not another task engine
+or per-custom-type tables. Add scoped/paginated container, subtree and related reads/
+counts if needed. Lazy-load branches with complete breadcrumbs; never label a
+truncated flat response as the entire tree.
+
+Store the flexible map's optional presentation metadata apart from
+semantic definitions, preferably in existing schema JSON. Validate known IDs,
+single presentation nodes, ordering and presentation cycles. Omitted types appear
+at root. Existing accounts see every type; starter maps are suggestions, not inferred
+rules. Likely API/schema changes, no record rewrite or SQL migration for the map.
+Verify older strict validators, mixed-version behavior and rollback before finalizing
+storage; no-SQL-change does not mean automatically backward-compatible.
+
+Presentation edits must not invalidate field understanding or retrain rules.
+Semantic edits retain existing impact/learning checks. Workspace schema permissions
+remain enforced; personal expanded-state/tab preferences are separate. Local filing
+does not change remote provider project/calendar mappings. Update Eri's site map and
+navigation tools after routes settle; navigation creates no action-history card.
+
+### 10.5 Questions inbox and dream delivery
+
+Adapt existing MemoryReview, RoutingReview and FieldUnderstanding through a personal
+Questions API, retaining domain authority. Return kind, stable source ID, revision,
+question, evidence and actions. Quiet count; Answer/Review, Later and appropriate
+dismiss/distinct choices. Organization shows its relevant subset. These are optional
+reviews, not required work clarifications or successful-action notifications.
+
+Separate pending/deferred/resolved/dismissed-or-distinct/stale questions from
+reserved/presented/interrupted/expired invitation delivery. Add a small durable
+delivery record only if existing data cannot express this, scoped to account,
+question revision, conversation/channel, with a short reservation lease. A lost tab
+must not suppress offers for a day. Existing personal-learning exclusions for shared
+workspaces remain; this inbox does not share personal memories with other members.
+
+Repair code-supported gaps: ordinary Live refresh omits memory questions; offers at
+the tail of successful result prose can be hidden by cards or truncated by Live's
+420-byte result forwarding; visible/spoken acknowledgement is incomplete. Send an
+eligible invitation separately at a natural pause after the user's request. On
+explicit review start, pass one question ID/revision to existing backend/resolution
+tools. No new interpretation or intake model.
+
+Visible rendering may acknowledge text presentation. Context/provider ACK or a
+generated transcript cannot prove completed voice playback. Correlate playback
+completion where supported; otherwise retain honest status and a visible card.
+Invitation presentation is not question presentation. Interruption never resolves
+a question. Coordinate devices, persist defer/answers, reject stale revisions and
+refresh after another device answers.
+
+Required task clarification has priority. Unrelated work pauses optional review
+rather than becoming its answer. Silence never approves a rule or memory merge.
+Ask one at a time with a stopping point. This repairs scheduled-review delivery,
+not deferred ambient interviews.
+
+Inspect account jobs/results when authorized access is available. Show actual last
+successful runs, pending reviews, merges/rules and failures with provenance.
+October 3 proves deployed worker activity, not a successful account dream run or
+useful extracted findings; those require persisted account evidence.
+
+### 10.6 Deferred: Chat about it
+
+Future Types & fields button: a guided, resumable Eri workflow using the current
+schema, selected type and concrete examples. Clarify descriptions/homes/links; show
+before/after and require explicit apply. Support skip/resume and workspace access.
+Do not create sample work or permanent facts from hypothetical examples. Reuse the
+current runtime/tools; this is a product workflow, not a new agent or Codex skill.
+Defer both button and interview, avoiding an inert CTA. Existing field review stays usable.
+
+### 10.7 Delivery order and acceptance
+
+1. Inventory hierarchy consumers and conflicts; design the canonical Home transition
+   and reusable field-library compatibility before building the new editing surfaces.
+2. Implement core field/home contracts, actionable projects, subtree move/removal and
+   same-type subtasks. Preserve Quick lists, recurrence and source mappings.
+3. Implement Browse/container pages, visual Types & fields and Advanced over the same
+   contracts; then update Eri's site controls and nested timelines.
+4. Implement Questions/delivery as a separate focused change, tested independently.
+5. Focused regressions and CI, then desktop/Pixel Fold, actual voice/provider acceptance;
+   keep existing pilot gates.
+
+Test ABC's projects/tasks/notes and linked goals; custom Course types; standalone
+projects; multiple legal homes; self-nesting and cyclic type permissions; empty/
+archived containers; more than one page of data; stale previews; viewers and removed
+members. Record/source IDs survive view/map changes. Verify Back, deep links, drafts,
+folded/unfolded editing and keyboard movement. Hidden/long results cannot swallow
+offers. Live-only review, interrupted/reconnected speech and two devices retain
+one answerable question. Task answers/unrelated work cannot silently approve rules
+or merge memories.
+
+### 10.8 Accepted record/field/move decisions and subtask consolidation
+
+October 3 discussion confirms generic records, modular reusable fields, one primary
+Home with optional extra links, move-with/without-contents, and explicit parent
+completion. Subtasks remain ordinary records in one authoritative Home hierarchy.
+Advisory blocking is accepted. No open product decision blocks implementation;
+engineering preflight/migration verification is part of the build. Implementation
+remains pending.
+
+**Editable behavior, reusable fields, separate building from use**
+
+- Any type can enable actionable work, including Client. Project should offer the
+  actionable-work plus timeline preset: complete/status/assignee/priority/deadline,
+  description and nested work. Do not force these behaviors onto every record type.
+  Preserve custom schema choices when upgrading defaults.
+- Introduce a workspace-scoped reusable field library with stable identities and
+  per-type attachments. The library owns meaning, value kind, description and any
+  operational binding; attachments own order, visibility and permitted per-type
+  configuration. Values remain per record. Workflow statuses can retain type-specific
+  choices mapped to shared operational meanings.
+- Seed Priority, Due date/time, Do date, Assignee, Status and timeline dates as
+  supported defaults; allow new custom fields. Due date is the deadline. Do date
+  is when the user intends to work, backed by existing planned_date semantics.
+  A Do date does not reserve a calendar slot or change the deadline.
+- Create/attach/detach fields in Types & fields, shared between visual and Advanced
+  editors. Detail cards edit values only, with an optional Customize this type link
+  to the focused builder, not inline schema creation. Show all affected types before
+  editing a shared definition. Detaching a field must preserve data/history or
+  present an explicit migration; never silently discard values.
+- Migrate current inline field definitions deliberately. Do not merge custom fields
+  merely because labels match. Canonical operational bindings keep their validated
+  types/behavior. Schema version, field-understanding, routing evidence and Revert
+  need migration/compatibility coverage; library reuse is not cosmetic presentation.
+
+**Home picker and learning**
+
+- Browse actual records progressively, for example Work → ABC → Transcript
+  Intelligence; allow stopping at any permitted home and direct search/jump.
+  Save the chosen immediate parent once, deriving the breadcrumb from ancestry.
+  Do not separately require Work, Client and Project assignments.
+- Extra relationships are collapsed by default: Related to, Supports and explicit
+  Blocks/Blocked by where supported. Blocking is directed dependency behavior,
+  not merely a renamed generic link; reject self/cyclic blockers. Blocking is
+  advisory: show unfinished prerequisites and account for them when Eri recommends
+  work, but permit an explicit start/completion after a clear warning. Do not require
+  users to complete prerequisites just to record real progress. Starting/completing
+  the dependent task does not complete its blockers or remove their links. Avoid
+  silent rescheduling/completion; no automatic dependency rescheduling in this batch.
+  Dependencies remain distinct from containment and queue dependencies.
+- Manual filing supplies independent routing evidence. Rules point to stable home
+  IDs and current ancestry; repeated auto-assignment, subtree moves and incidental
+  ancestry changes must not count as many new independent training examples.
+  Conflicting explicit classifications need review, not silent overwrite.
+
+**Move and delete contents deliberately**
+
+- Move with contents is the default. Change the parent record's home; children keep
+  their parent references and follow it. Keep notes, deeper descendants and their
+  own values/dates together; retain extra links. Recompute derived context without
+  copying operational deadlines, assignees or priority down the tree.
+- Move only this item promotes its immediate children to its previous home. Each
+  child retains its own subtree. If the old home is root, they become root records;
+  if it cannot accept a child, require a valid destination before applying.
+- Deleting an actual container offers delete with all descendants or delete only
+  this item and promote children to its previous home. Show affected counts/types
+  and provider consequences. Related records are not descendants and are never
+  cascaded merely because of a link. Retire a type through its separate schema flow.
+- Preserve archive versus delete semantics and favor recoverable local removal.
+  Native subtree changes must be atomic, revision-checked and reversible, including
+  sibling order and child destinations. Revert may not overwrite newer independent
+  changes. External deletes follow connector permissions/semantics and durable
+  per-item receipts; do not claim remote atomicity or turn local archive into deletion.
+
+**Keep subtasks; use one hierarchy**
+
+- A subtask is an ordinary actionable record whose Home is another actionable
+  record. Add subtask creates the usual task preset beneath the current item;
+  no Subtask type, schema setup or second parent selector is needed.
+- Same-type nesting is supported when permitted (Task inside Task), displayed as
+  a self-nesting connection in the type editor rather than another duplicate type.
+  Each child retains its own Do/Due dates, assignee, status and links.
+- StructureRecord.parent_id is the proposed canonical local containment authority.
+  Core task parent/project fields must become compatibility projections/adapters,
+  not independent writable sources of truth. Translate legacy API/tool writes to
+  the canonical move command. Resolve core task IDs via StructureRecord.task_id;
+  do not assume record and task IDs always match.
+- Audit and migrate Quick-list membership/order/sections/progress, task parent APIs,
+  core/record observers, search, routing, planner and source-sync consumers before
+  retiring old columns. Quick lists stay lightweight views over ordinary nested work.
+- The legacy parent_task_id also stores recurring-occurrence lineage today.
+  Separate origin/template linkage from actual Home; do not turn recurring instances
+  into children of a hidden template during migration. Preserve occurrence/schedule
+  identity, idempotency and existing completion behavior.
+- Linear's imported parent/project relationships need an explicit source adapter.
+  Preserve remote identity and provenance, distinguish remote hierarchy from chosen
+  local Home, and prevent sync from undoing a user-directed local move unless an
+  explicit supported mapping makes it source-owned.
+- Inventory existing disagreements, classify relationships by provenance, and
+  surface ambiguous cases rather than arbitrarily choosing a winner. Cut over reads
+  and writes in stages with rollback verification; remove compatibility storage
+  only after all supported entry points use the canonical authority. This data/
+  behavior migration is separate from the optional presentation-only type map.
+
+**Nested completion and timelines**
+
+- Children contribute progress; all children done makes a parent ready to complete,
+  not automatically completed. Parent completion with unfinished descendants gives
+  a clear choice. Parent completion/reopening never silently cascades child statuses
+  or hides still-open child commitments.
+- Expand parent/child rows on timelines. Distinguish the parent's own planned span
+  and deadline from a derived child span; show out-of-range children. Filing moves
+  do not shift dates. Whole-schedule shifting requires a separate explicit operation.
+- Avoid double-counting container work and descendants in effort/progress summaries.
+  Do not count linked items as children or infer completion from dates alone.
+
+Additional acceptance: reuse one field on Client/Project/Task without sharing values;
+independent Do/Due; make Client actionable; add a subtask without type creation;
+nested assignees/timelines; carry/promote/delete/restore including notes/grandchildren;
+invalid destinations and stale Revert; recurrence lineage; Quick-list sections;
+Linear refresh after local filing; and old/core API commands reaching the same Home.

@@ -84,7 +84,7 @@ def default_definition():
         field("due_time", "Due time", "text", "Optional local clock time for the deadline, HH:MM."),
         field("due_timezone", "Time zone", "text", "IANA zone for the deadline, such as America/Chicago."),
         field(
-            "planned_date", "Planned day", "date", "The day you intend to work on this; it is not a deadline."
+            "planned_date", "Do date", "date", "The day you intend to work on this; it is not a deadline."
         ),
         field(
             "priority",
@@ -138,8 +138,8 @@ def default_definition():
             "Project",
             "Projects",
             "A finite initiative with an intended result, optionally belonging to a client.",
-            ["timeline"],
-            timeline,
+            ["work", "timeline"],
+            work + timeline,
         ),
         (
             "goal",
@@ -197,7 +197,8 @@ def default_definition():
             "cardinality": "many_to_many",
         },
     ]
-    return Definition(types=types, relationships=relationships).model_dump(mode="json")
+    from .field_library import upgrade
+    return upgrade(Definition(types=types, relationships=relationships).model_dump(mode="json"))
 
 
 def definition_entries(definition):
@@ -207,7 +208,7 @@ def definition_entries(definition):
             {k: t[k] for k in ("name", "description", "capabilities", "parent_types", "archived")},
         )
         for f in t["fields"]:
-            yield "field:" + t["id"] + ":" + f["id"], f
+            yield "field:" + t["id"] + ":" + f["id"], {k: v for k, v in f.items() if k != "library_id"}
     for r in definition["relationships"]:
         yield "relationship:" + r["id"], r
 
@@ -215,6 +216,9 @@ def definition_entries(definition):
 def ensure(db, owner):
     schema = db.get(StructureSchema, owner)
     if schema:
+        if "field_library" not in schema.definition:
+            from .field_library import upgrade
+            schema.definition = upgrade(schema.definition)
         return schema
     advisory(db, "workspace:" + owner)
     schema = db.get(StructureSchema, owner, populate_existing=True)
@@ -321,6 +325,8 @@ def schema_data(db, owner):
     schema = ensure(db, owner)
     if core_drift(db, owner):
         sync_core_records(db, owner, schema)
+    from .hierarchy import adopt
+    adopt(db, owner, schema)
     return {
         "revision": schema.revision,
         **schema.definition,
@@ -442,8 +448,12 @@ def data(db, row, schema=None):
                     values[f["id"]] = [parent.id] if f["multiple"] else parent.id
                     inherited[f["id"]] = parent.id
                     break
-                if f["id"] in parent.values:
-                    candidate = parent.values[f["id"]]
+                parent_type = record_type(schema, parent.type_id, archived=True)
+                source = next((pf for pf in parent_type["fields"] if not pf["archived"] and (
+                    pf.get("library_id") == f.get("library_id") if f.get("library_id")
+                    else pf["id"] == f["id"])), None)
+                if source and source["id"] in parent.values:
+                    candidate = parent.values[source["id"]]
                     try:
                         validate_values(db, row.owner_id, t, {f["id"]: candidate}, allow_archived=True)
                     except DomainError:
@@ -479,6 +489,8 @@ def records(
     schema = ensure(db, owner)
     if core_drift(db, owner):
         sync_core_records(db, owner, schema)
+    from .hierarchy import adopt
+    adopt(db, owner, schema)
     q = select(StructureRecord).where(StructureRecord.owner_id == owner, StructureRecord.archived == archived)
     if type_id:
         q = q.where(StructureRecord.type_id == type_id)
@@ -550,7 +562,10 @@ def preview(db, owner, args, command_id):
     schema_permission(db, owner)
     schema = ensure(db, owner)
     assert_schema(schema, args.expected_revision)
-    definition = args.definition.model_dump(mode="json")
+    from .field_library import prepare
+    definition = Definition.model_validate(prepare(
+        args.definition.model_dump(mode="json"), schema.definition, args.definition.model_fields_set
+    )).model_dump(mode="json")
     types = {t["id"]: t for t in definition["types"]}
     oldtypes = {t["id"]: t for t in schema.definition["types"]}
     affected, issues, mappings = [], [], args.status_mappings
@@ -736,6 +751,8 @@ def apply(db, owner, args, command_id):
         if row.note_id and "content" not in t["capabilities"]:
             row.provenance = {**row.provenance, "retired_note_id": row.note_id}
             row.note_id = None
+        if "work" in t["capabilities"] and row.status_id is None:
+            row.status_id = next(s["id"] for s in t["statuses"] if s["meaning"] in {"open", "backlog"})
         sync_capabilities(db, owner, row, t, {}, command_id)
     for key, entry in definition_entries(schema.definition):
         state = db.get(FieldUnderstanding, (owner, key))
@@ -1038,6 +1055,9 @@ def mutate(db, owner, tool, args, command_id):
         status=creating or "status_id" in args.model_fields_set,
         parent="parent_id" in args.model_fields_set,
     )
+    if row.task_id:
+        from .hierarchy import project_parent
+        project_parent(db, row)
     remember_core(db, row)
     db.flush()
     from .routing import human_command, observe
@@ -1119,6 +1139,12 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         )
         db.add(row)
     db.flush()
+    if kind == "task":
+        from .hierarchy import from_task
+        explicit_home = ("parent_task_id" in (arguments or {})
+                         or core.id in db.info.get("task_parent_moves", set()))
+        db.info.get("task_parent_moves", set()).discard(core.id)
+        from_task(db, owner, row, core, schema, explicit=explicit_home)
     if kind == "note" and row.note_id in db.info.get("note_tag_changes", set()):
         from .routing import human_command, observe
         observe(db, row, command_id, human=human_command(command_id))
@@ -1138,10 +1164,14 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
             if "parent_id" in assignment:
                 row.parent_id = assignment["parent_id"]
             row.values = {**assignment.get("values", {}), **row.values}
+        from .hierarchy import project_parent
+        project_parent(db, row)
         result["record_id"] = row.id
         result["routing"] = choice
         db.flush()
     remember_core(db, row)
+    if kind == "task":
+        result.update(serial(core))
     emit(db, owner, "record.changed", row.id, row.revision)
 
 
@@ -1189,6 +1219,9 @@ def remember_core(db, row):
 
 def reconcile_core(db, row, schema):
     """Worker/integration updates must invalidate an older open record card too."""
+    if row.task_id and row.provenance.get("home_version") == 1:
+        from .hierarchy import project_parent
+        project_parent(db, row)
     previous = row.provenance.get("core_revisions", {})
     revisions = {
         kind: db.get(model, identity).revision

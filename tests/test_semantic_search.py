@@ -431,7 +431,7 @@ def test_weekly_search_rule_requires_explicit_answer_and_forget_clears_pending(m
     with session_scope() as db:
         review = db.get(RoutingReview, rid)
         assert review.status == "pending" and review.questions
-        q = review.questions[0]
+        q = next(q for q in review.questions if db.get(RoutingPattern, q["id"]).condition["type_id"] == "task")
         revision = review.revision
         assert db.get(RoutingPattern, q["id"]).status == "candidate"
     run(

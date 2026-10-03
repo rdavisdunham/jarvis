@@ -22,6 +22,7 @@ class Status(Option):
 
 
 class FieldDefinition(Input):
+    library_id: Key | None = None
     id: Key
     name: str = Field(min_length=1, max_length=120)
     description: Description
@@ -78,9 +79,16 @@ class Relationship(Input):
     archived: bool = False
 
 
+class TypePlacement(Input):
+    type_id: Key
+    parent_type_id: Key | None = None
+
+
 class Definition(Input):
     types: list[RecordType] = Field(min_length=1, max_length=50)
     relationships: list[Relationship] = Field(default_factory=list, max_length=100)
+    field_library: list[FieldDefinition] = Field(default_factory=list, max_length=1000)
+    type_layout: list[TypePlacement] = Field(default_factory=list, max_length=50)
 
     @model_validator(mode="after")
     def consistent(self):
@@ -88,10 +96,40 @@ class Definition(Input):
             if len({x.id for x in rows}) != len(rows):
                 raise ValueError(f"Duplicate {label} identity")
 
+        unique(self.field_library, "library field")
+        library = {f.id: f for f in self.field_library}
+        for field in self.field_library:
+            if field.library_id:
+                raise ValueError("Library fields cannot reference another library field")
+        for record_type in self.types:
+            for field in record_type.fields:
+                if field.library_id and "field_library" in self.model_fields_set:
+                    shared = library.get(field.library_id)
+                    if not shared:
+                        raise ValueError("Unknown reusable field")
+                    for key in ("name", "description", "kind", "options", "target_types", "multiple", "binding"):
+                        setattr(field, key, getattr(shared, key))
         unique(self.types, "type")
         unique(self.relationships, "relationship")
         ids = {t.id for t in self.types}
+        placements = {p.type_id: p.parent_type_id for p in self.type_layout}
+        if len(placements) != len(self.type_layout):
+            raise ValueError("A type may appear once in the layout")
+        for key, parent in placements.items():
+            if key not in ids or (parent is not None and parent not in ids):
+                raise ValueError("Unknown type in layout")
+            seen = {key}
+            while parent is not None:
+                if parent in seen:
+                    raise ValueError("The visual layout cannot contain a cycle")
+                seen.add(parent)
+                parent = placements.get(parent)
         for t in self.types:
+            if placements.get(t.id) and placements[t.id] not in t.parent_types:
+                raise ValueError("Visual parent must be an allowed home type")
+            refs = [f.library_id for f in t.fields if f.library_id]
+            if len(refs) != len(set(refs)):
+                raise ValueError("A reusable field can be attached once per type")
             unique(t.fields, "field")
             unique(t.statuses, "status")
             if len(set(t.capabilities)) != len(t.capabilities):
