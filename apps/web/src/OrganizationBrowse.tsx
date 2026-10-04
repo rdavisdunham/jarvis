@@ -3,12 +3,16 @@ import {ChevronRight,FolderOpen,Info,Plus} from "lucide-react";
 import {api} from "./api";
 import {SourceBadge} from "./SourceDetails";
 import {openTarget,type CustomRecord,type Schema} from "./structure-types";
+import {StartFromTemplateDialog,useTemplates,useUndoToast} from "./Templates";
+import {templatesFor} from "./templates";
 
 type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;next_offset:number|null};
-export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible}:{
+export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible,onChanged}:{
  schema:Schema;parent:string;section:string;onSection:(s:string)=>void;query:string;archived:boolean;status:string;refresh:number;canEdit:boolean;
- onBrowse:(id:string)=>void;onOpen:(r:CustomRecord)=>void;onCreate:(type:string,title:string)=>Promise<void>;onVisible?:(ids:string[])=>void;
+ onBrowse:(id:string)=>void;onOpen:(r:CustomRecord)=>void;onCreate:(type:string,title:string)=>Promise<void>;onVisible?:(ids:string[])=>void;onChanged?:()=>Promise<void>;
 }){
+ const {templates}=useTemplates(refresh),[starting,setStarting]=useState(false);
+ const toast=useUndoToast(onChanged);
  const [page,setPage]=useState<Page|null>(null),[error,setError]=useState(""),[offset,setOffset]=useState(0),[busy,setBusy]=useState(false);
  const [title,setTitle]=useState(""),[kind,setKind]=useState(""),[adding,setAdding]=useState(false);
  useEffect(()=>setOffset(0),[parent,section,query,archived,status]);
@@ -39,7 +43,10 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
    <select aria-label="Type to add" value={selected.id} onChange={e=>setKind(e.target.value)}>{types.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select>
    <input aria-label="New record title" placeholder={"New "+selected.name.toLowerCase()} value={title} maxLength={500} onChange={e=>setTitle(e.target.value)}/>
    <button className="btn btn-primary" disabled={busy||!title.trim()}>Add</button>
+   {!!templatesFor(templates,[selected.id]).length&&<button type="button" className="btn btn-soft template-open" onClick={()=>setStarting(true)}>Start from template</button>}
   </form>}
+  {starting&&selected&&<StartFromTemplateDialog templates={templatesFor(templates,[selected.id])} parentId={parent||null} homeTitle={page?.parent?.title} schemaRevision={schema.revision}
+   onClose={()=>setStarting(false)} onCreated={async(result,undo)=>{setAdding(false);toast.show({message:`Created ${result.title} from the ${result.name} template.`,undo});await onChanged?.();}}/>}
   {error&&<p role="alert">{error}</p>}
   <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")}</p>
   <div className="org-tiles">{children.map(r=>{
@@ -54,6 +61,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
    </article>;
   })}</div>
   {!busy&&!error&&!children.length&&<p className="empty">Nothing here yet. Choose another view or add a record here.</p>}
+  {toast.element}
   {page&&(offset>0||page.next_offset!==null)&&<div className="org-pagination"><button className="btn" disabled={busy||!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous</button><span>{offset+1}–{Math.min(offset+40,page.total)} of {page.total}</span><button className="btn" disabled={busy||page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>Next</button></div>}
  </section>;
 }

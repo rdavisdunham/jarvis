@@ -1,0 +1,211 @@
+/* Reusable templates: stamps, preview tree, editor rows. Quiet surfaces; dashed stamps only. */
+.template-stamps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.template-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.template-stamp:hover:not(:disabled),
+.template-stamp:focus-visible {
+  border-color: var(--violet);
+  background: var(--violet-soft);
+}
+.template-stamp:disabled { opacity: 0.45; cursor: default; }
+.template-stamp strong {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.template-stamp small {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.template-start {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.template-start .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.template-start .field input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+.template-start-where {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.template-start-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.template-tree {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  max-height: 280px;
+  overflow-y: auto;
+}
+.template-tree li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.template-tree li.is-root { font-weight: 600; }
+.template-tree .chip { flex-shrink: 0; }
+.template-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.template-error p + p { margin-top: 4px; }
+
+.template-dialog { width: 520px; }
+.template-chosen {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.template-back { margin-bottom: 8px; font-size: 13px; color: var(--violet); }
+.template-sub,
+.template-hint {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+.template-sub { margin-top: 2px; font-weight: 450; }
+.template-optional { color: var(--ink-3); }
+
+.template-editor { width: 640px; }
+.template-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+.template-defaults legend {
+  margin-bottom: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.template-default-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.template-default-row .check-label { margin: 0; }
+.template-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.template-rows-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.template-rows-head h3 {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.template-rows ol {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+.template-row select {
+  flex: 0 0 120px;
+  width: 120px;
+}
+.template-row input {
+  flex: 1;
+  min-width: 0;
+}
+.dialog .template-row :where(select, input) { width: auto; }
+.template-add-row { align-self: flex-start; }
+
+.template-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.template-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.template-list-row > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.template-list-row strong { font-size: 15px; font-weight: 500; }
+.template-list-row small { color: var(--ink-3); font-size: 13px; }
+.template-empty { padding: 14px 16px; font-size: 14px; }
+
+@media (max-width: 700px) {
+  .template-row select { flex-basis: 92px; width: 92px; }
+  .template-default-row { grid-template-columns: 1fr; gap: 4px; }
+}
+
+.detail-notice {
+  margin-top: 8px;
+  color: var(--done);
+  font-size: 13px;
+  line-height: 18px;
+}
+.org-add .template-open { white-space: nowrap; }

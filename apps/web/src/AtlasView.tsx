@@ -4,7 +4,7 @@ import { interpolateZoom } from "d3-interpolate";
 import { api, command, post } from "./api";
 import { AtlasMap, type DragState, type Lens } from "./AtlasMap";
 import { Blueprint } from "./Blueprint";
-import { AddHere, MoveChoiceList, RecordInspector, TypeInspector } from "./AtlasInspector";
+import { AddHere, MoveChoiceList, RecordInspector, TypeInspector, type TemplateHooks } from "./AtlasInspector";
 import { TypeMoveChoices } from "./TypeMap";
 import {
   ROOT, ancestors, flyTarget, indexAtlas, isRegion, itemRadius, layoutAtlas, legalTargets, moveChoices, project, scaleOf, searchRecords,
@@ -13,6 +13,8 @@ import {
 import { allowAndPlace, draftChanges, typeMoveChoice } from "./blueprint-model";
 import { placeType } from "./field-library";
 import type { Schema } from "./structure-types";
+import { instantiate, useTemplates } from "./Templates";
+import type { InstantiatePreview } from "./templates";
 import "./atlas.css";
 
 type Mode = "atlas" | "both" | "blueprint";
@@ -59,6 +61,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   const [drag, setDrag] = useState<DragState | null>(null), [popup, setPopup] = useState<Popup | null>(null);
   const [toast, setToast] = useState<Toast>(null), [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(""), [draft, setDraft] = useState<Schema | null>(null);
+  const { templates } = useTemplates(refresh);
   const [mapRef, mapSize] = useSize<HTMLDivElement>(), [blueRef, blueSize] = useSize<HTMLDivElement>();
   const searchRef = useRef<HTMLInputElement>(null), animation = useRef(0), suppressClick = useRef(false), keyboard = useRef(false);
   const viewRef = useRef(view); viewRef.current = view;
@@ -148,6 +151,19 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     } catch (e) { setToast({ message: (e as Error).message }); }
     finally { setBusy(false); }
   };
+
+  const fromTemplate = async (preview: InstantiatePreview, title: string) => {
+    setBusy(true);
+    try {
+      const made = await instantiate(preview, title);
+      await load(); await onChanged(); select(made.result.id);
+      setToast({
+        message: `Created ${made.result.title} from the ${made.result.name} template.`,
+        undo: async () => { await made.undo(); await load(); await onChanged(); setToast({ message: "Undone. The new records were archived." }); },
+      });
+    } finally { setBusy(false); }
+  };
+  const templateHooks = { templates, onTemplate: fromTemplate };
 
   // ---- Pointer: click to fly or select, drag to re-home ---------------------------------
   const svgPoint = (e: { clientX: number; clientY: number }): [number, number] => {
@@ -293,8 +309,8 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
             onDraft={changeDraft} onFly={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onEditTypes={type => onEditTypes(draft, type)} onPlace={place}/>
           : record ? <RecordInspector record={record} index={index} schema={schema} today={today} canEdit={canEdit} focused={record.id === focusNode.id} busy={busy}
             onFly={id => flyTo(id)} onSelect={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onOpen={onOpen} onBrowse={onBrowse}
-            onType={id => { selectType(id); if (mode === "atlas") setMode("both"); }} onMove={move} onCreate={create}/>
-          : <FocusSummary focus={focusNode} index={index} canEdit={canEdit} schema={schema} busy={busy} onCreate={create}/>}
+            onType={id => { selectType(id); if (mode === "atlas") setMode("both"); }} onMove={move} onCreate={create} templates={templateHooks}/>
+          : <FocusSummary focus={focusNode} index={index} canEdit={canEdit} schema={schema} busy={busy} onCreate={create} templates={templateHooks}/>}
       </aside>
     </div>
     {popup && <div className="atlas-popover" style={popupStyle} role="dialog" aria-label={popup.kind === "move" ? "Move choice" : "Type placement choice"}>
@@ -310,7 +326,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
 
 }
 
-function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: working, onCreate }: { focus: PackedNode; index: AtlasIndex; canEdit: boolean; schema: Schema; busy: boolean; onCreate: (type: string, title: string, parent: string | null) => Promise<void> }) {
+function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: working, onCreate, templates }: { focus: PackedNode; index: AtlasIndex; canEdit: boolean; schema: Schema; busy: boolean; onCreate: (type: string, title: string, parent: string | null) => Promise<void>; templates: TemplateHooks }) {
   const rec = node.record, p = rec ? index.progress.get(rec.id) : null;
   const regions = node.children.filter(c => c.region).length, items = node.children.length - regions;
   return <>
@@ -326,7 +342,7 @@ function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: 
       {editable && <li>Drag a record onto a highlighted home to move it.</li>}
       <li>Use the arrow keys between marks, Enter to open, Backspace to go back.</li>
     </ul>
-    {editable && (rec ? isRegion(rec) : true) && <AddHere parent={rec} schema={s} busy={working} onCreate={onCreate}/>}
+    {editable && (rec ? isRegion(rec) : true) && <AddHere parent={rec} schema={s} busy={working} onCreate={onCreate} templates={templates}/>}
   </>;
 }
 
