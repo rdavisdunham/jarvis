@@ -63,3 +63,40 @@ def test_n_minus_one_data_upgrade_old_writer_and_downgrade(test_database):
         if trial:trial.dispose()
         with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_record_templates_migration_upgrades_and_downgrades(test_database):
+    name='jarvis_templates_'+uuid4().hex
+    supplied=make_url(test_database)
+    admin=create_engine(supplied.set(database='postgres'),isolation_level='AUTOCOMMIT')
+    target=supplied.set(database=name)
+    trial=None
+    with admin.connect() as c:c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env={**os.environ,'JARVIS_DATABASE_URL':target.render_as_string(hide_password=False),'JARVIS_ENV_FILE':''}
+        def migrate(*args):
+            result=subprocess.run([sys.executable,'-m','alembic',*args],cwd=ROOT,env=env,capture_output=True,text=True)
+            assert result.returncode==0,result.stdout+result.stderr
+        migrate('upgrade','0021_review_delivery')
+        trial=create_engine(target)
+        assert 'record_templates' not in inspect(trial).get_table_names()
+        with trial.begin() as c:
+            c.exec_driver_sql("INSERT INTO structure_records (id,owner_id,type_id,title,body,sort_order,local_notes,values,archived,revision,schema_revision,provenance,created_at,updated_at) VALUES ('00000000-0000-0000-0000-000000000001','release-owner','project','Existing','',0,'','{}',false,1,1,'{}',now(),now())")
+        migrate('upgrade','head');migrate('check')
+        from jarvis.structure_models import RecordTemplate, StructureRecord
+        with Session(trial) as db:
+            db.add(RecordTemplate(owner_id='release-owner',type_id='project',name='Client onboarding',payload={'children':[{'type_id':'task','title':'Kickoff'}]},created_by='release-owner'))
+            db.commit()
+            row=db.scalar(select(RecordTemplate))
+            assert (row.revision,row.archived,row.description)==(1,False,'') and row.payload['children'][0]['title']=='Kickoff'
+            assert db.get(StructureRecord,'00000000-0000-0000-0000-000000000001').title=='Existing'
+        assert 'ix_record_templates_owner_id_type_id' in {i['name'] for i in inspect(trial).get_indexes('record_templates')}
+        migrate('downgrade','0021_review_delivery')
+        assert 'record_templates' not in inspect(trial).get_table_names()
+        with Session(trial) as db:
+            assert db.get(StructureRecord,'00000000-0000-0000-0000-000000000001').title=='Existing'
+        migrate('upgrade','head')
+    finally:
+        if trial:trial.dispose()
+        with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()

@@ -472,7 +472,7 @@ def changes(db, bot, after=0, limit=100):
     }
 
 
-CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview"}
+CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview", "template_list", "record_instantiate_preview"}
 
 
 def withheld(scopes):
@@ -495,6 +495,13 @@ def custom_read(db, bot, name, arguments):
         result=browse(db,bot.owner_id,**arguments) if name=="record_browse" else plan(db,bot.owner_id,ContentsPlan.model_validate(arguments))
     elif name == "record_list":
         result = structure.records(db, bot.owner_id, **arguments)
+    elif name in {"template_list", "record_instantiate_preview"}:
+        from . import record_templates
+        from .structure_schema import InstantiatePlan
+        # Template text is the owner's outline, not task/note content; no core scrub applies.
+        if name == "template_list":
+            return record_templates.listing(db, bot.owner_id, **arguments)
+        return record_templates.plan(db, bot.owner_id, InstantiatePlan.model_validate(arguments))
     else:
         structure.ensure(db, bot.owner_id)
         result = structure.data(db, owned(db, StructureRecord, arguments["record_id"], bot.owner_id))

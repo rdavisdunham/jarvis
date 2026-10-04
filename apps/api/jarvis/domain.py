@@ -523,7 +523,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("review.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.")
+        ("review.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -584,6 +584,11 @@ def mutate(db, owner, tool, args, command_id):
     if tool in {"record.contents", "record.restore_contents"}:
         from . import record_contents
         return (record_contents.apply if tool == "record.contents" else record_contents.restore)(db, owner, args, command_id)
+    if tool == "record.instantiate" or tool.startswith("template."):
+        from . import record_templates
+        if tool == "record.instantiate":
+            return record_templates.apply(db, owner, args, command_id)
+        return record_templates.mutate(db, owner, tool, args, command_id)
     if tool.startswith("quicklist."):
         from .quick_lists import mutate as capture_mutate
         return capture_mutate(db, owner, tool, args, command_id)

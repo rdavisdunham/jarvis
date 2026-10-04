@@ -260,7 +260,88 @@ class ContentsRestore(Input):
     source_command_id: str = Field(min_length=1, max_length=100)
 
 
+TEMPLATE_DEPTH = 4
+TEMPLATE_NODES = 100
+
+
+class TemplateNode(Input):
+    type_id: Key
+    title: str = Field(min_length=1, max_length=500)
+    body: str = Field(default="", max_length=30000)
+    values: dict = Field(default_factory=dict)
+    children: list["TemplateNode"] = Field(default_factory=list, max_length=TEMPLATE_NODES)
+
+
+class TemplatePayload(Input):
+    """Default values and outline for the record, plus optional child records."""
+
+    values: dict = Field(default_factory=dict)
+    body: str = Field(default="", max_length=30000)
+    children: list[TemplateNode] = Field(default_factory=list, max_length=TEMPLATE_NODES)
+
+    @model_validator(mode="after")
+    def bounded(self):
+        count = 0
+
+        def visit(nodes, depth):
+            nonlocal count
+            if nodes and depth > TEMPLATE_DEPTH:
+                raise ValueError(f"Templates nest at most {TEMPLATE_DEPTH} levels below the record")
+            for node in nodes:
+                count += 1
+                visit(node.children, depth + 1)
+
+        visit(self.children, 1)
+        if count > TEMPLATE_NODES:
+            raise ValueError(f"Templates hold at most {TEMPLATE_NODES} child records")
+        return self
+
+
+class TemplateCreate(Input):
+    type_id: Key
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    payload: TemplatePayload = Field(default_factory=TemplatePayload)
+
+
+class TemplateUpdate(Input):
+    template_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    payload: TemplatePayload | None = None
+
+
+class TemplateArchive(Input):
+    template_id: str = Field(min_length=36, max_length=36)
+    expected_revision: int = Field(ge=1)
+    archived: bool = True
+
+
+class TemplateCapture(Input):
+    record_id: str = Field(min_length=36, max_length=36)
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=2000)
+    include_children: bool = True
+
+
+class InstantiatePlan(Input):
+    template_id: str = Field(min_length=36, max_length=36)
+    parent_id: str | None = Field(default=None, description="Main home for the new record; null leaves it unfiled.")
+    title: str | None = Field(default=None, min_length=1, max_length=500, description="Defaults to the template name.")
+    schema_revision: int = Field(ge=1)
+
+
+class InstantiateApply(InstantiatePlan):
+    preview_hash: str = Field(min_length=64, max_length=64)
+
+
 COMMANDS = {
+    "record.instantiate": InstantiateApply,
+    "template.create": TemplateCreate,
+    "template.update": TemplateUpdate,
+    "template.archive": TemplateArchive,
+    "template.capture": TemplateCapture,
     "record.contents": ContentsApply, "record.restore_contents": ContentsRestore,
     "structure.preview": Preview,
     "structure.apply": Apply,
