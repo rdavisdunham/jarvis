@@ -29,20 +29,33 @@ try{
  await expect(crumbs.getByRole("button",{name:"Atlas transcript project"})).toHaveAttribute("aria-current","location");
  const inspector=atlas.getByRole("complementary",{name:"Inspector"});
  await expect(inspector.getByRole("heading",{name:"Atlas central docs"})).toBeVisible();
- // Keyboard Move to…: choose another project, then "Move only this record".
+ // Keyboard Move to…: a task moves straight away and its subtask travels with it, no contents question.
  await inspector.getByRole("button",{name:"Choose main home"}).click();
  await page.getByLabel("Find a home").fill("Atlas portal");
  await page.getByRole("button",{name:"Use Atlas portal project as home"}).click();
- const choice=inspector.getByRole("group",{name:"Move Atlas central docs to Atlas portal project"});
- await expect(choice.getByRole("button",{name:/Move with contents/})).toContainText("1 item inside move along");
- await choice.getByRole("button",{name:/Move only this record/}).click();
- const toast=page.locator(".toast").filter({hasText:"Moved Atlas central docs to Atlas portal project without its contents."});
+ const toast=page.locator(".toast").filter({hasText:"Moved Atlas central docs to Atlas portal project."});
  await expect(toast).toBeVisible();
- await expect.poll(()=>parentOf(task.id)).toBe(portal.id);expect(await parentOf(sub.id)).toBe(ti.id);
+ await expect(inspector.getByRole("group",{name:/^Move Atlas central docs/})).toHaveCount(0);
+ await expect.poll(()=>parentOf(task.id)).toBe(portal.id);expect(await parentOf(sub.id)).toBe(task.id);
  await toast.getByRole("button",{name:"Undo"}).click();
  await expect(page.locator(".toast").filter({hasText:"Move undone."})).toBeVisible();
  expect(await parentOf(task.id)).toBe(ti.id);expect(await parentOf(sub.id)).toBe(task.id);
- // Pointer drag shows legal homes; dropping on the other project offers both choices.
+ // A project with contents still asks; choose "Move only this record" from the inspector.
+ await ui("ui_records",{layout:"atlas",record_id:ti.id});
+ await expect(inspector.getByRole("heading",{name:"Atlas transcript project"})).toBeVisible();
+ await inspector.getByRole("button",{name:"Choose main home"}).click();
+ await page.getByLabel("Find a home").fill("Atlas client Beacon");
+ await page.getByRole("button",{name:"Use Atlas client Beacon as home"}).click();
+ const choice=inspector.getByRole("group",{name:"Move Atlas transcript project to Atlas client Beacon"});
+ await expect(choice.getByRole("button",{name:/Move with contents/})).toContainText("3 items inside move along");
+ await choice.getByRole("button",{name:/Move only this record/}).click();
+ const itemToast=page.locator(".toast").filter({hasText:"Moved Atlas transcript project to Atlas client Beacon without its contents."});
+ await expect(itemToast).toBeVisible();
+ await expect.poll(()=>parentOf(ti.id)).toBe(beacon.id);expect(await parentOf(task.id)).toBe(abc.id);
+ await itemToast.getByRole("button",{name:"Undo"}).click();
+ await expect(page.locator(".toast").filter({hasText:"Move undone."})).toBeVisible();
+ await expect.poll(()=>parentOf(task.id)).toBe(ti.id);expect(await parentOf(ti.id)).toBe(abc.id);
+ // Pointer drag shows legal homes; dropping a task on the other project moves it with its subtask, no popover.
  await ui("ui_records",{layout:"atlas",record_id:beacon.id});
  await expect(crumbs.getByRole("button",{name:"Atlas client Beacon"})).toHaveAttribute("aria-current","location");
  await ui("ui_records",{layout:"atlas",parent_id:abc.id});
@@ -54,9 +67,11 @@ try{
  await expect(atlas.getByRole("button",{name:/: Atlas portal project/})).toHaveClass(/is-legal|is-target/);
  await expect(atlas.getByRole("button",{name:/: Atlas transcript project/})).toHaveClass(/is-illegal/);
  await page.mouse.move(to.x+to.width/2,to.y+to.height*0.8,{steps:8});await page.mouse.up();
- const popover=page.getByRole("dialog",{name:"Move choice"});
- await expect(popover.getByRole("button",{name:/Move only this record/})).toBeVisible();
- await popover.getByRole("button",{name:"Cancel"}).click();await expect(popover).toHaveCount(0);
+ await expect(page.locator(".toast").filter({hasText:"Moved Atlas central docs to Atlas portal project."})).toBeVisible();
+ await expect(page.getByRole("dialog",{name:"Move choice"})).toHaveCount(0);
+ await expect.poll(()=>parentOf(task.id)).toBe(portal.id);expect(await parentOf(sub.id)).toBe(task.id);
+ await page.locator(".toast").getByRole("button",{name:"Undo"}).click();
+ await expect.poll(()=>parentOf(task.id)).toBe(ti.id);
  // Both mode: hovering Task in the Blueprint lights tasks and dims the rest.
  await atlas.getByRole("group",{name:"Atlas view"}).getByRole("button",{name:"Both"}).click();
  await ui("ui_records",{layout:"atlas",parent_id:ti.id});
@@ -85,5 +100,5 @@ try{
  await expect(page.getByRole("region",{name:"Browse organization"})).toBeVisible();
  await expect(page.getByRole("group",{name:"Layout"}).getByRole("button",{name:"Atlas",exact:true})).toHaveCount(0);
  if(errors.length)throw Error(errors.join("\n"));
- console.log("Organization Atlas acceptance passed: fly in/out, Eri focus, keyboard Move to with item-only choice, Undo, Blueprint hover linking, blocking home list, draft review and phone fallback.");
+ console.log("Organization Atlas acceptance passed: fly in/out, Eri focus, keyboard Move to (tasks move whole, projects ask), Undo, Blueprint hover linking, blocking home list, draft review and phone fallback.");
 }finally{await browser.close();}

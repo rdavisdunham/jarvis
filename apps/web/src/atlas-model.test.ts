@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ROOT, chooseLabels, flyTarget, indexAtlas, itemState, layoutAtlas, legalTargets, markKind, markName, moveChoices, placedNode, scaleOf,
+  ROOT, chooseLabels, flyTarget, indexAtlas, itemState, layoutAtlas, legalTargets, markKind, markName, moveChoices, movesWhole, placedNode, scaleOf,
   searchRecords, trimLabel, viewFor, visibleNodes, type AtlasRecord, type AtlasType,
 } from "./atlas-model";
 
@@ -52,6 +52,13 @@ describe("move choices", () => {
     expect(options.map(o => o.mode)).toEqual(["subtree", "item"]);
     expect(options[0].note).toBe("2 items inside move along");
     expect(options[1]).toEqual({ mode: "item", label: "Move only this record", note: "Its 2 items stay in Transcript Intelligence" });
+  });
+  it("moves leaves and tasks with subtasks without asking, but asks for containers with contents", () => {
+    expect(movesWhole(index.byId.get("swd")!, index)).toBe(true); // a task with nothing inside
+    expect(movesWhole(index.byId.get("dn")!, index)).toBe(true); // a note
+    expect(movesWhole(index.byId.get("fcd")!, index)).toBe(true); // a task with subtasks
+    expect(movesWhole(index.byId.get("ti")!, index)).toBe(false); // a project with contents
+    expect(movesWhole(index.byId.get("abc")!, index)).toBe(false); // a client with contents
   });
   it("offers only a plain move for a leaf", () => {
     expect(moveChoices(index.byId.get("swd")!, index)).toEqual([{ mode: "subtree", label: "Move with contents", note: "Nothing inside to move" }]);

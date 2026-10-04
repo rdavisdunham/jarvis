@@ -4,7 +4,7 @@ import { api } from "./api";
 import { HomePicker } from "./HomePicker";
 import { OPENS_AS } from "./TypeEditor";
 import { capabilityPatch, updateType } from "./field-library";
-import { ancestors, dueState, isRegion, itemState, moveChoices, stateLabel, type AtlasIndex, type AtlasRecord, type MoveOption } from "./atlas-model";
+import { ancestors, dueState, isRegion, itemState, moveChoices, movesWhole, stateLabel, type AtlasIndex, type AtlasRecord, type MoveOption } from "./atlas-model";
 import {
   CAPABILITY_GLYPHS, addAllowedHome, diagramParent, fieldRole, fieldRoleLabel, recordsLivingIn, removeAllowedHome, typeMoveChoice,
 } from "./blueprint-model";
@@ -68,7 +68,7 @@ export function RecordInspector({ record, index, schema, today, canEdit, focused
     </div>
     {canEdit && <section className="atlas-section" aria-label="Move">
       <h3>Home</h3>
-      {full ? <HomePicker row={full} schema={schema} disabled={busy} onChoose={id => setMoving({ id, title: id ? (index.byId.get(id)?.title ?? "the chosen home") : "Unfiled" })}/> : <span className="atlas-muted">Loading…</span>}
+      {full ? <HomePicker row={full} schema={schema} disabled={busy} onChoose={id => movesWhole(record, index) ? void onMove(record, id, "subtree") : setMoving({ id, title: id ? (index.byId.get(id)?.title ?? "the chosen home") : "Unfiled" })}/> : <span className="atlas-muted">Loading…</span>}
       {moving && <MoveChoiceList title={`Move ${record.title} to ${moving.title}`} options={moveChoices(record, index)} busy={busy}
         onCancel={() => setMoving(null)} onChoose={o => void onMove(record, moving.id, o.mode).then(() => setMoving(null))}/>}
     </section>}

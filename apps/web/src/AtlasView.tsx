@@ -7,7 +7,7 @@ import { Blueprint } from "./Blueprint";
 import { AddHere, MoveChoiceList, RecordInspector, TypeInspector, type TemplateHooks } from "./AtlasInspector";
 import { TypeMoveChoices } from "./TypeMap";
 import {
-  ROOT, ancestors, flyTarget, indexAtlas, isRegion, itemRadius, layoutAtlas, legalTargets, moveChoices, project, scaleOf, searchRecords,
+  ROOT, ancestors, flyTarget, indexAtlas, isRegion, itemRadius, layoutAtlas, legalTargets, moveChoices, movesWhole, project, scaleOf, searchRecords,
   siblingOrder, viewFor, visibleNodes, type AtlasData, type AtlasIndex, type AtlasRecord, type MoveOption, type PackedNode, type View,
 } from "./atlas-model";
 import { allowAndPlace, draftChanges, typeMoveChoice } from "./blueprint-model";
@@ -201,7 +201,8 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
       setDrag(null);
       if (!moved) return;
       suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0);
-      if (over) setPopup({ kind: "move", x: ev.clientX, y: ev.clientY, record, target: over, targetTitle: index.byId.get(over)?.title ?? "" });
+      if (over && movesWhole(record, index)) void move(record, over, "subtree");
+      else if (over) setPopup({ kind: "move", x: ev.clientX, y: ev.clientY, record, target: over, targetTitle: index.byId.get(over)?.title ?? "" });
       else {
         const homes = (index.types.get(record.type_id)?.parent_types ?? []).map(h => index.types.get(h)?.plural).filter(Boolean);
         setToast({ message: `Drop ${record.title} on a highlighted home. ${index.types.get(record.type_id)?.plural ?? "Records"} can live in ${homes.join(", ") || "the top level only"}.` });
