@@ -207,6 +207,33 @@ def test_mark_reviewed_reschedules_removes_from_inbox_and_reverts(clock):
         run("review.defer", {"question_key": item["key"], "expected_revision": item["revision"], "until": "week"})
 
 
+def test_undo_toast_restores_review_through_restore_contents(clock):
+    a = create("client", "ABC")
+    cadence()
+    overdue(a, clock=clock)
+    queue(daytime(clock))
+    [item] = inbox()
+    key = str(uuid4())
+    with session_scope() as db:
+        execute(db, OWNER, key, "record.mark_reviewed", item["answer_args"])
+    assert inbox() == []
+    # The toast sends the same grouped Undo templates use, keyed by the Mark reviewed command.
+    run("record.restore_contents", {"source_command_id": key})
+    assert row(a["id"]).last_reviewed_at is None and len(inbox()) == 1
+    with session_scope() as db:
+        assert db.scalar(select(ActionChange).where(ActionChange.command_id == key)).reverted_by
+    with pytest.raises(DomainError):
+        run("record.restore_contents", {"source_command_id": key})
+    # A later review blocks an older Undo instead of overwriting newer dates.
+    second = str(uuid4())
+    with session_scope() as db:
+        execute(db, OWNER, second, "record.mark_reviewed", {"record_id": a["id"]})
+    clock.travel(days=1)
+    run("record.mark_reviewed", {"record_id": a["id"]})
+    with pytest.raises(DomainError):
+        run("record.restore_contents", {"source_command_id": second})
+
+
 def test_snooze_defers_like_other_questions(clock):
     a, b = create("client", "ABC"), create("client", "Other")
     cadence()

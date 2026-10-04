@@ -369,7 +369,6 @@ def restore(db, owner, args, command_id):
     receipt = db.get(Command, (owner, args.source_command_id))
     if not receipt or receipt.account_id != actor(db, owner):
         raise DomainError("NOT_FOUND", "This action is not available.", 404)
-    check_restore_guard(db, owner, receipt)
     rows = list(
         db.scalars(
             select(ActionChange)
@@ -377,6 +376,10 @@ def restore(db, owner, args, command_id):
             .order_by(ActionChange.created_at, ActionChange.id)
         )
     )
+    if rows and all(r.tool in {"record.mark_reviewed", "record.review"} for r in rows):
+        # The Undo toast after Mark reviewed: each review change carries its own date guard.
+        return undo_reviews(db, owner, rows, command_id)
+    check_restore_guard(db, owner, receipt)
     if rows and all(r.tool == "record.instantiate" for r in rows):
         from .record_templates import restore as undo_template
         return undo_template(db, owner, receipt, rows, command_id)
@@ -412,6 +415,23 @@ def restore(db, owner, args, command_id):
         results.append(execute(db, owner, child_command, tool, values)["data"])
         row.reverted_by = command_id
     return {"restored": True, "changed_count": len(results)}
+
+
+def undo_reviews(db, owner, rows, command_id):
+    from uuid import NAMESPACE_URL, uuid5
+    from .action_history import inverse
+    from .domain import execute
+
+    actions = []
+    for row in rows:
+        action, reason = inverse(db, row, lock=True, group=False)
+        if not action:
+            raise DomainError("REVISION_CONFLICT", reason, 409)
+        actions.append((row, action))
+    for i, (row, (tool, values)) in enumerate(actions):
+        execute(db, owner, str(uuid5(NAMESPACE_URL, command_id + ":" + str(i))), tool, values)
+        row.reverted_by = command_id
+    return {"restored": True, "changed_count": len(actions)}
 
 
 def guard(db, owner, identities):

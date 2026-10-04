@@ -8,6 +8,7 @@ import {
   build, childTypes, createdLabel, defaultableFields, flatten, onboardingExample, parentTypeOf, previewLines, removeRow, rowIssues, shift,
   type InstantiatePreview, type InstantiateResult, type RecordTemplate, type Row, type TemplatePayload,
 } from "./template-model";
+import { useUndoToast as useSharedUndoToast } from "./undo-toast";
 import "./templates.css";
 
 // ---- Data -------------------------------------------------------------------------------
@@ -35,18 +36,9 @@ export async function instantiate(preview: InstantiatePreview, title?: string) {
 }
 
 // ---- Undo toast -------------------------------------------------------------------------
-export type UndoToastState = { message: string; undo?: () => Promise<unknown> } | null;
-export function useUndoToast(onUndone?: () => Promise<void> | void) {
-  const [toast, setToast] = useState<UndoToastState>(null), [busy, setBusy] = useState(false);
-  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 6000); return () => clearTimeout(timer); }, [toast]);
-  const element = toast && <div className="toast" role="status"><span>{toast.message}</span>
-    {toast.undo && <button type="button" disabled={busy} onClick={() => {
-      const undo = toast.undo!; setToast(null); setBusy(true);
-      void undo().then(async () => { await onUndone?.(); setToast({ message: "Undone. The new records were archived." }); })
-        .catch(e => setToast({ message: (e as Error).message })).finally(() => setBusy(false));
-    }}>Undo</button>}</div>;
-  return { element, show: setToast };
-}
+export type { UndoToastState } from "./undo-toast";
+/** Template toasts say what Undo did: the records it created were archived. */
+export const useUndoToast = (onUndone?: () => Promise<void> | void) => useSharedUndoToast(onUndone, "Undone. The new records were archived.");
 
 // ---- Stamps and preview -----------------------------------------------------------------
 /** Dashed stamp cards: "Start from template: Client onboarding — A project with 4 tasks: …". */
