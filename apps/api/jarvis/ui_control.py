@@ -70,7 +70,7 @@ class UIContext(BaseModel):
     calendar_date: str | None = Field(default=None, max_length=10)
     selected_schedule_id: str | None = Field(default=None, max_length=36)
     work_kind: Literal["all", "task", "reminder"] = "all"
-    layout: Literal["browse", "tree", "list", "board", "timeline"] = "list"
+    layout: Literal["browse", "atlas", "tree", "list", "board", "timeline"] = "list"
     sort: Literal["priority", "due", "planned", "title", "updated"] = "priority"
     group_by: Literal["status", "project", "assignee"] = "status"
     timeline_date: str = Field(default="", max_length=10)

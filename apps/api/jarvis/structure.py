@@ -606,11 +606,16 @@ def preview(db, owner, args, command_id):
         status = mappings.get(t["id"], {}).get(row.status_id, row.status_id)
         if status and status not in {s["id"] for s in t["statuses"]}:
             issues.append({"record_id": row.id, "message": "Map an existing status before removing it."})
-        if row.parent_id and db.get(StructureRecord, row.parent_id).type_id not in t["parent_types"]:
-            issues.append(
-                {"record_id": row.id, "message": "Move this record before disallowing its parent type."}
-            )
         current_record = data(db, row, schema)
+        home = db.get(StructureRecord, row.parent_id) if row.parent_id else None
+        if home and home.type_id not in t["parent_types"]:
+            # Titles and homes let the editor list exactly which records block the change.
+            issues.append({
+                "record_id": row.id, "kind": "placement", "type_id": row.type_id,
+                "title": current_record["title"], "archived": bool(current_record["archived"]),
+                "home": {"id": home.id, "title": data(db, home, schema)["title"], "type_id": home.type_id},
+                "message": "Move this record before disallowing its parent type.",
+            })
         if "work" in t["capabilities"] and len(current_record["body"]) > 20000:
             issues.append(
                 {

@@ -1,4 +1,5 @@
 import type {Schema,SchemaField,SchemaType} from "./structure-types";
+import {meanings,describe} from "./structure-types";
 const semantic=["name","description","kind","options","target_types","multiple","binding"] as const;
 const meaning=(field:SchemaField)=>Object.fromEntries(semantic.map(k=>[k,field[k]]));
 export function updateType(schema:Schema,id:string,patch:Partial<SchemaType>):Schema{
@@ -54,4 +55,14 @@ export function presentation(schema:Schema){
  if(schema.type_layout?.length)return schema.type_layout;
  const defaults:Record<string,string>={area:"space",client:"space",project:"client",task:"project",note:"project",goal:"space"};
  return schema.types.map(t=>({type_id:t.id,parent_type_id:schema.types.some(p=>p.id===defaults[t.id])&&t.parent_types.includes(defaults[t.id])?defaults[t.id]:null}));
+}
+
+const WORK_BINDINGS=["due_date","due_time","due_timezone","planned_date","priority","estimate_minutes","assignee"];
+const owns=(name:string,binding:string|null)=>!!binding&&(name==="work"?WORK_BINDINGS.includes(binding):name==="timeline"?["start_date","target_date"].includes(binding):name==="metric"&&binding.startsWith("metric_"));
+/** Turning a behavior on attaches its shared fields (and default statuses for work); off retires them. */
+export function capabilityPatch(type:SchemaType,schema:Schema,original:Schema,name:string,enabled:boolean):Partial<SchemaType>{
+ const fields=type.fields.map(f=>({...f}));
+ if(!enabled){for(const f of fields)if(owns(name,f.binding)){f.binding=null;f.archived=true;}}
+ if(enabled){const source=schema.field_library??original.types.flatMap(t=>t.fields);for(const f of source){if(owns(name,f.binding)&&!fields.some(x=>x.binding===f.binding)){const added=schema.field_library?attachField(f):structuredClone(f);if(fields.some(x=>x.id===added.id))added.id=crypto.randomUUID();fields.push(added);}}}
+ return {capabilities:enabled?[...type.capabilities,name]:type.capabilities.filter(c=>c!==name),fields,statuses:name==="work"&&enabled&&!type.statuses.length?meanings.map(s=>({id:s,name:describe(s),meaning:s})):type.statuses};
 }

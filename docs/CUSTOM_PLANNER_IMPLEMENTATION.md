@@ -28,6 +28,39 @@ can replace that vocabulary, add types and choose their behaviors:
   everything else stays `auto`. Records carry the resolved `opens_as`, which Browse
   groups, the web and Eri's `ui_records(record_id)` all follow.
 
+### See the organization: Atlas and Blueprint
+
+Organization → Atlas (desktop and tablet, 720px and wider; phones keep Browse, which
+stays the default layout) draws the same records as a zoomable map. Containers are
+circle-packed regions with a progress ring for the work inside; tasks are dots (open
+hollow, in progress half filled, done filled, overdue rose ring), notes rounded squares,
+goals targets, and a task's subtasks orbit it as moons. Click or Enter flies into a
+region, double-click or Backspace flies out, breadcrumbs and Ctrl/⌘K "Fly to a record"
+jump anywhere, and only the focused level is labeled. Lenses recolor by status, due,
+or type ("Reviews due" waits for review cadence). Selecting a record draws its extra
+links (dashed violet; blocks as a rose arrow). Dragging a record lights its legal homes
+(allowed home types, excluding its own subtree and current home); dropping, or the
+inspector's keyboard Home picker, offers "Move with contents" or "Move only this
+record" and applies through `record.contents` preview/apply with an Undo toast
+(`record.restore_contents`). The inspector's "Add here" uses `record.create`.
+
+Blueprint (and "Both", which links it to the map) shows each type once along the
+diagram path with behavior glyphs, field count, a "nests itself" loop and an "Also
+allowed in …" line; "Show every allowed home" draws all permitted placements. Dragging
+a type onto another asks: "Rearrange the diagram only" (only when already allowed) or
+"Also allow X inside Y"; loops are refused. The type inspector edits behaviors, the
+organizing container, allowed homes (removing one that records use lists those records
+and blocks the change) and shows a labeled Fields group marking operational versus
+inheritable fields. Blueprint edits are a draft: "Review and apply" continues it in
+Types & fields, which previews and applies as before. Structure previews now name each
+record that blocks a placement change, with its current home. Hovering a type lights its
+records on the map; selecting a record highlights its type and allowed home types.
+
+The map reads `GET /structure/atlas` (bots: `/external/structure/atlas` with
+`records:read`; task dates need `tasks:read`): a breadth-first skeleton capped at 5,000
+records with a `truncated` flag. Eri flies it with `ui_records(layout="atlas",
+record_id|parent_id)`.
+
 A record has one main home, which can be another allowed record type. For example,
 Work → ABC → Transcript Intelligence → a task. Named links support additional
 many-to-many relationships such as projects supporting several goals. Relation

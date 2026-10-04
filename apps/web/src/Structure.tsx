@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bookmark, Building2, CalendarClock, ChartNoAxesGantt, Check, ChevronLeft, ChevronRight, CircleCheck, Columns3, Compass,
-  Flag, FolderKanban, GripVertical, Layers, Link, List, ListFilter, NotebookPen, Plus, Search, Settings2, Shapes, Target,
+  Flag, FolderKanban, GripVertical, Layers, Link, List, ListFilter, NotebookPen, Orbit, Plus, Search, Settings2, Shapes, Target,
   Trash2, User, X, type LucideIcon,
 } from "lucide-react";
 import { api, post } from "./api";
@@ -19,7 +19,7 @@ import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
 import { meanings, describe, openTarget } from "./structure-types";
-import { Popover, priorityLabels } from "./ux";
+import { Popover, priorityLabels, useMaxWidth } from "./ux";
 import { clockLabel, dueBucket, dueBuckets, monthDay, shortDate } from "./work-views";
 import { shiftDate } from "./workspace";
 
@@ -30,6 +30,9 @@ const sortOptions: [Sort, string][] = [["due", "Due date"], ["planned", "Planned
 const typeIcons: Record<string, LucideIcon> = {task: CircleCheck, project: FolderKanban, client: Building2, space: Layers, area: Compass, goal: Target, note: NotebookPen, person: User, actor: User};
 export const typeIcon = (typeId: string) => typeIcons[typeId] ?? Shapes;
 const TIMELINE_DAYS = 30;
+/** The Atlas is a desktop and tablet canvas; phones keep Browse. Loaded on demand to keep the main bundle small. */
+const AtlasView = lazy(() => import("./AtlasView"));
+export const ATLAS_MIN_WIDTH = 720;
 
 
 export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,onSelection,onBulk,query="",canEdit=true,canDesign=true,refresh=0,onChanged,capability="",tab="all",today=new Date().toISOString().slice(0,10),onTask,onVisible,control,onQuery,onTab,statusFilter,homeFilter,layoutFilter,groupFilter,sortFilter,onContext,tabs,searchLabel,viewLink,onApplyTaskView}:{selecting?:boolean;selectedIds?:string[];onSelecting?:(v:boolean)=>void;onSelection?:(ids:string[])=>void;onBulk?:()=>void;statusFilter?:string;homeFilter?:string;layoutFilter?:string;groupFilter?:string;sortFilter?:string;onContext?:(state:Record<string,string|number|null>)=>void;query?:string;canEdit?:boolean;canDesign?:boolean;refresh?:number;onChanged?:()=>void;capability?:string;tab?:string;today?:string;onTask?:(id:string)=>void;onQuery?:(value:string)=>void;onTab?:(value:"today"|"inbox"|"week"|"all")=>void;onVisible?:(ids:string[])=>void;control?:Control;
@@ -43,6 +46,8 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const [browseSection,setBrowseSection]=useState("groups");
   const [browseRefresh,setBrowseRefresh]=useState(0);
   const [moving,setMoving]=useState<{row:CustomRecord;parentId:string|null}|null>(null);
+  const [atlasTarget,setAtlasTarget]=useState<{nonce:string;record_id?:string}|null>(null);const [designDraft,setDesignDraft]=useState<{draft:Schema|null;type?:string}|null>(null);
+  const narrow=useMaxWidth(ATLAS_MIN_WIDTH-1);
   const [selected,setSelected]=useState<CustomRecord|null>(null);const [design,setDesign]=useState(false);const [designDirty,setDesignDirty]=useState(false);
   const [title,setTitle]=useState("");const [archived,setArchived]=useState(false);const [group,setGroup]=useState("status");
   const [proposal,setProposal]=useState<Proposal>();
@@ -55,13 +60,13 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const {run,error,busy,setError}=useStructureActions();
   const load=useCallback(async()=>{
     const s=await api<Schema>("/structure");const all:CustomRecord[]=[];let offset:number|null=0;
-    while(offset!==null && (layout!=="browse"||!!query)){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;}
+    while(offset!==null && ((layout!=="browse"&&layout!=="atlas")||!!query)){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;}
     setSchema(s);setItems(all);
     const views=await api<{items:SavedEntry[]}>("/task-views");setSaved(views.items.filter(v=>v.state.collection_view||onApplyTaskView));
   },[archived,!!onApplyTaskView,layout,!!query]);
   useEffect(()=>{let live=true;load().catch(e=>{if(live)setError(String(e.message??e));});return()=>{live=false;};},[load,refresh,setError]);
   useEffect(()=>{const handler=(event:Event)=>{const id=(event as CustomEvent).detail?.id;if(id)api<CustomRecord>("/structure/records/"+id).then(setSelected).catch(e=>setError(e.message));};window.addEventListener("eri-open-record",handler);return()=>window.removeEventListener("eri-open-record",handler);},[setError]);
-  useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.section!==undefined)setBrowseSection(control.section);else if(control.parent_id!==undefined)setBrowseSection(control.parent_id?"all":"groups");if(!control.layout&&!capability){if(control.type_id||control.field||control.record_ids?.length)setLayout("list");else if(control.parent_id!==undefined)setLayout("browse");}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
+  useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.section!==undefined)setBrowseSection(control.section);else if(control.parent_id!==undefined)setBrowseSection(control.parent_id?"all":"groups");if(!control.layout&&!capability){if(control.type_id||control.field||control.record_ids?.length)setLayout("list");else if(control.parent_id!==undefined)setLayout("browse");}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id&&control.layout==="atlas")setAtlasTarget({nonce:control.nonce,record_id:control.record_id});else if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
 
   useEffect(()=>{if(statusFilter!==undefined)setStatus(statusFilter);},[statusFilter]);
   useEffect(()=>{if(homeFilter!==undefined)setParent(homeFilter);},[homeFilter]);
@@ -120,8 +125,8 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     document.querySelectorAll(".work-page [data-record-id]").forEach(el=>observer.observe(el));
     return()=>observer.disconnect();
   },[resultSearch,resultIds,visibleSearchIds]);
-  useEffect(()=>{if(layout!=="browse")onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible,layout]);
-  useEffect(()=>{if(layout==="browse"&&(query||typeId||filterField||resultIds?.length))setLayout("list");},[query,typeId,filterField,resultIds,layout]);
+  useEffect(()=>{if(layout!=="browse"&&layout!=="atlas")onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible,layout]);
+  useEffect(()=>{if((layout==="browse"||layout==="atlas")&&(query||typeId||filterField||resultIds?.length))setLayout("list");},[query,typeId,filterField,resultIds,layout]);
   if(!schema)return <p role="status" className="work-loading">{error||"Loading your structure…"}</p>;
   const refreshAll=async()=>{await load();setBrowseRefresh(r=>r+1);onChanged?.();};
   const edit=async(row:CustomRecord,changes:Record<string,unknown>)=>{
@@ -208,12 +213,13 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     filterField&&filterValue&&{key:"field",label:(field?.name??"Field")+": "+((field?.kind==="relation"?items.find(r=>r.id===filterValue)?.title:field?.options.find(o=>o.id===filterValue)?.name)??filterValue),clear:()=>{setFilterField("");setFilterValue("");}},
     archived&&{key:"archived",label:"Archived",clear:()=>setArchived(false)},
   ].filter(Boolean) as {key:string;label:string;clear:()=>void}[];
-  const layoutIcons={browse:Compass,tree:Layers,list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
+  const layoutIcons={browse:Compass,atlas:Orbit,tree:Layers,list:List,board:Columns3,timeline:ChartNoAxesGantt} as const;
+  const atlas=layout==="atlas"&&!capability&&!narrow;
   const toolbar=<div className={"work-toolbar"+(tabs?" has-tabs":"")}>
     {tabs}
     <div className="work-toolbar-controls">
-      <label className="toolbar-search"><Search size={16} aria-hidden="true"/><input type="search" aria-label={searchLabel??(capability?"Search this list":"Search organization")} placeholder="Search…" value={query} onChange={e=>onQuery?.(e.target.value)}/></label>
-      <Popover label={"Filter"+(filterCount?", "+filterCount+" active":"")} button={<><ListFilter size={16} aria-hidden="true"/><span className="toolbar-label">Filter</span>{!!filterCount&&<span className="toolbar-count">{filterCount}</span>}</>} panelClassName="filter-popover">
+      {!atlas&&<label className="toolbar-search"><Search size={16} aria-hidden="true"/><input type="search" aria-label={searchLabel??(capability?"Search this list":"Search organization")} placeholder="Search…" value={query} onChange={e=>onQuery?.(e.target.value)}/></label>}
+      {!atlas&&<Popover label={"Filter"+(filterCount?", "+filterCount+" active":"")} button={<><ListFilter size={16} aria-hidden="true"/><span className="toolbar-label">Filter</span>{!!filterCount&&<span className="toolbar-count">{filterCount}</span>}</>} panelClassName="filter-popover">
         {()=><div className="filter-fields">
           <label className="field">Collection<select value={typeId} onChange={e=>{setTypeId(e.target.value);setGroup("status");}}><option value="">{capability?"All actionable work":"All records"}</option>{types.map(t=><option key={t.id} value={t.id}>{t.plural}</option>)}</select></label>
           <label className="field">Main home<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">All homes</option>{homeGroups.map(g=><optgroup key={g.name} label={g.name}>{g.rows.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</optgroup>)}</select></label>
@@ -225,7 +231,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
           <label className="check-label filter-archived"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>Archived</label>
           {!!filterCount&&<button type="button" className="btn btn-ghost btn-sm filter-reset" onClick={resetFilters}>Reset filters</button>}
         </div>}
-      </Popover>
+      </Popover>}
       <Popover label="Saved views" button={<><Bookmark size={16} aria-hidden="true"/><span className="toolbar-label">Saved views</span></>} panelClassName="views-popover">
         {close=><>
           {saved.length?<ul className="view-list" aria-label="Saved collection view">{saved.map(v=><li key={v.id}>
@@ -242,9 +248,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         </>}
       </Popover>
       <div className="segmented work-layout" role="group" aria-label="Layout">
-        {((capability?["list","board","timeline"]:["browse","tree","list","board","timeline"]) as (keyof typeof layoutIcons)[]).map(value=>{const Icon=layoutIcons[value];const label=value==="tree"?"Structure":value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={value==="tree"?"Tree":label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
+        {((capability?["list","board","timeline"]:narrow?["browse","tree","list","board","timeline"]:["browse","atlas","tree","list","board","timeline"]) as (keyof typeof layoutIcons)[]).map(value=>{const Icon=layoutIcons[value];const label=value==="tree"?"Structure":value.charAt(0).toUpperCase()+value.slice(1);return <button key={value} type="button" aria-label={value==="tree"?"Tree":label} title={label} aria-pressed={layout===value} onClick={()=>setLayout(value)}><Icon size={16} aria-hidden="true"/><span className="toolbar-label">{label}</span></button>;})}
       </div>
-      {canDesign&&<button type="button" className="btn btn-ghost toolbar-button" aria-label="Structure" title="Shape your workspace structure" onClick={()=>{setProposal(undefined);setDesign(true);}}><Settings2 size={16} aria-hidden="true"/><span className="toolbar-label">Types & fields</span></button>}
+      {canDesign&&<button type="button" className="btn btn-ghost toolbar-button" aria-label="Structure" title="Shape your workspace structure" onClick={()=>{setProposal(undefined);setDesignDraft(null);setDesign(true);}}><Settings2 size={16} aria-hidden="true"/><span className="toolbar-label">Types & fields</span></button>}
     </div>
   </div>;
 
@@ -314,12 +320,12 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   </div>;
   return <section className="structure-workspace work-page">
     {toolbar}
-    {!!activeChips.length&&<div className="work-filter-chips" aria-label="Active filters">{activeChips.map(c=><button key={c.key} type="button" className="chip work-filter-chip" aria-label={"Remove filter: "+c.label} onClick={c.clear}>{c.label}<X aria-hidden="true"/></button>)}</div>}
+    {!!activeChips.length&&!atlas&&<div className="work-filter-chips" aria-label="Active filters">{activeChips.map(c=><button key={c.key} type="button" className="chip work-filter-chip" aria-label={"Remove filter: "+c.label} onClick={c.clear}>{c.label}<X aria-hidden="true"/></button>)}</div>}
     {error&&<p role="alert" className="work-error">{error}</p>}
     {resultIds&&<div className="work-notice">{resultIds.length} search results <button type="button" className="text-button" onClick={()=>{setResultIds(null);setResultSearch(null);}}>Show all records</button></div>}
     {query&&semantic.pending&&<p role="status" className="work-notice">Searching…</p>}
     {query&&(semantic.error||semantic.result?.incomplete)&&<p className="work-notice">Showing available matches. Semantic search is still catching up.</p>}
-    {layout!=="browse"&&<div className="work-listbar">
+    {layout!=="browse"&&!atlas&&!(layout==="atlas"&&narrow)&&<div className="work-listbar">
       {selecting?<div className="work-bulk" role="group" aria-label="Selection">
         <label className="check-label"><input type="checkbox" aria-label="Select visible tasks" checked={visibleTasks.length>0&&visibleTasks.every(r=>selectedIds.includes(r.task_id!))} onChange={e=>onSelection?.(e.target.checked?visibleTasks.map(r=>r.task_id!):[])}/>Select visible</label>
         <span className="work-bulk-count tabular">{selectedIds.length} selected</span>
@@ -330,13 +336,17 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     </div>
     }
     <div className="work-body" id={tabs?"task-workspace":undefined} role={tabs?"tabpanel":undefined} aria-labelledby={tabs?"task-tab-"+tab:undefined}>
-      {layout==="browse"&&!capability?<OrganizationBrowse schema={schema} parent={parent} section={browseSection} onSection={setBrowseSection} query={query} archived={archived} status={status} refresh={refresh+browseRefresh} canEdit={canEdit}
+      {atlas?<Suspense fallback={<p role="status" className="work-loading">Loading the Atlas…</p>}><AtlasView schema={schema} canEdit={canEdit} canDesign={canDesign} focus={parent} target={atlasTarget} refresh={refresh+browseRefresh} today={today}
+        onFocus={setParent} onVisible={onVisible} onOpen={id=>void api<CustomRecord>("/structure/records/"+id).then(open).catch(e=>setError(e.message))}
+        onBrowse={id=>{setParent(id);setLayout("browse");setBrowseSection("all");}} onChanged={async()=>{await load();onChanged?.();}}
+        onEditTypes={(draft,type)=>{setProposal(undefined);setDesignDraft({draft,type});setDesign(true);}}/></Suspense>
+       :(layout==="browse"||layout==="atlas")&&!capability?<OrganizationBrowse schema={schema} parent={parent} section={browseSection} onSection={setBrowseSection} query={query} archived={archived} status={status} refresh={refresh+browseRefresh} canEdit={canEdit}
         onBrowse={id=>{setParent(id);setBrowseSection(id?"all":"groups");setQueryForBrowse();}} onOpen={open} onVisible={onVisible}
         onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}}/>
        :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
     {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={go} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
     {moving&&<ContentsDialog row={moving.row} schema={schema} operation="move" parentId={moving.parentId} onClose={()=>setMoving(null)} onDone={refreshAll}/>}
-    {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} schema={schema} onClose={()=>setDesign(false)} onApplied={async()=>{setDesign(false);await refreshAll();}}/>}
+    {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} initialDraft={designDraft?.draft??undefined} initialType={designDraft?.type} schema={schema} onClose={()=>{setDesign(false);setDesignDraft(null);}} onApplied={async()=>{setDesign(false);setDesignDraft(null);await refreshAll();}}/>}
   </section>;
 }

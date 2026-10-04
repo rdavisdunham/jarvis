@@ -202,6 +202,13 @@ def external_records(identity: Bot,type_id: str | None=None,capability: str | No
         arguments={k:v for k,v in dict(type_id=type_id,capability=capability,query=query,limit=limit,offset=offset).items() if v is not None}
         return service.custom_read(db,key,"record_list",arguments)
 
+@external.get("/structure/atlas")
+def external_atlas(identity: Bot, limit: int = Query(1000, ge=1, le=5000)):
+    from .atlas import skeleton
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="records:read")
+        return skeleton(db,key.owner_id,limit=limit,withhold=service.withheld(key.scopes))
+
 @external.get("/structure/records/{record_id}")
 def external_record(record_id: UUID,identity: Bot):
     with session_scope() as db:

@@ -31,6 +31,11 @@
   /* Ink and star on the orbit gradient: identical in both themes because the orbit is. */
   --orb-ink: #23242c;
   --orb-star: #ffffff;
+  /* Atlas regions: nested containers get one quiet step darker per level. */
+  --region-1: #f1f0f8;
+  --region-2: #e9e7f6;
+  --region-3: #e1def3;
+  --region-4: #d8d4ef;
 
   --r-sm: 6px;
   --r-md: 10px;
@@ -72,6 +77,10 @@
   --done-soft: #16302a;
   --danger: #ff9c92;
   --danger-soft: #3a1f1d;
+  --region-1: #1c1c28;
+  --region-2: #22212f;
+  --region-3: #292738;
+  --region-4: #302d42;
   --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 40px -8px rgb(0 0 0 / 0.65);
   --launcher-line: #d9e6ea8a;
   --launcher-shadow: 0 6px 28px #0005, 0 0 18px #cbbbe51c;
@@ -102,6 +111,10 @@
     --done-soft: #16302a;
     --danger: #ff9c92;
     --danger-soft: #3a1f1d;
+    --region-1: #1c1c28;
+    --region-2: #22212f;
+    --region-3: #292738;
+    --region-4: #302d42;
     --shadow-float: 0 1px 2px rgb(0 0 0 / 0.4), 0 16px 40px -8px rgb(0 0 0 / 0.65);
     --launcher-line: #d9e6ea8a;
     --launcher-shadow: 0 6px 28px #0005, 0 0 18px #cbbbe51c;

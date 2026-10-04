@@ -197,7 +197,7 @@ export default function App() {
   const [noteListId, setNoteListId] = useState(() => new URLSearchParams(location.search).get("note_list") ?? "");
   const [notesMode, setNotesMode] = useState<"keyword" | "semantic">("keyword");
   const [collectionContext,setCollectionContext]=useState<Record<string,string|number|null>>({});
-  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean;section?:string}|undefined>(()=>{const q=new URLSearchParams(location.search);if(q.get("view")!=="organize")return undefined;return {nonce:"initial",parent_id:q.get("home")??"",layout:["browse","tree","list","board","timeline"].includes(q.get("layout")??"")?q.get("layout")!:"browse",section:q.get("contents")??(q.get("home")?"all":"groups")};});
+  const [recordControl,setRecordControl]=useState<{nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean;section?:string}|undefined>(()=>{const q=new URLSearchParams(location.search);if(q.get("view")!=="organize")return undefined;return {nonce:"initial",parent_id:q.get("home")??"",layout:["browse","atlas","tree","list","board","timeline"].includes(q.get("layout")??"")?q.get("layout")!:"browse",section:q.get("contents")??(q.get("home")?"all":"groups")};});
   const [taskRecordControl,setTaskRecordControl]=useState<typeof recordControl>();
   useEffect(()=>{const open=(e:Event)=>{setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:(e as CustomEvent).detail.id});};window.addEventListener("eri-open-custom-record",open);return()=>window.removeEventListener("eri-open-custom-record",open);},[]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>(() => {
@@ -1105,9 +1105,9 @@ export default function App() {
       if (action.layout) {
         if(target === "organize") {
           setRecordControl({nonce:crypto.randomUUID(),layout:action.layout});
-          if(action.layout!=="tree"&&action.layout!=="browse")setOrganizationLayout(action.layout);
+          if(action.layout!=="tree"&&action.layout!=="browse"&&action.layout!=="atlas")setOrganizationLayout(action.layout);
         } else {
-          if(action.layout==="tree"||action.layout==="browse")throw new Error("Browse and Structure layouts belong to Organization.");
+          if(action.layout==="tree"||action.layout==="browse"||action.layout==="atlas")throw new Error("Browse, Atlas and Structure layouts belong to Organization.");
           setWorkLayout(action.layout);
         }
       }
@@ -1803,7 +1803,7 @@ export default function App() {
     done = filtered.filter((t) => t.status === "completed"),
     unread = notices.filter((n) => !n.read_at).length;
   const uiContext: UIContext = {
-    layout: view === "organize" ? (organizationEditor ? organizationLayout : (collectionContext.layout??"browse") as "browse"|"tree"|WorkLayout) : workLayout,
+    layout: view === "organize" ? (organizationEditor ? organizationLayout : (collectionContext.layout??"browse") as "browse"|"atlas"|"tree"|WorkLayout) : workLayout,
     sort: workSort,
     group_by: workGroup,
     timeline_date: timelineDate || today,

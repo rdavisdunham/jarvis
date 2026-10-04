@@ -34,7 +34,7 @@ class ViewState(BaseModel):
     due_from: str = Field(default="", pattern=r"^$|^\d{4}-\d{2}-\d{2}$")
     due_through: str = Field(default="", pattern=r"^$|^\d{4}-\d{2}-\d{2}$")
     kind: Literal["all", "task", "reminder"] = "all"
-    layout: Literal["browse", "tree", "list", "board", "timeline"] = "list"
+    layout: Literal["browse", "atlas", "tree", "list", "board", "timeline"] = "list"
     sort: Literal["priority", "due", "planned", "title", "updated"] = "priority"
     group: Literal["status", "project", "assignee"] = "status"
     timeline_date: str = Field(default="", pattern=r"^$|^\d{4}-\d{2}-\d{2}$")

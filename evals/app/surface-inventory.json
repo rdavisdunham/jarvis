@@ -881,6 +881,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/external/structure/atlas",
+      "handler": "external_atlas",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/external/structure/records",
       "handler": "external_records",
       "source": "apps/api/jarvis/external_routes.py",
@@ -1198,6 +1205,13 @@
       "method": "GET",
       "path": "/api/v1/structure",
       "handler": "schema",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_schema"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/atlas",
+      "handler": "atlas",
       "source": "apps/api/jarvis/structure_routes.py",
       "feature": "custom_schema"
     },
