@@ -196,3 +196,17 @@ def test_service_tier_is_explicit_agent_only_campaign_metadata(tmp_path, tier):
     assert manifest["service_tier"] == tier and manifest["model"] == "luna"
     with pytest.raises(ValueError, match="agent-only"):
         main(["plan", "--mode", "offline", "--service-tier", tier, "--cases", "task_capture.01"])
+
+@pytest.mark.parametrize("policy", ["baseline", "discovery-v1", "reads-v1"])
+def test_tool_policy_is_explicit_isolated_campaign_metadata(tmp_path, policy):
+    from scripts.app_eval.campaign import main
+    from scripts.app_eval.environment import settings_env, DEFAULT_URL
+    output = tmp_path / "policy-plan.json"
+    assert main(["plan", "--mode", "live-model", "--cases", "task_capture.01",
+                 "--no-support", "--model", "luna", "--service-tier", "fast",
+                 "--tool-policy", policy, "--output", str(output)]) == 0
+    manifest = json.loads(output.read_text())
+    assert manifest["tool_policy"] == policy
+    assert settings_env(DEFAULT_URL)["JARVIS_AGENT_TOOL_POLICY"] == "baseline"
+    with pytest.raises(ValueError, match="agent-only"):
+        main(["plan", "--mode", "offline", "--tool-policy", policy, "--cases", "task_capture.01"])

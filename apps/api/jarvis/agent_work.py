@@ -81,7 +81,7 @@ def enqueue(
     profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
     deps = list(dependencies or [])
-    job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile, "service_tier": agent.service_tier})
+    job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile, "service_tier": agent.service_tier, "tool_policy": get_settings().agent_tool_policy})
     db.add(job)
     db.flush()
     row = AgentWork(
@@ -108,9 +108,9 @@ def enqueue(
     wake_dispatch(db)
     db.flush()
     mark("accepted_precommit", request_id, revision=1, profile=profile, model=agent.model,
-         reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, channel="live" if voice_session_id else "work")
+         reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, tool_policy=job.payload["tool_policy"], channel="live" if voice_session_id else "work")
     after_commit(db, "work_accepted", request_id, revision=1, profile=profile, model=agent.model,
-                 reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, channel="live" if voice_session_id else "work")
+                 reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, tool_policy=job.payload["tool_policy"], channel="live" if voice_session_id else "work")
     emit(db, owner, "work.changed", request_id, 1)
     return row
 
@@ -226,6 +226,7 @@ def finish(db, row, status, message, **result):
                  channel="live" if row.voice_session_id else "work", profile=agent.profile_id,
                  model=agent.model, reasoning=agent.reasoning_effort,
                  requested_service_tier=job.payload.get("service_tier", "default"),
+                 tool_policy=job.payload.get("tool_policy", "baseline"),
                  receipts=len(row.result.get("actions", [])))
     job.result = {"work_id": row.id, "status": status}
     wake_dispatch(db)  # Completion releases account capacity and dependent requests.

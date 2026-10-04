@@ -202,3 +202,14 @@ The opt-in command exports completed saved evidence without rerunning models:
 See [setup, evidence scope, and recovery](../../docs/LANGFUSE.md). All selected
 cases remain visible, while code outcomes, external grades, and missing coverage
 remain distinct. Local receipts prevent blind replay of immutable observations.
+
+
+### Tool-round comparisons
+
+Agent-only campaigns accept `--tool-policy baseline`, `discovery-v1`, or `reads-v1`
+alongside `--model luna --service-tier fast --mode live-model --no-support`.
+The manifest pins the policy at work acceptance; ordinary evals remain baseline
+and Standard regardless of application defaults. Planning is free; paid execution
+still requires `--run-paid` and the ledger cap. Interleave matched arms, keep all
+failures/costs, and inspect `latency-summary.json` round plans and discovery counts.
+See [the October comparison](../../docs/ERI_ROUND_REDUCTION_VALIDATION.md).

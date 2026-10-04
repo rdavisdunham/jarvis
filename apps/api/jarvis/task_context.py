@@ -85,7 +85,7 @@ def resolve(db, owner, context, conversation_id, scope, query="", home_id=None):
     from .task_tools import compact, with_homes
 
     # Compact rows keep a 60-task ambiguity check inside model context; task_get reads full notes.
-    tasks = [{**compact(serial(t)), "notes_preview": t.notes[:200]} for t in rows[:60]]
+    tasks = [{**compact(serial(t)), "notes_preview": t.notes[:200], "notes_truncated": len(t.notes) > 200} for t in rows[:60]]
     return {
         "tasks": with_homes(db, owner, tasks),
         "ambiguous": len(rows) > 1,

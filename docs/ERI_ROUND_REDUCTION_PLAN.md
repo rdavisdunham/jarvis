@@ -1,8 +1,10 @@
 # Reducing Eri model and tool rounds
 
-Updated October 4, 2026. Proposed follow-up to the shipped speed measurement and
-Luna low reasoning plus Fast default. This document plans changes; it does not
-enable any round-reduction behavior.
+Updated October 4, 2026. The first two stages are implemented and independently
+selectable. Discovery is the first-stage default; sufficient-read reuse is staged
+behind its policy setting until the phone check. See the
+[implementation, measurements and remaining acceptance](ERI_ROUND_REDUCTION_VALIDATION.md).
+The optional completion shortcut remains deferred.
 
 Start by removing unnecessary discovery, then avoid repeated reads when a fresh
 result already contains everything needed. Keep the durable runner, human
@@ -167,16 +169,16 @@ without an explicit decision. A small sample supports a trial, not a p95 promise
 Use a configuration-controlled policy version pinned at job acceptance. A rollback
 changes new jobs while accepted jobs retain their tool policy and saved receipts.
 If any early-ending prototype is promoted later, keep its flag independently
-reversible. Merge/deploy one PR at a time; verify a known typed and GPT-Live request
+reversible. Both implemented policies can share one reviewed change, but activate them one at a time; verify a known typed and GPT-Live request
 on the phone before starting the next behavior change.
 
 ## Order and stopping point
 
-- [ ] First PR: detailed round evidence, consistent discovery instructions,
+- [x] Implement first stage: detailed round evidence, consistent discovery instructions,
   trial note capture in CORE, deterministic and paired checks.
-- [ ] Second PR: field-sufficient lookups/receipts and fewer redundant reads,
+- [x] Implement second stage behind `reads-v1`: field-sufficient lookups/receipts and fewer redundant reads,
   preserving revision and source semantics.
-- [ ] Decide whether a third PR is warranted. Do not build an early-exit
+- [x] Third-stage decision: defer it; the measured targets are met. Do not build an early-exit
   interpreter or another queue to save a final answer round.
 - [ ] Record production and phone checks beside the existing release acceptance log.
 

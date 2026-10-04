@@ -43,6 +43,8 @@ def compact(row):
     if row.get("source"):
         from .sources import compact_source
         result["source"] = compact_source(row["source"])
+        if row["source"].get("read_only_reason"):
+            result["source"]["read_only_reason"] = row["source"]["read_only_reason"]
     return result
 
 

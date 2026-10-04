@@ -532,19 +532,26 @@ def load_names(arguments):
 class ToolSession:
     """Per-turn capability loading. No global/shared model selection or execution."""
 
-    def __init__(self, definitions):
-        self.catalog = {t["name"]: t for t in definitions}
-        self.names = [n for n in CORE if n in self.catalog]
+    def __init__(self, definitions, policy="baseline"):
+        from .tool_policy import definitions_for
+        self.policy = policy
+        self.catalog = {t["name"]: t for t in definitions_for(definitions, policy)}
+        core = (*CORE, "note_create") if policy != "baseline" else CORE
+        self.names = [n for n in core if n in self.catalog]
 
     def definitions(self):
         return [self.catalog[n] for n in self.names]
 
     def load(self, arguments):
         names = [name for name in load_names(arguments) if name in self.catalog]
-        for name in names:
-            if name not in self.names:
-                self.names.append(name)
+        already = [name for name in names if name in self.names]
+        added = [name for name in names if name not in self.names]
+        self.names.extend(added)
+        feedback = {} if self.policy == "baseline" else {
+            "newly_loaded": added, "already_available": already,
+        }
         return {
+            **feedback,
             "status": "loaded",
             "tools": names,
             "message": "These typed tools are now available. Loading did not read or change personal records.",

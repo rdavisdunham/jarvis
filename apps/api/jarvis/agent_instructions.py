@@ -48,8 +48,10 @@ def identity_context(prefs):
     )
 
 
-def backend_instructions(prefs, focus=None, ui_context=None):
+def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="baseline"):
     from .ui_control import context_prompt
+    from .tool_policy import DISCOVERY, FRESH_READS, validate
+    validate(tool_policy)
 
     return "\n".join(
         [
@@ -65,7 +67,11 @@ def backend_instructions(prefs, focus=None, ui_context=None):
                 "Discovery never executes an action. For identical edits to a filtered set, use task_list's "
                 "exact filters and task_selection_update rather than manually transcribing every ID. "
                 "Use time_resolve before proposing or saving uncertain local times."
+                if tool_policy == "baseline" else DISCOVERY +
+                " For identical edits to a filtered set, use task_list and task_selection_update. "
+                "Use time_resolve for uncertain local times."
             ),
+            FRESH_READS if tool_policy == "reads-v1" else "",
             "Focused task ID DATA: " + json.dumps(focus or (ui_context or {}).get("selected_task_id")),
             context_prompt(ui_context),
         ]

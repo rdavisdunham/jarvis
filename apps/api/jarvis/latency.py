@@ -25,6 +25,8 @@ class FallbackHandler(logging.StreamHandler):
 if not any(isinstance(handler, FallbackHandler) for handler in logger.handlers):
     logger.addHandler(FallbackHandler())
 FIELDS = {
+    "tool_policy", "tool_kind", "groups", "newly_loaded_count", "already_available_count",
+    "available_tools", "tool_names", "definition_bytes",
     "revision", "round", "tool_index", "duration_ms", "queue_ms", "dispatch_ms",
     "elapsed_ms", "outcome", "voice_session_id", "channel", "profile", "model",
     "requested_service_tier", "served_service_tier", "cost_basis",

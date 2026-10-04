@@ -172,11 +172,11 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   tier metadata as estimated. Settings expose the effective tier. Override with
   `JARVIS_AGENT_SERVICE_TIER=default` on API/worker to return to Standard.
   Included in the October 4 speed release; production/device acceptance remains separate.
-- [ ] **Next speed step — release and real-use baseline.** Package SPEED1/2 plus the
-  accepted Fast default into a PR; pass existing CI gates before deploying API and
-  worker together. Verify returned tier/cost and joined timing on a known typed and
-  GPT-Live request, then Pixel Fold wake/goodbye, overlapping work and reconnection.
-  Use those traces to select SPEED3 delivery or SPEED4 round-count work.
+- [x] **Speed release.** PR #35 merged; required PR/main CI passed. API and worker
+  deployed `5938697` and public health/new frontend assets were verified.
+- [ ] **Real-use speed baseline.** Verify returned tier/cost and joined timing on a
+  known typed and GPT-Live request, then Pixel Fold wake/goodbye, overlapping work
+  and reconnection. Backend synthetic timing is not phone/audio acceptance.
 - [ ] **SPEED2 — broader comparison and rollout.** Extend paid comparison to navigation,
   agenda, dependent corrections, source edits and record/template/review workflows.
   Deterministic regressions passed but do not establish model parity in those areas.
@@ -188,11 +188,17 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   device acknowledgements and current speech quiet protection until phone checks.
 - [x] **SPEED4 implementation plan.** Inspect synthetic round sequences and define
   discovery, fresh-read reuse and conditional completion batches. See the
-  [round-reduction plan](ERI_ROUND_REDUCTION_PLAN.md); implementation is still pending.
-- [ ] **SPEED4 — conditional model-round/context reduction.** Small relevant tool
-  sets, fresh scoped context and verified completion summaries only where measured.
-  Same-job continuation preserves receipts, corrections and total cost; stop when
-  useful targets are met rather than adding every possible optimization.
+  [round-reduction plan](ERI_ROUND_REDUCTION_PLAN.md).
+- [x] **SPEED4 — discovery and sufficient-read reuse implemented.** Request-pinned
+  `baseline`, `discovery-v1` and `reads-v1` policies; discovery is the first-stage
+  default, reads remain staged until phone acceptance. All 63 synthetic model
+  trials passed, total $0.270826294. Median backend 4.853 → 3.524 s for discovery,
+  3.246 s with both stages. See [verification](ERI_ROUND_REDUCTION_VALIDATION.md).
+  Defer early completion: keep the final response and full-request checks.
+- [ ] **SPEED4 staged rollout acceptance.** CI/deploy discovery, test typed and
+  GPT-Live capture/clarifications on the phone, then activate reads-v1 and repeat
+  sparse edits, full-content edits, connected writes and partial answers.
+  Rollback affects new jobs only; accepted work retains its policy.
 - [x] Begin binding release-core eval cases and add regression coverage with Batch A.
   Continue toward the release-core target in Batch D; Batch C raises the current count to 112.
 
