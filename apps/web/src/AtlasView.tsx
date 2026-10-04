@@ -314,7 +314,7 @@ function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: 
   const rec = node.record, p = rec ? index.progress.get(rec.id) : null;
   const regions = node.children.filter(c => c.region).length, items = node.children.length - regions;
   return <>
-    <div className="atlas-kicker"><span className="chip chip-type">{rec ? index.types.get(rec.type_id)?.name : "Workspace"}</span></div>
+    <div className="atlas-kicker"><span className="chip chip-type">{rec ? index.types.get(rec.type_id)?.name ?? "Group" : "Workspace"}</span></div>
     <h2 className="atlas-title">{rec ? rec.title : "Your workspace"}</h2>
     <dl className="atlas-facts">
       <div><dt>Regions inside</dt><dd className="tabular">{regions}</dd></div>

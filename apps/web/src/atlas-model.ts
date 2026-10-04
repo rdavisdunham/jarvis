@@ -12,6 +12,10 @@ export type AtlasData = { schema_revision: number; types: AtlasType[]; records: 
 export type AtlasIndex = { links: AtlasLink[]; byId: Map<string, AtlasRecord>; children: Map<string | null, AtlasRecord[]>; types: Map<string, AtlasType>; progress: Map<string, { done: number; total: number }> };
 
 export const ROOT = "root";
+/** A synthetic region for records without a home; it is never a move target. */
+export const UNFILED = "unfiled";
+export const unfiledRecord = (): AtlasRecord => ({ id: UNFILED, title: "Unfiled", type_id: "", parent_id: null, depth: 0, revision: 0, sort_order: 1e9,
+  opens_as: "container", status_meaning: null, work: false, due_date: null, planned_date: null });
 export const isRegion = (r: Pick<AtlasRecord, "opens_as"> | null | undefined) => r?.opens_as === "container";
 
 export function indexAtlas(data: Pick<AtlasData, "records" | "types"> & { links?: AtlasLink[] }): AtlasIndex {
@@ -127,7 +131,11 @@ export function layoutAtlas(index: AtlasIndex, size = LAYOUT_SIZE): AtlasLayout 
     if (isRegion(r)) return { record: r, kids: kids.map(build) };
     return { record: r, moons: kids };
   };
-  const top = (index.children.get(null) ?? []).map(build);
+  const roots = index.children.get(null) ?? [];
+  // Unfiled items gather in one region so a large inbox doesn't shrink every top-level home.
+  const loose = roots.filter(r => !isRegion(r));
+  const top = roots.filter(r => isRegion(r)).map(build);
+  if (loose.length) top.push({ record: unfiledRecord(), kids: loose.map(build) });
   const tree = hierarchy<Datum>({ record: null, kids: top }, d => d.kids)
     .sum(d => d.kids ? (d.kids.length ? 0 : 1.6) : 1 + Math.min(12, d.moons?.length ?? 0) * 0.3)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
@@ -241,6 +249,7 @@ export function searchRecords(index: AtlasIndex, query: string, limit = 8): Atla
 
 /** Accessible name for a mark: type, title and its state, as separate phrases (no meta strings). */
 export function markName(r: AtlasRecord, index: AtlasIndex, today: string): string {
+  if (r.id === UNFILED) return `Unfiled: ${count(index.children.get(null)?.filter(x => !isRegion(x)).length ?? 0, "record")} without a home`;
   const type = index.types.get(r.type_id);
   const parts = [`${type?.name ?? "Record"}: ${r.title}`];
   const state = itemState(r, today);

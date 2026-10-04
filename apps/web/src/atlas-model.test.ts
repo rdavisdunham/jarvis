@@ -116,3 +116,16 @@ describe("semantic zoom and the label budget", () => {
     expect(layout.root.id).toBe(ROOT);
   });
 });
+
+describe("unfiled records", () => {
+  it("gather in one synthetic region that is never a move target", async () => {
+    const { UNFILED } = await import("./atlas-model");
+    const loose = indexAtlas({ records: [...records, rec("inbox1", "task", null), rec("inbox2", "note", null)], types, links: [] });
+    const layout = layoutAtlas(loose);
+    expect(layout.root.children.map(n => n.id)).toContain(UNFILED);
+    expect(layout.byId.get("inbox1")!.parent!.id).toBe(UNFILED);
+    expect(flyTarget(layout, loose, "inbox1")).toEqual({ focus: UNFILED, select: "inbox1" });
+    expect(legalTargets(loose.byId.get("fcd")!, loose).has(UNFILED)).toBe(false);
+    expect(markName(layout.byId.get(UNFILED)!.record!, loose, "2026-10-03")).toBe("Unfiled: 2 records without a home");
+  });
+});
