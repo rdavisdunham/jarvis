@@ -61,6 +61,33 @@ The map reads `GET /structure/atlas` (bots: `/external/structure/atlas` with
 records with a `truncated` flag. Eri flies it with `ui_records(layout="atlas",
 record_id|parent_id)`.
 
+### Start from a template
+
+A template is a saved starting structure for one type: default field values, a
+description outline and optional child records (up to 4 levels and 100 records).
+Templates live in their own `record_templates` table (migration `0022`), so editing
+one needs no structure preview and never changes records made from it. Manage them in
+Types & fields → a type → Templates (new, edit outline and defaults, rename, archive);
+an empty type suggests the "Client onboarding" example, which only fills the editor.
+"Save as template" in a record card snapshots the record and, optionally, its active
+contents, leaving out dates, assignees, status, links to other records and the default
+priority, so templates never carry deadlines.
+
+"Start from template" appears in Browse's Add here and the collection quick-add when
+the chosen type has templates, and as dashed stamps in the Atlas inspector's Add here
+("Start from template: Client onboarding — A project with 4 tasks: …"). Each path
+previews the records first (`POST /structure/templates/instantiate/preview`), then
+`record.instantiate` creates them through `record.create` under one command and
+receipt, each with `provenance.template = {id, revision}` for reference only. The
+toast's Undo (and the Activity card) archives the created records only while nothing
+has changed since. The schema is re-checked on every use; a template that no longer
+fits (for example Notes no longer allowed inside Projects) explains what to edit.
+Viewers can read templates and previews; bots need `records:write`, plus
+`tasks:write`/`notes:write` when a template creates task- or note-backed records and
+`tasks:read`/`notes:read` to save such records as templates. Eri uses
+`template_list`, `record_instantiate_preview` and, on a clear request,
+`record_instantiate`.
+
 A record has one main home, which can be another allowed record type. For example,
 Work → ABC → Transcript Intelligence → a task. Named links support additional
 many-to-many relationships such as projects supporting several goals. Relation
@@ -149,7 +176,8 @@ and provider behavior still require the device checks below.
 
 ## Architecture and compatibility
 
-- PostgreSQL migrations: `0015_custom_structure`, `0016_smart_notifications`.
+- PostgreSQL migrations: `0015_custom_structure`, `0016_smart_notifications`;
+  reusable templates add `0022_record_templates`.
 - Registry: `structure_schemas`, `structure_records`, `structure_links`,
   `structure_proposals`; bounded JSON definitions with stable IDs and revisions.
 - Learning: `field_understandings`, `routing_observations`, `routing_patterns`,
