@@ -1,5 +1,6 @@
 """Bounded, typed definitions; custom schemas cannot execute code or grant access."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -55,6 +56,16 @@ class FieldDefinition(Input):
     ) = None
 
 
+ReviewEvery = Literal["1w", "2w", "1m", "3m", "6m", "1y"]
+
+
+class ReviewCadence(Input):
+    """Behavior that periodically resurfaces a type's records for review. Off by default."""
+
+    enabled: bool = False
+    every: ReviewEvery = "1m"
+
+
 class RecordType(Input):
     id: Key
     name: str = Field(min_length=1, max_length=120)
@@ -67,6 +78,7 @@ class RecordType(Input):
     fields: list[FieldDefinition] = Field(default_factory=list, max_length=60)
     statuses: list[Status] = Field(default_factory=list, max_length=40)
     opens_as: Literal["auto", "container", "item"] = "auto"
+    review: ReviewCadence = Field(default_factory=ReviewCadence)
     archived: bool = False
 
 
@@ -336,7 +348,39 @@ class InstantiateApply(InstantiatePlan):
     preview_hash: str = Field(min_length=64, max_length=64)
 
 
+class MarkReviewed(Input):
+    record_id: str = Field(min_length=36, max_length=36)
+
+
+class ReviewState(Input):
+    """Exact review state, used only to restore a previous receipt."""
+
+    last_reviewed_at: datetime | None = None
+    next_review_at: datetime | None = None
+    review_paused: bool = False
+    review_queued_at: datetime | None = None
+
+
+class RecordReview(Input):
+    record_id: str = Field(min_length=36, max_length=36)
+    action: Literal["snooze", "pause", "resume", "restore"] = Field(
+        description="snooze moves the next review out by `until`; pause stops reviewing this record; resume restarts it; restore is for Revert only."
+    )
+    until: Literal["day", "week"] | None = None
+    state: ReviewState | None = None
+
+    @model_validator(mode="after")
+    def complete(self):
+        if self.action == "snooze" and not self.until:
+            raise ValueError("Choose how long to snooze: day or week")
+        if self.action == "restore" and self.state is None:
+            raise ValueError("Restore needs the previous state")
+        return self
+
+
 COMMANDS = {
+    "record.mark_reviewed": MarkReviewed,
+    "record.review": RecordReview,
     "record.instantiate": InstantiateApply,
     "template.create": TemplateCreate,
     "template.update": TemplateUpdate,

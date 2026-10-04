@@ -1,8 +1,9 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {api,post} from "./api";
 import {useStructureActions} from "./structure-actions";
+import { ReviewQuestion, type ReviewItem } from "./Reviews";
 import "./questions.css";
-type Question={key:string;kind:string;revision:number;status:string;question:string;source_id:string;definition_id?:string;deferred_until?:string;candidates?:{id:string;content:string}[];evidence?:unknown;answer_tool:string;answer_args:Record<string,unknown>;delivery?:{channel:string;state:string;updated_at:string}|null};
+type Question={key:string;kind:string;revision:number;status:string;question:string;source_id:string;definition_id?:string;deferred_until?:string;candidates?:{id:string;content:string}[];evidence?:unknown;answer_tool:string;answer_args:Record<string,unknown>;delivery?:{channel:string;state:string;updated_at:string}|null;record?:ReviewItem};
 type Page={items:Question[];total:number;next_offset:number|null;counts:Record<string,number>;learning:{runs:{kind:string;id:string|null;status:string;created_at:string|null;finished_at:string|null;result:unknown}[]}};
 export function Questions({organization=false,compact=false,refresh=0}:{organization?:boolean;compact?:boolean;refresh?:number}){
  const [page,setPage]=useState<Page|null>(null),[status,setStatus]=useState("open"),[offset,setOffset]=useState(0),[error,setError]=useState("");
@@ -10,7 +11,7 @@ export function Questions({organization=false,compact=false,refresh=0}:{organiza
  useEffect(()=>{void load();const timer=setInterval(()=>void load(),30000);return()=>clearInterval(timer);},[load,refresh]);
  const content=<><div className="question-toolbar"><p>Optional questions help Eri learn. They never hold up your tasks.</p><label>Show<select aria-label="Question status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}>{["open","pending","deferred","resolved","stale","all"].map(s=><option key={s}>{s}</option>)}</select></label><button className="btn btn-sm" onClick={()=>void load()}>Refresh</button></div>
  {error&&<p role="alert">{error}</p>}
- {page?.items.map(q=><QuestionCard key={q.key} q={q} onChanged={load}/>)}
+ {page?.items.map(q=>q.kind==="record_review"&&q.record?<ReviewQuestion key={q.key} q={{...q,record:q.record}} onChanged={load}/>:<QuestionCard key={q.key} q={q} onChanged={load}/>)}
  {page&&!page.items.length&&<p className="empty">No questions in this view.</p>}
  {page&&(offset>0||page.next_offset!==null)&&<div className="question-pagination"><button className="btn" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous questions</button><span>{page.total} questions</span><button className="btn" disabled={page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>More questions</button></div>}
  {!compact&&page&&<details className="question-learning"><summary>What has the dream sequence done?</summary><p>These are the latest recorded runs for your account. “Not run” means no run has been recorded.</p>{page.learning.runs.map(run=><article key={run.kind}><strong>{{extract_memory:"Memory extraction",embed_memory:"Memory search index",review_memory:"Memory review",review_routing:"Organization patterns",assess_field:"Field understanding"}[run.kind]??run.kind}</strong><span className="chip">{run.status.replaceAll("_"," ")}</span>{run.created_at&&<time>{new Date(run.created_at).toLocaleString()}</time>}{run.id&&<details><summary>Result and provenance</summary><small>Job {run.id}{run.finished_at?" · finished "+new Date(run.finished_at).toLocaleString():""}</small><pre>{JSON.stringify(run.result,null,2)}</pre></details>}</article>)}</details>}</>;

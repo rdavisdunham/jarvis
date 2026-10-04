@@ -173,6 +173,8 @@ def inverse(db, change, *, lock=False, group=True):
     if change.reverted_by:
         return None, "Already reverted."
     before, after = instants(before), instants(after)
+    if change.tool in {"record.mark_reviewed", "record.review"} and before and after:
+        return inverse_review(db, change, before, after, lock=lock)
     if change.entity_kind == "record_link":
         return inverse_link(db, change, before, after, lock=lock)
     if after.get("_undo_blocked"):
@@ -194,7 +196,9 @@ def inverse(db, change, *, lock=False, group=True):
     if not before:
         if not hasattr(row, "archived"):
             return None, "Open this record to cancel or remove it."
-        if instants(snapshot(row)) != after:
+        # Review scheduling is bookkeeping, not an edit to the created record.
+        unscheduled = lambda values: {k: v for k, v in values.items() if k not in REVIEW_STATE}  # noqa: E731
+        if unscheduled(instants(snapshot(row))) != unscheduled(after):
             return None, "This record changed after it was created. Review it before archiving."
         if has_linked_records(db, model, row.id):
             return None, "Other records are linked to this creation. Review those links before archiving it."
@@ -227,6 +231,18 @@ def inverse(db, change, *, lock=False, group=True):
             arguments["reset_fields"] = sorted(added - bindings)
     # Automatic inverse is only for sparse local edits. Relationships have their own validation.
     return (tool, arguments), "Archive this created record" if not before else "Restore the changed fields"
+
+
+REVIEW_STATE = ("last_reviewed_at", "next_review_at", "review_paused", "review_queued_at")
+
+
+def inverse_review(db, change, before, after, *, lock=False):
+    row = owned(db, models.StructureRecord, change.entity_id, change.owner_id, lock=lock)
+    current = instants(snapshot(row))
+    if any(current.get(key) != after.get(key) for key in REVIEW_STATE):
+        return None, "This record's review dates changed later. Open it to check its next review."
+    state = {key: before.get(key) for key in REVIEW_STATE}
+    return ("record.review", {"record_id": row.id, "action": "restore", "state": state}), "Restore the previous review dates"
 
 
 def public_change(db, row):
@@ -293,6 +309,10 @@ def public_change(db, row):
             fields["Order"] = {"before":"Previous position", "after":"Moved within home"}
         if "local_notes" in fields:
             fields["Eridani-only notes"] = fields.pop("local_notes")
+        fields.pop("review_queued_at", None)
+        for key, name in (("last_reviewed_at", "Last reviewed"), ("next_review_at", "Next review"), ("review_paused", "Review paused")):
+            if key in fields:
+                fields[name] = fields.pop(key)
         home = fields.pop("parent_id", None)
         if home:
             fields["Main home"] = {side:(target.title if (target:=db.get(models.StructureRecord, identity)) and target.owner_id==row.owner_id else None) if identity else None for side,identity in home.items()}
@@ -309,6 +329,8 @@ def public_change(db, row):
             operation = "reopened"
     if before and before.get("archived") != after.get("archived"):
         operation = "archived" if after.get("archived") else "restored"
+    if row.tool == "record.mark_reviewed":
+        operation = "reviewed"
     title = after.get("title", after.get("name", row.entity_kind.title()))
     return {
         "id": row.id,

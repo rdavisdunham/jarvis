@@ -581,6 +581,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "review.defer":
         from .review_questions import defer
         return defer(db, owner, args)
+    if tool in {"record.mark_reviewed", "record.review"}:
+        from . import record_reviews
+        return record_reviews.mutate(db, owner, tool, args, command_id)
     if tool in {"record.contents", "record.restore_contents"}:
         from . import record_contents
         return (record_contents.apply if tool == "record.contents" else record_contents.restore)(db, owner, args, command_id)

@@ -386,6 +386,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .memory_review import queue_due_reviews
     from .models import GoogleIdentity, LinearConnection
     from .notices import scan
+    from .record_reviews import queue_due_record_reviews
     from .routing import queue_due
     from .search_index import backfill as search_backfill
     from .work_intake import flush_voice
@@ -397,6 +398,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
         ("memory_reviews", queue_due_reviews), ("routing", queue_due),
+        ("record_reviews", queue_due_record_reviews),
     ):
         isolated(name, in_session, scan_fn)
     for model, queue in ((GoogleIdentity, queue_sync), (LinearConnection, linear_queue_sync)):

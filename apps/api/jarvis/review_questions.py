@@ -133,6 +133,9 @@ def items(db, owner):
                     answer_args={},
                 )
             )
+    from .record_reviews import inbox_items
+
+    result.extend(inbox_items(db, owner))
     return result
 
 
@@ -216,6 +219,13 @@ def defer(db, owner, args):
     advisory(db, "workspace:" + owner)
     advisory(db, "review-delivery:" + owner)
     q = find(db, owner, args.question_key, args.expected_revision)
+    delta = {"today": timedelta(hours=3), "tomorrow": timedelta(days=1), "week": timedelta(days=7)}[args.until]
+    if q["kind"] == "record_review":
+        from .record_reviews import defer as snooze
+
+        row = snooze(db, owner, q["source_id"], args.expected_revision, delta)
+        return {"question_key": q["key"], "status": "deferred", "revision": row.revision,
+                "deferred_until": row.next_review_at.isoformat()}
     model = (
         MemoryReview
         if q["kind"] == "memory"
@@ -229,14 +239,7 @@ def defer(db, owner, args):
         else owned(db, model, q["source_id"], owner, lock=True)
     )
     check_revision(row, args.expected_revision)
-    row.deferred_until = (
-        now()
-        + (
-            {"today": timedelta(hours=3), "tomorrow": timedelta(days=1), "week": timedelta(days=7)}[
-                args.until
-            ]
-        )
-    )
+    row.deferred_until = now() + delta
     row.revision += 1
     emit(
         db,
@@ -309,6 +312,8 @@ def reserve(db, owner, device, conversation_id, channel):
         r
         for r in items(db, owner)
         if r["status"] == "pending"
+        # Due record reviews wait in Questions and on Today; they never interrupt a conversation.
+        and r["kind"] != "record_review"
         and (
             prefs["deep_sleep_enabled"] and prefs["memory_learning"]
             if r["kind"] == "memory"

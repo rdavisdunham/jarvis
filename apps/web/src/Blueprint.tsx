@@ -2,7 +2,8 @@ import { useRef, useState, type KeyboardEvent } from "react";
 import { hierarchy, tree } from "d3-hierarchy";
 import type { Schema } from "./structure-types";
 import { presentation } from "./field-library";
-import { CAPABILITY_GLYPHS, CONTAINER_GLYPH, alsoAllowedIn, diagramParent, nestsItself } from "./blueprint-model";
+import { CAPABILITY_GLYPHS, CONTAINER_GLYPH, REVIEW_GLYPH, alsoAllowedIn, diagramParent, nestsItself } from "./blueprint-model";
+import { intervalLabel, reviews } from "./review-model";
 
 type Node = { id: string; kids: Node[] };
 /** "Also allowed in A, B +3", trimmed to the node width; the full list is in the title and accessible name. */
@@ -85,10 +86,10 @@ export function Blueprint({ schema, width, height, selectedType, recordType, hov
     {ds.map(d => {
       const t = schema.types.find(x => x.id === d.data.id)!, [x, y] = P.get(t.id)!;
       const also = alsoAllowedIn(schema, t.id), glyphs = CAPABILITY_GLYPHS.filter(([c]) => t.capabilities.includes(c));
-      const container = (t.opens_as ?? "auto") === "container", fields = t.fields.filter(f => !f.archived).length;
+      const container = (t.opens_as ?? "auto") === "container", fields = t.fields.filter(f => !f.archived).length, reviewed = reviews(t);
       const cls = ["blueprint-node", t.id === selectedType && "is-selected", t.id === recordType && "is-record", homesOfRecord.has(t.id) && t.id !== recordType && "is-home",
         hoverType === t.id && "is-hover", drag?.over === t.id && "is-drop", drag?.type === t.id && "is-dragged"].filter(Boolean).join(" ");
-      const label = [`Type ${t.name}`, `${counts.get(t.id) ?? 0} records`, `${fields} fields`, nestsItself(t) ? "nests itself" : "", also.length ? "also allowed in " + also.map(h => h.name).join(", ") : ""].filter(Boolean).join(", ");
+      const label = [`Type ${t.name}`, `${counts.get(t.id) ?? 0} records`, `${fields} fields`, nestsItself(t) ? "nests itself" : "", reviewed ? "reviewed " + intervalLabel(t.review!.every).toLowerCase() : "", also.length ? "also allowed in " + also.map(h => h.name).join(", ") : ""].filter(Boolean).join(", ");
       return <g key={t.id} className={cls} data-type={t.id} role="button" tabIndex={0} aria-label={label} aria-pressed={t.id === selectedType}
         onPointerEnter={() => onHover(t.id)} onPointerLeave={() => onHover(null)} onFocus={() => onHover(t.id)} onBlur={() => onHover(null)}
         onPointerDown={e => start(e, t.id)} onClick={() => onSelect(t.id)} onKeyDown={e => key(e, t.id)}>
@@ -97,6 +98,7 @@ export function Blueprint({ schema, width, height, selectedType, recordType, hov
         <text className="blueprint-small" x={x + nodeW - 10} y={y - 6} textAnchor="end">{fields} {fields === 1 ? "field" : "fields"}</text>
         {glyphs.map(([c, g, name], i) => <text key={c} className="blueprint-glyph" x={x + 12 + i * 17} y={y + 16}><title>{name}</title>{g}</text>)}
         {container && <text className="blueprint-glyph is-container" x={x + 12 + glyphs.length * 17} y={y + 16}><title>{CONTAINER_GLYPH[1]}</title>{CONTAINER_GLYPH[0]}</text>}
+        {reviewed && <text className="blueprint-glyph is-review" x={x + 12 + (glyphs.length + (container ? 1 : 0)) * 17} y={y + 16}><title>{REVIEW_GLYPH[1] + ": " + intervalLabel(t.review!.every).toLowerCase()}</title>{REVIEW_GLYPH[0]}</text>}
         {nestsItself(t) && <><path className="blueprint-loop" d={`M${x + nodeW - 30},${y - nodeH / 2} a8,8 0 1 1 14,0`}/>
           <text className="blueprint-small is-violet" x={x + nodeW - 10} y={y + 16} textAnchor="end">nests itself</text></>}
         {!!also.length && <text className="blueprint-small" x={x + 4} y={y + nodeH / 2 + 16}><title>{"Also allowed in " + also.map(h => h.name).join(", ")}</title>{alsoLine(also.map(h => h.name), nodeW)}</text>}

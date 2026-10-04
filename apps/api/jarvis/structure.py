@@ -224,7 +224,7 @@ def definition_entries(definition):
 def ensure(db, owner):
     schema = db.get(StructureSchema, owner)
     if schema:
-        if "field_library" not in schema.definition or any("opens_as" not in t for t in schema.definition["types"]):
+        if "field_library" not in schema.definition or any("opens_as" not in t or "review" not in t for t in schema.definition["types"]):
             from .field_library import upgrade
             schema.definition = upgrade(schema.definition)
         return schema
@@ -485,6 +485,9 @@ def data(db, row, schema=None):
         result["opens_as"] = opens_as(t, db.scalar(select(StructureRecord.id).where(
             StructureRecord.owner_id == row.owner_id, StructureRecord.parent_id == row.id,
             StructureRecord.archived.is_(False)).limit(1)) is not None)
+    from .record_reviews import payload as review_payload
+    result.update(review_payload(row, schema))
+    result.pop("review_queued_at", None)
     result.update(
         values=values,
         inherited=inherited,
@@ -590,6 +593,7 @@ def preview(db, owner, args, command_id):
     definition = Definition.model_validate(prepare(
         args.definition.model_dump(mode="json"), schema.definition, args.definition.model_fields_set,
         {t.id for t in args.definition.types if "opens_as" not in t.model_fields_set},
+        {t.id for t in args.definition.types if "review" not in t.model_fields_set},
     )).model_dump(mode="json")
     types = {t["id"]: t for t in definition["types"]}
     oldtypes = {t["id"]: t for t in schema.definition["types"]}
@@ -690,7 +694,19 @@ def preview(db, owner, args, command_id):
                         owned(db, StructureRecord, link.target_id, owner))
                 except DomainError as exc:
                     issues.append({"link_id":link.id,"message":exc.message})
+    from .record_reviews import LABELS, reviewed_types
+    before_reviews, after_reviews = reviewed_types(schema.definition), reviewed_types(definition)
+    review_changes = []
+    for type_id in sorted(set(before_reviews) | set(after_reviews)):
+        if before_reviews.get(type_id) != after_reviews.get(type_id):
+            every = after_reviews.get(type_id)
+            count = db.scalar(select(func.count()).select_from(StructureRecord).where(
+                StructureRecord.owner_id == owner, StructureRecord.type_id == type_id, StructureRecord.archived.is_(False)))
+            # Turning reviews on spreads first reviews over one interval; off keeps every date.
+            review_changes.append({"type_id": type_id, "name": (types.get(type_id) or oldtypes[type_id])["name"],
+                                   "every": every, "every_label": LABELS[every] if every else None, "records": count})
     impact = {
+        "review_changes": review_changes,
         "affected_count": len(affected),
         "affected_records": affected[:100],
         "issues": issues[:100],
@@ -756,9 +772,12 @@ def apply(db, owner, args, command_id):
         for key in before_entries.keys() | after_entries.keys()
         if before_entries.get(key) != after_entries.get(key)
     }
+    before_definition = schema.definition
     schema.definition = proposal.definition
     schema.revision += 1
     schema.updated_at = now()
+    from .record_reviews import apply_schema as schedule_reviews
+    schedule_reviews(db, owner, before_definition, schema.definition)
     for row in db.scalars(select(StructureRecord).where(StructureRecord.owner_id == owner)):
         status = proposal.impact["status_mappings"].get(row.type_id, {}).get(row.status_id)
         if status:
@@ -1028,6 +1047,8 @@ def mutate(db, owner, tool, args, command_id):
         )
         db.add(row)
         db.flush()
+        from .record_reviews import schedule_new
+        schedule_new(row, t)
     else:
         row = owned(db, StructureRecord, args.record_id, owner, lock=True)
         reconcile_core(db, row, schema)

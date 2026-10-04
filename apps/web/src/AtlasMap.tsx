@@ -3,6 +3,7 @@ import {
   chooseLabels, dueState, itemRadius, itemState, markKind, markName, project, visibleNodes,
   type AtlasIndex, type AtlasLayout, type AtlasLink, type PackedNode, type View,
 } from "./atlas-model";
+import { reviewLensDim } from "./review-model";
 
 export type Lens = "status" | "due" | "review" | "type";
 export type DragState = { id: string; legal: Set<string>; target: string | null; pt: [number, number] | null };
@@ -22,9 +23,18 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
   const tabbable = active && nodes.some(n => n.id === active) ? active : nodes.find(n => n.parent === focus)?.id ?? null;
   const lit = (typeId: string) => !litType || typeId === litType;
   const dueDim = (n: PackedNode) => lens === "due" && !n.region && n.record?.work && dueState(n.record, today) === "none";
+  const reviewDim = (n: PackedNode) => lens === "review" && reviewLensDim(n.record?.review_due, index.reviews.get(n.id) ?? 0);
+  /** Review-due mark: a small amber dot on the mark's upper right, with a pulse that reduced motion turns off. */
+  const pulse = (n: PackedNode, cx: number, cy: number, r: number) => {
+    if (!n.record?.review_due) return null;
+    const px = cx + r * Math.SQRT1_2, py = cy - r * Math.SQRT1_2;
+    return <g className="atlas-review" aria-hidden="true"><circle className="atlas-pulse" cx={px} cy={py} r={5}/><circle className="atlas-review-dot" cx={px} cy={py} r={4.5}/></g>;
+  };
   const regionClass = (n: PackedNode) => {
     const parts = ["atlas-mark", "atlas-region"];
     if (litType) parts.push(lit(n.record!.type_id) ? "is-lit" : "is-faint");
+    else if (reviewDim(n)) parts.push("is-faint");
+    if (n.record?.review_due) parts.push("is-review-due");
     if (drag) parts.push(drag.legal.has(n.id) ? (drag.target === n.id ? "is-target" : "is-legal") : n.id === drag.id ? "is-dragged" : "is-illegal");
     if (n.id === selected) parts.push("is-selected");
     return parts.join(" ");
@@ -55,7 +65,8 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
     const state = itemState(rec, today);
     if (state) parts.push("state-" + state);
     parts.push("due-" + dueState(rec, today));
-    if ((litType && !lit(rec.type_id)) || dueDim(n)) parts.push("is-dim");
+    if (rec.review_due) parts.push("is-review-due");
+    if ((litType && !lit(rec.type_id)) || dueDim(n) || reviewDim(n)) parts.push("is-dim");
     else if (litType) parts.push("is-lit");
     if (drag) { if (drag.id === rec.id) parts.push("is-dragged"); else if (drag.legal.has(rec.id)) parts.push(drag.target === rec.id ? "is-target" : "is-legal"); }
     if (n.id === selected) parts.push("is-selected");
@@ -92,6 +103,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
           <circle className={"atlas-body depth-" + Math.min(4, Math.max(1, n.depth - focus.depth + (focus === layout.root ? 0 : 1)))} cx={cx} cy={cy} r={r}/>
           {progressRing(n, r, cx, cy)}
           <circle className="atlas-focusring" cx={cx} cy={cy} r={r + 3}/>
+          {pulse(n, cx, cy, r)}
         </g>;
       }
       const r = itemRadius(n, k), moons = n.moons.slice(0, 12), orbit = r + 8;
@@ -104,6 +116,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
             return <circle key={m.id} className={"atlas-moon state-" + (s ?? "none")} cx={cx + Math.cos(a) * orbit} cy={cy + Math.sin(a) * orbit} r={Math.max(2.4, Math.min(3.6, r / 4))}/>; })}
         </g>}
         {n.id === selected && <circle className="atlas-selring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>}
+        {pulse(n, cx, cy, (moons.length ? orbit : r) + 3)}
         <circle className="atlas-focusring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>
       </g>;
     })}

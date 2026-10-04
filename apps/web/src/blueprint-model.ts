@@ -7,6 +7,7 @@ export const CAPABILITY_GLYPHS: [string, string, string][] = [
   ["work", "✓", "Actionable work"], ["content", "¶", "Authored content"], ["timeline", "⟷", "Timeline dates"], ["metric", "◎", "Outcome metric"],
 ];
 export const CONTAINER_GLYPH: [string, string] = ["▢", "Organizing container"];
+export { REVIEW_GLYPH } from "./review-model";
 
 export const typeById = (schema: Pick<Schema, "types">, id: string) => schema.types.find(t => t.id === id);
 export function diagramParent(schema: Schema, typeId: string): string | null {

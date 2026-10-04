@@ -30,7 +30,7 @@ SCOPES = {
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
-    **{f"record.{op}": "records:write" for op in ("create", "update", "link", "contents", "restore_contents", "instantiate")},
+    **{f"record.{op}": "records:write" for op in ("create", "update", "link", "contents", "restore_contents", "instantiate", "mark_reviewed", "review")},
     **{f"template.{op}": "records:write" for op in ("create", "update", "archive", "capture")},
     **{f"task.{op}": "tasks:write" for op in ("create", "update", "complete", "reopen")},
     **{
@@ -48,6 +48,7 @@ READ_SCOPES = {
     "record_contents_preview": "records:read",
     "template_list": "records:read",
     "record_instantiate_preview": "records:read",
+    "reviews_due": "records:read",
     "record_search": "records:read",
     "record_get": "records:read",
     "task_list": "tasks:read",
@@ -231,7 +232,7 @@ def core_scopes(db, owner, tool, arguments):
     if tool == "record.restore_contents":
         # Restoration may touch descendants of several capabilities.
         return {"tasks:write","notes:write"}
-    if tool not in {"record.create", "record.update"}:
+    if tool not in {"record.create", "record.update", "record.mark_reviewed", "record.review"}:
         return set()
     from .structure import default_definition
     from .structure_models import StructureRecord, StructureSchema
@@ -239,7 +240,7 @@ def core_scopes(db, owner, tool, arguments):
     schema = db.get(StructureSchema, owner)
     types = {t["id"]: t for t in (schema.definition if schema else default_definition())["types"]}
     row = None
-    if tool == "record.update":
+    if tool in {"record.update", "record.mark_reviewed", "record.review"}:
         row = db.get(StructureRecord, str(arguments.get("record_id") or ""))
         if not row or row.owner_id != owner:
             return set()  # The command itself reports NOT_FOUND.

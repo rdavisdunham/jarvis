@@ -451,6 +451,12 @@ READ_TOOLS["template_list"] = {
 READ_TOOLS["record_instantiate_preview"] = {
     "description":"Preview creating a record and its child records from a template under parent_id (null: unfiled). Show the tree, then call record_instantiate with the exact preview_hash and unchanged arguments only on a clear request. Changes nothing.",
     "parameters":InstantiatePlan.model_json_schema()}
+READ_TOOLS["reviews_due"] = {
+    "description":"Records due for review (types with a review cadence), oldest first, with last and next review and IDs. within_days adds reviews coming due soon (7 for this week). Mark one with record_mark_reviewed. Changes nothing.",
+    "parameters":{"type":"object","properties":{
+        "within_days":{"type":"integer","minimum":0,"maximum":366},"type_id":{"type":"string"},
+        "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0,"maximum":100000}},
+        "additionalProperties":False}}
 READ_TOOLS["record_browse"] = {
     "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes. groups lists records whose opens_as is container (the type's Organizing container setting; auto infers it). Each record reports opens_as: container opens as contents, item as its detail card.",
     "parameters":{"type":"object","properties":{
@@ -655,6 +661,9 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
+    if name == "reviews_due":
+        from .record_reviews import listing as reviews
+        with session_scope() as db:return reviews(db,owner,**arguments)
     if name in {"template_list","record_instantiate_preview"}:
         from . import record_templates
         with session_scope() as db:
