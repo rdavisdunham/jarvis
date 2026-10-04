@@ -7,3 +7,63 @@
 .contents-dialog{width:min(580px,calc(100vw - 28px));padding:24px;max-height:85dvh;overflow:auto}.contents-dialog h2{font-size:19px}.contents-dialog .check-label{display:flex;align-items:flex-start;gap:8px;padding:12px 0}.contents-dialog p{font-size:13px;color:var(--muted)}.detail-progress{font-size:12px;padding:10px;background:var(--surface-raised,#20262e);border-radius:8px}
 .type-map{padding:16px;overflow:auto;min-width:0}.type-map ul{list-style:none;padding-left:16px;margin:0;border-left:1px solid var(--line)}.type-map>ul{padding-left:0;border-left:0}.type-map li{padding:3px 0}.type-node{display:flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:7px;margin:4px 0;background:var(--surface,#151b22)}.type-node[aria-current=true]{border-color:var(--accent,#a4d8c7)}.type-node>button{background:none;color:inherit;border:0;text-align:left;cursor:pointer;flex:1;min-width:0}.type-map .field-node{font-size:12px;margin:4px 0;padding:5px 8px;color:var(--muted);background:transparent;border:0;cursor:pointer;text-align:left;display:block;max-width:100%}.type-map .field-node[aria-current=true]{color:var(--text);background:var(--surface-raised,#20262e);border-radius:6px}.type-node small{font-size:10px;color:var(--muted)}.type-map-controls{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.type-presentation-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}.type-presentation-controls select{max-width:210px}.schema-dialog-body.visual{grid-template-columns:minmax(240px,34%) minmax(0,1fr)}.schema-view-switch{display:flex;gap:8px;margin:0 24px 10px}.field-reuse{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}.field-reuse select{max-width:260px}.shared-field-notice{font-size:12px;padding:10px;border:1px solid var(--line);border-radius:8px}.timeline-child-span{position:absolute;top:60%;height:3px;background:var(--muted);opacity:.5}.timeline-expand{background:none;border:0;color:inherit;padding:2px;cursor:pointer}
 @media(max-width:760px){.org-container-head{flex-wrap:wrap}.org-container-head>div{flex-basis:100%}.org-tiles{grid-template-columns:1fr}.schema-dialog-body.visual{display:block}.type-map{max-height:35dvh;border-bottom:1px solid var(--line)}.schema-view-switch{margin:0 16px 10px}.type-map ul{padding-left:12px}.contents-dialog{padding:18px}.work-layout{max-width:100%;overflow-x:auto}.detail-grid .home-picker{max-width:calc(100vw - 48px)}}
+
+/* ---- Types & fields tree additions ---------------------------------------------------- */
+.type-also {
+  margin: -2px 0 4px 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.type-fields summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.type-fields-label {
+  font-weight: 600;
+}
+.placement-impact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--due-overdue-soft);
+  font-size: 14px;
+}
+.placement-impact h4 { color: var(--due-overdue); font-size: 14px; }
+.placement-impact p { color: var(--ink-2); font-size: 13px; }
+.placement-impact ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.placement-impact a {
+  color: var(--ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.placement-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-left: 10px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+/* A type drop onto a home that isn't allowed asks instead of failing. */
+.type-move-choice { display: flex; flex-direction: column; gap: 2px; }
+.type-map .type-move-choice { padding: 6px; margin: 8px 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.type-move-title { padding: 4px 8px 2px; color: var(--ink-3); font-size: 13px; }
+.type-move-option { display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; border-radius: 8px; text-align: left; }
+.type-move-option:hover:not(:disabled), .type-move-option:focus-visible { background: var(--sunken); }
+.type-move-option strong { font-size: 14px; font-weight: 600; }
+.type-move-option small { color: var(--ink-3); font-size: 12px; }
+.type-move-choice .btn { align-self: flex-start; margin: 2px 4px; }

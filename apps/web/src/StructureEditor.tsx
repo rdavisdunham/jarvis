@@ -6,14 +6,29 @@ import { Check, History, Link2, Plus, X } from "lucide-react";
 import { Dialog } from "./ux";
 import { useStructureActions } from "./structure-actions";
 import { MultiSelect, Required, TypeEditor } from "./TypeEditor";
-import type { Schema, SchemaType, SchemaRelation, Proposal } from "./structure-types";
+import type { Schema, SchemaType, SchemaRelation, Proposal, ProposalIssue } from "./structure-types";
 import { describe } from "./structure-types";
 import "./details.css";
 
 const sentence = (value: string) => { const text = describe(value); return text.charAt(0).toUpperCase() + text.slice(1); };
 
-export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirtyChange}:{onDirtyChange?:(dirty:boolean)=>void;initialProposal?:Proposal;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
-  const [draft,setDraft]=useState(()=>structuredClone(schema));const [selected,setSelected]=useState(schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error,setError}=useStructureActions();
+/** Records still living in a home their type would no longer allow; Apply stays blocked until they move. */
+export function PlacementImpact({issues,types}:{issues:ProposalIssue[];types:Pick<SchemaType,"id"|"name"|"plural">[]}){
+  const placed=issues.filter(i=>i.kind==="placement");
+  if(!placed.length)return null;
+  const name=(id?:string)=>types.find(t=>t.id===id);
+  return <section className="placement-impact" role="alert" aria-label="Records in homes that would no longer be allowed">
+    <h4>{placed.length===1?"1 record lives":placed.length+" records live"} in a home this change disallows</h4>
+    <p>Move {placed.length===1?"it":"them"} first, or keep the allowed home. Nothing changes until you apply.</p>
+    <ul>{placed.map(i=><li key={i.record_id}>
+      <a href={"?view=organize&layout=browse&home="+encodeURIComponent(i.home?.id??"")} target="_blank" rel="noreferrer">{i.title}</a>
+      <span className="placement-meta"><span>{name(i.type_id)?.name??"Record"}</span>{i.home&&<span>in {i.home.title} ({name(i.home.type_id)?.name??"home"})</span>}{i.archived&&<span className="chip">Archived</span>}</span>
+    </li>)}</ul>
+  </section>;
+}
+
+export function StructureEditor({schema,onClose,onApplied,initialProposal,initialDraft,initialType,onDirtyChange}:{onDirtyChange?:(dirty:boolean)=>void;initialProposal?:Proposal;/** A draft started elsewhere (the Atlas Blueprint) continues here. */initialDraft?:Schema;initialType?:string;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
+  const [draft,setDraft]=useState(()=>structuredClone(initialDraft??schema));const [selected,setSelected]=useState(initialType??schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error,setError}=useStructureActions();
   const [visual,setVisual]=useState(true),[fieldId,setFieldId]=useState("");
   const [pane,setPane]=useState<"type"|"relationships"|"history">("type");
   const [history,setHistory]=useState<Proposal[]>([]);
@@ -34,7 +49,8 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,onDirt
       <div className="schema-dialog-body single"><section className="schema-review">
         <div><h3>Review your changes</h3><p className="schema-review-summary">{proposal.impact.affected_count} existing {proposal.impact.affected_count===1?"record uses":"records use"} changed definitions. Their original data is retained.</p></div>
         {!!proposal.impact.affected_records.length&&<ul className="schema-review-records">{proposal.impact.affected_records.map(r=><li key={r.id} className="chip">{r.title}</li>)}</ul>}
-        {proposal.impact.issues.map((i,n)=><p role="alert" className="schema-issue" key={n}>{i.message}</p>)}
+        <PlacementImpact issues={proposal.impact.issues} types={proposal.definition.types}/>
+        {proposal.impact.issues.filter(i=>i.kind!=="placement").map((i,n)=><p role="alert" className="schema-issue" key={n}>{i.message}</p>)}
         <div className="schema-tree-grid">{proposal.definition.types.filter(t=>!t.archived).map(t=><div key={t.id}><strong>{t.plural}</strong>{t.description&&<p>{t.description}</p>}<div className="chip-row">{t.fields.filter(f=>!f.archived).map(f=><span className="chip" key={f.id}>{f.name}</span>)}{!t.fields.some(f=>!f.archived)&&<span className="chip">Title and details</span>}</div></div>)}</div>
       </section></div>
       <footer className="schema-dialog-foot"><button className="btn" onClick={()=>setProposal(null)}>Keep editing</button><button className="btn btn-primary" disabled={busy||!!proposal.impact.blocking_count} onClick={()=>void apply().catch(()=>{})}><Check size={17}/>Apply structure</button></footer>

@@ -1,9 +1,9 @@
-import { canAttach,attachField } from "./field-library";
+import { canAttach,attachField,capabilityPatch } from "./field-library";
 import { ArrowUp, Plus, X } from "lucide-react";
 import type { OpensAs, Schema, SchemaField, SchemaType } from "./structure-types";
 import { meanings, fieldKinds, describe, emptyField } from "./structure-types";
 
-const OPENS_AS: [OpensAs, string, string][] = [
+export const OPENS_AS: [OpensAs, string, string][] = [
   ["container", "Container", "Opens to its contents and progress, like a folder."],
   ["item", "Item", "Opens its details, even when other records live inside it."],
   ["auto", "Let Eridani decide", "Opens as contents when it holds records or has no work or notes; otherwise opens its details."],
@@ -17,12 +17,7 @@ export function MultiSelect({label,values,options,onChange}:{label:string;values
 export const Required = () => <span className="schema-required">Required</span>;
 export function TypeEditor({type,schema,original,update,mappings,onMappings,compact=false,focusedField=""}:{compact?:boolean;focusedField?:string;type:SchemaType;schema:Schema;original:Schema;update:(p:Partial<SchemaType>)=>void;mappings:Record<string,string>;onMappings:(m:Record<string,string>)=>void}){
   const field=(id:string,patch:Partial<SchemaField>)=>update({fields:type.fields.map(f=>f.id===id?{...f,...patch}:f)});
-  const capability=(name:string,enabled:boolean)=>{
-    const fields=type.fields.map(f=>({...f}));
-    if(!enabled){for(const f of fields){const belongs=f.binding&&(name==="work"?["due_date","due_time","due_timezone","planned_date","priority","estimate_minutes","assignee"].includes(f.binding):name==="timeline"?["start_date","target_date"].includes(f.binding):name==="metric"&&f.binding.startsWith("metric_"));if(belongs){f.binding=null;f.archived=true;}}}
-    if(enabled){const source=schema.field_library??original.types.flatMap(t=>t.fields);for(const f of source){const match=f.binding&&(name==="work"?["due_date","due_time","due_timezone","planned_date","priority","estimate_minutes","assignee"].includes(f.binding):name==="metric"?f.binding.startsWith("metric_"):name==="timeline"&&["start_date","target_date"].includes(f.binding));if(match&&!fields.some(x=>x.binding===f.binding)){const added=schema.field_library?attachField(f):structuredClone(f);if(fields.some(x=>x.id===added.id))added.id=crypto.randomUUID();fields.push(added);}}}
-    update({capabilities:enabled?[...type.capabilities,name]:type.capabilities.filter(c=>c!==name),fields,statuses:name==="work"&&enabled&&!type.statuses.length?meanings.map(s=>({id:s,name:describe(s),meaning:s})):type.statuses});
-  };
+  const capability=(name:string,enabled:boolean)=>update(capabilityPatch(type,schema,original,name,enabled));
   const retired=original.types.find(t=>t.id===type.id)?.statuses.filter(s=>!type.statuses.some(x=>x.id===s.id))??[];
   return <div className="schema-main">
     {!focusedField&&<><div className="schema-pair"><label className="field"><span className="field-label-text">Singular name</span><input value={type.name} onChange={e=>update({name:e.target.value})}/></label><label className="field"><span className="field-label-text">Plural name</span><input value={type.plural} onChange={e=>update({plural:e.target.value})}/></label></div>
