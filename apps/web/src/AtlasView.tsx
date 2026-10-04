@@ -14,7 +14,7 @@ import { allowAndPlace, draftChanges, typeMoveChoice } from "./blueprint-model";
 import { placeType } from "./field-library";
 import type { Schema } from "./structure-types";
 import { instantiate, useTemplates } from "./Templates";
-import type { InstantiatePreview } from "./templates";
+import type { InstantiatePreview } from "./template-model";
 import "./atlas.css";
 
 type Mode = "atlas" | "both" | "blueprint";

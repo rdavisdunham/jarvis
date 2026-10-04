@@ -4,7 +4,7 @@ import { PreviewTree, TemplateEditor, TemplateStamps } from "./Templates";
 import {
   build, defaultableFields, flatten, onboardingExample, parentTypeOf, previewLines, removeRow, rowIssues, shift, templatesFor,
   type InstantiatePreview, type RecordTemplate, type TemplateNode,
-} from "./templates";
+} from "./template-model";
 import type { Schema, SchemaField, SchemaType } from "./structure-types";
 
 const field = (id: string, kind: string, binding: string | null = null): SchemaField =>

@@ -7,7 +7,7 @@ import type { CustomRecord, Schema, SchemaField, SchemaType } from "./structure-
 import {
   build, childTypes, createdLabel, defaultableFields, flatten, onboardingExample, parentTypeOf, previewLines, removeRow, rowIssues, shift,
   type InstantiatePreview, type InstantiateResult, type RecordTemplate, type Row, type TemplatePayload,
-} from "./templates";
+} from "./template-model";
 import "./templates.css";
 
 // ---- Data -------------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import {api} from "./api";
 import {SourceBadge} from "./SourceDetails";
 import {openTarget,type CustomRecord,type Schema} from "./structure-types";
 import {StartFromTemplateDialog,useTemplates,useUndoToast} from "./Templates";
-import {templatesFor} from "./templates";
+import {templatesFor} from "./template-model";
 
 type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;next_offset:number|null};
 export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible,onChanged}:{

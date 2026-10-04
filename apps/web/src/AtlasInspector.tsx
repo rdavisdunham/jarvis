@@ -10,7 +10,7 @@ import {
 } from "./blueprint-model";
 import type { CustomRecord, Schema } from "./structure-types";
 import { TemplateStamps, TemplateStart } from "./Templates";
-import { templatesFor, type InstantiatePreview, type RecordTemplate } from "./templates";
+import { templatesFor, type InstantiatePreview, type RecordTemplate } from "./template-model";
 
 /** Template stamps in Add here: preview, then create through record.instantiate. */
 export type TemplateHooks = { templates: RecordTemplate[]; onTemplate: (preview: InstantiatePreview, title: string) => Promise<void> };

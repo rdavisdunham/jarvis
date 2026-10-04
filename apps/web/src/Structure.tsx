@@ -16,7 +16,7 @@ import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
 import { StructureEditor } from "./StructureEditor";
 import { StartFromTemplateDialog, useTemplates, useUndoToast } from "./Templates";
-import { templatesFor } from "./templates";
+import { templatesFor } from "./template-model";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
