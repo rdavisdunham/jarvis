@@ -215,6 +215,14 @@ def external_templates(identity: Bot, type_id: str | None = None):
         key=bot_access.authorize(db,required="records:read")
         return service.custom_read(db,key,"template_list",{"type_id":type_id} if type_id else {})
 
+@external.get("/structure/reviews")
+def external_reviews(identity: Bot, within_days: int = Query(0, ge=0, le=366), type_id: str | None = None,
+                     limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0, le=100000)):
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="records:read")
+        args={"within_days":within_days,"limit":limit,"offset":offset,**({"type_id":type_id} if type_id else {})}
+        return service.custom_read(db,key,"reviews_due",args)
+
 @external.get("/structure/records/{record_id}")
 def external_record(record_id: UUID,identity: Bot):
     with session_scope() as db:

@@ -93,9 +93,51 @@ def test_record_templates_migration_upgrades_and_downgrades(test_database):
         assert 'ix_record_templates_owner_id_type_id' in {i['name'] for i in inspect(trial).get_indexes('record_templates')}
         migrate('downgrade','0021_review_delivery')
         assert 'record_templates' not in inspect(trial).get_table_names()
+        # The current model has later columns, so read the downgraded row with plain SQL.
+        with trial.connect() as c:
+            assert c.exec_driver_sql("SELECT title FROM structure_records WHERE id='00000000-0000-0000-0000-000000000001'").scalar_one()=='Existing'
+        migrate('upgrade','head')
+    finally:
+        if trial:trial.dispose()
+        with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()
+
+
+def test_record_reviews_migration_upgrades_and_downgrades(test_database):
+    name='jarvis_reviews_'+uuid4().hex
+    supplied=make_url(test_database)
+    admin=create_engine(supplied.set(database='postgres'),isolation_level='AUTOCOMMIT')
+    target=supplied.set(database=name)
+    trial=None
+    with admin.connect() as c:c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env={**os.environ,'JARVIS_DATABASE_URL':target.render_as_string(hide_password=False),'JARVIS_ENV_FILE':''}
+        def migrate(*args):
+            result=subprocess.run([sys.executable,'-m','alembic',*args],cwd=ROOT,env=env,capture_output=True,text=True)
+            assert result.returncode==0,result.stdout+result.stderr
+        insert="INSERT INTO structure_records (id,owner_id,type_id,title,body,sort_order,local_notes,values,archived,revision,schema_revision,provenance,created_at,updated_at) VALUES ('{}','release-owner','client','{}','',0,'','{{}}',false,1,1,'{{}}',now(),now())"
+        migrate('upgrade','0022_record_templates')
+        trial=create_engine(target)
+        assert 'next_review_at' not in {c['name'] for c in inspect(trial).get_columns('structure_records')}
+        with trial.begin() as c:c.exec_driver_sql(insert.format('00000000-0000-0000-0000-000000000001','Existing'))
+        migrate('upgrade','head');migrate('check')
+        # A previous-version writer omits the review columns; defaults keep the row readable.
+        with trial.begin() as c:c.exec_driver_sql(insert.format('00000000-0000-0000-0000-000000000002','Old writer'))
+        from jarvis.structure_models import StructureRecord
+        from jarvis.models import now
+        with Session(trial) as db:
+            rows=list(db.scalars(select(StructureRecord).order_by(StructureRecord.id)))
+            assert [(r.title,r.review_paused,r.next_review_at,r.last_reviewed_at,r.review_queued_at) for r in rows]==[
+                ('Existing',False,None,None,None),('Old writer',False,None,None,None)]
+            rows[0].next_review_at=now();rows[0].review_paused=True
+            db.commit()
+        assert 'ix_structure_records_owner_id_next_review_at' in {i['name'] for i in inspect(trial).get_indexes('structure_records')}
+        migrate('downgrade','0022_record_templates')
+        assert 'review_paused' not in {c['name'] for c in inspect(trial).get_columns('structure_records')}
+        migrate('upgrade','head')
         with Session(trial) as db:
             assert db.get(StructureRecord,'00000000-0000-0000-0000-000000000001').title=='Existing'
-        migrate('upgrade','head')
+            assert db.get(StructureRecord,'00000000-0000-0000-0000-000000000001').review_paused is False
     finally:
         if trial:trial.dispose()
         with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')

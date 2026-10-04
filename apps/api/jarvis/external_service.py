@@ -491,7 +491,7 @@ def changes(db, bot, after=0, limit=100):
     }
 
 
-CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview", "template_list", "record_instantiate_preview"}
+CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview", "template_list", "record_instantiate_preview", "reviews_due"}
 
 
 def withheld(scopes):
@@ -514,6 +514,9 @@ def custom_read(db, bot, name, arguments):
         result=browse(db,bot.owner_id,**arguments) if name=="record_browse" else plan(db,bot.owner_id,ContentsPlan.model_validate(arguments))
     elif name == "record_list":
         result = structure.records(db, bot.owner_id, **arguments)
+    elif name == "reviews_due":
+        from .record_reviews import listing as reviews
+        result = reviews(db, bot.owner_id, **arguments)
     elif name in {"template_list", "record_instantiate_preview"}:
         from . import record_templates
         from .structure_schema import InstantiatePlan

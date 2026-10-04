@@ -30,6 +30,7 @@ class StructureProposal(Base):
 
 class StructureRecord(Base):
     __tablename__ = "structure_records"
+    __table_args__ = (Index("ix_structure_records_owner_id_next_review_at", "owner_id", "next_review_at"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     type_id: Mapped[str] = mapped_column(String(80), index=True)
@@ -47,6 +48,12 @@ class StructureRecord(Base):
     revision: Mapped[int] = mapped_column(Integer, default=1)
     schema_revision: Mapped[int] = mapped_column(Integer, default=1)
     provenance: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Review cadence state (see record_reviews). review_queued_at marks when the daily queue
+    # surfaced a due review in Questions; it is history, never a second due date.
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

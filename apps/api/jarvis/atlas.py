@@ -6,7 +6,7 @@ workspace keeps its upper levels coherent instead of losing whole branches at ra
 
 from collections import defaultdict, deque
 from sqlalchemy import select
-from .models import Note, Task
+from .models import Note, Task, now
 from .structure_models import StructureLink, StructureRecord
 
 LIMIT = 5000
@@ -44,6 +44,8 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
     if structure.core_drift(db, owner):
         structure.sync_core_records(db, owner, schema)
     types = {t["id"]: t for t in schema.definition["types"]}
+    from .record_reviews import cadence, is_due
+    instant = now()
     hidden_task = select(Task.id).where(Task.owner_id == owner, (Task.archived.is_(True)) | (Task.is_template.is_(True)))
     pairs = list(db.execute(
         select(StructureRecord.id, StructureRecord.parent_id, StructureRecord.sort_order).where(
@@ -88,6 +90,8 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
             "work": bool(row.task_id) and "work" in t["capabilities"],
             "due_date": task.due_date.isoformat() if dated and task.due_date else None,
             "planned_date": task.planned_date.isoformat() if dated and task.planned_date else None,
+            "review_due": is_due(row, cadence(t), instant),
+            "next_review_at": row.next_review_at.isoformat() if cadence(t) and row.next_review_at and not row.review_paused else None,
         })
     behaviors = {r["id"]: r for r in schema.definition["relationships"]}
     links = []
@@ -106,7 +110,7 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
     return {
         "schema_revision": schema.revision,
         "types": [
-            {k: t.get(k) for k in ("id", "name", "plural", "capabilities", "parent_types", "opens_as", "archived")}
+            {k: t.get(k) for k in ("id", "name", "plural", "capabilities", "parent_types", "opens_as", "review", "archived")}
             for t in schema.definition["types"]
         ],
         "records": records,

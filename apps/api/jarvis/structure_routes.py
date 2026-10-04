@@ -53,6 +53,15 @@ def atlas(user: User, limit: int = Query(default=5000, ge=1, le=5000)):
         return skeleton(db, user.owner_id, limit=limit)
 
 
+@router.get("/reviews")
+def reviews(user: User, within_days: int = Query(default=0, ge=0, le=366), type_id: str | None = None,
+            limit: int = Query(default=25, ge=1, le=100), offset: int = Query(default=0, ge=0, le=100000)):
+    """Records due for review; viewers may read them like Browse."""
+    from .record_reviews import listing
+    with session_scope() as db:
+        return listing(db, user.owner_id, within_days=within_days, type_id=type_id, limit=limit, offset=offset)
+
+
 @router.get("/records/{record_id}")
 def record(record_id: str, user: User):
     with session_scope() as db:
