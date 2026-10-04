@@ -10,11 +10,12 @@ export type DragState = { id: string; legal: Set<string>; target: string | null;
 
 /** The zoomable map. Pure rendering: every interaction is reported to the owner. Colours come from CSS classes
  * so light, dark and lenses switch without reading tokens in script. */
-export function AtlasMap({ layout, index, view, width, height, focus, selected, active, lens, litType, links, drag, today, canDrag,
-  onMarkPointerDown, onMarkClick, onBackgroundClick, onFlyOut, onMarkKey, onMarkFocus }: {
-  layout: AtlasLayout; index: AtlasIndex; view: View; width: number; height: number; focus: PackedNode; selected: string | null; active: string | null;
-  lens: Lens; litType: string | null; links: AtlasLink[]; drag: DragState | null; today: string; canDrag: boolean;
-  onMarkPointerDown: (e: ReactPointerEvent, n: PackedNode) => void; onMarkClick: (n: PackedNode) => void; onBackgroundClick: () => void; onFlyOut: () => void;
+export function AtlasMap({ layout, index, view, width, height, focus, selected, picked, active, lens, litType, links, drag, today,
+  onMarkPointerDown, onMarkClick, onBackgroundPointerDown, onBackgroundClick, onFlyOut, onMarkKey, onMarkFocus }: {
+  layout: AtlasLayout; index: AtlasIndex; view: View; width: number; height: number; focus: PackedNode; selected: string | null; picked: Set<string>; active: string | null;
+  lens: Lens; litType: string | null; links: AtlasLink[]; drag: DragState | null; today: string;
+  onMarkPointerDown: (e: ReactPointerEvent, n: PackedNode) => void; onMarkClick: (n: PackedNode, additive: boolean) => void;
+  onBackgroundPointerDown: (e: ReactPointerEvent) => void; onBackgroundClick: () => void; onFlyOut: () => void;
   onMarkKey: (e: KeyboardEvent, n: PackedNode) => void; onMarkFocus: (n: PackedNode) => void;
 }) {
   const { k, x, y } = project(view, width, height);
@@ -36,7 +37,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
     else if (reviewDim(n)) parts.push("is-faint");
     if (n.record?.review_due) parts.push("is-review-due");
     if (drag) parts.push(drag.legal.has(n.id) ? (drag.target === n.id ? "is-target" : "is-legal") : n.id === drag.id ? "is-dragged" : "is-illegal");
-    if (n.id === selected) parts.push("is-selected");
+    if (n.id === selected || picked.has(n.id)) parts.push("is-selected");
     return parts.join(" ");
   };
   const progressRing = (n: PackedNode, r: number, cx: number, cy: number) => {
@@ -69,14 +70,14 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
     if ((litType && !lit(rec.type_id)) || dueDim(n) || reviewDim(n)) parts.push("is-dim");
     else if (litType) parts.push("is-lit");
     if (drag) { if (drag.id === rec.id) parts.push("is-dragged"); else if (drag.legal.has(rec.id)) parts.push(drag.target === rec.id ? "is-target" : "is-legal"); }
-    if (n.id === selected) parts.push("is-selected");
+    if (n.id === selected || picked.has(n.id)) parts.push("is-selected");
     return parts.join(" ");
   };
   const common = (n: PackedNode) => ({
     "data-id": n.id, role: "button", tabIndex: n.id === tabbable ? 0 : -1, "aria-label": markName(n.record!, index, today),
     "aria-current": n.id === selected ? ("true" as const) : undefined,
-    onPointerDown: (e: ReactPointerEvent) => { if (canDrag) onMarkPointerDown(e, n); },
-    onClick: (e: React.MouseEvent) => { e.stopPropagation(); onMarkClick(n); },
+    onPointerDown: (e: ReactPointerEvent) => onMarkPointerDown(e, n),
+    onClick: (e: React.MouseEvent) => { e.stopPropagation(); onMarkClick(n, e.shiftKey || e.metaKey || e.ctrlKey); },
     onKeyDown: (e: KeyboardEvent) => onMarkKey(e, n), onFocus: () => onMarkFocus(n),
   });
   // Link endpoints use the record, or the nearest placed ancestor when it is a moon or off-map.
@@ -94,7 +95,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
       </linearGradient>
       <marker id="atlas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" className="atlas-arrow"/></marker>
     </defs>
-    <rect className="atlas-bg" width={width} height={height} onClick={onBackgroundClick} onDoubleClick={onFlyOut}/>
+    <rect className="atlas-bg" width={width} height={height} onPointerDown={onBackgroundPointerDown} onClick={onBackgroundClick} onDoubleClick={onFlyOut}/>
     {nodes.map(n => {
       const rec = n.record!, cx = x(n.x), cy = y(n.y);
       if (n.region) {
@@ -115,7 +116,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
           {moons.map((m, i) => { const a = i / moons.length * 2 * Math.PI - Math.PI / 2; const s = itemState(m, today);
             return <circle key={m.id} className={"atlas-moon state-" + (s ?? "none")} cx={cx + Math.cos(a) * orbit} cy={cy + Math.sin(a) * orbit} r={Math.max(2.4, Math.min(3.6, r / 4))}/>; })}
         </g>}
-        {n.id === selected && <circle className="atlas-selring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>}
+        {(n.id === selected || picked.has(n.id)) && <circle className="atlas-selring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>}
         {pulse(n, cx, cy, (moons.length ? orbit : r) + 3)}
         <circle className="atlas-focusring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>
       </g>;

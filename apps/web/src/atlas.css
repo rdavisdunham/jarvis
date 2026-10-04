@@ -843,3 +843,82 @@
 @media (max-width: 860px) {
   .atlas-search { margin-left: 0; flex: 1 1 100%; }
 }
+
+/* ---- Map controls, full screen and multiselect ------------------------------------------ */
+.atlas-controls {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
+}
+.atlas-control {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: calc(var(--r-md) - 2px);
+  color: var(--ink-2);
+}
+.atlas-control:hover {
+  background: var(--sunken);
+  color: var(--ink);
+}
+.atlas-control[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--violet) 14%, transparent);
+  color: var(--violet);
+}
+.atlas-control:focus-visible {
+  outline: 2px solid var(--violet);
+  outline-offset: 1px;
+}
+.atlas-map {
+  cursor: grab;
+}
+.atlas-map.is-panning,
+.atlas-map.is-panning .atlas-mark {
+  cursor: grabbing;
+}
+/* Full screen fills the browser page, above the app shell; Esc or the control exits. */
+.atlas.is-full {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: auto;
+  margin: 0;
+  padding: 16px;
+  background: var(--paper);
+}
+.atlas-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.atlas-picks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.atlas-picks li > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.atlas-picks li > span > span {
+  overflow-wrap: anywhere;
+}
+.atlas-picks small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
