@@ -40,8 +40,10 @@ def test_nested_commit_is_not_final_and_context_is_content_free(caplog):
 
 
 def test_browser_timing_requires_scoped_terminal_work(client, monkeypatch, caplog):
+    from cryptography.fernet import Fernet
     from jarvis.config import get_settings
     from jarvis.api import client_latency_seen, client_latency_rates
+    monkeypatch.setenv("JARVIS_INTEGRATION_ENCRYPTION_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("JARVIS_OPENAI_API_KEY", "synthetic")
     monkeypatch.setenv("JARVIS_EXTERNAL_SERVICES_ENABLED", "true")
     get_settings.cache_clear()

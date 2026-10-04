@@ -322,3 +322,8 @@ The first PR CI run caught a test-only import-path dependency in the new latency
 summary test. It now loads the script by its repository-relative path, matching
 existing script tests, and is checked with console-script pytest without a
 repository-root PYTHONPATH. The failing CI run is retained as evidence.
+
+The second PR run passed frontend/browser and security, plus 1,001 backend tests,
+but found the new browser-timing test relied on a locally supplied encryption key.
+That test now creates its own synthetic key. Its clean-environment rerun excludes
+local environment files, inherited provider keys and an inherited encryption key.
