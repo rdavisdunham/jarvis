@@ -95,10 +95,53 @@ try{
  const editor=page.getByRole("dialog",{name:"Workspace structure"});await expect(editor).toBeVisible();
  page.once("dialog",d=>d.accept());await editor.getByRole("button",{name:"Close structure"}).click();
  await atlas.getByRole("button",{name:"Discard draft"}).click();
+ // Map controls: zoom buttons, wheel zoom that never scrolls the page, drag to pan, full screen and multiselect.
+ await atlas.getByRole("group",{name:"Atlas view"}).getByRole("button",{name:"Map"}).click();
+ await ui("ui_records",{layout:"atlas",parent_id:abc.id});
+ await expect(crumbs.getByRole("button",{name:"Atlas client ABC"})).toHaveAttribute("aria-current","location");
+ await page.waitForTimeout(1200);
+ const controls=atlas.getByRole("toolbar",{name:"Map controls"});
+ const zoomText=atlas.locator(".atlas-zoom"),percent=async()=>Number((await zoomText.textContent()).replace("%",""));
+ const start=await percent();
+ await controls.getByRole("button",{name:"Zoom in"}).click();await expect.poll(percent).toBeGreaterThan(start*1.4);
+ await controls.getByRole("button",{name:"Zoom out"}).click();await expect.poll(percent).toBe(start);
+ const map=await atlas.locator(".atlas-map").boundingBox();
+ await page.evaluate(()=>window.scrollTo(0,0));
+ await page.mouse.move(map.x+map.width/2,map.y+map.height/2);await page.mouse.wheel(0,-400);
+ await expect.poll(percent).toBeGreaterThan(start);
+ if(await page.evaluate(()=>window.scrollY)!==0)throw Error("Wheel over the map must not scroll the page");
+ await page.mouse.wheel(0,400);await expect.poll(percent).toBeLessThan(start*1.05);
+ const before=await atlas.getByRole("button",{name:/: Atlas portal project/}).boundingBox();
+ // Press on empty space: the first grid point whose topmost element is the map background.
+ const empty=await page.evaluate(({x,y,width,height})=>{for(let gy=y+height-60;gy>y+60;gy-=20)for(let gx=x+20;gx<x+width-120;gx+=20){const el=document.elementFromPoint(gx,gy);if(el?.classList.contains("atlas-bg"))return[gx,gy];}return null;},map);
+ if(!empty)throw Error("No empty map space to pan from");
+ await page.mouse.move(empty[0],empty[1]);await page.mouse.down();
+ await page.mouse.move(empty[0]+80,empty[1]-40,{steps:6});await page.mouse.up();
+ const after=await atlas.getByRole("button",{name:/: Atlas portal project/}).boundingBox();
+ if(Math.abs(after.x-before.x-80)>3||Math.abs(after.y-before.y+40)>3)throw Error("Dragging empty space must pan the map: "+JSON.stringify([before,after]));
+ await controls.getByRole("button",{name:"Full screen"}).click();
+ await expect(atlas).toHaveClass(/is-full/);
+ const box=await atlas.boundingBox(),vp=page.viewportSize();
+ if(box.x!==0||box.y!==0||Math.round(box.width)!==vp.width||Math.round(box.height)!==vp.height)throw Error("Full screen must fill the page: "+JSON.stringify(box));
+ await page.keyboard.press("Escape");await expect(atlas).not.toHaveClass(/is-full/);
+ // Multiselect: pick both projects, move them into another client together, then Undo.
+ await controls.getByRole("button",{name:"Select several"}).click();
+ await expect(inspector.getByRole("heading",{name:"Select several"})).toBeVisible();
+ await atlas.getByRole("button",{name:/: Atlas transcript project/}).click();
+ await atlas.getByRole("button",{name:/: Atlas portal project/}).click();
+ await expect(inspector.getByRole("heading",{name:"2 selected"})).toBeVisible();
+ await inspector.getByLabel("Find a home for the selection").fill("Beacon");
+ await inspector.getByRole("button",{name:"Move selection to Atlas client Beacon"}).click();
+ const many=page.locator(".toast").filter({hasText:"Moved 2 records to Atlas client Beacon."});await expect(many).toBeVisible();
+ await expect.poll(()=>parentOf(ti.id)).toBe(beacon.id);expect(await parentOf(portal.id)).toBe(beacon.id);expect(await parentOf(task.id)).toBe(ti.id);
+ await many.getByRole("button",{name:"Undo"}).click();
+ await expect.poll(()=>parentOf(ti.id)).toBe(abc.id);expect(await parentOf(portal.id)).toBe(abc.id);
+ await inspector.getByRole("button",{name:"Done selecting"}).click();
+ await expect(controls.getByRole("button",{name:"Select several"})).toHaveAttribute("aria-pressed","false");
  // Phones keep Browse; the Atlas option is hidden.
  await page.setViewportSize({width:390,height:900});
  await expect(page.getByRole("region",{name:"Browse organization"})).toBeVisible();
  await expect(page.getByRole("group",{name:"Layout"}).getByRole("button",{name:"Atlas",exact:true})).toHaveCount(0);
  if(errors.length)throw Error(errors.join("\n"));
- console.log("Organization Atlas acceptance passed: fly in/out, Eri focus, keyboard Move to (tasks move whole, projects ask), Undo, Blueprint hover linking, blocking home list, draft review and phone fallback.");
+ console.log("Organization Atlas acceptance passed: fly in/out, Eri focus, keyboard Move to (tasks move whole, projects ask), Undo, Blueprint hover linking, blocking home list, draft review, map controls (zoom, wheel, pan, full screen, multiselect move) and phone fallback.");
 }finally{await browser.close();}

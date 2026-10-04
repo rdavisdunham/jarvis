@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { BoxSelect, ChevronRight, Maximize2, Minimize2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { interpolateZoom } from "d3-interpolate";
 import { api, command, post } from "./api";
 import { AtlasMap, type DragState, type Lens } from "./AtlasMap";
@@ -27,6 +27,8 @@ const LENSES: [Lens, string][] = [["status", "Status"], ["due", "Due"], ["review
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const stored = (key: string, fallback: string) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
 const store = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
+/** One zoom-button step, and how far the camera may zoom out from or into the whole workspace. */
+const ZOOM_STEP = 1.5, MAX_OUT = 1.6, MAX_IN = 400;
 
 function useSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -61,9 +63,11 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   const [drag, setDrag] = useState<DragState | null>(null), [popup, setPopup] = useState<Popup | null>(null);
   const [toast, setToast] = useState<Toast>(null), [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(""), [draft, setDraft] = useState<Schema | null>(null);
+  const [full, setFull] = useState(false), [multi, setMulti] = useState(false), [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [panning, setPanning] = useState(false);
   const { templates } = useTemplates(refresh);
   const [mapRef, mapSize] = useSize<HTMLDivElement>(), [blueRef, blueSize] = useSize<HTMLDivElement>();
-  const searchRef = useRef<HTMLInputElement>(null), animation = useRef(0), suppressClick = useRef(false), keyboard = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null), manualCamera = useRef(false), animation = useRef(0), suppressClick = useRef(false), keyboard = useRef(false);
   const viewRef = useRef(view); viewRef.current = view;
 
   const load = useCallback(async () => { const next = await api<AtlasData>("/structure/atlas"); setData(next); setError(""); return next; }, []);
@@ -78,7 +82,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     if (!layout) return;
     const node = layout.byId.get(id) ?? layout.root;
     const region = node.region ? node : (node.parent ?? layout.root);
-    setFocusId(region.id);
+    setFocusId(region.id); manualCamera.current = false;
     if (report) onFocus(region.id === ROOT ? "" : region.id);
     const to = viewFor(region), from = viewRef.current;
     cancelAnimationFrame(animation.current);
@@ -89,8 +93,8 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     animation.current = requestAnimationFrame(step);
   }, [layout, onFocus]);
   useEffect(() => () => cancelAnimationFrame(animation.current), []);
-  // Keep the camera on the focused region whenever the layout changes (load, move, create).
-  useEffect(() => { if (layout) { const node = layout.byId.get(focusId) ?? layout.root; setView(viewFor(node)); if (node === layout.root && focusId !== ROOT) setFocusId(ROOT); } }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep the camera on the focused region whenever the layout changes (load, move, create), unless you zoomed or panned by hand.
+  useEffect(() => { if (layout) { const node = layout.byId.get(focusId) ?? layout.root; if (!manualCamera.current || node === layout.root && focusId !== ROOT) setView(viewFor(node)); if (node === layout.root && focusId !== ROOT) setFocusId(ROOT); } }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
   // Breadcrumbs, history and Eri set the focus from outside.
   useEffect(() => { if (layout && (focus || ROOT) !== focusId) flyTo(focus || ROOT, { report: false }); }, [focus, layout]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -105,7 +109,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   useEffect(() => {
     const key = (e: globalThis.KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && searchRef.current) { e.preventDefault(); e.stopPropagation(); searchRef.current.focus(); }
-      if (e.key === "Escape") { setPopup(null); setDrag(null); }
+      if (e.key === "Escape") { setPopup(popup => { if (!popup) { setFull(false); } return null; }); setDrag(null); }
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
@@ -119,6 +123,67 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
 
   const select = (id: string | null) => { setSelected(id); setSelectedType(null); if (id) setActive(id); };
   const selectType = (id: string) => { setSelectedType(id); setSelected(null); };
+
+  // ---- Camera: free zoom and pan inside the map ------------------------------------------
+  /** Zoom by `factor` keeping the screen point `at` (default: the centre) fixed under the cursor. */
+  const zoomBy = useCallback((factor: number, at?: [number, number]) => {
+    if (!layout || !mapSize.width) return;
+    cancelAnimationFrame(animation.current); manualCamera.current = true;
+    const { width: w, height: h } = mapSize, whole = viewFor(layout.root)[2];
+    setView(v => {
+      const [sx, sy] = at ?? [w / 2, h / 2], k = scaleOf(v, w, h);
+      const wx = v[0] + (sx - w / 2) / k, wy = v[1] + (sy - h / 2) / k;
+      const size = Math.min(whole * MAX_OUT, Math.max(whole / MAX_IN, v[2] / factor)), k2 = scaleOf([0, 0, size], w, h);
+      return [wx - (sx - w / 2) / k2, wy - (sy - h / 2) / k2, size];
+    });
+  }, [layout, mapSize]);
+  const panBy = useCallback((dx: number, dy: number) => {
+    cancelAnimationFrame(animation.current); manualCamera.current = true;
+    setView(v => { const k = scaleOf(v, mapSize.width, mapSize.height); return [v[0] - dx / k, v[1] - dy / k, v[2]]; });
+  }, [mapSize]);
+  // The wheel zooms toward the cursor (pinch too); shift-scroll or a sideways swipe pans. The page never scrolls under it.
+  useEffect(() => {
+    const el = mapRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1, dx = e.deltaX * unit, dy = e.deltaY * unit;
+      if (e.shiftKey && !e.ctrlKey) { panBy(-(dx || dy), 0); return; }
+      if (!e.ctrlKey && Math.abs(dx) > Math.abs(dy)) { panBy(-dx, -dy); return; }
+      const box = el.getBoundingClientRect();
+      zoomBy(Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)), [e.clientX - box.left, e.clientY - box.top]);
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, [mapRef, zoomBy, panBy, mode, layout]);
+  /** Drag on empty space (or the region you are in) to pan; a press without movement stays a click. */
+  const startPan = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    let last = [e.clientX, e.clientY], moved = false;
+    const origin = last;
+    const moveHandler = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - origin[0], ev.clientY - origin[1]) < 4) return;
+      if (!moved) { moved = true; setPanning(true); }
+      panBy(ev.clientX - last[0], ev.clientY - last[1]); last = [ev.clientX, ev.clientY];
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", moveHandler); window.removeEventListener("pointerup", up);
+      setPanning(false);
+      if (moved) { suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0); }
+    };
+    window.addEventListener("pointermove", moveHandler); window.addEventListener("pointerup", up);
+  };
+  // Full screen fills the browser page (not the device screen); the page behind it stops scrolling.
+  useEffect(() => {
+    if (!full) return;
+    const before = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = before; };
+  }, [full]);
+
+  // ---- Multiselect --------------------------------------------------------------------------
+  const togglePick = (id: string) => setPicked(old => { const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const clearPicks = () => { setPicked(new Set()); setMulti(false); };
   const visible = layout && mapSize.width ? visibleNodes(layout, view, mapSize.width, mapSize.height) : [];
 
   // ---- Mutations: existing commands only -------------------------------------------------
@@ -140,6 +205,36 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
       await load(); await onChanged();
     } catch (e) { setToast({ message: (e as Error).message }); }
     finally { setBusy(false); }
+  };
+  /** Move several records into one home, contents along. Picks inside another pick travel with it. One Undo restores all. */
+  const moveMany = async (ids: string[], targetId: string) => {
+    if (!data || !index) return;
+    const records = pickRoots(index, ids);
+    setBusy(true); setPopup(null);
+    const done: { id: string; title: string }[] = [];
+    try {
+      for (const record of records) {
+        const args = { record_id: record.id, expected_revision: record.revision, schema_revision: data.schema_revision, operation: "move" as const, mode: "subtree" as const, parent_id: targetId };
+        const preview = await post<{ preview_hash: string; issues: string[] }>("/structure/contents/preview", args);
+        if (preview.issues.length) throw Error(`${record.title}: ${preview.issues[0]}`);
+        const run = command("record.contents", { ...args, preview_hash: preview.preview_hash });
+        await run.send();
+        done.push({ id: run.id, title: record.title });
+      }
+    } catch (e) { setToast({ message: (done.length ? `Moved ${done.length} of ${records.length}. ` : "") + (e as Error).message }); }
+    finally { setBusy(false); }
+    const where = index.byId.get(targetId)?.title ?? "its new home";
+    if (done.length) {
+      if (done.length === records.length) setToast({
+        message: `Moved ${done.length} ${done.length === 1 ? "record" : "records"} to ${where}.`,
+        undo: async () => {
+          for (const d of [...done].reverse()) await command("record.restore_contents", { source_command_id: d.id }).send();
+          await load(); await onChanged(); setToast({ message: "Move undone." });
+        },
+      });
+      setPicked(new Set());
+      await load(); await onChanged();
+    }
   };
   const create = async (type: string, title: string, parent: string | null) => {
     if (!data) return;
@@ -180,12 +275,16 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     return [e.clientX - box.left, e.clientY - box.top];
   };
   const startDrag = (e: ReactPointerEvent, node: PackedNode) => {
-    if (e.button !== 0 || !node.record || !layout || !index || node === focusNode) return;
+    if (e.button !== 0 || !layout || !index) return;
+    if (!node.record || node === focusNode || !canEdit || busy) { startPan(e); return; }
+    e.stopPropagation();
     const record = node.record, origin = [e.clientX, e.clientY];
+    // Dragging one of several picked records carries them all, into homes every one of them allows.
+    const group = picked.has(record.id) && picked.size > 1 ? pickRoots(index, [...picked]) : null;
     let moved = false, legal: Set<string> | null = null, over: string | null = null;
     const moveHandler = (ev: PointerEvent) => {
       if (!moved && Math.hypot(ev.clientX - origin[0], ev.clientY - origin[1]) < 6) return;
-      moved = true; legal ??= legalTargets(record, index);
+      moved = true; legal ??= group ? sharedHomes(index, group) : legalTargets(record, index);
       const pt = svgPoint(ev), { k, x, y } = project(viewRef.current, mapSize.width, mapSize.height);
       let best: { id: string; r: number } | null = null;
       for (const n of visibleNodes(layout, viewRef.current, mapSize.width, mapSize.height)) {
@@ -201,7 +300,8 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
       setDrag(null);
       if (!moved) return;
       suppressClick.current = true; setTimeout(() => { suppressClick.current = false; }, 0);
-      if (over && movesWhole(record, index)) void move(record, over, "subtree");
+      if (over && group) void moveMany(group.map(r => r.id), over);
+      else if (over && movesWhole(record, index)) void move(record, over, "subtree");
       else if (over) setPopup({ kind: "move", x: ev.clientX, y: ev.clientY, record, target: over, targetTitle: index.byId.get(over)?.title ?? "" });
       else {
         const homes = (index.types.get(record.type_id)?.parent_types ?? []).map(h => index.types.get(h)?.plural).filter(Boolean);
@@ -210,8 +310,12 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     };
     window.addEventListener("pointermove", moveHandler); window.addEventListener("pointerup", up);
   };
-  const clickMark = (node: PackedNode) => {
+  const clickMark = (node: PackedNode, additive = false) => {
     if (suppressClick.current) return;
+    if ((multi || additive) && node.record) {
+      if (!multi && selected && selected !== node.id && !picked.size) setPicked(new Set([selected]));
+      setMulti(true); togglePick(node.id); return;
+    }
     if (node.region && node !== focusNode) { flyTo(node.id); select(node.id); return; }
     select(node.id);
   };
@@ -267,7 +371,9 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   };
   const popupStyle = popup ? { left: Math.max(16, Math.min(popup.x + 8, innerWidth - 336)), top: Math.max(16, Math.min(popup.y + 8, innerHeight - 260)) } : undefined;
 
-  return <section className="atlas" aria-label="Atlas">
+  const pickedRecords = [...picked].map(id => index.byId.get(id)).filter((r): r is AtlasRecord => !!r);
+
+  return <section className={"atlas" + (full ? " is-full" : "")} aria-label="Atlas">
     <div className="atlas-bar">
       <div className="segmented" role="group" aria-label="Atlas view">{MODES.map(([id, label]) => <button key={id} type="button" aria-pressed={mode === id} onClick={() => setMode(id)}>{label}</button>)}</div>
       {mode !== "blueprint" && <div className="atlas-lenses" role="group" aria-label="Lens">{LENSES.map(([id, label]) => <button key={id} type="button" className="atlas-lens" aria-pressed={lens === id} onClick={() => setLens(id)}>{label}</button>)}</div>}
@@ -293,12 +399,19 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
               <button type="button" onClick={() => flyTo(ROOT)} aria-current={focusNode === layout.root ? "location" : undefined}>Workspace</button>
               {path.map(p => <span key={p.id}><ChevronRight size={13} aria-hidden="true"/><button type="button" onClick={() => flyTo(p.id)} aria-current={p.id === focusNode.id ? "location" : undefined}>{p.title}</button></span>)}
             </nav>
-            <span className="atlas-pane-title">Your records</span>
+            <div className="atlas-controls" role="toolbar" aria-label="Map controls">
+              <button type="button" className="atlas-control" aria-label="Zoom in" title="Zoom in" onClick={() => zoomBy(ZOOM_STEP)}><ZoomIn size={16}/></button>
+              <button type="button" className="atlas-control" aria-label="Zoom out" title="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}><ZoomOut size={16}/></button>
+              <button type="button" className="atlas-control" aria-label="Select several" title="Select several (or Shift-click)" aria-pressed={multi}
+                onClick={() => { if (multi) clearPicks(); else { setMulti(true); if (selected) setPicked(new Set([selected])); } }}><BoxSelect size={16}/></button>
+              <button type="button" className="atlas-control" aria-label={full ? "Exit full screen" : "Full screen"} title={full ? "Exit full screen (Esc)" : "Full screen"} aria-pressed={full}
+                onClick={() => setFull(f => !f)}>{full ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}</button>
+            </div>
           </div>
-          <div className="atlas-map" ref={mapRef}>
+          <div className={"atlas-map" + (panning ? " is-panning" : "")} ref={mapRef}>
             {mapSize.width > 0 && <AtlasMap layout={layout} index={index} view={view} width={mapSize.width} height={mapSize.height} focus={focusNode}
-              selected={selected} active={active} lens={lens} litType={litType} links={data.links} drag={drag} today={today} canDrag={canEdit && !busy}
-              onMarkPointerDown={startDrag} onMarkClick={clickMark} onBackgroundClick={() => select(null)} onFlyOut={flyOut} onMarkKey={markKey} onMarkFocus={n => setActive(n.id)}/>}
+              selected={selected} picked={picked} active={active} lens={lens} litType={litType} links={data.links} drag={drag} today={today}
+              onMarkPointerDown={startDrag} onMarkClick={clickMark} onBackgroundPointerDown={startPan} onBackgroundClick={() => { if (!suppressClick.current) select(null); }} onFlyOut={flyOut} onMarkKey={markKey} onMarkFocus={n => setActive(n.id)}/>}
             {!data.records.length && <div className="atlas-empty"><p>Nothing here yet. Add a space or client to start your map.</p></div>}
           </div>
           <div className="atlas-legend" aria-hidden={lens === "review" && !reviewing ? undefined : "true"}>
@@ -319,7 +432,9 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
         </div>}
       </div>
       <aside className="atlas-inspector" aria-label="Inspector" aria-live="polite">
-        {selectedType ? <TypeInspector typeId={selectedType} draft={working} saved={schema} records={data.records} index={index} canDesign={canDesign}
+        {multi ? <MultiInspector records={pickedRecords} index={index} canEdit={canEdit} busy={busy} onRemove={togglePick} onClear={clearPicks}
+            onMove={id => void moveMany(pickedRecords.map(r => r.id), id)}/>
+          : selectedType ? <TypeInspector typeId={selectedType} draft={working} saved={schema} records={data.records} index={index} canDesign={canDesign}
             onDraft={changeDraft} onFly={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onEditTypes={type => onEditTypes(draft, type)} onPlace={place}/>
           : record ? <RecordInspector record={record} index={index} schema={schema} today={today} canEdit={canEdit} focused={record.id === focusNode.id} busy={busy}
             onFly={id => flyTo(id)} onSelect={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onOpen={onOpen} onBrowse={onBrowse}
@@ -340,6 +455,48 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
 
 }
 
+/** Picks nested inside another pick are dropped: they travel with their ancestor. */
+function pickRoots(index: AtlasIndex, ids: string[]): AtlasRecord[] {
+  const set = new Set(ids);
+  return ids.map(id => index.byId.get(id)).filter((r): r is AtlasRecord => !!r && !ancestors(index, r.id).some(a => set.has(a.id)));
+}
+/** Homes every one of these records may move into. */
+function sharedHomes(index: AtlasIndex, records: AtlasRecord[]): Set<string> {
+  const [first, ...rest] = records.map(r => legalTargets(r, index));
+  return new Set([...(first ?? [])].filter(id => rest.every(l => l.has(id))));
+}
+
+function MultiInspector({ records, index, canEdit, busy, onRemove, onClear, onMove }: {
+  records: AtlasRecord[]; index: AtlasIndex; canEdit: boolean; busy: boolean; onRemove: (id: string) => void; onClear: () => void; onMove: (target: string) => void;
+}) {
+  const [find, setFind] = useState("");
+  const roots = pickRoots(index, records.map(r => r.id));
+  const homes = roots.length ? [...sharedHomes(index, roots)].map(id => index.byId.get(id)!).filter(Boolean) : [];
+  const q = find.trim().toLowerCase();
+  const shown = homes.filter(h => !q || h.title.toLowerCase().includes(q)).sort((a, b) => a.title.localeCompare(b.title)).slice(0, 8);
+  return <>
+    <div className="atlas-kicker"><span className="chip chip-type">Selection</span></div>
+    <h2 className="atlas-title">{records.length ? `${records.length} selected` : "Select several"}</h2>
+    {!records.length && <p className="atlas-muted">Click records on the map to add them. Shift-click works any time.</p>}
+    {!!records.length && <ul className="atlas-picks" aria-label="Selected records">{records.map(r => <li key={r.id}>
+      <span><span>{r.title}</span><small>{index.types.get(r.type_id)?.name}</small></span>
+      <button type="button" className="atlas-control" aria-label={"Remove " + r.title + " from the selection"} onClick={() => onRemove(r.id)}><X size={14}/></button>
+    </li>)}</ul>}
+    {canEdit && !!roots.length && <div className="atlas-section">
+      <h3>Move to</h3>
+      <p className="atlas-muted">Contents travel with them. You can also drag any selected record onto a home.</p>
+      {homes.length ? <>
+        <input type="search" aria-label="Find a home for the selection" placeholder="Find a home…" value={find} onChange={e => setFind(e.target.value)}/>
+        <ul className="atlas-picks is-homes" aria-label="Homes for the selection">{shown.map(h => <li key={h.id}>
+          <span><span>{h.title}</span><small>{index.types.get(h.type_id)?.name}</small></span>
+          <button type="button" className="btn btn-sm" disabled={busy} aria-label={"Move selection to " + h.title} onClick={() => onMove(h.id)}>Move here</button>
+        </li>)}</ul>
+      </> : <p className="atlas-muted">No single home allows all of these types. Narrow the selection.</p>}
+    </div>}
+    <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>Done selecting</button>
+  </>;
+}
+
 function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: working, onCreate, templates }: { focus: PackedNode; index: AtlasIndex; canEdit: boolean; schema: Schema; busy: boolean; onCreate: (type: string, title: string, parent: string | null) => Promise<void>; templates: TemplateHooks }) {
   const rec = node.record, p = rec ? index.progress.get(rec.id) : null;
   const regions = node.children.filter(c => c.region).length, items = node.children.length - regions;
@@ -353,6 +510,7 @@ function FocusSummary({ focus: node, index, canEdit: editable, schema: s, busy: 
     </dl>
     <ul className="atlas-tips">
       <li>Click a region to fly in. Double-click empty space to fly out.</li>
+      <li>Scroll to zoom toward the cursor; drag empty space to pan.</li>
       {editable && <li>Drag a record onto a highlighted home to move it.</li>}
       <li>Use the arrow keys between marks, Enter to open, Backspace to go back.</li>
     </ul>
