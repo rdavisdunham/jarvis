@@ -108,3 +108,22 @@ def seed_reviews(user: User):
         db.add(review)
         db.add(Job(owner_id=user.owner_id,kind="review_memory",payload={},status="succeeded",finished_at=now(),result={"scanned":2,"merged":0,"queued_questions":1}))
         return {"seeded":True}
+
+
+@app.post("/api/v1/__test_record_reviews")
+def fast_forward_record_reviews(body: dict, user: User):
+    """Test clock: make the given records due a day ago, then run the daily review queue now."""
+    from datetime import timedelta
+    from jarvis import record_reviews
+    from jarvis.models import now
+    from jarvis.structure_models import StructureRecord
+    with session_scope() as db:
+        for identity in body.get("record_ids", []):
+            row = db.get(StructureRecord, identity)
+            if row and row.owner_id == user.owner_id:
+                row.next_review_at = now() - timedelta(days=1)
+                row.review_queued_at = None
+        db.flush()
+        # The browser run may happen at night; quiet hours are covered by backend tests.
+        with patch("jarvis.notices.quiet_until", lambda prefs, instant, urgent=False: instant):
+            return {"queued": record_reviews.queue_owner(db, user.owner_id)}
