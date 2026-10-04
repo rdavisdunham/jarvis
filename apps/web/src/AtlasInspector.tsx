@@ -132,7 +132,7 @@ export function TypeInspector({ typeId, draft, saved, records, index, canDesign,
         <ul>{blocked.records.slice(0, 12).map(r => <li key={r.id}><button type="button" className="text-button" onClick={() => onFly(r.id)}>{r.title}</button>
           <span className="atlas-muted"> in {index.byId.get(r.parent_id!)?.title}</span></li>)}</ul>
         {blocked.records.length > 12 && <span>and {blocked.records.length - 12} more</span>}
-        <span>Move them first, or keep this home. Nothing changes until you apply.</span>
+        <span>Move {blocked.records.length === 1 ? "it" : "them"} first, or keep this home. Nothing changes until you apply.</span>
       </div>}
       {canDesign && <div className="atlas-row-controls">
         <label className="atlas-inline-field">Allow inside<select aria-label={"Allow " + (t.plural || t.name).toLowerCase() + " inside"} value="" onChange={e => { if (e.target.value) onDraft(addAllowedHome(draft, t.id, e.target.value)); }}>

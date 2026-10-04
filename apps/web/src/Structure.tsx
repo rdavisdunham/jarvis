@@ -320,7 +320,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   </div>;
   return <section className="structure-workspace work-page">
     {toolbar}
-    {!!activeChips.length&&<div className="work-filter-chips" aria-label="Active filters">{activeChips.map(c=><button key={c.key} type="button" className="chip work-filter-chip" aria-label={"Remove filter: "+c.label} onClick={c.clear}>{c.label}<X aria-hidden="true"/></button>)}</div>}
+    {!!activeChips.length&&!atlas&&<div className="work-filter-chips" aria-label="Active filters">{activeChips.map(c=><button key={c.key} type="button" className="chip work-filter-chip" aria-label={"Remove filter: "+c.label} onClick={c.clear}>{c.label}<X aria-hidden="true"/></button>)}</div>}
     {error&&<p role="alert" className="work-error">{error}</p>}
     {resultIds&&<div className="work-notice">{resultIds.length} search results <button type="button" className="text-button" onClick={()=>{setResultIds(null);setResultSearch(null);}}>Show all records</button></div>}
     {query&&semantic.pending&&<p role="status" className="work-notice">Searching…</p>}

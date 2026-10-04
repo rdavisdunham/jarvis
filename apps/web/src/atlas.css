@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: max(600px, calc(100dvh - 190px));
+  height: max(560px, calc(100dvh - 205px));
   min-width: 0;
   margin-top: 4px;
 }
@@ -368,7 +368,7 @@
 .atlas-halo {
   fill: none;
   stroke: url(#atlas-orbit);
-  stroke-width: 3;
+  stroke-width: 5;
   pointer-events: none;
 }
 .atlas-hit {
@@ -474,6 +474,7 @@
   font-weight: 500;
   fill: var(--ink-2);
 }
+.atlas-label.is-link { fill: var(--ink-2); }
 .atlas-label.is-caption {
   font-size: 11px;
   font-weight: 500;
@@ -489,7 +490,7 @@
 .blueprint-edge.is-allowed {
   stroke: var(--violet);
   stroke-width: 1.2;
-  stroke-opacity: 0.5;
+  stroke-opacity: 0.38;
   stroke-dasharray: 3 4;
 }
 .blueprint-node {
@@ -802,13 +803,13 @@
   font-size: 12px;
 }
 
-@container atlas (max-width: 860px) {
-  .atlas-work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(420px, 1fr) auto; }
-  .atlas-inspector { max-height: none; }
+/* Narrow content (tablets, small laptops): the inspector moves below the stage. */
+@media (max-width: 1180px) {
+  .atlas { height: auto; }
+  .atlas-work { grid-template-columns: minmax(0, 1fr); }
+  .atlas-stage { height: max(460px, calc(100dvh - 250px)); }
+  .atlas-stage.is-both { height: max(760px, calc(150dvh - 360px)); }
 }
 @media (max-width: 860px) {
-  .atlas { height: auto; }
-  .atlas-stage { height: 64dvh; min-height: 420px; }
-  .atlas-stage.is-both { height: 110dvh; }
   .atlas-search { margin-left: 0; flex: 1 1 100%; }
 }

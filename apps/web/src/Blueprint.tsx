@@ -5,6 +5,17 @@ import { presentation } from "./field-library";
 import { CAPABILITY_GLYPHS, CONTAINER_GLYPH, alsoAllowedIn, diagramParent, nestsItself } from "./blueprint-model";
 
 type Node = { id: string; kids: Node[] };
+/** "Also allowed in A, B +3", trimmed to the node width; the full list is in the title and accessible name. */
+function alsoLine(names: string[], width: number) {
+  const budget = Math.floor(width / 5.6), lead = width < 160 ? "Also in " : "Also allowed in ";
+  let shown = 0, text = lead;
+  while (shown < names.length) {
+    const rest = names.length - shown - 1, next = text + (shown ? ", " : "") + names[shown];
+    if (next.length + (rest ? 4 : 0) > budget && shown) break;
+    text = next; shown++;
+  }
+  return shown < names.length ? `${text} +${names.length - shown}` : text;
+}
 /** The rules as a constellation: each type once along its diagram path, with behaviors, field count,
  * the nests-itself loop and every other allowed home spelled out. */
 export function Blueprint({ schema, width, height, selectedType, recordType, hoverType, allHomes, canDesign, counts, onHover, onSelect, onDropType }: {
@@ -20,8 +31,10 @@ export function Blueprint({ schema, width, height, selectedType, recordType, hov
   const build = (id: string, seen: Set<string>): Node => ({ id, kids: types.filter(t => (parents.get(t.id) ?? null) === (id === "" ? null : id) && !seen.has(t.id)).map(t => build(t.id, new Set([...seen, t.id]))) });
   const root = hierarchy<Node>(build("", new Set()), d => d.kids);
   const vertical = width < 620;
-  const nodeW = vertical ? Math.min(168, (width - 40) / 2.2) : Math.min(184, Math.max(150, width / 5)), nodeH = 60;
-  if (vertical) tree<Node>().nodeSize([nodeW + 20, nodeH + 50])(root); else tree<Node>().nodeSize([nodeH + 44, nodeW + 56])(root);
+  // Fit the columns to the pane where possible; very deep diagrams scroll instead of shrinking further.
+  const columns = Math.max(1, root.height), gap = 44;
+  const nodeW = vertical ? Math.min(168, (width - 40) / 2.2) : Math.max(132, Math.min(184, (width - 32 - (columns - 1) * gap) / columns)), nodeH = 60;
+  if (vertical) tree<Node>().nodeSize([nodeW + 20, nodeH + 50])(root); else tree<Node>().nodeSize([nodeH + 44, nodeW + gap])(root);
   const ds = root.descendants().filter(d => d.data.id);
   const P = new Map<string, [number, number]>();
   let vbH = height;
@@ -84,9 +97,9 @@ export function Blueprint({ schema, width, height, selectedType, recordType, hov
         <text className="blueprint-small" x={x + nodeW - 10} y={y - 6} textAnchor="end">{fields} {fields === 1 ? "field" : "fields"}</text>
         {glyphs.map(([c, g, name], i) => <text key={c} className="blueprint-glyph" x={x + 12 + i * 17} y={y + 16}><title>{name}</title>{g}</text>)}
         {container && <text className="blueprint-glyph is-container" x={x + 12 + glyphs.length * 17} y={y + 16}><title>{CONTAINER_GLYPH[1]}</title>{CONTAINER_GLYPH[0]}</text>}
-        {nestsItself(t) && <><path className="blueprint-loop" d={`M${x + nodeW - 26},${y + nodeH / 2} a9,9 0 1 1 14,0`}/>
+        {nestsItself(t) && <><path className="blueprint-loop" d={`M${x + nodeW - 30},${y - nodeH / 2} a8,8 0 1 1 14,0`}/>
           <text className="blueprint-small is-violet" x={x + nodeW - 10} y={y + 16} textAnchor="end">nests itself</text></>}
-        {!!also.length && <text className="blueprint-small" x={x + 4} y={y + nodeH / 2 + 16}>{(nodeW < 160 ? "Also in " : "Also allowed in ") + also.map(h => h.name).join(", ")}</text>}
+        {!!also.length && <text className="blueprint-small" x={x + 4} y={y + nodeH / 2 + 16}><title>{"Also allowed in " + also.map(h => h.name).join(", ")}</title>{alsoLine(also.map(h => h.name), nodeW)}</text>}
       </g>;
     })}
   </svg>;

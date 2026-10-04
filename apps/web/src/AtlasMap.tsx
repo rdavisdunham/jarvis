@@ -84,7 +84,6 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
       <marker id="atlas-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" className="atlas-arrow"/></marker>
     </defs>
     <rect className="atlas-bg" width={width} height={height} onClick={onBackgroundClick} onDoubleClick={onFlyOut}/>
-    {focus !== layout.root && <circle className="atlas-halo" cx={x(focus.x)} cy={y(focus.y)} r={focus.r * k + 5} aria-hidden="true"/>}
     {nodes.map(n => {
       const rec = n.record!, cx = x(n.x), cy = y(n.y);
       if (n.region) {
@@ -108,13 +107,20 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
         <circle className="atlas-focusring" cx={cx} cy={cy} r={(moons.length ? orbit + 6 : r + 5)}/>
       </g>;
     })}
+    {focus !== layout.root && <circle className="atlas-halo" cx={x(focus.x)} cy={y(focus.y)} r={focus.r * k + 5} aria-hidden="true"/>}
     {shown.map(l => {
       const a = anchor(l.source_id), b = anchor(l.target_id);
       if (!a || !b || (a[0] === b[0] && a[1] === b[1])) return null;
-      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - Math.hypot(b[0] - a[0], b[1] - a[1]) * 0.25;
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      // Bend sideways, and stop short of each mark so the arrow and label stay readable.
+      const nx = -(b[1] - a[1]) / d, ny = (b[0] - a[0]) / d, bend = d * 0.28;
+      const cx = (a[0] + b[0]) / 2 + nx * bend, cy = (a[1] + b[1]) / 2 + ny * bend;
+      const trim = (p: [number, number], q: [number, number], by: number): [number, number] => { const len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1; return [p[0] + (q[0] - p[0]) / len * by, p[1] + (q[1] - p[1]) / len * by]; };
+      const pad = Math.min(24, d / 4), s0 = trim(a, [cx, cy], pad), s1 = trim(b, [cx, cy], pad);
+      const lx = (s0[0] + 2 * cx + s1[0]) / 4, ly = (s0[1] + 2 * cy + s1[1]) / 4;
       return <g key={l.id} className={"atlas-link is-" + l.behavior} aria-hidden="true">
-        <path d={`M${a[0]},${a[1]}Q${mx},${my} ${b[0]},${b[1]}`} markerEnd={l.behavior === "blocks" ? "url(#atlas-arrow)" : undefined}/>
-        <text className="atlas-label is-caption" x={mx} y={my + (my < a[1] ? -4 : 12)} textAnchor="middle">{l.label.toLowerCase()}</text>
+        <path d={`M${s0[0]},${s0[1]}Q${cx},${cy} ${s1[0]},${s1[1]}`} markerEnd={l.behavior === "blocks" ? "url(#atlas-arrow)" : undefined}/>
+        <text className="atlas-label is-caption is-link" x={lx + nx * 10} y={ly + ny * 10 + 4} textAnchor="middle">{l.label.toLowerCase()}</text>
       </g>;
     })}
     {labels.map(l => {

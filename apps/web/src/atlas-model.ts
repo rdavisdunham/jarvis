@@ -202,7 +202,7 @@ export function chooseLabels(nodes: PackedNode[], focus: PackedNode, view: View,
     const r = n.r * k;
     const near = n.parent === focus;
     if (n.id === selected) scored.push({ n, score: 1e9 });
-    else if (n.region && (near || (r > 70 && n.depth <= focus.depth + 2))) scored.push({ n, score: r * (near ? 2 : 1) });
+    else if (n.region && (near || (r > 55 && n.depth <= focus.depth + 2))) scored.push({ n, score: r * (near ? 2 : 1) });
     else if (!n.region && near && r * 2 / 6.4 >= 6) scored.push({ n, score: r });
   }
   scored.sort((a, b) => b.score - a.score);

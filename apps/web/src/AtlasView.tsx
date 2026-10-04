@@ -20,7 +20,7 @@ type Popup =
   | { kind: "move"; x: number; y: number; record: AtlasRecord; target: string | null; targetTitle: string }
   | { kind: "type"; x: number; y: number; type: string; target: string };
 type Toast = { message: string; undo?: () => Promise<void> } | null;
-const MODES: [Mode, string][] = [["atlas", "Atlas"], ["both", "Both"], ["blueprint", "Blueprint"]];
+const MODES: [Mode, string][] = [["atlas", "Map"], ["both", "Both"], ["blueprint", "Blueprint"]];
 const LENSES: [Lens, string][] = [["status", "Status"], ["due", "Due"], ["review", "Reviews due"], ["type", "Type"]];
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const stored = (key: string, fallback: string) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
@@ -247,7 +247,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
         <Search size={16} aria-hidden="true"/>
         <input ref={searchRef} type="search" aria-label="Fly to a record" placeholder="Fly to a record" value={query} autoComplete="off"
           onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && results[0]) { e.preventDefault(); const goal = flyTarget(layout, index, results[0].id); flyTo(goal.focus); select(goal.select); setQuery(""); } if (e.key === "Escape") setQuery(""); }}/>
-        <kbd aria-hidden="true">⌘K</kbd>
+        <kbd aria-hidden="true">{/Mac|iP(hone|ad)/.test(navigator.platform) ? "⌘K" : "Ctrl K"}</kbd>
         {!!results.length && <ul className="atlas-results" aria-label="Matching records">{results.map(r => <li key={r.id}>
           <button type="button" onClick={() => { const goal = flyTarget(layout, index, r.id); flyTo(goal.focus); select(goal.select); setQuery(""); }}><span>{r.title}</span><small>{index.types.get(r.type_id)?.name}</small></button>
         </li>)}</ul>}
