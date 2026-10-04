@@ -37,7 +37,7 @@ hollow, in progress half filled, done filled, overdue rose ring), notes rounded 
 goals targets, and a task's subtasks orbit it as moons. Click or Enter flies into a
 region, double-click or Backspace flies out, breadcrumbs and Ctrl/⌘K "Fly to a record"
 jump anywhere, and only the focused level is labeled. Lenses recolor by status, due,
-or type ("Reviews due" waits for review cadence). Selecting a record draws its extra
+type, or reviews due. Selecting a record draws its extra
 links (dashed violet; blocks as a rose arrow). Dragging a record lights its legal homes
 (allowed home types, excluding its own subtree and current home); dropping, or the
 inspector's keyboard Home picker, offers "Move with contents" or "Move only this
@@ -87,6 +87,34 @@ Viewers can read templates and previews; bots need `records:write`, plus
 `tasks:read`/`notes:read` to save such records as templates. Eri uses
 `template_list`, `record_instantiate_preview` and, on a clear request,
 `record_instantiate`.
+
+### Review cadence
+
+A type can resurface its records for review: Types & fields → a type → Review cadence
+(or the Atlas type inspector) turns it on with an interval of a week, 2 weeks, a month,
+3 months, 6 months or a year. It is a schema setting (`RecordType.review`, off by
+default for every existing type), so it goes through preview and apply; the preview
+says how many records start resurfacing. Applying spreads the first reviews over one
+interval (never the same day), keyed by record, and new records are first due one
+interval after they are created. Each record keeps `last_reviewed_at`,
+`next_review_at` and a per-record pause (migration `0023`).
+
+Once a local day, outside quiet hours and never under an active invitation lease, the
+worker's `queue_due_record_reviews` adds up to 20 due reviews to the personal Questions
+inbox. Each offers Mark reviewed (next review one interval from now), Snooze a day or a
+week (shown as deferred), Open and Stop reviewing this record. Record cards (and task
+cards for reviewed task types) show Last reviewed and Next review as separate values with
+Mark reviewed when due; Today shows a Reviews due panel only when something is due; the
+Atlas marks due records with an amber pulse (static under reduced motion), the Reviews due
+lens dims everything else, and the Blueprint shows ↻ on reviewed types. Turning a type's
+cadence off hides its open reviews without deleting any dates. `record.mark_reviewed` and
+`record.review` (snooze, pause, resume) carry receipts; Revert restores the previous review
+dates while they are unchanged. `GET /structure/reviews` lists due records (bots:
+`/external/structure/reviews` with `records:read`; the commands need `records:write`, plus
+core write scopes for task- or note-backed records). Eri uses `reviews_due`
+("what should I review this week?" with `within_days`), `record_mark_reviewed` and
+`record_review`. Shared-workspace reviews appear everywhere except Questions, which is
+personal.
 
 A record has one main home, which can be another allowed record type. For example,
 Work → ABC → Transcript Intelligence → a task. Named links support additional
@@ -177,7 +205,8 @@ and provider behavior still require the device checks below.
 ## Architecture and compatibility
 
 - PostgreSQL migrations: `0015_custom_structure`, `0016_smart_notifications`;
-  reusable templates add `0022_record_templates`.
+  reusable templates add `0022_record_templates`; review cadence adds
+  `0023_record_reviews`.
 - Registry: `structure_schemas`, `structure_records`, `structure_links`,
   `structure_proposals`; bounded JSON definitions with stable IDs and revisions.
 - Learning: `field_understandings`, `routing_observations`, `routing_patterns`,
