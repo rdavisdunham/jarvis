@@ -198,7 +198,7 @@ class SettingsUpdate(Args):
     morning_summary: bool | None = None
     morning_hour: int | None = Field(default=None, ge=0, le=23)
 
-    agent_profile: Literal["openai", "luna", "gemini", "groq"] | None = None
+    agent_profile: Literal["openai", "luna", "luna-none", "gemini", "groq"] | None = None
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None

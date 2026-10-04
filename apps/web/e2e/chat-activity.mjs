@@ -5,6 +5,12 @@ const browser=await chromium.launch();
 const page=await browser.newPage({viewport:{width:390,height:844}});
 const errors=[];page.on("pageerror",error=>errors.push(error.message));
 const requests=[];
+const timingResponses=[];
+page.on("response",response=>{
+ const request=response.request();
+ if(request.method()==="POST" && /\/api\/v1\/work\/[^/]+\/latency$/.test(request.url()))
+  timingResponses.push({id:request.url().split("/").at(-2),status:response.status(),...request.postDataJSON()});
+});
 await page.route("**/api/v1/bootstrap",async route=>{const response=await route.fetch();const json=await response.json();if(json.capabilities)json.capabilities.chat=true;await route.fulfill({response,json});});
 await page.route("**/api/v1/work",async route=>{
  if(route.request().method()!=="POST")return route.continue();
@@ -17,13 +23,18 @@ async function order(){return page.locator(".messages").evaluate(el=>[...el.chil
 try{
  await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Eridani",exact:true}).click();
  const navigation=await send("Show me my calendar");await expect(card(navigation.id)).toHaveCount(0);await finish(navigation,{navigation:true});await expect(page.locator(".message.assistant").filter({hasText:"Here is your calendar."})).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);
+ await expect.poll(()=>timingResponses.some(t=>t.id===navigation.id && t.stage==="work_reply_rendered" && t.status===200)).toBe(true);
  const first=await send("Add a task to call Alex");const second=await send("Add a task to buy milk");await finish(second,{title:"Buy milk"});await expect(card(second.id)).toBeVisible();await finish(first,{title:"Call Alex"});await expect(card(first.id)).toBeVisible();
+ await expect.poll(()=>timingResponses.some(t=>t.id===second.id && t.status===200)).toBe(true);
+ expect(timingResponses.every(t=>Number.isFinite(t.elapsed_ms) && t.elapsed_ms>=0 && t.elapsed_ms<=300000)).toBe(true);
  let entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("Add a task to buy milk"));expect(entries.indexOf("card:"+second.id)).toBeGreaterThan(entries.indexOf("Add a task to buy milk"));
  await expect(card(first.id).getByRole("button",{name:"Edit",exact:true})).toBeVisible();await expect(card(first.id).getByRole("button",{name:"Revert",exact:true})).toBeEnabled();await expect(card(first.id).getByRole("button",{name:"Details",exact:true})).toHaveAttribute("aria-expanded","false");await expect(card(first.id).getByText("Original request",{exact:true})).toHaveCount(0);
  await card(first.id).getByRole("button",{name:"Details",exact:true}).click();await expect(card(first.id).getByText("Original request",{exact:true})).toBeVisible();await card(first.id).getByRole("button",{name:"Less",exact:true}).click();
  const third=await send("And a task to read tonight");entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
  await card(first.id).getByRole("button",{name:"Revert",exact:true}).click();await expect(card(first.id).getByRole("button",{name:"Reverted",exact:true})).toBeDisabled();
+ const measuredBeforeReload=timingResponses.length;
  await page.reload();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Eridani",exact:true}).click();await expect(card(first.id)).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("Add a task to buy milk"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
+ expect(timingResponses.length).toBe(measuredBeforeReload);
  const notices=await page.evaluate(async()=>(await(await fetch("/api/v1/notifications")).json()).items);expect(notices.some(n=>n.category==="work_result")).toBe(false);
 
  // Recovery uses the real encrypted inbox, listing and disposition paths. Only model-provider

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -22,6 +23,10 @@ def main(path):
     validate_url(url, trial=True)
     result = {"status": "infra_error"}
     trace = []
+    timing = logging.FileHandler(attempt / "latency.log")
+    timing.setLevel(logging.INFO)
+    timing_logger = logging.getLogger("jarvis.latency")
+    timing_logger.addHandler(timing)
     try:
         from .campaign import fingerprint
 
@@ -59,13 +64,19 @@ def main(path):
                 from .model_runner import PROBES, execute_probe
                 from .transport import metered
 
-                if not catalog()["luna"].available:
+                from jarvis.config import get_settings
+                get_settings().agent_service_tier = config.get("service_tier") or "default"
+                profile = config.get("model", "luna")
+                if profile not in {"luna", "luna-none"}:
+                    raise ValueError("Unsupported task-agent profile")
+                if not catalog()[profile].available:
                     result.update(status="blocked", reason="OPENAI_API_KEY unavailable")
                 else:
-                    with metered(Ledger(Path(config["directory"]) / "budget.sqlite"), job["id"], trace):
+                    with metered(Ledger(Path(config["directory"]) / "budget.sqlite"), job["id"], trace,
+                                 service_tier=config.get("service_tier")):
                         details = asyncio.run(
                             execute_probe(
-                                job["target"], PROBES[job["target"]], "luna", config["fixture"], trace
+                                job["target"], PROBES[job["target"]], profile, config["fixture"], trace
                             )
                         )
                     atomic_json(attempt / "state.json", details)
@@ -162,6 +173,15 @@ def main(path):
             ],
         )
     finally:
+        timing_logger.removeHandler(timing)
+        timing.close()
+        from scripts.summarize_latency import summarize
+        from .transport import priced_latency
+        with (attempt / "latency.log").open() as timings:
+            summary = summarize(priced_latency(timings, trace))
+            summary["requested_service_tier"] = config.get("service_tier")
+            summary["cost_basis"] = "metered_provider_usage_at_returned_service_tier"
+            atomic_json(attempt / "latency-summary.json", summary)
         if config.get("fingerprint") and config["fingerprint"] != fingerprint():
             result.update(status="infra_error", reason="Source fingerprint changed during campaign")
         atomic_json(attempt / "trace.json", trace)

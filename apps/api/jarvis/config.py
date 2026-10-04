@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     realtime_model: str = "gpt-realtime-2.1"
     live_model: str = "gpt-live-1"
     text_model: str = "gpt-5.6-luna"  # Legacy env compatibility; routing uses agent_models.
+    # Interactive Luna requests; scheduled learning remains explicitly Standard.
+    agent_service_tier: Literal["default", "fast"] = "fast"
     agent_parallelism: int = Field(default=4, ge=1, le=16)
     agent_account_parallelism: int = Field(default=2, ge=1, le=4)
     agent_request_timeout_seconds: int = Field(default=600, ge=30, le=3600)

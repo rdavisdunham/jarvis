@@ -1,0 +1,355 @@
+{
+  "date": "2026-10-04",
+  "source": "artifacts/speed-2026-10-04/fast-comparison",
+  "model": "gpt-5.6-luna",
+  "reasoning": "low",
+  "synthetic": true,
+  "limits": [
+    "24 trials, four distinct scenarios, not production or general quality evidence.",
+    "Existing tool spans omit built-in work controls and loader group arguments; these sequences are incomplete tool inventories.",
+    "A discovery immediately before a core tool is a candidate redundancy, not proof that the whole loaded group was unnecessary."
+  ],
+  "trials": [
+    {
+      "block": "standard-1",
+      "case": "task_capture.01",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 6669.156,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-1",
+      "case": "task_edit.04",
+      "requested_tier": "default",
+      "model_rounds": 4,
+      "model_ms": 7246.921,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-1",
+      "case": "task_edit.19",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 6112.399,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "standard-1",
+      "case": "notes.02",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 4691.808,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-1",
+      "case": "task_capture.01",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3377.714,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-1",
+      "case": "task_edit.04",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 4480.522,
+      "logged_tool_sequence": [
+        "task_resolve",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-1",
+      "case": "task_edit.19",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3965.451,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "fast-1",
+      "case": "notes.02",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 4375.477,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-2",
+      "case": "task_capture.01",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3890.478,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-2",
+      "case": "task_edit.04",
+      "requested_tier": "fast",
+      "model_rounds": 4,
+      "model_ms": 5249.564,
+      "logged_tool_sequence": [
+        "task_resolve",
+        "task_get",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-2",
+      "case": "task_edit.19",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 4060.387,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "fast-2",
+      "case": "notes.02",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3774.782,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-2",
+      "case": "task_capture.01",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 4254.618,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-2",
+      "case": "task_edit.04",
+      "requested_tier": "default",
+      "model_rounds": 5,
+      "model_ms": 9371.817,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve",
+        "task_get",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-2",
+      "case": "task_edit.19",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 5017.151,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "standard-2",
+      "case": "notes.02",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 4032.604,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-3",
+      "case": "task_capture.01",
+      "requested_tier": "default",
+      "model_rounds": 2,
+      "model_ms": 3010.976,
+      "logged_tool_sequence": [
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-3",
+      "case": "task_edit.04",
+      "requested_tier": "default",
+      "model_rounds": 5,
+      "model_ms": 8105.591,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve",
+        "task_get",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "standard-3",
+      "case": "task_edit.19",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 4772.514,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "standard-3",
+      "case": "notes.02",
+      "requested_tier": "default",
+      "model_rounds": 3,
+      "model_ms": 4137.927,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-3",
+      "case": "task_capture.01",
+      "requested_tier": "fast",
+      "model_rounds": 2,
+      "model_ms": 2710.494,
+      "logged_tool_sequence": [
+        "task_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-3",
+      "case": "task_edit.04",
+      "requested_tier": "fast",
+      "model_rounds": 4,
+      "model_ms": 5747.039,
+      "logged_tool_sequence": [
+        "task_resolve",
+        "task_get",
+        "task_update"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    },
+    {
+      "block": "fast-3",
+      "case": "task_edit.19",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3399.689,
+      "logged_tool_sequence": [
+        "tools_load",
+        "task_resolve"
+      ],
+      "outcomes": [
+        "needs_input"
+      ]
+    },
+    {
+      "block": "fast-3",
+      "case": "notes.02",
+      "requested_tier": "fast",
+      "model_rounds": 3,
+      "model_ms": 3705.944,
+      "logged_tool_sequence": [
+        "tools_load",
+        "note_create"
+      ],
+      "outcomes": [
+        "succeeded"
+      ]
+    }
+  ]
+}

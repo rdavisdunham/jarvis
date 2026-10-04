@@ -1502,6 +1502,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/work/{request_id}/latency",
+      "handler": "work_client_latency",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "queue"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/work/{request_id}/revise",
       "handler": "work_revise",
       "source": "apps/api/jarvis/api.py",

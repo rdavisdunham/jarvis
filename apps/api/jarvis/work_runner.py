@@ -15,7 +15,7 @@ from .access import assert_current, execution, person_preferences
 from .agent_work import checkpoint, finish, principal_for, reschedule
 from .config import get_settings, require_external_services
 from .db import engine, session_scope
-from .latency import mark, span
+from .latency import mark, span, context as latency_context
 from .domain import DomainError, advisory, capture_source, preferences
 from .memory_service import prompt_context
 from .models import AgentWork, Command, Conversation, Job, Source, now
@@ -27,6 +27,7 @@ from .work_crypto import unseal
 
 logger = logging.getLogger("jarvis.work")
 provider_client = ContextVar("provider_client", default=None)
+model_trace = ContextVar("model_trace", default=None)
 QUESTION_CHECK = (
     "Your reply asks the user a question. If you need the user's answer to finish this request, "
     "first call work_answer if this turn responds (even partially) to a pending question in RECENT WORK DATA, then call work_needs_input with the remaining question. For a new request, call work_needs_input directly. Otherwise give the final answer without asking a question."
@@ -47,7 +48,12 @@ async def request_model(agent, messages, definitions, *, limited=False):
         {"type": "function", "function": {k: v for k, v in item.items() if k != "type"}}
         for item in definitions
     ]
+    trace = model_trace.get()
     for attempt in range(3):
+        if trace:
+            mark("model_attempt", trace["request_id"], revision=trace["revision"],
+                 round=trace["round"], profile=agent.profile_id, model=agent.model,
+                 reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, attempt=attempt + 1)
         response = await client.post(
             agent.endpoint,
             headers={"Authorization": f"Bearer {agent.api_key}"},
@@ -57,6 +63,10 @@ async def request_model(agent, messages, definitions, *, limited=False):
             response.raise_for_status()
             data = agent.normalize(response.json())
             return data
+        if trace:
+            mark("model_retry", trace["request_id"], revision=trace["revision"],
+                 round=trace["round"], profile=agent.profile_id, model=agent.model,
+                 reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, retry_count=attempt + 1)
         await asyncio.sleep(2**attempt)
     raise RuntimeError("Provider retry exhausted")
 
@@ -217,12 +227,12 @@ NEEDS_INPUT = {
 }
 
 
-def model_for(profile):
+def model_for(profile, service_tier="default"):
     # A retired saved profile resolves like a saved preference instead of failing outside the loop.
     try:
-        return agent_models.selected({"agent_profile": profile})
+        return agent_models.selected({"agent_profile": profile}, service_tier=service_tier)
     except DomainError:
-        return agent_models.selected({})
+        return agent_models.selected({}, service_tier=service_tier)
 
 
 def reservation_for(db, row, state):
@@ -324,7 +334,8 @@ async def run(request_id):
         async with httpx.AsyncClient(timeout=60) as client:
             token = provider_client.set(client)
             try:
-                await perform(request_id)
+                with latency_context(run_id=uuid4().hex):
+                    await perform(request_id)
             finally:
                 provider_client.reset(token)
     finally:
@@ -341,11 +352,14 @@ async def perform(request_id):
             finish(db, row, "cancelled", "Cancelled. Previously saved changes remain.")
             return
         profile = job.payload.get("profile")
+        # Old accepted jobs retain Standard; a later default change cannot reprice them.
+        service_tier = job.payload.get("service_tier", "default")
         state = unseal(row.checkpoint_ciphertext)
         if state and "messages" not in state:
             state = {}  # Legacy intake checkpoints contain a routing plan, not a tool loop.
         row.result = {**row.result, "waiting_for": []}
-        mark("runner_started", row.id, revision=row.revision, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
+        mark("runner_started", row.id, revision=row.revision, channel="live" if row.voice_session_id else "work",
+             profile=profile, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
         job.status = "running"
         row.updated_at = now()
         db.expunge(row)
@@ -356,7 +370,7 @@ async def perform(request_id):
     with principal_for(row):
         try:
             assert_current(row.owner_id, row.device_id)
-            agent = model_for(profile)
+            agent = model_for(profile, service_tier)
             # A durable checkpoint may predate cost tracking being enabled.
             with session_scope() as db:
                 reservation = reservation_for(db, row, state)
@@ -439,15 +453,21 @@ async def perform(request_id):
                     with session_scope() as db:
                         budget.ensure_room(db, row.owner_id, reservation, agent.reserve_cost(size + 1024))
                     provider_pending = True
+                    trace_token = model_trace.set({"request_id": row.id, "revision": row.revision, "round": state["round"]})
                     try:
-                        with span("model", row.id, revision=row.revision, round=state["round"]):
+                        with span("model", row.id, revision=row.revision, round=state["round"],
+                                  profile=agent.profile_id, model=agent.model, reasoning=agent.reasoning_effort,
+                                  requested_service_tier=agent.service_tier):
                             result = await request_model(agent, state["messages"], definitions, limited=limited)
                     except httpx.HTTPStatusError as rejected:
                         code = rejected.response.status_code
                         if 400 <= code < 500 and code != 408:
                             provider_pending = False  # Explicit rejection, not an unknown outcome.
                         raise
-                    usage = result.get("usage", {})
+                    finally:
+                        model_trace.reset(trace_token)
+                    usage = agent.usage_record(result)
+                    cost = agent.usage_cost(usage)
                     with session_scope() as db:
                         budget.record_usage(
                             db,
@@ -456,9 +476,21 @@ async def perform(request_id):
                             result["id"],
                             agent.model,
                             usage,
-                            agent.usage_cost(usage),
+                            cost,
                             feature="assistant",
                         )
+                    details = usage.get("prompt_tokens_details") or {}
+                    output_details = usage.get("completion_tokens_details") or {}
+                    mark("model_usage", row.id, revision=row.revision, round=state["round"],
+                         profile=agent.profile_id, model=agent.model, reasoning=agent.reasoning_effort,
+                         requested_service_tier=usage.get("requested_service_tier"),
+                         served_service_tier=usage.get("served_service_tier"),
+                         cost_basis=usage.get("cost_basis"),
+                         response_id=result["id"], input_tokens=usage.get("prompt_tokens"),
+                         output_tokens=usage.get("completion_tokens"),
+                         cached_tokens=details.get("cached_tokens"),
+                         cache_write_tokens=details.get("cache_write_tokens"),
+                         reasoning_tokens=output_details.get("reasoning_tokens"), cost_usd=cost)
                     provider_pending = False
                     try:
                         assert_current(row.owner_id, row.device_id)
@@ -542,11 +574,11 @@ async def perform(request_id):
                         outcome = {"status": "succeeded", "voice_ended": True}
                         state["reply"] = "Voice ended. Saved work remains available."
                     elif fn["name"] == "tools_load":
-                        with span("tool_discovery", row.id, revision=row.revision, tool_index=state["tool_index"]):
+                        with span("tool_discovery", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
                             outcome = session.load(args)
                     else:
                         work_coordination.reserve(row, fn["name"], args, state["tool_index"])
-                        with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"]):
+                        with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
                             outcome = await call_tool(
                                 row.owner_id,
                                 row.id,
@@ -705,3 +737,5 @@ async def perform(request_id):
             if reservation:
                 # Only a sent request without a recorded response can have unknown spend.
                 budget.close(db, current.owner_id, reservation, uncertain=provider_pending)
+        mark("work_accounting", row.id, revision=current.revision,
+             uncertain_spend=provider_pending)

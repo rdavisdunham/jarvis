@@ -290,6 +290,10 @@ def build(directory):
                     extra["langfuse.observation.metadata.cost_status"] = "unsettled; not a free call"
                     extra["langfuse.observation.metadata.reserved_usd"] = cost.get("charged_usd")
                 extra["langfuse.observation.metadata.provider_usage"] = item.get("usage", {})
+                if item.get("reasoning_effort") is not None:
+                    extra["langfuse.observation.metadata.reasoning_effort"] = item["reasoning_effort"]
+                if item.get("duration_seconds") is not None:
+                    extra["langfuse.observation.metadata.recorded_duration_seconds"] = item["duration_seconds"]
                 usage = item.get("usage", {})
                 extra["langfuse.observation.usage_details"] = encoded(
                     {

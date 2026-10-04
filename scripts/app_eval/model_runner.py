@@ -449,7 +449,7 @@ def run(args, output):
 
     from .runner import selected
 
-    models = selected({"luna", "gemini"}, args.models)
+    models = selected({"luna", "luna-none"}, args.models)
     identities = selected(PROBES, args.cases)
     results = []
     counter = [0]

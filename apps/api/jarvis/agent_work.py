@@ -16,7 +16,7 @@ from .domain import DomainError, advisory, emit, owned, preferences
 from .models import AgentWork, Conversation, Job, Outbox, UserAccount, now
 from .work_crypto import seal, unseal
 from .work_wakeup import wake_dispatch
-from .latency import mark
+from .latency import mark, after_commit
 
 ACTIVE = {"queued", "dispatched", "running"}
 TERMINAL = {"succeeded", "partial", "failed", "cancelled", "expired", "continued"}
@@ -77,10 +77,11 @@ def enqueue(
             "QUEUE_FULL", "Your work queue is full. Finish or cancel pending requests first.", 429
         )
     prefs = person_preferences(db, owner, device, preferences(db, owner))
-    profile = agent_models.selected(prefs, require_key=True).profile_id
+    agent = agent_models.selected(prefs, require_key=True)
+    profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
     deps = list(dependencies or [])
-    job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile})
+    job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile, "service_tier": agent.service_tier})
     db.add(job)
     db.flush()
     row = AgentWork(
@@ -106,7 +107,10 @@ def enqueue(
     db.add(Outbox(job_id=request_id))
     wake_dispatch(db)
     db.flush()
-    mark("accepted_precommit", request_id, revision=1)
+    mark("accepted_precommit", request_id, revision=1, profile=profile, model=agent.model,
+         reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, channel="live" if voice_session_id else "work")
+    after_commit(db, "work_accepted", request_id, revision=1, profile=profile, model=agent.model,
+                 reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, channel="live" if voice_session_id else "work")
     emit(db, owner, "work.changed", request_id, 1)
     return row
 
@@ -215,6 +219,14 @@ def finish(db, row, status, message, **result):
     from .notices import work_finished
     work_finished(db,row,status,message)
     mark("finished_precommit", row.id, revision=row.revision, outcome=status)
+    agent = agent_models.catalog().get(job.payload.get("profile"))
+    if agent is None:
+        agent = agent_models.selected({})
+    after_commit(db, "work_finished", row.id, revision=row.revision, outcome=status,
+                 channel="live" if row.voice_session_id else "work", profile=agent.profile_id,
+                 model=agent.model, reasoning=agent.reasoning_effort,
+                 requested_service_tier=job.payload.get("service_tier", "default"),
+                 receipts=len(row.result.get("actions", [])))
     job.result = {"work_id": row.id, "status": status}
     wake_dispatch(db)  # Completion releases account capacity and dependent requests.
     emit(db, row.owner_id, "work.changed", row.id, row.revision)

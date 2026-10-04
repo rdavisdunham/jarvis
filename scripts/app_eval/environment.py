@@ -45,6 +45,7 @@ def settings_env(url, *, live=False, providers=("OPENAI", "GEMINI")):
         "JARVIS_ORIGIN": "http://127.0.0.1:8766",
         "JARVIS_WORKER_ENABLED": "false",
         "JARVIS_COST_TRACKING_ENABLED": "false",
+        "JARVIS_AGENT_SERVICE_TIER": "default",
         "JARVIS_EXTERNAL_SERVICES_ENABLED": "true" if live else "false",
         "JARVIS_SEMANTIC_SEARCH_ENABLED": "false",
         "JARVIS_GOOGLE_CLIENT_ID": "",
@@ -209,6 +210,32 @@ def trial_database(url):
                 created = True
             finally:
                 gate.exec_driver_sql("SELECT pg_advisory_unlock(61403915)")
+        # Preserve the versioned corpus. Current application code must run against
+        # current tables, so migrations apply only to this freshly owned clone.
+        env = {
+            **{k: v for k, v in os.environ.items() if not k.startswith("JARVIS_")},
+            **settings_env(trial_url),
+        }
+        upgraded = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"], cwd=ROOT, env=env,
+            capture_output=True, text=True, check=False,
+        )
+        if upgraded.returncode:
+            raise RuntimeError("Disposable eval database migration failed; corpus preserved")
+        # Apply the same lazy definition upgrade a real workspace read performs,
+        # before taking any before/after oracle snapshot. Keep schema mutations
+        # forbidden during the measured model request.
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+        from jarvis.structure import ensure
+        from jarvis.structure_models import StructureSchema
+        upgraded_engine = create_engine(trial_url, connect_args={"connect_timeout": 5})
+        try:
+            with Session(upgraded_engine) as db, db.begin():
+                for owner in list(db.scalars(select(StructureSchema.owner_id))):
+                    ensure(db, owner)
+        finally:
+            upgraded_engine.dispose()
         yield trial_url, saved
     finally:
         if created:

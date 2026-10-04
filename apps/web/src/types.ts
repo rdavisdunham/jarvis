@@ -149,7 +149,7 @@ export interface MemoryMaintenance {
   } | null;
 }
 export type AgentProvider = "openai" | "gemini" | "groq";
-export type AgentProfile = AgentProvider | "luna";
+export type AgentProfile = AgentProvider | "luna" | "luna-none";
 export interface Preferences {
   agent_profile: AgentProfile;
   source_colors?: Record<string,string>;
@@ -173,6 +173,7 @@ export interface Bootstrap {
   };
   agent_profile: AgentProfile;
   agent_reasoning: string | null;
+  agent_service_tier?: "default" | "fast";
   agent_provider: AgentProvider;
   agent_options: {
     id: AgentProfile;

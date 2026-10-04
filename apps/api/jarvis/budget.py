@@ -10,7 +10,7 @@ from .domain import DomainError, advisory, preferences
 from .models import BudgetReservation, Usage, now
 
 # Identifies the configured estimation rates, not a provider billing statement.
-PRICING_VERSION = "configured-2026-09-19-v3"
+PRICING_VERSION = "configured-2026-10-04-v4"
 
 
 def enabled():

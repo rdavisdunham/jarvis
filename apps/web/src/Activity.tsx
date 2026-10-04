@@ -2,6 +2,7 @@ import { Dialog } from "./ux";
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Clock3, Pencil, RotateCcw, X } from "lucide-react";
 import { api, post } from "./api";
+import { observeWorkRendered } from "./clientLatency";
 import { eventStreamOnline, fallbackInterval } from "./events";
 
 const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -103,6 +104,10 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
     [editing, setEditing] = useState(false), [correction, setCorrection] = useState("");
   const [expanded, setExpanded] = useState(false);
   const terminal = !workActive(item) && item.status !== "needs_input";
+  const card = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (terminal && card.current) return observeWorkRendered(card.current, item.id, item.revision);
+  }, [item.id, item.revision, terminal]);
   useEffect(() => { if (terminal) setExpanded(false); }, [terminal]);
   const details = !compact || expanded;
   const revertIds = useRef(new Map<string, string>());
@@ -114,7 +119,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
   }
   const disclosure = compact ? <button type="button" className="text-button work-expand" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Less" : "Details"}<ChevronDown size={12}/></button> : null;
   const editable = new Set(["record", "task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
-  return <article data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (compact ? "chat-work-card " : "") + (workAttention(item) ? "attention" : "")}>
+  return <article ref={card} data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (compact ? "chat-work-card " : "") + (workAttention(item) ? "attention" : "")}>
     <header><span className={"work-status " + item.status}>
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
       {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : item.waiting ? "Waiting for related work" : labels[item.status] ?? item.status}

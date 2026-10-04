@@ -33,9 +33,11 @@ def category(name):
 
 
 @contextmanager
-def metered(ledger, trial, trace, *, embeddings=False):
+def metered(ledger, trial, trace, *, embeddings=False, service_tier=None):
     from jarvis.agent_models import catalog
 
+    if service_tier not in {None, "default", "fast"}:
+        raise ValueError("Unsupported eval service tier")
     luna = catalog()["luna"]
     real_async, real_sync = httpx.AsyncClient.send, httpx.Client.send
     real_async_init, real_sync_init = httpx.AsyncClient.__init__, httpx.Client.__init__
@@ -63,6 +65,14 @@ def metered(ledger, trial, trace, *, embeddings=False):
             return deny()
         if any(tool.get("type") != "function" for tool in payload.get("tools", [])):
             return deny()
+        if not embedding:
+            # Explicit selection belongs only to this isolated transport. Default
+            # cannot silently inherit a premium project setting during an eval.
+            payload["service_tier"] = service_tier or "default"
+            headers = dict(request.headers)
+            headers.pop("content-length", None)
+            request = httpx.Request(request.method, request.url, headers=headers,
+                                    content=json.dumps(payload).encode(), extensions=request.extensions)
         if embedding:
             agent = None
             bound = Decimal(len(request.content) + 4096) * Decimal("0.02") / 1_000_000
@@ -78,10 +88,11 @@ def metered(ledger, trial, trace, *, embeddings=False):
                 max_output_tokens=limit,
                 api="responses" if endpoint.endswith("/responses") else "chat_completions",
             )
-            bound = agent.reserve_cost(len(request.content) + 4096)
+            bound = agent.reserve_cost(len(request.content) + 4096) * (2 if service_tier == "fast" else 1)
             kind = CATEGORY.get()
         try:
-            reservation = ledger.reserve(trial, kind, payload["model"], bound)
+            reservation = ledger.reserve(trial, kind, payload["model"], bound,
+                                         {"requested_service_tier": payload.get("service_tier")})
         except EvalLimit as exc:
             failed_limits.append(str(exc))
             raise
@@ -89,17 +100,22 @@ def metered(ledger, trial, trace, *, embeddings=False):
             "reservation": reservation,
             "kind": kind,
             "model": payload["model"],
+            "requested_service_tier": payload.get("service_tier"),
+            "reasoning_effort": (payload.get("reasoning") or {}).get("effort", payload.get("reasoning_effort")),
             "started": time.monotonic(),
         }
         trace.append(row)
-        return row, agent
+        return row, agent, request
 
     def settle(row, agent, response):
         row["http_status"] = response.status_code
         row["duration_seconds"] = round(time.monotonic() - row.pop("started"), 4)
         row["request_id"] = response.headers.get("x-request-id")
         try:
-            usage = response.json()["usage"]
+            data = response.json()
+            usage = data["usage"]
+            row["response_id"] = data.get("id")
+            row["served_service_tier"] = data.get("service_tier")
             if agent is None:
                 tokens = usage.get("prompt_tokens", usage.get("total_tokens"))
                 if type(tokens) is not int or tokens < 0:
@@ -111,6 +127,7 @@ def metered(ledger, trial, trace, *, embeddings=False):
                         "prompt_tokens": usage["input_tokens"],
                         "completion_tokens": usage["output_tokens"],
                         "prompt_tokens_details": usage.get("input_tokens_details") or {},
+                        "completion_tokens_details": usage.get("output_tokens_details") or {},
                     }
                 if any(
                     type(usage[k]) is not int or usage[k] < 0 for k in ("prompt_tokens", "completion_tokens")
@@ -122,13 +139,19 @@ def metered(ledger, trial, trace, *, embeddings=False):
                     for k in ("cached_tokens", "cache_write_tokens")
                 ):
                     raise ValueError()
-                cost = agent.usage_cost(usage)
+                tier = row["served_service_tier"]
+                if tier not in {None, "default", "priority", "fast"} or (service_tier is not None and tier is None):
+                    transport_errors.append("Provider did not identify a supported service tier")
+                    raise ValueError("Unverified service tier")
+                cost = agent.usage_cost(usage) * (2 if tier in {"priority", "fast"} else 1)
             ledger.settle(
                 row["reservation"],
                 cost,
-                {"http_status": response.status_code, "request_id": row["request_id"]},
+                {"http_status": response.status_code, "request_id": row["request_id"],
+                 "served_service_tier": row["served_service_tier"]},
             )
             row["usage"] = usage
+            row["billed_cost_usd"] = float(cost)
         except (ValueError, KeyError, TypeError):
             row["usage_uncertain"] = True
 
@@ -136,7 +159,7 @@ def metered(ledger, trial, trace, *, embeddings=False):
         nonlocal active_requests
         if kwargs.get("stream"):
             return deny()
-        row, agent = reserve(request)
+        row, agent, request = reserve(request)
         token = AUTHORIZED.set(True)
         active_requests += 1
         try:
@@ -160,7 +183,7 @@ def metered(ledger, trial, trace, *, embeddings=False):
         nonlocal active_requests
         if kwargs.get("stream"):
             return deny()
-        row, agent = reserve(request)
+        row, agent, request = reserve(request)
         token = AUTHORIZED.set(True)
         active_requests += 1
         try:
@@ -234,3 +257,19 @@ def metered(ledger, trial, trace, *, embeddings=False):
     if failed_limits:
         # Some application jobs catch provider errors. Still report budget termination accurately.
         raise EvalLimit(failed_limits[-1])
+
+
+def priced_latency(lines, trace):
+    """Use the metered returned tier's cost in eval reports; preserve the raw log."""
+    prices = {r["response_id"]: r["billed_cost_usd"] for r in trace
+              if r.get("response_id") and "billed_cost_usd" in r}
+    for line in lines:
+        if "latency " in line:
+            try:
+                event = json.loads(line.split("latency ", 1)[1])
+                if event.get("stage") == "model_usage" and event.get("response_id") in prices:
+                    event["cost_usd"] = prices[event["response_id"]]
+                    line = "latency " + json.dumps(event) + "\n"
+            except (ValueError, TypeError):
+                pass
+        yield line

@@ -60,6 +60,7 @@ async def chat(
                 "provider": agent.provider,
                 "profile": agent.profile_id,
                 "model": model,
+                "service_tier": agent.service_tier,
             },
         )
         db.add(job)
@@ -180,6 +181,7 @@ async def chat(
                     or "completion_tokens" not in usage
                 ):
                     raise ValueError("Provider response omitted usage")
+                usage = agent.usage_record(data)
                 cost = agent.usage_cost(usage)
                 with session_scope() as db:
                     budget.record_usage(db, owner, turn_id, data["id"], model, usage, cost, feature="assistant")

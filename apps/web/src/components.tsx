@@ -878,10 +878,11 @@ export function SettingsPanel({
             is separate. Automatic memory learning and note extraction still use
             OpenAI.
           </p>
-          {boot.agent_profile === "luna" && (
+          {(boot.agent_profile === "luna" || boot.agent_profile === "luna-none") && (
             <p className="footnote">
-              Luna uses low reasoning effort for task work, including tasks
-              delegated during GPT-Live conversations.
+              Luna uses {boot.agent_profile === "luna" ? "low" : "no"} reasoning
+              effort for task work, including tasks delegated during GPT-Live conversations.
+              {boot.agent_service_tier === "fast" && " Fast processing is enabled for these requests; memory learning stays on Standard."}
             </p>
           )}
           {boot.agent_options.some(

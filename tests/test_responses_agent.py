@@ -205,6 +205,7 @@ def test_luna_model_profile_and_legacy_preferences(monkeypatch, client):
     boot = client.get("/api/v1/bootstrap").json()
     assert boot["agent_profile"] == "luna" and boot["agent_provider"] == "openai"
     assert boot["agent_reasoning"] == "low"
+    assert boot["agent_service_tier"] == "fast"
     assert boot["preferences"]["preferred_name"] == "Keep name"
     assert len({m["id"] for m in boot["agent_options"]}) == len(boot["agent_options"])
     with session_scope() as db:
@@ -262,3 +263,77 @@ async def test_text_chat_cannot_invent_voice_end_and_voice_tool_rejects_target_i
     result = await conversation.chat("davin", "test", str(uuid4()), cid, "End voice", end_voice=end)
     end.assert_not_called()
     assert result["tool_errors"][0]["error"] == "INVALID_ARGUMENT"
+
+
+def test_interactive_fast_default_standard_override_and_maintenance_catalog(monkeypatch):
+    monkeypatch.setattr(get_settings(), "agent_service_tier", "fast")
+    agent = agent_models.selected({"agent_profile": "luna"})
+    assert agent.reasoning_effort == "low" and agent.service_tier == "fast"
+    assert agent.request([], [])["service_tier"] == "fast"
+    assert agent_models.catalog()["luna"].service_tier == "default"
+    assert agent_models.selected({"agent_profile": "gemini"}).service_tier == "default"
+    monkeypatch.setattr(get_settings(), "agent_service_tier", "default")
+    assert agent_models.selected({"agent_profile": "luna"}).request([], [])["service_tier"] == "default"
+
+
+@pytest.mark.parametrize("served,multiplier,basis", [
+    ("priority", 2, "returned_service_tier"),
+    ("fast", 2, "returned_service_tier"),
+    ("default", 1, "returned_service_tier"),
+    (None, 2, "requested_service_tier_estimate"),
+    ("unrecognized", 2, "requested_service_tier_estimate"),
+])
+def test_fast_usage_prices_returned_tier_and_labels_missing_metadata(served, multiplier, basis):
+    agent = agent_models.selected({"agent_profile": "luna"}, service_tier="fast")
+    original = packet(answer("Done"))
+    if served is not None:
+        original["service_tier"] = served
+    usage = agent.usage_record(agent.normalize(original))
+    standard = agent_models.catalog()["luna"].usage_cost(agent.normalize(original)["usage"])
+    assert usage["requested_service_tier"] == "fast"
+    assert usage["cost_basis"] == basis
+    assert usage["served_service_tier"] == (served if basis == "returned_service_tier" else None)
+    assert agent.usage_cost(usage) == pytest.approx(standard * multiplier)
+    assert agent.reserve_cost(100) == pytest.approx(agent_models.catalog()["luna"].reserve_cost(100) * 2)
+    assert agent.reserve_cost(280000) == pytest.approx(agent_models.catalog()["luna"].reserve_cost(280000) * 2)
+
+
+async def test_inline_fast_downgrade_records_actual_standard_cost(monkeypatch):
+    reply = packet(answer("Hello."))
+    reply["service_tier"] = "default"
+    cid, sent = setup(monkeypatch, [reply])
+    monkeypatch.setattr(get_settings(), "agent_service_tier", "fast")
+    await conversation.chat("davin", "test", str(uuid4()), cid, "Hello")
+    assert sent[0]["body"]["service_tier"] == "fast"
+    with session_scope() as db:
+        usage = db.scalar(select(Usage))
+        assert usage.tokens["requested_service_tier"] == "fast"
+        assert usage.tokens["served_service_tier"] == "default"
+        assert float(usage.amount) == pytest.approx(agent_models.catalog()["luna"].usage_cost(usage.tokens), abs=0.0000005)
+
+
+@pytest.mark.parametrize("path", ["responses", "embeddings"])
+def test_maintenance_stays_standard_when_interactive_is_fast(monkeypatch, path):
+    from jarvis import memory_learning
+    monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic")
+    monkeypatch.setattr(get_settings(), "agent_service_tier", "fast")
+    sent = []
+    class Client:
+        def __init__(self, **_): pass
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def post(self, url, *, json, headers):
+            sent.append(json)
+            data = ({"usage": {"total_tokens": 12}, "data": []} if path == "embeddings"
+                    else {**packet(answer("Done")), "service_tier": "default"})
+            return httpx.Response(200, request=httpx.Request("POST", url), json=data)
+    monkeypatch.setattr(memory_learning.httpx, "Client", Client)
+    model = "text-embedding-3-small" if path == "embeddings" else "gpt-5.6-luna"
+    memory_learning.provider_request("davin", path, {"model": model}, model, .1)
+    assert sent[0].get("service_tier") == (None if path == "embeddings" else "default")
+    if path == "responses":
+        with session_scope() as db:
+            usage = db.scalar(select(Usage))
+            assert usage.tokens["requested_service_tier"] == "default"
+            assert usage.tokens["served_service_tier"] == "default"
+            assert float(usage.amount) == pytest.approx(agent_models.catalog()["luna"].usage_cost(usage.tokens), abs=0.0000005)

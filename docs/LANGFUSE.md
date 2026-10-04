@@ -117,3 +117,26 @@ Readback confirmed no old observations, experiment, or scores remain, while the
 corrected v2 import retains all 937 observations and 256 verified scores. Local
 evidence is preserved, including the deletion audit at
 artifacts/app-evals/half-20260923-sol-graded/langfuse-v1-cleanup.json.
+
+## SPEED1/2 measurement additions — October 4, 2026
+
+Project-scoped read access was reverified in My Project / Davis's Organization.
+The existing integration works for saved synthetic eval evidence; it does not
+currently trace production sessions.
+
+Eval workers now save content-free `latency.log` and joined
+`latency-summary.json` in each attempt directory. Reports distinguish committed
+outcomes, revisions/invocations, retries, effort, token usage and incomplete cost
+evidence. Full trace/DB artifacts continue to use the existing local eval boundary.
+
+The opt-in exporter adds explicit `reasoning_effort` and
+`recorded_duration_seconds` metadata when the provider transport captured them.
+The latter is measured HTTP duration; reconstructed timeline placement remains
+approximate. Do not infer real span latency from reconstructed start/end positions.
+Usage is still charged once from the campaign ledger. These additions were tested
+offline; no new cloud export or live production tracing was enabled during this pass.
+
+Browser timing covers same-tab typed results observed in the foreground.
+It cannot prove a requested Calendar/task page was painted, or that a Live response
+was spoken. Those checks remain part of the device baseline.
+See [SPEED1/2 validation](SPEED_1_2_VALIDATION.md).

@@ -183,7 +183,7 @@ def main():
     p.add_argument("--output")
     p = sub.add_parser("models")
     p.add_argument("--cases")
-    p.add_argument("--models", default="luna", help="Comma-separated profiles; defaults to Luna only. Gemini comparisons are paused.")
+    p.add_argument("--models", default="luna", help="One profile per campaign: luna (low reasoning) or luna-none. Defaults to luna.")
     p.add_argument("--run-paid", action="store_true")
     p.add_argument("--max-provider-requests", type=int, default=20)
     p.add_argument("--max-usd-per-model", type=float, default=10.0)
@@ -212,13 +212,13 @@ def main():
         return 0
     if args.mode == "models":
         # Backward-compatible command, now using the single durable campaign budget.
-        if args.models != "luna":
-            parser.error("Gemini comparisons are paused. Use Luna for current campaigns.")
+        if args.models not in {"luna", "luna-none"}:
+            parser.error("Choose one Luna profile per campaign: luna or luna-none.")
         if not args.run_paid:
             parser.error("Paid execution requires --run-paid")
         from .campaign import main as campaign_main
         from .model_runner import PROBES
-        command = ["run", "--mode", "live-model", "--model", "luna", "--run-paid", "--no-support",
+        command = ["run", "--mode", "live-model", "--model", args.models, "--run-paid", "--no-support",
                    "--cases", args.cases or ",".join(sorted(PROBES)), "--database-url", args.database_url,
                    "--max-usd", str(args.max_usd_per_model), "--repeats", str(args.repeats),
                    "--max-provider-requests", str(args.max_provider_requests)]
