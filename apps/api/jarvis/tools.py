@@ -537,10 +537,10 @@ def non_nullable(schema, fields):
                 prop.update(options[0]) if len(options) == 1 else prop.update(anyOf=options)
 
 
-def instructions(owner_prefs, focus=None, ui_context=None):
+def instructions(owner_prefs, focus=None, ui_context=None, *, tool_policy="baseline"):
     from .agent_instructions import backend_instructions
 
-    return backend_instructions(owner_prefs, focus, ui_context) + "\nOrganization is user-defined. Discover structure_schema (structure tool group) before organizing work. Use record tools for custom types, fields and statuses; use core task IDs only for scheduling/integrations. Never assume fixed Project/Client labels. Structural edits ALWAYS require structure_preview and explicit later confirmation, including changes proposed during a rule interview. Ordinary record changes need no review. Organization learning is separate from personal memories: use routing tools for explicit rules and field clarifications. Do not store inferred routing associations in personal memory. Operational fields never inherit from classification. Work hours are weak context only, never a reason to assign a home on their own."
+    return backend_instructions(owner_prefs, focus, ui_context, tool_policy=tool_policy) + "\nOrganization is user-defined. Discover structure_schema (structure tool group) before organizing work. Use record tools for custom types, fields and statuses; use core task IDs only for scheduling/integrations. Never assume fixed Project/Client labels. Structural edits ALWAYS require structure_preview and explicit later confirmation, including changes proposed during a rule interview. Ordinary record changes need no review. Organization learning is separate from personal memories: use routing tools for explicit rules and field clarifications. Do not store inferred routing associations in personal memory. Operational fields never inherit from classification. Work hours are weak context only, never a reason to assign a home on their own."
 
 
 async def call_tool(owner, turn_id, index, name, arguments, *, device=None, conversation_id=None):

@@ -1004,3 +1004,77 @@ async def test_queued_tier_is_pinned_and_downgrade_cost_is_recorded(
         expected = agent_models.catalog()["luna"].usage_cost(usage.tokens)
         assert float(usage.amount) == pytest.approx(expected)
         assert db.get(Job, work["id"]).status == "succeeded"
+
+@pytest.mark.parametrize("accepted,later", [
+    ("baseline", "reads-v1"), ("discovery-v1", "baseline"), ("reads-v1", "baseline"),
+])
+async def test_tool_policy_is_pinned_and_legacy_work_keeps_baseline(client, monkeypatch, accepted, later):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "agent_tool_policy", accepted)
+    work = action(client, "Hello")
+    with session_scope() as db:
+        assert db.get(Job, work["id"]).payload["tool_policy"] == accepted
+    monkeypatch.setattr(settings, "agent_tool_policy", later)
+    observed = []
+    async def model(agent, messages, definitions, **kwargs):
+        observed.append(definitions)
+        names = {d["name"] for d in definitions}
+        assert ("note_create" in names) == (accepted != "baseline")
+        prompt = messages[0]["content"]
+        assert ("this invocation" in prompt) == (accepted == "reads-v1")
+        return response(message="Hello.")
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(work["id"])
+    assert len(observed) == 1
+    legacy = action(client, "Hello again")
+    with session_scope() as db:
+        job = db.get(Job, legacy["id"])
+        job.payload = {k: v for k, v in job.payload.items() if k != "tool_policy"}
+    accepted = "baseline"
+    await work_runner.run(legacy["id"])
+    assert len(observed) == 2
+
+
+async def test_round_telemetry_includes_controls_and_only_safe_discovery_metadata(client, monkeypatch, caplog):
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", "reads-v1")
+    work = action(client, "PRIVATE request")
+    responder(monkeypatch, [
+        response([("tools_load", {"groups": ["notes"]})]),
+        response([("tools_load", {"groups": ["notes"]})]),
+        response([("work_needs_input", {"question": "PRIVATE clarification?"})]),
+    ])
+    await work_runner.run(work["id"])
+    events = [json.loads(r.message.split("latency ", 1)[1]) for r in caplog.records
+              if r.name == "jarvis.latency"]
+    calls = [e for e in events if e["stage"] == "tool_call"]
+    assert [e["tool"] for e in calls] == ["tools_load", "tools_load", "work_needs_input"]
+    assert calls[0]["newly_loaded_count"] > 0
+    assert calls[1]["newly_loaded_count"] == 0 and calls[1]["already_available_count"] > 0
+    assert calls[2]["outcome"] == "needs_input" and calls[2]["tool_kind"] == "control"
+    assert [e["round"] for e in calls] == [0, 1, 2]
+    assert all(e["revision"] == 1 and e["run_id"] for e in calls)
+    assert "PRIVATE" not in json.dumps(events)
+    assert len([e for e in events if e["stage"] == "model_plan"]) == 3
+
+
+async def test_resumed_trimmed_work_refetches_before_planning_new_edits(client, monkeypatch):
+    from jarvis.work_crypto import seal
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", "reads-v1")
+    work = action(client, "Add Alpha")
+    agent = work_runner.model_for("luna")
+    with session_scope() as db:
+        row = db.get(AgentWork, work["id"])
+        db.expunge(row)
+    with agent_work.principal_for(row):
+        state = await work_runner.initial_state(row, agent, tool_policy="reads-v1")
+    state["tool_names"] = ["removed_or_revoked_tool"]
+    with session_scope() as db:
+        db.get(AgentWork, work["id"]).checkpoint_ciphertext = seal(state)
+    async def model(agent, messages, definitions, **kwargs):
+        assert any("Prior lookup results are historical" in (m.get("content") or "") for m in messages)
+        assert "removed_or_revoked_tool" not in {d["name"] for d in definitions}
+        return response(message="No changes made.")
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(work["id"])
+    with session_scope() as db:
+        assert db.get(Job, work["id"]).status == "succeeded"

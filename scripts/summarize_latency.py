@@ -71,7 +71,7 @@ def summarize(lines):
         runner = first.get("runner_started")
         profile_event = {}
         for event in records:
-            for field in ("profile", "model", "channel", "reasoning", "requested_service_tier"):
+            for field in ("profile", "model", "channel", "reasoning", "requested_service_tier", "tool_policy"):
                 if event.get(field) is not None:
                     profile_event[field] = event[field]
         # These profile IDs have fixed effort semantics, including older partial logs.
@@ -98,7 +98,28 @@ def summarize(lines):
             elapsed = (end["_at"] - begin["_at"]).total_seconds() * 1000
             return round(elapsed, 3) if elapsed >= 0 else None
 
+        calls = [e for e in records if e["stage"] == "tool_call"]
         row = {
+            "tool_policy": profile_event.get("tool_policy"),
+            "round_plans": [
+                {k: e[k] for k in ("run_id", "round", "response_id", "tool_names") if k in e}
+                for e in records if e["stage"] == "model_plan"
+            ],
+            "tool_trace": [
+                {k: e[k] for k in ("run_id", "round", "tool_index", "tool", "tool_kind",
+                                   "outcome", "duration_ms", "groups", "newly_loaded_count",
+                                   "already_available_count") if k in e} for e in calls
+            ],
+            "total_tool_calls": len(calls) if calls or first.get("model_plan") else None,
+            "control_calls": sum(e.get("tool_kind") == "control" for e in calls),
+            "discovery_added_tools": sum(e.get("newly_loaded_count", 0) for e in calls),
+            "discovery_already_available_tools": sum(e.get("already_available_count", 0) for e in calls),
+            "zero_addition_discovery_calls": sum(
+                e.get("tool_kind") == "discovery" and e.get("newly_loaded_count") == 0 for e in calls),
+            "definition_bytes_by_round": [
+                e["definition_bytes"] for e in records
+                if e["stage"] == "model_round" and finite(e.get("definition_bytes"))
+            ],
             "request_id": identity, "revision": revision,
             "channel": profile_event.get("channel") or ("live" if first.get("voice_claimed") else "unknown"),
             "profile": profile_event.get("profile"), "model": profile_event.get("model"),
@@ -149,9 +170,9 @@ def summarize(lines):
 
     groups = defaultdict(list)
     for row in rows:
-        groups[(row["channel"], row["profile"], row["reasoning"], row["requested_service_tier"])].append(row)
+        groups[(row["channel"], row["profile"], row["reasoning"], row["requested_service_tier"], row["tool_policy"])].append(row)
     grouped = {}
-    for (channel, profile, reasoning, tier), group in groups.items():
+    for (channel, profile, reasoning, tier, policy), group in groups.items():
         successful = [r for r in group if r["outcome"] == "succeeded"]
         measured = [r["send_to_render_client_ms"] for r in successful if r["send_to_render_client_ms"] is not None]
         observed = [r["ingress_to_render_observed_ms"] for r in successful if r["ingress_to_render_observed_ms"] is not None]
@@ -162,7 +183,15 @@ def summarize(lines):
         group_key = "/".join((channel or "unknown", profile or "unknown", reasoning or "unknown"))
         if tier:
             group_key += "/" + tier
+        if policy:
+            group_key += "/" + policy
         grouped[group_key] = {
+            "model_rounds": metrics([r["model_rounds"] for r in group]),
+            "total_tool_calls": sum(r["total_tool_calls"] or 0 for r in group)
+                                if any(r["total_tool_calls"] is not None for r in group) else None,
+            "tool_trace_missing_cases": sum(r["total_tool_calls"] is None for r in group),
+            "control_calls": sum(r["control_calls"] for r in group),
+            "zero_addition_discovery_calls": sum(r["zero_addition_discovery_calls"] for r in group),
             "attempted": len(group), "distinct_requests": len({r["request_id"] for r in group}), "succeeded": len(successful),
             "failed_or_censored": len(group) - len(successful),
             "accept_to_finish_ms": metrics([r["accept_to_finish_ms"] for r in successful if r["accept_to_finish_ms"] is not None]),

@@ -97,7 +97,7 @@ def input_state(row):
     return unseal(row.input_ciphertext)
 
 
-async def initial_state(row, agent, reservation=None):
+async def initial_state(row, agent, reservation=None, *, tool_policy="baseline"):
     with session_scope() as db:
         prefs = person_preferences(db, row.owner_id, row.device_id, preferences(db, row.owner_id))
         history = []
@@ -144,7 +144,7 @@ async def initial_state(row, agent, reservation=None):
     memory = (
         "" if prefs.get("shared_workspace") or row.credential_id else await prompt_context(row.owner_id, data["message"][-1500:])
     )
-    system = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id))
+    system = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id), tool_policy=tool_policy)
     system += """\nYou are executing one accepted, durable request. Complete ONLY this request and its explicit corrections.
 Other requests may be running; they do not replace this one. Use saved receipts for completed work.
 Interpret the original user input directly, including natural speech, filler words and multiple clauses.
@@ -354,15 +354,17 @@ async def perform(request_id):
         profile = job.payload.get("profile")
         # Old accepted jobs retain Standard; a later default change cannot reprice them.
         service_tier = job.payload.get("service_tier", "default")
+        tool_policy = job.payload.get("tool_policy", "baseline")
         state = unseal(row.checkpoint_ciphertext)
         if state and "messages" not in state:
             state = {}  # Legacy intake checkpoints contain a routing plan, not a tool loop.
         row.result = {**row.result, "waiting_for": []}
         mark("runner_started", row.id, revision=row.revision, channel="live" if row.voice_session_id else "work",
-             profile=profile, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
+             profile=profile, tool_policy=tool_policy, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
         job.status = "running"
         row.updated_at = now()
         db.expunge(row)
+    restored_reads = bool(state) and tool_policy == "reads-v1"
     started = time.monotonic()
     settings = get_settings()
     final_status, failure = "succeeded", None
@@ -377,14 +379,14 @@ async def perform(request_id):
                 budget.reserve(db, row.owner_id, reservation, 0.10, agent.model)
             if not state:
                 with span("context", row.id, revision=row.revision):
-                    state = await initial_state(row, agent, reservation)
+                    state = await initial_state(row, agent, reservation, tool_policy=tool_policy)
             state["reservation"] = reservation
             checkpoint(row.id, state)
             definitions = registry()
             if row.credential_id:
                 from .external_service import backend_registry
                 definitions = backend_registry(row)
-            session = ToolSession(definitions)
+            session = ToolSession(definitions, policy=tool_policy)
             session.catalog["work_needs_input"] = NEEDS_INPUT
             session.catalog["work_followup"] = work_coordination.FOLLOWUP_TOOL
             session.catalog["work_answer"] = work_continuation.ANSWER_TOOL
@@ -392,7 +394,7 @@ async def perform(request_id):
             if row.voice_session_id:
                 session.catalog["voice_end"] = VOICE_END_TOOL
                 controls.append("voice_end")
-            session.names = list(dict.fromkeys([*session.names, *state["tool_names"], *controls]))
+            session.names = list(dict.fromkeys([*session.names, *(n for n in state["tool_names"] if n in session.catalog), *controls]))
             while not state.get("reply"):
                 with session_scope() as db:
                     current = db.get(AgentWork, row.id)
@@ -444,7 +446,17 @@ async def perform(request_id):
                         state["tool_index"] - state.get("limit_start", 0)
                         >= settings.max_tool_calls_per_request
                     )
+                    if restored_reads:
+                        state["messages"].append({"role": "system", "content":
+                            "This execution resumed. Prior lookup results are historical context, not fresh reads. "
+                            "Before planning new edits, fetch current scoped records and revisions again. "
+                            "Saved mutation receipts still prove completed local effects; never replay a saved "
+                            "create as a new command. Pending source writes are not confirmed remote success."})
+                        restored_reads = False
                     definitions = session.definitions()
+                    mark("model_round", row.id, revision=row.revision, round=state["round"],
+                         tool_policy=tool_policy, available_tools=len(definitions),
+                         definition_bytes=len(json.dumps(definitions).encode()))
                     size = len(json.dumps([state["messages"], definitions]).encode())
                     if size > 250000:
                         raise DomainError(
@@ -511,6 +523,11 @@ async def perform(request_id):
                         }
                     )
                     state["pending"] = message.get("tool_calls") or []
+                    mark("model_plan", row.id, revision=row.revision, round=state["round"],
+                         tool_policy=tool_policy, response_id=result["id"],
+                         tool_names=[c.get("function", {}).get("name")
+                                     if c.get("function", {}).get("name") in session.catalog else "unavailable"
+                                     for c in state["pending"][:100]])
                     state["offset"] = 0
                     state["round"] += 1
                     if not state["pending"]:
@@ -534,6 +551,10 @@ async def perform(request_id):
                 call = state["pending"][state["offset"]]
                 fn = call["function"]
                 args = {}
+                outcome = {}
+                tool_started = time.monotonic()
+                tool_status = "interrupted"
+                discovery = {}
                 try:
                     assert_current(row.owner_id, row.device_id)
                     if (
@@ -575,7 +596,13 @@ async def perform(request_id):
                         state["reply"] = "Voice ended. Saved work remains available."
                     elif fn["name"] == "tools_load":
                         with span("tool_discovery", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
+                            before = set(session.names)
                             outcome = session.load(args)
+                            discovery = {
+                                "groups": list(dict.fromkeys(args["groups"])),
+                                "newly_loaded_count": len(set(session.names) - before),
+                                "already_available_count": len(set(outcome["tools"]) & before),
+                            }
                     else:
                         work_coordination.reserve(row, fn["name"], args, state["tool_index"])
                         with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
@@ -611,6 +638,9 @@ async def perform(request_id):
                         )
                     if outcome.get("ui_action"):
                         state["ui_actions"].append(outcome["ui_action"])
+                except (work_continuation.WorkContinued, work_coordination.WorkDeferred) as exc:
+                    tool_status = "continued" if isinstance(exc, work_continuation.WorkContinued) else "deferred"
+                    raise
                 except DomainError as exc:
                     if exc.code == "WORK_CHANGED":
                         continue
@@ -619,6 +649,16 @@ async def perform(request_id):
                     outcome = {"error": exc.code, "message": exc.message}
                 except (ValueError, TypeError, KeyError) as exc:
                     outcome = {"error": "INVALID_ARGUMENT", "message": str(exc)[:300]}
+                finally:
+                    mark("tool_call", row.id, revision=row.revision, round=state["round"] - 1,
+                         tool_policy=tool_policy, tool_index=state["tool_index"],
+                         tool=fn["name"] if fn["name"] in session.catalog else "unavailable",
+                         tool_kind="control" if fn["name"] in controls else
+                                   "discovery" if fn["name"] == "tools_load" else "domain",
+                         outcome="error" if outcome.get("error") else outcome.get("status", "ok")
+                                 if outcome else tool_status,
+                         duration_ms=round((time.monotonic() - tool_started) * 1000, 3),
+                         **discovery)
                 target = (
                     {
                         key: value

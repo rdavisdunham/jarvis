@@ -96,8 +96,8 @@ def plan(args):
     if not set(modes) <= set(MODES):
         raise ValueError("Unknown execution mode")
     work = jobs(rows, modes, args.repeats, not args.no_support)
-    if getattr(args, "service_tier", None) and any(j["adapter"] != "agent" for j in work):
-        raise ValueError("Service-tier comparison requires agent-only jobs (--no-support)")
+    if (getattr(args, "service_tier", None) or getattr(args, "tool_policy", None)) and any(j["adapter"] != "agent" for j in work):
+        raise ValueError("Service-tier/tool-policy comparison requires agent-only jobs (--no-support)")
     return {
         "version": 1,
         "created_at": datetime.now(UTC).isoformat(),
@@ -118,6 +118,7 @@ def plan(args):
         "workers": args.workers,
         "model": args.model,
         "service_tier": getattr(args, "service_tier", None),
+        "tool_policy": getattr(args, "tool_policy", None),
         "database_url": args.database_url,
         "live_config": str(Path(args.live_config).resolve()) if args.live_config else None,
         "live_config_sha256": config_fingerprint(args.live_config),
@@ -139,6 +140,7 @@ def summary(manifest):
         "cap_usd": manifest["cap_usd"],
         "model": manifest["model"],
         "service_tier": manifest.get("service_tier"),
+        "tool_policy": manifest.get("tool_policy"),
         "workers": manifest["workers"],
         "paid_jobs": sum(j["mode"] == "live-model" for j in manifest["jobs"]),
         "connected_jobs": sum(j["mode"] == "live-service" for j in manifest["jobs"]),
@@ -227,6 +229,7 @@ def execute(directory, manifest, job):
                 "judge": manifest.get("judge", "luna"),
                 "model": manifest["model"],
                 "service_tier": manifest.get("service_tier"),
+                "tool_policy": manifest.get("tool_policy"),
                 "fingerprint": manifest["fingerprint"],
             }
             atomic_json(attempt / "input.json", config)
@@ -403,6 +406,7 @@ def main(argv=None):
         p.add_argument("--cases")
         p.add_argument("--mode", default="offline")
         p.add_argument("--model", choices=["luna", "luna-none"], default="luna")
+        p.add_argument("--tool-policy", choices=["baseline", "discovery-v1", "reads-v1"], help="Pinned tool-policy arm for isolated agent evals only.")
         p.add_argument("--service-tier", choices=["default", "fast"], help="Explicit tier for agent evals only; production settings are untouched.")
         p.add_argument("--judge", choices=["luna", "external"], default="luna")
         p.add_argument("--max-usd", type=float, default=10)

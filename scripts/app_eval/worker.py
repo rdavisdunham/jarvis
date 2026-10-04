@@ -66,6 +66,7 @@ def main(path):
 
                 from jarvis.config import get_settings
                 get_settings().agent_service_tier = config.get("service_tier") or "default"
+                get_settings().agent_tool_policy = config.get("tool_policy") or "baseline"
                 profile = config.get("model", "luna")
                 if profile not in {"luna", "luna-none"}:
                     raise ValueError("Unsupported task-agent profile")
@@ -180,6 +181,7 @@ def main(path):
         with (attempt / "latency.log").open() as timings:
             summary = summarize(priced_latency(timings, trace))
             summary["requested_service_tier"] = config.get("service_tier")
+            summary["tool_policy"] = config.get("tool_policy") or "baseline"
             summary["cost_basis"] = "metered_provider_usage_at_returned_service_tier"
             atomic_json(attempt / "latency-summary.json", summary)
         if config.get("fingerprint") and config["fingerprint"] != fingerprint():

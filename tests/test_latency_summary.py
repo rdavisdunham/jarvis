@@ -114,3 +114,38 @@ def test_tier_groups_do_not_mix_and_estimated_cost_is_labelled():
     assert fast["attempted"] == 3 and fast["estimated_tier_cost_cases"] == 1
     assert fast["cost_evidence"] == "includes_tier_estimates"
     assert next(r for r in report["requests"] if r["request_id"] == "downgrade")["served_service_tiers"] == ["default"]
+
+def test_round_detail_includes_controls_and_discovery_without_double_counting():
+    report = summarize([
+        line("runner_started", "r", "2026-10-04T00:00:00Z", run_id="a",
+             tool_policy="reads-v1", profile="luna", channel="work"),
+        line("model", "r", "2026-10-04T00:00:01Z", run_id="a", round=0, duration_ms=10),
+        line("model_round", "r", "2026-10-04T00:00:01Z", run_id="a", round=0, definition_bytes=100),
+        line("model_plan", "r", "2026-10-04T00:00:02Z", run_id="a", round=0,
+             tool_names=["tools_load"], response_id="resp"),
+        line("tool_discovery", "r", "2026-10-04T00:00:03Z", duration_ms=1),
+        line("tool_call", "r", "2026-10-04T00:00:03Z", run_id="a", round=0,
+             tool_index=0, tool="tools_load", tool_kind="discovery", groups=["notes"],
+             newly_loaded_count=0, already_available_count=8),
+        line("tool_call", "r", "2026-10-04T00:00:04Z", run_id="a", round=1,
+             tool_index=1, tool="work_needs_input", tool_kind="control", outcome="needs_input"),
+        line("work_finished", "r", "2026-10-04T00:00:05Z", outcome="needs_input"),
+    ])
+    row = report["requests"][0]
+    assert row["total_tool_calls"] == 2 and row["control_calls"] == 1
+    assert row["tool_discovery"] == 1 and row["zero_addition_discovery_calls"] == 1
+    assert row["round_plans"][0]["tool_names"] == ["tools_load"]
+    assert row["tool_trace"][0]["groups"] == ["notes"]
+    assert row["definition_bytes_by_round"] == [100]
+    assert row["tool_policy"] == "reads-v1"
+    assert report["groups"]["work/luna/low/reads-v1"]["attempted"] == 1
+
+def test_missing_tool_trace_is_not_reported_as_measured_zero():
+    for measured in (False, True):
+        records = [line("runner_started", "r", "2026-10-04T00:00:00Z", profile="luna", channel="work")]
+        if measured:
+            records.append(line("model_plan", "r", "2026-10-04T00:00:01Z", tool_names=[]))
+        records.append(line("work_finished", "r", "2026-10-04T00:00:02Z", outcome="succeeded"))
+        report = summarize(records)
+        assert report["requests"][0]["total_tool_calls"] == (0 if measured else None)
+        assert report["groups"]["work/luna/low"]["tool_trace_missing_cases"] == (0 if measured else 1)

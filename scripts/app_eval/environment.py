@@ -46,6 +46,7 @@ def settings_env(url, *, live=False, providers=("OPENAI", "GEMINI")):
         "JARVIS_WORKER_ENABLED": "false",
         "JARVIS_COST_TRACKING_ENABLED": "false",
         "JARVIS_AGENT_SERVICE_TIER": "default",
+        "JARVIS_AGENT_TOOL_POLICY": "baseline",
         "JARVIS_EXTERNAL_SERVICES_ENABLED": "true" if live else "false",
         "JARVIS_SEMANTIC_SEARCH_ENABLED": "false",
         "JARVIS_GOOGLE_CLIENT_ID": "",

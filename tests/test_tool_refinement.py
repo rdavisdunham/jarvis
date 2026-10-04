@@ -267,3 +267,66 @@ def test_navigation_schema_identifies_notes_and_record_opening():
     description = tools["ui_show"]["parameters"]["properties"]["entity_id"]["description"]
     assert "note for notes" in description and "Required to show a specific record" in description
     assert "Reading does not display" in tools["note_read"]["description"]
+
+
+@pytest.mark.parametrize("policy", ["discovery-v1", "reads-v1"])
+def test_discovery_policy_is_small_idempotent_and_scoped(policy):
+    session = ToolSession(registry(), policy=policy)
+    assert session.names == [*CORE, "note_create"]
+    assert len(session.names) == 20
+    original = list(session.names)
+    first = session.load({"groups": ["notes", "notes"]})
+    assert first["already_available"] == ["note_search", "note_read", "note_create"]
+    assert "note_tasks" in first["newly_loaded"]
+    assert session.names[:len(original)] == original
+    second = session.load({"groups": ["notes"]})
+    assert second["newly_loaded"] == []
+    assert second["already_available"] == first["tools"]
+    baseline = ToolSession(registry())
+    assert baseline.names == list(CORE) and "note_create" not in baseline.names
+    restricted = ToolSession([t for t in registry() if t["name"] in {"tools_load", "task_list"}], policy=policy)
+    assert restricted.load({"groups": ["notes"]})["tools"] == []
+    assert restricted.names == ["tools_load", "task_list"]
+    assert "Call an exposed tool directly" in session.catalog["tools_load"]["description"]
+
+
+def test_read_policy_preserves_full_read_and_remote_safety_guidance():
+    with session_scope() as db:
+        prefs = preferences(db, "davin")
+    revised = backend_instructions(prefs, tool_policy="reads-v1")
+    assert "this invocation" in revised and "restored checkpoints are not fresh reads" in revised
+    assert "On a revision conflict, reread" in revised
+    assert "queued external write is still pending" in revised
+    assert "Call an exposed tool directly" in revised
+    baseline = backend_instructions(prefs)
+    assert "this invocation" not in baseline
+    catalog = ToolSession(registry(), policy="reads-v1").catalog
+    assert "compact resolver/list result" in catalog["task_update"]["description"]
+    assert "FULL event-field replacement" in catalog["calendar_update"]["description"]
+    assert "read the exact note" in catalog["note_search"]["description"]
+    assert "Copy schema_revision and expected_revision" in catalog["record_update"]["description"]
+    with pytest.raises(ValueError):
+        ToolSession(registry(), policy="unknown")
+
+
+async def test_compact_resolver_supports_sparse_edit_without_losing_omitted_data():
+    saved = command("task.create", {"title": "Sparse target", "notes": "N" * 400,
+        "tags": ["keep"], "due_date": "2030-01-18", "due_time": "09:00",
+        "due_timezone": "America/Chicago", "planned_date": "2030-01-16"})
+    result = await call_tool("davin", "sparse", 0, "task_resolve",
+                             {"scope": "search", "query": "Sparse target"})
+    found = result["tasks"][0]
+    assert not result["ambiguous"]
+    assert found["id"] == saved["id"] and found["revision"] == saved["revision"]
+    assert found["notes_truncated"] and len(found["notes_preview"]) == 200
+    assert "notes" not in found
+    assert found["source"]["provider"] == "eridani"
+    changed = await call_tool("davin", "sparse", 1, "task_update",
+        {"task_id": found["id"], "expected_revision": found["revision"], "due_date": "2030-01-19"})
+    row = changed["data"]
+    assert row["notes"] == "N" * 400 and row["tags"] == ["keep"]
+    assert row["planned_date"] == "2030-01-16" and row["due_time"] == "09:00"
+    with pytest.raises(DomainError) as error:
+        await call_tool("davin", "sparse", 2, "task_update",
+            {"task_id": found["id"], "expected_revision": found["revision"], "priority": 2})
+    assert error.value.code == "REVISION_CONFLICT"
