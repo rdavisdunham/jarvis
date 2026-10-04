@@ -1,6 +1,14 @@
+import importlib.util
 import json
+from pathlib import Path
 
-from scripts.summarize_latency import summarize
+# Console-script pytest does not add the repository root to sys.path in CI.
+spec = importlib.util.spec_from_file_location(
+    "latency_summary", Path(__file__).resolve().parents[1] / "scripts/summarize_latency.py"
+)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+summarize = module.summarize
 
 
 def line(stage, identity, utc, **fields):

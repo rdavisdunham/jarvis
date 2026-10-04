@@ -317,3 +317,8 @@ baseline. Frontend unit verification: **225 passed, 1 skipped**. Catalog validat
 and the coverage ratchet passed (215 fully bound cases). CI must pass before merge;
 production checks are distinct from these local results. No round-reduction behavior
 is enabled in this release.
+
+The first PR CI run caught a test-only import-path dependency in the new latency
+summary test. It now loads the script by its repository-relative path, matching
+existing script tests, and is checked with console-script pytest without a
+repository-root PYTHONPATH. The failing CI run is retained as evidence.
