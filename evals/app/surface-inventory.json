@@ -202,6 +202,10 @@
       "feature": "custom_records"
     },
     {
+      "name": "record.instantiate",
+      "feature": "custom_records"
+    },
+    {
       "name": "record.link",
       "feature": "custom_records"
     },
@@ -312,6 +316,22 @@
     {
       "name": "task.update",
       "feature": "task_edit"
+    },
+    {
+      "name": "template.archive",
+      "feature": "custom_records"
+    },
+    {
+      "name": "template.capture",
+      "feature": "custom_records"
+    },
+    {
+      "name": "template.create",
+      "feature": "custom_records"
+    },
+    {
+      "name": "template.update",
+      "feature": "custom_records"
     }
   ],
   "read_tools": [
@@ -432,6 +452,10 @@
       "feature": "custom_records"
     },
     {
+      "name": "record_instantiate_preview",
+      "feature": "custom_records"
+    },
+    {
       "name": "record_list",
       "feature": "custom_records"
     },
@@ -474,6 +498,10 @@
     {
       "name": "task_resolve",
       "feature": "task_edit"
+    },
+    {
+      "name": "template_list",
+      "feature": "custom_records"
     },
     {
       "name": "time_resolve",
@@ -902,6 +930,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/external/structure/templates",
+      "handler": "external_templates",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/integrations/google",
       "handler": "status",
       "source": "apps/api/jarvis/google_routes.py",
@@ -1277,6 +1312,27 @@
       "handler": "routing_state",
       "source": "apps/api/jarvis/structure_routes.py",
       "feature": "routing_rules"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/templates",
+      "handler": "templates",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/structure/templates/instantiate/preview",
+      "handler": "instantiate_preview",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/templates/{template_id}",
+      "handler": "template",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
     },
     {
       "method": "GET",

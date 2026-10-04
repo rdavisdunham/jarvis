@@ -21,6 +21,7 @@ PREFIX = {
     "notification": "notifications",
     "planning": "planning",
     "record": "custom_records",
+    "template": "custom_records",
     "routing": "routing_rules",
     "schedule": "routines",
     "settings": "browser_settings",
@@ -88,7 +89,7 @@ def route_owner(path, source):
     if "/structure/routing" in path:
         return "routing_rules"
     if "/structure" in path:
-        return "custom_records" if "record" in path or "by-core" in path else "custom_schema"
+        return "custom_records" if "record" in path or "template" in path or "by-core" in path else "custom_schema"
     if "/work/actions" in path or "/commands/" in path:
         return "receipts"
     if "/work" in path:
