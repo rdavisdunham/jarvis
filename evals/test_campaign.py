@@ -173,3 +173,26 @@ def test_external_judge_preserves_evidence_without_provider_calls(tmp_path, monk
     from scripts.app_eval.judge import _EXTERNAL
 
     assert _EXTERNAL.get() is None
+
+@pytest.mark.parametrize("profile", ["luna", "luna-none"])
+def test_campaign_plan_carries_selected_profile_without_paid_execution(tmp_path, profile):
+    from scripts.app_eval.campaign import main
+    output = tmp_path / "plan.json"
+    assert main(["plan", "--mode", "live-model", "--cases", "task_capture.01",
+                 "--no-support", "--model", profile, "--output", str(output)]) == 0
+    manifest = json.loads(output.read_text())
+    assert manifest["model"] == profile
+    assert any(job["adapter"] == "agent" for job in manifest["jobs"])
+
+
+@pytest.mark.parametrize("tier", ["default", "fast"])
+def test_service_tier_is_explicit_agent_only_campaign_metadata(tmp_path, tier):
+    from scripts.app_eval.campaign import main
+    output = tmp_path / "tier-plan.json"
+    args = ["plan", "--mode", "live-model", "--cases", "task_capture.01", "--model", "luna",
+            "--service-tier", tier, "--output", str(output)]
+    assert main(args + ["--no-support"]) == 0
+    manifest = json.loads(output.read_text())
+    assert manifest["service_tier"] == tier and manifest["model"] == "luna"
+    with pytest.raises(ValueError, match="agent-only"):
+        main(["plan", "--mode", "offline", "--service-tier", tier, "--cases", "task_capture.01"])

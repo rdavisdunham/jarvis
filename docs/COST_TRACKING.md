@@ -21,8 +21,16 @@ Usage is an estimate, not a provider invoice. Credits, taxes, infrastructure and
 isolated eval runs are excluded. Missing usage remains uncertain. Known usage
 from an incomplete answer is recorded; repeated usage IDs cannot double-charge.
 
-Prices verified September 19, 2026:
-- Luna: $0.20/M input, $0.02/M cached input, $0.25/M cache writes, $1.20/M output.
+Luna Fast accounting added October 4, 2026. Interactive requests default to Fast;
+scheduled learning and unqualified eval campaigns stay Standard. Usage metadata
+records requested/served tiers and whether the tier price is estimated. Fast
+reservations use premium rates; a returned Standard tier is charged at Standard
+rates. Stored amounts retain the database's existing six-decimal precision.
+
+Configured prices (Luna Fast checked October 4; other rates last verified September 19):
+- Luna Standard: $0.20/M input, $0.02/M cached input, $0.25/M cache writes, $1.20/M output.
+  Fast: $0.40/M input, $0.04/M cached input, $0.50/M cache writes, $2.40/M output.
+  [Fast tier behavior](https://developers.openai.com/api/docs/guides/fast-mode).
   Above 272K input, input rates double and output is 1.5 times.
   https://developers.openai.com/api/docs/models/gpt-5.6-luna
 - Gemini 3.8 Flash: $0.75/M input and $3.75/M output through 2026, then $1.50/$7.50.

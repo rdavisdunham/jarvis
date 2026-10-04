@@ -3,6 +3,7 @@ import json
 from uuid import uuid4
 
 import pytest
+import httpx
 from cryptography.fernet import Fernet
 from jarvis import agent_work, work_intake, work_runner
 from jarvis.config import get_settings
@@ -76,6 +77,58 @@ def responder(monkeypatch, responses):
 
     monkeypatch.setattr(work_runner, "request_model", model)
     return model
+
+
+@pytest.mark.asyncio
+async def test_none_profile_is_explicit_and_frozen_for_accepted_work(client, monkeypatch, caplog):
+    from jarvis import agent_models
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna-none"})
+    boot = client.get("/api/v1/bootstrap").json()
+    assert boot["agent_profile"] == "luna-none" and boot["agent_reasoning"] == "none"
+    assert next(m for m in boot["agent_options"] if m["id"] == "luna")["reasoning_effort"] == "low"
+    work, _ = accept(client, "Add Alpha")
+    with session_scope() as db:
+        assert db.get(Job, work["id"]).payload["profile"] == "luna-none"
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna"})
+    bodies = []
+
+    class Client:
+        def __init__(self, **_): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def post(self, url, *, json, headers):
+            bodies.append(json)
+            output = ([{"type": "function_call", "call_id": "call_alpha", "name": "task_create",
+                        "arguments": '{"title":"Alpha"}', "status": "completed"}]
+                      if len(bodies) == 1 else
+                      [{"type": "message", "role": "assistant", "content":
+                        [{"type": "output_text", "text": "Added Alpha."}]}])
+            return httpx.Response(200, request=httpx.Request("POST", url),
+                json={"id": "resp_" + str(len(bodies)), "status": "completed", "output": output,
+                      "usage": {"input_tokens": 100, "output_tokens": 20}})
+    monkeypatch.setattr(work_runner.httpx, "AsyncClient", Client)
+    await work_runner.run(work["id"])
+    assert len(bodies) == 2
+    assert all(body["model"] == "gpt-5.6-luna" and body["reasoning"] == {"effort": "none"}
+               and body["max_output_tokens"] == 8192 for body in bodies)
+    assert all(body["tools"] for body in bodies)
+    with session_scope() as db:
+        assert db.get(Job, work["id"]).status == "succeeded"
+        assert [task.title for task in db.scalars(select(Task))] == ["Alpha"]
+    events = [json.loads(record.message.split("latency ", 1)[1])
+              for record in caplog.records if record.name == "jarvis.latency"]
+    related = [event for event in events if event["request_id"] == work["id"]]
+    assert [event["stage"] for event in related].count("model_usage") == 2
+    assert next(event for event in related if event["stage"] == "work_finished")["receipts"] == 1
+    assert all(event["profile"] == "luna-none" for event in related if event["stage"] == "model_usage")
+    body = {"stage": "work_card_rendered", "revision": 1, "elapsed_ms": 123.4}
+    first = client.post("/api/v1/work/" + work["id"] + "/latency", json=body)
+    second = client.post("/api/v1/work/" + work["id"] + "/latency", json=body)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["recorded"] and not second.json()["recorded"]
+    assert client.post("/api/v1/work/" + work["id"] + "/latency",
+                       json={"stage": "other", "revision": 1}).status_code == 422
 
 
 def test_acceptance_is_idempotent_and_input_encrypted(client):
@@ -913,3 +966,41 @@ def test_conversation_pagination_keeps_older_markers(client):
         assert [w["id"] for w in page["items"]]==[first["id"]] and page["next_offset"]==1
         tail=agent_work.list_work(db,row.owner_id,row.account_id,conversation_id=row.conversation_id,limit=1,offset=page["next_offset"])
         assert [w["id"] for w in tail["items"]]==[second["id"]] and tail["next_offset"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("accepted_tier,later_tier,legacy", [
+    ("fast", "default", False),
+    ("default", "fast", False),
+    ("default", "fast", True),
+])
+async def test_queued_tier_is_pinned_and_downgrade_cost_is_recorded(
+    client, monkeypatch, accepted_tier, later_tier, legacy,
+):
+    from jarvis import agent_models
+    from jarvis.models import Usage
+    settings = get_settings()
+    monkeypatch.setattr(settings, "agent_service_tier", accepted_tier)
+    monkeypatch.setattr(settings, "cost_tracking_enabled", True)
+    work, _ = accept(client, "Hello")
+    with session_scope() as db:
+        job = db.get(Job, work["id"])
+        assert job.payload["service_tier"] == accepted_tier
+        if legacy:
+            job.payload = {"profile": job.payload["profile"]}
+    monkeypatch.setattr(settings, "agent_service_tier", later_tier)
+    called = []
+    async def model(agent, *_args, **_kwargs):
+        called.append(agent)
+        return {**response(message="Hello."), "service_tier": "default"}
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(work["id"])
+    assert len(called) == 1 and called[0].service_tier == accepted_tier
+    with session_scope() as db:
+        usage = db.scalar(select(Usage).where(Usage.reservation_id == work["id"]))
+        assert usage.tokens["requested_service_tier"] == accepted_tier
+        assert usage.tokens["served_service_tier"] == "default"
+        assert usage.tokens["cost_basis"] == "returned_service_tier"
+        expected = agent_models.catalog()["luna"].usage_cost(usage.tokens)
+        assert float(usage.amount) == pytest.approx(expected)
+        assert db.get(Job, work["id"]).status == "succeeded"

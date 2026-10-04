@@ -140,3 +140,60 @@ def test_swallowed_transport_error_still_fails_worker_as_infrastructure(ledger):
                 except httpx.ConnectError:
                     pass
     assert ledger.snapshot()["calls"][0]["state"] == "uncertain"
+
+
+@pytest.mark.parametrize("requested,served,multiplier", [
+    ("default", "default", 1), ("fast", "priority", 2), ("fast", "fast", 2),
+    ("fast", "default", 1),
+])
+def test_service_tier_changes_only_transport_and_uses_actual_cost(ledger, requested, served, multiplier):
+    import json
+    from decimal import Decimal
+    from jarvis.agent_models import catalog
+    trace = []
+    def respond(request):
+        payload = json.loads(request.content)
+        assert payload["service_tier"] == requested
+        assert payload["reasoning"] == {"effort": "low"}
+        assert payload["input"] == "unchanged"
+        assert int(request.headers["content-length"]) == len(request.content)
+        return httpx.Response(200, json={"id": "response-test", "service_tier": served,
+            "usage": {"input_tokens": 100, "output_tokens": 20}})
+    with metered(ledger, "tier", trace, service_tier=requested):
+        with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+            client.post("https://api.openai.com/v1/responses", json={
+                "model": "gpt-5.6-luna", "max_output_tokens": 2048, "input": "unchanged",
+                "reasoning": {"effort": "low"}})
+    call = ledger.snapshot()["calls"][0]
+    base = catalog()["luna"].usage_cost({"prompt_tokens": 100, "completion_tokens": 20})
+    assert float(call["actual_usd"]) == pytest.approx(base * multiplier, abs=1e-9)
+    assert Decimal(call["bound_usd"]) >= Decimal(call["actual_usd"])
+    assert trace[0]["requested_service_tier"] == requested
+    assert trace[0]["served_service_tier"] == served
+    assert trace[0]["billed_cost_usd"] == pytest.approx(base * multiplier)
+    assert catalog()["luna"].reasoning_effort == "low"
+
+
+def test_fast_reserves_premium_before_network_and_missing_tier_stays_uncertain(ledger):
+    from decimal import Decimal
+    trace = []
+    def respond(request):
+        call = ledger.snapshot()["calls"][0]
+        assert Decimal(call["bound_usd"]) > Decimal(".0049")
+        return reply(request)  # Deliberately missing the requested tier evidence.
+    with pytest.raises(RuntimeError, match="service tier"):
+        with metered(ledger, "tier", trace, service_tier="fast"):
+            with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+                client.post("https://api.openai.com/v1/responses", json={
+                    "model": "gpt-5.6-luna", "max_output_tokens": 2048, "input": "x"})
+    assert ledger.snapshot()["calls"][0]["state"] == "uncertain"
+    assert trace[0]["usage_uncertain"] is True
+
+
+def test_latency_report_uses_tier_pricing_without_rewriting_raw_evidence():
+    import json
+    from scripts.app_eval.transport import priced_latency
+    line = 'latency {"stage":"model_usage","response_id":"r","cost_usd":0.01}\n'
+    priced = list(priced_latency([line], [{"response_id": "r", "billed_cost_usd": 0.02}]))
+    assert json.loads(priced[0].split("latency ", 1)[1])["cost_usd"] == 0.02
+    assert json.loads(line.split("latency ", 1)[1])["cost_usd"] == 0.01

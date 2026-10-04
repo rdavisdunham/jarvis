@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import time
+import threading
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -21,6 +22,7 @@ from .auth import Identity, authenticate, digest, sign_in
 from .config import get_settings
 from .conversation import chat
 from .db import session_scope
+from .latency import mark
 from .domain import DomainError, execute, owned, preferences, serial
 from .google_routes import router as google_router
 from .memory_service import semantic_search
@@ -272,6 +274,7 @@ def bootstrap(user: User):
             "agent_model": agent.model,
             "agent_profile": agent.profile_id,
             "agent_reasoning": agent.reasoning_effort,
+            "agent_service_tier": agent.service_tier,
             "agent_provider": agent.provider,
             "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,
@@ -572,6 +575,7 @@ def work_create(body: ChatInput, user: User):
     from .config import require_external_services
     from .domain import capture_source, enqueue_job
     require_external_services()
+    mark("work_http_received", str(body.turn_id), channel="work")
     with session_scope() as db:
         account = account_for(db, user.owner_id, user.device_id)
         row = enqueue(db, user.owner_id, account, user.device_id, str(body.conversation_id),
@@ -583,7 +587,55 @@ def work_create(body: ChatInput, user: User):
             observe_source(db,source)
         if source and conv.learning:
             enqueue_job(db, user.owner_id, "extract_memory", {"source_id": source.id})
-        return public(db, row)
+        result = public(db, row)
+    return result
+
+
+# Browser evidence is scoped to the same authenticated work/device. It is a
+# client-reported observation, never a durable completion or provider usage record.
+class ClientLatencyInput(Input):
+    stage: Literal["work_card_rendered", "work_reply_rendered"]
+    revision: int = Field(ge=1, le=100000)
+    elapsed_ms: float = Field(ge=0, le=300000, allow_inf_nan=False)
+
+
+client_latency_lock = threading.Lock()
+client_latency_seen: dict[tuple[str, str, int, str], float] = {}
+client_latency_rates: dict[tuple[str, str], deque] = defaultdict(deque)
+
+
+@app.post("/api/v1/work/{request_id}/latency")
+def work_client_latency(request_id: UUID, body: ClientLatencyInput, user: User):
+    from .agent_work import require_work
+    key = (user.owner_id, str(request_id), body.revision, body.stage)
+    scope = (user.account_id or user.owner_id, user.device_id)
+    with session_scope() as db:
+        row = require_work(db, user.owner_id, user.account_id, str(request_id))
+        job = db.get(Job, row.id)
+        if row.device_id != user.device_id or row.revision != body.revision or not job or job.status not in {
+            "succeeded", "partial", "failed", "cancelled", "expired"
+        }:
+            raise DomainError("NOT_AUTHORIZED", "This work result is unavailable on this device.", 403)
+        channel = "live" if row.voice_session_id else "work"
+    stamp = time.monotonic()
+    with client_latency_lock:
+        if scope not in client_latency_rates and len(client_latency_rates) >= 2048:
+            client_latency_rates.pop(next(iter(client_latency_rates)))
+        rate = client_latency_rates[scope]
+        while rate and rate[0] < stamp - 60:
+            rate.popleft()
+        if len(rate) >= 60:
+            raise DomainError("RATE_LIMITED", "Too many timing reports.", 429)
+        rate.append(stamp)
+        while client_latency_seen and (len(client_latency_seen) >= 4096 or
+                next(iter(client_latency_seen.values())) < stamp - 3600):
+            client_latency_seen.pop(next(iter(client_latency_seen)))
+        if key in client_latency_seen:
+            return {"recorded": False}
+        client_latency_seen[key] = stamp
+    mark(body.stage, str(request_id), revision=body.revision, channel=channel,
+         elapsed_ms=body.elapsed_ms, source="client_reported")
+    return {"recorded": True}
 
 
 class VoiceDraftInput(Input):

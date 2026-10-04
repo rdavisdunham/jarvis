@@ -1,3 +1,4 @@
+import { chatSendStarted, observeWorkRendered } from "./clientLatency";
 import {Questions,ReviewInvitation} from "./Questions";
 import { SourceColorSettings } from "./SourceDetails";
 import { VoiceDrafts } from "./VoiceDrafts";
@@ -342,6 +343,15 @@ export default function App() {
   useEffect(() => {
     setMessages(current => mergeWorkReplies(current, work.chatItems.filter(item => item.conversation_id === conversationRef.current)));
   }, [work.chatItems]);
+  useEffect(() => {
+    if (!companion) return;
+    const stop: Array<() => void> = [];
+    for (const element of document.querySelectorAll<HTMLElement>(".message.assistant[data-native-id]")) {
+      const match = /^work:([0-9a-f-]{36}):assistant:(\d+)$/.exec(element.dataset.nativeId ?? "");
+      if (match) stop.push(observeWorkRendered(element, match[1], Number(match[2]), "work_reply_rendered"));
+    }
+    return () => stop.forEach(cleanup => cleanup());
+  }, [messages, companion]);
   const presentedSearchWork = useRef(new Set<string>());
   useEffect(()=>{
     if(!companion)return;
@@ -1541,6 +1551,7 @@ export default function App() {
     if (!chatText.trim() || thinking || voice.current) return;
     const content = chatText.trim(),
       turn_id = crypto.randomUUID();
+    chatSendStarted(turn_id);
     setChatText("");
     setThinking(true);
     setMessages((m) => [...m, { id: turn_id, role: "user", content, created_at: new Date().toISOString() }]);

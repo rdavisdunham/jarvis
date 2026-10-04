@@ -22,6 +22,7 @@ def request(agent, messages, tools, limited):
             inputs.append({"role": message["role"], "content": message["content"]})
     return {
         "model": agent.model,
+        "service_tier": agent.service_tier,
         "input": inputs,
         "tools": [
             {
@@ -70,6 +71,7 @@ def normalize(data):
             raise ValueError("Responses returned an unsupported output item")
     return {
         "id": data["id"],
+        "service_tier": data.get("service_tier"),
         "usage": {
             "prompt_tokens": usage["input_tokens"],
             "completion_tokens": usage["output_tokens"],

@@ -3,6 +3,8 @@
 Start with the [active TODO](TODO.md) for what to do next.
 The [web v1 completion PRD](ERIDANI_WEB_V1_PRD.md) defines the finish line;
 the [response-speed plan](ERI_LATENCY_PLAN.md) defines the audited latency work.
+The [round-reduction plan](ERI_ROUND_REDUCTION_PLAN.md) turns the October traces
+into the next implementation sequence.
 
 ## Current planning and implementation references
 
@@ -37,7 +39,8 @@ deployed version or completed device acceptance.
 - [Google](GOOGLE_SETUP.md), [Linear](LINEAR_SETUP.md),
   [external-agent API/MCP](EXTERNAL_AGENTS.md).
 - [Luna](LUNA_SETUP.md) and [optional Gemini](GEMINI_SETUP.md) configuration.
-  Gemini comparisons are paused; a Luna no-reasoning profile is planned, not yet shipped.
+  Gemini comparisons are paused. Luna low plus Fast is the interactive default in
+  the speed release; no reasoning is selectable. Scheduled learning stays Standard.
 
 ## Evaluation evidence
 

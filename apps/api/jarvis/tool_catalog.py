@@ -397,7 +397,7 @@ DESCRIPTIONS = {
     "linear_compare": "Read local/remote issue differences before asking which version the owner wants.",
     "linear_resolve": "Apply only the owner's explicit choice for a previously inspected Linear conflict.",
     "linear_select": "Select Linear teams using current connection IDs/revision. Uses the direct API, not Slack or the Linear Agent.",
-    "settings_update": "Change only explicitly requested profile/settings fields. Profile selects luna or gemini; "
+    "settings_update": "Change only explicitly requested profile/settings fields. Profile selects luna (low reasoning), luna-none (no reasoning), or gemini; "
     "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization.",
     "ui_state": "Read the authenticated device's current screen, visible IDs, filters, layouts, active editor and allowed Live voices. This is bounded ephemeral data; no connected device means no verified screen. Read before preserving existing view settings.",
     "ui_workspace": "Change view options without editing records. Work (all/today/inbox/week) supports list, board and timeline, task sorting and board grouping. Projects timeline/board requires view=organize and organization_tab=project. timeline_date plus span 14/30/90 selects the range. Notes supports keyword/semantic mode and note_list_id from note_lists (empty clears, uncategorized shows unfiled notes); Notes/organize support show_archived. Settings sections: profile, organization (routing/reviews/work hours), notifications, voice, integrations, privacy, system, sharing. Omitted options/filters are preserved; invalid combinations are refused. Wait for displayed acknowledgement.",

@@ -1,6 +1,6 @@
 """Backend text/task model routing; voice and memory embeddings have separate providers."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
 from .config import get_settings
@@ -17,6 +17,7 @@ class AgentModel:
     profile: str | None = None
     api: str = "chat_completions"
     reasoning_effort: str | None = None
+    service_tier: str = "default"
 
     @property
     def profile_id(self):
@@ -36,9 +37,10 @@ class AgentModel:
             "available": self.available,
         }
 
-    def rates(self, today=None):
+    def rates(self, today=None, *, service_tier=None):
         if self.model == "gpt-5.6-luna":
-            return (0.20, 1.20)
+            tier = self.service_tier if service_tier is None else service_tier
+            return (0.40, 2.40) if tier in {"fast", "priority"} else (0.20, 1.20)
         if self.provider == "gemini":
             today = today or datetime.now(UTC).date()
             # Published introductory pricing expires at the end of 2026.
@@ -53,8 +55,21 @@ class AgentModel:
         incoming *= 1.25 if self.model == "gpt-5.6-luna" else 1
         return (input_bound * incoming + self.max_output_tokens * outgoing) / 1_000_000
 
+    def usage_record(self, data):
+        """Retain tier provenance with token accounting; missing tier is an estimate."""
+        usage = dict(data.get("usage") or {})
+        if self.model == "gpt-5.6-luna":
+            served = data.get("service_tier")
+            verified = isinstance(served, str) and served in {"default", "fast", "priority"}
+            usage.update(
+                requested_service_tier=self.service_tier,
+                served_service_tier=served if verified else None,
+                cost_basis="returned_service_tier" if verified else "requested_service_tier_estimate",
+            )
+        return usage
+
     def usage_cost(self, usage):
-        incoming, outgoing = self.rates()
+        incoming, outgoing = self.rates(service_tier=usage.get("served_service_tier"))
         prompt = usage["prompt_tokens"]
         if self.model == "gpt-5.6-luna" and prompt > 272000:
             incoming, outgoing = incoming * 2, outgoing * 1.5
@@ -106,6 +121,17 @@ def catalog():
             api="responses",
             reasoning_effort="low",
         ),
+        "luna-none": AgentModel(
+            "openai",
+            "gpt-5.6-luna",
+            "Luna · no reasoning",
+            "https://api.openai.com/v1/responses",
+            settings.openai_api_key,
+            8192,
+            profile="luna-none",
+            api="responses",
+            reasoning_effort="none",
+        ),
         "gemini": AgentModel(
             "gemini",
             "gemini-3.8-flash",
@@ -131,7 +157,7 @@ def default_provider():
     return next((p for p in ("luna", "groq", "gemini") if models[p].available), "luna")
 
 
-def selected(prefs, *, require_key=False):
+def selected(prefs, *, require_key=False, service_tier=None):
     from .domain import DomainError
 
     profile = prefs.get("agent_profile") or prefs.get("agent_provider") or default_provider()
@@ -150,4 +176,9 @@ def selected(prefs, *, require_key=False):
             f"{model.label} needs {key_name} in the server .env file. Recreate the API/worker containers after saving it, or choose another task agent in Settings.",
             503,
         )
+    if model.model == "gpt-5.6-luna":
+        tier = get_settings().agent_service_tier if service_tier is None else service_tier
+        if tier not in {"default", "fast"}:
+            raise ValueError("Unsupported agent service tier")
+        model = replace(model, service_tier=tier)
     return model

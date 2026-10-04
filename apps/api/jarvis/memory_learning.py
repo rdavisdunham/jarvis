@@ -81,6 +81,8 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
     settings = get_settings()
     if not settings.openai_api_key:
         raise DomainError("INTEGRATION_UNAVAILABLE", "Memory learning needs an OpenAI API key.", 503)
+    if path != "embeddings":
+        payload = {**payload, "service_tier": "default"}
     reservation = "memory:" + uid()
     with session_scope() as db:
         budget.reserve(db, owner, reservation, allowance, model, optional=True)
@@ -111,7 +113,9 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
             if any(type(usage.get(k)) is not int or usage[k] < 0 for k in ("prompt_tokens", "completion_tokens")):
                 raise ValueError("Extraction response omitted valid usage")
             from .agent_models import catalog
-            cost = catalog()["luna"].usage_cost(usage)
+            agent = catalog()["luna"]  # Standard, independent of interactive settings.
+            usage = agent.usage_record({"usage": usage, "service_tier": data.get("service_tier")})
+            cost = agent.usage_cost(usage)
         # A truncated/refused/unusable answer can still have a known provider charge.
         with session_scope() as db:
             budget.record_usage(db, owner, reservation, reservation, model, usage, cost)

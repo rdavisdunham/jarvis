@@ -1,6 +1,6 @@
 # Eridani — active roadmap
 
-Updated October 3, 2026. This is the single active work checklist.
+Updated October 4, 2026. This is the single active work checklist.
 The [web v1 PRD](ERIDANI_WEB_V1_PRD.md) defines scope and acceptance;
 the [latency plan](ERI_LATENCY_PLAN.md) defines the response-speed work.
 Start with the [documentation index](README.md) for implementation and operations guides.
@@ -27,8 +27,14 @@ Android follows the release checks and seven-day/50-interaction pilot.
 - [x] Record CI backend, frontend/browser, security and coverage-ratchet implementation.
   Deployment and branch-rule readback remain separate checks below.
 - [x] Audit and revise the latency plan: one durable runner, measured waits, safe
-  voice handling and a testable Luna no-reasoning profile. No latency code has shipped
-  as part of that audit.
+  voice handling and a testable Luna no-reasoning profile. Batch A subsequently
+  shipped dispatch wakeups, separate maintenance and timing foundations.
+  October 4 refresh reconciles deployed work and Claude's Organization additions;
+  Luna low remains the default reasoning profile. The owner accepted Fast processing
+  for interactive Luna work after the October 4 comparison; application default,
+  tier-aware accounting and queue pinning are implemented locally. Scheduled
+  learning stays Standard. Production/device acceptance remains pending.
+  See [validation and smoke comparison](SPEED_1_2_VALIDATION.md).
 - [x] Separate current documentation from historical plans, audits and release reports.
 
 ## Next — Organization browsing, visual customization and review delivery
@@ -133,11 +139,60 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   the stale PG18 declaration without applying an unreviewed whole-project plan.
   Confirm PostgreSQL version, worker/DB availability, branch PR requirements and
   both Railway CI gates. Triage dependency majors separately.
-- [ ] **A4 — measure and reduce latency.** Follow Steps 0–1 of the
-  [audited plan](ERI_LATENCY_PLAN.md): stage timings, actual /work + Live baseline,
-  prompt dispatch wakeups and measured result/tool-discovery delays. Preserve
-  outbox recovery, speech completeness and conversational turn protection.
+- [ ] **A4 — measure and reduce latency.** Follow the October 4
+  [speed plan and PR sequence](ERI_LATENCY_PLAN.md#8-verification-and-implementation-order).
+  Dispatch wakeups, separate maintenance and initial stage logs are already shipped.
+  Preserve outbox recovery, speech completeness and conversational turn protection.
   Do not remove the durable queue or promise savings from timer arithmetic.
+- [x] **SPEED1 — measurement implementation (local).** Join committed acceptance/
+  outcome, invocations, retries, model usage/cost and visible typed-chat card/reply
+  timing. Bound and authorize browser reports; preserve failures/censored traces.
+  Reuse eval artifacts and Langfuse export without enabling live content tracing.
+- [ ] **SPEED1 — production/device baseline.** After an approved rollout, prove known
+  requests appear in API/worker logs. Measure actual /work, requested content display,
+  Live speech and phone behavior; the old empty log sample proves no baseline.
+- [x] **SPEED2 — selectable Luna no reasoning (local).** Explicit none profile and eval
+  selection implemented; low stays default and queued jobs retain their profile.
+  Four matched scenarios passed per profile. Total smoke spend including discarded
+  fixture-invalid runs: $0.032171889. See the validation report for limits.
+- [x] **SPEED2 follow-up — Standard/Fast comparison (local).** Kept Luna low reasoning;
+  12/12 scenario trials passed per tier with verified returned service tiers.
+  Median backend time 5.260 → 4.272 s; total cost $0.048293337, including cache
+  differences. Premium-aware accounting and eval-only tier selection tested.
+  See [full evidence and limits](SPEED_1_2_VALIDATION.md#follow-up-standard-versus-fast-retaining-low-reasoning).
+  The experiment itself did not change production; the accepted default follows below.
+- [x] **SPEED2 quick follow-up — Fast without reasoning.** Four scenarios passed;
+  4.860 s median versus the earlier Fast/low sample's 4.272 s. No demonstrated
+  added speed benefit; unequal cache state/sample size prevents a general ranking.
+  Cost $0.023133768. Keep low reasoning as the default; no production change.
+- [x] **Accepted default — Luna low + Fast (local).** Interactive Luna requests explicitly
+  request Fast. Keep maintenance/learning and unqualified eval campaigns Standard.
+  Capture tier at acceptance; old jobs without a tier keep Standard. Reserve at
+  premium rates and account for returned default/priority tiers, labelling missing
+  tier metadata as estimated. Settings expose the effective tier. Override with
+  `JARVIS_AGENT_SERVICE_TIER=default` on API/worker to return to Standard.
+  Included in the October 4 speed release; production/device acceptance remains separate.
+- [ ] **Next speed step — release and real-use baseline.** Package SPEED1/2 plus the
+  accepted Fast default into a PR; pass existing CI gates before deploying API and
+  worker together. Verify returned tier/cost and joined timing on a known typed and
+  GPT-Live request, then Pixel Fold wake/goodbye, overlapping work and reconnection.
+  Use those traces to select SPEED3 delivery or SPEED4 round-count work.
+- [ ] **SPEED2 — broader comparison and rollout.** Extend paid comparison to navigation,
+  agenda, dependent corrections, source edits and record/template/review workflows.
+  Deterministic regressions passed but do not establish model parity in those areas.
+  Further reasoning/tool/context default changes need representative correctness,
+  latency and cost evidence; Fast with low reasoning is already owner-approved.
+  Any further paid campaign remains separately scoped, with the existing $10 ceiling.
+- [ ] **SPEED3 — measured delivery improvements.** Trial Live/UI wakeups or agent-only
+  DBOS polling changes where traces justify them. Keep recovery polling, scoped
+  device acknowledgements and current speech quiet protection until phone checks.
+- [x] **SPEED4 implementation plan.** Inspect synthetic round sequences and define
+  discovery, fresh-read reuse and conditional completion batches. See the
+  [round-reduction plan](ERI_ROUND_REDUCTION_PLAN.md); implementation is still pending.
+- [ ] **SPEED4 — conditional model-round/context reduction.** Small relevant tool
+  sets, fresh scoped context and verified completion summaries only where measured.
+  Same-job continuation preserves receipts, corrections and total cost; stop when
+  useful targets are met rather than adding every possible optimization.
 - [x] Begin binding release-core eval cases and add regression coverage with Batch A.
   Continue toward the release-core target in Batch D; Batch C raises the current count to 112.
 

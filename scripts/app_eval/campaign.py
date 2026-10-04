@@ -56,6 +56,7 @@ def fingerprint():
             "uv.lock",
             "apps/web/package-lock.json",
             "scripts/validate_custom_planner.py",
+            "scripts/summarize_latency.py",
             "scripts/expert_eval_cases.py",
             "scripts/reliability_eval_cases.py",
         )
@@ -81,6 +82,7 @@ def harness_fingerprint():
         and p.name
         not in {"automation-coverage.json", "baseline-2026-09-19.json", "paid-baseline-2026-09-19.json"}
     )
+    paths.append(ROOT / "scripts/summarize_latency.py")
     return hashlib.sha256(
         b"".join(p.relative_to(ROOT).as_posix().encode() + p.read_bytes() for p in paths)
     ).hexdigest()
@@ -94,6 +96,8 @@ def plan(args):
     if not set(modes) <= set(MODES):
         raise ValueError("Unknown execution mode")
     work = jobs(rows, modes, args.repeats, not args.no_support)
+    if getattr(args, "service_tier", None) and any(j["adapter"] != "agent" for j in work):
+        raise ValueError("Service-tier comparison requires agent-only jobs (--no-support)")
     return {
         "version": 1,
         "created_at": datetime.now(UTC).isoformat(),
@@ -112,7 +116,8 @@ def plan(args):
         "max_provider_requests": args.max_provider_requests,
         "repeats": args.repeats,
         "workers": args.workers,
-        "model": "luna",
+        "model": args.model,
+        "service_tier": getattr(args, "service_tier", None),
         "database_url": args.database_url,
         "live_config": str(Path(args.live_config).resolve()) if args.live_config else None,
         "live_config_sha256": config_fingerprint(args.live_config),
@@ -133,6 +138,7 @@ def summary(manifest):
         "modes": manifest["modes"],
         "cap_usd": manifest["cap_usd"],
         "model": manifest["model"],
+        "service_tier": manifest.get("service_tier"),
         "workers": manifest["workers"],
         "paid_jobs": sum(j["mode"] == "live-model" for j in manifest["jobs"]),
         "connected_jobs": sum(j["mode"] == "live-service" for j in manifest["jobs"]),
@@ -219,6 +225,8 @@ def execute(directory, manifest, job):
                 "attempt": str(attempt),
                 "live_config": manifest.get("live_config"),
                 "judge": manifest.get("judge", "luna"),
+                "model": manifest["model"],
+                "service_tier": manifest.get("service_tier"),
                 "fingerprint": manifest["fingerprint"],
             }
             atomic_json(attempt / "input.json", config)
@@ -394,7 +402,8 @@ def main(argv=None):
         p.add_argument("--features")
         p.add_argument("--cases")
         p.add_argument("--mode", default="offline")
-        p.add_argument("--model", choices=["luna"], default="luna")
+        p.add_argument("--model", choices=["luna", "luna-none"], default="luna")
+        p.add_argument("--service-tier", choices=["default", "fast"], help="Explicit tier for agent evals only; production settings are untouched.")
         p.add_argument("--judge", choices=["luna", "external"], default="luna")
         p.add_argument("--max-usd", type=float, default=10)
         p.add_argument("--max-provider-requests", type=int, default=10000)
