@@ -176,7 +176,9 @@ export function flyTarget(layout: AtlasLayout, index: AtlasIndex, id: string): {
 // ---- Viewport ------------------------------------------------------------------------------
 export type View = [number, number, number];
 export const viewFor = (n: Pick<PackedNode, "x" | "y" | "r">): View => [n.x, n.y, n.r * 2.15];
-export const scaleOf = (view: View, w: number, h: number) => Math.min(w, h) / view[2];
+/** Vertical room kept for the overlaid path row (top) and legend (bottom), so a fitted region clears both. */
+export const FRAME_Y = 40;
+export const scaleOf = (view: View, w: number, h: number) => Math.min(w, Math.max(h - 2 * FRAME_Y, h * 0.7)) / view[2];
 export function project(view: View, w: number, h: number) {
   const k = scaleOf(view, w, h);
   return { k, x: (x: number) => (x - view[0]) * k + w / 2, y: (y: number) => (y - view[1]) * k + h / 2 };

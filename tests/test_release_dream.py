@@ -26,7 +26,7 @@ def tick(monkeypatch,instant):
     monkeypatch.setattr(worker,'isolated',lambda name,fn,*args: isolated(name,fn,*args) if name=='memory_reviews' else None)
     worker.supervisor_cycle(None,1,dispatch=False)
     monkeypatch.setattr(worker,'isolated',isolated)
-    with session_scope() as db:return list(db.scalars(select(Job.id).where(Job.owner_id==OWNER,Job.kind==memory_review.KIND)))
+    with session_scope() as db:return list(db.scalars(select(Job.id).where(Job.owner_id==OWNER,Job.kind==memory_review.KIND).order_by(Job.created_at,Job.id)))
 
 
 def test_disabled_dream_scheduler_never_queues_on_worker_ticks(monkeypatch):
@@ -43,9 +43,9 @@ def test_offline_week_catches_up_once_across_worker_ticks(monkeypatch):
     later=datetime(2030,2,4,tzinfo=UTC)
     resumed=tick(monkeypatch,later);assert len(resumed)==2
     memory_review.process(next(j for j in resumed if j not in first))
-    assert tick(monkeypatch,later+timedelta(minutes=1))==resumed
+    assert set(tick(monkeypatch,later+timedelta(minutes=1)))==set(resumed)
     with session_scope() as db:
-        rows=list(db.scalars(select(Job).where(Job.kind==memory_review.KIND)))
+        rows=list(db.scalars(select(Job).where(Job.kind==memory_review.KIND).order_by(Job.created_at,Job.id)))
         assert len({r.payload['period'] for r in rows})==2
         assert all(r.status=='succeeded' for r in rows)
 
@@ -61,7 +61,7 @@ def test_dst_review_worker_ticks_keep_one_job_per_local_week(monkeypatch):
     memory_review.process(next(j for j in second if j not in first))
     assert set(tick(monkeypatch,after+timedelta(hours=1)))==set(second)
     with session_scope() as db:
-        periods=sorted(datetime.fromisoformat(r.payload['period']) for r in db.scalars(select(Job).where(Job.kind==memory_review.KIND)))
+        periods=sorted(datetime.fromisoformat(r.payload['period']) for r in db.scalars(select(Job).where(Job.kind==memory_review.KIND).order_by(Job.created_at,Job.id)))
     assert periods[1]-periods[0]==timedelta(hours=167)
     from zoneinfo import ZoneInfo
     assert all(p.astimezone(ZoneInfo('America/Chicago')).hour==3 for p in periods)

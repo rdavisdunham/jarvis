@@ -65,10 +65,21 @@ try{
  await expect(props.locator(".prop-row").filter({hasText:"Last reviewed"})).toContainText("Not yet");
  await expect(props.locator(".prop-row").filter({hasText:"Next review"})).toContainText(/Due since|Due now/);
  await card.getByRole("button",{name:"Close record"}).click();
- // Mark it reviewed from Questions: the item leaves and the next review is a month out.
+ // Mark it reviewed from Questions, then Undo from the toast: the old dates and the question come back.
  await ui("ui_workspace",{view:"questions"});
  await item.getByRole("button",{name:"Mark reviewed"}).click();
  await expect(item).toHaveCount(0);
+ const marked=page.locator(".toast").filter({hasText:"Marked ABC Holdings reviewed."});
+ await expect(marked).toBeVisible();
+ await marked.getByRole("button",{name:"Undo"}).click();
+ await expect(page.locator(".toast").filter({hasText:"Undone. The previous review dates are back."})).toBeVisible();
+ await expect(item).toBeVisible();
+ if((await request("/structure/records/"+abc.id)).last_reviewed_at)throw Error("Undo must restore the previous review dates");
+ // Mark it reviewed from Today: the panel goes away but its Undo toast stays.
+ await ui("ui_workspace",{view:"today"});
+ await today.getByRole("region",{name:"Reviews due"}).getByRole("button",{name:"Mark ABC Holdings reviewed"}).click();
+ await expect(today.getByRole("region",{name:"Reviews due"})).toHaveCount(0);
+ await expect(page.locator(".toast").filter({hasText:"Marked ABC Holdings reviewed."}).getByRole("button",{name:"Undo"})).toBeVisible();
  const reviewed=await request("/structure/records/"+abc.id);
  const days=(Date.parse(reviewed.next_review_at)-Date.parse(reviewed.last_reviewed_at))/864e5;
  if(reviewed.review_due||days<28||days>31.5)throw Error("Mark reviewed must schedule a month out: "+JSON.stringify([reviewed.last_reviewed_at,reviewed.next_review_at]));
@@ -80,6 +91,6 @@ try{
  await ui("ui_workspace",{view:"today"});
  await expect(today.getByRole("region",{name:"Reviews due"})).toHaveCount(0);
  if(errors.length)throw Error(errors.join("\n"));
- console.log("Organization reviews acceptance passed: type editor cadence preview/apply, seeded first review, queued Questions item, Today panel, Atlas Reviews lens and glyph, detail card spans, mark reviewed.");
+ console.log("Organization reviews acceptance passed: type editor cadence preview/apply, seeded first review, queued Questions item, Today panel, Atlas Reviews lens and glyph, detail card spans, mark reviewed with Undo from Questions and Today.");
 }catch(e){console.error("Page errors:",errors.join("\n"));mkdirSync("../../artifacts/organization",{recursive:true});await page.screenshot({path:"../../artifacts/organization/reviews-failure.png"}).catch(()=>{});throw e;}
 finally{await browser.close();}

@@ -268,6 +268,8 @@
   color: var(--ink-3);
   font-size: 12px;
   pointer-events: none;
+  /* A surface-colored halo keeps the legend readable over regions when zoomed in. */
+  text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface), 0 0 6px var(--surface);
 }
 .atlas-legend > span {
   display: inline-flex;
