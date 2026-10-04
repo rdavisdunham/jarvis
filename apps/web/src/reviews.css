@@ -75,12 +75,24 @@
 
 /* ---- Today panel --------------------------------------------------------------------------- */
 .today .row.today-row.review-row {
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
+}
+.review-row .row-main {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.today-row.review-row .row-title {
+  flex: 0 1 auto;
+}
+.today-row.review-row .row-meta {
+  justify-content: flex-start;
+  margin-left: 0;
 }
 .review-row-glyph {
   display: inline-flex;
   flex: 0 0 auto;
+  align-self: flex-start;
   align-items: center;
   justify-content: center;
   width: 20px;
@@ -89,7 +101,6 @@
 }
 .review-row-action {
   flex: 0 0 auto;
-  margin-top: -6px;
 }
 
 /* ---- Questions card ------------------------------------------------------------------------ */
@@ -117,8 +128,6 @@
   color: var(--ink);
   font-weight: 500;
 }
-@media (max-width: 600px) {
-  .review-row-action {
-    margin-top: 0;
-  }
+.schema-review-cadence > .review-cadence {
+  justify-self: stretch;
 }
