@@ -210,7 +210,15 @@
       "feature": "custom_records"
     },
     {
+      "name": "record.mark_reviewed",
+      "feature": "custom_records"
+    },
+    {
       "name": "record.restore_contents",
+      "feature": "custom_records"
+    },
+    {
+      "name": "record.review",
       "feature": "custom_records"
     },
     {
@@ -466,6 +474,10 @@
     {
       "name": "review_questions",
       "feature": "memory_dream"
+    },
+    {
+      "name": "reviews_due",
+      "feature": "custom_records"
     },
     {
       "name": "routing_state",
@@ -930,6 +942,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/external/structure/reviews",
+      "handler": "external_reviews",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/external/structure/templates",
       "handler": "external_templates",
       "source": "apps/api/jarvis/external_routes.py",
@@ -1303,6 +1322,13 @@
       "method": "GET",
       "path": "/api/v1/structure/records/{record_id}",
       "handler": "record",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/structure/reviews",
+      "handler": "reviews",
       "source": "apps/api/jarvis/structure_routes.py",
       "feature": "custom_records"
     },

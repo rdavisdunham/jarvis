@@ -54,6 +54,7 @@ EXACT = {
     "search_feedback": "search_aliases",
     "search_select": "search_aliases",
     "work_revert": "receipts",
+    "reviews_due": "custom_records",
     "ui_activity": "receipts",
 }
 for prefix in ("calendar", "linear"):
@@ -89,7 +90,7 @@ def route_owner(path, source):
     if "/structure/routing" in path:
         return "routing_rules"
     if "/structure" in path:
-        return "custom_records" if "record" in path or "template" in path or "by-core" in path else "custom_schema"
+        return "custom_records" if any(x in path for x in ("record", "template", "/reviews", "by-core")) else "custom_schema"
     if "/work/actions" in path or "/commands/" in path:
         return "receipts"
     if "/work" in path:
