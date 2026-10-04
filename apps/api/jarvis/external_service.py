@@ -92,6 +92,25 @@ def scrub(data, scopes):
     return result
 
 
+def template_scrub(db, owner, data, scopes):
+    """A template saved from a task or note can carry its text; core scopes still govern it."""
+    from .structure_models import StructureSchema
+
+    hidden = {c for c, scope in (("work", "tasks:read"), ("content", "notes:read")) if scope not in scopes}
+    if not hidden:
+        return data
+    schema = db.get(StructureSchema, owner)
+    caps = {t["id"]: set(t.get("capabilities", [])) for t in (schema.definition["types"] if schema else [])}
+
+    def clean(node, type_id):
+        if caps.get(type_id, set()) & hidden:
+            node = {**node, "body": "", "values": {}}
+        return {**node, "children": [clean(c, c.get("type_id")) for c in node.get("children", [])]}
+
+    items = [{**item, "payload": clean(item.get("payload") or {}, item.get("type_id"))} for item in data.get("items", [])]
+    return {**data, "items": items}
+
+
 def custom_scrub(db, owner, data, scopes):
     """records:read never exposes core task/note content without tasks:read/notes:read."""
     hidden = {k for k, scope in (("task_id", "tasks:read"), ("note_id", "notes:read")) if scope not in scopes}
@@ -498,9 +517,8 @@ def custom_read(db, bot, name, arguments):
     elif name in {"template_list", "record_instantiate_preview"}:
         from . import record_templates
         from .structure_schema import InstantiatePlan
-        # Template text is the owner's outline, not task/note content; no core scrub applies.
         if name == "template_list":
-            return record_templates.listing(db, bot.owner_id, **arguments)
+            return template_scrub(db, bot.owner_id, record_templates.listing(db, bot.owner_id, **arguments), bot.scopes)
         return record_templates.plan(db, bot.owner_id, InstantiatePlan.model_validate(arguments))
     else:
         structure.ensure(db, bot.owner_id)

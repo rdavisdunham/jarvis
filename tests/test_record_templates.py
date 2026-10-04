@@ -306,3 +306,22 @@ async def test_eri_tools_list_preview_and_instantiate():
     assert plan["record_count"] == 7
     with session_scope() as db:
         assert db.scalar(select(StructureRecord).where(StructureRecord.title == "Client onboarding")) is None
+
+
+def test_records_only_bot_cannot_read_task_or_note_text_in_templates(client):
+    template({"values": {}, "body": "",
+              "children": [{"type_id": "task", "title": "Contract", "body": "private task notes", "values": {"estimate_minutes": 30}},
+                           {"type_id": "note", "title": "Kickoff notes", "body": "private note body"}]})
+    external = TestClient(app)
+
+    def child_bodies(headers):
+        r = external.get("/api/v1/external/structure/templates", headers=headers)
+        assert r.status_code == 200, r.text
+        return {c["title"]: (c.get("body"), c.get("values")) for c in r.json()["items"][0]["payload"]["children"]}
+
+    _, records_only = key(client, ["records:read"])
+    hidden = child_bodies(records_only)
+    assert hidden == {"Contract": ("", {}), "Kickoff notes": ("", {})}
+    _, with_core = key(client, ["records:read", "tasks:read", "notes:read"])
+    shown = child_bodies(with_core)
+    assert shown["Contract"][0] == "private task notes" and shown["Kickoff notes"][0] == "private note body"
