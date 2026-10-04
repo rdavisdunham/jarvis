@@ -93,7 +93,7 @@ export function AddHere({ parent, schema, busy, onCreate, templates }: { parent:
       <button className="btn btn-primary btn-sm" disabled={busy || !title.trim()}>Add</button>
     </form>}
     {templates && (stamp
-      ? <TemplateStart template={stamp} parentId={parent?.id ?? null} homeTitle={parent?.title} schemaRevision={schema.revision}
+      ? <TemplateStart showName template={stamp} parentId={parent?.id ?? null} homeTitle={parent?.title} schemaRevision={schema.revision}
           onCancel={() => setStamp(null)} onCreate={async (preview, name) => { await templates.onTemplate(preview, name); setStamp(null); }}/>
       : <TemplateStamps disabled={busy} templates={templatesFor(templates.templates, kind ? [kind] : types.map(t => t.id))} onPick={setStamp}/>)}
   </section>;

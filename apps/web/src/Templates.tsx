@@ -64,8 +64,8 @@ export function PreviewTree({ preview }: { preview: InstantiatePreview }) {
 }
 
 /** Preview what a template creates in this home, then create it. Used inline (Atlas) and in a dialog. */
-export function TemplateStart({ template, parentId, schemaRevision, homeTitle, onCreate, onCancel }: {
-  template: RecordTemplate; parentId: string | null; schemaRevision: number; homeTitle?: string;
+export function TemplateStart({ template, parentId, schemaRevision, homeTitle, showName, onCreate, onCancel }: {
+  template: RecordTemplate; parentId: string | null; schemaRevision: number; homeTitle?: string; showName?: boolean;
   onCreate: (preview: InstantiatePreview, title: string) => Promise<void>; onCancel: () => void;
 }) {
   const [title, setTitle] = useState(template.name), [preview, setPreview] = useState<InstantiatePreview | null>(null);
@@ -84,6 +84,7 @@ export function TemplateStart({ template, parentId, schemaRevision, homeTitle, o
     try { await onCreate(preview, title.trim()); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
   return <section className="template-start" aria-label={"Start from template " + template.name}>
+    {showName && <p className="template-start-name">From template: {template.name}</p>}
     <label className="field">Title<input value={title} maxLength={500} onChange={e => setTitle(e.target.value)} aria-label="New record title"/></label>
     <p className="template-start-where">{homeTitle ? <>Inside <strong>{homeTitle}</strong></> : "Unfiled"}</p>
     {preview ? <><PreviewTree preview={preview}/><p className="footnote">{createdLabel(preview)} {preview.source_effect}</p></>

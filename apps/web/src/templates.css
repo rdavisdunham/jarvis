@@ -56,6 +56,11 @@
   color: var(--ink);
   font-size: 14px;
 }
+.template-start-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
 .template-start-where {
   color: var(--ink-2);
   font-size: 13px;
@@ -211,3 +216,4 @@
   line-height: 18px;
 }
 .org-add .template-open { white-space: nowrap; }
+.template-dialog > .template-sub { margin: -8px 0 16px; }
