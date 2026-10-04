@@ -2,6 +2,7 @@
 
 from typing import Annotated, Literal
 from .record_contents import ContentsPlan
+from .structure_schema import InstantiatePlan
 from fastapi import APIRouter, Depends, Query
 from .auth import Identity, authenticate
 from .db import session_scope
@@ -145,3 +146,25 @@ def contents_preview(args: ContentsPlan, user: User):
     from .record_contents import plan
     with session_scope() as db:
         return plan(db,user.owner_id,args)
+
+
+@router.get("/templates")
+def templates(user: User, type_id: str | None = None, archived: bool = False):
+    """Reusable templates; viewers may read them like Browse."""
+    from .record_templates import listing
+    with session_scope() as db:
+        return listing(db, user.owner_id, type_id=type_id, archived=archived)
+
+
+@router.get("/templates/{template_id}")
+def template(template_id: str, user: User):
+    from .record_templates import get
+    with session_scope() as db:
+        return get(db, user.owner_id, template_id)
+
+
+@router.post("/templates/instantiate/preview")
+def instantiate_preview(args: InstantiatePlan, user: User):
+    from .record_templates import plan
+    with session_scope() as db:
+        return plan(db, user.owner_id, args)

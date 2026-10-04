@@ -9,6 +9,11 @@ import {
   CAPABILITY_GLYPHS, addAllowedHome, diagramParent, fieldRole, fieldRoleLabel, recordsLivingIn, removeAllowedHome, typeMoveChoice,
 } from "./blueprint-model";
 import type { CustomRecord, Schema } from "./structure-types";
+import { TemplateStamps, TemplateStart } from "./Templates";
+import { templatesFor, type InstantiatePreview, type RecordTemplate } from "./template-model";
+
+/** Template stamps in Add here: preview, then create through record.instantiate. */
+export type TemplateHooks = { templates: RecordTemplate[]; onTemplate: (preview: InstantiatePreview, title: string) => Promise<void> };
 import { shortDate } from "./work-views";
 
 const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -22,8 +27,8 @@ export function MoveChoiceList({ title, options, busy, onChoose, onCancel }: { t
   </div>;
 }
 
-export function RecordInspector({ record, index, schema, today, canEdit, focused, busy, onFly, onSelect, onOpen, onBrowse, onType, onMove, onCreate }: {
-  record: AtlasRecord; index: AtlasIndex; schema: Schema; today: string; canEdit: boolean; focused: boolean; busy: boolean;
+export function RecordInspector({ record, index, schema, today, canEdit, focused, busy, onFly, onSelect, onOpen, onBrowse, onType, onMove, onCreate, templates }: {
+  record: AtlasRecord; index: AtlasIndex; schema: Schema; today: string; canEdit: boolean; focused: boolean; busy: boolean; templates?: TemplateHooks;
   onFly: (id: string) => void; onSelect: (id: string) => void; onOpen: (id: string) => void; onBrowse: (id: string) => void; onType: (id: string) => void;
   onMove: (record: AtlasRecord, target: string | null, mode: MoveOption["mode"]) => Promise<void>; onCreate: (type: string, title: string, parent: string | null) => Promise<void>;
 }) {
@@ -60,7 +65,7 @@ export function RecordInspector({ record, index, schema, today, canEdit, focused
       {moving && <MoveChoiceList title={`Move ${record.title} to ${moving.title}`} options={moveChoices(record, index)} busy={busy}
         onCancel={() => setMoving(null)} onChoose={o => void onMove(record, moving.id, o.mode).then(() => setMoving(null))}/>}
     </section>}
-    {canEdit && isRegion(record) && <AddHere parent={record} schema={schema} busy={busy} onCreate={onCreate}/>}
+    {canEdit && isRegion(record) && <AddHere parent={record} schema={schema} busy={busy} onCreate={onCreate} templates={templates}/>}
   </>;
 }
 
@@ -73,8 +78,10 @@ function RelationRows({ record, index, onSelect }: { record: AtlasRecord; index:
   })}</>;
 }
 
-export function AddHere({ parent, schema, busy, onCreate }: { parent: AtlasRecord | null; schema: Schema; busy: boolean; onCreate: (type: string, title: string, parent: string | null) => Promise<void> }) {
+export function AddHere({ parent, schema, busy, onCreate, templates }: { parent: AtlasRecord | null; schema: Schema; busy: boolean; onCreate: (type: string, title: string, parent: string | null) => Promise<void>; templates?: TemplateHooks }) {
   const [kind, setKind] = useState(""), [title, setTitle] = useState("");
+  const [stamp, setStamp] = useState<RecordTemplate | null>(null);
+  useEffect(() => { setStamp(null); setKind(""); }, [parent?.id]);
   const types = schema.types.filter(t => !t.archived && (parent ? t.parent_types.includes(parent.type_id) : (t.opens_as ?? "auto") === "container"));
   const chosen = types.find(t => t.id === kind);
   if (!types.length) return null;
@@ -85,7 +92,10 @@ export function AddHere({ parent, schema, busy, onCreate }: { parent: AtlasRecor
       <input aria-label={"New " + chosen.name.toLowerCase() + " title"} placeholder={"New " + chosen.name.toLowerCase()} value={title} maxLength={500} autoFocus onChange={e => setTitle(e.target.value)}/>
       <button className="btn btn-primary btn-sm" disabled={busy || !title.trim()}>Add</button>
     </form>}
-    {/* Phase 3 hook: template stamps for the chosen type render here. */}
+    {templates && (stamp
+      ? <TemplateStart showName template={stamp} parentId={parent?.id ?? null} homeTitle={parent?.title} schemaRevision={schema.revision}
+          onCancel={() => setStamp(null)} onCreate={async (preview, name) => { await templates.onTemplate(preview, name); setStamp(null); }}/>
+      : <TemplateStamps disabled={busy} templates={templatesFor(templates.templates, kind ? [kind] : types.map(t => t.id))} onPick={setStamp}/>)}
   </section>;
 }
 

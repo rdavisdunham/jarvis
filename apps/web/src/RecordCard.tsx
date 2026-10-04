@@ -10,6 +10,7 @@ import { Link2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog, priorityLabels } from "./ux";
 import { useStructureActions } from "./structure-actions";
+import { SaveAsTemplateDialog } from "./Templates";
 import type { Schema, SchemaField, CustomRecord } from "./structure-types";
 import "./details.css";
 
@@ -54,6 +55,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   const [contentsAction,setContentsAction]=useState<{operation:"move"|"archive";parentId?:string|null}|null>(null);
   const [row,setRow]=useState(initial);const [body,setBody]=useState(initial.body);const [title,setTitle]=useState(initial.title);const [relation,setRelation]=useState("");const [target,setTarget]=useState("");const {run,busy,error,setError}=useStructureActions();
   const [localNotes,setLocalNotes]=useState(initial.local_notes??"");
+  const [templating,setTemplating]=useState(false),[notice,setNotice]=useState("");
   const [failed,setFailed]=useState<Record<string,unknown>|null>(null);
   const [comparison,setComparison]=useState<CustomRecord|null>(null);
   const current=useRef(row);current.current=row;const flight=useRef<Promise<unknown>|null>(null);
@@ -153,9 +155,11 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
             <Prop label="Deadline alert"><select aria-label="Deadline alert" value={alert.deadline_alert} disabled={locked} onChange={e=>void alertSave({deadline_alert:e.target.value}).catch(()=>{})}><option value="default">Use my setting</option><option value="on">On</option><option value="off">Off</option></select></Prop>
             <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={alert.alert_urgent} disabled={locked} onChange={e=>void alertSave({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop></>}
         </div>
-        {canEdit&&<div className="detail-props-foot"><button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
+        {canEdit&&<div className="detail-props-foot">{!row.archived&&!t.archived&&<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>void finish().then(()=>setTemplating(true)).catch(()=>{})}>Save as template</button>}<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
+        {notice&&<p className="detail-notice" role="status">{notice}</p>}
       </aside>
     </div>
+    {templating&&<SaveAsTemplateDialog row={row} type={t} hasContents={!!(contents?.direct??children.length)} onClose={()=>setTemplating(false)} onSaved={tpl=>{setTemplating(false);setNotice("Saved template "+tpl.name+". Find it under Start from template.");}}/>}
     {contentsAction&&<ContentsDialog row={row} schema={schema} {...contentsAction} onClose={()=>setContentsAction(null)} onDone={async()=>{await onChanged();if(contentsAction.operation==="archive")onClose();else{const next=await api<CustomRecord>("/structure/records/"+row.id);setRow(next);current.current=next;}}}/>}
   </Dialog>;
 }

@@ -92,6 +92,25 @@ def scrub(data, scopes):
     return result
 
 
+def template_scrub(db, owner, data, scopes):
+    """A template saved from a task or note can carry its text; core scopes still govern it."""
+    from .structure_models import StructureSchema
+
+    hidden = {c for c, scope in (("work", "tasks:read"), ("content", "notes:read")) if scope not in scopes}
+    if not hidden:
+        return data
+    schema = db.get(StructureSchema, owner)
+    caps = {t["id"]: set(t.get("capabilities", [])) for t in (schema.definition["types"] if schema else [])}
+
+    def clean(node, type_id):
+        if caps.get(type_id, set()) & hidden:
+            node = {**node, "body": "", "values": {}}
+        return {**node, "children": [clean(c, c.get("type_id")) for c in node.get("children", [])]}
+
+    items = [{**item, "payload": clean(item.get("payload") or {}, item.get("type_id"))} for item in data.get("items", [])]
+    return {**data, "items": items}
+
+
 def custom_scrub(db, owner, data, scopes):
     """records:read never exposes core task/note content without tasks:read/notes:read."""
     hidden = {k for k, scope in (("task_id", "tasks:read"), ("note_id", "notes:read")) if scope not in scopes}
@@ -472,7 +491,7 @@ def changes(db, bot, after=0, limit=100):
     }
 
 
-CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview"}
+CUSTOM_READS = {"structure_schema", "record_list", "record_get", "record_search", "record_browse", "record_contents_preview", "template_list", "record_instantiate_preview"}
 
 
 def withheld(scopes):
@@ -495,6 +514,12 @@ def custom_read(db, bot, name, arguments):
         result=browse(db,bot.owner_id,**arguments) if name=="record_browse" else plan(db,bot.owner_id,ContentsPlan.model_validate(arguments))
     elif name == "record_list":
         result = structure.records(db, bot.owner_id, **arguments)
+    elif name in {"template_list", "record_instantiate_preview"}:
+        from . import record_templates
+        from .structure_schema import InstantiatePlan
+        if name == "template_list":
+            return template_scrub(db, bot.owner_id, record_templates.listing(db, bot.owner_id, **arguments), bot.scopes)
+        return record_templates.plan(db, bot.owner_id, InstantiatePlan.model_validate(arguments))
     else:
         structure.ensure(db, bot.owner_id)
         result = structure.data(db, owned(db, StructureRecord, arguments["record_id"], bot.owner_id))

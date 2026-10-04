@@ -13,7 +13,7 @@
 - **Keep it simple** (owner, 2026-10-02). Build the smallest useful version, measure and use it, and add complexity only with evidence.
 - **No added running cost.** No new always-on services.
 
-## Current state (verified against `main` @ 581d1c7, 2026-10-03)
+## Current state (verified against `main` @ 581d1c7, 2026-10-03; B2 updated in Phase 3)
 
 Code references use `api/` for `apps/api/jarvis/` and `web/` for `apps/web/src/`.
 
@@ -34,7 +34,7 @@ Code references use `api/` for `apps/api/jarvis/` and `web/` for `apps/web/src/`
 | **F.** Learning from titles, descriptions and filing; no silent redesign; structure interview deferred | ✅ Done (record bodies not used) | `api/routing.py:96-148,427,443`; `docs/TODO.md:285-290` |
 | **B1.** Organizing container behavior | ✅ Done (Phase 1) | `RecordType.opens_as` `api/structure_schema.py:69`; load upgrade `api/field_library.py` (`default_opens_as`); resolver `api/structure.py` `opens_as()` used by `record_contents.browse` groups and every record payload (`opens_as`: `container`/`item`); `openTarget` `web/structure-types.ts`; control in `web/TypeEditor.tsx`; `ui_records(record_id)` routes containers to Browse (`api/tools.py`); `tests/test_opens_as.py`, `e2e/custom-planner.mjs` |
 | **Atlas / Blueprint** (Phase 2) | ✅ Done | `GET /structure/atlas` `api/atlas.py` (+ bot route); `web/AtlasView.tsx`, `AtlasMap.tsx`, `Blueprint.tsx`, `AtlasInspector.tsx`, `atlas-model.ts`, `blueprint-model.ts`; layout "atlas" (≥720px, lazy chunk; Browse stays default); `ui_records(layout="atlas")`; `tests/test_atlas.py`, `e2e/organization-atlas.mjs`. Hooks: template stamps go in `AddHere` (`web/AtlasInspector.tsx`); review pulses/lens use the `review` lens placeholder in `AtlasMap`/`AtlasView` and a skeleton field such as `review_due` |
-| **B2.** Reusable template | ❌ Missing | `Task.is_template` is the recurrence template, not this; quick-list templates are deferred (`docs/TODO.md:298`) |
+| **B2.** Reusable template | ✅ Done (Phase 3) | `record_templates` table (migration `0022`, `RecordTemplate` in `api/structure_models.py`); `api/record_templates.py`: `template.create/update/archive/capture` (save as template drops dates, assignees, status, record links and default priority), `record.instantiate` plan → apply under one command with `provenance.template`, grouped Revert through `record.restore_contents` guarded by `restore_guard` (`api/record_contents.py`, `api/action_history.py`); routes `GET /structure/templates`, `POST /structure/templates/instantiate/preview` (+ bot `/external/structure/templates`); Eri `template_list`, `record_instantiate_preview`, `record_instantiate` (`templates` tool group); web `Templates.tsx`/`template-model.ts` (Types & fields Templates section and editor, Save as template in the record card, Start from template in Browse Add here and the collection quick-add, Atlas stamps in `AddHere`); `tests/test_record_templates.py`, `e2e/organization-templates.mjs`. `Task.is_template` remains the separate recurrence template |
 | **B3.** Review cadence | ❌ Missing | no last/next review data; the Questions inbox and periodic queueing exist to reuse (`api/review_questions.py`, `api/worker.py:386-399`) |
 | **B4.** Recurring work for any actionable type | 🟡 Machinery exists | `Schedule`/`Occurrence`/template tasks (`api/models.py:187-214`, `api/domain.py:740-765`); not a type behavior; no handling of unfinished children |
 | **B5.** Calendar scheduling behavior | 🟡 Machinery exists | `PlanningEntry` with start/end/timezone/all-day bound to `task_id`; not a type behavior |
@@ -148,7 +148,14 @@ The goal is to replace the plain tree with a way of *seeing and handling* the st
   - removing an in-use home and seeing the blocking list.
 - A performance check: 2,000 records render and zoom smoothly on a mid-range laptop.
 
-### Phase 3: Reusable templates (B2)
+### Phase 3: Reusable templates (B2) — ✅ done
+
+**As built (differences from the design below):**
+- Eri gets a read tool `record_instantiate_preview` beside `template_list` and the `record_instantiate` command, mirroring `record_contents_preview` (a preview inside a command would leave a misleading receipt). Template CRUD is owner UI and bot/MCP only; Eri does not edit templates.
+- Payload bounds: 4 levels below the record, 100 child records, 200 active templates per workspace. Template values may not set date or assignee fields; captures also drop record links (instance-specific) and default priority 0.
+- Instantiate re-validates types, allowed homes and field values against the current schema (`TEMPLATE_OUTDATED`, 409, names the type pair) and the home via `validate_parent`. The preview hash covers the request, schema revision, template revision and home chain.
+- Child records are created with a `:template` command suffix so template structure never counts as the owner's own routing evidence; the root uses the plain command.
+- Revert archives the created records deepest first through `record.restore_contents`; it refuses when the group guard changed (any edit, core task/note change or new record inside), when links touch the created records, or when already reverted.
 
 **Design (simplest useful version):** templates are **saved blueprints per type**, stored separately from the schema so that editing a template doesn't need a schema preview/apply.
 - **New table `record_templates`** (migration): `id`, `owner_id`, `type_id`, `name`, `description`, `payload` JSONB, `revision`, `archived`, timestamps.

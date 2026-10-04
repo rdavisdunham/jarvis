@@ -30,7 +30,8 @@ SCOPES = {
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
-    **{f"record.{op}": "records:write" for op in ("create", "update", "link", "contents", "restore_contents")},
+    **{f"record.{op}": "records:write" for op in ("create", "update", "link", "contents", "restore_contents", "instantiate")},
+    **{f"template.{op}": "records:write" for op in ("create", "update", "archive", "capture")},
     **{f"task.{op}": "tasks:write" for op in ("create", "update", "complete", "reopen")},
     **{
         f"{kind}.{op}": "organization:write"
@@ -45,6 +46,8 @@ READ_SCOPES = {
     "record_list": "records:read",
     "record_browse": "records:read",
     "record_contents_preview": "records:read",
+    "template_list": "records:read",
+    "record_instantiate_preview": "records:read",
     "record_search": "records:read",
     "record_get": "records:read",
     "task_list": "tasks:read",
@@ -200,6 +203,31 @@ def core_scopes(db, owner, tool, arguments):
         if not root or root.owner_id!=owner:return set()
         records=[root,*rows_under(db,owner,root.id)]
         return ({"tasks:write"} if any(r.task_id for r in records) else set()) | ({"notes:write"} if any(r.note_id for r in records) else set())
+    if tool in {"record.instantiate", "template.capture"}:
+        # Instances create task/note-backed records; a capture copies task/note bodies.
+        from .structure_models import RecordTemplate, StructureRecord, StructureSchema
+        from .structure import default_definition
+        schema = db.get(StructureSchema, owner)
+        types = {t["id"]: t for t in (schema.definition if schema else default_definition())["types"]}
+        if tool == "template.capture":
+            from .record_contents import rows_under
+            root = db.get(StructureRecord, str(arguments.get("record_id") or ""))
+            if not root or root.owner_id != owner:
+                return set()
+            rows = [root, *(rows_under(db, owner, root.id) if arguments.get("include_children", True) else [])]
+            return ({"tasks:read"} if any(r.task_id for r in rows) else set()) | ({"notes:read"} if any(r.note_id for r in rows) else set())
+        template = db.get(RecordTemplate, str(arguments.get("template_id") or ""))
+        if not template or template.owner_id != owner:
+            return set()
+        kinds = set()
+
+        def visit(type_id, nodes):
+            kinds.update(types.get(type_id, {}).get("capabilities", ()))
+            for node in nodes:
+                visit(node.get("type_id"), node.get("children", []))
+
+        visit(template.type_id, template.payload.get("children", []))
+        return ({"tasks:write"} if "work" in kinds else set()) | ({"notes:write"} if "content" in kinds else set())
     if tool == "record.restore_contents":
         # Restoration may touch descendants of several capabilities.
         return {"tasks:write","notes:write"}

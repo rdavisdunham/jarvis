@@ -134,6 +134,7 @@ def request_access(request, namespace, permission, account):
         "/api/v1/bot-keys",
         # Search and its learning signals are read-equivalent: they write only per-account state.
         "/api/v1/structure/contents/preview",
+        "/api/v1/structure/templates/instantiate/preview",
         "/api/v1/search/records",
         "/api/v1/search/selection",
         "/api/v1/search/feedback",

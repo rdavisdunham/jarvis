@@ -377,6 +377,9 @@ def restore(db, owner, args, command_id):
             .order_by(ActionChange.created_at, ActionChange.id)
         )
     )
+    if rows and all(r.tool == "record.instantiate" for r in rows):
+        from .record_templates import restore as undo_template
+        return undo_template(db, owner, receipt, rows, command_id)
     if not rows or any(r.tool != "record.contents" for r in rows):
         raise DomainError("INVALID_ARGUMENT", "Choose a contents operation to restore.")
     actions = []

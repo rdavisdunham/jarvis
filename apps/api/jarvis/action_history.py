@@ -149,9 +149,19 @@ def has_linked_records(db, model, identity):
 def inverse(db, change, *, lock=False, group=True):
     from .domain import COMMANDS
 
-    if group and change.tool == "record.contents":
+    if group and change.tool in {"record.contents", "record.instantiate"}:
         from .record_contents import check_restore_guard
-        check_restore_guard(db,change.owner_id,db.get(Command,(change.owner_id,change.command_id)))
+        receipt = db.get(Command, (change.owner_id, change.command_id))
+        check_restore_guard(db,change.owner_id,receipt)
+        if change.tool == "record.instantiate":
+            # Created records reference each other as homes, so the group is judged as a whole.
+            from .record_templates import undo_problem
+            if change.reverted_by:
+                return None, "Already reverted."
+            reason = undo_problem(db, change.owner_id, receipt.result["data"]["changed_ids"])
+            if reason:
+                return None, reason
+            return ("record.restore_contents",{"source_command_id":change.command_id}),"Archive the records created from this template"
         changes=list(db.scalars(select(ActionChange).where(
             ActionChange.owner_id==change.owner_id,ActionChange.command_id==change.command_id)))
         for other in changes:
@@ -340,13 +350,14 @@ def changes_for_work(db, work):
     ]
     grouped={}
     for item, saved in zip(result,[r for r in rows if r.entity_kind not in {"actor","space","area"} or r.tool.startswith(r.entity_kind+".")]):
-        if saved.tool=="record.contents":
+        if saved.tool in {"record.contents","record.instantiate"}:
             grouped.setdefault(saved.command_id,[]).append(item)
     for command, items in grouped.items():
         receipt=db.get(Command,(work.owner_id,command))
         root_id=receipt.result.get("data",{}).get("id") if receipt else None
         primary=next((i for i in items if i["entity_id"]==root_id),items[0])
-        primary["summary"]="Updated contents: "+primary["title"]
+        template=receipt and receipt.result.get("data",{}).get("template_id")
+        primary["summary"]=("Created from template: " if template else "Updated contents: ")+primary["title"]
         primary["fields"]["Affected records"]={"before":None,"after":len(items)}
         result=[i for i in result if i not in items or i is primary]
     # Include integration receipts and other non-reversible effects truthfully.

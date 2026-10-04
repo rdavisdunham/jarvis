@@ -1,7 +1,7 @@
 """User-defined organization; typed task/note capabilities retain their services."""
 
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Float, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base, now, uid
@@ -59,6 +59,23 @@ class StructureLink(Base):
     relationship_id: Mapped[str] = mapped_column(String(80))
     source_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id"), index=True)
     target_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id"), index=True)
+
+
+class RecordTemplate(Base):
+    """A reusable starting structure for one type. Instances are independent copies."""
+    __tablename__ = "record_templates"
+    __table_args__ = (Index("ix_record_templates_owner_id_type_id", "owner_id", "type_id"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100))
+    type_id: Mapped[str] = mapped_column(String(80))
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text, default="")
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class FieldUnderstanding(Base):

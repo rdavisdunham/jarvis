@@ -209,6 +209,12 @@ def external_atlas(identity: Bot, limit: int = Query(1000, ge=1, le=5000)):
         key=bot_access.authorize(db,required="records:read")
         return skeleton(db,key.owner_id,limit=limit,withhold=service.withheld(key.scopes))
 
+@external.get("/structure/templates")
+def external_templates(identity: Bot, type_id: str | None = None):
+    with session_scope() as db:
+        key=bot_access.authorize(db,required="records:read")
+        return service.custom_read(db,key,"template_list",{"type_id":type_id} if type_id else {})
+
 @external.get("/structure/records/{record_id}")
 def external_record(record_id: UUID,identity: Bot):
     with session_scope() as db:

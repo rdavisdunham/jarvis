@@ -2,6 +2,7 @@ import { canAttach,attachField,capabilityPatch } from "./field-library";
 import { ArrowUp, Plus, X } from "lucide-react";
 import type { OpensAs, Schema, SchemaField, SchemaType } from "./structure-types";
 import { meanings, fieldKinds, describe, emptyField } from "./structure-types";
+import { TemplatesSection } from "./Templates";
 
 export const OPENS_AS: [OpensAs, string, string][] = [
   ["container", "Container", "Opens to its contents and progress, like a folder."],
@@ -49,6 +50,7 @@ export function TypeEditor({type,schema,original,update,mappings,onMappings,comp
       {type.statuses.map((s,index)=><div className="schema-status-row" key={s.id}><label className="field"><span className="field-label-text">Status name</span><input value={s.name} onChange={e=>update({statuses:type.statuses.map(x=>x.id===s.id?{...x,name:e.target.value}:x)})}/></label><label className="field"><span className="field-label-text">Meaning</span><select value={s.meaning} onChange={e=>update({statuses:type.statuses.map(x=>x.id===s.id?{...x,meaning:e.target.value}:x)})}>{meanings.map(m=><option key={m} value={m}>{sentence(m)}</option>)}</select></label><button className="btn-icon" aria-label={"Move "+s.name+" earlier"} disabled={!index} onClick={()=>{const statuses=[...type.statuses];[statuses[index-1],statuses[index]]=[statuses[index],statuses[index-1]];update({statuses});}}><ArrowUp size={16}/></button><button className="btn-icon" aria-label={"Retire "+s.name} onClick={()=>update({statuses:type.statuses.filter(x=>x.id!==s.id)})}><X size={15}/></button></div>)}
       {retired.map(s=><label className="field" key={s.id}><span className="field-label-text">Move records from {s.name}</span><select value={mappings[s.id]??""} onChange={e=>onMappings({...mappings,[s.id]:e.target.value})}><option value="">Choose a replacement</option>{type.statuses.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>)}
     </section>
+    <TemplatesSection type={type} saved={original}/>
     <div className="schema-block"><label className="schema-check"><input type="checkbox" checked={type.archived} onChange={e=>update({archived:e.target.checked})}/>Archive this type</label></div></>}
   </div>;
 }

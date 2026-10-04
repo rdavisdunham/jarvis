@@ -444,6 +444,13 @@ from .record_contents import ContentsPlan
 READ_TOOLS["record_contents_preview"] = {
     "description":"Preview moving or locally archiving a container. mode=subtree carries contents; mode=item promotes direct children to its old home. Read counts, conflicts and source effects, then use record_contents on a clear user request. This does not change records.",
     "parameters":ContentsPlan.model_json_schema()}
+from .structure_schema import InstantiatePlan
+READ_TOOLS["template_list"] = {
+    "description":"List reusable templates (optionally for one type_id): name, summary of the records each creates, and IDs. Templates are starting copies; editing one never changes records made earlier.",
+    "parameters":{"type":"object","properties":{"type_id":{"type":"string"}},"additionalProperties":False}}
+READ_TOOLS["record_instantiate_preview"] = {
+    "description":"Preview creating a record and its child records from a template under parent_id (null: unfiled). Show the tree, then call record_instantiate with the exact preview_hash and unchanged arguments only on a clear request. Changes nothing.",
+    "parameters":InstantiatePlan.model_json_schema()}
 READ_TOOLS["record_browse"] = {
     "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes. groups lists records whose opens_as is container (the type's Organizing container setting; auto infers it). Each record reports opens_as: container opens as contents, item as its detail card.",
     "parameters":{"type":"object","properties":{
@@ -648,6 +655,11 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
+    if name in {"template_list","record_instantiate_preview"}:
+        from . import record_templates
+        with session_scope() as db:
+            if name == "template_list": return record_templates.listing(db,owner,**arguments)
+            return record_templates.plan(db,owner,InstantiatePlan.model_validate(arguments))
     if name in {"record_browse","record_contents_preview"}:
         from .record_contents import browse, plan, ContentsPlan
         with session_scope() as db:

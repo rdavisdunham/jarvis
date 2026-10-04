@@ -15,6 +15,8 @@ import { SourceBadge } from "./SourceDetails";
 import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
 import { StructureEditor } from "./StructureEditor";
+import { StartFromTemplateDialog, useTemplates, useUndoToast } from "./Templates";
+import { templatesFor } from "./template-model";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
@@ -127,6 +129,8 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   },[resultSearch,resultIds,visibleSearchIds]);
   useEffect(()=>{if(layout!=="browse"&&layout!=="atlas")onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible,layout]);
   useEffect(()=>{if((layout==="browse"||layout==="atlas")&&(query||typeId||filterField||resultIds?.length))setLayout("list");},[query,typeId,filterField,resultIds,layout]);
+  const {templates}=useTemplates(refresh+browseRefresh),[startingTemplate,setStartingTemplate]=useState(false);
+  const templateToast=useUndoToast(()=>refreshAll());
   if(!schema)return <p role="status" className="work-loading">{error||"Loading your structure…"}</p>;
   const refreshAll=async()=>{await load();setBrowseRefresh(r=>r+1);onChanged?.();};
   const edit=async(row:CustomRecord,changes:Record<string,unknown>)=>{
@@ -307,10 +311,12 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       <div className="row-list">{rows.map(row)}</div>
     </section>:null;}):<div className="row-list">{visible.map(row)}</div>;
   const visibleTasks=visible.filter(r=>r.task_id).slice(0,100);
+  const captureTemplates=captureType?templatesFor(templates,[captureType.id]):[];
   const capture=captureType&&canEdit&&!archived?<form className="work-capture" onSubmit={e=>{e.preventDefault();void create().catch(()=>{});}}>
     <Plus size={17} aria-hidden="true"/>
     <input ref={captureInput} aria-label={"New "+captureType.name} value={title} onChange={e=>setTitle(e.target.value)} placeholder={"Add "+captureType.name.toLowerCase()+"…"} maxLength={500}/>
     <button className="btn btn-primary btn-sm" disabled={busy||!title.trim()}>Add</button>
+    {!!captureTemplates.length&&<button type="button" className="btn btn-ghost btn-sm" onClick={()=>setStartingTemplate(true)}>From template</button>}
   </form>:null;
   const empty=!visible.length&&<div className="empty work-empty">
     {query?<><span>No records match “{query}”.</span><button type="button" className="btn btn-soft" onClick={()=>onQuery?.("")}>Clear search</button></>
@@ -342,10 +348,13 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         onEditTypes={(draft,type)=>{setProposal(undefined);setDesignDraft({draft,type});setDesign(true);}}/></Suspense>
        :(layout==="browse"||layout==="atlas")&&!capability?<OrganizationBrowse schema={schema} parent={parent} section={browseSection} onSection={setBrowseSection} query={query} archived={archived} status={status} refresh={refresh+browseRefresh} canEdit={canEdit}
         onBrowse={id=>{setParent(id);setBrowseSection(id?"all":"groups");setQueryForBrowse();}} onOpen={open} onVisible={onVisible}
-        onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}}/>
+        onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}} onChanged={refreshAll}/>
        :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
     {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={go} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
+    {startingTemplate&&captureType&&<StartFromTemplateDialog templates={captureTemplates} parentId={parent||null} homeTitle={parent?items.find(r=>r.id===parent)?.title:undefined} schemaRevision={schema.revision}
+      onClose={()=>setStartingTemplate(false)} onCreated={async(result,undo)=>{templateToast.show({message:`Created ${result.title} from the ${result.name} template.`,undo});await refreshAll();}}/>}
+    {templateToast.element}
     {moving&&<ContentsDialog row={moving.row} schema={schema} operation="move" parentId={moving.parentId} onClose={()=>setMoving(null)} onDone={refreshAll}/>}
     {design&&<StructureEditor onDirtyChange={setDesignDirty} initialProposal={proposal} initialDraft={designDraft?.draft??undefined} initialType={designDraft?.type} schema={schema} onClose={()=>{setDesign(false);setDesignDraft(null);}} onApplied={async()=>{setDesign(false);setDesignDraft(null);await refreshAll();}}/>}
   </section>;
