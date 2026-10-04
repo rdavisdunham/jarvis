@@ -224,7 +224,8 @@ The goal is to replace the plain tree with a way of *seeing and handling* the st
 - [ ] Every multi-record operation previews, uses one `command_id` and one receipt, and has guarded Revert.
 - [ ] Eri: the tool descriptions in `api/tool_catalog.py` are updated; the new tools follow the fast-lane plan (`docs/ERI_LATENCY_PLAN.md`), with cheap reads and `background_request` for heavy multi-record work.
 - [ ] UI follows `docs/DESIGN.md` (rows, chips, panels, sentence case, light and dark, phone).
-- [ ] The full backend suite, vitest, build, and the 6 browser suites pass locally before the PR; CI is green before merging.
+- [ ] The full backend suite, **`pytest evals`** (the eval harness's own tests, including the surface-inventory guard), vitest, build, and all browser suites pass locally before the PR; CI is green before merging.
+- [ ] New HTTP routes, commands or read tools: refresh `evals/app/surface-inventory.json` with `PYTHONPATH=apps/api uv run --no-sync python -m scripts.app_eval.inventory`, and make sure tests cover the new surfaces.
 - [ ] Update this file's "Current state" table and `docs/CUSTOM_PLANNER_IMPLEMENTATION.md`.
 
 ## Appendix A: agreed spec (2026-10-03)
