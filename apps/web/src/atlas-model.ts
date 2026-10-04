@@ -94,6 +94,12 @@ export function moveChoices(record: AtlasRecord, index: AtlasIndex): MoveOption[
   return options;
 }
 
+/** No choice to make: a record with nothing inside, or a task, meaning a work record that opens as an item
+ *  (its subtasks always travel with it). Containers such as projects still ask. */
+export function movesWhole(record: AtlasRecord, index: AtlasIndex): boolean {
+  return !(index.children.get(record.id)?.length) || (record.work && record.opens_as === "item");
+}
+
 export type MarkKind = "region" | "task" | "note" | "goal" | "other";
 export function markKind(r: AtlasRecord, type?: AtlasType): MarkKind {
   if (isRegion(r)) return "region";

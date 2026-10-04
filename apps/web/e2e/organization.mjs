@@ -37,6 +37,18 @@ try{
  await move.getByRole("button",{name:"Move",exact:true}).click();await expect(move).toHaveCount(0);
  expect((await request("/structure/records/"+task.id)).parent_id).toBe(client.id);
  await page.getByRole("button",{name:"Close record"}).click();
+ // A task with a subtask moves straight away, subtask included: no contents question.
+ const subtask=(await request("/structure/browse?parent_id="+task.id)).items[0];
+ await ui("ui_records",{record_id:task.id,open_details:true});
+ for(const home of [project,client]){
+  await page.getByRole("button",{name:"Choose main home"}).click();
+  await page.getByLabel("Find a home").fill(home.title);
+  await page.getByRole("button",{name:"Use "+home.title+" as home"}).click();
+  await expect.poll(async()=>(await request("/structure/records/"+task.id)).parent_id).toBe(home.id);
+ }
+ await expect(page.getByRole("dialog",{name:"Move contents",exact:true})).toHaveCount(0);
+ expect((await request("/structure/records/"+subtask.id)).parent_id).toBe(task.id);
+ await page.getByRole("button",{name:"Close record"}).click();
  await ui("ui_records",{layout:"browse",parent_id:"",type_id:""});
  await page.getByRole("button",{name:"Structure",exact:true}).click();
  const editor=page.getByRole("dialog",{name:"Workspace structure"});
