@@ -162,7 +162,7 @@ export function TemplateEditor({ schema, typeId, template, initial, onClose, onS
       <p className="template-sub">For {type.plural.toLowerCase()}. Saves right away; records created earlier never change.</p></div>
       <button type="button" className="btn-icon" aria-label="Close template editor" disabled={busy} onClick={onClose}><X size={18}/></button></div>
     <label>Name<input value={name} maxLength={120} autoFocus onChange={e => setName(e.target.value)} placeholder="Client onboarding"/></label>
-    <label>Description <span className="template-optional">Optional</span><input value={description} maxLength={2000} onChange={e => setDescription(e.target.value)} placeholder="When to use this template"/></label>
+    <label><span className="template-label">Description <span className="template-optional">Optional</span></span><input value={description} maxLength={2000} onChange={e => setDescription(e.target.value)} placeholder="When to use this template"/></label>
     <label>Description outline<textarea rows={4} value={body} maxLength={30000} onChange={e => setBody(e.target.value)} placeholder={"## Goals\n- "}/>
       <span className="template-hint">Copied into each new {type.name.toLowerCase()}’s details.</span></label>
     {!!fields.length && <fieldset className="template-defaults"><legend>Default values</legend>

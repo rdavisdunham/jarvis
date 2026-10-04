@@ -32,10 +32,12 @@ def _active(schema, type_id):
 
 def portable(t, values):
     """Values worth copying into a template: no dates, assignees, status or record links."""
+    from .structure import BINDING_DEFAULTS
+
     fields = {f["id"]: f for f in t["fields"] if not f["archived"]}
     return {
         k: v for k, v in values.items()
-        if k in fields and v is not None
+        if k in fields and v is not None and BINDING_DEFAULTS.get(fields[k].get("binding")) != v
         and fields[k].get("binding") not in EXCLUDED_BINDINGS and fields[k]["kind"] not in EXCLUDED_KINDS
     }
 

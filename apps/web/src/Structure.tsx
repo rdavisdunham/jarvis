@@ -129,10 +129,10 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   },[resultSearch,resultIds,visibleSearchIds]);
   useEffect(()=>{if(layout!=="browse"&&layout!=="atlas")onVisible?.(JSON.parse(visibleIds));},[visibleIds,onVisible,layout]);
   useEffect(()=>{if((layout==="browse"||layout==="atlas")&&(query||typeId||filterField||resultIds?.length))setLayout("list");},[query,typeId,filterField,resultIds,layout]);
+  const {templates}=useTemplates(refresh+browseRefresh),[startingTemplate,setStartingTemplate]=useState(false);
+  const templateToast=useUndoToast(()=>refreshAll());
   if(!schema)return <p role="status" className="work-loading">{error||"Loading your structure…"}</p>;
   const refreshAll=async()=>{await load();setBrowseRefresh(r=>r+1);onChanged?.();};
-  const {templates}=useTemplates(refresh+browseRefresh),[startingTemplate,setStartingTemplate]=useState(false);
-  const templateToast=useUndoToast(refreshAll);
   const edit=async(row:CustomRecord,changes:Record<string,unknown>)=>{
     const rt=schema.types.find(t=>t.id===row.type_id);
     if(changes.status_id&&rt?.statuses.find(s=>s.id===changes.status_id)?.meaning==="completed"){

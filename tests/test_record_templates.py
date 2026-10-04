@@ -211,7 +211,7 @@ def test_save_as_template_excludes_operational_values():
     payload = saved_template["payload"]
     assert payload["values"] == {"priority": 3, "estimate_minutes": 120} and payload["body"] == "Scope"
     assert payload["children"] == [{"type_id": "task", "title": "Wireframes", "body": "", "values": {"priority": 1},
-                                    "children": [{"type_id": "task", "title": "Sub", "body": "", "values": {"priority": 0}, "children": []}]}]
+                                    "children": [{"type_id": "task", "title": "Sub", "body": "", "values": {}, "children": []}]}]
     shallow = run("template.capture", {"record_id": p["id"], "name": "Just the project", "include_children": False})
     assert shallow["payload"]["children"] == [] and shallow["type_id"] == "project"
     _, made = instantiate(saved_template, c)

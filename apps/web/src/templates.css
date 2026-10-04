@@ -108,6 +108,7 @@
   line-height: 18px;
 }
 .template-sub { margin-top: 2px; font-weight: 450; }
+.template-label { display: inline-flex; gap: 6px; }
 .template-optional { color: var(--ink-3); }
 
 .template-editor { width: 640px; }
@@ -121,6 +122,7 @@
 }
 .template-defaults legend {
   margin-bottom: 4px;
+  padding: 0;
   color: var(--ink-2);
   font-size: 13px;
 }
