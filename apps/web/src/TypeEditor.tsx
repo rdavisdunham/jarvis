@@ -3,6 +3,7 @@ import { ArrowUp, Plus, X } from "lucide-react";
 import type { OpensAs, Schema, SchemaField, SchemaType } from "./structure-types";
 import { meanings, fieldKinds, describe, emptyField } from "./structure-types";
 import { TemplatesSection } from "./Templates";
+import { ReviewCadenceControl } from "./Reviews";
 
 export const OPENS_AS: [OpensAs, string, string][] = [
   ["container", "Container", "Opens to its contents and progress, like a folder."],
@@ -27,6 +28,10 @@ export function TypeEditor({type,schema,original,update,mappings,onMappings,comp
     <fieldset className="schema-opens-as"><legend>Organizing container</legend>
       <div className="segmented" role="group" aria-label="Organizing container">{OPENS_AS.map(([id,label])=><button type="button" key={id} aria-pressed={(type.opens_as??"auto")===id} onClick={()=>update({opens_as:id})}>{label}</button>)}</div>
       <p className="schema-block-hint">{OPENS_AS.find(([id])=>id===(type.opens_as??"auto"))![2]}</p>
+    </fieldset>
+    <fieldset className="schema-review-cadence"><legend>Review cadence</legend>
+      <ReviewCadenceControl type={type} onChange={update}/>
+      <p className="schema-block-hint">Due records appear in Questions, on Today and in the Atlas Reviews lens. Turning it on spreads the first reviews over one interval.</p>
     </fieldset>
     <MultiSelect label="Allowed main-home types" values={type.parent_types} options={schema.types.map(t=>({id:t.id,name:t.name}))} onChange={v=>update({parent_types:v})}/></>}
     <section className="schema-block" aria-label="Fields">

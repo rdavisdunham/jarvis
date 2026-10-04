@@ -292,6 +292,8 @@
 .atlas-key.is-upcoming, .atlas-key.is-work { border-color: var(--violet); background: var(--violet); }
 .atlas-key.is-note { border-radius: 3px; border-color: var(--ink-2); }
 .atlas-key.is-goal { border-color: var(--due-today); background: radial-gradient(circle, var(--due-today) 35%, var(--surface) 40%); }
+.atlas-key.is-review { border-color: var(--due-today); background: var(--due-today); }
+.atlas-key.is-review-inside { border-color: var(--due-today); }
 .atlas-key.is-ring { width: 14px; height: 3px; border: 0; border-radius: 2px; background: var(--done); }
 
 /* ---- Map marks ------------------------------------------------------------------------ */
@@ -400,8 +402,31 @@
 /* Type lens */
 .lens-type.kind-task .atlas-glyph { stroke: var(--violet); }
 .lens-type.kind-note .atlas-glyph { stroke: var(--ink-2); }
-/* Reviews lens: a placeholder until types get a review cadence */
-.atlas-item.lens-review { opacity: 0.3; }
+/* Reviews lens and review-due marks: an amber dot with a pulse (reduced motion keeps the dot only) */
+.lens-review.is-review-due .atlas-glyph { stroke: var(--due-today); stroke-width: 2.6; }
+.atlas-region.is-review-due:not(.is-selected, .is-target, .is-legal) .atlas-body { stroke: var(--due-today); stroke-width: 1.5; }
+.atlas-review { pointer-events: none; }
+.atlas-review-dot {
+  fill: var(--due-today);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.atlas-pulse {
+  fill: none;
+  stroke: var(--due-today);
+  stroke-width: 2;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: atlas-pulse 2.4s ease-out infinite;
+}
+@keyframes atlas-pulse {
+  0% { opacity: 0.75; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(2.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atlas-pulse { animation: none; opacity: 0; }
+}
 /* Glyph kinds */
 .kind-note .atlas-glyph { stroke-width: 1.6; }
 .kind-goal .atlas-glyph { fill: none; stroke: var(--due-today); }
@@ -533,6 +558,7 @@
   fill: var(--ink-2);
 }
 .blueprint-glyph.is-container { fill: var(--violet); }
+.blueprint-glyph.is-review { fill: var(--violet); }
 .blueprint-loop {
   fill: none;
   stroke: var(--violet);

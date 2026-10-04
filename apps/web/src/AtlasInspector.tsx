@@ -10,6 +10,8 @@ import {
 } from "./blueprint-model";
 import type { CustomRecord, Schema } from "./structure-types";
 import { TemplateStamps, TemplateStart } from "./Templates";
+import { ReviewCadenceControl } from "./Reviews";
+import { reviewLabels } from "./review-model";
 import { templatesFor, type InstantiatePreview, type RecordTemplate } from "./template-model";
 
 /** Template stamps in Add here: preview, then create through record.instantiate. */
@@ -27,8 +29,9 @@ export function MoveChoiceList({ title, options, busy, onChoose, onCancel }: { t
   </div>;
 }
 
-export function RecordInspector({ record, index, schema, today, canEdit, focused, busy, onFly, onSelect, onOpen, onBrowse, onType, onMove, onCreate, templates }: {
+export function RecordInspector({ record, index, schema, today, canEdit, focused, busy, onFly, onSelect, onOpen, onBrowse, onType, onMove, onCreate, onReviewed, templates }: {
   record: AtlasRecord; index: AtlasIndex; schema: Schema; today: string; canEdit: boolean; focused: boolean; busy: boolean; templates?: TemplateHooks;
+  onReviewed?: (record: AtlasRecord) => Promise<void>;
   onFly: (id: string) => void; onSelect: (id: string) => void; onOpen: (id: string) => void; onBrowse: (id: string) => void; onType: (id: string) => void;
   onMove: (record: AtlasRecord, target: string | null, mode: MoveOption["mode"]) => Promise<void>; onCreate: (type: string, title: string, parent: string | null) => Promise<void>;
 }) {
@@ -39,11 +42,13 @@ export function RecordInspector({ record, index, schema, today, canEdit, focused
   const state = itemState(record, today), due = dueState(record, today);
   const kids = index.children.get(record.id) ?? [], p = index.progress.get(record.id);
   const path = ancestors(index, record.id);
+  const review = full?.review_every ? reviewLabels(full, today) : null;
   return <>
     <div className="atlas-kicker">
       <span className="chip chip-type">{type?.name ?? "Record"}</span>
       {state && <span className={"chip" + (state === "done" ? " chip-done" : state === "overdue" ? " chip-due-overdue" : "")}>{sentence(stateLabel[state])}</span>}
       {record.due_date && state !== "done" && <span className={"chip" + (due === "overdue" ? " chip-due-overdue" : due === "today" ? " chip-due-today" : "")}>Due {shortDate(record.due_date, today)}</span>}
+      {record.review_due && <span className="chip chip-due-today">Review due</span>}
     </div>
     <h2 className="atlas-title">{record.title}</h2>
     <p className="atlas-path">{path.length ? path.map((a, i) => <span key={a.id}>{i > 0 && <span aria-hidden="true" className="atlas-path-sep">/</span>}<button type="button" className="text-button" onClick={() => onFly(a.id)}>{a.title}</button></span>) : <span>Unfiled</span>}</p>
@@ -51,9 +56,11 @@ export function RecordInspector({ record, index, schema, today, canEdit, focused
       <div><dt>Opens</dt><dd>{isRegion(record) ? "As its contents" : "As a detail card"}</dd></div>
       {!!kids.length && <div><dt>Inside</dt><dd>{kids.length} {kids.length === 1 ? "record" : "records"}</dd></div>}
       {!!p?.total && <div><dt>Work done</dt><dd className="tabular">{p.done} of {p.total}</dd></div>}
+      {full?.review_every && <><div><dt>Last reviewed</dt><dd className="tabular">{review!.last}</dd></div><div><dt>Next review</dt><dd className="tabular">{review!.next}</dd></div></>}
       <RelationRows record={record} index={index} onSelect={onSelect}/>
     </dl>
     <div className="atlas-actions">
+      {canEdit && record.review_due && onReviewed && <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={() => void onReviewed(record)}>Mark reviewed</button>}
       {isRegion(record) && !focused && <button type="button" className="btn btn-soft btn-sm" onClick={() => onFly(record.id)}>Fly in</button>}
       {isRegion(record) && <button type="button" className="btn btn-sm" onClick={() => onBrowse(record.id)}><FolderOpen size={15} aria-hidden="true"/>Open in Browse</button>}
       <button type="button" className="btn btn-sm" onClick={() => onOpen(record.id)}><Info size={15} aria-hidden="true"/>Details</button>
@@ -129,6 +136,8 @@ export function TypeInspector({ typeId, draft, saved, records, index, canDesign,
       <div className="atlas-subhead">Organizing container</div>
       <div className="segmented atlas-opens" role="group" aria-label="Organizing container">{OPENS_AS.map(([id, label]) =>
         <button key={id} type="button" disabled={!canDesign} aria-pressed={(t.opens_as ?? "auto") === id} onClick={() => onDraft(updateType(draft, t.id, { opens_as: id }))}>{label}</button>)}</div>
+      <div className="atlas-subhead">Review cadence</div>
+      <ReviewCadenceControl compact type={t} disabled={!canDesign} onChange={patch => onDraft(updateType(draft, t.id, patch))}/>
       <p className="atlas-hint">Behaviors switch features on. Plain information, like industry, stays a field.</p>
     </section>
     <section className="atlas-section" aria-label="Allowed homes">

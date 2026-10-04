@@ -1,0 +1,124 @@
+/* Review cadence: the type control, detail-card rows, Today's panel and the Questions card.
+   Spec: docs/DESIGN.md (rows, chips, panels, detail cards). */
+
+/* ---- Type behavior control ------------------------------------------------------------- */
+.review-cadence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.review-cadence-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.review-cadence-toggle > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-glyph {
+  color: var(--violet);
+  font-size: 15px;
+  line-height: 1;
+}
+.review-cadence select {
+  flex: 0 1 180px;
+  min-width: 150px;
+}
+.review-cadence.is-compact {
+  gap: 6px 12px;
+}
+.review-cadence.is-compact .review-cadence-toggle {
+  font-size: 13px;
+}
+.review-cadence.is-compact select {
+  height: 32px;
+  min-width: 140px;
+  font-size: 13px;
+}
+
+/* ---- Detail card rows -------------------------------------------------------------------- */
+.prop-static {
+  padding: 9px 8px 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 20px;
+}
+.review-next.is-due {
+  color: var(--due-today);
+  font-weight: 500;
+}
+.review-next.is-paused {
+  color: var(--ink-3);
+}
+.review-prop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 8px 4px;
+}
+.review-prop-actions .text-button {
+  padding: 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.review-prop-actions .text-button:hover:not(:disabled) {
+  color: var(--violet);
+}
+
+/* ---- Today panel --------------------------------------------------------------------------- */
+.today .row.today-row.review-row {
+  align-items: flex-start;
+  gap: 10px;
+}
+.review-row-glyph {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  color: var(--violet);
+}
+.review-row-action {
+  flex: 0 0 auto;
+  margin-top: -6px;
+}
+
+/* ---- Questions card ------------------------------------------------------------------------ */
+.review-question-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.review-question-facts .chip-home {
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.review-question-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.review-question-dates strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .review-row-action {
+    margin-top: 0;
+  }
+}

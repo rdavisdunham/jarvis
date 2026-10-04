@@ -152,6 +152,15 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     finally { setBusy(false); }
   };
 
+  const markReviewed = async (record: AtlasRecord) => {
+    setBusy(true);
+    try {
+      await command("record.mark_reviewed", { record_id: record.id }).send();
+      await load(); await onChanged();
+      setToast({ message: `Marked ${record.title} reviewed.` });
+    } catch (e) { setToast({ message: (e as Error).message }); }
+    finally { setBusy(false); }
+  };
   const fromTemplate = async (preview: InstantiatePreview, title: string) => {
     setBusy(true);
     try {
@@ -246,11 +255,13 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   for (const r of data.records) counts.set(r.type_id, (counts.get(r.type_id) ?? 0) + 1);
   const results = searchRecords(index, query);
   const changes = draft ? draftChanges(schema, draft) : 0;
+  const reviewing = data.types.some(t => t.review?.enabled && !t.archived);
+  const dueReviews = data.records.filter(r => r.review_due).length;
   const scale = mapSize.width ? scaleOf(view, mapSize.width, mapSize.height) : 1;
   const legend: Record<Lens, [string, string][]> = {
     status: [["open", "Open"], ["in_progress", "In progress"], ["done", "Done"], ["overdue", "Overdue"]],
     due: [["overdue", "Overdue"], ["today", "Due today"], ["upcoming", "Has a due date"]],
-    review: [],
+    review: [["review", "Review due"], ["review-inside", "Has reviews due inside"]],
     type: [["work", "Work"], ["note", "Note"], ["goal", "Goal"]],
   };
   const popupStyle = popup ? { left: Math.max(16, Math.min(popup.x + 8, innerWidth - 336)), top: Math.max(16, Math.min(popup.y + 8, innerHeight - 260)) } : undefined;
@@ -289,8 +300,10 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
               onMarkPointerDown={startDrag} onMarkClick={clickMark} onBackgroundClick={() => select(null)} onFlyOut={flyOut} onMarkKey={markKey} onMarkFocus={n => setActive(n.id)}/>}
             {!data.records.length && <div className="atlas-empty"><p>Nothing here yet. Add a space or client to start your map.</p></div>}
           </div>
-          <div className="atlas-legend" aria-hidden={lens === "review" ? undefined : "true"}>
-            {lens === "review" ? <span>Reviews due appear here once types have a review cadence.</span> : legend[lens].map(([id, label]) => <span key={id}><i className={"atlas-key is-" + id}/>{label}</span>)}
+          <div className="atlas-legend" aria-hidden={lens === "review" && !reviewing ? undefined : "true"}>
+            {lens === "review" && !reviewing ? <span>No types have a review cadence yet. Turn one on in a type's behaviors.</span>
+              : legend[lens].map(([id, label]) => <span key={id}><i className={"atlas-key is-" + id}/>{label}</span>)}
+            {lens === "review" && reviewing && <span className="tabular">{dueReviews} due</span>}
             {lens !== "review" && <span><i className="atlas-key is-ring"/>Ring shows work done</span>}
             <span className="atlas-zoom tabular">{Math.round(scale * 100)}%</span>
           </div>
@@ -309,7 +322,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
             onDraft={changeDraft} onFly={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onEditTypes={type => onEditTypes(draft, type)} onPlace={place}/>
           : record ? <RecordInspector record={record} index={index} schema={schema} today={today} canEdit={canEdit} focused={record.id === focusNode.id} busy={busy}
             onFly={id => flyTo(id)} onSelect={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onOpen={onOpen} onBrowse={onBrowse}
-            onType={id => { selectType(id); if (mode === "atlas") setMode("both"); }} onMove={move} onCreate={create} templates={templateHooks}/>
+            onType={id => { selectType(id); if (mode === "atlas") setMode("both"); }} onMove={move} onCreate={create} onReviewed={markReviewed} templates={templateHooks}/>
           : <FocusSummary focus={focusNode} index={index} canEdit={canEdit} schema={schema} busy={busy} onCreate={create} templates={templateHooks}/>}
       </aside>
     </div>

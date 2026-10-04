@@ -8,6 +8,7 @@ import { scheduledBy } from "./productivity";
 import { clockLabel, dueBucket, shortDate } from "./work-views";
 import { shiftDate } from "./workspace";
 import { plural, priorityLabels } from "./ux";
+import { TodayReviews } from "./Reviews";
 import "./today.css";
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
   today: string;
   zone: string;
   busy: boolean;
+  canEdit?: boolean;
   /** Bumps when notes change so recent notes refresh. */
   noteRevision: number;
   quick: string;
@@ -194,6 +196,7 @@ export function Today(p: Props) {
           {due.length ? <ul className="today-rows">{due.slice(0, 6).map(t => taskRow(t, true))}</ul>
             : <div className="empty"><span>Nothing is due. Plan a task for today above.</span><button type="button" className="btn btn-soft" onClick={() => captureRef.current?.focus()}>Add a task</button></div>}
         </section>
+        <TodayReviews today={p.today} zone={p.zone} canEdit={p.canEdit !== false} refresh={p.tasks}/>
         <section className="panel" aria-labelledby="today-inbox-title">
           <header className="panel-header"><h2 id="today-inbox-title">Inbox</h2>{!!inbox.length && <span className="panel-count">{inbox.length}</span>}
             <button type="button" className="btn btn-ghost btn-sm panel-action" onClick={() => p.onNavigate("inbox")}>Open inbox</button></header>

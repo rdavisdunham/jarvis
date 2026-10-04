@@ -5,6 +5,8 @@ import { humanLabel, SchedulingHelp, Dialog } from "./ux";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, X, ChevronRight, ListTodo, Bell, FileText, CornerLeftUp, ExternalLink, Plus } from "lucide-react";
 import { Prop, PriorityControl } from "./RecordCard";
+import { ReviewProps } from "./Reviews";
+import type { CustomRecord } from "./structure-types";
 import "./details.css";
 import { z } from "zod";
 import { api } from "./api";
@@ -36,8 +38,8 @@ export function TaskDetails(p:Props){
  return <StandardTaskDetails {...p}/>;
 }
 function StandardTaskDetails(p: Props) {
-  const [customHome,setCustomHome]=useState<{id:string;type_name:string;home:{title:string}[]}|null>(null);
-  useEffect(()=>{void api<{id:string;type_name:string;home:{title:string}[]}>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
+  const [customHome,setCustomHome]=useState<CustomRecord|null>(null);
+  useEffect(()=>{void api<CustomRecord>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
   const annotation=useInlineGuard();
   const [task, setTask] = useState<Task | null>(null),
     [notes, setNotes] = useState<NoteRecord[]>([]);
@@ -621,6 +623,7 @@ function StandardTaskDetails(p: Props) {
                 <div className="prop-divider"/>
                 <Prop label="Deadline alert">{select("deadline_alert","Deadline alert",[{id:"default",name:"Use my setting"},{id:"on",name:"On"},{id:"off",name:"Off"}])}</Prop>
                 <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={!!task.alert_urgent} disabled={locked} onChange={e=>void save({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop>
+                {customHome && <ReviewProps row={customHome} canEdit={p.canEdit !== false && !locked} onRecord={setCustomHome}/>}
               </div>
               <div className="detail-props-foot">
                 {!task.is_template && (
