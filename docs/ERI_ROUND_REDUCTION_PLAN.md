@@ -1,10 +1,11 @@
 # Reducing Eri model and tool rounds
 
-Updated October 4, 2026. The first two stages are implemented and independently
+Updated October 6, 2026. The first two stages are implemented and independently
 selectable. Discovery is the first-stage default; sufficient-read reuse is staged
 behind its policy setting until the phone check. See the
 [implementation, measurements and remaining acceptance](ERI_ROUND_REDUCTION_VALIDATION.md).
-The optional completion shortcut remains deferred.
+The optional completion shortcut remains deferred. A fourth, opt-in stage (`lean-v1`, below)
+shrinks the per-round prompt and makes its prefix cacheable across requests.
 
 Start by removing unnecessary discovery, then avoid repeated reads when a fresh
 result already contains everything needed. Keep the durable runner, human
@@ -185,6 +186,59 @@ on the phone before starting the next behavior change.
 Delivery wakeups from SPEED3 remain a separate measured option. If network,
 dispatch or speech delivery dominates, address that wait rather than forcing
 these optimizations. Stop when the common workflows are responsive and reliable.
+
+## Fourth stage: `lean-v1`, a smaller and cache-stable prompt (October 6, opt-in)
+
+Production traces from October 5–6 (6 GPT-Live requests, content-free events)
+showed where the per-round cost goes:
+- Each model round took a median of 1.9 s, with requests needing 2–6 rounds.
+- Tool definitions were 34.3 KB of every round (about 70% of the ~12k input tokens).
+- **Every first round had zero cached tokens**, because the instructions put the current
+  time (to the second) and screen context near the top, so the prompt prefix changed
+  with every request. Some second rounds also missed the cache.
+- A `work_followup` round preceded the lookups in 2 of 6 requests, even though recent
+  work already carried the finished request's saved record IDs.
+
+`lean-v1` is `reads-v1` plus:
+
+1. **Cache-stable layout.** Static instructions (policy, capabilities, tool guidance,
+   runner rules, search rules, voice-end policy) come first and are byte-identical
+   across requests of the same workspace kind. Per-request DATA (profile and current
+   time, focus, screen, memory, receipts, recent searches, recent work) moves to a
+   second system message after them. No instruction text changes meaning.
+2. **`prompt_cache_key`** derived from the tool names plus static text, so requests
+   sharing that prefix route to the same cache.
+3. **Smaller always-loaded tools.**
+   - `task_batch` and `task_selection_update` move behind the `tasks` group, where
+     bulk edits load them.
+   - `calendar_event_read` and `calendar_connection` join the initial set, because
+     agenda requests were loading `calendar_read` for them.
+   - `tools_load` lists each group with one short phrase. Usage rules stay in the
+     loaded tools' own definitions.
+   - Tool definitions drop from 35.4 KB to 27.7 KB.
+4. **Follow-up linking in the same round.** When recent work already shows the earlier
+   request succeeded with the needed IDs, `work_followup` is returned alongside the
+   lookups. Only writes wait for its result.
+5. **Context budgets.** Earlier conversation keeps the newest turns within 6,000
+   characters, each at most 1,500. Recent-work items keep IDs, status and saved
+   records, but trim request/outcome text to 600/500 characters.
+
+Measured locally (deterministic model, first round): 47.1 KB → 39.8 KB of input
+(−15%). Of the lean total, about 35 KB (tools plus static text) is identical across
+requests and can stay cached, against roughly the tool block today. Expected effect:
+lower time-to-first-token and cost on every first round. This is not yet a
+measured speedup.
+
+Rollout: set `JARVIS_AGENT_TOOL_POLICY=lean-v1` on API and worker together (dev
+first). Accepted jobs keep their pinned policy; rollback changes new jobs only. Compare
+with `--tool-policy reads-v1|lean-v1` in the paid campaign, then a typed and GPT-Live
+phone check, before making it the default.
+
+Why not drop injected context in favour of search? Every lookup the model must
+request costs a full model round (about 2 s). The small injected DATA (recent
+work, memory, screen) prevents those rounds. It is cheap once the static prefix is
+cached, and it is now budgeted. Better search would help the lookups that remain,
+not replace the injected context.
 
 ## Official guidance
 

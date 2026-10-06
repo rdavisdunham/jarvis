@@ -1078,3 +1078,52 @@ async def test_resumed_trimmed_work_refetches_before_planning_new_edits(client, 
     await work_runner.run(work["id"])
     with session_scope() as db:
         assert db.get(Job, work["id"]).status == "succeeded"
+
+
+async def test_lean_policy_keeps_a_byte_stable_cacheable_prefix(client, monkeypatch):
+    """lean-v1: static instructions first and identical across requests; per-request DATA after them."""
+    from jarvis import responses_adapter
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", "lean-v1")
+    first, second = action(client, "Hello"), action(client, "Add Buy milk")
+    seen = []
+    async def model(agent, messages, definitions, **kwargs):
+        seen.append((messages, definitions, responses_adapter.prompt_cache_key.get()))
+        return response(message="Done.")
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(first["id"])
+    await work_runner.run(second["id"])
+    (one, tools_one, key_one), (two, tools_two, key_two) = seen
+    assert one[0]["content"] == two[0]["content"]
+    assert "Current time" not in one[0]["content"] and "Current time" in one[1]["content"]
+    assert "RECENT WORK DATA: [" in two[1]["content"] and "RECENT WORK DATA: [" not in two[0]["content"]
+    assert "this invocation" in one[0]["content"]  # sufficient-read reuse is part of lean-v1
+    assert key_one == key_two and key_one.startswith("eri-lean-v1-")
+    names = {d["name"] for d in tools_one}
+    assert {"note_create", "calendar_event_read", "calendar_connection"} <= names
+    assert not {"task_batch", "task_selection_update"} & names
+    assert responses_adapter.prompt_cache_key.get() is None
+
+
+def test_prompt_cache_key_is_only_sent_when_set():
+    from jarvis import agent_models, responses_adapter
+    agent = agent_models.catalog()["luna"]
+    body = responses_adapter.request(agent, [{"role": "user", "content": "hi"}], [], False)
+    assert "prompt_cache_key" not in body
+    token = responses_adapter.prompt_cache_key.set("eri-lean-v1-abc")
+    try:
+        assert responses_adapter.request(agent, [{"role": "user", "content": "hi"}], [], False)["prompt_cache_key"] == "eri-lean-v1-abc"
+    finally:
+        responses_adapter.prompt_cache_key.reset(token)
+
+
+def test_lean_history_and_recent_work_budgets_keep_the_newest_reference_data():
+    turns = [{"role": "user", "content": f"turn {i} " + "x" * 3000} for i in range(10)]
+    kept = work_runner.budget_history(turns)
+    assert kept[-1]["content"].startswith("turn 9") and all(len(t["content"]) <= work_runner.TURN_CHARS for t in kept)
+    assert sum(len(t["content"]) for t in kept) <= work_runner.HISTORY_CHARS
+    assert [t["content"][:6] for t in kept] == sorted(t["content"][:6] for t in kept)
+    assert work_runner.budget_history([{"role": "user", "content": "y" * 9000}])[0]["content"] == "y" * work_runner.TURN_CHARS
+    item = {"request_id": "r", "request": "a" * 2000, "outcome": "b" * 2000, "status": "succeeded", "saved_records": [{"data": {"id": "t"}}]}
+    [trimmed] = work_runner.trim_recent([item])
+    assert len(trimmed["request"]) == 600 and len(trimmed["outcome"]) == 500
+    assert trimmed["saved_records"] == item["saved_records"] and trimmed["status"] == "succeeded"

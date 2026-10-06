@@ -517,6 +517,37 @@ def loader_definition():
     }
 
 
+# Hand-written phrases where a group's first clause does not shorten cleanly.
+SHORT_LABELS = {
+    "contents": "Browse homes and their contents; move, archive or restore a subtree",
+    "quick_capture": "Quick checklists: add, check and reorder items; promote to a task",
+    "setup": "Personal onboarding and editable organization defaults",
+    "templates": "Reusable templates: list, preview and create copies under a home",
+    "records": "Custom records: find by meaning, create, read, edit and link",
+    "activity": "Accepted work and pending clarifications: list, cancel, revert, show Activity",
+    "notes": "Search/read notes, saved lists, filing and recommendations",
+    "lists": "Saved note lists, filters and automatic filing",
+    "planner": "Compute and save verified task schedules with time windows",
+}
+
+
+def short_label(description, limit=90, name=None):
+    """The first clause of a group description, for the compact lean-v1 catalog."""
+    if name in SHORT_LABELS:
+        return SHORT_LABELS[name]
+    first = description.split(". ")[0].rstrip(".")
+    if len(first) <= limit:
+        return first
+    cut = first[:limit].rsplit(" ", 1)[0].rstrip(",;:(")
+    return cut + "…"
+
+
+def compact_groups(tool):
+    """Group names with one short phrase each. Usage rules live in each loaded tool's definition."""
+    allowed = tool.get("parameters", {}).get("properties", {}).get("groups", {}).get("items", {}).get("enum") or list(GROUPS)
+    return "Groups: " + "; ".join(name + ": " + short_label(GROUPS[name][0], name=name) for name in allowed if name in GROUPS)
+
+
 def load_names(arguments):
     import jsonschema
 
@@ -536,7 +567,11 @@ class ToolSession:
         from .tool_policy import definitions_for
         self.policy = policy
         self.catalog = {t["name"]: t for t in definitions_for(definitions, policy)}
-        core = (*CORE, "note_create") if policy != "baseline" else CORE
+        from .tool_policy import LEAN_DEFERRED, LEAN_EXTRA, lean
+        if lean(policy):
+            core = (*(n for n in CORE if n not in LEAN_DEFERRED), *LEAN_EXTRA)
+        else:
+            core = (*CORE, "note_create") if policy != "baseline" else CORE
         self.names = [n for n in core if n in self.catalog]
 
     def definitions(self):
