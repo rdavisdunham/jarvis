@@ -330,3 +330,24 @@ async def test_compact_resolver_supports_sparse_edit_without_losing_omitted_data
         await call_tool("davin", "sparse", 2, "task_update",
             {"task_id": found["id"], "expected_revision": found["revision"], "priority": 2})
     assert error.value.code == "REVISION_CONFLICT"
+
+
+def test_lean_policy_defers_bulk_tools_and_compacts_the_group_catalog():
+    lean = ToolSession(registry(), policy="lean-v1")
+    assert "task_batch" not in lean.names and "task_selection_update" not in lean.names
+    assert {"note_create", "calendar_event_read", "calendar_connection"} <= set(lean.names)
+    loaded = lean.load({"groups": ["tasks"]})
+    assert {"task_batch", "task_selection_update"} <= set(loaded["newly_loaded"])
+    reads = ToolSession(registry(), policy="reads-v1")
+    size = lambda s: len(json.dumps(s.definitions()))  # noqa: E731
+    assert size(ToolSession(registry(), policy="lean-v1")) < size(reads) * 0.85
+    description = lean.catalog["tools_load"]["description"]
+    assert "Call an exposed tool directly" in description and "templates:" in description
+    assert len(description) < len(reads.catalog["tools_load"]["description"]) * 0.75
+    # Bot-scoped catalogs still list only their own groups.
+    restricted = [t for t in registry() if t["name"] in {"tools_load", "task_list"}]
+    for tool in restricted:
+        if tool["name"] == "tools_load":
+            tool["parameters"]["properties"]["groups"]["items"]["enum"] = ["tasks"]
+    scoped = ToolSession(restricted, policy="lean-v1").catalog["tools_load"]["description"]
+    assert "tasks:" in scoped and "templates:" not in scoped
