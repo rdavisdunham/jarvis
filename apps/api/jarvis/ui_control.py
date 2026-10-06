@@ -85,6 +85,13 @@ class UIContext(BaseModel):
     tag: str = Field(default="", max_length=40)
     due_from: str = Field(default="", max_length=10)
     due_through: str = Field(default="", max_length=10)
+    @field_validator("visible_ids", "selected_task_ids", mode="before")
+    @classmethod
+    def sample_long_lists(cls, value, info):
+        # Screen context is a sample of what is on screen; a long page must never block a chat send.
+        limit = {"visible_ids": 60, "selected_task_ids": 100}[info.field_name]
+        return value[:limit] if isinstance(value, list) else value
+
     @field_validator("collection")
     @classmethod
     def collection_bounds(cls,value):
