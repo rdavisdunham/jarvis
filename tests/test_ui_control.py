@@ -97,3 +97,12 @@ async def test_private_chat_control_is_retired_but_old_context_can_sync():
     assert "private_chat" not in context.model_dump()["device_preferences"]
     with pytest.raises(DomainError):
         await call_tool("davin", "turn", 0, "ui_device", {"private_chat": True})
+
+
+def test_long_screen_lists_are_sampled_instead_of_rejected():
+    """A Calendar page with 79 visible items once rejected the whole chat send (October 6)."""
+    from jarvis.ui_control import UIContext
+    ids = [f"{i:036d}" for i in range(79)]
+    context = UIContext(view="calendar", visible_ids=ids, selected_task_ids=ids * 2)
+    assert context.visible_ids == ids[:60]
+    assert len(context.selected_task_ids) == 100

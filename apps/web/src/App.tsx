@@ -1862,7 +1862,8 @@ export default function App() {
     area_id: organizationFilter.area,
     goal_id: organizationFilter.goal,
     work_kind: view === "reminders" ? "reminder" : workKind,
-    visible_ids:
+    // The server keeps at most 60; long Calendar/Organization/Notes pages send a sample.
+    visible_ids: (
       view === "questions" ? [] : view === "organize"
         ? organizationVisible
         : view === "notes"
@@ -1877,8 +1878,8 @@ export default function App() {
                   ? memories
                   : filtered
               )
-                .slice(0, 60)
-                .map((item) => item.id),
+                .map((item) => item.id)
+    ).slice(0, 60),
     task_status: taskStatus,
     project: projectFilter,
   };

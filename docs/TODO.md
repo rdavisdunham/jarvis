@@ -222,6 +222,32 @@ This batch does not change the backend model default or bypass CI.
   and Revert obey source semantics; local archive is not remote deletion.
   Show pending/confirmed/error/conflict states and provider-specific fields.
   Clearly distinguish unsupported/read-only and local-only fields.
+- [ ] **Expanded Google Calendar controls: attendance (RSVP).** Requested October 6.
+  On events where the owner is a guest, offer Yes / No / Maybe in the event details,
+  the Calendar view and through Eri ("I'm not going to the 3pm"). Write only the
+  owner's own `attendees[self].responseStatus` with a targeted patch (existing
+  `calendar.events` write scope; calendar editing must be enabled); show
+  pending/confirmed/conflict like other source edits and support Revert. Keep
+  guest-event title/time/description edits blocked (`blocked_event` in
+  `api/google_writes.py`). Decide whether "No" hides or dims declined events
+  (declined events are already detected in `api/google_calendar.py`) and whether to
+  notify the organizer (`sendUpdates`). Later candidates: a response note,
+  "propose new time", and guest list/visibility details.
+- [ ] **Don't fight the wording: open the one obvious match.** Requested October 6.
+  "Show me the weekly check in task", with no such task but exactly one matching
+  calendar event today, got "I couldn't find a task named…" plus the Calendar page.
+  Treat the record kind in a request (task, event, meeting, note, client) as a hint,
+  not a filter. When exactly one record of any kind matches, open *that record's*
+  detail window: for a calendar event, the event details dialog, not the Calendar
+  page showing its day (observed October 6), and answer without correcting the
+  user's word choice, and mention the kind only if it matters ("It's a calendar
+  event; want me to make a task for it?"). Still ask when several plausible matches
+  exist; never act on a fuzzy match for edits. Cover typed chat and GPT-Live, and add
+  an eval case for kind-mismatch navigation.
+- [ ] **New conversation focuses the chat box.** Requested October 6. Clicking
+  New conversation puts the cursor in the message box so typing can start at once
+  (desktop and phone, opening the keyboard on mobile where the browser allows it);
+  keep the same focus after the chat panel opens from the Eri launcher.
 - [x] Add collapsible **Eridani-only notes**, stored separately from synced
   descriptions. Never send them to any provider; sync/source Revert preserves them.
   “Private” means not externally synced, with existing workspace visibility.
