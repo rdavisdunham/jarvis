@@ -244,6 +244,10 @@ This batch does not change the backend model default or bypass CI.
   event; want me to make a task for it?"). Still ask when several plausible matches
   exist; never act on a fuzzy match for edits. Cover typed chat and GPT-Live, and add
   an eval case for kind-mismatch navigation.
+- [ ] **New conversation focuses the chat box.** Requested October 6. Clicking
+  New conversation puts the cursor in the message box so typing can start at once
+  (desktop and phone, opening the keyboard on mobile where the browser allows it);
+  keep the same focus after the chat panel opens from the Eri launcher.
 - [x] Add collapsible **Eridani-only notes**, stored separately from synced
   descriptions. Never send them to any provider; sync/source Revert preserves them.
   “Private” means not externally synced, with existing workspace visibility.
