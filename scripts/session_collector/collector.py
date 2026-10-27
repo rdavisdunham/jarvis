@@ -12,16 +12,19 @@ Standard library only, so a systemd timer can run it with the system python3.
 """
 
 import argparse
+import atexit
 import glob
 import hashlib
 import json
 import os
 import re
 import shlex
+import shutil
 import socket
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -218,8 +221,33 @@ def claude_sources(root, side):
         yield path, f"{stat.st_mtime_ns}:{stat.st_size}", stat.st_mtime, lambda p=path: claude_session(Path(p), side)
 
 
+READABLE = {}
+
+
+def snapshot(path):
+    """A private copy of a database and its WAL, in memory where possible; removed when the run ends."""
+    folder = tempfile.mkdtemp(prefix="eridani-collector-", dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
+    atexit.register(shutil.rmtree, folder, True)
+    copy = os.path.join(folder, os.path.basename(path))
+    shutil.copyfile(path, copy)
+    if os.path.exists(path + "-wal"):
+        shutil.copyfile(path + "-wal", copy + "-wal")
+    return copy
+
+
 def connect(path):
-    return sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+    """Read-only. A running Windows app keeps its database in WAL mode, whose shared-memory index can't be
+    mapped across /mnt/c ("disk I/O error"), and immutable=1 would miss the WAL's newest writes. Such a
+    database is read through a snapshot instead, taken once per run."""
+    if path not in READABLE:
+        try:
+            with sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5) as con:
+                con.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            READABLE[path] = path
+        except sqlite3.OperationalError:
+            READABLE[path] = snapshot(path)
+    target = READABLE[path]
+    return sqlite3.connect(f"file:{path}?mode=ro" if target == path else f"file:{target}", uri=True, timeout=5)
 
 
 def codex_history(home, thread_id, t):
@@ -268,9 +296,13 @@ def codex_sources(home, tool):
     path = os.path.join(home, "state_5.sqlite")
     if not os.path.exists(path):
         return
-    with connect(path) as con:
-        con.row_factory = sqlite3.Row
-        rows = [dict(r) for r in con.execute("SELECT * FROM threads WHERE source NOT LIKE '%subagent%'")]
+    try:
+        with connect(path) as con:
+            con.row_factory = sqlite3.Row
+            rows = [dict(r) for r in con.execute("SELECT * FROM threads WHERE source NOT LIKE '%subagent%'")]
+    except (OSError, sqlite3.Error) as exc:
+        print(f"skipped {path} this run: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return
     for row in rows:
         updated = row.get("updated_at_ms") or (row.get("updated_at") or 0) * 1000
         version = str(updated) + (":a" if row.get("archived") else "")
@@ -332,6 +364,87 @@ def sources():
     for windows in windows_homes():
         yield from claude_sources(os.path.join(windows, ".claude/projects"), "windows")
         yield from codex_sources(os.path.join(windows, ".codex"), "codex_desktop")
+
+
+AGENTS = {"claude": ("claude_code", "claude_desktop"), "codex": ("codex_cli",)}
+RESUME = {"claude_code": "claude --resume", "claude_desktop": "claude --resume", "codex_cli": "codex resume"}
+
+
+def remotea_command():
+    """remotea's CLI is a node script; run it through node, since a systemd timer's PATH lacks an nvm node."""
+    cli = os.environ.get("REMOTEA_BIN") or shutil.which("remotea") or str(Path.home() / ".local/bin/remotea")
+    if not os.path.exists(cli):
+        return None
+    with open(cli, "rb") as handle:
+        if b"node" not in handle.readline():
+            return [cli]
+    nodes = glob.glob(str(Path.home() / ".nvm/versions/node/*/bin/node"))
+    newest = max(nodes, key=lambda p: [int(n) for n in re.findall(r"\d+", Path(p).parts[-3])], default=None)
+    node = shutil.which("node") or newest
+    return [node, cli] if node else None
+
+
+def remotea_terminals(status):
+    """Agent session ID → the remotea terminal running it (live, or lost and waiting for an app to restore it)."""
+    live, groups = {}, {}
+    rank = {"live": 2, "lost": 1}
+    for s in sorted(status.get("sessions") or [], key=lambda s: s.get("lastActivityAt") or s.get("createdAt") or 0):
+        agent = s.get("agent") or {}
+        sid = agent.get("sessionId")
+        if agent.get("provider") not in AGENTS or not isinstance(sid, str):
+            continue
+        groups[sid] = clip(s.get("groupName") or "", 200)
+        if s.get("state") in rank and rank[s["state"]] >= rank.get((live.get(sid) or {}).get("state"), 0):
+            live[sid] = dict(
+                provider=agent["provider"],
+                state=s["state"],
+                workspace=groups[sid],
+                terminal=clip(s.get("id") or "", 100),
+                host=clip((status.get("server") or {}).get("hostname") or "", 100),
+            )
+    return live, groups
+
+
+def remotea(state):
+    """Terminals from `remotea status --json` (v1). A failed read reuses the last good one so resumes don't flap."""
+    known = state.setdefault("remotea", {"installed": False, "live": {}, "groups": {}})
+    command = remotea_command()
+    if not command:
+        known.update(installed=False, live={})
+        return known
+    try:
+        result = subprocess.run([*command, "status", "--json"], capture_output=True, text=True, timeout=20)
+        status = json.loads(result.stdout) if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        status = None
+    if not isinstance(status, dict) or status.get("version") != 1:
+        print("remotea status unavailable; keeping the last known terminals", file=sys.stderr)
+        return known
+    live, groups = remotea_terminals(status)
+    known.update(installed=True, live=live, groups={**known.get("groups", {}), **groups})
+    return known
+
+
+def source_id(source):
+    """The agent session ID inside a source key: a Claude transcript's file name or a Codex thread ID."""
+    return source.rsplit("#", 1)[1] if "#" in source else Path(source).stem
+
+
+def resume_in_remotea(session, terminals):
+    """A running session points at its terminal; a stopped WSL one reopens as a tab in its last workspace."""
+    resume, sid, tool = dict(session["resume"]), session["session_id"], session["tool"]
+    live = terminals["live"].get(sid)
+    if live and tool in AGENTS[live["provider"]]:
+        state = "Live" if live["state"] == "live" else "Restoring"
+        resume.pop("cmd", None)
+        resume["live"] = {k: v for k, v in live.items() if k != "provider"}
+        resume["hint"] = clip(f"{state} in remotea → {live['workspace'] or 'Inbox'}", 200)
+    elif terminals["installed"] and tool in RESUME and resume.get("cmd") and session["cwd"]:
+        group = terminals["groups"].get(sid) or "Inbox"
+        cmd = f"remotea open --group {shlex.quote(group)} --cwd {shlex.quote(session['cwd'])} -- {RESUME[tool]} {shlex.quote(sid)}"
+        if len(cmd) <= 500:
+            resume["cmd"] = cmd
+    return resume
 
 
 def payload(session, machine):
@@ -428,9 +541,13 @@ def main():
     known = state.setdefault("sessions", {})
     key = None if args.dry_run else token()
     rows, sent, failed, reported = [], 0, 0, set()
+    terminals = remotea(state)
     for source, version, modified, read in sources():
         if modified < cutoff:
             continue
+        # A remotea terminal opening or closing changes the report even when the transcript hasn't.
+        sid = source_id(source)
+        version = [version, digest([terminals["installed"], terminals["live"].get(sid), terminals["groups"].get(sid)])[:16]]
         # Unchanged since the last send, and nothing left to report: skip without parsing.
         previous = known.get(source, {})
         if not args.dry_run and previous.get("version") == version and (previous.get("settled") or not settled(previous.get("last_active"))):
@@ -445,9 +562,11 @@ def main():
         if not session or name in reported:
             continue
         reported.add(name)
+        session["resume"] = resume_in_remotea(session, terminals)
         body = payload(session, machine)
         if args.dry_run:
-            rows.append((body["last_active_at"] or "", session["tool"], body["title"] or body["first_prompt"][:60], body["cwd"], body["branch"]))
+            where = "live" if "live" in body["resume"] else body["branch"]
+            rows.append((body["last_active_at"] or "", session["tool"], body["title"] or body["first_prompt"][:60], body["cwd"], where))
             continue
         fingerprint, quiet = digest(body), settled(body["last_active_at"])
         if previous.get("fingerprint") == fingerprint and (previous.get("settled") or not quiet):
