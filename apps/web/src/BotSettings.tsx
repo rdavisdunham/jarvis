@@ -14,7 +14,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
   const [data, setData] = useState<KeyList | null>(null), [error, setError] = useState("");
   const [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [name, setName] = useState("");
   const [days, setDays] = useState(90), [queued, setQueued] = useState(false);
-  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read" });
+  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read", sessions: "none" });
   const [secret, setSecret] = useState(""), [visible, setVisible] = useState(false), [copied, setCopied] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -53,7 +53,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     {!data && !error && <p role="status" className="settings-empty">Loading connected agents…</p>}
     {adding && <form className="settings-form bot-key-form" onSubmit={create}>
       <label className="field wide"><span className="field-label-text">Agent name</span><input autoFocus value={name} maxLength={80} required placeholder="For example, Codex" onChange={e => setName(e.target.value)}/></label>
-      {[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"]].map(([group,label]) =>
+      {[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"],["sessions","Agent sessions (where coding and chat work happened)"]].map(([group,label]) =>
         <label className="field" key={group}><span className="field-label-text">{label}</span><select value={levels[group]} onChange={e => setLevels({...levels, [group]:e.target.value})}>
           <option value="none">No access</option><option value="read">Read</option>{!readOnly && (group!=="schema"||canDesign) && <option value="write">Read & edit</option>}
         </select></label>)}

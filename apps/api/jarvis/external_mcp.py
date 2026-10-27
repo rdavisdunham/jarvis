@@ -98,6 +98,27 @@ def definitions(scopes):
             parameters,
             False,
         )
+    from . import agent_sessions as sessions
+
+    if "sessions:read" in scopes:
+        add(
+            "session_search",
+            "Find where coding or chat work happened: Claude Code, Codex, ChatGPT and Claude desktop sessions with their folder, branch, issue, summary and how to resume them. Omit query for the most recent sessions; unfiled=true lists sessions not yet filed under an issue or record.",
+            sessions.Listing.model_json_schema(),
+        )
+    if "sessions:write" in scopes:
+        parameters = sessions.LinkInput.model_json_schema()
+        parameters["properties"].update(
+            tool={"type": "string", "enum": list(sessions.TOOLS)},
+            session_id={"type": "string", "pattern": sessions.SESSION_ID.pattern},
+        )
+        parameters["required"] = ["tool", "session_id"]
+        add(
+            "session_link",
+            "File one agent session under a synced Linear issue (identifier such as ENG-123) or an Eridani record (record_id), or clear=true to return it to automatic filing. Give exactly one. Use your own session ID; the session may be reported later.",
+            parameters,
+            False,
+        )
     add(
         "request_get",
         "Check the status and saved action receipts of a request submitted by this bot key.",
@@ -135,7 +156,24 @@ def definitions(scopes):
     return result
 
 
+def session_arguments(model, arguments):
+    from pydantic import ValidationError
+
+    try:
+        return model.model_validate(arguments)
+    except ValidationError:
+        raise DomainError("INVALID_ARGUMENT", "Check the tool's required arguments and types.") from None
+
+
 def dispatch(name, arguments):
+    from . import agent_sessions as sessions
+
+    if name == "session_search":
+        # Searching may call the embedding provider; hold no transaction meanwhile.
+        with session_scope() as db:
+            bot = bot_access.authorize(db, required="sessions:read")
+            owner, reveal = bot.owner_id, "records:read" in bot.scopes
+        return sessions.search(owner, session_arguments(sessions.Listing, arguments), reveal=reveal)
     with session_scope() as db:
         bot = bot_access.authorize(db)
         definition = next((item for item in definitions(bot.scopes) if item["name"] == name), None)
@@ -147,6 +185,14 @@ def dispatch(name, arguments):
             )
         except jsonschema.ValidationError:
             raise DomainError("INVALID_ARGUMENT", "Check the tool's required arguments and types.") from None
+        if name == "session_link":
+            args = dict(arguments)
+            tool, session_id = args.pop("tool"), args.pop("session_id")
+            bot = bot_access.authorize(db, bot.owner_id, "sessions:write", write=True)
+            return sessions.link(
+                db, bot.owner_id, tool, session_id, session_arguments(sessions.LinkInput, args),
+                source="explicit", reveal="records:read" in bot.scopes,
+            )
         if name in service.CUSTOM_READS:
             return service.custom_read(db, bot, name, arguments)
         args = copy.deepcopy(arguments)

@@ -1378,3 +1378,63 @@
     padding-right: 8px;
   }
 }
+
+/* ---- Agent sessions drawer (shares the Activity drawer layout) ------------------------------ */
+.session-toolbar {
+  flex-wrap: wrap;
+}
+.session-toolbar input[type="search"] {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.sessions-panel .session-card h3 {
+  margin: 6px 0 2px;
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.session-tool {
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.session-place {
+  margin: 4px 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.session-filed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  font-size: 13px;
+}
+.session-rules {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+}
+.session-rules code {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.session-rule-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.session-rule-form input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.sessions-panel .session-card .work-result {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+}

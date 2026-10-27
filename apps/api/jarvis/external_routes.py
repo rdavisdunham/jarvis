@@ -8,6 +8,7 @@ from pydantic import Field
 from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 
+from . import agent_sessions as sessions
 from . import bot_access
 from . import external_service as service
 from .auth import Identity, authenticate
@@ -22,7 +23,7 @@ User = Annotated[Identity, Depends(authenticate)]
 
 class KeyInput(service.Input):
     name: str = Field(min_length=1, max_length=80)
-    scopes: list[str] = Field(min_length=1, max_length=11)
+    scopes: list[str] = Field(min_length=1, max_length=len(bot_access.SCOPES))
     expires_in_days: int = Field(default=90, ge=1, le=365)
 
 
@@ -228,5 +229,29 @@ def external_record(record_id: UUID,identity: Bot):
     with session_scope() as db:
         key=bot_access.authorize(db,required="records:read")
         return service.custom_read(db,key,"record_get",{"record_id":str(record_id)})
+
+@external.put("/sessions/{tool}/{session_id}")
+def session_report(tool: sessions.Tool, session_id: str, body: sessions.SessionInput, identity: Bot):
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="sessions:write", write=True)
+        return sessions.upsert(db, bot.owner_id, tool, session_id, body, reveal="records:read" in bot.scopes)
+
+
+@external.post("/sessions/{tool}/{session_id}/link")
+def session_link(tool: sessions.Tool, session_id: str, body: sessions.LinkInput, identity: Bot):
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="sessions:write", write=True)
+        return sessions.link(
+            db, bot.owner_id, tool, session_id, body, source="explicit", reveal="records:read" in bot.scopes
+        )
+
+
+@external.get("/sessions")
+async def session_search(identity: Bot, query: Annotated[sessions.Listing, Query()]):
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="sessions:read")
+        owner, reveal = bot.owner_id, "records:read" in bot.scopes
+    return await run_in_threadpool(sessions.search, owner, query, reveal=reveal)
+
 
 router.include_router(external)

@@ -1,0 +1,7 @@
+[Unit]
+Description=Report local AI agent sessions to the Eridani session ledger
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I %h/.local/share/eridani-collector/collector.py
+Nice=10

@@ -142,3 +142,34 @@ def test_record_reviews_migration_upgrades_and_downgrades(test_database):
         if trial:trial.dispose()
         with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_agent_sessions_migration_upgrades_and_downgrades(test_database):
+    name='jarvis_sessions_'+uuid4().hex
+    supplied=make_url(test_database)
+    admin=create_engine(supplied.set(database='postgres'),isolation_level='AUTOCOMMIT')
+    target=supplied.set(database=name)
+    trial=None
+    with admin.connect() as c:c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env={**os.environ,'JARVIS_DATABASE_URL':target.render_as_string(hide_password=False),'JARVIS_ENV_FILE':''}
+        def migrate(*args):
+            result=subprocess.run([sys.executable,'-m','alembic',*args],cwd=ROOT,env=env,capture_output=True,text=True)
+            assert result.returncode==0,result.stdout+result.stderr
+        migrate('upgrade','0023_record_reviews')
+        trial=create_engine(target)
+        assert 'agent_sessions' not in inspect(trial).get_table_names()
+        migrate('upgrade','head');migrate('check')
+        from jarvis.session_models import AgentSession
+        with Session(trial) as db:
+            db.add(AgentSession(owner_id='release-owner',tool='claude_code',session_id='s1'))
+            db.commit()
+            assert db.scalar(select(AgentSession)).binding_source==''
+        assert 'ix_agent_sessions_owner_id_last_active_at' in {i['name'] for i in inspect(trial).get_indexes('agent_sessions')}
+        migrate('downgrade','0023_record_reviews')
+        assert not {'agent_sessions','agent_session_rules'} & set(inspect(trial).get_table_names())
+        migrate('upgrade','head')
+    finally:
+        if trial:trial.dispose()
+        with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()
