@@ -55,6 +55,7 @@ EXACT = {
     "search_select": "search_aliases",
     "work_revert": "receipts",
     "reviews_due": "custom_records",
+    "session_search": "external_agents",
     "ui_activity": "receipts",
 }
 for prefix in ("calendar", "linear"):
@@ -77,7 +78,7 @@ def route_owner(path, source):
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
-    if "/external/" in path or "/bot-keys" in path:
+    if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):
         return "external_agents"
     if "/accounts" in path:
         return "workspaces"

@@ -80,6 +80,9 @@ app.include_router(note_lists_router)
 from .accounts import router as accounts_router
 
 app.include_router(accounts_router)
+from .session_routes import router as session_router
+
+app.include_router(session_router)
 from .integration_routes import router as integration_router
 
 app.include_router(integration_router)

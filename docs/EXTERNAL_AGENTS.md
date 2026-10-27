@@ -133,3 +133,28 @@ custom record/schema events only when the key has the corresponding read scope.
 
 See [CUSTOM_PLANNER_IMPLEMENTATION.md](CUSTOM_PLANNER_IMPLEMENTATION.md) for
 capabilities, inheritance, migration and rollout status.
+
+## Agent session ledger
+
+Answers "where did I work on X?" across Claude Code, Codex, ChatGPT desktop and Claude Desktop.
+A local collector reports sessions ([`scripts/session_collector`](../scripts/session_collector/README.md)).
+Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per session. Transcripts stay on the user's machine.
+
+- `sessions:write`:
+  - `PUT /sessions/{tool}/{session_id}`: an idempotent full-state report.
+  - `POST /sessions/{tool}/{session_id}/link`: file a session under exactly one of `identifier` (a synced Linear issue key), `record_id`, or `clear`.
+- `sessions:read`:
+  - `GET /sessions?query=&unfiled=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning.
+  - A `record_id` covers everything under that record, so a client includes its projects and issues.
+- MCP tools: `session_search` and `session_link`. Eri has the same `session_search` tool in the `sessions` group.
+- `tool` values: `claude_code`, `codex_cli`, `codex_desktop`, `claude_desktop`, `cowork`.
+
+Automatic filing runs in this order, strongest first:
+1. a known issue key in the branch
+2. exactly one known issue key in the title or prompts
+3. the longest matching folder rule (`/api/v1/sessions/rules`, managed in the Sessions drawer)
+
+Unknown keys such as `gpt-5` never file a session. Explicit (agent) and manual (browser) filing is never replaced.
+
+Without `records:read`, a key sees whether a session is filed, but not the filed record's title.
+A settled session (quiet for 10 minutes) gets one summary and one embedding per content change, via the `summarize_session` job.
