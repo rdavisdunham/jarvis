@@ -144,7 +144,7 @@ Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per
   - `PUT /sessions/{tool}/{session_id}`: an idempotent full-state report.
   - `POST /sessions/{tool}/{session_id}/link`: file a session under exactly one of `identifier` (a synced Linear issue key), `record_id`, or `clear`.
 - `sessions:read`:
-  - `GET /sessions?query=&unfiled=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning.
+  - `GET /sessions?query=&unfiled=&live=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning. `live=true` keeps only sessions running in a persistent terminal.
   - A `record_id` covers everything under that record, so a client includes its projects and issues.
 - MCP tools: `session_search` and `session_link`. Eri has the same `session_search` tool in the `sessions` group.
 - `tool` values: `claude_code`, `codex_cli`, `codex_desktop`, `claude_desktop`, `cowork`.
@@ -157,4 +157,9 @@ Automatic filing runs in this order, strongest first:
 Unknown keys such as `gpt-5` never file a session. Explicit (agent) and manual (browser) filing is never replaced.
 
 Without `records:read`, a key sees whether a session is filed, but not the filed record's title.
+`resume` carries how to get back to a session: `cmd`, `url`, `hint`, and `live` when the session runs in a [remotea](https://github.com/rdavisdunham/remotea) terminal.
+- `live` has `state` (`live`, or `lost` while an app restores it after a server restart), `workspace`, `terminal` (the remotea session id) and `host`.
+- A live session has no `cmd`: resuming it a second time would start a duplicate agent.
+- Changing `resume` doesn't trigger a new summary.
+
 A settled session (quiet for 10 minutes) gets one summary and one embedding per content change, via the `summarize_session` job.

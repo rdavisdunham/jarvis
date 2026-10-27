@@ -211,3 +211,24 @@ def test_archived_sessions_leave_listings(client):
     row = report(headers, "noise").json()
     assert client.post(f"/api/v1/sessions/{row['id']}/archive", json={"archived": True}).status_code == 200
     assert client.get("/api/v1/sessions").json()["items"] == []
+
+
+def test_live_terminals_list_separately_and_never_trigger_a_new_summary(client):
+    _, headers = key(client, ["sessions:write", "sessions:read"])
+    live = {"state": "live", "workspace": "Acme", "terminal": "surf-1", "host": "DavisPC"}
+    running = report(headers, "running", resume={"hint": "Live in remotea → Acme", "live": live})
+    assert running.status_code == 200, running.text
+    assert running.json()["resume"] == {"hint": "Live in remotea → Acme", "live": live}
+    report(headers, "stopped")
+    listed = client.get("/api/v1/sessions", params={"live": "true"}).json()["items"]
+    assert [s["session_id"] for s in listed] == ["running"]
+    assert TestClient(app).get("/api/v1/external/sessions", params={"live": "true"}, headers=headers).json()["items"][0]["resume"]["live"] == live
+    with session_scope() as db:
+        before = db.scalar(select(AgentSession.fingerprint).where(AgentSession.session_id == "running"))
+    closed = report(headers, "running", resume={"cmd": "remotea open --group Acme -- claude --resume running"})
+    assert "live" not in closed.json()["resume"]
+    with session_scope() as db:
+        assert db.scalar(select(AgentSession.fingerprint).where(AgentSession.session_id == "running")) == before
+    assert client.get("/api/v1/sessions", params={"live": "true"}).json()["items"] == []
+    for bad in ({**live, "state": "exited"}, {**live, "workspace": "x" * 201}, {**live, "pid": 1}):
+        assert report(headers, "bad", resume={"live": bad}).status_code == 422

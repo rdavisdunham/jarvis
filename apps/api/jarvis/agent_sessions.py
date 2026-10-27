@@ -48,10 +48,20 @@ def secure_url(value):
     return value
 
 
+class Live(Input):
+    """The persistent terminal (remotea) running this session; lost means waiting for an app to restore it."""
+
+    state: Literal["live", "lost"]
+    workspace: str = Field(default="", max_length=200)
+    terminal: str = Field(default="", max_length=100)
+    host: str = Field(default="", max_length=100)
+
+
 class Resume(Input):
     cmd: str = Field(default="", max_length=500)
     url: str = Field(default="", max_length=500)
     hint: str = Field(default="", max_length=200)
+    live: Live | None = None
 
     _url = field_validator("url")(secure_url)
 
@@ -98,6 +108,7 @@ class RuleInput(Input):
 class Listing(Input):
     query: str = Field(default="", max_length=300)
     unfiled: bool = False
+    live: bool = False
     record_id: UUID | None = None
     tool: Tool | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -367,6 +378,8 @@ def scoped(db, owner, args):
         query = query.where(AgentSession.record_id.is_(None), AgentSession.task_id.is_(None))
     if args.tool:
         query = query.where(AgentSession.tool == args.tool)
+    if args.live:
+        query = query.where(AgentSession.resume.has_key("live"))
     if args.record_id:
         # A client's sessions include those filed under its projects and issues.
         from .record_contents import rows_under

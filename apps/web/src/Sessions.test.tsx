@@ -32,6 +32,13 @@ describe("agent session cards", () => {
   it("lets a hand-filed session return to automatic filing", () => {
     expect(render({ ...base, filed: { ...base.filed, source: "manual" } })).toContain("Use automatic filing");
   });
+  it("shows where a session is running instead of a resume command", () => {
+    const live = { state: "live" as const, workspace: "Acme", terminal: "surf-1", host: "DavisPC" };
+    const html = render({ ...base, resume: { hint: "Live in remotea → Acme", live } });
+    expect(html).toContain("Live in remotea · Acme"); expect(html).toContain('title="DavisPC · surf-1"');
+    expect(html).not.toContain("Copy resume command"); expect(html).not.toContain("Live in remotea → Acme");
+    expect(render({ ...base, resume: { live: { ...live, state: "lost", workspace: "" } } })).toContain("Restoring in remotea · Inbox");
+  });
   it("describes recency compactly", () => {
     const now = new Date("2026-10-26T12:00:00Z").getTime();
     expect(since("2026-10-26T11:58:00Z", now)).toBe("2m ago");

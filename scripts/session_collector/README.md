@@ -20,6 +20,19 @@ Common secret formats are redacted before sending. Transcripts never leave the m
 
 Plain chats in the ChatGPT and Claude desktop apps live only on those services, so they are not collected.
 
+A running app keeps its Codex database in WAL mode, and WSL can't map that database's shared-memory index across `/mnt/c`. In that case the collector reads a private copy of the database and its WAL, so the newest writes are included.
+- The copy goes in `/dev/shm` and is deleted when the run ends.
+- The large thread history is copied only in runs where a thread changed.
+
+## remotea terminals
+
+When [remotea](https://github.com/rdavisdunham/remotea) is installed, the collector reads `remotea status --json` (version 1). It looks for the CLI in `REMOTEA_BIN`, then on `PATH`, then at `~/.local/bin/remotea`, and runs it with node; when node isn't on `PATH`, it uses the newest nvm one.
+- **Live terminals:** a session running in a remotea terminal is reported with `resume.live`, which holds its workspace, terminal id and host. It has no resume command, so the session can't be started twice. Eridani shows it under **Live**. A `lost` terminal (after a server restart) shows as Restoring until a remotea app restores it.
+- **Stopped sessions:** other WSL Claude Code and Codex sessions resume with `remotea open --group <last workspace> --cwd <folder> -- claude --resume <id>`, so they reopen as a synced tab. Sessions remotea has never seen use the Inbox workspace.
+- **Detecting changes:** a terminal opening or closing triggers a resend, even when the transcript hasn't changed.
+- **Failures:** if `remotea status` fails, the last good read is kept so resume commands don't flap.
+- **Codex:** Codex terminals are marked live once remotea maps Codex processes to threads.
+
 ## Setup
 
 1. In Eridani, create a bot key under **Settings → Integrations → Connected agents** with `sessions:write`.

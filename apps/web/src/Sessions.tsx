@@ -8,12 +8,13 @@ export type AgentSession = {
   first_prompt: string; last_prompt: string; machine: string; environment: string; cwd: string; repo: string; branch: string;
   turn_count: number; started_at: string | null; last_active_at: string | null; pr_urls: string[];
   issue_refs: { identifier: string; task_id: string; url: string | null }[];
-  resume: { cmd?: string; url?: string; hint?: string };
+  resume: { cmd?: string; url?: string; hint?: string; live?: { state: "live" | "lost"; workspace: string; terminal: string; host: string } };
   filed: { source: string | null; record_id: string | null; task_id: string | null; record_title: string | null };
 };
 type Listing = { items: AgentSession[]; total: number; next_offset: number | null };
 type Rule = { id: string; path_prefix: string; record_id: string; record_title: string | null };
 type Choice = { id: string; title: string; type_name?: string };
+type View = "all" | "live" | "unfiled" | "rules";
 
 const filedBy: Record<string, string> = {
   branch: "from the branch", mention: "from the prompts", path_rule: "by folder rule", manual: "by you", explicit: "by the agent",
@@ -55,12 +56,15 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
   const link = (choice: { record_id: string } | { identifier: string } | { clear: true }) =>
     post<AgentSession>(`/sessions/${item.id}/link`, choice).then(onChanged);
   const place = [item.repo || item.cwd.split("/").filter(Boolean).at(-1), item.branch].filter(Boolean).join(" · ");
+  const live = item.resume.live;
   return <article className="work-card session-card" data-session-id={item.id}>
     <header><span className="session-tool">{item.tool_label}</span><time dateTime={item.last_active_at ?? undefined}>{since(item.last_active_at)}</time></header>
     <h3>{item.title}</h3>
     {(item.summary || item.first_prompt) && <p className="work-result">{item.summary || item.first_prompt}</p>}
     <p className="session-place" title={item.cwd}>{place}{item.environment && <small> · {item.environment}</small>}{item.turn_count > 0 && <small> · {item.turn_count} {item.turn_count === 1 ? "prompt" : "prompts"}</small>}</p>
     <div className="session-filed">
+      {live && <span className={"chip " + (live.state === "live" ? "chip-done" : "chip-due-today")} title={[live.host, live.terminal].filter(Boolean).join(" · ")}>
+        {live.state === "live" ? "Live" : "Restoring"} in remotea · {live.workspace || "Inbox"}</span>}
       {item.filed.record_id
         ? <span>Filed under <strong>{item.filed.record_title ?? "a record"}</strong> {filedBy[item.filed.source ?? ""] ?? ""}</span>
         : <span className="chip chip-due-today">Unfiled</span>}
@@ -78,7 +82,7 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
         <button className="btn btn-ghost btn-sm" onClick={() => void link({ clear: true }).catch(e => setError(e.message))}>Use automatic filing</button>}
       <button className="btn btn-ghost btn-sm" onClick={() => void post(`/sessions/${item.id}/archive`, { archived: true }).then(onChanged).catch(e => setError(e.message))}>Hide</button>
     </div>
-    {!item.resume.cmd && item.resume.hint && <small className="work-revert-note">{item.resume.hint}</small>}
+    {!item.resume.cmd && !live && item.resume.hint && <small className="work-revert-note">{item.resume.hint}</small>}
     {error && <p className="work-error" role="alert">{error}</p>}
   </article>;
 }
@@ -105,19 +109,27 @@ function Rules({ onChanged }: { onChanged: () => void }) {
   </section>;
 }
 
+const empty: Record<View, string> = {
+  all: "No sessions yet. Run the session collector on your work machine to report them.",
+  live: "Nothing is running in a remotea terminal right now.",
+  unfiled: "Every session is filed.",
+  rules: "",
+};
+
 export function SessionsPanel({ onClose }: { onClose: () => void }) {
-  const [query, setQuery] = useState(""), [unfiled, setUnfiled] = useState(false), [rules, setRules] = useState(false);
+  const [query, setQuery] = useState(""), [view, setView] = useState<View>("all");
   const [data, setData] = useState<Listing | null>(null), [error, setError] = useState(""), [tick, setTick] = useState(0);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   useEffect(() => {
     let live = true;
     const timer = setTimeout(() => {
-      const params = new URLSearchParams({ limit: "50", ...(query.trim() ? { query: query.trim() } : {}), ...(unfiled ? { unfiled: "true" } : {}) });
+      if (view === "rules") return;
+      const params = new URLSearchParams({ limit: "50", ...(query.trim() ? { query: query.trim() } : {}), ...(view === "live" || view === "unfiled" ? { [view]: "true" } : {}) });
       void api<Listing>("/sessions?" + params).then(r => { if (live) { setData(r); setError(""); } }).catch(e => live && setError(e.message));
     }, query ? 250 : 0);
     return () => { live = false; clearTimeout(timer); };
-  }, [query, unfiled, tick]);
+  }, [query, view, tick]);
   const refresh = () => setTick(t => t + 1);
   return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel sessions-panel" aria-label="Agent sessions"
     onKeyDown={event => { if (event.key === "Escape") onClose(); }}>
@@ -126,14 +138,13 @@ export function SessionsPanel({ onClose }: { onClose: () => void }) {
     <div className="activity-toolbar session-toolbar">
       <input type="search" aria-label="Search sessions" placeholder="Topic, issue key, repo or folder…" value={query} onChange={e => setQuery(e.target.value)}/>
       <div className="segmented" role="group" aria-label="Show">
-        <button aria-pressed={!unfiled && !rules} onClick={() => { setUnfiled(false); setRules(false); }}>All</button>
-        <button aria-pressed={unfiled && !rules} onClick={() => { setUnfiled(true); setRules(false); }}>Unfiled</button>
-        <button aria-pressed={rules} onClick={() => setRules(!rules)}>Rules</button>
+        {([["all", "All"], ["live", "Live"], ["unfiled", "Unfiled"], ["rules", "Rules"]] as const).map(([value, label]) =>
+          <button key={value} aria-pressed={view === value} onClick={() => setView(value)}>{label}</button>)}
       </div>
     </div>
     {error && <p role="alert">{error}</p>}
-    {rules ? <div className="activity-items"><Rules onChanged={refresh}/></div> : <>
-      {data && !data.items.length && <p className="activity-empty">{query ? "No sessions match." : unfiled ? "Every session is filed." : "No sessions yet. Run the session collector on your work machine to report them."}</p>}
+    {view === "rules" ? <div className="activity-items"><Rules onChanged={refresh}/></div> : <>
+      {data && !data.items.length && <p className="activity-empty">{query ? "No sessions match." : empty[view]}</p>}
       <div className="activity-items">{data?.items.map(item => <SessionCard key={item.id} item={item} onChanged={refresh}/>)}</div>
     </>}
   </Dialog>;

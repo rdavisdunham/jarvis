@@ -103,7 +103,7 @@ def definitions(scopes):
     if "sessions:read" in scopes:
         add(
             "session_search",
-            "Find where coding or chat work happened: Claude Code, Codex, ChatGPT and Claude desktop sessions with their folder, branch, issue, summary and how to resume them. Omit query for the most recent sessions; unfiled=true lists sessions not yet filed under an issue or record.",
+            "Find where coding or chat work happened: Claude Code, Codex, ChatGPT and Claude desktop sessions with their folder, branch, issue, summary and how to resume them. Omit query for the most recent sessions; unfiled=true lists sessions not yet filed under an issue or record; live=true lists sessions running right now in a persistent remotea terminal.",
             sessions.Listing.model_json_schema(),
         )
     if "sessions:write" in scopes:
