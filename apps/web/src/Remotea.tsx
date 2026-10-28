@@ -4,7 +4,7 @@ import { api, ApiError, post } from "./api";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
   ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
-  paritySummary, place, questionMode, REMOTEA_POLL_MS, runButton, runControls, runLabel, stateLabel, targetOptions, timeline,
+  cutoverSummary, linearOutcomes, paritySummary, place, POLICY_TEXT, questionMode, REMOTEA_POLL_MS, runButton, runControls, runLabel, stateLabel, targetOptions, timeline,
   unmergedSummary, type Interview, type NeedsTarget, type Parity, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type Turn, type UnmergedWork,
 } from "./remotea-model";
@@ -89,6 +89,7 @@ export function Remotea({ run }: { run?: string | null } = {}) {
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
   const hosts = hostSummary(status?.hosts ?? []);
+  const cutover = cutoverSummary(parity);
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
       <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
@@ -104,7 +105,8 @@ export function Remotea({ run }: { run?: string | null } = {}) {
       {!items && !error && <p role="status" className="settings-empty">Loading sessions…</p>}
     </section>
     <details className="remotea-parity">
-      <summary>Collector parity</summary>
+      <summary>Collector parity{cutover?.ready ? " · ready for cutover" : ""}</summary>
+      {cutover && <p className={"chip " + (cutover.ready ? "chip-done" : "chip-due-today")} role="status">{cutover.text}</p>}
       <p>{paritySummary(parity)}</p>
       {!!parity?.recent.length && <ul>{parity.recent.slice(0, 8).map(r =>
         <li key={r.tool + r.session_id}><code>{r.session_id.slice(0, 12)}</code> {r.missing ? "not reported by the current collector" : Object.keys(r.diff).join(", ")}</li>)}</ul>}
@@ -325,6 +327,9 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       {!!run.integration?.length && <ul className="remotea-integration" aria-label="Sub-task integration">{run.integration.map(i =>
         <li key={i.task_id}><GitBranch size={14} aria-hidden="true"/> {i.branch ? <code>{i.branch}</code> : "Sub-task"}: {i.reason}</li>)}</ul>}
       <Criteria run={run}/>
+      {run.completion_policy && run.completion_policy !== "code_ready" && <p className="footnote">{POLICY_TEXT[run.completion_policy] ?? run.completion_policy}</p>}
+      {!!linearOutcomes(run).length && <ul className="remotea-linear" aria-label="Linear sync">{linearOutcomes(run).map(o =>
+        <li key={o.key} className={"tone-" + o.tone}>{o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.text}</a> : o.text}</li>)}</ul>}
       {!!run.plan?.steps?.length && <details className="remotea-plan">
         <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
         <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>

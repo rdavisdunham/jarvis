@@ -32,6 +32,13 @@ describe("agent session cards", () => {
   it("lets a hand-filed session return to automatic filing", () => {
     expect(render({ ...base, filed: { ...base.filed, source: "manual" } })).toContain("Use automatic filing");
   });
+  it("labels a dream-sequence link and offers Undo only there", () => {
+    const html = render({ ...base, filed: { ...base.filed, source: "auto" } });
+    expect(html).toContain("Filed under <strong>Fix login</strong> by the dream sequence"); expect(html).toContain(">Undo<");
+    expect(html).not.toContain("Use automatic filing");
+    expect(render(base)).not.toContain(">Undo<");
+    expect(render({ ...base, filed: { ...base.filed, source: "manual" } })).not.toContain(">Undo<");
+  });
   it("shows where a session is running instead of a resume command", () => {
     const live = { state: "live" as const, workspace: "Acme", terminal: "surf-1", host: "DavisPC" };
     const html = render({ ...base, resume: { hint: "Live in remotea → Acme", live } });

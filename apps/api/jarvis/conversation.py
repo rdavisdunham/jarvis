@@ -116,7 +116,9 @@ async def chat(
         *history,
         {"role": "user", "content": message},
     ]
-    tool_session = ToolSession(registry())
+    from .tool_policy import remotea_tools
+
+    tool_session = ToolSession(remotea_tools(registry(), owner))
     voice_ended = False
     if end_voice is not None:
         from .voice_control import VOICE_END_POLICY, VOICE_END_TOOL

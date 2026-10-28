@@ -51,6 +51,15 @@ def link(identity: UUID, body: sessions.LinkInput, user: User):
         return sessions.link(db, user.owner_id, row.tool, row.session_id, body)
 
 
+@router.post("/{identity}/autolink/undo")
+def undo_autolink(identity: UUID, user: User):
+    """Undo a dream-sequence link: tombstones (session, task) so no later cycle re-links it."""
+    from .agent_autolink import undo
+
+    with session_scope() as db:
+        return undo(db, user.owner_id, str(identity))
+
+
 @router.post("/{identity}/archive")
 def archive(identity: UUID, body: ArchiveInput, user: User):
     with session_scope() as db:

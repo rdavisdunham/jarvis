@@ -128,6 +128,7 @@ class TaskChanges(Args):
     success_criteria: list[Criterion] | None = Field(default=None, max_length=50)
     verify: VerifyConfig | None = None
     turn_cap: int | None = Field(default=None, ge=1, le=100)
+    completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     execution_target_id: str | None = Field(default=None, max_length=36)
 
 
@@ -273,7 +274,7 @@ COMMANDS = {
 # Update null policy: absent keeps, null clears. Fields here cannot be cleared, so
 # generated tool schemas omit null for them; CLEARED maps null to the empty value.
 NOT_NULL = {
-    "task.update": {"title", "status", "archived", "steps", "success_criteria", "turn_cap"},
+    "task.update": {"title", "status", "archived", "steps", "success_criteria", "turn_cap", "completion_policy"},
     "schedule.update": {"title", "when", "timezone", "task_id"},
     "space.update": {"name", "archived"},
     "area.update": {"name", "archived", "space_id"},
@@ -637,6 +638,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
+    if tool.startswith("control."):
+        from .agent_control import mutate as control_mutate
+        return control_mutate(db, owner, tool, args, command_id)
     from .organization import project_changes
 
     if tool.startswith(("structure.", "record.")):
@@ -1152,3 +1156,6 @@ COMMANDS.update(SETUP_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)
+
+from .agent_control_schema import COMMANDS as CONTROL_COMMANDS
+COMMANDS.update(CONTROL_COMMANDS)

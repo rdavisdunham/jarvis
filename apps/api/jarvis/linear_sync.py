@@ -1,5 +1,7 @@
 """Owner-scoped Linear synchronization through durable jobs and stable issue identities."""
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from uuid import NAMESPACE_URL, uuid5
 
@@ -21,6 +23,21 @@ STATE_TYPES = {
     "deferred": "backlog",
     "waiting": "started",
 }
+
+
+# Set while an agent run writes the task's status (agent_sync.py): the observed start (in_progress) or the
+# run's completion (done). Such a write never fails the local change; its Linear outcome is recorded instead.
+run_write = ContextVar("linear_run_write", default=None)
+
+
+@contextmanager
+def for_run(run_id, purpose):
+    outcome = {"purpose": purpose, "run_id": run_id}
+    token = run_write.set(outcome)
+    try:
+        yield outcome
+    finally:
+        run_write.reset(token)
 
 
 def connection(db, owner, generation=None):
@@ -380,7 +397,7 @@ def require_editable(db, conn, link):
         )
 
 
-def queue_write(db, conn, link, patch, create=False):
+def queue_write(db, conn, link, patch, create=False, origin=None):
     job = enqueue_job(
         db,
         conn.owner_id,
@@ -393,12 +410,27 @@ def queue_write(db, conn, link, patch, create=False):
             "create": create,
             "patch": patch,
             "base": link.snapshot,
+            **({"run_id": origin["run_id"], "purpose": origin["purpose"]} if origin else {}),
         },
     )
     link.pending_job_id = job.id
     link.sync_state = "pending"
     external_state(db, link)
     return job
+
+
+def state_id(conn, link, status):
+    candidates = [
+        s
+        for s in conn.directory.get("states", [])
+        if s["team"]["id"] == link.snapshot["team"]["id"] and s["type"] == STATE_TYPES[status]
+    ]
+    if not candidates:
+        raise DomainError("LINEAR_STATE", "Choose an available Linear workflow status in the Linear editor.")
+    return min(
+        candidates,
+        key=lambda s: (s["name"].lower() not in {"todo", "in progress", "done", "canceled", "backlog"}, s["name"]),
+    )["id"]
 
 
 def task_patch(conn, link, changes, task):
@@ -410,22 +442,7 @@ def task_patch(conn, link, changes, task):
     if "priority" in changes and changes["priority"] != task.priority:
         patch["priority"] = {0: 0, 1: 4, 2: 3, 3: 2}[changes["priority"]]
     if "status" in changes and changes["status"] != task.status:
-        candidates = [
-            s
-            for s in conn.directory.get("states", [])
-            if s["team"]["id"] == link.snapshot["team"]["id"] and s["type"] == STATE_TYPES[changes["status"]]
-        ]
-        if not candidates:
-            raise DomainError(
-                "LINEAR_STATE", "Choose an available Linear workflow status in the Linear editor."
-            )
-        patch["stateId"] = min(
-            candidates,
-            key=lambda s: (
-                s["name"].lower() not in {"todo", "in progress", "done", "canceled", "backlog"},
-                s["name"],
-            ),
-        )["id"]
+        patch["stateId"] = state_id(conn, link, changes["status"])
     if "assignee" in changes and changes["assignee"] != task.assignee:
         name = changes["assignee"]
         matches = [u for u in conn.directory.get("users", []) if u["name"] == name]
@@ -447,19 +464,94 @@ def task_patch(conn, link, changes, task):
 
 
 def before_task_update(db, owner, task, changes):
+    origin = run_write.get()
     link = link_for_task(db, owner, task.id)
     if not link or link.sync_state == "unlinked":
+        if origin is not None:
+            origin["status"] = "skipped"
         return
     if "archived" in changes:
         task.external = {**(task.external or {}), "local_archived": changes["archived"]}
     mapped = {"title", "notes", "due_date", "priority", "status", "assignee", "project_id"}
     if not any(k in mapped and v != getattr(task, k) for k, v in changes.items()):
         return
-    conn = connection(db, owner)
-    require_editable(db, conn, link)
-    patch = task_patch(conn, link, changes, task)
+    finishing = changes.get("status") in {"completed", "cancelled"} and changes["status"] != task.status
+    try:
+        conn = connection(db, owner)
+        if finishing:
+            in_flight = supersede_start(db, link)
+            pending = db.get(Job, link.pending_job_id) if link.pending_job_id else None
+            if in_flight is None and origin is not None and pending is not None and pending.status not in TERMINAL:
+                in_flight = pending.id
+            if in_flight is not None:
+                # A run's In Progress write (or, for a run's own finish, any write) is executing: the finish
+                # follows it (process_write sends it once that write settles). The local finish goes ahead.
+                if origin is not None:
+                    origin.update(status="deferred", after=in_flight)
+                return
+        require_editable(db, conn, link)
+        patch = task_patch(conn, link, changes, task)
+    except DomainError as exc:
+        if origin is None or not finishing:
+            raise  # A start Linear refuses leaves the local status alone (the caller records it).
+        # A run's completion is never undone by source sync (C13); the outcome is recorded instead.
+        origin.update(status="blocked", code=exc.code, message=exc.message[:300])
+        return
     if patch:
-        queue_write(db, conn, link, patch)
+        job = queue_write(db, conn, link, patch, origin=origin)
+        if origin is not None:
+            origin.update(status="queued", job_id=job.id)
+
+
+def supersede_start(db, link):
+    """Ordering guard: a run's In Progress write still pending when the task finishes.
+
+    Not started (or waiting to retry before any write was attempted) → cancelled here, so it can never
+    land after the finish (returns None). Executing or possibly written → its job id; that write settles
+    first and process_write then sends the finish (finish_owed)."""
+    if not link.pending_job_id:
+        return None
+    job = db.get(Job, link.pending_job_id, with_for_update=True)
+    if not job or job.status in TERMINAL or (job.payload or {}).get("purpose") != "in_progress":
+        return None
+    if job.status in ("queued", "retrying") and not (job.result or {}).get("attempted"):
+        job.status, job.finished_at = "cancelled", now()
+        job.result = {**(job.result or {}), "message": "Superseded: the task finished before Linear showed it started."}
+        link.pending_job_id, link.sync_state = None, "synced"
+        external_state(db, link)
+        return None
+    return job.id
+
+
+def finished_remotely(link, task):
+    return ((link.snapshot or {}).get("state") or {}).get("type") == STATE_TYPES[task.status]
+
+
+def finish_owed(db, owner, job):
+    """After a write settles: a task finished locally while it was pending (a deferred run finish) gets its
+    finish sent now, so a stale start never leaves Linear behind a completed task."""
+    link = db.get(LinearIssue, job.payload["link_id"])
+    task = db.get(Task, link.task_id) if link else None
+    if task is None or task.status not in {"completed", "cancelled"} or finished_remotely(link, task):
+        return
+    pending = db.get(Job, link.pending_job_id) if link.pending_job_id else None
+    if pending is not None and pending.id != job.id and pending.status not in TERMINAL:
+        return
+    try:
+        conn = connection(db, owner)
+        require_editable(db, conn, link)
+        target = state_id(conn, link, task.status)
+        if job.payload.get("patch", {}).get("stateId") == target:
+            return  # This write was the finish itself; its failure shows on the task's Linear state.
+        run_id = job.payload.get("run_id")
+        follow = queue_write(db, conn, link, {"stateId": target},
+                             origin={"run_id": run_id, "purpose": "done"} if run_id else None)
+    except DomainError:
+        return  # A conflict or a lost connection shows on the task's Linear state; the user resolves it.
+    if run_id:
+        from .agent_sync import record_outcome
+
+        record_outcome(db, run_id, "done", {"status": "queued", "job_id": follow.id})
 
 
 def target_values(remote):
@@ -484,7 +576,8 @@ def matches(remote, patch):
 
 def process_write(job_id):
     with session_scope() as db:
-        job = db.get(Job, job_id)
+        # Locked: a completion may supersede a run's start write that has not begun (supersede_start).
+        job = db.get(Job, job_id, with_for_update=True)
         if not job or job.status in TERMINAL:
             return
         owner, payload = job.owner_id, job.payload
@@ -551,7 +644,24 @@ def process_write(job_id):
                 "task_id": link.task_id if link else None,
                 "url": remote.get("url"),
             }
+            task = db.get(Task, link.task_id) if link else None
             if (
+                link
+                and conn
+                and conn.enabled
+                and conn.generation == payload["generation"]
+                and link.pending_job_id == job_id
+                and task is not None
+                and task.status in {"completed", "cancelled"}
+                and remote["state"]["type"] != STATE_TYPES[task.status]
+            ):
+                # The task finished locally while this write (a run's start, say) was in flight: applying it
+                # would reopen the task. Keep the local status, take the snapshot, send the finish next.
+                link.snapshot, link.latest_remote, link.sync_state, link.pending_job_id = remote, None, "synced", None
+                external_state(db, link)
+                finish_owed(db, owner, active)
+                conn.next_sync_at = now()
+            elif (
                 link
                 and conn
                 and conn.enabled
@@ -586,6 +696,8 @@ def process_write(job_id):
                 link.sync_state = "pending" if retry else status
                 link.latest_remote = remote
                 external_state(db, link)
+            if not retry:
+                finish_owed(db, owner, active)
             emit(db, owner, "linear.changed", owner)
         if retry:
             raise RuntimeError("Linear operation will retry with its original identity.") from None

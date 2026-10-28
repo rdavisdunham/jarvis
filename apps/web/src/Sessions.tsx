@@ -22,6 +22,7 @@ type View = "all" | "live" | "unfiled" | "rules";
 
 const filedBy: Record<string, string> = {
   branch: "from the branch", mention: "from the prompts", path_rule: "by folder rule", manual: "by you", explicit: "by the agent",
+  auto: "by the dream sequence", spawned: "by its Eridani run",
 };
 
 export function since(value: string | null, now = Date.now()) {
@@ -88,6 +89,9 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
       <RecordChooser label={"File " + item.title} button={<><FolderInput size={14}/>{item.filed.record_id ? "Refile" : "File"}</>} onChoose={choice => link(choice)}/>
       {(item.filed.source === "manual" || item.filed.source === "explicit") &&
         <button className="btn btn-ghost btn-sm" onClick={() => void link({ clear: true }).catch(e => setError(e.message))}>Use automatic filing</button>}
+      {item.filed.source === "auto" &&
+        <button className="btn btn-ghost btn-sm" title="Unlink it; the dream sequence will not suggest this task for it again"
+          onClick={() => void post(`/sessions/${item.id}/autolink/undo`, {}).then(onChanged).catch(e => setError(e.message))}>Undo</button>}
       <button className="btn btn-ghost btn-sm" onClick={() => void post(`/sessions/${item.id}/archive`, { archived: true }).then(onChanged).catch(e => setError(e.message))}>Hide</button>
     </div>
     {!item.resume.cmd && !live && !hosted && item.resume.hint && <small className="work-revert-note">{item.resume.hint}</small>}

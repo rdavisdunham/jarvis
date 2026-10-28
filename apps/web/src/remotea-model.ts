@@ -22,6 +22,9 @@ export type Parity = {
   total: number; matched: number; missing: number; mismatched: number; clean: boolean;
   fields: Record<string, number>; first_report_at: string | null; last_report_at: string | null;
   recent: { tool: string; session_id: string; missing: boolean; diff: Record<string, { stored: string; reported: string }>; updated_at: string }[];
+  /** Stage E: consecutive clean parity days (no session differed) ending today or yesterday. */
+  cutover?: { ready: boolean; streak: number; needed: number;
+    days: { day: string; reports: number; matched?: number; mismatched?: number; missing?: number; clean: boolean }[] };
 };
 
 /** The page refreshes on the change feed; this is the fallback when the feed is quiet or offline. */
@@ -80,6 +83,16 @@ export function paritySummary(parity: Parity | null) {
   return parts.join(", ") + "." + (fields.length ? " Most different: " + fields.join(", ") + "." : "");
 }
 
+/** The "ready for cutover" indicator: seven clean parity days in a row retire the Python collector. */
+export function cutoverSummary(parity: Parity | null): { ready: boolean; text: string } | null {
+  const c = parity?.cutover;
+  if (!c) return null;
+  if (c.ready) return { ready: true, text: `Ready for cutover: ${c.needed} clean parity days in a row. See scripts/session_collector/README.md, "Retirement".` };
+  const silent = c.days.slice(0, 2).every(d => !d.reports);
+  return { ready: false, text: `Not ready for cutover: ${c.streak} of ${c.needed} clean days in a row` +
+    (silent ? "; no parity reports since yesterday." : ".") };
+}
+
 export function place(item: Pick<RemoteaSession, "repo" | "branch" | "cwd">) {
   return [item.repo || item.cwd.split("/").filter(Boolean).at(-1), item.branch].filter(Boolean).join(" · ");
 }
@@ -98,8 +111,29 @@ export type Run = {
   stop_requested_at: string | null; stop_mode: string; surf: string;
   host: { id: string; name: string; connected: boolean } | null; structured_answers: boolean;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
+  completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
+  linear?: Partial<Record<"in_progress" | "done" | "comment", LinearOutcome>>;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
+export type LinearOutcome = { status: string; code?: string | null; message?: string | null; url?: string | null; reconciled?: boolean | null };
+
+const LINEAR_WHAT = { in_progress: "In Progress", done: "Done", comment: "Completion comment" } as const;
+const LINEAR_STATUS: Record<string, string> = {
+  queued: "queued", retrying: "retrying", posted: "posted", deferred: "waits for the start write", skipped: "not linked",
+  blocked: "not sent", failed: "failed", unconfirmed: "unconfirmed: check Linear",
+};
+/** Linear sync outcomes are reported apart from the run: a failed write never undoes local work. */
+export function linearOutcomes(run: Pick<Run, "linear">) {
+  return (Object.keys(LINEAR_WHAT) as (keyof typeof LINEAR_WHAT)[]).flatMap(key => {
+    const o = run.linear?.[key];
+    if (!o || o.status === "skipped") return [];
+    const detail = o.status === "blocked" || o.status === "failed" ? o.message || o.code || "" : "";
+    return [{ key, text: `${LINEAR_WHAT[key]}: ${LINEAR_STATUS[o.status] ?? o.status}${detail ? " (" + detail + ")" : ""}`,
+      tone: ["failed", "blocked", "unconfirmed"].includes(o.status) ? "warn" as const : "ok" as const, url: o.url ?? null }];
+  });
+}
+export const POLICY_TEXT: Record<string, string> = { code_ready: "Done when the code is ready", pr_open: "Done when a pull request is open", pr_merged: "Done when the pull request is merged" };
+
 export type QuestionItem = { id: string; text: string; header?: string; choices?: { id: string; label: string; description?: string }[]; multi?: boolean };
 export type RunQuestion = {
   id: string; question_id: string; run_id: string | null; generation: number; items: QuestionItem[];

@@ -74,4 +74,6 @@
 .remotea-criteria li.criterion-not_met { border-color: var(--danger); }
 .remotea-criteria li p { margin: 2px 0 0; color: var(--ink-3); font-size: 0.85rem; white-space: pre-wrap; }
 .remotea-integration { margin: 0; padding: 8px 12px; list-style: none; display: grid; gap: 4px; border-radius: var(--r-md); background: var(--sunken); font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-linear { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 0.85rem; color: var(--ink-3); overflow-wrap: anywhere; }
+.remotea-linear .tone-warn { color: var(--danger); }
 .remotea-warning { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--danger-soft); color: var(--ink); font-size: 0.85rem; }

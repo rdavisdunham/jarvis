@@ -301,7 +301,7 @@ def started_state(monkeypatch):
 def test_a_refused_linear_status_never_undoes_the_observed_start(host, linear):  # noqa: F811
     tid, _ = imported()  # This workspace has no started workflow state.
     row = attached(host, start(host, tid)["id"])
-    assert row.state == "executing" and row.sync_state["in_progress"]["error"].startswith("LINEAR")
+    assert row.state == "executing" and row.sync_state["linear"]["in_progress"]["code"].startswith("LINEAR")
     with session_scope() as db:
         assert db.get(Task, tid).status != "in_progress"
 

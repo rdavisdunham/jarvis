@@ -78,7 +78,8 @@ def instants(value):
 def journal(db, owner, command_id, tool, arguments=None):
     # Existing local installations without the recovery key retain their commands.
     # Cloud/durable work requires a configured key before accepting a request.
-    if tool.startswith("quicksort.") or not get_settings().integration_encryption_key or db.info.get("action_journal"):
+    # Agent-run control (control.*) is not a revertable record edit: stop the run instead.
+    if tool.startswith(("quicksort.", "control.")) or not get_settings().integration_encryption_key or db.info.get("action_journal"):
         yield
         return
     tracked = {}

@@ -165,7 +165,8 @@ Procedure (plan decision 23): run both collectors; the Python one stays authorit
 Investigate every differing field (timestamps, Windows/WSL path coverage, redaction, fingerprint and
 checkpoint semantics). Cut over only after the summary has been **clean for 7 days** and the host release
 is installed: then disable the Python timer, and remove its code and revoke its credential one release
-later. Do not delete the Python collector before that.
+later. Do not delete the Python collector before that. Stage E counts the days for you and lists the exact
+steps: see [Cutover](#cutover-stage-e).
 
 ## Browser routes
 
@@ -500,3 +501,110 @@ The run drawer adds the interview form (one form for all questions), success cri
 verdict's per-criterion evidence and the last verification, pending sub-task integration, **Approve** as
 the primary action on `awaiting_approval`, **Re-plan** (the message box text is the reason) and **Verify
 now**; the timeline shows verifications, verdicts and interviews.
+
+## Sync, voice and the dream (stage E, migration 0030)
+
+Migration 0030 adds `completion_policy` to `tasks` and `agent_run_plans`, `binding_evidence` to
+`agent_sessions` and the `agent_parity_days` table.
+
+### Linear sync outcomes (`agent_sync.py`, `linear_sync.py`)
+
+A run moves its task's linked Linear issue twice: **In Progress** when the run is observed to start
+(`mark_in_progress`) and **Done** when the task completes (Approve, or the judge with `auto_complete`). On
+`completed` the coordinator also queues one **completion comment** (job `linear_comment`, queue
+`jarvis-linear`). Local state and sync state are separate: a refused or failed Linear write is recorded and
+never undoes the start or the completion. Each outcome lives on `agent_runs.sync_state["linear"]`:
+
+```
+in_progress | done: {status: queued|deferred|blocked|skipped, job_id?, after?, code?, message?, at}
+comment:            {status: queued|retrying|posted|failed|unconfirmed|skipped, job_id, marker,
+                     attempted, comment_id?, url?, reconciled?, code?, message?, at}
+```
+
+- `skipped`: the task has no Linear link (or Linear is not connected / the link is in another workspace).
+- `deferred`: another write for the issue is still in flight; the finish is queued after it (`after`).
+- `blocked`: Linear refused the write up front (`code`, `message`); the local completion stands.
+
+**Comment once.** Linear's `commentCreate` has no idempotency key. The body ends with a stable run marker
+`eridani-run:<run id>`, and the job saves `attempted: true` before it writes. A retry after an attempted
+write first reads the issue's comments for the marker; when found it saves that comment's id
+(`reconciled: true`) instead of posting again. Up to 5 attempts; a definite refusal is `failed`, an
+attempted write that can be neither confirmed nor found is `unconfirmed`. The body names the task, branch,
+pull requests, turn count, the completion policy and the judge's summary.
+
+**Ordering guard.** A stale In Progress can never reopen a completed task:
+- completing the task cancels a queued In Progress write that has not been attempted yet;
+- if one is already running, the Done write waits for it (`deferred`);
+- when any write for the issue settles while the task is finished locally and the issue is not in the
+  matching state, Eridani keeps its local status and queues the finish again (`finish_owed`) instead of
+  applying the remote state.
+
+**Pull requests** come from the session's collected `pr_urls` (validated `…/pull/N` or
+`…/merge_requests/N`, deduplicated, at most 10).
+
+**Completion policy** (`code_ready` default | `pr_open` | `pr_merged`), set on the task (`task.update`,
+`submit_plan`) and frozen onto the plan and the run like the other gate fields (`RUN_OWNS_COMPLETION` while
+a run holds it). The judge's hard rules apply it after a `met` verdict:
+- `pr_open` or `pr_merged` with no pull request → `not_met` (rule `pr_required`), so the agent is told to
+  open one;
+- `pr_merged` with the PR not merged (the host's worktree report for the run's branch) → `needs_you`
+  (rule `pr_not_merged`, reason `awaiting_merge`). The integration check resumes the run (reason
+  `merged`, prompt `merged`) once the host reports the branch merged, and the next judgment can complete.
+
+The run drawer shows the policy and each Linear outcome.
+
+### Voice commands (`control.*`)
+
+Eri drives runs through the same command service as the remotea page (`agent_control`); there is no second
+control path. The commands go through `domain.mutate` (personal tools, never offered to bots) and are
+in `VOICE_MUTATIONS`:
+
+| Tool | Input | |
+|---|---|---|
+| `control.start` | `task_id` or `task` (name), `harness?` | starts a run as the human (`start_run`) |
+| `control.message` | target, `text`, `mode: queue\|steer` | |
+| `control.stop` | target, `mode: interrupt\|kill` | |
+| `control.answer` | target, `question_id` + `answers`, or `interview_id` + `responses` | a run question or the planning interview |
+| `control_status` (read) | target? | active runs, their open questions/interview, finished in the last 24 h, hosts |
+
+A target is `run_id`, `task_id` or `task` (a spoken name); none means the only active run. Names resolve
+through an exact Linear identifier, then `navigation_find`; several matches → `AMBIGUOUS_TASK` (or
+`AMBIGUOUS_RUN`) with the candidates so Eri asks, none → `NOT_FOUND`. Every command passes the remotea
+gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog group are in the model's
+registry only while remotea is enabled (`tool_policy.remotea_tools`, applied to chat, voice and work
+runs).
+
+### Dream auto-link (`agent_autolink.py`)
+
+Job `agent_autolink` (queue `jarvis-memory`) runs from the supervisor cycle at most once per 20 hours per
+owner with remotea enabled. It looks at sessions active in the last 30 days that are unfiled or filed only
+by a folder rule, have an embedding and are not a run's session.
+
+- **Candidates:** tasks of the records under the session's record (not the home's own task), plus tasks
+  named by exact Linear identifiers resolved in the connected workspace. Open tasks and tasks completed in
+  the last 30 days; never archived, template or cancelled.
+- **Score:** best cosine between the session's embedding and the task record's search vectors, plus 0.25
+  when the session names the task's issue. Link when the top score is ≥ **0.62** and leads the runner-up
+  by ≥ **0.12**. These constants are **provisional**: tuned on the labelled fixtures in
+  `tests/test_agent_autolink.py`, not yet on real sessions.
+- An automatic link is `binding_source: "auto"` with `binding_evidence` (a digest of title, first prompt,
+  repo, branch, folder, issue keys and summary fingerprint). `resolve()` keeps it through collector
+  refreshes and rule rebinds until that evidence changes, then files the session afresh.
+- **Undo** (`POST /sessions/{id}/autolink/undo`, the Sessions page's "Filed … by the dream sequence ·
+  Undo") or a manual relink writes an `autolink_rejections` tombstone for (session, task). The pair is
+  blocked for good; if the rejected task would still rank first, the session stays unfiled rather than
+  promoting the runner-up.
+- Inferred links never start work: runs start only from a task, with the execution-target rules.
+
+### Cutover (stage E)
+
+`GET /remotea/parity` adds `cutover {ready, streak, needed: 7, days[7]}`, from `agent_parity_days` (one
+row per owner and day in the owner's timezone, counting reports, matched, mismatched and missing). A day
+is **clean** when it had at least one parity report and no mismatch; sessions only remotea saw (`missing`)
+do not count against it. `ready` means 7 consecutive clean days ending today, or yesterday while today
+has no reports yet. The page's parity summary then reads "· ready for cutover".
+
+The procedure is the host's (`remotea eridani collector authoritative`, the `status --json` v2
+interlock, `remotea hooks --remove-legacy-collector`); Davin runs it. The exact steps and the rollback are
+in [`scripts/session_collector/README.md` § Retirement](../scripts/session_collector/README.md#retirement),
+which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover.
