@@ -18,7 +18,7 @@ from .calendar_details import web_link
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, enqueue_job, owned
-from .models import Job, LinearIssue, now
+from .models import Job, LinearIssue, Task, now
 from .session_models import AgentSession, AgentSessionRule
 from .structure_models import StructureRecord
 
@@ -93,12 +93,13 @@ class SessionInput(Input):
 class LinkInput(Input):
     identifier: str | None = Field(default=None, max_length=30)
     record_id: UUID | None = None
+    task_id: UUID | None = None
     clear: bool = False
 
     @model_validator(mode="after")
     def one_target(self):
-        if sum(bool(v) for v in (self.identifier, self.record_id, self.clear)) != 1:
-            raise ValueError("Give exactly one of identifier, record_id or clear.")
+        if sum(bool(v) for v in (self.identifier, self.record_id, self.task_id, self.clear)) != 1:
+            raise ValueError("Give exactly one of identifier, record_id, task_id or clear.")
         return self
 
 
@@ -268,6 +269,11 @@ def link(db, owner, tool, session_id, body, *, source="manual", reveal=True):
             )
         task = issues[body.identifier.upper()]["task_id"]
         row.task_id, row.record_id, row.binding_source = task, record_for_task(db, owner, task), source
+    elif body.task_id:
+        task = owned(db, Task, str(body.task_id), owner)
+        if task.archived:
+            raise DomainError("NOT_FOUND", "That task is archived.", 404)
+        row.task_id, row.record_id, row.binding_source = task.id, record_for_task(db, owner, task.id), source
     else:
         target = owned(db, StructureRecord, str(body.record_id), owner)
         if target.archived:

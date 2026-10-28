@@ -262,6 +262,40 @@ def agent_parity(body: ParityInput, identity: Bot):
         return agent_link.parity(db, bot, host, body.tool, body.session_id, body.report)
 
 
+@external.post("/agents/session/plan")
+def agent_task_plan(body: dict, identity: Bot):
+    """HTTP twin of the task_plan tool (scope agents:session)."""
+    from . import agent_plan
+    from .external_mcp import session_arguments
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:session")
+        return agent_plan.task_plan(db, bot, session_arguments(agent_plan.PlanQuery, body))
+
+
+@external.post("/agents/session/step")
+def agent_task_step(body: dict, identity: Bot):
+    """HTTP twin of the task_step tool."""
+    from . import agent_plan
+    from .external_mcp import session_arguments
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:session")
+        return agent_plan.task_step(db, bot, session_arguments(agent_plan.StepInput, body))
+
+
+@external.post("/agents/session/{later}")
+def agent_session_later(later: str, identity: Bot):
+    """submit_plan and task_interview arrive with planning runs (stage D)."""
+    from . import agent_plan
+
+    with session_scope() as db:
+        bot_access.authorize(db, required="agents:session")
+    if later not in ("submit_plan", "interview"):
+        raise DomainError("NOT_FOUND", "Unknown agent session tool.", 404)
+    agent_plan.not_yet(later)
+
+
 @external.post("/sessions/{tool}/{session_id}/link")
 def session_link(tool: sessions.Tool, session_id: str, body: sessions.LinkInput, identity: Bot):
     with session_scope() as db:

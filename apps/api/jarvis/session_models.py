@@ -1,7 +1,7 @@
 """External agent sessions (Claude Code, Codex, desktop apps) and the rules that file them."""
 
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base, now, uid
@@ -51,6 +51,8 @@ class AgentSession(Base):
     state_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     state_detail: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     last_turn_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The Eridani run this session executes (agent_runs, 0028); set on the observed start.
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -98,7 +100,7 @@ class AgentCommand(Base):
     host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"))
     op_id: Mapped[str] = mapped_column(String(100))
     kind: Mapped[str] = mapped_column(String(40))
-    run_id: Mapped[str | None] = mapped_column(String(36))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     generation: Mapped[int] = mapped_column(Integer, default=0)
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     digest: Mapped[str] = mapped_column(String(64))
@@ -124,7 +126,7 @@ class AgentTurn(Base):
     provider_turn_id: Mapped[str] = mapped_column(String(200))
     surf: Mapped[str] = mapped_column(String(100), default="")
     incarnation: Mapped[int] = mapped_column(Integer, default=0)
-    run_id: Mapped[str | None] = mapped_column(String(36))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     generation: Mapped[int] = mapped_column(Integer, default=0)
     seq: Mapped[int] = mapped_column(Integer, default=0)
     role: Mapped[str] = mapped_column(String(20), default="assistant")
@@ -143,7 +145,7 @@ class AgentQuestion(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     session_pk: Mapped[str] = mapped_column(ForeignKey("agent_sessions.id"))
     host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
-    run_id: Mapped[str | None] = mapped_column(String(36))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     generation: Mapped[int] = mapped_column(Integer, default=0)
     question_id: Mapped[str] = mapped_column(String(100))
     provider_request_id: Mapped[str] = mapped_column(String(200))
@@ -153,6 +155,15 @@ class AgentQuestion(Base):
     status: Mapped[str] = mapped_column(String(20), default="open")
     answers: Mapped[list | None] = mapped_column(JSONB)
     answered_via: Mapped[str] = mapped_column(String(30), default="")
+    # Stage C: where it was asked, how long the host holds it, and what became of the answer.
+    surf: Mapped[str] = mapped_column(String(100), default="", server_default="")
+    incarnation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    provider_turn_id: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    hold_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    remote_answerable: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    answer_op_id: Mapped[str | None] = mapped_column(String(100))
+    detail: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -172,3 +183,149 @@ class AgentParity(Base):
     reports: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+TERMINAL_RUN_STATES = ("completed", "stopped", "capped", "failed")
+
+
+class ExecutionTarget(Base):
+    """Where a run executes: a remotea execution target (repo + worktree root) on one host.
+
+    `record_id` saves a one-time selection for a record in a task's chain; tasks can also name
+    a target directly (tasks.execution_target_id).
+    """
+    __tablename__ = "execution_targets"
+    __table_args__ = (
+        Index("uq_execution_target_record", "owner_id", "record_id", unique=True,
+              postgresql_where=text("record_id IS NOT NULL")),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    host_id: Mapped[str | None] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
+    # No foreign key: structure_records → tasks → execution_targets would form a cycle; owned() checks it.
+    record_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    host_target: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(200), default="")
+    repo: Mapped[str] = mapped_column(Text, default="")
+    worktree_root: Mapped[str] = mapped_column(Text, default="")
+    launch: Mapped[dict] = mapped_column(JSONB, default=dict)
+    verify: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentRun(Base):
+    """One run of an agent on a task: a versioned state machine (run_coordinator.py)."""
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        # One unsettled run per task; stopping/interviewing/planning count as unsettled.
+        Index("uq_agent_run_active_task", "task_id", unique=True,
+              postgresql_where=text("state NOT IN ('completed', 'stopped', 'capped', 'failed')")),
+        Index("ix_agent_runs_owner_id_state", "owner_id", "state"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("user_accounts.id"))
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
+    host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
+    # No foreign key: agent_sessions.run_id points back here, and a cycle would block deletes.
+    session_pk: Mapped[str | None] = mapped_column(String(36), index=True)
+    execution_target_id: Mapped[str | None] = mapped_column(ForeignKey("execution_targets.id"), index=True)
+    generation: Mapped[int] = mapped_column(Integer, default=1)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[str] = mapped_column(String(30), default="queued")
+    state_revision: Mapped[int] = mapped_column(Integer, default=1)
+    state_reason: Mapped[str] = mapped_column(String(300), default="")
+    state_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    worktree: Mapped[str] = mapped_column(Text, default="")
+    branch: Mapped[str] = mapped_column(String(200), default="")
+    base_branch: Mapped[str] = mapped_column(String(200), default="")
+    tool: Mapped[str] = mapped_column(String(30), default="claude")
+    model: Mapped[str] = mapped_column(String(80), default="opus")
+    effective_permission_mode: Mapped[str] = mapped_column(String(40), default="")
+    surf: Mapped[str] = mapped_column(String(120), default="")
+    incarnation: Mapped[int] = mapped_column(Integer, default=0)
+    turn_count: Mapped[int] = mapped_column(Integer, default=0)
+    turn_cap: Mapped[int] = mapped_column(Integer, default=15)
+    wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
+    no_progress_limit: Mapped[int] = mapped_column(Integer, default=45 * 60)  # seconds
+    last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_mode: Mapped[str] = mapped_column(String(20), default="")
+    stop_reason: Mapped[str] = mapped_column(String(60), default="")
+    # The terminal state a confirmed stop settles in: stopped, or completed after an approval.
+    stop_final: Mapped[str] = mapped_column(String(20), default="stopped")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_policy: Mapped[str] = mapped_column(String(20), default="approve")
+    sync_state: Mapped[dict] = mapped_column(JSONB, default=dict)
+    run_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    run_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Every transition with its actor, newest last (bounded).
+    history: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentRunPlan(Base):
+    """A frozen plan revision a run executes (and, from stage D, is judged against)."""
+    __tablename__ = "agent_run_plans"
+    __table_args__ = (UniqueConstraint("run_id", "revision", name="uq_agent_run_plan"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    revision: Mapped[int] = mapped_column(Integer)
+    task_plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    prd_text: Mapped[str] = mapped_column(Text, default="")
+    steps: Mapped[list] = mapped_column(JSONB, default=list)
+    criteria: Mapped[list] = mapped_column(JSONB, default=list)
+    verify: Mapped[dict | None] = mapped_column(JSONB)
+    frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentAttempt(Base):
+    """One verification or judge attempt bound to (run, generation, turn, plan revision). Logic is stage D."""
+    __tablename__ = "agent_attempts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+    kind: Mapped[str] = mapped_column(String(20))
+    turn_seq: Mapped[int] = mapped_column(Integer, default=0)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    workspace_fingerprint: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    model: Mapped[str] = mapped_column(String(100), default="")
+    prompt_version: Mapped[str] = mapped_column(String(40), default="")
+    cost: Mapped[float | None] = mapped_column(Float)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentInterview(Base):
+    """The interview phase's question form (stage D)."""
+    __tablename__ = "agent_interviews"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    questions: Mapped[list] = mapped_column(JSONB, default=list)
+    answers: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AutolinkRejection(Base):
+    """An Undo of an automatic session link; the dream sequence (stage E) never re-proposes it."""
+    __tablename__ = "autolink_rejections"
+    __table_args__ = (UniqueConstraint("session_pk", "task_id", name="uq_autolink_rejection"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    session_pk: Mapped[str] = mapped_column(ForeignKey("agent_sessions.id"), index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
+    evidence_revision: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

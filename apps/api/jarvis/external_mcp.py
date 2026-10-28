@@ -125,6 +125,20 @@ def definitions(scopes):
             sessions.RuleInput.model_json_schema(),
             False,
         )
+    if "agents:session" in scopes:
+        from . import agent_plan
+
+        add("task_plan",
+            "Read the task you are working on: PRD, steps with ids and revisions, success criteria and the run you belong to. "
+            "Pass run_token from your session context; task_id is optional when the token names the run.",
+            agent_plan.PlanQuery.model_json_schema())
+        add("task_step",
+            "Set one step's status (todo, doing, done, skipped) with an optional note. expected_revision is the step's "
+            "revision from task_plan. Ticking a linked step never completes the linked task.",
+            agent_plan.StepInput.model_json_schema(), False)
+        for later in ("submit_plan", "task_interview"):
+            add(later, "Not available yet (planning runs arrive later).",
+                {"type": "object", "properties": {}, "additionalProperties": True}, False)
     if "sessions:read" in scopes:
         add("session_rules", "List the folder rules that file agent sessions under records.", schema({}, []))
     add(
@@ -207,6 +221,15 @@ def dispatch(name, arguments):
                 db, bot.owner_id, session_arguments(sessions.RuleInput, arguments),
                 reveal="records:read" in bot.scopes,
             )
+        if name in ("task_plan", "task_step", "submit_plan", "task_interview"):
+            from . import agent_plan
+
+            bot = bot_access.authorize(db, bot.owner_id, "agents:session")
+            if name == "task_plan":
+                return agent_plan.task_plan(db, bot, session_arguments(agent_plan.PlanQuery, arguments))
+            if name == "task_step":
+                return agent_plan.task_step(db, bot, session_arguments(agent_plan.StepInput, arguments))
+            return agent_plan.not_yet(name)
         if name == "session_rules":
             return sessions.rules(db, bot.owner_id, reveal="records:read" in bot.scopes)
         if name in service.CUSTOM_READS:

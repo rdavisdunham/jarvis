@@ -12,7 +12,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
+from . import agent_control as control
 from . import agent_link, bot_access
+from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
 from .auth import Identity, authenticate
 from .config import get_settings
@@ -175,3 +177,99 @@ def parity(user: User):
     with session_scope() as db:
         gated(db, user)
         return agent_link.parity_summary(db, user.owner_id)
+
+
+# ---------------------------------------------------------------- runs (stage C)
+
+
+def actor_for(user):
+    from .agent_actor import Actor
+
+    return Actor("human")
+
+
+def writable(db, user):
+    from .access import role
+
+    gated(db, user)
+    if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
+        raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
+
+
+@router.get("/runs")
+def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100)):
+    # Inspection and stop stay available after remotea is turned off, for runs that have not settled.
+    with session_scope() as db:
+        return {"items": control.list_runs(db, user.owner_id, task_id=str(task_id) if task_id else None,
+                                           active=active, limit=limit)}
+
+
+@router.post("/runs")
+def start(body: control.StartInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.start_run(db, user.owner_id, user.account_id, body, actor=actor_for(user))
+
+
+@router.get("/runs/{identity}")
+def run_detail(identity: UUID, user: User):
+    with session_scope() as db:
+        run = coordinator.load(db, user.owner_id, str(identity), lock=False)
+        return control.public_run(db, run, detail=True)
+
+
+@router.post("/runs/{identity}/message")
+def message(identity: UUID, body: control.MessageInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.send_message(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/stop")
+def stop(identity: UUID, body: control.StopInput, user: User):
+    # Stop stays available while remotea is being turned off: recovery controls outlive admission.
+    with session_scope() as db:
+        from .access import role
+
+        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
+            raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
+        return control.stop_run(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/approve")
+def approve(identity: UUID, body: control.ApproveInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.approve(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/questions/{identity}/answer")
+def answer(identity: UUID, body: control.AnswerInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.answer_question(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.get("/targets")
+def targets(user: User):
+    from .session_models import ExecutionTarget
+
+    with session_scope() as db:
+        gated(db, user)
+        rows = db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == user.owner_id)
+                          .order_by(ExecutionTarget.created_at))
+        return {"items": [control.public_target(t) for t in rows], "advertised": control.advertised(db, user.owner_id)}
+
+
+@router.post("/targets")
+def save_target(body: control.TargetInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.save_target(db, user.owner_id, body)
+
+
+@router.get("/unmerged")
+def unmerged(user: User):
+    with session_scope() as db:
+        gated(db, user)
+        return control.unmerged(db, user.owner_id)
