@@ -523,7 +523,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("review.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
+        ("review.", "quicksort.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -578,6 +578,9 @@ def task_timing(db, owner, changes, task=None):
 
 
 def mutate(db, owner, tool, args, command_id):
+    if tool.startswith("quicksort."):
+        from . import quick_sort
+        return quick_sort.mutate(db, owner, tool, args, command_id)
     if tool == "review.defer":
         from .review_questions import defer
         return defer(db, owner, args)
@@ -1107,3 +1110,6 @@ COMMANDS.update(QUICK_COMMANDS)
 
 from .onboarding import COMMANDS as SETUP_COMMANDS
 COMMANDS.update(SETUP_COMMANDS)
+
+from .quick_sort_schema import COMMANDS as SORT_COMMANDS
+COMMANDS.update(SORT_COMMANDS)

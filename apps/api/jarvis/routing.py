@@ -94,6 +94,16 @@ def human_command(command_id):
 
 
 def observe(db, row, command_id, *, human=False):
+    if db.info.get("suppress_routing_observation"):
+        return
+    # A later Home correction invalidates earlier Quick Sort evidence even when
+    # an agent executes it. The correction itself is not automatically a human label.
+    for previous in list(db.scalars(select(RoutingObservation).where(
+            RoutingObservation.owner_id == row.owner_id, RoutingObservation.record_id == row.id,
+            RoutingObservation.suppressed.is_(False)))):
+        if (previous.evidence.get("provenance", {}).get("kind") == "quick_sort"
+                and previous.evidence.get("assignment", {}).get("parent_id") != row.parent_id):
+            retract_home_choice(db, row.owner_id, previous.source_key.removesuffix(":" + row.id), row.id)
     if command_id.startswith(AGENT_UI):
         human = False
     prefs = preferences(db, row.owner_id)
@@ -148,6 +158,68 @@ def observe(db, row, command_id, *, human=False):
                 rule.revision += 1
                 rule.updated_at = now()
 
+
+
+def observe_home_choice(db, row, command_id, provenance):
+    """Internal Quick Sort hook: only the confirmed Home, never inferred fields/tags."""
+    from .access import execution
+    from .models import Command
+    grant = execution.get() or {}
+    receipt = db.get(Command, (row.owner_id, command_id))
+    if (db.info.get("suppress_routing_observation") or not grant
+            or provenance.get("kind") != "quick_sort" or provenance.get("work_id") != grant.get("id")
+            or not receipt or receipt.result.get("data", {}).get("id") != row.id):
+        return
+    if not preferences(db, row.owner_id)["routing_learning"] or db.get(SharedWorkspace, row.owner_id):
+        return
+    schema = ensure(db, row.owner_id)
+    kind = record_type(schema, row.type_id, archived=True)
+    if row.archived or not ({"work", "content"} & set(kind["capabilities"])):
+        return
+    key = command_id + ":" + row.id
+    if db.scalar(select(RoutingObservation.id).where(
+            RoutingObservation.owner_id == row.owner_id, RoutingObservation.source_key == key)):
+        return
+    db.add(RoutingObservation(owner_id=row.owner_id, record_id=row.id, source_key=key,
+        record_revision=row.revision, schema_revision=schema.revision, origin="human",
+        evidence={"title": row.title, "type_id": row.type_id,
+                  "assignment": {"parent_id": row.parent_id, "values": {}},
+                  "provenance": provenance}))
+    # Only Home was affirmed. Do not treat unmentioned values/tags as corrections.
+    for rule in db.scalars(select(RoutingPattern).where(
+            RoutingPattern.owner_id == row.owner_id, RoutingPattern.status == "active")):
+        if (rule.condition["type_id"] == row.type_id and matches(row.title, rule.condition["phrase"])
+                and "parent_id" in rule.assignment and rule.assignment["parent_id"] != row.parent_id):
+            rule.status, rule.updated_at = "conflict", now()
+            rule.revision += 1
+
+
+def retract_home_choice(db, owner, command_id, record_id):
+    """Undo withdraws the original example; its inverse is not another human label."""
+    key = command_id + ":" + record_id
+    observations = list(db.scalars(select(RoutingObservation).where(
+        RoutingObservation.owner_id == owner, RoutingObservation.source_key == key,
+        RoutingObservation.suppressed.is_(False))))
+    ids = set()
+    for observation in observations:
+        if observation.evidence.get("provenance", {}).get("kind") == "quick_sort":
+            observation.suppressed = True
+            ids.add(observation.id)
+    if ids:
+        for rule in db.scalars(select(RoutingPattern).where(
+                RoutingPattern.owner_id == owner, RoutingPattern.origin != "explicit")):
+            if ids.intersection(rule.evidence_ids):
+                rule.status, rule.updated_at = "paused", now()
+                rule.revision += 1
+                # A queued question must not reactivate a proposal whose evidence was undone.
+                for review in db.scalars(select(RoutingReview).where(
+                        RoutingReview.owner_id == owner, RoutingReview.status == "pending")):
+                    questions = [q for q in review.questions if q["id"] != rule.id]
+                    if len(questions) != len(review.questions):
+                        review.questions = questions
+                        review.revision += 1
+                        review.status = "pending" if questions else "completed"
+                        review.answers = [*review.answers, {"question_id": rule.id, "answer": "evidence_withdrawn"}]
 
 def suggest(db, owner, type_id, title, explicit):
     prefs = preferences(db, owner)

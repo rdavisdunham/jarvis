@@ -184,6 +184,8 @@ def finish(db, row, status, message, **result):
             "id": stable_id(f"clarification:{row.id}:{row.revision}:{result.get('tool_calls', 0)}"),
             "request_id": row.id, "revision": row.revision, "question": message,
         }
+    from .quick_sort import finished as finish_sort
+    finish_sort(db, row, status, message, result)
     job.status, job.finished_at = status, now()
     row.result = {**row.result, **result, "message": message}
     row.updated_at = now()
@@ -301,6 +303,8 @@ def revise(db, row, message, *, continue_work=False):
     data = unseal(row.input_ciphertext)
     if job.status == "needs_input" and message:
         data["last_question"] = row.result.get("message", "")
+    from .quick_sort import capture_revision
+    capture_revision(db, row, message, data)
     corrections = list(data.get("corrections", []))
     if message:
         corrections.append(message[:12000])

@@ -142,7 +142,7 @@ def tool_resources(name, arguments, row, index):
     command = name.replace("_", ".", 1)
     if command not in COMMANDS:
         return set()
-    if command.startswith(("settings.", "planning.", "calendar.", "linear.")):
+    if command.startswith(("quicksort.", "settings.", "planning.", "calendar.", "linear.")):
         return {"*"}
     keys = set()
 

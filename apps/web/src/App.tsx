@@ -11,6 +11,7 @@ import { NoticeSnooze } from "./NoticeSnooze";
 import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
+import { SETUP_REQUEST } from "./setup-model";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { MemoryRow, MemoryStatus } from "./MemoryActions";
@@ -339,6 +340,7 @@ export default function App() {
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
+  const conversationEpoch = useRef(0);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
   const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
@@ -886,7 +888,9 @@ export default function App() {
   }
   async function ensureConversation() {
     if (conversationRef.current) return conversationRef.current;
+    const epoch = conversationEpoch.current;
     const data = await post<{ id: string; private: boolean }>("/conversations", {});
+    if (epoch !== conversationEpoch.current) throw Error("The conversation changed before it was ready.");
     setConversationHistoryOff(data.private);
     conversationRef.current = data.id; setActiveConversation(data.id);
     sessionStorage.setItem("jarvis-conversation", data.id);
@@ -1513,8 +1517,12 @@ export default function App() {
     };
   }, [highlight, view]);
   const chatInput = useRef<HTMLTextAreaElement>(null);
+  const chatSubmitLock = useRef(false);
+  const guidedRetries = useRef(new Map<string, () => Promise<boolean>>());
   const focusChat = () => chatInput.current?.focus({ preventScroll: true });
   async function newChat() {
+    conversationEpoch.current += 1;
+    chatSubmitLock.current = false; setThinking(false);
     // Keep direct focus inside the gesture so mobile browsers may open the keyboard.
     if (!voice.current) focusChat();
     voiceGeneration.current += 1;
@@ -1535,6 +1543,7 @@ export default function App() {
     conversationRef.current = null; setActiveConversation(null);
     sessionStorage.removeItem("jarvis-conversation");
     retryRef.current = null;
+    guidedRetries.current.clear();
     setConversationHistoryOff(false);
     setMessages([]);
     setChatText("");
@@ -1553,47 +1562,76 @@ export default function App() {
         : "marin",
     );
   }
-  async function sendChat(e?: React.FormEvent) {
+  async function sendChat(
+    e?: React.FormEvent,
+    requestedMessage?: string,
+    rememberRetry?: (retry: (() => Promise<boolean>) | null) => void,
+  ) {
     e?.preventDefault();
-    if (!chatText.trim() || thinking || voice.current) return;
-    const content = chatText.trim(),
-      turn_id = crypto.randomUUID();
+    const content = (requestedMessage ?? chatText).trim();
+    if (!content || thinking || chatSubmitLock.current || voice.current) return false;
+    const turn_id = crypto.randomUUID(), epoch = conversationEpoch.current;
     chatSendStarted(turn_id);
-    setChatText("");
-    setThinking(true);
-    setMessages((m) => [...m, { id: turn_id, role: "user", content, created_at: new Date().toISOString() }]);
-    let conversation_id: string;
-    try {
-      conversation_id = await ensureConversation();
-    } catch (e) {
-      setThinking(false);
-      setError((e as Error).message);
-      return;
-    }
-    const body = {
-      turn_id,
-      conversation_id,
-      message: content,
-      focus: selected?.id ?? null,
-    };
+    // A setup launcher must not discard an unrelated message the owner was drafting.
+    if (requestedMessage === undefined) setChatText("");
+    setMessages(m => [...m, { id: turn_id, role: "user", content, created_at: new Date().toISOString() }]);
+    let conversation_id: string | undefined;
     async function submit() {
+      if (epoch !== conversationEpoch.current || chatSubmitLock.current || voice.current) return false;
+      chatSubmitLock.current = true;
       setThinking(true);
       setError("");
       try {
+        conversation_id ??= await ensureConversation();
+        if (epoch !== conversationEpoch.current) return false;
         await syncUIRef.current();
-        await post<WorkItem>("/work", body);
+        if (epoch !== conversationEpoch.current) return false;
+        await post<WorkItem>("/work", {
+          turn_id, conversation_id, message: content, focus: selected?.id ?? null,
+        });
+        if (epoch !== conversationEpoch.current) return true;
         retryRef.current = null;
-        await work.refresh();
+        rememberRetry?.(null);
+        await work.refresh().catch(() => setSyncWarning("Request accepted. Progress will refresh when the connection returns."));
+        return true;
       } catch (e) {
+        if (epoch !== conversationEpoch.current) return false;
         const err = e as ApiError;
         setError(err.message);
-        if (err.code === "NETWORK" || err.code === "IN_PROGRESS")
-          retryRef.current = submit;
+        if (err.code === "NETWORK" || err.code === "IN_PROGRESS") {
+          // Keep the same turn/conversation IDs even if the first response was lost.
+          retryRef.current = async () => { await submit(); };
+          rememberRetry?.(submit);
+        } else {
+          retryRef.current = null;
+          rememberRetry?.(null);
+        }
+        return false;
       } finally {
-        setThinking(false);
+        if (epoch === conversationEpoch.current) {
+          chatSubmitLock.current = false;
+          setThinking(false);
+        }
       }
     }
-    await submit();
+    return submit();
+  }
+  async function startGuidedConversation(message: string) {
+    flushSync(() => setCompanion(true));
+    if (voice.current || (voiceState && !voiceState.closed))
+      throw Error("Voice is already active. Ask Eri to help with setup, or end voice and try again.");
+    if (!boot?.capabilities.chat)
+      throw Error("Chat needs a configured task agent. You can still use the setup form.");
+    if (thinking || chatSubmitLock.current)
+      throw Error("Your previous message is still being sent. Try setup again when it finishes.");
+    focusChat();
+    const retry = guidedRetries.current.get(message);
+    const accepted = retry ? await retry() : await sendChat(undefined, message, next => {
+      if (next) guidedRetries.current.set(message, next);
+      else guidedRetries.current.delete(message);
+    });
+    if (!accepted)
+      throw Error("Setup could not be confirmed. Your answers are saved; retry to check the same request.");
   }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
@@ -2339,6 +2377,9 @@ export default function App() {
                 document.querySelector<HTMLButtonElement>(".mobile-menu")?.focus({preventScroll: true});
             }}
             onLogout={async () => {
+              conversationEpoch.current += 1;
+              guidedRetries.current.clear(); retryRef.current = null;
+              chatSubmitLock.current = false; setThinking(false);
               await voice.current?.stop();
               await post("/auth/logout");
               setBoot(null);
@@ -2431,7 +2472,7 @@ export default function App() {
               </div>
             </div>}
             {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
-            {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>setCompanion(true)}/>}
+            {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
@@ -2744,7 +2785,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>setCompanion(true)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
                   ["profile", "organization", "notifications", "privacy", "system", "integrations"].includes(

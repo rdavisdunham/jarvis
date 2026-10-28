@@ -1,0 +1,852 @@
+[
+  {
+    "id": "quick_sort.01",
+    "feature": "quick_sort",
+    "title": "Start an unfiled task pass",
+    "inputs": [
+      "Ask Quick Sort to organize unfiled tasks."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The session snapshots eligible active unfiled work and presents one current item."
+    ],
+    "invariants": [
+      "No record moves before an answer."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Ask Quick Sort to organize unfiled tasks.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.02",
+    "feature": "quick_sort",
+    "title": "File to an exact Home",
+    "inputs": [
+      "Answer the current question with the unique complete Home name."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Only the current record moves to that Home through a normal record.update receipt."
+    ],
+    "invariants": [
+      "The original clarification and action remain linked."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Answer the current question with the unique complete Home name.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.03",
+    "feature": "quick_sort",
+    "title": "File to a nested Home",
+    "inputs": [
+      "Choose Transcript Intelligence under Work / BrainForge / ABC."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The record parent is the project ID; the full ancestor path is displayed."
+    ],
+    "invariants": [
+      "No redundant ancestor classifications or provider project edits are created."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Choose Transcript Intelligence under Work / BrainForge / ABC.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.04",
+    "feature": "quick_sort",
+    "title": "Disambiguate duplicate Home names",
+    "inputs": [
+      "Answer Launch when two legal Homes are named Launch."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Ask for a distinguishing breadcrumb."
+    ],
+    "invariants": [
+      "Neither Home is chosen or learned from yet."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Answer Launch when two legal Homes are named Launch.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.05",
+    "feature": "quick_sort",
+    "title": "Confirm a fuzzy Home proposal",
+    "inputs": [
+      "Say Transparent Intelligence when the proposed destination is Transcript Intelligence."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Present the actual destination for confirmation before filing."
+    ],
+    "invariants": [
+      "The model-provided destination ID alone cannot authorize a move."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Say Transparent Intelligence when the proposed destination is Transcript Intelligence.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.06",
+    "feature": "quick_sort",
+    "title": "Reject a fuzzy Home proposal",
+    "inputs": [
+      "Reply no to a proposed Home and provide no replacement."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Keep the item unfiled and ask for the correct Home."
+    ],
+    "invariants": [
+      "A rejected suggestion never becomes routing evidence."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Reply no to a proposed Home and provide no replacement.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.07",
+    "feature": "quick_sort",
+    "title": "Skip an item",
+    "inputs": [
+      "Say skip for the current task."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Advance the stable session cursor without filing that task."
+    ],
+    "invariants": [
+      "No routing observation is created for the skipped item."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Say skip for the current task.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.08",
+    "feature": "quick_sort",
+    "title": "Pause and resume",
+    "inputs": [
+      "Pause the pass and resume it in a later attempt."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Resume the same unfinished item and retire any superseded question."
+    ],
+    "invariants": [
+      "Pausing does not cancel previously committed work."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Pause the pass and resume it in a later attempt.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.09",
+    "feature": "quick_sort",
+    "title": "Stop the pass",
+    "inputs": [
+      "Stop Quick Sort while an item needs an answer."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The session stops and its pending question is retired."
+    ],
+    "invariants": [
+      "Already completed filings remain unchanged."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Stop Quick Sort while an item needs an answer.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.10",
+    "feature": "quick_sort",
+    "title": "Continue after worker restart",
+    "inputs": [
+      "Restart the worker after the first question is persisted."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Session progress and the pending item remain recoverable from PostgreSQL."
+    ],
+    "invariants": [
+      "No in-memory conversation state is required to recover the session."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Restart the worker after the first question is persisted.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.11",
+    "feature": "quick_sort",
+    "title": "Ignore a replayed answer",
+    "inputs": [
+      "Replay the same captured answer after its filing succeeds."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Return the existing result or reject the consumed answer."
+    ],
+    "invariants": [
+      "No second move, duplicate evidence or unintended cursor advance occurs."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Replay the same captured answer after its filing succeeds.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.12",
+    "feature": "quick_sort",
+    "title": "Reject a stale item revision",
+    "inputs": [
+      "Edit the current item from another tab before answering."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Detect the revision conflict and refresh or ask again."
+    ],
+    "invariants": [
+      "Concurrent edits are not overwritten and no false learning is recorded."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Edit the current item from another tab before answering.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.13",
+    "feature": "quick_sort",
+    "title": "Reject a changed Home proposal",
+    "inputs": [
+      "Rename or move the proposed destination before confirming it."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Require a fresh destination preview or clarification."
+    ],
+    "invariants": [
+      "Confirmation of an old destination snapshot cannot silently authorize changed context."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Rename or move the proposed destination before confirming it.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.14",
+    "feature": "quick_sort",
+    "title": "Enforce account isolation",
+    "inputs": [
+      "Read or answer a session owned by another account."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Return an authorization/not-found error."
+    ],
+    "invariants": [
+      "No session contents, records or learning data leak across accounts."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Read or answer a session owned by another account.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.15",
+    "feature": "quick_sort",
+    "title": "Enforce credential permissions",
+    "inputs": [
+      "Try to mutate a pass with a revoked credential or viewer membership."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject the write."
+    ],
+    "invariants": [
+      "The session, Home assignment and learning data stay unchanged."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Try to mutate a pass with a revoked credential or viewer membership.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.16",
+    "feature": "quick_sort",
+    "title": "Reject a forged direct answer",
+    "inputs": [
+      "Send quicksort.reply outside a server-captured work clarification."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reject the attempted filing."
+    ],
+    "invariants": [
+      "A tool argument cannot label itself as an explicit human answer."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Send quicksort.reply outside a server-captured work clarification.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.17",
+    "feature": "quick_sort",
+    "title": "Keep unrelated requests independent",
+    "inputs": [
+      "With a filing question pending, say add a task to call someone at ABC."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Handle it as an independent request or ask for clarification."
+    ],
+    "invariants": [
+      "The mention of ABC does not move or train the pending item."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "With a filing question pending, say add a task to call someone at ABC.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.18",
+    "feature": "quick_sort",
+    "title": "Keep selection bounded",
+    "inputs": [
+      "Start a selected-items pass with a mixture of valid, missing and unauthorized IDs."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Validate eligibility and enforce the bounded item limit."
+    ],
+    "invariants": [
+      "No unauthorized record enters the persisted queue."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Start a selected-items pass with a mixture of valid, missing and unauthorized IDs.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.19",
+    "feature": "quick_sort",
+    "title": "Respect Home compatibility",
+    "inputs": [
+      "Request a Home whose type does not allow the current record type."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Explain the incompatibility and ask for another Home."
+    ],
+    "invariants": [
+      "No cycle, illegal parent or invalid structure is saved."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Request a Home whose type does not allow the current record type.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.20",
+    "feature": "quick_sort",
+    "title": "Protect containers",
+    "inputs": [
+      "Select a record with nested children for Quick Sort."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Skip or explicitly clarify the unsupported container move."
+    ],
+    "invariants": [
+      "Descendants are not silently moved during a leaf-item pass."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Select a record with nested children for Quick Sort.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.21",
+    "feature": "quick_sort",
+    "title": "Sort notes explicitly",
+    "inputs": [
+      "Start a notes-only or mixed pass and file an eligible unfiled note."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Use the same canonical Home update and receipt path."
+    ],
+    "invariants": [
+      "Existing content and inferred tags are preserved, not promoted into human evidence."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Start a notes-only or mixed pass and file an eligible unfiled note.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.22",
+    "feature": "quick_sort",
+    "title": "Learn only the human choice",
+    "inputs": [
+      "File an item with pre-existing inferred classifications and tags."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Record only the confirmed Home as human routing evidence."
+    ],
+    "invariants": [
+      "Unchanged inferred values or tags do not become human training examples."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "File an item with pre-existing inferred classifications and tags.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.23",
+    "feature": "quick_sort",
+    "title": "Retract learning on Undo",
+    "inputs": [
+      "Revert a successful Quick Sort filing through its action card."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Restore the former Home and suppress the original filing evidence."
+    ],
+    "invariants": [
+      "The inverse receipt does not train unrelated inferred fields or recreate the reverted evidence."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Revert a successful Quick Sort filing through its action card.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.24",
+    "feature": "quick_sort",
+    "title": "Respect learning preferences",
+    "inputs": [
+      "Complete a pass with routing learning disabled or in a shared workspace."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "File the item normally without eligible personal routing evidence."
+    ],
+    "invariants": [
+      "Quick Sort does not override existing learning/privacy exclusions."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Complete a pass with routing learning disabled or in a shared workspace.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  },
+  {
+    "id": "quick_sort.25",
+    "feature": "quick_sort",
+    "title": "Finish without extra actions",
+    "inputs": [
+      "Answer the final item while the model emits additional calls after the question boundary."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Finish the bounded pass with one coherent progress result; stop execution at server questions."
+    ],
+    "invariants": [
+      "Speculative later calls cannot mutate records past a clarification boundary."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Seed only the named records, Home hierarchy and boundary conditions."
+    ],
+    "steps": [
+      "Answer the final item while the model emits additional calls after the question boundary.",
+      "Read persisted session, work clarification, record revision, action receipt and routing observation; compare with the expected outcome."
+    ],
+    "evidence": [
+      "Before/after rows and command receipts.",
+      "Captured answer/question linkage and routing observation payload; real voice evidence is separate."
+    ]
+  }
+]

@@ -78,7 +78,7 @@ def instants(value):
 def journal(db, owner, command_id, tool, arguments=None):
     # Existing local installations without the recovery key retain their commands.
     # Cloud/durable work requires a configured key before accepting a request.
-    if not get_settings().integration_encryption_key or db.info.get("action_journal"):
+    if tool.startswith("quicksort.") or not get_settings().integration_encryption_key or db.info.get("action_journal"):
         yield
         return
     tracked = {}
@@ -395,6 +395,8 @@ def changes_for_work(db, work):
         )
     ):
         data = receipt.result.get("data", {})
+        if data.get("workflow") == "quick_sort":
+            continue
         remote_id = data.get("job_id") or (data.get("external") or {}).get("job_id")
         remote = db.get(Job, remote_id) if remote_id else None
         if receipt.id in known:
@@ -453,7 +455,18 @@ def revert(db, owner, account, change_id, command_id):
     action, reason = inverse(db, change, lock=True)
     if not action:
         raise DomainError("REVISION_CONFLICT", reason, 409)
-    result = execute(db, owner, command_id, action[0], action[1])
+    from .routing import retract_home_choice
+    # Reversals are not new affirmative filing examples, even with a browser command ID.
+    previous = db.info.get("suppress_routing_observation")
+    db.info["suppress_routing_observation"] = True
+    try:
+        result = execute(db, owner, command_id, action[0], action[1])
+    finally:
+        if previous is None:
+            db.info.pop("suppress_routing_observation", None)
+        else:
+            db.info["suppress_routing_observation"] = previous
+    retract_home_choice(db, owner, change.command_id, change.entity_id)
     change.reverted_by = command_id
     emit(db, owner, "work.changed", request_of(change.command_id))
     return result

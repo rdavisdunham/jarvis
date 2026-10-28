@@ -649,6 +649,12 @@ async def perform(request_id):
                                 device=row.device_id,
                                 conversation_id=row.conversation_id,
                             )
+                    from .quick_sort import runner_question
+                    sort_question = runner_question(row.owner_id, row.id, fn["name"], outcome)
+                    if sort_question:
+                        state["reply"], state["needs_input"] = sort_question, True
+                        # The model cannot append mutations after a server-owned question.
+                        state["pending"] = state["pending"][:state["offset"] + 1]
                     browser_data = outcome.get("data")
                     browser_receipt = (
                         browser_data.get("command_id") if isinstance(browser_data, dict) else None

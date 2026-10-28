@@ -5282,5 +5282,390 @@
       ],
       "scope": "Exact deterministic API/domain assertions in an isolated synthetic database; no claim about live model, device or provider behavior."
     }
+  ],
+  "onboarding.27": [
+    {
+      "id": "guided-setup:onboarding.27:0",
+      "adapter": "pytest",
+      "target": "tests/test_onboarding_design.py::test_design_answer_change_invalidates_review_and_old_snapshot_cannot_apply",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic setup proposal contract; does not claim model interview quality or physical voice acceptance."
+    },
+    {
+      "id": "guided-setup:onboarding.27:1",
+      "adapter": "pytest",
+      "target": "tests/test_onboarding_design.py::test_new_setup_preview_retires_the_previous_proposal_and_rechecks_record_snapshot",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic setup proposal contract; does not claim model interview quality or physical voice acceptance."
+    }
+  ],
+  "onboarding.28": [
+    {
+      "id": "guided-setup:onboarding.28:0",
+      "adapter": "pytest",
+      "target": "tests/test_onboarding_design.py::test_generated_setup_never_silently_drops_existing_definitions",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Exact deterministic setup proposal contract; does not claim model interview quality or physical voice acceptance."
+    }
+  ],
+  "quick_sort.01": [
+    {
+      "id": "quick-sort:quick_sort.01",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_snapshot_only_active_unfiled_leaf_tasks_and_bound",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.02": [
+    {
+      "id": "quick-sort:quick_sort.02",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_exact_named_home_ancestry_and_home_only_evidence",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.03": [
+    {
+      "id": "quick-sort:quick_sort.03",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_exact_named_home_ancestry_and_home_only_evidence",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.04": [
+    {
+      "id": "quick-sort:quick_sort.04",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_duplicate_names_require_specific_candidate_confirmation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.05": [
+    {
+      "id": "quick-sort:quick_sort.05",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_fuzzy_home_proposal_requires_later_yes_and_cannot_change_target",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.07": [
+    {
+      "id": "quick-sort:quick_sort.07",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_skip_pause_resume_stop_retire_pending_cards_and_replay_is_blocked",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.08": [
+    {
+      "id": "quick-sort:quick_sort.08",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_skip_pause_resume_stop_retire_pending_cards_and_replay_is_blocked",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.09": [
+    {
+      "id": "quick-sort:quick_sort.09",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_skip_pause_resume_stop_retire_pending_cards_and_replay_is_blocked",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.11": [
+    {
+      "id": "quick-sort:quick_sort.11",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_one_captured_answer_cannot_file_two_items_and_retry_is_idempotent",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.12": [
+    {
+      "id": "quick-sort:quick_sort.12",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_stale_item_schema_or_proposed_home_requires_new_answer",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.13": [
+    {
+      "id": "quick-sort:quick_sort.13",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_stale_item_schema_or_proposed_home_requires_new_answer",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.14": [
+    {
+      "id": "quick-sort:quick_sort.14",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_sort_state_is_account_scoped_and_requires_human_execution_for_writes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.16": [
+    {
+      "id": "quick-sort:quick_sort.16",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_sort_state_is_account_scoped_and_requires_human_execution_for_writes",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.17": [
+    {
+      "id": "quick-sort:quick_sort.17",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_unrelated_turn_cannot_be_adopted_or_become_human_evidence",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.20": [
+    {
+      "id": "quick-sort:quick_sort.20",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_snapshot_only_active_unfiled_leaf_tasks_and_bound",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.21": [
+    {
+      "id": "quick-sort:quick_sort.21",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_user_revert_retracts_evidence_without_labeling_inverse_or_tags",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.22": [
+    {
+      "id": "quick-sort:quick_sort.22",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_exact_named_home_ancestry_and_home_only_evidence",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.23": [
+    {
+      "id": "quick-sort:quick_sort.23",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_user_revert_retracts_evidence_without_labeling_inverse_or_tags",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.25": [
+    {
+      "id": "quick-sort:quick_sort.25",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_runner_stops_after_server_question_then_files_on_captured_continuation",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic database/server state machine with scripted provider calls. Does not establish real-model or physical voice performance."
+    }
+  ],
+  "quick_sort.24": [
+    {
+      "id": "quick-sort:learning-disabled",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_learning_disabled_preserves_filing_and_no_agent_guess_evidence",
+      "mode": "offline",
+      "level": "component",
+      "criteria": [],
+      "scope": "Learning-disabled personal workspace branch; shared-workspace scenario remains unbound."
+    }
+  ],
+  "onboarding.26": [
+    {
+      "id": "guided-setup:full-definition",
+      "adapter": "pytest",
+      "target": "tests/test_onboarding_design.py::test_full_design_is_linked_resumable_and_creates_no_example_records",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Submitted full-definition contract and no example record creation; model interview quality is separate."
+    }
+  ],
+  "onboarding.29": [
+    {
+      "id": "guided-setup:browser-29",
+      "adapter": "browser",
+      "target": "batch-c.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Dirty-form guided launch and same-work retry in isolated browser. Logout and model execution coverage remain separate."
+    }
+  ],
+  "onboarding.30": [
+    {
+      "id": "guided-setup:browser-30",
+      "adapter": "browser",
+      "target": "batch-c.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1"
+      ],
+      "scope": "Dirty-form guided launch and same-work retry in isolated browser. Logout and model execution coverage remain separate."
+    }
+  ],
+  "quick_sort.06": [
+    {
+      "id": "quick-sort:quick_sort.06",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_rejected_proposal_does_not_file_or_train",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic persisted-state regression; real-model/physical voice acceptance remains separate."
+    }
+  ],
+  "quick_sort.19": [
+    {
+      "id": "quick-sort:quick_sort.19",
+      "adapter": "pytest",
+      "target": "tests/test_quick_sort.py::test_illegal_home_proposal_does_not_change_item",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1"
+      ],
+      "scope": "Synthetic persisted-state regression; real-model/physical voice acceptance remains separate."
+    }
   ]
 }

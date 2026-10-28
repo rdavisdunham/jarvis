@@ -147,3 +147,17 @@ class RoutingReview(Base):
     deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class QuickSortSession(Base):
+    """Bounded filing interview; the ordinary queue executes its steps."""
+    __tablename__ = "quick_sort_sessions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(String(100), index=True)
+    conversation_id: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(30), default="active")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
