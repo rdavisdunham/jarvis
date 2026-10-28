@@ -351,3 +351,14 @@ def test_lean_policy_defers_bulk_tools_and_compacts_the_group_catalog():
             tool["parameters"]["properties"]["groups"]["items"]["enum"] = ["tasks"]
     scoped = ToolSession(restricted, policy="lean-v1").catalog["tools_load"]["description"]
     assert "tasks:" in scoped and "templates:" not in scoped
+
+
+def test_lean_loader_with_no_permitted_groups_does_not_advertise_other_capabilities():
+    from copy import deepcopy
+    loader = deepcopy(next(t for t in registry() if t["name"] == "tools_load"))
+    loader["parameters"]["properties"]["groups"]["items"]["enum"] = []
+    session = ToolSession([loader], policy="lean-v1")
+    description = session.catalog["tools_load"]["description"]
+    assert description.endswith("Groups: ")
+    assert "calendar_read:" not in description and "sessions:" not in description
+    assert session.load({"groups": ["tasks"]})["tools"] == []

@@ -640,8 +640,10 @@ async def test_independent_backend_requests_execute_concurrently(client, monkeyp
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("policy", ["discovery-v1", "lean-v1"])
 @pytest.mark.parametrize("already_finished", [False, True])
-async def test_followup_uses_original_saved_task_running_or_completed(client, monkeypatch, already_finished):
+async def test_followup_uses_original_saved_task_running_or_completed(client, monkeypatch, already_finished, policy):
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", policy)
     first = action(client, "Add a task to call Alex")
     milk = action(client, "Add Buy milk")
     follow = action(client, "Actually make that call tomorrow")
@@ -669,7 +671,12 @@ async def test_followup_uses_original_saved_task_running_or_completed(client, mo
     def edit_from_receipt(agent, messages, definitions, **kwargs):
         replies = [m for m in messages if m.get("name") == "work_followup"]
         if not replies:
-            return response([("work_followup", {"request_id": first["id"]})])
+            calls = [("work_followup", {"request_id": first["id"]})]
+            if policy == "lean-v1":
+                with session_scope() as db:
+                    identity = db.scalar(select(Task.id).where(Task.title == "Call Alex"))
+                calls.append(("task_get", {"task_id": identity}))
+            return response(calls)
         earlier = json.loads(replies[-1]["content"])
         assert earlier["status"] == "succeeded"
         record = earlier["saved_records"][0]["data"]
@@ -1057,16 +1064,17 @@ async def test_round_telemetry_includes_controls_and_only_safe_discovery_metadat
     assert len([e for e in events if e["stage"] == "model_plan"]) == 3
 
 
-async def test_resumed_trimmed_work_refetches_before_planning_new_edits(client, monkeypatch):
+@pytest.mark.parametrize("policy", ["reads-v1", "lean-v1"])
+async def test_resumed_trimmed_work_refetches_before_planning_new_edits(client, monkeypatch, policy):
     from jarvis.work_crypto import seal
-    monkeypatch.setattr(get_settings(), "agent_tool_policy", "reads-v1")
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", policy)
     work = action(client, "Add Alpha")
     agent = work_runner.model_for("luna")
     with session_scope() as db:
         row = db.get(AgentWork, work["id"])
         db.expunge(row)
     with agent_work.principal_for(row):
-        state = await work_runner.initial_state(row, agent, tool_policy="reads-v1")
+        state = await work_runner.initial_state(row, agent, tool_policy=policy)
     state["tool_names"] = ["removed_or_revoked_tool"]
     with session_scope() as db:
         db.get(AgentWork, work["id"]).checkpoint_ciphertext = seal(state)
@@ -1116,14 +1124,31 @@ def test_prompt_cache_key_is_only_sent_when_set():
         responses_adapter.prompt_cache_key.reset(token)
 
 
-def test_lean_history_and_recent_work_budgets_keep_the_newest_reference_data():
-    turns = [{"role": "user", "content": f"turn {i} " + "x" * 3000} for i in range(10)]
-    kept = work_runner.budget_history(turns)
-    assert kept[-1]["content"].startswith("turn 9") and all(len(t["content"]) <= work_runner.TURN_CHARS for t in kept)
-    assert sum(len(t["content"]) for t in kept) <= work_runner.HISTORY_CHARS
-    assert [t["content"][:6] for t in kept] == sorted(t["content"][:6] for t in kept)
-    assert work_runner.budget_history([{"role": "user", "content": "y" * 9000}])[0]["content"] == "y" * work_runner.TURN_CHARS
-    item = {"request_id": "r", "request": "a" * 2000, "outcome": "b" * 2000, "status": "succeeded", "saved_records": [{"data": {"id": "t"}}]}
-    [trimmed] = work_runner.trim_recent([item])
-    assert len(trimmed["request"]) == 600 and len(trimmed["outcome"]) == 500
-    assert trimmed["saved_records"] == item["saved_records"] and trimmed["status"] == "succeeded"
+def test_lean_cache_accounting_is_scoped_and_tracks_full_tool_definitions():
+    messages = [{"role": "system", "content": "Stable guidance"}]
+    tools = [{"name": "task_list", "parameters": {"type": "object"}}]
+    key = work_runner.cache_key("lean-v1", messages, tools, owner_id="owner-a")
+    assert key == work_runner.cache_key("lean-v1", messages, tools, owner_id="owner-a")
+    assert key != work_runner.cache_key("lean-v1", messages, tools, owner_id="owner-b")
+    assert "owner-a" not in key
+    assert key != work_runner.cache_key("lean-v1", messages, [
+        {**tools[0], "description": "Changed allowed scope"}], owner_id="owner-a")
+    assert work_runner.cache_key("reads-v1", messages, tools, owner_id="owner-a") is None
+
+
+async def test_lean_keeps_long_reference_context_and_current_request(client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "agent_tool_policy", "lean-v1")
+    work = action(client, "Current instruction: preserve the original deadline.")
+    from jarvis.work_crypto import seal
+    context = [{"role": "user", "content": "Context " + "x" * 2500 + " end: do not change the notes."}]
+    with session_scope() as db:
+        row = db.get(AgentWork, work["id"])
+        data = unseal(row.input_ciphertext)
+        row.input_ciphertext = seal({**data, "context": context})
+    async def model(agent, messages, definitions, **kwargs):
+        history = next(m["content"] for m in messages if m["content"].startswith("EARLIER CONVERSATION DATA"))
+        assert "end: do not change the notes." in history
+        assert messages[-1]["content"] == "Current instruction: preserve the original deadline."
+        return response(message="No changes made.")
+    monkeypatch.setattr(work_runner, "request_model", model)
+    await work_runner.run(work["id"])

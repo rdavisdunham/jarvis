@@ -1,7 +1,7 @@
 """Stateless Responses transport for the existing durable conversation/tool loop."""
 from contextvars import ContextVar
 
-# Set by the runner for lean-v1: requests sharing a static prefix route to the same prompt cache.
+# Set by lean-v1 for workspace-separated cache accounting; a stable prefix enables reuse.
 prompt_cache_key = ContextVar("prompt_cache_key", default=None)
 
 

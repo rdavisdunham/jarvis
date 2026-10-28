@@ -545,7 +545,9 @@ def short_label(description, limit=90, name=None):
 
 def compact_groups(tool):
     """Group names with one short phrase each. Usage rules live in each loaded tool's definition."""
-    allowed = tool.get("parameters", {}).get("properties", {}).get("groups", {}).get("items", {}).get("enum") or list(GROUPS)
+    allowed = tool.get("parameters", {}).get("properties", {}).get("groups", {}).get("items", {}).get("enum")
+    if allowed is None:
+        allowed = list(GROUPS)
     return "Groups: " + "; ".join(name + ": " + short_label(GROUPS[name][0], name=name) for name in allowed if name in GROUPS)
 
 

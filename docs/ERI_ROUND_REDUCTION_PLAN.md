@@ -206,8 +206,10 @@ showed where the per-round cost goes:
    across requests of the same workspace kind. Per-request DATA (profile and current
    time, focus, screen, memory, receipts, recent searches, recent work) moves to a
    second system message after them. No instruction text changes meaning.
-2. **`prompt_cache_key`** derived from the tool names plus static text, so requests
-   sharing that prefix route to the same cache.
+2. **Scoped cache accounting.** Hash the workspace ID, complete tool definitions and
+   static text into the cache key. The stable prefix enables cache reuse. On
+   GPT-5.6 and later the key partitions accounting; it is not a required routing
+   optimization. Different workspaces do not share this accounting group.
 3. **Smaller always-loaded tools.**
    - `task_batch` and `task_selection_update` move behind the `tasks` group, where
      bulk edits load them.
@@ -219,16 +221,21 @@ showed where the per-round cost goes:
 4. **Follow-up linking in the same round.** When recent work already shows the earlier
    request succeeded with the needed IDs, `work_followup` is returned alongside the
    lookups. Only writes wait for its result.
-5. **Context budgets.** Earlier conversation keeps the newest turns within 6,000
-   characters, each at most 1,500. Recent-work items keep IDs, status and saved
-   records, but trim request/outcome text to 600/500 characters.
+5. **Preserve reference context.** The October 27 review removed the proposed
+   1,500-character per-turn and 600/500-character request/outcome cuts. Those cuts
+   could silently discard a qualifier needed by a follow-up. Keep the existing
+   history limits and complete recent-work data; evaluate additional context
+   compression separately with long-reference cases.
 
+Historical October 6 measurement before the context-preservation correction:
 Measured locally (deterministic model, first round): 47.1 KB → 39.8 KB of input
 (−15%). Of the lean total, about 35 KB (tools plus static text) is identical across
 requests and can stay cached, against roughly the tool block today. Expected effect:
-lower time-to-first-token and cost on every first round. This is not yet a
-measured speedup.
+lower time-to-first-token and cost on every first round. This older byte-size observation is not a measured speedup. The October 27
+review and repeated provider comparison are recorded in
+[lean-policy validation](ERI_LEAN_POLICY_VALIDATION.md).
 
+Keep discovery-v1 as the application default while phone acceptance is pending.
 Rollout: set `JARVIS_AGENT_TOOL_POLICY=lean-v1` on API and worker together (dev
 first). Accepted jobs keep their pinned policy; rollback changes new jobs only. Compare
 with `--tool-policy reads-v1|lean-v1` in the paid campaign, then a typed and GPT-Live
@@ -249,3 +256,7 @@ Its [function-calling guidance](https://developers.openai.com/api/docs/guides/fu
 also supports clear tool descriptions, moving deterministic work into code and
 keeping the initial tool set manageable. The PR sequence above is an application-
 specific proposal based on our traces, not a claim of guaranteed API savings.
+
+Current caching semantics: [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+(checked October 27, 2026). Luna cache writes carry the existing 1.25x input rate;
+comparisons include writes, reads, returned service tier and failed/uncertain calls.
