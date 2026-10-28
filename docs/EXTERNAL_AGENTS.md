@@ -137,7 +137,7 @@ capabilities, inheritance, migration and rollout status.
 ## Agent session ledger
 
 Answers "where did I work on X?" across Claude Code, Codex, ChatGPT desktop and Claude Desktop.
-A local collector reports sessions ([`scripts/session_collector`](../scripts/session_collector/README.md)).
+A local collector reports sessions ([`scripts/session_collector`](../scripts/session_collector/README.md)); the remotea server can also report them over the [agent link](AGENT_CONTROL.md).
 Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per session. Transcripts stay on the user's machine.
 
 - `sessions:write`:
@@ -176,5 +176,7 @@ The Sessions panel loads older results with **Load more sessions**. It refreshes
 loaded range every 30 seconds while visible, pauses polling in hidden tabs, and does
 not repeatedly run an idle semantic search. **Refresh sessions** is always available.
 Terminal labels are **Reported live/restoring**: these are collector snapshots, not
-verified current connections. Existing data has no trustworthy terminal-observation
+verified current connections. When remotea is turned on and its server reports a session over the
+agent link, the drawer shows **Live/Restoring in remotea · since …** from the server instead; see
+[Agent control](AGENT_CONTROL.md) for the link protocol, its `agents:control` key and collector parity. Existing data has no trustworthy terminal-observation
 timestamp; transcript activity and filing edits must not be treated as heartbeats.

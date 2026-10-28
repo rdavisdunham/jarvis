@@ -14,7 +14,7 @@ from . import external_service as service
 from .auth import Identity, authenticate
 from .config import get_settings
 from .db import session_scope
-from .domain import DomainError, advisory
+from .domain import DomainError, advisory, emit
 from .models import BotCredential, now
 
 router = APIRouter()
@@ -234,7 +234,32 @@ def external_record(record_id: UUID,identity: Bot):
 def session_report(tool: sessions.Tool, session_id: str, body: sessions.SessionInput, identity: Bot):
     with session_scope() as db:
         bot = bot_access.authorize(db, required="sessions:write", write=True)
-        return sessions.upsert(db, bot.owner_id, tool, session_id, body, reveal="records:read" in bot.scopes)
+        result = sessions.upsert(db, bot.owner_id, tool, session_id, body, reveal="records:read" in bot.scopes)
+        emit(db, bot.owner_id, "session.changed", result["id"])
+        return result
+
+
+class ParityInput(service.Input):
+    tool: sessions.Tool
+    session_id: str = Field(min_length=1, max_length=100)
+    report: sessions.SessionInput
+
+
+@external.post("/agents/parity")
+def agent_parity(body: ParityInput, identity: Bot):
+    """Shadow collector check: compare a report with the stored session without changing it."""
+    from . import agent_link
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:control")
+        agent_link.gate(db, bot.owner_id)
+        host = db.scalar(
+            select(agent_link.AgentHost.id)
+            .where(agent_link.AgentHost.credential_id == bot.id)
+            .order_by(agent_link.AgentHost.last_seen_at.desc().nulls_last())
+            .limit(1)
+        )
+        return agent_link.parity(db, bot, host, body.tool, body.session_id, body.report)
 
 
 @external.post("/sessions/{tool}/{session_id}/link")

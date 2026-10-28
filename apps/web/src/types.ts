@@ -163,6 +163,7 @@ export interface Preferences {
   default_reminder_hour: number;
   monthly_budget_usd: number;
   detailed_notifications: boolean;
+  remotea_enabled?: boolean;
 }
 export interface Bootstrap {
   account_id?: string;
@@ -232,7 +233,8 @@ export type View =
   | "memory"
   | "questions"
   | "notifications"
-  | "settings";
+  | "settings"
+  | "remotea";
 export interface ChatMessage {
   id: string;
   native_id?: string;

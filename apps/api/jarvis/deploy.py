@@ -199,6 +199,13 @@ def main():
                     "--workers",
                     "1",
                     "--no-access-log",
+                    # The agent link (agent_link.py): frame cap and keepalive for the remotea server.
+                    "--ws-max-size",
+                    "262144",
+                    "--ws-ping-interval",
+                    "20",
+                    "--ws-ping-timeout",
+                    "30",
                     "--proxy-headers",
                     "--forwarded-allow-ips",
                     os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),

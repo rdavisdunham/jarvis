@@ -42,8 +42,15 @@ export function watchSessionChanges(refresh: () => void, searching: boolean) {
   const update = () => { if (document.visibilityState === "visible") refresh(); };
   const timer = searching ? undefined : window.setInterval(update, 30_000);
   document.addEventListener("visibilitychange", update);
+  // Host-reported session changes (agent link) arrive on the change feed.
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  const changed = () => { if (!searching && pending === undefined) pending = setTimeout(() => { pending = undefined; update(); }, 500); };
+  const feed = typeof window.addEventListener === "function" ? window : null;
+  feed?.addEventListener("eri-agents-changed", changed);
   return () => {
     if (timer !== undefined) window.clearInterval(timer);
+    if (pending !== undefined) clearTimeout(pending);
+    feed?.removeEventListener("eri-agents-changed", changed);
     document.removeEventListener("visibilitychange", update);
   };
 }

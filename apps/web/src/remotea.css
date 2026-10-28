@@ -1,0 +1,30 @@
+/* remotea page: live agent sessions from the linked remotea server. Mobile first. */
+.remotea-page { display: grid; gap: 12px; max-width: 760px; width: 100%; margin: 0 auto; padding-bottom: 24px; }
+.remotea-hosts { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); }
+.remotea-hosts span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.remotea-hosts.tone-connected { border-color: var(--done); }
+.remotea-hosts.tone-connected svg:first-child { color: var(--done); }
+.remotea-hosts.tone-offline svg:first-child { color: var(--danger); }
+.remotea-sessions { display: grid; gap: 10px; }
+.remotea-session { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.remotea-session.state-needs_you { border-color: var(--violet); box-shadow: 0 0 0 1px var(--violet-soft); }
+.remotea-session header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-size: 0.85rem; color: var(--ink-3); }
+.remotea-session h3 { margin: 0; font-size: 1rem; color: var(--ink); overflow-wrap: anywhere; }
+.remotea-state { font-weight: 600; padding: 1px 8px; border-radius: var(--r-pill); background: var(--sunken); color: var(--ink-2); }
+.remotea-state.state-working { background: var(--done-soft); color: var(--done); }
+.remotea-state.state-needs_you { background: var(--violet-soft); color: var(--violet); }
+.remotea-state.state-restoring, .remotea-state.state-lost { background: var(--danger-soft); color: var(--danger); }
+.remotea-host { margin-left: auto; }
+.remotea-place, .remotea-reason { margin: 0; font-size: 0.85rem; color: var(--ink-3); overflow-wrap: anywhere; }
+.remotea-turn { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; }
+.remotea-turn p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 0.9rem; }
+.remotea-turn p.open { max-height: 60vh; overflow: auto; }
+.remotea-turn-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--ink-3); }
+.remotea-parity { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); }
+.remotea-parity summary { cursor: pointer; font-weight: 600; }
+.remotea-parity ul { margin: 6px 0 0; padding-left: 18px; font-size: 0.85rem; }
+.remotea-host-chip { padding: 2px 8px; border-radius: var(--r-pill); background: var(--sunken); font-size: 0.85rem; }
+.remotea-host-chip.tone-connected { background: var(--done-soft); color: var(--done); }
+@media (min-width: 720px) {
+  .remotea-session { padding: 14px 16px; }
+}

@@ -59,6 +59,9 @@ async def lifespan(app):
     mcp_app = mcp_mount.build()
     async with mcp_app.router.lifespan_context(mcp_app):
         yield
+    from .agent_link import shutdown as close_agent_links
+
+    await close_agent_links()
     from .voice import controllers
 
     await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
@@ -90,6 +93,12 @@ from .external_mcp import mount as mcp_mount
 from .external_routes import router as external_router
 
 app.include_router(external_router)
+from .agent_link import router as agent_link_router
+
+app.include_router(agent_link_router)
+from .remotea_routes import router as remotea_router
+
+app.include_router(remotea_router)
 app.mount("/api/v1/external/mcp", mcp_mount)
 User = Annotated[Identity, Depends(authenticate)]
 login_attempts = defaultdict(deque)

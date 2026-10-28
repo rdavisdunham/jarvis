@@ -28,7 +28,11 @@ SCOPES = {
     "work:run": "Ask Eri to work using this key's permitted records and tools",
     "sessions:read": "Read the agent session ledger: where coding and chat work happened",
     "sessions:write": "Report agent sessions and file them under issues or records",
+    "agents:control": "Link a remotea server: report live sessions, turns and status (remotea only)",
+    "agents:session": "In-session agent tools for a linked task's plan and steps (remotea only)",
 }
+# Control scopes mutate on every use: viewers cannot hold them and each use is a write check.
+PRIVILEGED = {"agents:control", "agents:session"}
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
@@ -95,6 +99,7 @@ def normalize(scopes):
 def authorize(db, owner=None, required=None, *, write=False, credential_id=None):
     from .access import role
 
+    write = write or required in PRIVILEGED
     identity = credential_id or current_id()
     row = db.get(BotCredential, identity, populate_existing=True) if identity else None
     if not row or (owner is not None and row.owner_id != owner):
@@ -158,7 +163,7 @@ def create(db, owner, account, name, scopes, days):
 
     permission = role(db, owner, account, lock=True)
     scopes = normalize(scopes)
-    if permission == "viewer" and any(s.endswith(":write") or s == "work:run" for s in scopes):
+    if permission == "viewer" and any(s.endswith(":write") or s == "work:run" or s in PRIVILEGED for s in scopes):
         raise DomainError("READ_ONLY", "Viewers can create read-only keys.", 403)
     if "schema:write" in scopes and permission != "owner":
         raise DomainError("OWNER_REQUIRED", "Only the workspace owner can grant structure editing.", 403)
