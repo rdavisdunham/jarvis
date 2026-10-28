@@ -39,6 +39,14 @@ describe("agent session cards", () => {
     expect(html).not.toContain("Copy resume command"); expect(html).not.toContain("Live in remotea → Acme");
     expect(render({ ...base, resume: { live: { ...live, state: "lost", workspace: "" } } })).toContain("Reported restoring in remotea · Inbox");
   });
+  it("prefers the server-reported terminal state over the collector snapshot", () => {
+    const live = { state: "live" as const, workspace: "Acme", terminal: "surf-1", host: "DavisPC" };
+    const sinceAt = new Date(Date.now() - 5 * 60000).toISOString();
+    const html = render({ ...base, resume: { live }, live_state: { state: "working", since: sinceAt, host_id: "h1", reason: "" } });
+    expect(html).toContain("Live in remotea · since 5m ago · Acme"); expect(html).not.toContain("Reported live");
+    expect(render({ ...base, live_state: { state: "restoring", since: sinceAt, host_id: "h1", reason: "" } })).toContain("Restoring in remotea");
+    expect(render({ ...base, resume: { live } })).toContain("Reported live in remotea · Acme");
+  });
   it("describes recency compactly", () => {
     const now = new Date("2026-10-26T12:00:00Z").getTime();
     expect(since("2026-10-26T11:58:00Z", now)).toBe("2m ago");

@@ -70,6 +70,31 @@ class TaskCreate(Args):
     priority: int = Field(default=0, ge=0, le=3)
 
 
+PLAN_ID = r"^[A-Za-z0-9_-]{1,40}$"
+
+
+class PlanStep(Args):
+    # Clients round-trip stored steps; the server-stamped by/updated_at/revision are ignored on input.
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    id: str | None = Field(default=None, pattern=PLAN_ID)
+    title: str = Field(min_length=1, max_length=500)
+    status: Literal["todo", "doing", "done", "skipped", "disputed"] = "todo"
+    note: str = Field(default="", max_length=2000)
+    task_id: str | None = Field(default=None, max_length=36)
+
+
+class Criterion(Args):
+    id: str | None = Field(default=None, pattern=PLAN_ID)
+    text: str = Field(min_length=1, max_length=1000)
+    kind: Literal["text", "verify"] = "text"
+    verify_id: str | None = Field(default=None, max_length=100)
+
+
+class VerifyConfig(Args):
+    target_id: str = Field(min_length=1, max_length=100)
+    verify_id: str = Field(min_length=1, max_length=100)
+
+
 class TaskChanges(Args):
     is_quick_list: bool = False
     quick_section: str = Field(default="", max_length=120)
@@ -97,6 +122,13 @@ class TaskChanges(Args):
     priority: int | None = Field(default=None, ge=0, le=3)
     status: Literal["backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] | None = None
     archived: bool | None = None
+    # Execution plan (task_plan.py normalizes these; plan_revision is server-managed).
+    steps: list[PlanStep] | None = Field(default=None, max_length=100)
+    prd_note_id: str | None = None
+    success_criteria: list[Criterion] | None = Field(default=None, max_length=50)
+    verify: VerifyConfig | None = None
+    turn_cap: int | None = Field(default=None, ge=1, le=100)
+    execution_target_id: str | None = Field(default=None, max_length=36)
 
 
 class TaskUpdate(TaskChanges):
@@ -241,7 +273,7 @@ COMMANDS = {
 # Update null policy: absent keeps, null clears. Fields here cannot be cleared, so
 # generated tool schemas omit null for them; CLEARED maps null to the empty value.
 NOT_NULL = {
-    "task.update": {"title", "status", "archived"},
+    "task.update": {"title", "status", "archived", "steps", "success_criteria", "turn_cap"},
     "schedule.update": {"title", "when", "timezone", "task_id"},
     "space.update": {"name", "archived"},
     "area.update": {"name", "archived", "space_id"},
@@ -344,6 +376,7 @@ def preferences(db, owner):
         "default_reminder_hour": settings.default_reminder_hour,
         "monthly_budget_usd": settings.monthly_budget_usd,
         "detailed_notifications": False,
+        "remotea_enabled": False,
         **(row.values if row else {}),
     }
     agent = selected(values)
@@ -715,6 +748,9 @@ def mutate(db, owner, tool, args, command_id):
         if any(key in changes for key in ("due_date", "due_time", "due_timezone")):
             changes = task_timing(db, owner, changes, task)
         changes = project_changes(db, owner, changes, task)
+        from .task_plan import normalize as normalize_plan
+
+        normalize_plan(db, owner, task, changes)
         from .linear_sync import before_task_update
 
         before_task_update(db, owner, task, changes)

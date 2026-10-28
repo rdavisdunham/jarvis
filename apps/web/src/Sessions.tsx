@@ -3,6 +3,7 @@ import { Copy, ExternalLink, FolderInput, Trash2, X } from "lucide-react";
 import { api, post } from "./api";
 import { sessionPages, watchSessionChanges, type SessionPage, type SessionPageState } from "./sessionPages";
 import { Dialog, Popover } from "./ux";
+import { liveChip, type LiveState } from "./remotea-model";
 
 export type AgentSession = {
   id: string; tool: string; tool_label: string; session_id: string; title: string; summary: string;
@@ -11,6 +12,8 @@ export type AgentSession = {
   issue_refs: { identifier: string; task_id: string; url: string | null }[];
   resume: { cmd?: string; url?: string; hint?: string; live?: { state: "live" | "lost"; workspace: string; terminal: string; host: string } };
   filed: { source: string | null; record_id: string | null; task_id: string | null; record_title: string | null };
+  /** Reported by the remotea server over the agent link; absent for collector-only sessions. */
+  live_state?: LiveState | null;
 };
 type Listing = SessionPage<AgentSession>;
 type Rule = { id: string; path_prefix: string; record_id: string; record_title: string | null };
@@ -58,13 +61,17 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
     post<AgentSession>(`/sessions/${item.id}/link`, choice).then(onChanged);
   const place = [item.repo || item.cwd.split("/").filter(Boolean).at(-1), item.branch].filter(Boolean).join(" · ");
   const live = item.resume.live;
+  const hosted = liveChip(item.live_state);
   return <article className="work-card session-card" data-session-id={item.id}>
     <header><span className="session-tool">{item.tool_label}</span><time dateTime={item.last_active_at ?? undefined}>{since(item.last_active_at)}</time></header>
     <h3>{item.title}</h3>
     {(item.summary || item.first_prompt) && <p className="work-result">{item.summary || item.first_prompt}</p>}
     <p className="session-place" title={item.cwd}>{place}{item.environment && <small> · {item.environment}</small>}{item.turn_count > 0 && <small> · {item.turn_count} {item.turn_count === 1 ? "prompt" : "prompts"}</small>}</p>
     <div className="session-filed">
-      {live && <span className={"chip " + (live.state === "live" ? "chip-done" : "chip-due-today")} title={[live.host, live.terminal, "Collector snapshot; current terminal status is unverified."].filter(Boolean).join(" · ")}>
+      {hosted && item.live_state && <span className={"chip " + (hosted.tone === "live" ? "chip-done" : hosted.tone === "restoring" ? "chip-due-today" : "")}
+        title={"Reported by the remotea server" + (item.live_state.reason ? " · " + item.live_state.reason : "")}>
+        {hosted.label} in remotea · since {since(item.live_state.since)}{live?.workspace ? " · " + live.workspace : ""}</span>}
+      {live && !hosted && <span className={"chip " + (live.state === "live" ? "chip-done" : "chip-due-today")} title={[live.host, live.terminal, "Collector snapshot; current terminal status is unverified."].filter(Boolean).join(" · ")}>
         {live.state === "live" ? "Reported live" : "Reported restoring"} in remotea · {live.workspace || "Inbox"}</span>}
       {item.filed.record_id
         ? <span>Filed under <strong>{item.filed.record_title ?? "a record"}</strong> {filedBy[item.filed.source ?? ""] ?? ""}</span>
@@ -83,7 +90,7 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
         <button className="btn btn-ghost btn-sm" onClick={() => void link({ clear: true }).catch(e => setError(e.message))}>Use automatic filing</button>}
       <button className="btn btn-ghost btn-sm" onClick={() => void post(`/sessions/${item.id}/archive`, { archived: true }).then(onChanged).catch(e => setError(e.message))}>Hide</button>
     </div>
-    {!item.resume.cmd && !live && item.resume.hint && <small className="work-revert-note">{item.resume.hint}</small>}
+    {!item.resume.cmd && !live && !hosted && item.resume.hint && <small className="work-revert-note">{item.resume.hint}</small>}
     {error && <p className="work-error" role="alert">{error}</p>}
   </article>;
 }

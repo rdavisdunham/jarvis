@@ -875,6 +875,13 @@
       "feature": "external_agents"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/external/agents/parity",
+      "handler": "agent_parity",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/external/capabilities",
       "handler": "capabilities",
@@ -1258,6 +1265,48 @@
       "handler": "quick_list",
       "source": "apps/api/jarvis/api.py",
       "feature": "quick_capture"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/disable",
+      "handler": "disable",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/enable",
+      "handler": "enable",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/parity",
+      "handler": "parity",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/sessions",
+      "handler": "live_sessions",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/sessions/{identity}/turns",
+      "handler": "session_turns",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/status",
+      "handler": "status",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
     },
     {
       "method": "GET",

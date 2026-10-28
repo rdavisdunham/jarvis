@@ -82,6 +82,8 @@ export function subscribeEvents(
         window.dispatchEvent(new Event("eri-work-changed"));
         return;
       }
+      if (kind === "agent.changed" || kind === "session.changed")
+        window.dispatchEvent(new Event("eri-agents-changed"));
       if (kind === "membership.changed")
         window.dispatchEvent(new Event("eri-accounts-changed"));
       refresh({
@@ -122,8 +124,9 @@ export function subscribeEvents(
 }
 
 // Which parts of the client a change-feed signal invalidates.
-const LOAD_SKIP = new Set(["work.changed", "memory.changed", "note.indexed", "note.changed"]);
-const REVISION_SKIP = new Set(["work.changed", "memory.changed", "notification.changed", "membership.changed"]);
+// Agent turns and terminal states arrive often; only the remotea page and Sessions drawer listen.
+const LOAD_SKIP = new Set(["work.changed", "memory.changed", "note.indexed", "note.changed", "agent.changed", "session.changed"]);
+const REVISION_SKIP = new Set(["work.changed", "memory.changed", "notification.changed", "membership.changed", "agent.changed", "session.changed"]);
 export function signalScope(signal: EventSignal) {
   if (signal.reason === "open") return { load: true, revision: true, memory: true };
   if (signal.reason !== "event") return { load: true, revision: false, memory: false };

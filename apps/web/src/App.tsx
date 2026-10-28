@@ -138,6 +138,7 @@ const viewChunks = {
   linear: () => import("./Linear"),
   bots: () => import("./BotSettings"),
   preferences: () => import("./PlannerPreferences"),
+  remotea: () => import("./Remotea"),
 };
 const CalendarDetails = lazy(() => viewChunks.calendarDetails().then((m) => ({ default: m.CalendarDetails })));
 const GoogleEventDialog = lazy(() => viewChunks.googleEvent().then((m) => ({ default: m.GoogleEventDialog })));
@@ -149,6 +150,8 @@ const RoutingReviewPanel = lazy(() => viewChunks.preferences().then((m) => ({ de
 const SchedulingPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.SchedulingPreferences })));
 const NotificationPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.NotificationPreferences })));
 const ThemeSetting = lazy(() => viewChunks.preferences().then((m) => ({ default: m.ThemeSetting })));
+const Remotea = lazy(() => viewChunks.remotea().then((m) => ({ default: m.Remotea })));
+const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
   { id: "all", label: "Tasks", icon: ListChecks, tab: true },
@@ -156,6 +159,8 @@ const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "calendar", label: "Calendar", icon: CalendarDays, tab: true },
   { id: "notes", label: "Notes", icon: NotebookPen, tab: true },
 ];
+// Shown only once remotea is turned on in Settings → Connections.
+const remoteaNav = { id: "remotea" as View, label: "remotea", icon: SquareTerminal };
 export default function App() {
   const editors = useEditorBridge();
   const initialRecord = useRef(readRecordLink(location.search));
@@ -1953,6 +1958,7 @@ export default function App() {
     questions: "Questions",
     notifications: "Notifications",
     settings: "Settings",
+    remotea: "remotea",
   };
   const previousLayer = useRef({record: null as string | null, structure: false});
   useEffect(() => {
@@ -2319,7 +2325,7 @@ export default function App() {
           <span className="sr-only">{boot.workspace?.id ? "Shared workspace" : "Personal workspace"}</span>
         </a>
         <nav aria-label="Main">
-          {nav.map((item) => {
+          {(boot.preferences.remotea_enabled ? [...nav, remoteaNav] : nav).map((item) => {
             const current = item.id === "today" ? dashboard : item.id === "all" ? isTaskTab(view) && !dashboard : view === item.id;
             const count = item.id === "today" ? todayCount : item.id === "all" ? openCount : 0;
             return (
@@ -2471,7 +2477,7 @@ export default function App() {
                 </Popover>
               </div>
             </div>}
-            {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
+            {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
             {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
@@ -2701,6 +2707,8 @@ export default function App() {
                 }}
               />
             )}
+            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea/></Suspense>
+              : <p>remotea is off. Turn it on in Settings → Connections.</p>)}
             {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
             {view === "memory" && (
@@ -2894,6 +2902,8 @@ export default function App() {
                   </SettingsGroup>
                 )}
                 {settingsSection === "integrations" && <BotSettings canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
+                {settingsSection === "integrations" && <RemoteaSettings key={"remotea-" + (boot.workspace?.id ?? boot.account_id)} readOnly={boot.workspace?.role === "viewer"}
+                  onChanged={() => { void api<Bootstrap>("/bootstrap").then(setBoot); }}/>}
                 {settingsSection === "integrations" && !boot.workspace?.id && (
                   <>
                     <LinearSettings revision={noteRevision} mutate={mutate} />

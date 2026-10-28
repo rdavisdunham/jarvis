@@ -31,7 +31,9 @@ TOOLS = {
 }
 Tool = Literal["claude_code", "codex_cli", "codex_desktop", "claude_desktop", "cowork"]
 Environment = Literal["", "wsl", "windows", "linux", "macos", "ssh", "cloud"]
-PROTECTED = {"explicit", "manual"}
+PROTECTED = {"explicit", "manual", "spawned"}
+# Host-reported terminal states (agent_link.py) that mean the agent's terminal is running.
+LIVE_STATES = ("working", "needs_you", "idle")
 # A session is summarized once it has been quiet this long; active sessions change every few minutes.
 SETTLED = timedelta(minutes=10)
 ISSUE_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9]{0,9}-[0-9]{1,6})(?![0-9])")
@@ -360,6 +362,13 @@ def public(db, row, *, titles=None, reveal=True, score=None):
         "pr_urls": row.pr_urls,
         "issue_refs": row.issue_refs,
         "resume": row.resume,
+        # Reported over the agent link by the remotea server, with the host's own timestamp.
+        "live_state": {
+            "state": row.state,
+            "since": row.state_since,
+            "host_id": row.host_id,
+            "reason": (row.state_detail or {}).get("reason", ""),
+        } if row.state else None,
         "filed": {
             "source": row.binding_source or None,
             "record_id": row.record_id,
@@ -379,7 +388,7 @@ def scoped(db, owner, args):
     if args.tool:
         query = query.where(AgentSession.tool == args.tool)
     if args.live:
-        query = query.where(AgentSession.resume.has_key("live"))
+        query = query.where(or_(AgentSession.resume.has_key("live"), AgentSession.state.in_(LIVE_STATES)))
     if args.record_id:
         # A client's sessions include those filed under its projects and issues.
         from .record_contents import rows_under

@@ -83,6 +83,10 @@ def route_owner(path, source):
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
+    if path.startswith("/api/v1/remotea"):
+        return "agent_control"
+    if "/external/agents/" in path:
+        return "external_agents"
     if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):
         return "external_agents"
     if "/accounts" in path:
