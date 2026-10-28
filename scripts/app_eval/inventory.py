@@ -56,6 +56,8 @@ EXACT = {
     "work_revert": "receipts",
     "reviews_due": "custom_records",
     "session_search": "external_agents",
+    "session_rule": "external_agents",
+    "session_rules": "external_agents",
     "ui_activity": "receipts",
 }
 for prefix in ("calendar", "linear"):

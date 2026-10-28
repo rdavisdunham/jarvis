@@ -924,6 +924,27 @@
       "feature": "external_agents"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/external/sessions/rules",
+      "handler": "session_rules",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/sessions/rules",
+      "handler": "session_rule_save",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/external/sessions/rules/{rule_id}",
+      "handler": "session_rule_delete",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
       "method": "PUT",
       "path": "/api/v1/external/sessions/{tool}/{session_id}",
       "handler": "session_report",

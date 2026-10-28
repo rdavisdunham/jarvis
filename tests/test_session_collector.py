@@ -193,3 +193,10 @@ def test_a_live_wal_database_is_read_through_a_snapshot_with_its_newest_writes(t
     writer.close()
     monkeypatch.setattr(collector, "READABLE", {path: str(tmp_path / "missing" / "copy.sqlite")})
     assert list(collector.codex_sources(str(tmp_path), "codex_desktop")) == []
+
+
+def test_codex_desktop_wsl_folders_spelled_as_a_drive_become_linux_paths(monkeypatch):
+    monkeypatch.setattr(collector.os.path, "isdir", lambda p: p == "/home/davin/acme")
+    assert collector.wsl_folder("C:/home/davin/acme") == "/home/davin/acme"
+    assert collector.wsl_folder("C:/home/davin/gone") is None
+    assert collector.wsl_folder("C:/Users/davin/Documents") is None
