@@ -406,7 +406,7 @@ def main(argv=None):
         p.add_argument("--cases")
         p.add_argument("--mode", default="offline")
         p.add_argument("--model", choices=["luna", "luna-none"], default="luna")
-        p.add_argument("--tool-policy", choices=["baseline", "discovery-v1", "reads-v1"], help="Pinned tool-policy arm for isolated agent evals only.")
+        p.add_argument("--tool-policy", choices=["baseline", "discovery-v1", "reads-v1", "lean-v1"], help="Pinned tool-policy arm for isolated agent evals only.")
         p.add_argument("--service-tier", choices=["default", "fast"], help="Explicit tier for agent evals only; production settings are untouched.")
         p.add_argument("--judge", choices=["luna", "external"], default="luna")
         p.add_argument("--max-usd", type=float, default=10)
