@@ -1,8 +1,8 @@
 """The agent link: one outbound WebSocket from each remotea server (docs/AGENT_CONTROL.md).
 
-Stage B is read-only: the host reports sessions, final responses per turn, terminal state and
-reconcile snapshots, and runs collector parity. Commands to the host (spawn, input, answer, stop)
-arrive in stage C through the agent_commands drain loop sketched here.
+The host reports sessions, final responses per turn, terminal state, questions and reconcile
+snapshots, and runs collector parity. Commands to the host (spawn, input, answer, stop) are written
+to agent_commands by the run coordinator and drained here, resent until acknowledged.
 
 The http `security` middleware does not run for websocket scopes, so the handshake repeats the
 maintenance, Origin and size guards itself. Every inbound message runs in its own short
@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -35,12 +36,14 @@ from starlette.concurrency import run_in_threadpool
 
 from . import agent_sessions as sessions
 from . import bot_access
+from . import run_coordinator as coordinator
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, emit, encode
 from .models import OwnerSettings, now
 from .session_models import AgentCommand, AgentHost, AgentParity, AgentSession, AgentTurn
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 PATH = "/api/v1/external/agents/link"
 SUBPROTOCOL = "eridani.v1"
@@ -57,9 +60,11 @@ LEASE = timedelta(seconds=90)
 REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
 SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "turn", "status", "exit",
-               "sessions.snapshot", "command.outcome"]
-# Command kind -> host capability it needs. Stage C adds spawn/input/answer/stop/verify.
-COMMANDS: dict[str, str] = {}
+               "sessions.snapshot", "command.outcome", "runs.snapshot", "question", "context", "worktrees.report",
+               "spawn", "input", "answer", "stop"]
+# Command kind -> host capability it needs. verify is stage D.
+COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop"}
+RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}
 LIVE_STATES = ("working", "needs_you", "idle")
@@ -101,6 +106,8 @@ class Hello(Frame):
     version: str | None = Field(default=None, max_length=40)
     caps: list[str] = Field(default_factory=list, max_length=100)
     harnesses: dict[str, dict] = Field(default_factory=dict, max_length=10)
+    # Optional: execution targets configured on the host, offered in the page's target picker.
+    targets: list[dict] = Field(default_factory=list, max_length=100)
 
 
 class Report(Frame):
@@ -127,6 +134,9 @@ class Turn(Frame):
     missing: bool = False
     prompt: str = Field(default="", max_length=MAX_ASSEMBLED)
     source: Literal["hook", "rollout"] = "hook"
+    # A background subagent's hand-back, or a root Stop while background work still ran: not a turn of its own.
+    synthetic: bool = False
+    interim: bool = False
 
 
 class Surface(Frame):
@@ -157,7 +167,12 @@ class Status(Surface):
 class SnapshotSurface(Status):
     # The host reports terminal state live|lost|exited and the agent's own state separately.
     state: Literal[(*STATES, "live")]
+    since: WireTime | None = None
     agent_state: str | None = Field(default=None, max_length=20)
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int = Field(default=0, ge=0)
+    stop_requested: bool = False
+    questions: list[str] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")
     def merged(self):
@@ -176,11 +191,73 @@ class Snapshot(Frame):
     surfaces: list[SnapshotSurface] = Field(default_factory=list, max_length=1000)
     complete: bool = True
     at: WireTime | None = None
+    journal: dict = Field(default_factory=dict)
+
+
+class QuestionItem(Frame):
+    id: str = Field(min_length=1, max_length=64)
+    text: str = Field(min_length=1, max_length=4000)
+    header: str | None = Field(default=None, max_length=200)
+    choices: list[dict] | None = Field(default=None, max_length=32)
+    multi: bool = False
+
+    @model_validator(mode="after")
+    def clean_choices(self):
+        if self.choices is not None:
+            self.choices = [{"id": str(c.get("id"))[:64], "label": str(c.get("label"))[:300],
+                             **({"description": str(c["description"])[:1000]} if c.get("description") else {})}
+                            for c in self.choices if isinstance(c, dict) and c.get("id") and c.get("label")]
+        return self
+
+
+class Question(Frame):
+    question_id: str = Field(min_length=1, max_length=200)
+    surf: str = Field(default="", max_length=120)
+    incarnation: int = Field(default=0, ge=0)
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int = Field(default=0, ge=0)
+    provider: str = Field(default="claude", max_length=30)
+    provider_session_id: str = Field(min_length=1, max_length=100)
+    provider_request_id: str = Field(min_length=1, max_length=200)
+    provider_turn_id: str | None = Field(default=None, max_length=200)
+    kind: str = Field(default="ask", max_length=30)
+    group_id: str = Field(default="", max_length=200)
+    items: list[QuestionItem] = Field(min_length=1, max_length=16)
+    hold_until: WireTime | None = None
+
+
+class QuestionResolved(Frame):
+    question_id: str = Field(min_length=1, max_length=200)
+    generation: int = Field(default=0, ge=0)
+    outcome: Literal["accepted", "timed_out", "failed", "canceled", "answered_locally"]
+    still_open: bool = False
+    detail: str = Field(default="", max_length=300)
+    answer_echo: dict[str, str] | None = None
+
+
+class ContextRequest(Frame):
+    req_id: str = Field(min_length=1, max_length=200)
+    surf: str = Field(default="", max_length=120)
+    incarnation: int = Field(default=0, ge=0)
+    provider: str = Field(default="claude", max_length=30)
+    provider_session_id: str = Field(default="", max_length=100)
+    source: str = Field(default="startup", max_length=30)
+    cwd: str = Field(default="", max_length=2000)
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int = Field(default=0, ge=0)
+    task_id: str | None = Field(default=None, max_length=36)
+
+
+class WorktreesReport(Frame):
+    worktrees: list[dict] = Field(default_factory=list, max_length=500)
 
 
 class Ack(Frame):
     acked_id: str = Field(max_length=100)
+    op_id: str | None = Field(default=None, max_length=100)
     ok: bool = True
+    error: str | dict | None = None
+    retry: bool = False
     outcome: dict | None = None
 
 
@@ -188,6 +265,8 @@ class Outcome(Frame):
     command_id: str = Field(max_length=100)
     state: Literal["executed", "failed", "rejected", "uncertain"]
     detail: str = Field(default="", max_length=300)
+    kind: str | None = Field(default=None, max_length=40)
+    result: dict | None = None
 
 
 DIGEST_EXCLUDED = {"v", "id", "conn_epoch", "at", "op_id", "digest"}
@@ -196,8 +275,8 @@ DIGEST_EXCLUDED = {"v", "id", "conn_epoch", "at", "op_id", "digest"}
 def digest(frame):
     """Operation digest shared with the host: sha256 of canonical JSON of the frame minus its envelope.
 
-    Keys sorted at every level, no whitespace, non-ASCII kept. `t` is included. Stage C stamps
-    outbound commands with it; stage B accepts inbound digests without enforcing them.
+    Keys sorted at every level, no whitespace, non-ASCII kept. `t` is included. Outbound commands
+    are stamped with it once, when queued; an inbound frame whose digest does not match is refused.
     """
     body = {k: v for k, v in frame.items() if k not in DIGEST_EXCLUDED}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -246,12 +325,15 @@ def report(db, bot, host_id, frame):
 
 def turn(db, bot, host_id, frame):
     """A root turn's final response, stored once per provider turn id however often it is resent."""
-    if frame.run_id:
-        # No runs exist before stage C; a host cannot bind a turn to a run Eridani never assigned it.
-        raise DomainError("RUN_NOT_BOUND", "That run is not associated with this host.", 409)
+    # A host cannot bind a turn to a run Eridani never assigned it.
+    run = coordinator.bound(db, host_id, frame.run_id) if frame.run_id else None
     if not frame.root:
         return {"ignored": "subagent"}
     owner = bot.owner_id
+    if run is not None and not run.session_pk:
+        with contextlib.suppress(DomainError):  # An older generation's turn is kept but does not attach.
+            coordinator.attach(db, host_id, run.id, frame.generation, frame.tool, frame.provider_session_id,
+                               surf=frame.surf, incarnation=frame.incarnation)
     row = sessions.claim(db, owner, tool_name(frame.tool), frame.provider_session_id)
     db.flush()
     row.host_id = host_id or row.host_id
@@ -263,7 +345,8 @@ def turn(db, bot, host_id, frame):
         insert(AgentTurn)
         .values(id=str(uuid.uuid4()), owner_id=owner, session_pk=row.id, host_id=host_id,
                 provider_session_id=frame.provider_session_id, provider_turn_id=frame.provider_turn_id,
-                surf=frame.surf, incarnation=frame.incarnation, run_id=None, generation=frame.generation,
+                surf=frame.surf, incarnation=frame.incarnation, run_id=run.id if run else None,
+                generation=frame.generation,
                 seq=frame.seq, role="assistant", text=text, prompt=prompt, truncated=frame.truncated or cut,
                 source=frame.source, created_at=now())
         .on_conflict_do_nothing(constraint="uq_agent_turn")
@@ -273,6 +356,8 @@ def turn(db, bot, host_id, frame):
         return {"duplicate": True}
     row.last_turn_seq = max(row.last_turn_seq or 0, frame.seq)
     row.updated_at = now()
+    if run is not None and run.session_pk == row.id:
+        coordinator.record_turn(db, run, frame)
     emit(db, owner, "agent.changed", row.id)
     return {"turn_id": inserted, "truncated": frame.truncated or cut, "missing": frame.missing}
 
@@ -311,7 +396,23 @@ def status(db, bot, host_id, frame):
     db.flush()
     detail = {k: v for k, v in (("reason", frame.reason), ("permission_mode", frame.effective_permission_mode)) if v}
     applied = apply_state(db, bot.owner_id, host_id, row, frame.state, frame.since, frame.incarnation, frame.surf, detail)
+    if applied:
+        attach_by_surface(db, host_id, row, frame)
+        coordinator.on_status(db, row, frame)
     return {"session_id": row.id, "applied": applied}
+
+
+def attach_by_surface(db, host_id, row, frame):
+    """A status naming the provider session on a run's spawned surface confirms that run's start."""
+    if row.run_id or not (frame.surf and frame.tool and frame.session_id):
+        return
+    from .session_models import AgentRun
+
+    run = db.scalar(select(AgentRun).where(AgentRun.host_id == host_id, AgentRun.surf == frame.surf,
+                                           AgentRun.session_pk.is_(None), AgentRun.state == "spawning"))
+    if run is not None:
+        coordinator.attach(db, host_id, run.id, run.generation, frame.tool, frame.session_id,
+                           surf=frame.surf, incarnation=frame.incarnation)
 
 
 def exited(db, bot, host_id, frame):
@@ -322,6 +423,8 @@ def exited(db, bot, host_id, frame):
     detail = {"exit_code": frame.code} if frame.code is not None else {}
     applied = apply_state(db, bot.owner_id, host_id, row, "exited", frame.exited_at or frame.since or now(),
                           frame.incarnation, frame.surf, detail)
+    if applied:
+        coordinator.on_exit(db, row, detail=f"exit code {frame.code}" if frame.code is not None else "")
     return {"session_id": row.id, "applied": applied}
 
 
@@ -336,7 +439,8 @@ def snapshot(db, bot, host_id, frame):
         db.flush()
         seen.add(row.id)
         detail = {k: v for k, v in (("reason", surface.reason), ("permission_mode", surface.effective_permission_mode)) if v}
-        applied += apply_state(db, bot.owner_id, host_id, row, surface.state, surface.since, surface.incarnation, surface.surf, detail)
+        applied += apply_state(db, bot.owner_id, host_id, row, surface.state, surface.since or at, surface.incarnation,
+                               surface.surf, detail)
     ended = 0
     if frame.complete:
         stale = db.scalars(
@@ -349,8 +453,30 @@ def snapshot(db, bot, host_id, frame):
             if row.state_since is None or row.state_since < at:
                 ended += apply_state(db, bot.owner_id, host_id, row, "exited", at, row.incarnation, "",
                                      {"reason": "absent_from_snapshot"})
-    # Stage C fills the desired run state; until then the host has nothing to continue.
-    return {"applied": applied, "ended": ended, "runs": []}
+    runs = coordinator.reconcile(db, bot.owner_id, host_id, frame.surfaces, frame.journal)
+    return {"applied": applied, "ended": ended, "runs": runs}
+
+
+def question(db, bot, host_id, frame):
+    row, duplicate = coordinator.record_question(db, bot.owner_id, host_id, frame)
+    return {"question": row.id, **({"duplicate": True} if duplicate else {})}
+
+
+def question_resolved(db, bot, host_id, frame):
+    row = coordinator.question_resolved(db, host_id, frame)
+    return {"question": row.id, "status": row.status}
+
+
+def context_request(db, bot, host_id, frame):
+    return coordinator.context(db, bot.owner_id, host_id, frame)
+
+
+def worktrees(db, bot, host_id, frame):
+    """The host's managed worktrees with unmerged/unpushed checks; the page lists the unmerged ones."""
+    host = db.get(AgentHost, host_id)
+    host.caps = {**(host.caps or {}), "worktrees": {"at": now().isoformat(), "worktrees": frame.worktrees}}
+    emit(db, bot.owner_id, "agent.changed", host_id)
+    return {"stored": len(frame.worktrees)}
 
 
 PARITY_FIELDS = ("machine", "environment", "cwd", "repo", "branch", "title", "first_prompt", "last_prompt",
@@ -444,7 +570,8 @@ def admit(credential_id, hello):
             db.add(host)
         host.credential_id, host.account_id = bot.id, bot.account_id
         host.name, host.machine, host.boot_id, host.proto = hello.hostname, hello.machine, hello.boot_id, hello.proto
-        host.caps = {"caps": hello.caps, "harnesses": hello.harnesses}
+        host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
+                     "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets}
         host.conn_epoch = (host.conn_epoch or 0) + 1
         host.last_seen_at, host.lease_until = now(), now() + LEASE
         db.flush()
@@ -494,52 +621,89 @@ def release(host_id, epoch):
 
 
 def drain(db, host, epoch):
-    """Stage C: queued commands the host advertised, sent under this connection's envelope."""
+    """Queued commands the host advertised, each sent under this connection's envelope; unacked ones resent.
+
+    The payload (op_id, digest, expiry, fences) is fixed when the command is queued (F06); only the
+    envelope changes. Expiry is the coordinator's sweep; here an expired command is simply not sent.
+    """
     clock = now()
-    for row in db.scalars(select(AgentCommand).where(
-            AgentCommand.host_id == host.id, AgentCommand.status.in_(("queued", "sent")), AgentCommand.expires_at <= clock)):
-        row.status, row.updated_at = "expired", clock
     kinds = [k for k, cap in COMMANDS.items() if cap in host.caps.get("caps", [])]
     if not kinds:
         return []
     rows = list(db.scalars(
         select(AgentCommand)
-        .where(AgentCommand.host_id == host.id, AgentCommand.status == "queued", AgentCommand.kind.in_(kinds))
+        .where(AgentCommand.host_id == host.id, AgentCommand.kind.in_(kinds), AgentCommand.expires_at > clock,
+               (AgentCommand.status == "queued") | ((AgentCommand.status == "sent") & (AgentCommand.updated_at <= clock - RESEND)))
         .order_by(AgentCommand.created_at).limit(20).with_for_update(skip_locked=True)
     ))
     frames = []
     for row in rows:
         row.status, row.updated_at = "sent", clock
-        frames.append({"t": row.kind, "id": row.id, "command_id": row.id, "op_id": row.op_id, "digest": row.digest,
-                       "run_id": row.run_id, "generation": row.generation,
-                       "expires_at": row.expires_at, **row.payload})
+        frames.append({**row.payload, "op_id": row.op_id, "digest": row.digest})
     return frames
+
+
+def command_for(db, host_id, op_id=None, envelope=None):
+    row = db.scalar(select(AgentCommand).where(AgentCommand.host_id == host_id, AgentCommand.op_id == op_id)) \
+        if op_id else None
+    if row is None and envelope:
+        row = db.get(AgentCommand, envelope)
+    return row if row is not None and row.host_id == host_id else None
 
 
 def outcome(db, host_id, frame):
     """command.outcome is separate from the ack: what the host did with a command."""
-    row = db.get(AgentCommand, frame.command_id) or db.scalar(
-        select(AgentCommand).where(AgentCommand.host_id == host_id, AgentCommand.op_id == frame.command_id))
-    if row and row.host_id == host_id:
-        row.status, row.updated_at = frame.state, now()
-        row.outcome = {"state": frame.state, "detail": frame.detail}
-    return {"recorded": bool(row and row.host_id == host_id)}
+    row = command_for(db, host_id, frame.command_id, frame.command_id)
+    if row is not None:
+        coordinator.on_outcome(db, row, frame.state, frame.detail, frame.result)
+    return {"recorded": row is not None}
 
 
 def acked(db, host_id, frame):
-    row = db.get(AgentCommand, frame.acked_id)
-    if row and row.host_id == host_id and row.status == "sent":
-        row.status, row.updated_at = ("acked" if frame.ok else "rejected"), now()
-        row.outcome = frame.outcome if not frame.ok else row.outcome
+    """The host journaled the command (accepted), or answered a duplicate with its recorded outcome."""
+    row = command_for(db, host_id, frame.op_id, frame.acked_id)
+    if row is None or row.status not in ("queued", "sent"):
+        return
+    if not frame.ok:
+        if frame.retry:
+            row.status, row.updated_at = "queued", now()
+        else:
+            error = frame.error if isinstance(frame.error, str) else (frame.error or {}).get("code", "refused")
+            coordinator.on_outcome(db, row, "rejected", f"refused by the host: {error}"[:300])
+        return
+    state = (frame.outcome or {}).get("state", "accepted")
+    if state in ("executed", "failed", "rejected", "uncertain"):
+        coordinator.on_outcome(db, row, state, str((frame.outcome or {}).get("detail") or "")[:300],
+                               (frame.outcome or {}).get("result"))
+        return
+    row.status, row.updated_at = "acked", now()
+    facts = {k: v for k, v in (frame.outcome or {}).items() if k in ("surf", "incarnation")}
+    row.outcome = {"state": "accepted", **facts}
+    if row.kind == "spawn" and row.run_id and facts.get("surf"):
+        from .session_models import AgentRun
+
+        run = db.get(AgentRun, row.run_id, with_for_update=True)
+        if run is not None and not run.surf:
+            run.surf, run.incarnation = str(facts["surf"])[:120], int(facts.get("incarnation") or 0)
 
 
 # ---------------------------------------------------------------- the socket
 
 LINKS = {}
+NO_ACK = object()
+
+
+def wake(host_id):
+    """Called after a commit that queued a command: the host's link drains now instead of at the next tick."""
+    link = LINKS.get(host_id)
+    if link is not None and link.loop is not None:
+        link.loop.call_soon_threadsafe(link.wakeup.set)
 
 
 class Link:
     def __init__(self, websocket, credential_id):
+        self.loop = asyncio.get_running_loop()
+        self.wakeup = asyncio.Event()
         self.websocket, self.credential_id = websocket, credential_id
         self.owner = self.host_id = None
         self.epoch = 0
@@ -548,6 +712,8 @@ class Link:
         self.chunks = {}
         self.snapshots = {}
         self.closed = False
+        # Queued effects wait until this connection's sessions.snapshot is reconciled (C08).
+        self.reconciled = False
 
     async def send(self, kind, **values):
         frame = encode(wire({"v": PROTO, "id": str(uuid.uuid4()), "conn_epoch": self.epoch, "t": kind, "at": now(), **values}))
@@ -653,11 +819,28 @@ class Link:
                 return {"pending": True}
             result = await self.effect(snapshot, Snapshot.model_validate(frame))
             await self.send("runs.snapshot", runs=result.pop("runs"), questions=[])
+            self.reconciled = True
+            self.wakeup.set()  # Resend what is still authorized, now that both sides agree.
             return result
+        if kind == "question":
+            return await self.effect(question, Question.model_validate(frame))
+        if kind == "question.resolved":
+            return await self.effect(question_resolved, QuestionResolved.model_validate(frame))
+        if kind == "context.request":
+            # Ephemeral: answered with context.response by req_id, never acked or replayed.
+            body = ContextRequest.model_validate(frame)
+            try:
+                reply = await self.effect(context_request, body)
+            except DomainError as exc:
+                reply = {"text": f"Eridani could not load this session's context ({exc.code})."}
+            await self.send("context.response", req_id=body.req_id, **reply)
+            return NO_ACK
+        if kind == "worktrees.report":
+            return await self.effect(worktrees, WorktreesReport.model_validate(frame))
         if kind == "ack":
             body = Ack.model_validate(frame)
             await self.effect(lambda db, bot, host, f: acked(db, host, f), body)
-            return None
+            return NO_ACK
         if kind == "command.outcome":
             return await self.effect(lambda db, bot, host, f: outcome(db, host, f), Outcome.model_validate(frame))
         if kind == "bye":
@@ -691,6 +874,12 @@ class Link:
                 if not isinstance(frame, dict) or frame.get("t") == "chunk" or not isinstance(frame.get("id"), str):
                     raise DomainError("INVALID_ARGUMENT", "Malformed chunked frame.")
                 identity = frame["id"][:100]
+            if isinstance(frame.get("digest"), str) and isinstance(frame.get("op_id"), str) \
+                    and frame["digest"] != digest(frame):
+                logger.warning("agent link: digest mismatch on %s op_id=%s host=%s", str(frame.get("t"))[:40],
+                               frame["op_id"][:100], self.host_id)
+                return {"acked_id": identity, **echo, "ok": False,
+                        "error": {"code": "DIGEST_MISMATCH", "message": "The frame does not match its digest."}}
             outcome = await self.dispatch(frame)
         except ValidationError as exc:
             errors = [{"loc": [str(p) for p in e["loc"]], "msg": e["msg"]} for e in exc.errors()[:5]]
@@ -701,7 +890,7 @@ class Link:
                 raise refused_access(exc) from None
             retry = {"retry": True} if exc.code in RETRYABLE else {}
             return {"acked_id": identity, **echo, "ok": False, **retry, "error": {"code": exc.code, "message": exc.message}}
-        if frame.get("t") == "ack":
+        if outcome is NO_ACK:
             return None
         return {"acked_id": identity, **echo, "ok": True, **({"outcome": outcome} if outcome is not None else {})}
 
@@ -709,7 +898,10 @@ class Link:
         def run():
             with session_scope() as db:
                 holding(db, self.credential_id, self.host_id, self.epoch)
-                return drain(db, db.get(AgentHost, self.host_id), self.epoch)
+                host = db.get(AgentHost, self.host_id)
+                if not self.reconciled and "sessions.snapshot" in host.caps.get("caps", []):
+                    return []
+                return drain(db, host, self.epoch)
         for frame in await run_in_threadpool(run):
             kind = frame.pop("t")
             await self.send(kind, **frame)
@@ -782,11 +974,15 @@ async def agent_link(websocket: WebSocket):
         await link.send("welcome", acked_id=str(frame.get("id", ""))[:100], host_id=link.host_id, conn_epoch=link.epoch,
                         server_time=now(), replay_horizon=REPLAY_HORIZON_DAYS * 86400, lease_seconds=int(LEASE.total_seconds()),
                         proto=PROTO, caps=SERVER_CAPS, max_frame=MAX_FRAME)
-        receiving = None
+        receiving = waking = None
         while not link.closed:
             receiving = receiving or asyncio.ensure_future(websocket.receive())
-            done, _ = await asyncio.wait({receiving}, timeout=TICK_SECONDS)
-            if not done:
+            waking = waking or asyncio.ensure_future(link.wakeup.wait())
+            done, _ = await asyncio.wait({receiving, waking}, timeout=TICK_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+            if receiving not in done:
+                if waking in done:
+                    link.wakeup.clear()
+                    waking = None
                 await link.tick()
                 continue
             message, receiving = receiving.result(), None
@@ -797,8 +993,9 @@ async def agent_link(websocket: WebSocket):
             reply = await link.handle(message["text"])
             if reply is not None:
                 await link.send("ack", **reply)
-        if receiving is not None:
-            receiving.cancel()
+        for pending in (receiving, waking):
+            if pending is not None:
+                pending.cancel()
     except Closed as closed:
         await link.close(closed.code, closed.reason, closed.bye)
     except Exception:  # noqa: BLE001 - a peer disconnect mid-send surfaces as transport errors

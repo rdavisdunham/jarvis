@@ -204,6 +204,11 @@ def apply_remote(db, conn, link, remote, force=False):
     from .productivity import task_home
 
     changes = task_home(db, conn.owner_id, changes, task)
+    from .agent_actor import Actor, acting, gate
+
+    with acting(Actor("source_sync")):
+        # A completion arriving from Linear during an agent run stops the run (recorded override).
+        gate(db, conn.owner_id, task, changes)
     changed = any(getattr(task, k) != v for k, v in changes.items())
     if changes["due_date"] is None:
         changes.update(due_time=None, due_timezone=None)

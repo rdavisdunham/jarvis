@@ -751,6 +751,9 @@ def mutate(db, owner, tool, args, command_id):
         from .task_plan import normalize as normalize_plan
 
         normalize_plan(db, owner, task, changes)
+        from .agent_actor import gate as run_gate
+
+        run_gate(db, owner, task, changes)
         from .linear_sync import before_task_update
 
         before_task_update(db, owner, task, changes)

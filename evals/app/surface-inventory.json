@@ -882,6 +882,27 @@
       "feature": "external_agents"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/external/agents/session/plan",
+      "handler": "agent_task_plan",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/agents/session/step",
+      "handler": "agent_task_step",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/agents/session/{later}",
+      "handler": "agent_session_later",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/external/capabilities",
       "handler": "capabilities",
@@ -1288,6 +1309,55 @@
       "feature": "agent_control"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/remotea/questions/{identity}/answer",
+      "handler": "answer",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "memory_dream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/runs",
+      "handler": "runs",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs",
+      "handler": "start",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/runs/{identity}",
+      "handler": "run_detail",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/approve",
+      "handler": "approve",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/message",
+      "handler": "message",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/stop",
+      "handler": "stop",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/remotea/sessions",
       "handler": "live_sessions",
@@ -1305,6 +1375,27 @@
       "method": "GET",
       "path": "/api/v1/remotea/status",
       "handler": "status",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/targets",
+      "handler": "targets",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/targets",
+      "handler": "save_target",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/unmerged",
+      "handler": "unmerged",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },

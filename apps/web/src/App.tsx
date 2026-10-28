@@ -342,6 +342,7 @@ export default function App() {
     [chatText, setChatText] = useState(""),
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
+  const [remoteaRun, setRemoteaRun] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
@@ -2707,7 +2708,7 @@ export default function App() {
                 }}
               />
             )}
-            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea/></Suspense>
+            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea run={remoteaRun}/></Suspense>
               : <p>remotea is off. Turn it on in Settings → Connections.</p>)}
             {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
@@ -3330,6 +3331,8 @@ export default function App() {
           key={calendarDetail.entity_id}
           id={calendarDetail.entity_id}
           canEdit={boot.workspace?.role !== "viewer"}
+          remotea={!!boot.preferences.remotea_enabled}
+          onOpenRun={(run) => { setCalendarDetail(null); setRemoteaRun(run); setView("remotea"); }}
           onNewNote={(task) => {
             setNoteEditor(blankNote(task));
             setCalendarDetail(null);

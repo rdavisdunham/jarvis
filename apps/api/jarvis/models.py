@@ -168,7 +168,7 @@ class Task(Base):
     success_criteria: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     verify: Mapped[dict | None] = mapped_column(JSONB)
     turn_cap: Mapped[int] = mapped_column(Integer, default=15, server_default="15")
-    execution_target_id: Mapped[str | None] = mapped_column(String(36))
+    execution_target_id: Mapped[str | None] = mapped_column(ForeignKey("execution_targets.id"))
     plan_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
