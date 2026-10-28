@@ -63,7 +63,8 @@ def host(client):
 
 def start(host, task_id, **values):
     with session_scope() as db:
-        body = control.StartInput(task_id=task_id, **{"execution_target_id": host.target_id, **values})
+        # Stage C's manual run on the plan the task has; stage D's interview path is in test_agent_plan.py.
+        body = control.StartInput(task_id=task_id, **{"execution_target_id": host.target_id, "interview": False, **values})
         return control.start_run(db, OWNER, host.account_id, body, actor=HUMAN)
 
 

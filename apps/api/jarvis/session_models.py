@@ -248,6 +248,10 @@ class AgentRun(Base):
     incarnation: Mapped[int] = mapped_column(Integer, default=0)
     turn_count: Mapped[int] = mapped_column(Integer, default=0)
     turn_cap: Mapped[int] = mapped_column(Integer, default=15)
+    # The host's seq of the root turn the run is on: verify and judge attempts are bound to it.
+    turn_seq: Mapped[int] = mapped_column(Integer, default=0)
+    # submit_plan froze a revision; executing starts once the planning turn settles.
+    plan_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
     no_progress_limit: Mapped[int] = mapped_column(Integer, default=45 * 60)  # seconds
     last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -282,12 +286,15 @@ class AgentRunPlan(Base):
     steps: Mapped[list] = mapped_column(JSONB, default=list)
     criteria: Mapped[list] = mapped_column(JSONB, default=list)
     verify: Mapped[dict | None] = mapped_column(JSONB)
+    # Direct child task ids the plan requires (F02); removing one is a plan change.
+    required_children: Mapped[list] = mapped_column(JSONB, default=list)
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentAttempt(Base):
-    """One verification or judge attempt bound to (run, generation, turn, plan revision). Logic is stage D."""
+    """One verification or judge attempt bound to (run, generation, turn_seq, plan revision); see agent_judge.py."""
     __tablename__ = "agent_attempts"
+    __table_args__ = (Index("ix_agent_attempts_run_id_kind_status", "run_id", "kind", "status"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
@@ -302,16 +309,24 @@ class AgentAttempt(Base):
     prompt_version: Mapped[str] = mapped_column(String(40), default="")
     cost: Mapped[float | None] = mapped_column(Float)
     latency_ms: Mapped[int | None] = mapped_column(Integer)
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retries: Mapped[int] = mapped_column(Integer, default=0)
+    verify_id: Mapped[str] = mapped_column(String(64), default="")
+    # eridani (a verify command or the judge), or host (a `local:` verification the host started).
+    initiator: Mapped[str] = mapped_column(String(20), default="eridani")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentInterview(Base):
-    """The interview phase's question form (stage D)."""
+    """The interview phase's question form (task_interview → one form on the page → answers as the next prompt)."""
     __tablename__ = "agent_interviews"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_via: Mapped[str] = mapped_column(String(20), default="")
     questions: Mapped[list] = mapped_column(JSONB, default=list)
     answers: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="open")

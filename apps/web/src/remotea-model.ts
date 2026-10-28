@@ -16,7 +16,7 @@ export type RemoteaSession = {
 };
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
-  hosts: Host[]; link_url: string; connect_command: string; token?: string | null;
+  hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean;
 };
 export type Parity = {
   total: number; matched: number; missing: number; mismatched: number; clean: boolean;
@@ -97,6 +97,7 @@ export type Run = {
   turn_count: number; turn_cap: number; started_at: string | null; finished_at: string | null;
   stop_requested_at: string | null; stop_mode: string; surf: string;
   host: { id: string; name: string; connected: boolean } | null; structured_answers: boolean;
+  plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
 export type QuestionItem = { id: string; text: string; header?: string; choices?: { id: string; label: string; description?: string }[]; multi?: boolean };
@@ -112,13 +113,26 @@ export type RunCommand = {
 };
 export type HistoryEntry = { at: string; from?: string; to?: string; reason?: string; detail?: string; event?: string;
   kind?: string; state?: string; actor?: { kind: string } };
+export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
+  multi: boolean; free_text: boolean };
+export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
+  answers: Record<string, string | string[]>; status: "open" | "answered" | "superseded"; answered_at: string | null; created_at: string };
+export type Criterion = { id: string; text: string; kind?: "text" | "verify"; verify_id?: string };
+export type CriterionVerdict = { id: string; status: "met" | "not_met" | "unclear"; evidence: string };
+export type Attempt = {
+  id: string; kind: "verify" | "judge"; status: string; generation: number; turn_seq: number; plan_revision: number;
+  verify_id: string; initiator: string; verdict: "met" | "not_met" | "needs_you" | null; gap: string | null; summary: string | null;
+  criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
+  tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
+};
 export type RunDetail = Run & {
-  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string }[]; criteria: { id: string; text: string }[] } | null;
+  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string }[];
+    criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[] } | null;
   history: HistoryEntry[];
   turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string }[];
-  commands: RunCommand[]; questions: RunQuestion[];
+  commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
 };
-export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state"; title: string; detail: string; tone: "plain" | "good" | "warn" | "attention" };
+export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt"; title: string; detail: string; tone: "plain" | "good" | "warn" | "attention" };
 
 export const TERMINAL_RUN_STATES: RunState[] = ["completed", "stopped", "capped", "failed"];
 const RUN_LABELS: Partial<Record<RunState, string>> = {
@@ -145,7 +159,10 @@ export function runControls(run: Run) {
     message: { enabled: !settled && !stopping && started, reason: why },
     steer: { enabled: !settled && !stopping && started, reason: why },
     stop: { enabled: !settled, label: stopping ? (run.stop_mode === "kill" ? "Stopping…" : "Force stop") : "Stop", mode: stopping ? "kill" as const : "interrupt" as const },
-    approve: { enabled: !settled && !stopping, reason: settled ? "This run has finished." : stopping ? "The run is stopping." : "" },
+    approve: { enabled: !settled && !stopping, primary: run.state === "awaiting_approval",
+      reason: settled ? "This run has finished." : stopping ? "The run is stopping." : "" },
+    replan: { enabled: started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
+      reason: !started ? "The agent has not started yet." : "Re-plan works while the run is working, waiting for you or awaiting approval." },
     offline,
   };
 }
@@ -178,8 +195,53 @@ export function buildAnswers(q: RunQuestion, picked: Record<string, string[]>, t
   return answers.every(a => "choice_ids" in a || "text" in a) ? answers : null;
 }
 
+/** Interview answers keyed by question id; null until every question has an allowed answer. */
+export function interviewAnswers(interview: Interview, picked: Record<string, string[]>, typed: Record<string, string>) {
+  const answers: Record<string, string | string[]> = {};
+  for (const q of interview.questions) {
+    const labels = new Set(q.options.map(o => o.label));
+    const chosen = (picked[q.id] ?? []).filter(l => labels.has(l));
+    const text = (typed[q.id] ?? "").trim();
+    const values = [...chosen, ...(text && q.free_text ? [text] : [])];
+    if (!values.length || (!q.multi && values.length > 1)) return null;
+    answers[q.id] = q.multi ? values : values[0];
+  }
+  return answers;
+}
+
+/** The newest attempt of a kind (the API lists newest first). */
+export function latestAttempt(run: Pick<RunDetail, "attempts">, kind: Attempt["kind"]) {
+  return (run.attempts ?? []).find(a => a.kind === kind) ?? null;
+}
+
+/** Each frozen criterion with the latest judge's status and evidence (pending until a verdict exists). */
+export function criteriaEvidence(run: Pick<RunDetail, "plan" | "attempts">) {
+  const judged = (run.attempts ?? []).find(a => a.kind === "judge" && a.criteria);
+  const byId = new Map((judged?.criteria ?? []).map(c => [c.id, c]));
+  return (run.plan?.criteria ?? []).map(c => {
+    const found = byId.get(c.id);
+    return { ...c, status: found?.status ?? "pending", evidence: found?.evidence ?? "", turn: judged?.turn_seq ?? null };
+  });
+}
+
+const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passed", failed: "failed", timed_out: "timed out",
+  refused: "not run (refused)", uncertain: "result uncertain", stale: "stale: code changed during the run", canceled: "canceled",
+  error: "error", superseded: "superseded" };
+const VERDICT_TEXT: Record<string, string> = { met: "criteria met", not_met: "not met yet", needs_you: "needs you" };
+export function attemptTitle(a: Attempt) {
+  if (a.kind === "verify") return `Verification ${a.verify_id} · ${VERIFY_TEXT[a.status] ?? a.status}${a.on_demand ? " (on demand)" : ""}`;
+  if (a.status === "done" && a.verdict) return "Judge · " + VERDICT_TEXT[a.verdict];
+  if (a.status === "failed") return "Judge · no verdict (" + (a.non_verdict ?? "error") + ")";
+  return "Judge · " + a.status;
+}
+function attemptTone(a: Attempt): TimelineEntry["tone"] {
+  if (a.kind === "verify") return a.status === "passed" ? "good" : a.status === "running" ? "plain" : "warn";
+  return a.verdict === "met" ? "good" : a.verdict === "needs_you" || a.status === "failed" ? "attention" : "plain";
+}
+
 function commandTitle(c: RunCommand) {
-  const what = c.kind === "input" ? (c.mode === "steer" ? "Steer" : "Message") : c.kind === "spawn" ? "Start" : c.kind === "stop" ? "Stop" : c.kind === "answer" ? "Answer" : c.kind;
+  const what = c.kind === "input" ? (c.mode === "steer" ? "Steer" : "Message") : c.kind === "spawn" ? "Start" : c.kind === "stop" ? "Stop"
+    : c.kind === "answer" ? "Answer" : c.kind === "verify" ? "Verify" : c.kind;
   const state = c.outcome?.state ?? c.status;
   const shown: Record<string, string> = { queued: "queued", sent: "sent", acked: "accepted by remotea", accepted: "accepted by remotea",
     executed: "done", failed: "failed", rejected: "refused", uncertain: "delivery uncertain", expired: "expired", canceled: "canceled" };
@@ -202,6 +264,10 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const c of run.commands) entries.push({ at: c.created_at, kind: "command", title: commandTitle(c), detail: c.text ?? c.outcome?.detail ?? "", tone: commandTone(c) });
   for (const q of run.questions) entries.push({ at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
     detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain" });
+  for (const a of run.attempts ?? []) entries.push({ at: a.updated_at, kind: "attempt", title: attemptTitle(a),
+    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a) });
+  for (const i of run.interviews ?? []) entries.push({ at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
+    detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain" });
   for (const h of run.history) {
     if (!h.to) continue;
     entries.push({ at: h.at, kind: "state", title: runLabel(h.to as RunState), detail: [h.actor?.kind === "human" ? "by you" : "", h.detail ?? ""].filter(Boolean).join(" · "),
@@ -212,7 +278,7 @@ export function timeline(run: RunDetail): TimelineEntry[] {
 
 /** Needs-you and questions first, then working runs, then the rest, newest first. */
 export function orderRuns(runs: Run[]) {
-  const rank = (r: Run) => (["needs_you", "waiting_answer", "awaiting_approval"].includes(r.state) ? 0 : isSettled(r) ? 2 : 1);
+  const rank = (r: Run) => (["needs_you", "waiting_answer", "awaiting_approval", "awaiting_integration"].includes(r.state) ? 0 : isSettled(r) ? 2 : 1);
   return [...runs].sort((a, b) => rank(a) - rank(b) || new Date(b.state_since).getTime() - new Date(a.state_since).getTime());
 }
 

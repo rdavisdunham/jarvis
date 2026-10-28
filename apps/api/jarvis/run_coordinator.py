@@ -22,8 +22,10 @@ from .domain import DomainError, emit
 from .models import Notification, Task, now
 from .session_models import (
     TERMINAL_RUN_STATES,
+    AgentAttempt,
     AgentCommand,
     AgentHost,
+    AgentInterview,
     AgentQuestion,
     AgentRun,
     AgentRunPlan,
@@ -31,8 +33,7 @@ from .session_models import (
 )
 
 TERMINAL = set(TERMINAL_RUN_STATES)
-# Unsettled states, in the order a run usually moves through them. interviewing/planning,
-# verifying/judging, awaiting_integration and replanning are entered from stage D on.
+# Unsettled states, in the order a run usually moves through them.
 TRANSITIONS = {
     "queued": {"spawning", "stopping", "failed"},
     # Skip-interview: a task whose plan can be frozen goes straight to executing.
@@ -45,8 +46,10 @@ TRANSITIONS = {
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
     "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
-    "needs_you": {"executing", "waiting_answer", "awaiting_approval", "replanning", "stopping", "failed"},
-    "awaiting_integration": {"verifying", "needs_you", "stopping"},
+    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
+                  "stopping", "failed"},
+    # After integration the agent pulls the merged children and the loop verifies and judges again.
+    "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
     "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "stopping"},
     "replanning": {"planning", "executing", "needs_you", "stopping"},
     # Only a confirmed termination (or an explicit lost-process reconciliation) settles a stop.
@@ -61,7 +64,13 @@ SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24)}
+       "stop": timedelta(hours=24), "verify": timedelta(minutes=10)}
+# One verification deadline: the host's 10 minutes plus a minute of grace, then timed_out (a non-pass).
+VERIFY_DEADLINE = timedelta(minutes=11)
+JUDGE_DEADLINE = timedelta(minutes=15)
+# This many consecutive not_met verdicts with the same gap are no progress.
+NO_PROGRESS_VERDICTS = 3
+PLANNING = ("interviewing", "planning", "replanning")
 TOKEN_TTL = timedelta(hours=24)
 REASONS = {
     "delivery_uncertain": "Delivery uncertain: the host could not tell whether the input reached the agent.",
@@ -73,6 +82,13 @@ REASONS = {
     "no_progress": "No progress for a while.",
     "turn_cap": "The run reached its turn cap.",
     "question_timed_out": "The question timed out here; answer it in the terminal.",
+    "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
+    "no_progress_gap": "The judge found the same gap several turns in a row.",
+    "judge_needs_you": "The judge says this needs you.",
+    "judge_unavailable": "The judge could not reach a verdict.",
+    "judge_met": "The success criteria are met.",
+    "awaiting_integration": "Merge the sub-task pull requests into this branch.",
+    "integrated": "Sub-task work was merged; checking the combined code.",
 }
 
 
@@ -121,6 +137,11 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
                key=f"{run.id}:{run.state_revision}")
     elif to == "awaiting_approval":
         notify(db, run, "agent_done", "An agent finished", "Review the run and approve to complete the task.",
+               key=f"{run.id}:{run.state_revision}")
+    elif to == "capped":
+        notify(db, run, "agent_stuck", "An agent reached its turn cap", REASONS["turn_cap"], key=f"{run.id}:{run.state_revision}")
+    elif to == "awaiting_integration":
+        notify(db, run, "agent_stuck", "Sub-task work needs merging", REASONS["awaiting_integration"],
                key=f"{run.id}:{run.state_revision}")
     return run
 
@@ -178,7 +199,7 @@ def wake_after_commit(db, host_id):
     hosts.add(host_id)
 
 
-def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_id=None):
+def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_id=None, source=""):
     """Write one outbound operation. Its op_id, digest and expiry never change across resends (F06)."""
     from .agent_link import digest
 
@@ -193,7 +214,8 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     db.add(row)
     db.flush()
     if run:
-        note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}))
+        note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
+             **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
     wake_after_commit(db, row.host_id)
     return row
@@ -222,6 +244,13 @@ def on_outcome(db, row, state, detail="", result=None):
         return
     note(run, "outcome", kind=row.kind, op_id=row.op_id, state=state, **({"detail": detail[:300]} if detail else {}))
     emit(db, run.owner_id, "agent.changed", run.id)
+    if row.kind == "verify":
+        if state != "executed":  # The result arrives as verify.result; a refusal is a non-pass.
+            attempt = db.get(AgentAttempt, (row.payload or {}).get("attempt_id"), with_for_update=True)
+            if attempt is not None:
+                settle_verify(db, run, attempt, "uncertain" if state == "uncertain" else "refused",
+                              {"detail": detail[:300]})
+        return
     if state == "uncertain" and run.state not in TERMINAL and run.state != "stopping":
         transition(db, run, "needs_you", reason="delivery_uncertain", detail=detail)
         return
@@ -352,7 +381,8 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
     run.session_pk, run.started_at, run.last_progress_at = row.id, now(), now()
     note(run, "attached", session_pk=row.id, provider_session_id=provider_session_id)
     if run.state == "spawning":
-        transition(db, run, "executing", reason="started")
+        # No frozen plan yet: the interview phase (a task without a PRD).
+        transition(db, run, "executing" if run.plan_revision else "interviewing", reason="started")
     mark_in_progress(db, run)
     return run
 
@@ -366,18 +396,38 @@ def sessions_tool(tool):
 # ---------------------------------------------------------------- turns, status and exits
 
 
+def phase(run):
+    """Where a run resumes after needs_you: execution once a plan is frozen and started, else its planning phase."""
+    if run.plan_pending:
+        return "planning"
+    return "executing" if run.plan_revision else "interviewing"
+
+
+def resume_phase(run):
+    """Where a run returns after waiting on a question: the phase it was in when the question came."""
+    for entry in reversed(run.history or []):
+        if entry.get("to") == "waiting_answer":
+            return entry.get("from") if entry.get("from") in ("interviewing", "planning", "executing") else "executing"
+    return "executing"
+
+
 def record_turn(db, run, frame):
-    """A root execution turn of this run's generation counts toward the cap; others are timeline only."""
+    """A root turn of this run's generation ended. Execution turns count toward the cap and start the loop;
+    interview and planning turns never count (decision 11)."""
     if run.state in TERMINAL or getattr(frame, "interim", False) or getattr(frame, "synthetic", False):
         return
     if frame.generation != run.generation:
         return  # A late turn from before a steer or stop (F07).
-    run.turn_count += 1
     run.last_progress_at = now()
     if run.state == "waiting_answer":
-        transition(db, run, "executing", reason="turn")
-    if run.turn_count >= run.turn_cap and run.state == "executing":
-        transition(db, run, "needs_you", reason="turn_cap")
+        transition(db, run, resume_phase(run), reason="turn")
+    if run.state in PLANNING:
+        return settle_planning(db, run)
+    if run.state != "executing":
+        return
+    run.turn_count += 1
+    run.turn_seq = getattr(frame, "seq", 0) or run.turn_seq + 1  # The host's own counter, so its attempts carry the same tuple.
+    after_turn(db, run)
 
 
 def run_for_session(db, row, lock=True):
@@ -399,7 +449,7 @@ def on_status(db, row, frame):
         if frame.state == "working":
             run.last_progress_at = now()
         if run.state == "needs_you" and run.state_reason in SELF_HEALING:
-            transition(db, run, "executing", reason="surface_restored")
+            transition(db, run, phase(run), reason="surface_restored")
         if frame.state == "needs_you" and not open_questions(db, run):
             # A permission prompt or another terminal-only question: v1 never answers it remotely.
             notify(db, run, "agent_question", "An agent is waiting for you",
@@ -528,11 +578,317 @@ def question_resolved(db, host_id, frame):
         waiting = run.state == "waiting_answer" or (run.state == "needs_you" and run.state_reason == "question_timed_out")
         if question.status in {"accepted", "answered_locally", "canceled"} and waiting \
                 and not [q for q in open_questions(db, run) if q.id != question.id]:
-            transition(db, run, "executing", reason="answered")
+            transition(db, run, resume_phase(run) if run.state == "waiting_answer" else "executing", reason="answered")
         elif question.status == "timed_out" and run.state == "waiting_answer":
             transition(db, run, "needs_you", reason="question_timed_out")
     emit(db, question.owner_id, "agent.changed", question.run_id or question.session_pk)
     return question
+
+
+# ---------------------------------------------------------------- planning, verification and the judge loop
+
+
+def open_interview(db, run):
+    return db.scalar(select(AgentInterview).where(AgentInterview.run_id == run.id, AgentInterview.status == "open"))
+
+
+def settle_planning(db, run):
+    """An interview or planning turn ended. Execution starts only once a frozen plan exists and nothing is pending."""
+    if open_questions(db, run) or open_interview(db, run):
+        return  # The operator has the next move.
+    if not run.plan_pending:
+        if run.state != "needs_you":
+            transition(db, run, "needs_you", reason="no_plan")
+        return
+    begin_execution(db, run)
+
+
+def begin_execution(db, run, reason="plan_frozen"):
+    from . import agent_prompts as prompts
+
+    plan = frozen(db, run)
+    run.plan_pending = False
+    if run.state != "planning":
+        transition(db, run, "planning", reason="plan_frozen")
+    transition(db, run, "executing", reason=reason)
+    command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
+                               "text": prompts.execute(render_plan(db, run, plan)), "mode": "queue"}, source="eridani")
+
+
+def after_turn(db, run):
+    """An execution turn ended: verify (if the plan asks), then judge. Plans without criteria keep the manual loop."""
+    plan = frozen(db, run)
+    if plan is None or not plan.criteria:
+        if run.turn_count >= run.turn_cap:
+            transition(db, run, "needs_you", reason="turn_cap")
+        return
+    if (plan.verify or {}).get("verify_id"):
+        transition(db, run, "verifying", reason="turn")
+        start_verify(db, run, plan)
+        return
+    to_judging(db, run, None)
+
+
+def host_verifies(db, run):
+    host = db.get(AgentHost, run.host_id)
+    return bool(host) and "verify" in (host.caps or {}).get("caps", [])
+
+
+def start_verify(db, run, plan, *, on_demand=False):
+    """One verification attempt for the run's current (generation, turn_seq, plan_revision)."""
+    attempt = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=run.generation, kind="verify",
+                           turn_seq=run.turn_seq, plan_revision=run.plan_revision, status="running",
+                           verify_id=str(plan.verify["verify_id"])[:64], deadline_at=now() + VERIFY_DEADLINE,
+                           result={"on_demand": on_demand})
+    db.add(attempt)
+    db.flush()
+    if not host_verifies(db, run):
+        settle_verify(db, run, attempt, "refused", {"detail": "The remotea server does not run verifications."})
+        return attempt
+    command(db, run, "verify", {"attempt_id": attempt.id, "turn_seq": attempt.turn_seq,
+                                "plan_revision": attempt.plan_revision, "verify_id": attempt.verify_id})
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return attempt
+
+
+def current(run, attempt):
+    return (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
+        (run.generation, run.turn_seq, run.plan_revision)
+
+
+def settle_verify(db, run, attempt, status, result):
+    """Record a verification outcome; only a current attempt of a verifying run moves it on to the judge."""
+    if attempt.status != "running":
+        return False
+    attempt.status, attempt.updated_at = status, now()
+    attempt.result = {**(attempt.result or {}), **result}
+    if attempt.created_at:
+        attempt.latency_ms = int((now() - attempt.created_at).total_seconds() * 1000)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    if run.state == "verifying" and current(run, attempt) and not (attempt.result or {}).get("on_demand"):
+        to_judging(db, run, attempt)
+    return True
+
+
+def verify_status(frame):
+    if frame.canceled:
+        return "canceled"
+    if frame.timed_out:
+        return "timed_out"
+    if frame.error or frame.exit_code is None:
+        return "error"
+    if frame.stale_workspace:
+        return "stale"  # The checkout changed between the turn and the run: no evidence for this turn.
+    return "passed" if frame.exit_code == 0 else "failed"
+
+
+def verify_result(db, host_id, frame):
+    """verify.result: matched to its attempt by id and the full tuple; anything else is discarded."""
+    run = bound(db, host_id, frame.run_id)
+    facts = {"exit_code": frame.exit_code, "tail": frame.tail[-8000:], "truncated": frame.truncated,
+             "duration_ms": frame.duration_ms, "timed_out": frame.timed_out, "canceled": frame.canceled,
+             **({"error": frame.error[:300]} if frame.error else {}),
+             **({"stale_workspace": True} if frame.stale_workspace else {})}
+    attempt = None
+    if frame.adopted:
+        facts["adopted"] = frame.adopted[:200]  # The host reused its own attempt for this tuple.
+    if frame.attempt_id.startswith("local:"):
+        # The host verified on its own: adopt it only as the running attempt for the very same tuple.
+        attempt = db.scalar(select(AgentAttempt).where(
+            AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify", AgentAttempt.status == "running",
+            AgentAttempt.generation == frame.generation, AgentAttempt.turn_seq == frame.turn_seq,
+            AgentAttempt.plan_revision == frame.plan_revision, AgentAttempt.verify_id == frame.verify_id
+        ).with_for_update())
+        if attempt is None:
+            db.add(AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=frame.generation, kind="verify",
+                                turn_seq=frame.turn_seq, plan_revision=frame.plan_revision, initiator="host",
+                                verify_id=frame.verify_id, status=verify_status(frame),
+                                workspace_fingerprint=frame.workspace_fingerprint[:200],
+                                result={**facts, "host_attempt_id": frame.attempt_id[:200], "unmatched": True}))
+            return {"discarded": "no matching attempt"}
+        facts["adopted"] = frame.attempt_id[:200]
+    else:
+        attempt = db.scalar(select(AgentAttempt).where(AgentAttempt.id == frame.attempt_id).with_for_update())
+    if attempt is None or attempt.run_id != run.id or attempt.kind != "verify":
+        return {"discarded": "unknown attempt"}
+    if (attempt.generation, attempt.turn_seq, attempt.plan_revision, attempt.verify_id) != \
+            (frame.generation, frame.turn_seq, frame.plan_revision, frame.verify_id):
+        return {"discarded": "tuple mismatch"}
+    attempt.workspace_fingerprint = frame.workspace_fingerprint[:200]
+    if not settle_verify(db, run, attempt, verify_status(frame), facts):
+        late = (attempt.result or {}).get("late", [])[-4:]
+        attempt.result = {**attempt.result, "late": [*late, {"at": now().isoformat(), "exit_code": frame.exit_code}]}
+        return {"discarded": "late"}
+    return {"attempt": attempt.id, "status": attempt.status}
+
+
+def to_judging(db, run, verify_attempt):
+    """Queue the judge for the run's current tuple (agent_judge.py); its verdict comes back through on_verdict."""
+    from .domain import enqueue_job
+    from .memory_learning import EXTRACTION_MODEL
+
+    from .agent_judge import PROMPT_VERSION
+
+    transition(db, run, "judging", reason="turn")
+    attempt = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=run.generation, kind="judge",
+                           turn_seq=run.turn_seq, plan_revision=run.plan_revision, status="queued",
+                           model=EXTRACTION_MODEL, prompt_version=PROMPT_VERSION,
+                           deadline_at=now() + JUDGE_DEADLINE,
+                           result={"verify_attempt_id": verify_attempt.id if verify_attempt else None})
+    db.add(attempt)
+    db.flush()
+    enqueue_job(db, run.owner_id, "agent_judge", {"attempt": attempt.id})
+    return attempt
+
+
+def auto_complete(db, owner):
+    from .models import OwnerSettings
+
+    row = db.get(OwnerSettings, owner)
+    return bool((row.values if row else {}).get("remotea_auto_complete", False))
+
+
+def judge_actor(run):
+    return Actor("run_judge", run_id=run.id, generation=run.generation)
+
+
+def on_verdict(db, attempt, final):
+    """Commit a judge verdict under CAS on (run, generation, turn_seq, plan_revision); stale verdicts are discarded."""
+    from . import agent_prompts as prompts
+
+    run = db.get(AgentRun, attempt.run_id, with_for_update=True)
+    if run is None or run.state != "judging" or not current(run, attempt):
+        attempt.status = "stale"
+        return None
+    actor = judge_actor(run)
+    plan = frozen(db, run)
+    merge_steps(db, run, final.get("steps") or [], disputable=final.get("verify_failed", False))
+    verdict = final["verdict"]
+    note(run, "verdict", verdict=verdict, attempt_id=attempt.id)
+    if verdict == "met":
+        pending = integration_pending(db, run, plan)
+        if pending:
+            run.sync_state = {**(run.sync_state or {}), "integration": pending}
+            return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
+        if auto_complete(db, run.owner_id) and plan and plan.criteria:
+            return complete_by_judge(db, run, actor)
+        return transition(db, run, "awaiting_approval", actor=actor, reason="judge_met")
+    if verdict == "not_met":
+        if run.turn_count >= run.turn_cap:
+            return transition(db, run, "capped", actor=actor, reason="turn_cap")  # The last turn was judged first.
+        if no_progress(db, run, final.get("gap", "")):
+            return transition(db, run, "needs_you", actor=actor, reason="no_progress_gap", detail=final.get("gap", ""))
+        transition(db, run, "executing", actor=actor, reason="not_met")
+        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
+                                   "text": prompts.gap(final.get("gap", ""), final.get("criteria") or [])},
+                source="eridani")
+        return run
+    return transition(db, run, "needs_you", actor=actor, reason="judge_needs_you", detail=final.get("gap", ""))
+
+
+def judge_failed(db, attempt, kind, detail=""):
+    """A non-verdict (refusal, incomplete, timeout, budget, invalid output) after its retries: Davin decides."""
+    run = db.get(AgentRun, attempt.run_id, with_for_update=True)
+    if run is None or run.state != "judging" or not current(run, attempt):
+        return None
+    return transition(db, run, "needs_you", reason="judge_unavailable", detail=f"{kind}: {detail}"[:300])
+
+
+def complete_by_judge(db, run, actor):
+    """auto_complete: the judge completes the task, then the run stops and settles as completed."""
+    from .domain import execute
+
+    task = db.get(Task, run.task_id)
+    with acting(actor):
+        execute(db, run.owner_id, f"run-judge-complete:{run.id}:{run.generation}:{run.turn_seq}", "task.complete",
+                {"task_id": task.id, "expected_revision": task.revision})
+    notify(db, run, "agent_done", "An agent completed a task", "The success criteria were met; the task is complete.",
+           key=f"{run.id}:auto")
+    return request_stop(db, run, actor=actor, reason="judge_met", final="completed")
+
+
+def gap_key(text):
+    return " ".join((text or "").casefold().split())[:500]
+
+
+def stalled(verdicts):
+    """The last NO_PROGRESS_VERDICTS verdicts (newest first) are all not_met with the same non-empty gap."""
+    recent = verdicts[:NO_PROGRESS_VERDICTS]
+    keys = {gap_key(v.get("gap")) for v in recent}
+    return len(recent) >= NO_PROGRESS_VERDICTS and len(keys) == 1 and "" not in keys \
+        and all(v.get("verdict") == "not_met" for v in recent)
+
+
+def no_progress(db, run, gap):
+    """This verdict (already recorded on its attempt) and the ones before it."""
+    previous = db.scalars(select(AgentAttempt).where(
+        AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge", AgentAttempt.status == "done")
+        .order_by(AgentAttempt.created_at.desc()).limit(NO_PROGRESS_VERDICTS))
+    return stalled([a.result or {} for a in previous])
+
+
+def merge_steps(db, run, inferred, *, disputable):
+    """Judge step inference: may mark done, may mark disputed when verification contradicts a done claim,
+    never silently downgrades an agent-marked done."""
+    task = db.get(Task, run.task_id, with_for_update=True)
+    if task is None or not inferred:
+        return
+    wanted = {s.get("id"): s.get("status") for s in inferred}
+    steps, changed = [], False
+    for step in task.steps or []:
+        status = wanted.get(step.get("id"))
+        new = None
+        if status == "done" and step.get("status") in ("todo", "doing"):
+            new = "done"
+        elif status == "disputed" and disputable and step.get("status") == "done":
+            new = "disputed"
+        if new:
+            step = {**step, "status": new, "by": f"judge:{run.id}", "updated_at": now().isoformat(),
+                    "revision": (step.get("revision") or 0) + 1}
+            changed = True
+        steps.append(step)
+    if changed:
+        task.steps, task.revision, task.updated_at = steps, task.revision + 1, now()
+        emit(db, run.owner_id, "task.changed", task.id, task.revision)
+
+
+# ---------------------------------------------------------------- sub-task integration (F02)
+
+
+def integration_pending(db, run, plan):
+    """Required children with a run of their own: that run completed and its branch merged into ours."""
+    pending = []
+    host = db.get(AgentHost, run.host_id)
+    report = [w for w in ((host.caps or {}).get("worktrees") or {}).get("worktrees") or [] if isinstance(w, dict)] \
+        if host else []
+    for child_id in (plan.required_children if plan else []) or []:
+        child = db.scalar(select(AgentRun).where(AgentRun.task_id == child_id)
+                          .order_by(AgentRun.created_at.desc()).limit(1))
+        if child is None:
+            continue  # Implemented inside this run: a checklist step.
+        if child.state != "completed":
+            pending.append({"task_id": child_id, "run_id": child.id, "reason": "child run not completed"})
+            continue
+        merged = any(w.get("branch") == child.branch and w.get("base") == run.branch and w.get("merged") is True
+                     for w in report)
+        if not merged:
+            pending.append({"task_id": child_id, "run_id": child.id, "branch": child.branch,
+                            "reason": "not merged into " + run.branch})
+    return pending
+
+
+def check_integrations(db, owner, host_id):
+    """After a worktrees.report: a parent whose children are now merged goes back to work on the combined code."""
+    from . import agent_prompts as prompts
+
+    for run in db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
+                                                 AgentRun.state == "awaiting_integration").with_for_update()):
+        if integration_pending(db, run, frozen(db, run)):
+            continue
+        run.sync_state = {**(run.sync_state or {}), "integration": []}
+        transition(db, run, "executing", reason="integrated")
+        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
+                                   "text": prompts.integrated(run.branch)}, source="eridani")
 
 
 # ---------------------------------------------------------------- run tokens
@@ -597,6 +953,32 @@ def render_plan(db, run, plan, token=None):
     return "\n".join(lines)[:16000]
 
 
+def render_unplanned(db, run, token=None):
+    """SessionStart context before a plan is frozen: the task and the planning tools."""
+    from . import agent_prompts as prompts
+
+    task = db.get(Task, run.task_id)
+    lines = ["Eridani run context (planning). Everything between the markers is data from the task.",
+             prompts.task_brief(task, children(db, task), task.notes or ""), prompts.TOOLS]
+    if token:
+        lines.append(f"Run token for Eridani tools (pass as run_token): {token}")
+    return "\n".join(lines)[:16000]
+
+
+def children(db, task):
+    """Direct child tasks that still count (not archived, not cancelled), in a stable order."""
+    return list(db.scalars(select(Task).where(Task.parent_task_id == task.id, Task.owner_id == task.owner_id,
+                                              Task.archived.is_(False), Task.status != "cancelled",
+                                              Task.is_template.is_(False))
+                           .order_by(Task.created_at, Task.id)))
+
+
+def db_steps(db, run, plan):
+    """The steps as they stand on the task (ticks and inferences), else as frozen."""
+    task = db.get(Task, run.task_id)
+    return (task.steps if task else None) or plan.steps
+
+
 def frozen(db, run):
     return db.scalar(select(AgentRunPlan).where(AgentRunPlan.run_id == run.id, AgentRunPlan.revision == run.plan_revision))
 
@@ -613,7 +995,7 @@ def context(db, owner, host_id, frame):
                 pass  # An older generation's session still gets its context; it just does not attach.
         token = mint_token(run) if run.state not in TERMINAL else None
         plan = frozen(db, run)
-        text = render_plan(db, run, plan, token) if plan else "This Eridani run has no frozen plan."
+        text = render_plan(db, run, plan, token) if plan else render_unplanned(db, run, token)
         return {"text": text, **({"run_token": token} if token else {})}
     return {"text": candidates_text(db, owner, frame.cwd, frame.provider, frame.provider_session_id)}
 
@@ -642,10 +1024,20 @@ def candidates_text(db, owner, cwd, provider, session_id):
 # ---------------------------------------------------------------- reconcile and sweeps
 
 
-def desired(run):
+def verify_config(plan):
+    """What the host verifies after each root turn (spawn.verify / runs.snapshot[].verify), or None."""
+    verify_id = ((plan.verify if plan else None) or {}).get("verify_id")
+    return {"verify_id": verify_id, "plan_revision": plan.revision} if verify_id else None
+
+
+def desired(db, run):
     entry = {"run_id": run.id, "generation": run.generation, "desired": "stop" if run.state == "stopping" else "continue"}
     if run.state == "stopping":
         entry["stop_mode"] = run.stop_mode or "interrupt"
+    else:
+        config = verify_config(frozen(db, run) if run.plan_revision and not run.plan_pending else None)
+        if config or run.plan_revision > 1:
+            entry["verify"] = config  # null clears an older plan's config after a re-plan; absent keeps it.
     return entry
 
 
@@ -661,6 +1053,10 @@ def stale(db, row, run):
         return "an older generation"
     if row.kind == "spawn" and row.generation != run.generation and run.state != "spawning":
         return "an older generation"
+    if row.kind == "verify":
+        attempt = db.get(AgentAttempt, (row.payload or {}).get("attempt_id"))
+        if attempt is None or attempt.status != "running" or row.generation != run.generation:
+            return "the verification attempt is settled"
     if row.kind == "answer":
         question = db.scalar(select(AgentQuestion).where(AgentQuestion.answer_op_id == row.op_id))
         if question is None or question.status != "submitted":
@@ -701,7 +1097,7 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
         if present:
             run.incarnation = max(run.incarnation, surface.incarnation)
             if run.state == "needs_you" and run.state_reason in SELF_HEALING:
-                transition(db, run, "executing", reason="surface_restored")
+                transition(db, run, phase(run), reason="surface_restored")
         elif run.state not in ("spawning", "queued") and run.state != "needs_you":
             reason = "exited" if surface is not None and surface.state == "exited" else "surface_lost"
             transition(db, run, "needs_you", reason=reason)
@@ -721,7 +1117,7 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
             on_outcome(db, row, "rejected", "stale after reconcile: " + why)
         else:
             row.status = "queued"  # Resent under the new connection's envelope.
-    return [desired(r) for r in runs if r.state not in TERMINAL]
+    return [desired(db, r) for r in runs if r.state not in TERMINAL]
 
 
 def sweep(db, clock=None):
@@ -744,12 +1140,25 @@ def sweep(db, clock=None):
     for question in db.scalars(select(AgentQuestion).where(AgentQuestion.status == "open", AgentQuestion.hold_until < clock)):
         question.status, question.remote_answerable = "timed_out", False
         question.detail = "The agent stopped waiting; answer in the terminal."
+    for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.status.in_(("queued", "running")),
+                                                         AgentAttempt.deadline_at <= clock)
+                              .with_for_update(skip_locked=True)):
+        run = db.get(AgentRun, attempt.run_id, with_for_update=True)
+        if attempt.kind == "verify":
+            # timed_out is its own non-pass; a result that arrives later is discarded.
+            settle_verify(db, run, attempt, "timed_out", {"detail": "No result within the deadline."})
+        else:
+            attempt.status, attempt.updated_at = "failed", clock
+            attempt.result = {**(attempt.result or {}), "non_verdict": "timeout"}
+            judge_failed(db, attempt, "timeout", "the judge did not finish in time")
     hosts = {h.id: h for h in db.scalars(select(AgentHost))}
-    for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(("executing", "waiting_answer")))
-                          .with_for_update(skip_locked=True)):
+    active = ("executing", "waiting_answer", "interviewing", "planning", "verifying", "judging")
+    for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(active)).with_for_update(skip_locked=True)):
         host = hosts.get(run.host_id)
         if run.started_at and run.started_at + timedelta(seconds=run.wall_clock_limit) <= clock:
             transition(db, run, "needs_you", reason="wall_clock")
+        elif run.state not in ("executing", "waiting_answer"):
+            continue
         elif run.state == "executing" and run.last_progress_at \
                 and run.last_progress_at + timedelta(seconds=run.no_progress_limit) <= clock:
             transition(db, run, "needs_you", reason="no_progress")

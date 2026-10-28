@@ -20,6 +20,7 @@ LABELS = {
     "search_indexing": "Workspace search indexing",
     "semantic_search": "Semantic search",
     "session_ledger": "Agent session summaries and search",
+    "agent_control": "Agent run judge",
     "unattributed": "Earlier or unclassified usage",
 }
 
