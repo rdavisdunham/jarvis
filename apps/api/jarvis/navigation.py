@@ -39,11 +39,23 @@ def find(db, owner, query, start=None, end=None):
             if not row.archived and (kind,row.id) not in linked and not getattr(row, "is_template", False):
                 add(kind,row.id,row.title,"ui_form",{"form":kind,"entity_id":row.id})
     schedule = calendar(db, owner, begin, until, timezone)
+    seen_calendar = set()
     for item in schedule["items"]:
-        if item["kind"] == "task": continue  # The ordinary task card above is canonical.
-        add(item["kind"],item["entity_id"],item["title"],"ui_calendar",
-            {"date":item["date"],"entity_id":item["entity_id"],"open_details":True},
-            date=item["date"], occurrence_start=item.get("occurrence_start"))
+        if item["kind"] == "task":
+            continue
+        # A multi-day event has one projection per visible day, not several choices.
+        # Recurring Google events and schedules still need one choice per occurrence.
+        occurrence = item.get("occurrence_start")
+        if item["kind"] in {"routine", "reminder"}:
+            occurrence = item.get("at")
+        identity = (item["kind"], item["entity_id"], occurrence)
+        if identity in seen_calendar:
+            continue
+        seen_calendar.add(identity)
+        add(item["kind"], item["entity_id"], item["title"], "ui_calendar",
+            {"date": item["date"], "entity_id": item["entity_id"],
+             "calendar_entry_id": item["id"], "open_details": True},
+            date=item["date"], occurrence_start=occurrence)
     incomplete = bool(schedule.get("truncated") or schedule.get("warnings")) or len(matches)>100
     selected = matches[0] if len(matches)==1 and not incomplete else None
     return {"matches":matches[:100], "match_count":len(matches), "selected":selected,

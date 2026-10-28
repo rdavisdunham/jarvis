@@ -78,6 +78,8 @@ READ_TOOLS = {
             "type": "object",
             "properties": {
                 "open_details": {"type": "boolean", "description": "Open saved detail card for entity_id on the requested date; false only focuses the calendar."},
+                "calendar_entry_id": {"type": "string", "minLength": 1, "maxLength": 300,
+                    "description": "Exact calendar projection id from navigation_find or calendar_list. Use with entity_id and open_details=true to select a particular occurrence."},
                 "calendar_view": {"type": "string", "enum": ["month", "week", "day"]},
                 "date": {"type": "string", "format": "date"},
                 "entity_id": {"type": "string", "maxLength": 36},
@@ -887,6 +889,10 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 arguments = {**arguments, "assignee": resolve_assignee(db, owner, arguments["assignee"])}
         if name == "ui_calendar" and arguments.get("open_details") and not arguments.get("entity_id"):
             raise DomainError("INVALID_ARGUMENT", "Choose a saved calendar item to open its details.")
+        if name == "ui_calendar" and arguments.get("calendar_entry_id") and not (
+            arguments.get("entity_id") and arguments.get("open_details")
+        ):
+            raise DomainError("INVALID_ARGUMENT", "An exact calendar entry needs its saved item and open_details=true.")
         if name == "ui_calendar" and arguments.get("entity_id"):
             from .google_calendar import event_detail
 

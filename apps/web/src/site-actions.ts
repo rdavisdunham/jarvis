@@ -97,6 +97,7 @@ export const actionSchema = z
     due_through: z.union([date, z.literal("")]).optional(),
     date: date.optional(),
     open_details: z.boolean().optional(),
+    calendar_entry_id: z.string().min(1).max(300).optional(),
     calendar_view: z.enum(["month", "week", "day"]).optional(),
     work_kind: z.enum(["all", "task", "reminder"]).optional(),
     task_ids: z.array(z.string()).max(100).optional(),

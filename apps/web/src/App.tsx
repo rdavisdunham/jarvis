@@ -1,3 +1,4 @@
+import { calendarDetailEntry } from "./calendar-navigation";
 import { chatSendStarted, observeWorkRendered } from "./clientLatency";
 import {Questions,ReviewInvitation} from "./Questions";
 import { SourceColorSettings } from "./SourceDetails";
@@ -1193,12 +1194,9 @@ export default function App() {
             "&timezone=" +
             encodeURIComponent(boot?.preferences.timezone ?? "America/Chicago"),
         );
-        const entry = data.items.find((e) => e.entity_id === action.entity_id);
-        if (!entry)
-          throw new Error(
-            "That item is not in this calendar day. Check its date before opening details.",
-          );
-        openCalendarEntry(entry);
+        openCalendarEntry(calendarDetailEntry(
+          data.items, action.entity_id, action.calendar_entry_id,
+        ));
       }
     } else if (kind === "search") {
       setQuery(action.query ?? "");
