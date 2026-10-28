@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timedelta
 
 import pytest
@@ -97,8 +98,18 @@ def test_hello_welcome_takes_a_lease_and_reports_the_host(client):
         assert {"turn", "status", "session.report"} <= set(welcome["caps"])
         hosts = client.get("/api/v1/remotea/status").json()["hosts"]
         assert [(h["id"], h["name"], h["connected"]) for h in hosts] == [(welcome["host_id"], "desk", True)]
-    hosts = client.get("/api/v1/remotea/status").json()["hosts"]
-    assert hosts[0]["connected"] is False and hosts[0]["last_seen_at"]
+        # End the connection from the server side (a binary frame is refused with 1003) and watch the lease
+        # go while the handler is still alive. Leaving the block first would race the test client's
+        # teardown, which can cancel the handler before its release runs.
+        ws.send_bytes(b"\x00")
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_text()
+        for _ in range(100):
+            hosts = client.get("/api/v1/remotea/status").json()["hosts"]
+            if hosts[0]["connected"] is False:
+                break
+            time.sleep(0.02)
+        assert hosts[0]["connected"] is False and hosts[0]["last_seen_at"]
 
 
 def test_hello_must_come_first(client):
