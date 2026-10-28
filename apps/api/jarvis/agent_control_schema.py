@@ -75,9 +75,17 @@ class ControlAnswer(Input):
         return self
 
 
+class ControlConfirm(Input):
+    """Confirm or decline a pending control_start / control_message (stage F, two-phase control)."""
+
+    pending_id: str = Field(min_length=1, max_length=36)
+    decision: Literal["confirm", "decline"] = "confirm"
+
+
 COMMANDS = {
     "control.start": ControlStart,
     "control.message": ControlMessage,
+    "control.confirm": ControlConfirm,
     "control.stop": ControlStop,
     "control.answer": ControlAnswer,
 }

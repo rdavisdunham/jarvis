@@ -282,6 +282,8 @@ class AgentRun(Base):
     sync_state: Mapped[dict] = mapped_column(JSONB, default=dict)
     run_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
     run_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Random per spawn; the token is HMAC(HKDF(key, "eridani-run-token"), run id, salt), never stored (0031).
+    run_token_salt: Mapped[str] = mapped_column(String(64), default="", server_default="")
     # Every transition with its actor, newest last (bounded).
     history: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -362,3 +364,37 @@ class AutolinkRejection(Base):
     task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
     evidence_revision: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentPendingControl(Base):
+    """control_start / control_message from Eri wait here until the owner confirms (stage F, M5, D3).
+
+    Confirmed on the remotea page, or by a later spoken or typed yes bound to this id; never by the model
+    in the turn that proposed it."""
+    __tablename__ = "agent_pending_controls"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str] = mapped_column(String(100))
+    work_id: Mapped[str | None] = mapped_column(String(36))
+    tool: Mapped[str] = mapped_column(String(40))
+    arguments: Mapped[dict] = mapped_column(JSONB, default=dict)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    run_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    actor: Mapped[dict] = mapped_column(JSONB, default=dict)
+    decided_via: Mapped[str] = mapped_column(String(20), default="")
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AgentIngestDay(Base):
+    """Bytes of host free text ingested per owner and UTC day; over the quota the host is degraded (L7)."""
+    __tablename__ = "agent_ingest_days"
+    __table_args__ = (UniqueConstraint("owner_id", "day", name="uq_agent_ingest_day"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    bytes: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

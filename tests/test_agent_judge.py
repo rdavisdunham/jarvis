@@ -180,6 +180,20 @@ def test_met_with_auto_complete_completes_as_the_judge(host):  # noqa: F811
     assert state(run_id)[0] == "completed"
 
 
+def test_auto_complete_refuses_a_gate_the_agent_wrote_alone(host):  # noqa: F811
+    """Stage F, M1: criteria that are all agent-authored, with no required verify, wait for a human tap."""
+    with session_scope() as db:
+        db.get(OwnerSettings, OWNER).values = {**db.get(OwnerSettings, OWNER).values, "remotea_auto_complete": True}
+    run_id = criteria_run(host)
+    with session_scope() as db:
+        from jarvis.session_models import AgentRunPlan
+
+        plan = db.scalar(select(AgentRunPlan).where(AgentRunPlan.run_id == run_id))
+        plan.criteria = [{**c, "by": "agent"} for c in plan.criteria]
+    turn(run_id, 1)
+    assert judged(run_id, stub(verdict())) == ("awaiting_approval", "judge_met")
+
+
 def test_not_met_sends_the_gap_as_the_next_execution_turn(host):  # noqa: F811
     run_id = criteria_run(host)
     turn(run_id, 1)

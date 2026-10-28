@@ -375,6 +375,16 @@ def reap_agent_work():
             logger.exception("Could not finish stale agent request %s", identity)
 
 
+def agent_retention():
+    """Stage F, L7: drop agent data past its retention window (agent_retention.py)."""
+    from . import agent_retention as retention
+
+    with session_scope() as db:
+        counts = retention.sweep(db)
+    if any(counts.values()):
+        logger.info("Agent retention removed %s", counts)
+
+
 def isolated(name, fn, *args):
     try:
         return fn(*args)
@@ -433,6 +443,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     if iteration % 12 == 0:
         isolated("housekeeping", housekeeping)
         isolated("reap_agent_work", reap_agent_work)
+        isolated("agent_retention", agent_retention)
 
 
 def housekeeping_owner(db, owner):

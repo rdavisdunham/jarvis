@@ -285,11 +285,11 @@ def test_remotea_is_gated_until_enabled(client):
     assert client.get("/api/v1/bootstrap").json()["preferences"]["remotea_enabled"] is True
     assert client.post("/api/v1/remotea/disable").json()["enabled"] is False
     assert client.get("/api/v1/remotea/parity").status_code == 403
-    denied = refused(bearer(token))
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "REMOTEA_DISABLED"
+    denied = refused(bearer(token))  # Disabling revoked the link key (stage F, L1).
+    assert denied.status_code == 401 and denied.json()["error"]["code"] == "ACCESS_REVOKED"
     parity = TestClient(app).post("/api/v1/external/agents/parity", headers=bearer(token),
                                   json={"tool": "claude_code", "session_id": "s1", "report": SESSION})
-    assert parity.status_code == 403
+    assert parity.status_code == 401
 
 
 def test_disabling_closes_a_connected_link(client):
@@ -323,18 +323,21 @@ def test_enabling_mints_the_link_key_once(client):
 
 
 def test_viewers_cannot_hold_control_keys(client):
+    """Agent keys are personal-only (stage F, D1): no member of a shared workspace mints or uses one,
+    whatever their role; viewers get read-only keys only."""
     from jarvis.models import WorkspaceMember
     from test_accounts import client_for, shared
 
     guest = client_for("guest")
     workspace = shared(client, guest)
-    token = enable(guest)["token"]
+    assert guest.post("/api/v1/remotea/enable", json={}).json()["error"]["code"] == "PERSONAL_WORKSPACE"
+    response = guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["agents:control"], "expires_in_days": 30})
+    assert response.status_code == 403
     with session_scope() as db:
         db.get(WorkspaceMember, (workspace["id"], "guest")).role = "viewer"
     response = guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["agents:control"], "expires_in_days": 30})
     assert response.status_code == 403
     assert guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["sessions:read"], "expires_in_days": 30}).status_code == 201
-    assert refused(bearer(token)).status_code == 403
 
 
 def ms(value):

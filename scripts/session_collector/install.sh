@@ -11,6 +11,8 @@ units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$share" "$config" "$units"
 # A copy, so switching branches in this repository never breaks the timer.
 install -m 0755 "$here/collector.py" "$share/collector.py"
+# The secret patterns shared with Eridani and remotea (stage F).
+install -m 0644 "$here/../../apps/api/jarvis/redaction.py" "$share/redaction.py"
 install -m 0644 "$here/eridani-collector.service" "$here/eridani-collector.timer" "$units/"
 
 if [ ! -s "$config/token" ]; then

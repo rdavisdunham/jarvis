@@ -46,17 +46,33 @@ FRESH_READS = (
 
 # Agent-run control (stage E): voice and chat get these only while remotea is enabled for the owner.
 # They sit in the `agents` tool group, never in CORE, and no bot scope maps to them.
-CONTROL_TOOLS = ("control_status", "control_start", "control_message", "control_answer", "control_stop")
+CONTROL_TOOLS = ("control_status", "control_start", "control_message", "control_confirm", "control_answer",
+                 "control_stop")
+# Work younger than this was started by a person who is still there (a chat message or a GPT-Live turn).
+LIVE_WORK_SECONDS = 15 * 60
 
 
-def remotea_tools(definitions, owner):
-    """Drop the control tools unless the owner turned remotea on (Settings → remotea)."""
+def remotea_tools(definitions, owner, *, live=True):
+    """Drop the control tools unless the owner turned remotea on (Settings → remotea), and for work without a
+    present human (stage F, D3): background or long-parked work never gets control_* at all."""
     from .agent_link import enabled
     from .db import session_scope
 
     with session_scope() as db:
         on = enabled(db, owner)
-    return definitions if on else [d for d in definitions if d["name"] not in CONTROL_TOOLS]
+    return definitions if on and live else [d for d in definitions if d["name"] not in CONTROL_TOOLS]
+
+
+def live_work(row):
+    """Queued work a live person started: no bot credential and accepted within the last few minutes."""
+    from .db import session_scope
+    from .models import Job, now
+
+    if row.credential_id:
+        return False
+    with session_scope() as db:
+        job = db.get(Job, row.id)
+        return job is not None and (now() - job.created_at).total_seconds() <= LIVE_WORK_SECONDS
 
 
 def validate(policy):

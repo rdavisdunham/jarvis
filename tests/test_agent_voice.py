@@ -26,6 +26,14 @@ def say(tool, **arguments):
         return execute(db, OWNER, str(uuid4()), tool, arguments)["data"]
 
 
+def confirm(pending):
+    """Stage F: control_start / control_message are two-phase; the owner taps Confirm on the remotea page."""
+    assert pending["status"] == "pending_confirmation", pending
+    with session_scope() as db:
+        return control.decide(db, OWNER, pending["pending_id"], confirm=True, via="app",
+                              actor=control.Actor("human"))["run"]
+
+
 def names(definitions):
     return {d["name"] for d in definitions}
 
@@ -55,9 +63,9 @@ def default_target(host, task_id):  # noqa: F811
 
 
 def test_control_tools_are_registered_described_and_grouped():
-    assert {"control.start", "control.message", "control.stop", "control.answer"} <= set(COMMANDS)
-    assert {"control.start", "control.message", "control.stop", "control.answer"} <= VOICE_MUTATIONS
-    assert set(control.COMMANDS) == {"control.start", "control.message", "control.stop", "control.answer"}
+    tools = {"control.start", "control.message", "control.confirm", "control.stop", "control.answer"}
+    assert tools <= set(COMMANDS) and tools <= VOICE_MUTATIONS
+    assert set(control.COMMANDS) == tools
     assert "control_status" in READ_TOOLS
     full = names(registry())
     assert set(CONTROL_TOOLS) <= full
@@ -93,14 +101,14 @@ def test_control_is_refused_while_remotea_is_off(host):  # noqa: F811
 def test_voice_start_by_name_reaches_the_same_start_run(host):  # noqa: F811
     created = task("Ship the voice controls")
     default_target(host, created["id"])
-    started = say("control.start", task="voice controls")
+    started = confirm(say("control.start", task="voice controls"))
     assert started["task"]["id"] == created["id"] and started["state"] == "spawning"
     with session_scope() as db:
         run = db.get(AgentRun, started["id"])
         [spawn] = db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn"))
         assert run.history[0]["actor"]["kind"] == "human" and spawn.status == "queued"
     with pytest.raises(DomainError) as twice:
-        say("control.start", task_id=created["id"])
+        confirm(say("control.start", task_id=created["id"]))
     assert twice.value.code == "RUN_ACTIVE"
 
 
@@ -118,9 +126,9 @@ def test_ambiguous_or_unknown_names_ask_instead_of_guessing(host):  # noqa: F811
 def test_message_stop_and_answer_by_voice(host):  # noqa: F811
     created = task("Voice driven run")
     default_target(host, created["id"])
-    run_id = say("control.start", task_id=created["id"])["id"]
+    run_id = confirm(say("control.start", task_id=created["id"]))["id"]
     attached(host, run_id)
-    say("control.message", text="Also update the docs.")  # The only active run.
+    confirm(say("control.message", text="Also update the docs."))  # The only active run.
     with session_scope() as db:
         inputs = [c.payload for c in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id,
                                                                             AgentCommand.kind == "input"))]
@@ -144,7 +152,7 @@ def test_voice_answers_a_planning_interview(host):  # noqa: F811
 
     created = task("Interviewed by voice")
     default_target(host, created["id"])
-    run_id = say("control.start", task_id=created["id"])["id"]
+    run_id = confirm(say("control.start", task_id=created["id"]))["id"]
     attached(host, run_id)
     with session_scope() as db:
         run = db.get(AgentRun, run_id)
@@ -162,7 +170,7 @@ def test_voice_answers_a_planning_interview(host):  # noqa: F811
 def test_status_lists_active_runs_with_host_state(host):  # noqa: F811
     created = task("Status check")
     default_target(host, created["id"])
-    run_id = say("control.start", task_id=created["id"])["id"]
+    run_id = confirm(say("control.start", task_id=created["id"]))["id"]
     result = asyncio.run(call_tool(OWNER, "turn-4", 0, "control_status", {}))
     assert result["enabled"] and result["hosts"][0]["connected"]
     assert [r["run_id"] for r in result["runs"]] == [run_id] and result["runs"][0]["state"] == "spawning"

@@ -96,6 +96,7 @@ export function Remotea({ run }: { run?: string | null } = {}) {
       <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
     </section>
     {error && <p className="error-banner" role="alert">{error}</p>}
+    <PendingControls/>
     <RunList onOpen={setOpen}/>
     <UnmergedList/>
     {open && <RunDrawer id={open} onClose={() => setOpen(null)}/>}
@@ -132,7 +133,7 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
   return <SettingsGroup className="remotea-settings" icon={<MonitorSmartphone size={18}/>} title="remotea"
     description="Follow Claude Code and Codex sessions running in your remotea server from this app.">
     {error && <p className="error-banner" role="alert">{error}</p>}
-    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default.">
+    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default. Turning it off revokes the link key; turning it on again shows a new one. Personal workspace only.">
       <input type="checkbox" checked={!!status?.enabled} disabled={!status || busy || readOnly}
         onChange={e => void change(e.target.checked ? "/remotea/enable" : "/remotea/disable", e.target.checked ? {} : undefined)}/>
     </SettingRow>
@@ -140,6 +141,7 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
       <SettingRow label="Server" hint={status.key ? `Link key ${status.key.prefix}… · expires ${new Date(status.key.expires_at).toLocaleDateString()}` : "No active link key."}>
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
+      {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
       {token && <div className="bot-secret" role="region" aria-label="remotea link key">
         <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
         <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
@@ -163,6 +165,11 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
           onChange={e => void change("/remotea/auto-complete", { enabled: e.target.checked })}/>
       </SettingRow>
       {status.auto_complete && <p className="remotea-warning" role="note">Automatic completion is on: agents' tasks close without asking you.</p>}
+      <SettingRow as="label" label="Agent questions break quiet hours"
+        hint="Off by default: an agent's question waits for your quiet hours to end like any other notification. On makes it urgent.">
+        <input type="checkbox" checked={!!status.quiet_bypass} disabled={busy || readOnly}
+          onChange={e => void change("/remotea/quiet-bypass", { enabled: e.target.checked })}/>
+      </SettingRow>
     </>}
   </SettingsGroup>;
 }
@@ -191,6 +198,34 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
       <span className="remotea-run-title">{r.task?.title ?? "Task"}</span>
       <small>{r.reason_text || ago(r.state_since)}</small>
     </button>)}
+  </section>;
+}
+
+type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string };
+
+/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before. */
+export function PendingControls() {
+  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const refresh = useCallback(() => { api<{ items: PendingControl[] }>("/remotea/pending").then(r => setItems(r.items)).catch(() => setItems([])); }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  useAgentRefresh(refresh);
+  const decide = async (id: string, decision: "confirm" | "decline") => {
+    setBusy(id); setError("");
+    try { await post(`/remotea/pending/${id}/${decision}`); refresh(); }
+    catch (e) { setError(message(e)); refresh(); }
+    finally { setBusy(""); }
+  };
+  if (!items.length && !error) return null;
+  return <section className="remotea-pending" aria-label="Waiting for your confirmation">
+    <h2>Eri is waiting for you</h2>
+    {error && <p role="alert" className="work-error">{error}</p>}
+    {items.map(p => <div key={p.id} className="remotea-pending-card">
+      <p>{p.summary}</p>
+      <div className="settings-form-actions">
+        <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
+        <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
+      </div>
+    </div>)}
   </section>;
 }
 

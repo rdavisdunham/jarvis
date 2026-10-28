@@ -3,7 +3,7 @@
 export type LiveState = { state: string; since: string | null; host_id: string | null; reason: string };
 export type Host = {
   id: string; name: string; machine: string; connected: boolean; last_seen_at: string | null;
-  conn_epoch: number; caps: string[]; harnesses: Record<string, unknown>; proto: number;
+  conn_epoch: number; caps: string[]; harnesses: Record<string, unknown>; proto: number; status?: "ok" | "degraded";
 };
 export type Turn = {
   id: string; seq: number; text: string; length: number; clipped: boolean; truncated: boolean;
@@ -16,7 +16,7 @@ export type RemoteaSession = {
 };
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
-  hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean;
+  hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; quiet_bypass?: boolean;
 };
 export type Parity = {
   total: number; matched: number; missing: number; mismatched: number; clean: boolean;
@@ -146,7 +146,7 @@ export type RunCommand = {
   outcome: { state?: string; detail?: string } | null; created_at: string; updated_at: string;
 };
 export type HistoryEntry = { at: string; from?: string; to?: string; reason?: string; detail?: string; event?: string;
-  kind?: string; state?: string; actor?: { kind: string } };
+  kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -303,6 +303,14 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const i of run.interviews ?? []) entries.push({ at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain" });
   for (const h of run.history) {
+    if (h.event === "sent" && h.text) {
+      // Every text sent to the agent, with who sent it (stage F): you on this page, or Eri after your confirmation.
+      const confirmed = !!h.actor?.reason?.startsWith("confirmed:");
+      const who = confirmed ? (h.actor?.kind === "human" ? "Eri, confirmed by you" : "Eri, after your yes")
+        : h.actor?.kind === "human" ? "you" : h.actor?.kind ?? "";
+      entries.push({ at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain" });
+      continue;
+    }
     if (!h.to) continue;
     entries.push({ at: h.at, kind: "state", title: runLabel(h.to as RunState), detail: [h.actor?.kind === "human" ? "by you" : "", h.detail ?? ""].filter(Boolean).join(" · "),
       tone: h.to === "needs_you" ? "attention" : h.to === "completed" ? "good" : ["failed", "stopped"].includes(h.to) ? "warn" : "plain" });

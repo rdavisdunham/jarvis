@@ -560,6 +560,11 @@ A checked implementation task never replaces connected-provider or physical-devi
   Android, background wake-word service and offline-first sync.
 - Ambient conversational clarification beyond setup/review; Home Assistant,
   finance and general research/execution agents; further backend-model comparisons.
+- remotea for Brainforge members: multi-user design (per-member hosts and keys, owner-only control of a
+  host, shared visibility rules, audit trail) — needed before remotea leaves personal workspaces.
+  Stage F (2026-10-28 audit) made remotea personal-workspace only; see
+  [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
+- verify sandboxing on the host (bubblewrap / codex sandbox, no network).
 - Wholesale legacy-table/directory removal or whole-App refactors.
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.

@@ -26,8 +26,14 @@ def new_task(db, owner, title, project_id=None, *, template=False):
     return row
 
 
-def finish_task(db, task, status="completed", *, sync_external=True):
+def finish_task(db, task, status="completed", *, sync_external=True, gated=False):
     from .domain import emit
+
+    if not gated:
+        # Backstop for every entrance (stage F, M3): a run-owned task completes only through an authority.
+        from .agent_actor import gate
+
+        gate(db, task.owner_id, task, {"status": status})
 
     if sync_external:
         from .linear_sync import before_task_update

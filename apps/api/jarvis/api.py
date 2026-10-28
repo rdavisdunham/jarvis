@@ -20,7 +20,6 @@ from sqlalchemy import func, select, text
 from . import agent_models, budget
 from .auth import Identity, authenticate, digest, sign_in
 from .config import get_settings
-from .conversation import chat
 from .db import session_scope
 from .latency import mark
 from .domain import DomainError, execute, owned, preferences, serial
@@ -168,6 +167,8 @@ async def security(request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
+    # Stage F, L9: browsers only reach the app over HTTPS once they have seen it there.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Permissions-Policy"] = "microphone=(self), camera=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://api.openai.com wss://api.openai.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
@@ -734,15 +735,6 @@ def work_revert(change_id: str, body: RevertInput, user: User):
     from .action_history import revert
     with session_scope() as db:
         return revert(db, user.owner_id, user.account_id, change_id, str(body.command_id))
-
-
-@app.post("/api/v1/chat")
-async def chat_endpoint(body: ChatInput, user: User):
-    from .config import require_external_services
-    require_external_services()
-    return await chat(
-        user.owner_id, user.device_id, str(body.turn_id), str(body.conversation_id), body.message, body.focus
-    )
 
 
 @app.get("/api/v1/memory")

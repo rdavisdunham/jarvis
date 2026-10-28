@@ -77,3 +77,7 @@
 .remotea-linear { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 0.85rem; color: var(--ink-3); overflow-wrap: anywhere; }
 .remotea-linear .tone-warn { color: var(--danger); }
 .remotea-warning { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--danger-soft); color: var(--ink); font-size: 0.85rem; }
+
+.remotea-pending { display: grid; gap: 8px; }
+.remotea-pending-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--violet); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.remotea-pending-card p { margin: 0; overflow-wrap: anywhere; }

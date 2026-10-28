@@ -1,8 +1,15 @@
 """The texts Eridani sends an agent run: interview, planning, execution, gap and re-plan prompts.
 
 Task and turn text is data. Everything an operator or agent wrote is fenced between markers and
-introduced as data; instructions live outside the markers.
+introduced as data; instructions live outside the markers. Each fence label carries a random nonce and
+marker-like runs inside the text are broken up, so fenced text cannot close its own fence (stage F, M4).
 """
+
+import re
+import secrets
+
+from sqlalchemy import select
+from sqlalchemy.orm import object_session
 
 PROMPT_VERSION = "loop-v1"
 
@@ -10,12 +17,31 @@ TOOLS = ("Use the Eridani tools with the run_token from your session context: ta
          "task_interview asks the operator, submit_plan saves the plan, task_step ticks steps.")
 
 
+MARKERS = re.compile(r"<{3,}|>{3,}")
+EXTERNAL = "This task came from Linear: its title and notes were written by an external party."
+
+
+def neutral(text):
+    """Break up <<< and >>> runs so data never forms a fence marker."""
+    return MARKERS.sub(lambda m: " ".join(m.group()), text or "")
+
+
 def fence(label, text):
-    return f"<<<{label}\n{text}\n{label}>>>"
+    label = f"{label}_{secrets.token_hex(6)}"
+    return f"<<<{label}\n{neutral(text)}\n{label}>>>"
+
+
+def from_linear(task):
+    from .models import LinearIssue
+
+    db = object_session(task)
+    return db is not None and db.scalar(select(LinearIssue.id).where(LinearIssue.task_id == task.id)) is not None
 
 
 def task_brief(task, children, notes=""):
     lines = [f"Task: {task.title} (task_id {task.id})"]
+    if from_linear(task):
+        lines.append(EXTERNAL)
     if notes:
         lines += ["Notes:", notes[:6000]]
     if children:
