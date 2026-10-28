@@ -497,7 +497,12 @@ def send(api, key, tool, session_id, body):
         url,
         data=json.dumps(body).encode(),
         method="PUT",
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        # Cloudflare rejects urllib's default User-Agent with error 1010 before the request reaches Eridani.
+        headers={
+            "Authorization": "Bearer " + key,
+            "Content-Type": "application/json",
+            "User-Agent": "eridani-session-collector/1",
+        },
     )
     for attempt in range(3):
         try:
