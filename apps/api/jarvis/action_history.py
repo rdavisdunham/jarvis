@@ -408,6 +408,8 @@ def changes_for_work(db, work):
                         )
             continue
         remote_result = remote.result or {} if remote else {}
+        reversal = db.get(Job, remote_result["revert_job_id"]) if remote_result.get("revert_job_id") else None
+        response_change = remote and remote.kind == "google_write" and remote.payload.get("operation") == "respond"
         result.append(
             {
                 "id": receipt.id,
@@ -417,12 +419,13 @@ def changes_for_work(db, work):
                 else "action",
                 "entity_id": data.get("id") or remote_result.get("event_id"),
                 "title": data.get("title", data.get("name", remote_result.get("title", "Saved action"))),
-                "operation": "saved",
-                "fields": {},
-                "can_revert": False,
-                "revert_reason": "Review this action in its record; automatic reversal is not available.",
+                "operation": "responded" if response_change else "saved",
+                **({"summary": "RSVP: " + remote.payload["response"] + " — " + remote_result.get("title", "Google event")} if response_change else {}),
+                "fields": {"Your response": {"before": remote.payload["before_response"], "after": remote.payload["response"]}} if response_change else {},
+                "can_revert": bool(remote and remote.kind == "google_write" and remote.payload.get("operation") == "respond" and remote.status == "succeeded" and not remote_result.get("revert_job_id")),
+                "revert_reason": "Restore your previous RSVP; later Google edits prevent reversal." if remote and remote.payload.get("operation") == "respond" else "Review this action in its record; automatic reversal is not available.",
                 "remote_status": remote.status if remote else None,
-                "reverted": False,
+                "reverted": bool(reversal and reversal.status == "succeeded"),
             }
         )
     return result
@@ -436,6 +439,12 @@ def revert(db, owner, account, change_id, command_id):
     advisory(db, f"workspace:{owner}")
     advisory(db, f"revert:{change_id}")
     change = db.get(ActionChange, change_id, populate_existing=True, with_for_update=True)
+    if not change:
+        receipt = db.get(Command, (owner, change_id))
+        remote_id = receipt.result.get("data", {}).get("job_id") if receipt and receipt.account_id == account else None
+        remote = db.get(Job, remote_id) if remote_id else None
+        if remote and remote.owner_id == owner and remote.kind == "google_write" and remote.payload.get("operation") == "respond":
+            return execute(db, owner, command_id, "calendar.response_revert", {"job_id": remote.id})
     if not change or change.owner_id != owner or change.account_id != account:
         raise DomainError("NOT_FOUND", "That action is not available.", 404)
     if change.reverted_by:

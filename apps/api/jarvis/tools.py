@@ -273,6 +273,13 @@ from pydantic import ValidationError
 
 from .google_schema import CalendarRead
 
+READ_TOOLS["navigation_find"] = {
+    "description": "Find a named item across tasks, notes, custom records and calendar entries for navigation. Task/event/note words are hints, not restrictions. Return exact detail-opening commands; only one complete match is selected. Supply start/end (exclusive) for date-specific requests; default calendar range is today through 31 days. Never use this lookup to authorize a mutation.",
+    "parameters": {"type":"object","properties":{
+        "query":{"type":"string","minLength":1,"maxLength":300},
+        "start":{"type":"string","format":"date"}, "end":{"type":"string","format":"date"}},
+        "required":["query"],"additionalProperties":False},
+}
 READ_TOOLS["calendar_event_read"] = {
     "description": "Read current Google event fields and obtain an expiring edit token for exactly one event, occurrence or series.",
     "parameters": CalendarRead.model_json_schema(),
@@ -355,6 +362,8 @@ VOICE_MUTATIONS = {
     "calendar.create",
     "calendar.update",
     "calendar.delete",
+    "calendar.respond",
+    "calendar.response_revert",
     "calendar.select",
     "calendar.annotate",
     "task.batch",
@@ -610,6 +619,10 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 "MALFORMED_ID",
                 "Copy the complete 36-character UUID from a fresh lookup and retry. A malformed ID does not mean the record was deleted.",
             ) from None
+    if name == "navigation_find":
+        from .navigation import find
+        with session_scope() as db:
+            return find(db, owner, arguments["query"], arguments.get("start"), arguments.get("end"))
     if name == "session_search":
         from .agent_sessions import search as sessions
 
@@ -1031,7 +1044,7 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 conversation_id,
                 [t["id"] for t in data["tasks"]] if "tasks" in data else [data["id"]],
             )
-    if name in {"calendar.create", "calendar.update", "calendar.delete"}:
+    if name in {"calendar.create", "calendar.update", "calendar.delete", "calendar.respond", "calendar.response_revert"}:
         import asyncio
 
         from .google_writes import TERMINAL, write_status

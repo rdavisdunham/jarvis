@@ -123,7 +123,13 @@ class GoogleFixture:
             if method == "DELETE":
                 events[eid]["status"] = "cancelled"
                 return {}
-            events[eid].update(copy.deepcopy(body))
+            patch = copy.deepcopy(body)
+            if patch.get("attendeesOmitted"):
+                statuses = {a["email"]: a["responseStatus"] for a in patch.pop("attendees")}
+                for attendee in events[eid].get("attendees", []):
+                    if attendee.get("email") in statuses:
+                        attendee["responseStatus"] = statuses[attendee["email"]]
+            events[eid].update(patch)
         GoogleFixture.version += 1
         events[eid]["etag"] = '"fixture-' + str(self.version) + '"'
         events[eid]["htmlLink"] = "https://calendar.google.com/calendar/event?eid=fixture"
@@ -201,3 +207,14 @@ def linear_change(user: User):
     linear_fixture.rows["remote"]["title"] = "Linear conflict version"
     linear_fixture.rows["remote"]["updatedAt"] = "2026-09-12T10:30:00Z"
     return {"done": True}
+
+@app.post("/api/v1/__test_google_invitation")
+def invitation_fixture(user: User):
+    from jarvis.models import GoogleIdentity
+    event = GoogleFixture.events["owner@example.test"]["dentist"]
+    event.update(organizer={"self":False,"email":"host@example.test"},
+                 attendees=[{"self":True,"email":"owner@example.test","responseStatus":"needsAction"},
+                            {"email":"other@example.test","responseStatus":"accepted"}])
+    with session_scope() as db:
+        db.get(GoogleIdentity,user.owner_id).calendar_write_enabled = True
+    return sync_fixture(user)

@@ -59,3 +59,15 @@ class CalendarRead(BaseModel):
     event_id: str = Field(max_length=36)
     scope: Literal["event", "occurrence", "series"] = "event"
     occurrence_start: str | None = Field(default=None, max_length=64)
+
+
+class CalendarRespond(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    response_token: str = Field(max_length=60000, description="Fresh response_token from calendar_event_read, bound to this guest and occurrence/series.")
+    response: Literal["accepted", "declined", "tentative"]
+    notify: bool = Field(default=True, description="Send the response notification through Google; false requests sendUpdates=none.")
+
+
+class CalendarResponseRevert(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    job_id: str = Field(min_length=36, max_length=36)

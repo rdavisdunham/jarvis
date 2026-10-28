@@ -43,6 +43,15 @@ def blocked_event(event):
     return ""
 
 
+def response_guest(remote, email):
+    """Only the signed-in account's own invitation; never another calendar owner's RSVP."""
+    if remote.get("locked") or remote.get("eventType", "default") != "default" or remote.get("organizer", {}).get("self"):
+        return None
+    matches = [a for a in remote.get("attendees", []) if a.get("self") and not a.get("organizer")
+               and str(a.get("email", "")).casefold() == email.casefold()]
+    return matches[0] if len(matches) == 1 else None
+
+
 def event_body(args):
     location = zone(args.timezone)
     try:
@@ -116,6 +125,7 @@ def read_event(owner, args):
             raise DomainError("NOT_FOUND", "Event no longer available. Refresh the calendar.", 404)
         account, source = account_source(db, owner, record.calendar_id)
         encrypted, generation = account.credentials, account.generation
+        account_email = account.email
         source_id, provider_calendar, timezone = source.id, source.provider_id, source.timezone
         write_enabled = account.calendar_write_enabled and source.access_role in WRITE_ROLES
         provider_event, cached = record.provider_id, record.payload
@@ -201,6 +211,13 @@ def read_event(owner, args):
             else None
         )
         from .calendar_details import details
+        guest = response_guest(remote, account_email)
+        response_token = seal({
+            "purpose": "calendar_response", "owner": owner, "calendar_id": source_id,
+            "generation": generation, "provider_event": provider_event, "etag": remote["etag"],
+            "scope": args.scope, "expires_at": (now() + timedelta(minutes=30)).isoformat(),
+            "email": guest["email"], "before_response": guest.get("responseStatus", "needsAction"),
+        }) if write_enabled and guest and remote.get("etag") else None
 
         return {
             **details(remote),
@@ -221,6 +238,9 @@ def read_event(owner, args):
             "recurring": bool(series_id),
             "scope": args.scope,
             "editable": editable,
+            "can_respond": bool(response_token),
+            "response_token": response_token,
+            "my_response": guest.get("responseStatus", "needsAction") if guest else None,
             "edit_token": token,
             "read_only_reason": reason
             or ("" if editable else "Enable Calendar editing in Settings to change this event."),
@@ -237,7 +257,31 @@ def read_event(owner, args):
 def queue_write(db, owner, tool, args):
     advisory(db, f"google:{owner}")
     operation = tool.split(".")[1]
-    if operation == "create":
+    if operation in {"respond", "response_revert"}:
+        if operation == "respond":
+            token = unseal(args.response_token)
+            try:
+                valid = (token["purpose"] == "calendar_response" and token["owner"] == owner
+                         and datetime.fromisoformat(token["expires_at"]) > now())
+            except (KeyError, TypeError, ValueError):
+                valid = False
+            if not valid:
+                raise DomainError("CALENDAR_STALE", "Reopen the event before responding.", 409)
+            account, source = account_source(db, owner, token["calendar_id"], writing=True, generation=token["generation"])
+            payload = {key: token[key] for key in ("calendar_id", "generation", "provider_event", "etag", "scope", "email", "before_response")}
+            payload.update(operation="respond", response=args.response, notify=args.notify)
+        else:
+            previous = owned(db, Job, args.job_id, owner, lock=True)
+            if previous.kind != "google_write" or previous.payload.get("operation") != "respond" or previous.status != "succeeded":
+                raise DomainError("CALENDAR_STALE", "Only a confirmed RSVP can be reverted.", 409)
+            if previous.result.get("revert_job_id"):
+                return {"job_id": previous.result["revert_job_id"], "status": "queued", "message": "This RSVP already has a reversal. Check its status."}
+            old = previous.payload
+            account, source = account_source(db, owner, old["calendar_id"], writing=True, generation=old["generation"])
+            payload = {key: old[key] for key in ("calendar_id", "generation", "provider_event", "scope", "email", "notify")}
+            payload.update(operation="respond", response=old["before_response"], before_response=old["response"],
+                           etag=previous.result["etag"], reverts_job=previous.id)
+    elif operation == "create":
         account, source = account_source(db, owner, args.calendar_id, writing=True)
         payload = {
             "operation": operation,
@@ -274,6 +318,8 @@ def queue_write(db, owner, tool, args):
             payload["body"] = event_body(args)
     payload["provider_calendar"] = source.provider_id
     job = enqueue_job(db, owner, "google_write", payload)
+    if payload.get("reverts_job"):
+        previous.result = {**previous.result, "revert_job_id": job.id}
     emit(db, owner, "google.write", job.id)
     return {
         "job_id": job.id,
@@ -295,6 +341,7 @@ def write_status(db, owner, job_id):
         "operation": job.payload["operation"],
         "created_at": job.created_at.isoformat(),
         "result": job.result,
+        "can_revert": job.status == "succeeded" and job.payload["operation"] == "respond" and not (job.result or {}).get("revert_job_id"),
     }
 
 
@@ -339,6 +386,7 @@ def completed(job_id, remote):
             "event_id": local_id,
             "title": remote.get("summary", ""),
             "deleted": payload["operation"] == "delete",
+            **({"etag": remote["etag"], "response": payload["response"], "before_response": payload["before_response"]} if payload["operation"] == "respond" else {}),
             "message": "Deleted from Google Calendar."
             if payload["operation"] == "delete"
             else "Saved in Google Calendar.",
@@ -390,6 +438,10 @@ def process_write(job_id):
             )
             return
         if operation != "delete" and remote and marker == job_id:
+            if operation == "respond":
+                guest = response_guest(remote, payload["email"])
+                if not guest or guest.get("responseStatus", "needsAction") != payload["response"]:
+                    raise DomainError("CALENDAR_CONFLICT", "Your response changed in Google. Reopen it before responding again.", 409)
             completed(job_id, remote)
             return
         if operation == "create" and remote:
@@ -405,7 +457,11 @@ def process_write(job_id):
                 raise DomainError(
                     "CALENDAR_CONFLICT", "This event changed in Google. Reopen it before editing.", 409
                 )
-            reason = blocked_event(remote)
+            if operation == "respond":
+                guest = response_guest(remote, payload["email"])
+                reason = "" if guest else "This is no longer your invitation. Reopen it in Google Calendar."
+            else:
+                reason = blocked_event(remote)
             if reason:
                 raise DomainError("CALENDAR_READ_ONLY", reason, 403)
         with session_scope() as db:
@@ -423,7 +479,7 @@ def process_write(job_id):
             )
             saved = {**remote, "status": "cancelled"}
         else:
-            body = dict(payload["body"])
+            body = ({"attendeesOmitted": True, "attendees": [{"email": payload["email"], "responseStatus": payload["response"]}]} if operation == "respond" else dict(payload["body"]))
             private = dict((remote or {}).get("extendedProperties", {}).get("private", {}))
             private[MARKER] = job_id
             body["extendedProperties"] = {"private": private}
@@ -435,15 +491,20 @@ def process_write(job_id):
             else:
                 # Google PATCH merges nested objects. Clear the opposite format;
                 # omitting it leaves date and dateTime together and rejects conversion.
-                for boundary in ("start", "end"):
+                for boundary in (("start", "end") if operation == "update" else ()):
                     point = body[boundary]
                     cleared = {"dateTime": None, "timeZone": None} if "date" in point else {"date": None}
                     body[boundary] = {**cleared, **point}
                 saved = client.request(
-                    path, {"sendUpdates": "none"}, body, method="PATCH", headers={"If-Match": payload["etag"]}
+                    path, {"sendUpdates": "all" if payload.get("notify") else "none"}, body, method="PATCH", headers={"If-Match": payload["etag"]}
                 )
         if saved.get("id") != payload["provider_event"] or (operation != "delete" and not saved.get("etag")):
             raise SyncFailure("invalid_write_response")
+        if operation == "respond":
+            saved = client.request(path)
+            guest = response_guest(saved, payload["email"])
+            if not guest or guest.get("responseStatus", "needsAction") != payload["response"]:
+                raise SyncFailure("unconfirmed_response")
         completed(job_id, saved)
     except (SyncFailure, DomainError, KeyError, ValueError, TypeError) as error:
         if not isinstance(error, (SyncFailure, DomainError)):
