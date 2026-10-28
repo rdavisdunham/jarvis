@@ -48,16 +48,16 @@ def identity_context(prefs):
     )
 
 
-def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="baseline"):
+def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="baseline", parts=False):
+    """With parts=True, return (static, dynamic): the static text is byte-identical across requests
+    of the same workspace kind and policy, so it can stay in the provider's prompt cache."""
     from .ui_control import context_prompt
-    from .tool_policy import DISCOVERY, FRESH_READS, validate
+    from .tool_policy import DISCOVERY, FRESH_READS, reads, validate
     validate(tool_policy)
 
-    return "\n".join(
-        [
+    static = [
             SYSTEM_PROMPT,
             ("You are in a shared workspace. Only records in this workspace are accessible. Personal memory and connected accounts stay private; shared conversations are not retained. Membership, not assignment, grants access. Manage invitations and switch workspaces through Settings > Sharing; never claim a cross-workspace change." if prefs.get("shared_workspace") else "You are in the user\'s personal workspace. Sharing another workspace does not expose these records."),
-            identity_context(prefs),
             CAPABILITIES,
             POLICY,
             (
@@ -68,14 +68,21 @@ def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="bas
                 "exact filters and task_selection_update rather than manually transcribing every ID. "
                 "Use time_resolve before proposing or saving uncertain local times."
                 if tool_policy == "baseline" else DISCOVERY +
-                " For identical edits to a filtered set, use task_list and task_selection_update. "
+                (" For identical edits to a filtered set, load the tasks group and use task_list with task_selection_update. "
+                 if tool_policy == "lean-v1" else " For identical edits to a filtered set, use task_list and task_selection_update. ") +
                 "Use time_resolve for uncertain local times."
             ),
-            FRESH_READS if tool_policy == "reads-v1" else "",
-            "Focused task ID DATA: " + json.dumps(focus or (ui_context or {}).get("selected_task_id")),
-            context_prompt(ui_context),
-        ]
-    )
+            FRESH_READS if reads(tool_policy) else "",
+    ]
+    dynamic = [
+        identity_context(prefs),
+        "Focused task ID DATA: " + json.dumps(focus or (ui_context or {}).get("selected_task_id")),
+        context_prompt(ui_context),
+    ]
+    if parts:
+        return "\n".join(static), "\n".join(dynamic)
+    # Original order: identity right after the workspace line, then the rest.
+    return "\n".join([*static[:2], dynamic[0], *static[2:], *dynamic[1:]])
 
 
 def live_instructions(prefs, focus=None, ui_context=None):

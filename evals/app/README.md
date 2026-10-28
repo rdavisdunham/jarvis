@@ -206,7 +206,7 @@ remain distinct. Local receipts prevent blind replay of immutable observations.
 
 ### Tool-round comparisons
 
-Agent-only campaigns accept `--tool-policy baseline`, `discovery-v1`, or `reads-v1`
+Agent-only campaigns accept `--tool-policy baseline`, `discovery-v1`, `reads-v1`, or `lean-v1`
 alongside `--model luna --service-tier fast --mode live-model --no-support`.
 The manifest pins the policy at work acceptance; ordinary evals remain baseline
 and Standard regardless of application defaults. Planning is free; paid execution

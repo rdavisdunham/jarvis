@@ -6,7 +6,23 @@ still enforced by the ordinary tool executor.
 """
 import copy
 
-POLICIES = ("baseline", "discovery-v1", "reads-v1")
+POLICIES = ("baseline", "discovery-v1", "reads-v1", "lean-v1")
+# Policies that include sufficient-read reuse; lean-v1 adds a smaller, cache-stable prompt.
+READS = ("reads-v1", "lean-v1")
+
+
+def reads(policy):
+    return policy in READS
+
+
+def lean(policy):
+    return policy == "lean-v1"
+
+
+# lean-v1: tools moved out of the always-loaded set (still loadable through their group),
+# and small tools added so common agenda/calendar reads need no discovery round.
+LEAN_DEFERRED = ("task_batch", "task_selection_update")
+LEAN_EXTRA = ("note_create", "calendar_event_read", "calendar_connection")
 DISCOVERY = (
     "Call an exposed tool directly; do not load its group first. "
     "Use tools_load only for capabilities absent from the current tool list. "
@@ -45,8 +61,11 @@ def definitions_for(definitions, policy):
             # Retain the existing (possibly bot-scoped) group description/schema.
             description = tool["description"]
             groups = description[description.index("Groups:"):] if "Groups:" in description else ""
+            if lean(policy):
+                from .tool_catalog import compact_groups
+                groups = compact_groups(tool)
             tool["description"] = DISCOVERY + " Loaded definitions appear on the next request. " + groups
-        if policy == "reads-v1":
+        if reads(policy):
             if name in {"task_update", "task_batch", "task_selection_update"}:
                 tool["description"] = tool["description"].replace(
                     "Read the current ID/revision first.",

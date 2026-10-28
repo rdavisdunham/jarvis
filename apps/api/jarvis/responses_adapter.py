@@ -1,4 +1,8 @@
 """Stateless Responses transport for the existing durable conversation/tool loop."""
+from contextvars import ContextVar
+
+# Set by lean-v1 for workspace-separated cache accounting; a stable prefix enables reuse.
+prompt_cache_key = ContextVar("prompt_cache_key", default=None)
 
 
 def request(agent, messages, tools, limited):
@@ -20,7 +24,9 @@ def request(agent, messages, tools, limited):
             )
         else:
             inputs.append({"role": message["role"], "content": message["content"]})
+    key = prompt_cache_key.get()
     return {
+        **({"prompt_cache_key": key} if key else {}),
         "model": agent.model,
         "service_tier": agent.service_tier,
         "input": inputs,

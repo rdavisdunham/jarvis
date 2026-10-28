@@ -1,10 +1,11 @@
 # Reducing Eri model and tool rounds
 
-Updated October 4, 2026. The first two stages are implemented and independently
+Updated October 6, 2026. The first two stages are implemented and independently
 selectable. Discovery is the first-stage default; sufficient-read reuse is staged
 behind its policy setting until the phone check. See the
 [implementation, measurements and remaining acceptance](ERI_ROUND_REDUCTION_VALIDATION.md).
-The optional completion shortcut remains deferred.
+The optional completion shortcut remains deferred. A fourth, opt-in stage (`lean-v1`, below)
+shrinks the per-round prompt and makes its prefix cacheable across requests.
 
 Start by removing unnecessary discovery, then avoid repeated reads when a fresh
 result already contains everything needed. Keep the durable runner, human
@@ -186,6 +187,66 @@ Delivery wakeups from SPEED3 remain a separate measured option. If network,
 dispatch or speech delivery dominates, address that wait rather than forcing
 these optimizations. Stop when the common workflows are responsive and reliable.
 
+## Fourth stage: `lean-v1`, a smaller and cache-stable prompt (October 6, opt-in)
+
+Production traces from October 5–6 (6 GPT-Live requests, content-free events)
+showed where the per-round cost goes:
+- Each model round took a median of 1.9 s, with requests needing 2–6 rounds.
+- Tool definitions were 34.3 KB of every round (about 70% of the ~12k input tokens).
+- **Every first round had zero cached tokens**, because the instructions put the current
+  time (to the second) and screen context near the top, so the prompt prefix changed
+  with every request. Some second rounds also missed the cache.
+- A `work_followup` round preceded the lookups in 2 of 6 requests, even though recent
+  work already carried the finished request's saved record IDs.
+
+`lean-v1` is `reads-v1` plus:
+
+1. **Cache-stable layout.** Static instructions (policy, capabilities, tool guidance,
+   runner rules, search rules, voice-end policy) come first and are byte-identical
+   across requests of the same workspace kind. Per-request DATA (profile and current
+   time, focus, screen, memory, receipts, recent searches, recent work) moves to a
+   second system message after them. No instruction text changes meaning.
+2. **Scoped cache accounting.** Hash the workspace ID, complete tool definitions and
+   static text into the cache key. The stable prefix enables cache reuse. On
+   GPT-5.6 and later the key partitions accounting; it is not a required routing
+   optimization. Different workspaces do not share this accounting group.
+3. **Smaller always-loaded tools.**
+   - `task_batch` and `task_selection_update` move behind the `tasks` group, where
+     bulk edits load them.
+   - `calendar_event_read` and `calendar_connection` join the initial set, because
+     agenda requests were loading `calendar_read` for them.
+   - `tools_load` lists each group with one short phrase. Usage rules stay in the
+     loaded tools' own definitions.
+   - Tool definitions drop from 35.4 KB to 27.7 KB.
+4. **Follow-up linking in the same round.** When recent work already shows the earlier
+   request succeeded with the needed IDs, `work_followup` is returned alongside the
+   lookups. Only writes wait for its result.
+5. **Preserve reference context.** The October 27 review removed the proposed
+   1,500-character per-turn and 600/500-character request/outcome cuts. Those cuts
+   could silently discard a qualifier needed by a follow-up. Keep the existing
+   history limits and complete recent-work data; evaluate additional context
+   compression separately with long-reference cases.
+
+Historical October 6 measurement before the context-preservation correction:
+Measured locally (deterministic model, first round): 47.1 KB → 39.8 KB of input
+(−15%). Of the lean total, about 35 KB (tools plus static text) is identical across
+requests and can stay cached, against roughly the tool block today. Expected effect:
+lower time-to-first-token and cost on every first round. This older byte-size observation is not a measured speedup. The October 27
+review and repeated provider comparison are recorded in
+[lean-policy validation](ERI_LEAN_POLICY_VALIDATION.md).
+
+Keep discovery-v1 as the application default while phone acceptance is pending.
+Rollout: set `JARVIS_AGENT_TOOL_POLICY=lean-v1` on API and worker together (dev
+first). Accepted jobs keep their pinned policy; rollback changes new jobs only. Compare
+with `--tool-policy reads-v1|lean-v1` in the paid campaign, then a typed and GPT-Live
+phone check, before making it the default.
+
+Why not drop injected context in favour of search? Every lookup the model must
+request costs a full model round (about 2 s). The small injected DATA (recent
+work, memory, screen) prevents those rounds. It is cheap once the static prefix is
+cached, and it is now budgeted. Better search would help the lookups that remain,
+not replace the injected context.
+
 ## Official guidance
 
 OpenAI recommends reducing unnecessary requests, combining work that genuinely
@@ -195,3 +256,7 @@ Its [function-calling guidance](https://developers.openai.com/api/docs/guides/fu
 also supports clear tool descriptions, moving deterministic work into code and
 keeping the initial tool set manageable. The PR sequence above is an application-
 specific proposal based on our traces, not a claim of guaranteed API savings.
+
+Current caching semantics: [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)
+(checked October 27, 2026). Luna cache writes carry the existing 1.25x input rate;
+comparisons include writes, reads, returned service tier and failed/uncertain calls.

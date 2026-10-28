@@ -44,6 +44,10 @@ def seed():
         with session_scope() as db:
             return execute(db, owner, str(uid()), tool, args)["data"]
 
+    def task_revision(task_id):
+        with session_scope() as db:
+            return db.get(Task, task_id).revision
+
     with patch.object(models, "uuid4", side_effect=uid):
         with session_scope() as db:
             for key, name in [
@@ -208,7 +212,7 @@ def seed():
             )
             changes = {
                 "task_id": rec["task_id"],
-                "expected_revision": 1,
+                "expected_revision": task_revision(rec["task_id"]),
                 "status": t["status"],
                 "work_type": t["work_type"],
                 "priority": 1,
@@ -229,7 +233,7 @@ def seed():
                 "task.update",
                 {
                     "task_id": rec["task_id"],
-                    "expected_revision": 1,
+                    "expected_revision": task_revision(rec["task_id"]),
                     "tags": ["pagination", "even" if i % 2 == 0 else "odd"],
                     "priority": i % 4,
                 },

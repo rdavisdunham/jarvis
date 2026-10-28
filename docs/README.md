@@ -4,6 +4,7 @@ Start with the [active TODO](TODO.md) for what to do next.
 The [web v1 completion PRD](ERIDANI_WEB_V1_PRD.md) defines the finish line;
 the [response-speed plan](ERI_LATENCY_PLAN.md) defines the audited latency work.
 The [round-reduction plan](ERI_ROUND_REDUCTION_PLAN.md) turns the October traces
+- [Lean policy validation](ERI_LEAN_POLICY_VALIDATION.md): reviewed context/cache behavior, matched provider trials and pending device rollout.
 into the implementation sequence. [Round-reduction verification](ERI_ROUND_REDUCTION_VALIDATION.md)
 records the measured results and staged phone acceptance.
 
