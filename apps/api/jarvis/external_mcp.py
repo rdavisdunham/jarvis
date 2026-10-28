@@ -203,9 +203,12 @@ def dispatch(name, arguments):
             )
         if name == "session_rule":
             bot = bot_access.authorize(db, bot.owner_id, "sessions:write", write=True)
-            return sessions.save_rule(db, bot.owner_id, session_arguments(sessions.RuleInput, arguments))
+            return sessions.save_rule(
+                db, bot.owner_id, session_arguments(sessions.RuleInput, arguments),
+                reveal="records:read" in bot.scopes,
+            )
         if name == "session_rules":
-            return sessions.rules(db, bot.owner_id)
+            return sessions.rules(db, bot.owner_id, reveal="records:read" in bot.scopes)
         if name in service.CUSTOM_READS:
             return service.custom_read(db, bot, name, arguments)
         args = copy.deepcopy(arguments)

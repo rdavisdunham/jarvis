@@ -30,6 +30,14 @@
       "feature": "google_writes"
     },
     {
+      "name": "calendar.respond",
+      "feature": "google_writes"
+    },
+    {
+      "name": "calendar.response_revert",
+      "feature": "google_writes"
+    },
+    {
       "name": "calendar.select",
       "feature": "google_sync"
     },
@@ -390,6 +398,10 @@
     {
       "name": "memory_search",
       "feature": "memory_management"
+    },
+    {
+      "name": "navigation_find",
+      "feature": "site_controls"
     },
     {
       "name": "note_extract",

@@ -249,19 +249,22 @@ def session_link(tool: sessions.Tool, session_id: str, body: sessions.LinkInput,
 @external.get("/sessions/rules")
 def session_rules(identity: Bot):
     with session_scope() as db:
-        return sessions.rules(db, bot_access.authorize(db, required="sessions:read").owner_id)
+        bot = bot_access.authorize(db, required="sessions:read")
+        return sessions.rules(db, bot.owner_id, reveal="records:read" in bot.scopes)
 
 
 @external.post("/sessions/rules")
 def session_rule_save(body: sessions.RuleInput, identity: Bot):
     with session_scope() as db:
-        return sessions.save_rule(db, bot_access.authorize(db, required="sessions:write", write=True).owner_id, body)
+        bot = bot_access.authorize(db, required="sessions:write", write=True)
+        return sessions.save_rule(db, bot.owner_id, body, reveal="records:read" in bot.scopes)
 
 
 @external.delete("/sessions/rules/{rule_id}")
 def session_rule_delete(rule_id: UUID, identity: Bot):
     with session_scope() as db:
-        return sessions.delete_rule(db, bot_access.authorize(db, required="sessions:write", write=True).owner_id, rule_id)
+        bot = bot_access.authorize(db, required="sessions:write", write=True)
+        return sessions.delete_rule(db, bot.owner_id, rule_id, reveal="records:read" in bot.scopes)
 
 
 @external.get("/sessions")

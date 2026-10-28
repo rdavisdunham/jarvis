@@ -96,6 +96,8 @@ GROUPS = {
             "calendar_create",
             "calendar_update",
             "calendar_delete",
+            "calendar_respond",
+            "calendar_response_revert",
             "calendar_select",
             "calendar_write_status",
         ],
@@ -157,8 +159,10 @@ GROUPS = {
             "notification_complete",
         ],
     ),
+    "navigation": ("Resolve a named item across kinds and open its exact detail card without changing it.",
+                   ["navigation_find", "ui_show", "ui_calendar", "ui_form", "ui_records"]),
     "interface": (
-        "Navigate/highlight records, search/filter/select, forms and chat controls.",
+        "Find named items across record kinds and open their details; navigate, search/filter/select, forms and chat controls.",
         [
             "ui_show",
             "ui_calendar",
@@ -367,6 +371,8 @@ DESCRIPTIONS = {
     "calendar_create": "Create a Google event on a chosen writable calendar only when requested. "
     "Do not publish a task deadline automatically. Guests/invitations and special types stay in Google. "
     + REMOTE,
+    "calendar_respond": "RSVP only as the connected account guest. Read calendar_event_read for response_token and explicit recurrence scope; accepted=Yes, declined=No, tentative=Maybe. Does not change organizer fields or other guests. notify defaults true. A queued response needs calendar_write_status before claiming success.",
+    "calendar_response_revert": "Reverse one succeeded RSVP job, using its job_id. Refuses later provider edits and unsettled jobs; confirm the new job with calendar_write_status.",
     "calendar_update": "Replace Google event fields using a fresh edit_token from calendar_event_read. "
     "This is a FULL event-field replacement, not a sparse patch: copy all unrequested current fields, "
     "including title, start/end, timezone, location, description, busy and all_day. Omission uses defaults. "
@@ -406,12 +412,12 @@ DESCRIPTIONS = {
     "ui_filter": "Set exact filters while preserving every omitted field and the current search query. Work/calendar/alerts support status, project_id (preferred) or exact project name, space/area/goal, assignee ID/name, exact work_type/tag, inclusive due_from/due_through and work_kind. Empty strings clear filters. Status active excludes completed/cancelled; open means exactly open. Notes supports only project/space/area/goal; organize supports only space_id. Other pages have no record filters. Layout switches preserve these filters.",
     "ui_form": "Open a new or existing typed editor. form: task, reminder, note, goal, project, area, space, actor, event (local appointment/block), google_event, bulk or memory. Use entity_id for an existing record; bulk uses ui_select's task selection; memory requires a visible existing memory. Then ui_editor read reveals its fields/options and auto_save mode. Existing tasks and organization cards save patches immediately; notes and new forms require save. Opening does not save. Dirty editors must be saved or explicitly discarded first. Google recurrence scope/conflict choices use calendar_event_read and normal calendar tools.",
     "ui_select": "Select up to 100 current tasks for the browser bulk editor. Explicitly switches to the Work list, clears query/filters and shows all statuses. No records change. Use task_list selections with task_selection_update for identical domain edits across more than 100 records.",
-    "ui_show": "Open a page or highlight a saved record. Resolve its current ID first. "
+    "ui_show": "Open a page or highlight a saved record. For a named item without a known ID, use navigation_find (navigation group) across record kinds: task/event/note wording is a hint, not a filter. Open its one selected match without correcting terminology; clarify multiple plausible matches. "
     "Use the matching view (all for tasks, notes for notes, organize for goals/projects, reminders for schedules, memory for facts). "
     "For a request to show/open a specific record, pass its entity_id; opening only the page is incomplete. "
     "For Organization records (clients, projects, tasks...) use ui_records(record_id): it follows opens_as, so \"show me ABC\" opens its contents and a task opens its details. "
     "Wait for displayed acknowledgement; queued/refused is not displayed. Never discard an unsaved edit.",
-    "ui_calendar": "Use open_details=true with a record ID/date to open a saved detail card. Use ui_form to edit it. Open month/week/day at a date and optionally highlight its saved event/task. "
+    "ui_calendar": "Use open_details=true with a record ID/date to open a saved detail card. Copy calendar_entry_id from navigation_find or calendar_list when choosing an occurrence; never guess among same-day occurrences. Use ui_form to edit it. Open month/week/day at a date and optionally highlight its saved event/task. "
     "Calendar facts come from calendar_list. Navigation may refuse if an editor has unsaved changes.",
     "ui_chat": "Open/close chat without ending voice. Auto closes the overlay on mobile and opens it on desktop. "
     "For showing mobile records, keep chat from covering the requested content.",

@@ -209,6 +209,8 @@ def tool_access(db, owner, name):
         "calendar_create",
         "calendar_update",
         "calendar_delete",
+        "calendar_respond",
+        "calendar_response_revert",
         "calendar_select",
         "calendar_write_status",
     }:

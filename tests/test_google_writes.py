@@ -19,6 +19,7 @@ class Provider:
     def __init__(self):
         self.events = {}
         self.calls = []
+        self.params = []
         self.role = "owner"
         self.fail = ""
         self.version = 1
@@ -27,6 +28,7 @@ class Provider:
     def request(self, path, params=None, body=None, *, method=None, headers=None):
         method = method or ("POST" if body is not None else "GET")
         self.calls.append((method, path, copy.deepcopy(body), headers))
+        self.params.append(copy.deepcopy(params))
         if path.startswith("users/me/calendarList/"):
             return {"accessRole": self.role}
         if path.endswith("/instances"):
@@ -65,7 +67,15 @@ class Provider:
                     else:
                         result[key] = copy.deepcopy(value)
                 return result
-            saved = merge(self.events[event_id], body)
+            if body.get("attendeesOmitted"):
+                patch = copy.deepcopy(body)
+                statuses = {a["email"]: a["responseStatus"] for a in patch.pop("attendees")}
+                saved = merge(self.events[event_id], patch)
+                for attendee in saved.get("attendees", []):
+                    if attendee.get("email") in statuses:
+                        attendee["responseStatus"] = statuses[attendee["email"]]
+            else:
+                saved = merge(self.events[event_id], body)
             kinds = [{key for key in ("date", "dateTime") if point.get(key)} for point in (saved["start"], saved["end"])]
             if kinds not in [[{"date"}, {"date"}], [{"dateTime"}, {"dateTime"}]]:
                 raise google_calendar.SyncFailure("invalid_event_time", 400)
@@ -498,3 +508,105 @@ def test_reschedule_all_day_event_keeps_exclusive_multiday_end(provider):
     assert status(job)["status"] == "succeeded"
     assert provider.events["existing"]["start"] == {"date": "2026-09-21"}
     assert provider.events["existing"]["end"] == {"date": "2026-09-24"}
+
+
+def invitation(provider):
+    return preview(provider, organizer={"self": False, "email":"host@example.test"}, attendees=[
+        {"self":True,"email":"owner@example.test","responseStatus":"needsAction"},
+        {"email":"other@example.test","responseStatus":"accepted"},
+    ], description="Do not replace", location="Office")
+
+
+def test_rsvp_is_self_only_and_can_be_reverted(provider):
+    detail = invitation(provider)
+    assert not detail["editable"] and detail["can_respond"]
+    job = command("calendar.respond", {"response_token":detail["response_token"],"response":"accepted","notify":False})
+    process_write(job["job_id"])
+    assert status(job)["status"] == "succeeded" and status(job)["can_revert"]
+    patch = next(c for c in provider.calls if c[0]=="PATCH")
+    assert patch[2]["attendeesOmitted"] is True
+    assert patch[2]["attendees"] == [{"email":"owner@example.test","responseStatus":"accepted"}]
+    assert set(patch[2]) == {"attendees","attendeesOmitted","extendedProperties"}
+    remote = provider.events["existing"]
+    assert remote["summary"] == "Planning" and remote["description"] == "Do not replace"
+    assert remote["attendees"][1]["responseStatus"] == "accepted"
+    inverse = command("calendar.response_revert", {"job_id":job["job_id"]})
+    assert command("calendar.response_revert", {"job_id":job["job_id"]})["job_id"] == inverse["job_id"]
+    process_write(inverse["job_id"])
+    assert status(inverse)["status"] == "succeeded"
+    assert provider.events["existing"]["attendees"][0]["responseStatus"] == "needsAction"
+
+
+def test_rsvp_stale_event_and_revert_never_overwrite(provider):
+    detail = invitation(provider)
+    job = command("calendar.respond", {"response_token":detail["response_token"],"response":"tentative"})
+    provider.events["existing"]["etag"] = '"changed"'
+    process_write(job["job_id"])
+    assert status(job)["status"] == "failed"
+    assert not any(c[0]=="PATCH" for c in provider.calls)
+    detail = read_event("davin", CalendarRead(event_id=detail["event_id"]))
+    job = command("calendar.respond", {"response_token":detail["response_token"],"response":"accepted"})
+    process_write(job["job_id"])
+    provider.events["existing"]["etag"] = '"later"'
+    undo = command("calendar.response_revert", {"job_id":job["job_id"]})
+    process_write(undo["job_id"])
+    assert status(undo)["status"] == "failed"
+    assert provider.events["existing"]["attendees"][0]["responseStatus"] == "accepted"
+
+
+def test_rsvp_lost_response_reconciles_without_duplicate_notifications(provider):
+    detail = invitation(provider)
+    job = command("calendar.respond", {"response_token":detail["response_token"],"response":"declined"})
+    provider.fail = "after_update"
+    with pytest.raises(RuntimeError):
+        process_write(job["job_id"])
+    process_write(job["job_id"])
+    assert status(job)["status"] == "succeeded"
+    assert sum(c[0]=="PATCH" for c in provider.calls)==1
+    index = next(i for i,c in enumerate(provider.calls) if c[0]=="PATCH")
+    assert provider.params[index] == {"sendUpdates":"all"}
+
+
+def test_response_token_cannot_edit_event_or_other_guests(provider):
+    detail = invitation(provider)
+    with pytest.raises(DomainError):
+        command("calendar.update", {**fields(title="No"),"edit_token":detail["response_token"]})
+    provider.events["existing"]["attendees"][0]["email"] = "someoneelse@example.test"
+    detail = read_event("davin", CalendarRead(event_id=detail["event_id"]))
+    assert not detail["can_respond"] and detail["response_token"] is None
+
+
+def test_rsvp_activity_has_safe_revert(provider):
+    from jarvis.action_history import changes_for_work, revert
+    from types import SimpleNamespace
+    detail = invitation(provider)
+    work_id = str(uuid4())
+    work = SimpleNamespace(id=work_id,owner_id="davin",account_id="davin",result={})
+    job = command("calendar.respond", {"response_token":detail["response_token"],"response":"accepted"},work_id+":0")
+    process_write(job["job_id"])
+    with session_scope() as db:
+        changes = changes_for_work(db,work)
+        assert len(changes)==1 and changes[0]["can_revert"]
+        result = revert(db,"davin","davin",changes[0]["id"],work_id+":undo")
+        undo_id = result["data"]["job_id"]
+    process_write(undo_id)
+    assert provider.events["existing"]["attendees"][0]["responseStatus"]=="needsAction"
+
+
+@pytest.mark.parametrize("scope", ["occurrence", "series"])
+def test_rsvp_recurrence_changes_only_the_explicit_target(provider, scope):
+    eid = existing(provider, recurrence=["RRULE:FREQ=WEEKLY"],
+                   organizer={"self":False,"email":"host@example.test"},
+                   attendees=[{"self":True,"email":"owner@example.test","responseStatus":"needsAction"}])
+    child = copy.deepcopy(provider.events["existing"])
+    child.update(id="instance",recurringEventId="existing",originalStartTime={"dateTime":"2026-09-18T09:00:00-05:00"},etag='"instance"')
+    child.pop("recurrence")
+    provider.events["instance"] = child
+    provider.originals = [child]
+    detail = read_event("davin",CalendarRead(event_id=eid,scope=scope,occurrence_start="2026-09-18T09:00:00-05:00"))
+    job = command("calendar.respond",{"response_token":detail["response_token"],"response":"tentative"})
+    process_write(job["job_id"])
+    target,untouched = ("instance","existing") if scope=="occurrence" else ("existing","instance")
+    assert status(job)["status"]=="succeeded"
+    assert provider.events[target]["attendees"][0]["responseStatus"]=="tentative"
+    assert provider.events[untouched]["attendees"][0]["responseStatus"]=="needsAction"

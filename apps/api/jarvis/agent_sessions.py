@@ -288,9 +288,9 @@ def rebind(db, owner):
     db.flush()
 
 
-def rules(db, owner):
+def rules(db, owner, *, reveal=True):
     rows = list(db.scalars(select(AgentSessionRule).where(AgentSessionRule.owner_id == owner)))
-    titles = record_titles(db, owner, {r.record_id for r in rows})
+    titles = record_titles(db, owner, {r.record_id for r in rows}) if reveal else {}
     return {
         "items": [
             {"id": r.id, "path_prefix": r.path_prefix, "record_id": r.record_id, "record_title": titles.get(r.record_id)}
@@ -299,7 +299,7 @@ def rules(db, owner):
     }
 
 
-def save_rule(db, owner, body):
+def save_rule(db, owner, body, *, reveal=True):
     prefix = normalize_path(body.path_prefix)
     if len(prefix) < 2:
         raise DomainError("INVALID_ARGUMENT", "Use a folder path, not the root of a drive or filesystem.")
@@ -314,15 +314,15 @@ def save_rule(db, owner, body):
     row.record_id = target.id
     db.flush()
     rebind(db, owner)
-    return rules(db, owner)
+    return rules(db, owner, reveal=reveal)
 
 
-def delete_rule(db, owner, identity):
+def delete_rule(db, owner, identity, *, reveal=True):
     advisory(db, "agent-session-rules:" + owner)
     db.delete(owned(db, AgentSessionRule, str(identity), owner))
     db.flush()
     rebind(db, owner)
-    return rules(db, owner)
+    return rules(db, owner, reveal=reveal)
 
 
 def record_titles(db, owner, ids):

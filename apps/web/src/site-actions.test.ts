@@ -106,3 +106,16 @@ describe("site control contract", () => {
     expect(input[0]).toBe(a);
   });
 });
+
+
+it("accepts exact calendar entries only for a bounded calendar detail command", () => {
+  const action = actionSchema.parse({id: "exact", kind: "calendar", date: "2026-10-27",
+    entity_id: "series", open_details: true, calendar_entry_id: "series:17"});
+  expect(() => validateSiteAction(action, "all", emptyOrganization, "project")).not.toThrow();
+  for (const invalid of [
+    {...action, entity_id: undefined},
+    {...action, open_details: false},
+    {...action, kind: "show" as const},
+  ]) expect(() => validateSiteAction(invalid, "all", emptyOrganization, "project")).toThrow();
+  expect(() => actionSchema.parse({...action, calendar_entry_id: "x".repeat(301)})).toThrow();
+});

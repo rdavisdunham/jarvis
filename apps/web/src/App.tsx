@@ -1,3 +1,4 @@
+import { calendarDetailEntry } from "./calendar-navigation";
 import { chatSendStarted, observeWorkRendered } from "./clientLatency";
 import {Questions,ReviewInvitation} from "./Questions";
 import { SourceColorSettings } from "./SourceDetails";
@@ -53,6 +54,7 @@ import {
   type Organization,
 } from "./productivity";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ArrowUp,
   Bell,
@@ -1192,12 +1194,9 @@ export default function App() {
             "&timezone=" +
             encodeURIComponent(boot?.preferences.timezone ?? "America/Chicago"),
         );
-        const entry = data.items.find((e) => e.entity_id === action.entity_id);
-        if (!entry)
-          throw new Error(
-            "That item is not in this calendar day. Check its date before opening details.",
-          );
-        openCalendarEntry(entry);
+        openCalendarEntry(calendarDetailEntry(
+          data.items, action.entity_id, action.calendar_entry_id,
+        ));
       }
     } else if (kind === "search") {
       setQuery(action.query ?? "");
@@ -1513,7 +1512,11 @@ export default function App() {
       clearTimeout(clear);
     };
   }, [highlight, view]);
+  const chatInput = useRef<HTMLTextAreaElement>(null);
+  const focusChat = () => chatInput.current?.focus({ preventScroll: true });
   async function newChat() {
+    // Keep direct focus inside the gesture so mobile browsers may open the keyboard.
+    if (!voice.current) focusChat();
     voiceGeneration.current += 1;
     const previous = voice.current;
     voice.current = null;
@@ -1535,8 +1538,9 @@ export default function App() {
     setConversationHistoryOff(false);
     setMessages([]);
     setChatText("");
-    setVoiceState(null);
+    flushSync(() => setVoiceState(null));
     setError("");
+    focusChat();
   }
   function chooseProvider(provider: VoiceProvider) {
     if (!boot?.voice_options[provider]) return;
@@ -1982,7 +1986,12 @@ export default function App() {
       }
     }});
   useEffect(() => {
-    if (companion) requestAnimationFrame(() => document.getElementById("eri-conversation")?.focus({preventScroll: true}));
+    if (!companion) return;
+    const frame = requestAnimationFrame(() => {
+      if (!voice.current && chatInput.current && !chatInput.current.disabled) focusChat();
+      else document.getElementById("eri-conversation")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [companion]);
   if (loading)
     return (
@@ -3016,6 +3025,7 @@ export default function App() {
             )}
             <form className="chat-compose" onSubmit={sendChat}>
               <textarea
+                ref={chatInput}
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder={
@@ -3107,7 +3117,11 @@ export default function App() {
       </div>
       <button type="button" className={"chat-launcher" + (companion ? " is-open" : "") + (voiceState && !voiceState.closed ? " is-listening" : "")}
         aria-label={companion ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={companion}
-        onClick={() => setCompanion(!companion)}>
+        onClick={() => {
+          const opening = !companion;
+          flushSync(() => setCompanion(opening));
+          if (opening && !voice.current) focusChat();
+        }}>
         <span className="chat-launcher-icon" aria-hidden="true">{companion ? <X size={23}/> : <MessageCircle size={24}/>}</span>
         {!companion && <span className="chat-launcher-label">Eri</span>}
         {voiceState && !voiceState.closed && <span className="chat-live-dot" aria-label="Voice active"/>}
@@ -3370,8 +3384,8 @@ export default function App() {
             setView("settings");
             setSettingsSection("integrations");
           }}
-          onSaved={() => {
-            setGoogleEvent(null);
+          onSaved={(keepOpen) => {
+            if (!keepOpen) setGoogleEvent(null);
             setToast("Google Calendar updated");
             void load();
           }}
@@ -3502,6 +3516,6 @@ function voiceLabel(state: string) {
 
 function MobileChatFocus() {
   useDialogFocus();
-  useEffect(() => { document.querySelector<HTMLButtonElement>(".companion .return-to-work")?.focus({preventScroll:true}); }, []);
+  useEffect(() => { document.querySelector<HTMLElement>(".companion textarea:not(:disabled), .companion .return-to-work")?.focus({preventScroll:true}); }, []);
   return null;
 }

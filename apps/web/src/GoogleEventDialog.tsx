@@ -29,6 +29,9 @@ type EventFields = {
 };
 type Detail = EventFields & {
   editable: boolean;
+  can_respond?: boolean;
+  response_token?: string | null;
+  my_response?: string | null;
   edit_token: string | null;
   read_only_reason: string;
   calendar_title: string;
@@ -44,7 +47,7 @@ type Detail = EventFields & {
   attendees_omitted?: boolean;
   attachments?: { title: string; url: string }[];
 };
-type Write = { job_id: string; status: string; result?: { message?: string } };
+type Write = { job_id: string; status: string; operation?: string; can_revert?: boolean; result?: { message?: string; response?: string } };
 const terminal = (status: string) =>
   ["succeeded", "failed", "cancelled", "unconfirmed"].includes(status);
 export function GoogleEventDialog({
@@ -59,7 +62,7 @@ export function GoogleEventDialog({
   timezone: string;
   onClose: () => void;
   onSettings: () => void;
-  onSaved: () => void;
+  onSaved: (keepOpen?: boolean) => void;
   mutate: (tool: string, args: unknown, message: string) => Promise<unknown>;
 }) {
   const annotation=useInlineGuard();
@@ -86,6 +89,7 @@ export function GoogleEventDialog({
   const [error, setError] = useState("");
   const [job, setJob] = useState<Write | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [notify, setNotify] = useState(true);
   const [form, setForm] = useState<EventFields>({
     title: "",
     start: event.date + "T09:00",
@@ -178,7 +182,17 @@ export function GoogleEventDialog({
       if (!alive.current) return;
       setJob(status);
       if (terminal(status.status)) {
-        if (status.status === "succeeded") onSaved();
+        if (status.status === "succeeded") {
+          onSaved(status.operation === "respond");
+          if (status.operation === "respond") {
+            setDetail((d) => d ? { ...d, response_token: null, my_response: status.result?.response } : d);
+            const next = await post<Detail>("/calendar/event-detail", {
+              event_id: event.entity_id, scope,
+              ...(event.occurrence_start ? { occurrence_start: event.occurrence_start } : {}),
+            });
+            if (alive.current) setDetail(next);
+          }
+        }
         else
           setError(
             status.result?.message ??
@@ -230,6 +244,25 @@ export function GoogleEventDialog({
         status: accepted.status,
         note: "Google has accepted a job. Use calendar_write_status to confirm the remote result.",
       };
+    } catch (e) {
+      if (alive.current) setError((e as Error).message);
+    } finally {
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function respond(response?: string) {
+    if (busy || (job && !terminal(job.status))) return;
+    setBusy(true); setError("");
+    try {
+      const accepted = await mutate(
+        response ? "calendar.respond" : "calendar.response_revert",
+        response ? { response_token: detail?.response_token, response, notify } : { job_id: job?.job_id },
+        response ? "Response queued" : "Response reversal queued",
+      ) as Write | undefined;
+      if (!accepted) throw new Error("The request did not finish. Check Recent calendar changes before retrying.");
+      setJob(accepted);
+      window.dispatchEvent(new Event("eri-calendar-write"));
+      await checkJob(accepted.job_id);
     } catch (e) {
       if (alive.current) setError((e as Error).message);
     } finally {
@@ -546,6 +579,25 @@ export function GoogleEventDialog({
             </button>
           )}
         </p>
+      )}
+      {!fresh && !editing && detail?.my_response && (
+        <section className="cal-notice" aria-label="Your attendance">
+          <p>Your response: {{ accepted: "Yes", declined: "No", tentative: "Maybe", needsAction: "Not answered" }[detail.my_response] ?? detail.my_response}</p>
+          {detail.can_respond && <div className="chip-row" role="group" aria-label="RSVP">
+            {([["accepted", "Yes"], ["tentative", "Maybe"], ["declined", "No"]] as const).map(([response, label]) => (
+              <button type="button" className="btn btn-secondary" key={response}
+                aria-pressed={detail.my_response === response}
+                disabled={!!locked || !detail.response_token || detail.my_response === response}
+                onClick={() => void respond(response)}>{label}</button>
+            ))}
+          </div>}
+          {detail.can_respond && <label><input type="checkbox" checked={notify} disabled={!!locked}
+            onChange={(e) => setNotify(e.target.checked)}/> Notify participants through Google</label>}
+          {job?.can_revert && <button type="button" className="text-button" disabled={!!locked}
+            onClick={() => void respond()}>Revert response</button>}
+          {error && <button type="button" className="text-button" disabled={busy || !!pending}
+            onClick={() => setRefresh((n) => n + 1)}>Reload event</button>}
+        </section>
       )}
       {editing && canEdit ? (
         <form

@@ -106,3 +106,15 @@ def test_long_screen_lists_are_sampled_instead_of_rejected():
     context = UIContext(view="calendar", visible_ids=ids, selected_task_ids=ids * 2)
     assert context.visible_ids == ids[:60]
     assert len(context.selected_task_ids) == 100
+
+
+async def test_exact_calendar_entry_requires_detail_target_and_is_bounded():
+    from jarvis.domain import DomainError
+
+    for arguments in (
+        {"date": "2026-10-27", "calendar_entry_id": "entry"},
+        {"date": "2026-10-27", "entity_id": "record", "calendar_entry_id": "entry"},
+        {"date": "2026-10-27", "entity_id": "record", "open_details": True, "calendar_entry_id": "x" * 301},
+    ):
+        with pytest.raises(DomainError):
+            await call_tool("owner", "turn", 0, "ui_calendar", arguments)

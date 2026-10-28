@@ -91,7 +91,8 @@ unchanged; this is recorded rather than claiming an identical final fingerprint.
   at request acceptance on API and worker. Accepted work retains its policy.
 - Local correctness and the targeted provider comparison support reviewing and
   merging the opt-in implementation; they do not establish every workflow's model
-  parity. Required CI still needs the final commit.
+  parity. Required backend, frontend/browser and security CI passed for 3ce5c3b;
+  PR #40 merged as 2e3655d on October 27 (America/Chicago).
 - Real phone typed/GPT-Live checks remain deferred: capture, sparse and full-body
   edits, agenda, bulk edits, related corrections, and clarification continuation.
   Actual source writes, device rendering and audible completion remain unmeasured.

@@ -24,7 +24,7 @@ const fields: Record<string, string[]> = {
     "due_through",
   ],
   form: ["form", "entity_id"],
-  calendar: ["date", "calendar_view", "entity_id", "open_details"],
+  calendar: ["date", "calendar_view", "entity_id", "open_details", "calendar_entry_id"],
   select: ["task_ids"],
   workspace: [
     "view",
@@ -51,6 +51,8 @@ export function validateSiteAction(
   const kind = action.kind ?? "show";
   if (kind === "calendar" && action.open_details && !action.entity_id)
     throw new Error("Choose a calendar item to open its details.");
+  if (kind === "calendar" && action.calendar_entry_id && (!action.entity_id || !action.open_details))
+    throw new Error("An exact calendar entry needs its saved item and open_details=true.");
   for (const key of Object.keys(action))
     if (!["id", "kind", ...fields[kind]].includes(key))
       throw new Error(key + " is not supported by " + kind + ".");

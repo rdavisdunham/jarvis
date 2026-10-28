@@ -633,7 +633,7 @@ def mutate(db, owner, tool, args, command_id):
         row.revision += 1
         emit(db, owner, "google.changed", args.event_id)
         return {"local_notes":row.local_notes,"annotation_revision":row.revision}
-    if tool in {"calendar.create", "calendar.update", "calendar.delete"}:
+    if tool in {"calendar.create", "calendar.update", "calendar.delete", "calendar.respond", "calendar.response_revert"}:
         from .google_writes import queue_write
 
         return queue_write(db, owner, tool, args)
@@ -1071,10 +1071,11 @@ COMMANDS.update(NOTE_COMMANDS)
 from .google_schema import CalendarSelection
 
 COMMANDS["calendar.select"] = CalendarSelection
-from .google_schema import CalendarCreate, CalendarDelete, CalendarUpdate
+from .google_schema import CalendarCreate, CalendarDelete, CalendarUpdate, CalendarRespond, CalendarResponseRevert
 
 COMMANDS.update(
-    {"calendar.create": CalendarCreate, "calendar.update": CalendarUpdate, "calendar.delete": CalendarDelete}
+    {"calendar.create": CalendarCreate, "calendar.update": CalendarUpdate, "calendar.delete": CalendarDelete,
+     "calendar.respond": CalendarRespond, "calendar.response_revert": CalendarResponseRevert}
 )
 
 from .planning_schema import PLANNING_COMMANDS
