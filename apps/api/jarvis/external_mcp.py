@@ -119,6 +119,14 @@ def definitions(scopes):
             parameters,
             False,
         )
+        add(
+            "session_rule",
+            "Add or replace a folder rule: sessions whose folder is path_prefix or inside it are filed under record_id (a client, project or other record) unless a branch issue key, a mentioned issue or a manual choice says otherwise. The longest matching rule wins and existing sessions are refiled at once. Returns every rule.",
+            sessions.RuleInput.model_json_schema(),
+            False,
+        )
+    if "sessions:read" in scopes:
+        add("session_rules", "List the folder rules that file agent sessions under records.", schema({}, []))
     add(
         "request_get",
         "Check the status and saved action receipts of a request submitted by this bot key.",
@@ -193,6 +201,11 @@ def dispatch(name, arguments):
                 db, bot.owner_id, tool, session_id, session_arguments(sessions.LinkInput, args),
                 source="explicit", reveal="records:read" in bot.scopes,
             )
+        if name == "session_rule":
+            bot = bot_access.authorize(db, bot.owner_id, "sessions:write", write=True)
+            return sessions.save_rule(db, bot.owner_id, session_arguments(sessions.RuleInput, arguments))
+        if name == "session_rules":
+            return sessions.rules(db, bot.owner_id)
         if name in service.CUSTOM_READS:
             return service.custom_read(db, bot, name, arguments)
         args = copy.deepcopy(arguments)

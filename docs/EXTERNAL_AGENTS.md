@@ -143,16 +143,18 @@ Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per
 - `sessions:write`:
   - `PUT /sessions/{tool}/{session_id}`: an idempotent full-state report.
   - `POST /sessions/{tool}/{session_id}/link`: file a session under exactly one of `identifier` (a synced Linear issue key), `record_id`, or `clear`.
+  - `POST /sessions/rules` (`path_prefix`, `record_id`) and `DELETE /sessions/rules/{rule_id}`: add, replace or remove a folder rule. Existing sessions are refiled at once.
 - `sessions:read`:
   - `GET /sessions?query=&unfiled=&live=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning. `live=true` keeps only sessions running in a persistent terminal.
   - A `record_id` covers everything under that record, so a client includes its projects and issues.
-- MCP tools: `session_search` and `session_link`. Eri has the same `session_search` tool in the `sessions` group.
+  - `GET /sessions/rules`: the folder rules.
+- MCP tools: `session_search`, `session_link`, `session_rules` and `session_rule`. Eri has the same `session_search` tool in the `sessions` group.
 - `tool` values: `claude_code`, `codex_cli`, `codex_desktop`, `claude_desktop`, `cowork`.
 
 Automatic filing runs in this order, strongest first:
 1. a known issue key in the branch
 2. exactly one known issue key in the title or prompts
-3. the longest matching folder rule (`/api/v1/sessions/rules`, managed in the Sessions drawer)
+3. the longest matching folder rule (managed in the Sessions drawer or with `session_rule`)
 
 Unknown keys such as `gpt-5` never file a session. Explicit (agent) and manual (browser) filing is never replaced.
 

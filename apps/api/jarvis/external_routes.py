@@ -246,6 +246,24 @@ def session_link(tool: sessions.Tool, session_id: str, body: sessions.LinkInput,
         )
 
 
+@external.get("/sessions/rules")
+def session_rules(identity: Bot):
+    with session_scope() as db:
+        return sessions.rules(db, bot_access.authorize(db, required="sessions:read").owner_id)
+
+
+@external.post("/sessions/rules")
+def session_rule_save(body: sessions.RuleInput, identity: Bot):
+    with session_scope() as db:
+        return sessions.save_rule(db, bot_access.authorize(db, required="sessions:write", write=True).owner_id, body)
+
+
+@external.delete("/sessions/rules/{rule_id}")
+def session_rule_delete(rule_id: UUID, identity: Bot):
+    with session_scope() as db:
+        return sessions.delete_rule(db, bot_access.authorize(db, required="sessions:write", write=True).owner_id, rule_id)
+
+
 @external.get("/sessions")
 async def session_search(identity: Bot, query: Annotated[sessions.Listing, Query()]):
     with session_scope() as db:

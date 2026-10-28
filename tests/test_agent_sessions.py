@@ -125,6 +125,28 @@ def test_folder_rules_file_sessions_and_manual_filing_survives(client):
     assert [i["session_id"] for i in unfiled["items"]] == ["rule"]
 
 
+def test_bot_keys_manage_folder_rules(client):
+    acme = create("client", "Acme")
+    credential, headers = key(client, ["sessions:write", "sessions:read"])
+    _, reader = key(client, ["sessions:read"])
+    report(headers, "rule", cwd="/home/davin/acme-app/web")
+    external = TestClient(app)
+    body = {"path_prefix": "/home/davin/acme-app", "record_id": acme["id"]}
+    assert external.post("/api/v1/external/sessions/rules", headers=reader, json=body).status_code == 403
+    saved = external.post("/api/v1/external/sessions/rules", headers=headers, json=body)
+    assert saved.status_code == 200, saved.text
+    assert external.get("/api/v1/external/sessions/rules", headers=reader).json() == saved.json()
+    filed = external.get("/api/v1/external/sessions", headers=headers).json()["items"][0]["filed"]
+    assert filed["source"] == "path_rule" and filed["record_id"] == acme["id"]
+    rule_id = saved.json()["items"][0]["id"]
+    assert external.delete(f"/api/v1/external/sessions/rules/{rule_id}", headers=headers).json() == {"items": []}
+    names = [d["name"] for d in definitions(credential["scopes"])]
+    assert {"session_rule", "session_rules"} <= set(names)
+    with bind(credential["id"]):
+        assert dispatch("session_rule", {"path_prefix": "/home/davin/acme-app/", "record_id": acme["id"]})["items"][0]["path_prefix"] == "/home/davin/acme-app"
+        assert len(dispatch("session_rules", {})["items"]) == 1
+
+
 def test_search_ranks_issue_keys_folders_and_text(client):
     issue("ENG-7", "Billing export")
     _, headers = key(client, ["sessions:write", "sessions:read"])

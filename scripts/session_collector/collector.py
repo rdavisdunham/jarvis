@@ -37,6 +37,8 @@ API_URL = os.environ.get("ERIDANI_API_URL", "https://app.eridani.app/api/v1/exte
 CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "eridani-collector"
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "eridani-collector/state.json"
 SETTLED = timedelta(minutes=10)
+# Bump when the way sessions are read changes, so every source is re-read once; only changed reports are resent.
+READER = 2
 LIMITS = {"title": 500, "first_prompt": 4000, "last_prompt": 4000, "excerpt": 8000, "cwd": 1000, "repo": 300, "branch": 300}
 SECRETS = re.compile(
     r"(sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}"
@@ -77,6 +79,12 @@ def windows_path(value):
     elif path.startswith("//?/"):
         path = path[4:]
     return path
+
+
+def wsl_folder(path):
+    """Codex Desktop's WSL threads can record /home/davin as C:\\home\\davin; return the Linux folder."""
+    m = re.match(r"^[A-Za-z]:(/home(?:/.*)?)$", path)
+    return m.group(1) if m and os.path.isdir(m.group(1)) else None
 
 
 def environment_of(cwd, default):
@@ -327,6 +335,8 @@ def codex_session(home, tool, row):
         return None
     cwd = windows_path(row.get("cwd"))
     environment = environment_of(cwd, "wsl" if tool == "codex_cli" else "windows")
+    if linux := wsl_folder(cwd):
+        cwd, environment = linux, "wsl"
     title = row.get("name") or row.get("title") or ""
     resume = (
         {"cmd": f"cd {shlex.quote(cwd)} && codex resume {row['id']}"}
@@ -497,7 +507,12 @@ def send(api, key, tool, session_id, body):
         url,
         data=json.dumps(body).encode(),
         method="PUT",
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        # Cloudflare rejects urllib's default User-Agent with error 1010 before the request reaches Eridani.
+        headers={
+            "Authorization": "Bearer " + key,
+            "Content-Type": "application/json",
+            "User-Agent": "eridani-session-collector/1",
+        },
     )
     for attempt in range(3):
         try:
@@ -547,7 +562,7 @@ def main():
             continue
         # A remotea terminal opening or closing changes the report even when the transcript hasn't.
         sid = source_id(source)
-        version = [version, digest([terminals["installed"], terminals["live"].get(sid), terminals["groups"].get(sid)])[:16]]
+        version = [version, READER, digest([terminals["installed"], terminals["live"].get(sid), terminals["groups"].get(sid)])[:16]]
         # Unchanged since the last send, and nothing left to report: skip without parsing.
         previous = known.get(source, {})
         if not args.dry_run and previous.get("version") == version and (previous.get("settled") or not settled(previous.get("last_active"))):

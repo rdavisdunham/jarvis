@@ -37,7 +37,7 @@ When [remotea](https://github.com/rdavisdunham/remotea) is installed, the collec
 
 1. In Eridani, create a bot key under **Settings → Integrations → Connected agents** with `sessions:write`.
    Add `sessions:read` too if the same key will also be used by agents to search.
-2. Save it with `install -m 600 /dev/stdin ~/.config/eridani-collector/token` (paste the key, then Ctrl-D).
+2. Save it with `install -D -m 600 /dev/stdin ~/.config/eridani-collector/token` (paste the key, then Ctrl-D).
 3. Preview what would be sent: `python3 -I scripts/session_collector/collector.py --dry-run`.
 4. Install the timer: `scripts/session_collector/install.sh`. The first run backfills every session, at 90 per minute.
 
