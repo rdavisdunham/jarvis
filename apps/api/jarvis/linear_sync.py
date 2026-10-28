@@ -235,7 +235,7 @@ def apply_remote(db, conn, link, remote, force=False):
         if task.status in {"completed", "cancelled"}:
             from .task_alerts import finish_task
 
-            finish_task(db, task, task.status, sync_external=False)
+            finish_task(db, task, task.status, sync_external=False, gated=True)
         else:
             task.revision += 1
             task.updated_at = now()

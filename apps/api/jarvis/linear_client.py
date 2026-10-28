@@ -32,7 +32,7 @@ UPDATE_QUERY = (
 # so a write whose response was lost is reconciled by finding the run marker in the issue's comments.
 COMMENT_QUERY = "mutation EriComment($input:CommentCreateInput!){commentCreate(input:$input){success comment{id url body}}}"
 COMMENTS_QUERY = (
-    "query EriComments($id:String!,$after:String){issue(id:$id){comments(first:100,after:$after){nodes{id url body}"
+    "query EriComments($id:String!,$after:String){issue(id:$id){comments(first:100,after:$after){nodes{id url body user{id}}"
     " pageInfo{hasNextPage endCursor}}}}"
 )
 

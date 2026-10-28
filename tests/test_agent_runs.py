@@ -583,7 +583,8 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
         "generation": 1})
     with session_scope() as db:
         reply = coordinator.context(db, OWNER, host.id, frame)
-    assert "<<<ERIDANI_TASK" in reply["text"] and "s1: Write tests" in reply["text"] and reply["run_token"] in reply["text"]
+    assert "<<<ERIDANI_TASK_" in reply["text"] and "s1: Write tests" in reply["text"] and reply["run_token"] in reply["text"]
+    assert reply["scope"] == "run"
     with session_scope() as db:
         assert coordinator.run_for_token(db, OWNER, reply["run_token"]).id == result["id"]
         assert coordinator.run_for_token(db, "someone-else", reply["run_token"]) is None
@@ -591,5 +592,6 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
     unlinked = agent_link.ContextRequest.model_validate({"req_id": "r2", "provider": "claude", "provider_session_id": "s9",
                                                           "cwd": "/tmp"})
     with session_scope() as db:
-        text = coordinator.context(db, OWNER, host.id, unlinked)["text"]
-    assert "session_link" in text and "s9" in text
+        reply = coordinator.context(db, OWNER, host.id, unlinked)
+    assert "session_link" in reply["text"] and "s9" in reply["text"]
+    assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000

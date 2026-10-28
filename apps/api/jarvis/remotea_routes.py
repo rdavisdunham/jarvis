@@ -62,6 +62,7 @@ def state(db, user):
     return {
         "enabled": agent_link.enabled(db, user.owner_id),
         "auto_complete": coordinator.auto_complete(db, user.owner_id),
+        "quiet_bypass": coordinator.quiet_bypass(db, user.owner_id),
         "key": bot_access.public(key) if key else None,
         "hosts": [agent_link.public_host(h) for h in hosts],
         "link_url": link_url(),
@@ -83,6 +84,7 @@ def set_enabled(db, owner, value, key="remotea_enabled"):
 @router.get("/status")
 def status(user: User):
     with session_scope() as db:
+        owner_only(db, user)
         return state(db, user)
 
 
@@ -90,6 +92,7 @@ def status(user: User):
 def enable(body: EnableInput, user: User):
     """Turn remotea on and mint the link key. The token appears in this response only."""
     with session_scope() as db:
+        owner_only(db, user)
         key = active_key(db, user)
         minted = None
         if key is None or body.rotate:
@@ -97,42 +100,54 @@ def enable(body: EnableInput, user: User):
             if key is not None:
                 advisory(db, "bot:" + key.id)
                 key.revoked_at = now()
-        else:
-            from .access import role
-
-            if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-                raise DomainError("READ_ONLY", "Viewers cannot turn on remotea.", 403)
         set_enabled(db, user.owner_id, True)
         return {**state(db, user), "token": minted["token"] if minted else None}
 
 
 @router.post("/disable")
 def disable(user: User):
-    """Stop admitting the link; connected hosts are closed on their next re-authorization."""
-    from .access import role
-
+    """Stop admitting the link and revoke its key; connected hosts are closed on their next re-authorization."""
     with session_scope() as db:
-        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-            raise DomainError("READ_ONLY", "Viewers cannot turn off remotea.", 403)
+        owner_only(db, user)
         set_enabled(db, user.owner_id, False)
+        # The link key dies with the switch (stage F, L1): turning remotea on again mints a new one.
+        key = active_key(db, user)
+        if key is not None:
+            advisory(db, "bot:" + key.id)
+            key.revoked_at = now()
         return state(db, user)
 
 
 @router.post("/auto-complete")
 def set_auto_complete(body: AutoCompleteInput, user: User):
     """Rollout flag (decision 6, default off): a met verdict completes the task without a tap."""
-    from .access import role
-
     with session_scope() as db:
         gated(db, user)
-        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-            raise DomainError("READ_ONLY", "Viewers cannot change this.", 403)
         set_enabled(db, user.owner_id, body.enabled, "remotea_auto_complete")
         return state(db, user)
 
 
+@router.post("/quiet-bypass")
+def set_quiet_bypass(body: AutoCompleteInput, user: User):
+    """Stage F, L8 (default off): an agent's question is urgent, so it pushes through quiet hours."""
+    with session_scope() as db:
+        gated(db, user)
+        set_enabled(db, user.owner_id, body.enabled, "agent_quiet_bypass")
+        return state(db, user)
+
+
 def gated(db, user):
+    owner_only(db, user)
     agent_link.gate(db, user.owner_id)
+
+
+def owner_only(db, user):
+    """remotea is personal-workspace only (stage F, D1): PERSONAL_PATHS refuses shared namespaces before
+    this runs; the role check is the backstop so no member role ever drives an agent."""
+    from .access import role
+
+    if bot_access.shared(db, user.owner_id) or role(db, user.owner_id, user.account_id, lock=True) != "owner":
+        raise DomainError("PERSONAL_WORKSPACE", "remotea works only in your personal workspace.", 403)
 
 
 def last_turns(db, ids):
@@ -208,17 +223,14 @@ def actor_for(user):
 
 
 def writable(db, user):
-    from .access import role
-
     gated(db, user)
-    if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-        raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
 
 
 @router.get("/runs")
 def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100)):
     # Inspection and stop stay available after remotea is turned off, for runs that have not settled.
     with session_scope() as db:
+        owner_only(db, user)
         return {"items": control.list_runs(db, user.owner_id, task_id=str(task_id) if task_id else None,
                                            active=active, limit=limit)}
 
@@ -231,10 +243,13 @@ def start(body: control.StartInput, user: User):
 
 
 @router.get("/runs/{identity}")
-def run_detail(identity: UUID, user: User):
+def run_detail(identity: UUID, user: User, limit: int = Query(control.DETAIL_PAGE, ge=1, le=200),
+               offset: int = Query(0, ge=0, le=100_000)):
     with session_scope() as db:
+        # Like the list, detail stays readable after remotea is turned off; only the owner reads it.
+        owner_only(db, user)
         run = coordinator.load(db, user.owner_id, str(identity), lock=False)
-        return control.public_run(db, run, detail=True)
+        return control.public_run(db, run, detail=True, limit=limit, offset=offset)
 
 
 @router.post("/runs/{identity}/message")
@@ -248,10 +263,7 @@ def message(identity: UUID, body: control.MessageInput, user: User):
 def stop(identity: UUID, body: control.StopInput, user: User):
     # Stop stays available while remotea is being turned off: recovery controls outlive admission.
     with session_scope() as db:
-        from .access import role
-
-        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-            raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
+        owner_only(db, user)
         return control.stop_run(db, user.owner_id, str(identity), body, actor=actor_for(user))
 
 
@@ -313,3 +325,28 @@ def unmerged(user: User):
     with session_scope() as db:
         gated(db, user)
         return control.unmerged(db, user.owner_id)
+
+
+# ---------------------------------------------------------------- Eri's pending control (stage F, M5)
+
+
+@router.get("/pending")
+def pending(user: User):
+    """control_start / control_message Eri proposed, waiting for the owner's tap."""
+    with session_scope() as db:
+        gated(db, user)
+        return {"items": control.pending_list(db, user.owner_id)}
+
+
+@router.post("/pending/{identity}/confirm")
+def confirm_pending(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.decide(db, user.owner_id, str(identity), confirm=True, via="app", actor=actor_for(user))
+
+
+@router.post("/pending/{identity}/decline")
+def decline_pending(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.decide(db, user.owner_id, str(identity), confirm=False, via="app", actor=actor_for(user))

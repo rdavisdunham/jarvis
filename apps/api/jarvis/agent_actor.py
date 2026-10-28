@@ -30,11 +30,14 @@ class Actor:
     verified: bool = True
     # Why a human completion happened (approve) so the run settles as completed, not stopped.
     reason: str = ""
+    # run_session with plan_write: submit_plan writing its own run's plan (stage F, M1). It may edit gate
+    # fields under the plan floor, never complete the task.
+    capability: str = ""
 
     def record(self):
         return {k: v for k, v in (("kind", self.kind), ("credential_id", self.credential_id), ("run_id", self.run_id),
                                   ("generation", self.generation), ("verified", self.verified),
-                                  ("reason", self.reason)) if v not in (None, "")}
+                                  ("reason", self.reason), ("capability", self.capability)) if v not in (None, "")}
 
 
 bound = ContextVar("eridani_actor", default=None)
@@ -87,7 +90,9 @@ def gate(db, owner, task, changes):
     if run is None:
         return
     actor = current()
-    if actor.kind not in AUTHORITIES:
+    planning = (actor.kind == "run_session" and actor.capability == "plan_write" and actor.verified
+                and actor.run_id == run.id and not finishing)
+    if actor.kind not in AUTHORITIES and not planning:
         field = "complete this task" if finishing else "change " + ", ".join(touches)
         raise DomainError("RUN_OWNS_COMPLETION", f"An agent run owns this task; only you can {field} while it runs.", 409,
                           data={"run_id": run.id, "state": run.state})

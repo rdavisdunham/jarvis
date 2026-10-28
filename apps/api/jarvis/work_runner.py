@@ -414,9 +414,9 @@ async def perform(request_id):
                     state = await initial_state(row, agent, reservation, tool_policy=tool_policy)
             state["reservation"] = reservation
             checkpoint(row.id, state)
-            from .tool_policy import remotea_tools
+            from .tool_policy import live_work, remotea_tools
 
-            definitions = remotea_tools(registry(), row.owner_id)
+            definitions = remotea_tools(registry(), row.owner_id, live=live_work(row))
             if row.credential_id:
                 from .external_service import backend_registry
                 definitions = backend_registry(row)

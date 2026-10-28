@@ -88,11 +88,14 @@ class Criterion(Args):
     text: str = Field(min_length=1, max_length=1000)
     kind: Literal["text", "verify"] = "text"
     verify_id: str | None = Field(default=None, max_length=100)
+    # "agent" when submit_plan wrote it; a human-authored criterion has no marker (stage F, M1).
+    by: Literal["agent"] | None = None
 
 
 class VerifyConfig(Args):
     target_id: str = Field(min_length=1, max_length=100)
     verify_id: str = Field(min_length=1, max_length=100)
+    by: Literal["agent"] | None = None
 
 
 class TaskChanges(Args):
@@ -774,7 +777,7 @@ def mutate(db, owner, tool, args, command_id):
         if task.status in {"completed", "cancelled"} or task.archived:
             from .task_alerts import finish_task
 
-            finish_task(db, task, task.status, sync_external=False)
+            finish_task(db, task, task.status, sync_external=False, gated=True)
         else:
             task.revision += 1
             task.updated_at = now()
@@ -874,9 +877,12 @@ def mutate(db, owner, tool, args, command_id):
                 )
             row.status, row.next_run_at, row.completed_at = "completed", None, now()
             if row.task_id:
+                from .agent_actor import gate as run_gate
                 from .task_alerts import finish_task
 
-                finish_task(db, owned(db, Task, row.task_id, owner, lock=True))
+                task = owned(db, Task, row.task_id, owner, lock=True)
+                run_gate(db, owner, task, {"status": "completed"})  # The run completion gate (stage F, M3).
+                finish_task(db, task, gated=True)
             for notice in db.scalars(
                 select(Notification)
                 .join(Occurrence, Notification.occurrence_id == Occurrence.id)
@@ -969,9 +975,12 @@ def mutate(db, owner, tool, args, command_id):
             if item.category not in {"reminder","deadline"} or not item.task_id:
                 raise DomainError("INVALID_ARGUMENT","Open this notification to respond; it does not complete a task.")
             if item.task_id:
+                from .agent_actor import gate as run_gate
                 from .task_alerts import finish_task
 
-                finish_task(db, owned(db, Task, item.task_id, owner, lock=True))
+                task = owned(db, Task, item.task_id, owner, lock=True)
+                run_gate(db, owner, task, {"status": "completed"})  # The run completion gate (stage F, M3).
+                finish_task(db, task, gated=True)
             item.completed_at = item.completed_at or now()
             if item.occurrence_id:
                 occurrence = db.get(Occurrence, item.occurrence_id)

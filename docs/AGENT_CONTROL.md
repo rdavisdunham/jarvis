@@ -608,3 +608,109 @@ The procedure is the host's (`remotea eridani collector authoritative`, the `sta
 interlock, `remotea hooks --remove-legacy-collector`); Davin runs it. The exact steps and the rollback are
 in [`scripts/session_collector/README.md` § Retirement](../scripts/session_collector/README.md#retirement),
 which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover.
+
+## Security model (stage F, migration 0031)
+
+Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
+per finding, each the audit's reproduction turned around.
+
+### Personal workspace only
+
+remotea is a single-person feature until the multi-user design on the roadmap
+([TODO](TODO.md#explicitly-deferred-not-forgotten)) lands. `/api/v1/remotea` is a personal path
+(`access.PERSONAL_PATHS`), and every remotea route, the link and the `control.*` tools refuse with
+`PERSONAL_WORKSPACE` when the namespace is a shared workspace or the caller is not its owner
+(`remotea_routes.owner_only`, `agent_control.owner_control`). `bot_access` refuses to mint
+`agents:control` or `agents:session` keys in a shared namespace, and refuses such a key at use if one
+already exists there. Turning remotea off revokes the link key; a live host still gets `bye{disabled}`.
+
+### Hosts and frames
+
+- Session-keyed frames (`turn`, `status`, `exit`, `question`, `session.report`) are host-bound: a frame
+  naming a session owned by another host, or by another host's run, is refused with `RUN_NOT_BOUND`
+  (`agent_link.host_session`) and never moves that run.
+- A `server_id` stays bound to its first credential unless the new key is a rotation of it (same owner,
+  account and name); otherwise `bye{host_bound}`. One key registers at most 3 hosts (`bye{host_limit}`).
+- A host that advertises the `digest` cap must stamp every frame carrying an `op_id`.
+- Snapshot parts are numbered `1..n` (as remotea sends them; the brief said `i < n`, which would refuse
+  every real final part), bounded in bytes, and partial snapshots and chunks expire after 60 s.
+- `context.request` answers `scope: "run"` (plan and run token) only for a run bound to this host;
+  otherwise `scope: "candidates"` with only the fenced candidate list (≤ 4000 chars).
+
+### Actors, the plan floor and the completion gate
+
+- Actor kinds (`agent_actor.KINDS`): `human` (the app, or the owner's confirmed yes), `eri_work` (the model
+  in chat or voice), `run_session` (an agent inside a run, proved by its run token), `run_judge`,
+  `source_sync` (Linear) and `bot`. Only `human`, `source_sync` and `run_judge` may complete a run-owned
+  task or edit its gate fields. An actor may carry a `capability` (`plan_write` for `submit_plan`: gate
+  fields under the plan floor, never completion), recorded with every write.
+- Plan floor (`agent_plan.plan_floor`): an agent's plan may only add. Human criteria and a human verify
+  are kept; what the agent adds is marked `by: "agent"`; the completion policy never drops. Clients cannot
+  send `by` themselves (`Literal["agent"]`).
+- Every path that completes a task (`task.update`, `task.complete`, `schedule.complete`,
+  `notification.complete`, Linear sync, `auto_complete`) passes `agent_actor.gate`; `finish_task` runs it
+  again as a backstop. `auto_complete` never completes a task whose plan has human criteria
+  (`human_gate`).
+- `task_step` needs a verified run token or a key with `tasks:write`. The in-session tools refuse while
+  remotea is off.
+
+### Two-phase control from Eri
+
+`control.start` and `control.message` from Eri only propose: they store an `agent_pending_controls` row
+(10-minute expiry) and nothing reaches the host. The owner confirms on the remotea page
+(`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
+works only from a later request by the same account whose own text is a plain yes, for the newest
+pending item. `control.stop`, `control.answer` and `control_status` stay immediate. Background,
+parked-continuation and bot work get no `control_*` tools (`tool_policy.live_work`). Every text sent to an
+agent is a `sent` entry on the run's timeline with who sent it; every `control.*` call is in the action
+journal, visible but never undoable.
+
+### Prompt injection
+
+Task text, Linear text and candidate titles reach the agent only inside nonce fences
+(`agent_prompts.fence`, `<<<LABEL_xxxxxxxxxxxx` … `LABEL_xxxxxxxxxxxx>>>`), with `<<<`/`>>>` broken up
+inside. Linear-sourced tasks say so ("written by an external party").
+
+### Run tokens
+
+A run token is HMAC-SHA256 over the run id and a per-spawn random salt, keyed by HKDF of the integration
+key (info `eridani-run-token-v1`); only the salt is stored. It expires once, at the wall-clock limit plus
+24 h; `context.request` does not slide it. The spawn command's copy becomes `[redacted]` once the spawn
+is acked or attached. Rotation is per spawn, not per generation: remotea passes the token as
+`ERIDANI_RUN_TOKEN` at spawn, and a steer delivers no new SessionStart, so a rotated token could not reach
+the agent.
+
+### Redaction
+
+`redaction.py` holds the 12 patterns of remotea's `docs/remotea/redaction.md` (the collector loads the
+same file). Host free text is redacted on ingestion: turn text and prompt, status and exit reasons,
+question text and choices, `question.resolved` details, verify tails and errors, outcome details, and
+the session ledger's title, prompts and excerpt.
+
+### Retention and quotas (`agent_retention.py`)
+
+The worker's housekeeping pass (every 12th supervisor cycle) deletes:
+
+| Data | Kept for |
+|---|---|
+| Turns of sessions no run owns | 30 days |
+| A settled run's turns, questions, attempts, interviews and commands (the run, plans and history stay) | 90 days after it finished |
+| The payload of a settled command | 7 days |
+| `agent_parity`, `agent_parity_days`, `agent_ingest_days`, expired pending controls | 30 days |
+
+Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it the turn
+is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the next
+day. `GET /remotea/runs/{id}` pages turns and commands: the newest `limit` (default 100, ≤ 200), `offset`
+for older, `more.turns` / `more.commands` when there are more.
+
+### Notifications and transport
+
+An agent's question is `urgent` (it pushes through quiet hours) only when the owner turns on
+"Agent questions break quiet hours" (`agent_quiet_bypass`, `POST /remotea/quiet-bypass`). A run sends at
+most 3 pushes per 10 minutes; the remotea page still shows everything. Responses carry
+`Strict-Transport-Security: max-age=31536000; includeSubDomains`. `POST /api/v1/chat` is gone; chat goes
+through `/api/v1/work`. CI runs on every pull request, whatever its base.
+
+### Not yet
+
+Verify commands run on the host without a sandbox (bubblewrap / codex sandbox, no network) — roadmap.

@@ -89,6 +89,14 @@ class SessionInput(Input):
     def links(cls, values):
         return list(dict.fromkeys(secure_url(v.strip()) for v in values if v.strip()))
 
+    @field_validator("title", "first_prompt", "last_prompt", "excerpt")
+    @classmethod
+    def redacted(cls, value):
+        # The collector redacts before sending; Eridani applies the same patterns again (stage F, L6).
+        from .redaction import redact
+
+        return redact(value)
+
 
 class LinkInput(Input):
     identifier: str | None = Field(default=None, max_length=30)

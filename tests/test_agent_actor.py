@@ -42,8 +42,34 @@ def complete_record(record):
     return change({**record, "revision": revision}, status_id="completed")
 
 
+def complete_schedule(record):
+    """Stage F, M3: a one-time reminder on the task completes it through schedule.complete."""
+    from datetime import timedelta
+
+    from jarvis.models import now
+
+    with acting(Actor("human")):
+        sched = run("schedule.create", kind="reminder", title="ping", task_id=record["task_id"],
+                    when=(now() + timedelta(days=1)).isoformat(), timezone="UTC")
+    return run("schedule.complete", schedule_id=sched["id"], expected_revision=sched["revision"])
+
+
+def complete_notification(record):
+    """Stage F, M3: a delivered deadline notice completes its task through notification.complete."""
+    from jarvis.models import Notification, now
+
+    with session_scope() as db:
+        notice = Notification(owner_id="davin", dedup_key="deadline:" + record["task_id"], category="deadline",
+                              title="Due", body="", task_id=record["task_id"], scheduled_at=now(), eligible_at=now())
+        db.add(notice)
+        db.flush()
+        notice_id = notice.id
+    return run("notification.complete", notification_id=notice_id)
+
+
 ENTRANCES = {"task.update": complete_update, "task.complete": complete_command, "task.batch": complete_batch,
-             "record.update": complete_record}
+             "record.update": complete_record, "schedule.complete": complete_schedule,
+             "notification.complete": complete_notification}
 
 
 def current(record):

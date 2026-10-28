@@ -17,7 +17,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal
 
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse
@@ -30,10 +30,12 @@ from pydantic import (
     ValidationError,
     model_validator,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import object_session
 from starlette.concurrency import run_in_threadpool
 
+from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import bot_access
 from . import run_coordinator as coordinator
@@ -41,6 +43,7 @@ from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, emit, encode
 from .models import OwnerSettings, now
+from .redaction import redact
 from .session_models import AgentCommand, AgentHost, AgentParity, AgentParityDay, AgentSession, AgentTurn
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,8 @@ MAX_FRAME = 262_144  # Matches uvicorn --ws-max-size in deploy.py.
 MAX_ASSEMBLED = 1_048_576
 MAX_PARTS = 64
 MAX_PENDING_CHUNKS = 4
+PARTIAL_SECONDS = 60  # Partial chunked frames and snapshots expire (stage F, L3).
+HOSTS_PER_CREDENTIAL = 3  # Distinct server_ids one link key may register (stage F, L3).
 FRAMES_PER_MINUTE = 1200
 BYTES_PER_MINUTE = 16 * 1_048_576
 HELLO_SECONDS = 15
@@ -61,7 +66,9 @@ REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
 SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "turn", "status", "exit",
                "sessions.snapshot", "command.outcome", "runs.snapshot", "question", "context", "worktrees.report",
-               "spawn", "input", "answer", "stop", "verify", "verify.result"]
+               "spawn", "input", "answer", "stop", "verify", "verify.result",
+               # Stage F: context.response.scope is "run" (full run context) or "candidates" (D6).
+               "context.scope"]
 # Command kind -> host capability it needs.
 COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
@@ -95,6 +102,18 @@ def epoch_ms(value):
 class Frame(BaseModel):
     # Newer hosts may add fields; capability negotiation decides what either side uses.
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    # Host free text redacted again on ingestion with the shared secret patterns (stage F, L6).
+    REDACT: ClassVar[tuple[str, ...]] = ()
+
+    @model_validator(mode="after")
+    def redacted(self):
+        for name in self.REDACT:
+            value = getattr(self, name)
+            if isinstance(value, str) and value:
+                setattr(self, name, redact(value))
+            elif isinstance(value, dict):
+                setattr(self, name, {k: redact(v) if isinstance(v, str) else v for k, v in value.items()})
+        return self
 
 
 class Hello(Frame):
@@ -120,6 +139,7 @@ class Report(Frame):
 
 
 class Turn(Frame):
+    REDACT: ClassVar[tuple[str, ...]] = ("text", "prompt")
     tool: str = Field(max_length=30)
     surf: str = Field(default="", max_length=100)
     incarnation: int = Field(default=0, ge=0)
@@ -158,6 +178,7 @@ class Surface(Frame):
 
 
 class Status(Surface):
+    REDACT: ClassVar[tuple[str, ...]] = ("reason",)
     state: Literal[STATES]
     since: WireTime
     reason: str = Field(default="", max_length=300)
@@ -182,9 +203,12 @@ class SnapshotSurface(Status):
 
 
 class Exit(Surface):
+    REDACT: ClassVar[tuple[str, ...]] = ("reason",)
     since: WireTime | None = None
     exited_at: WireTime | None = None
     code: int | None = None
+    # Stage F remotea: why a run surface ended without a resume (a lost run is reported as exit, code -1).
+    reason: str = Field(default="", max_length=300)
 
 
 class Snapshot(Frame):
@@ -201,11 +225,13 @@ class QuestionItem(Frame):
     choices: list[dict] | None = Field(default=None, max_length=32)
     multi: bool = False
 
+    REDACT: ClassVar[tuple[str, ...]] = ("text", "header")
+
     @model_validator(mode="after")
     def clean_choices(self):
         if self.choices is not None:
-            self.choices = [{"id": str(c.get("id"))[:64], "label": str(c.get("label"))[:300],
-                             **({"description": str(c["description"])[:1000]} if c.get("description") else {})}
+            self.choices = [{"id": str(c.get("id"))[:64], "label": redact(str(c.get("label")))[:300],
+                             **({"description": redact(str(c["description"]))[:1000]} if c.get("description") else {})}
                             for c in self.choices if isinstance(c, dict) and c.get("id") and c.get("label")]
         return self
 
@@ -227,6 +253,7 @@ class Question(Frame):
 
 
 class QuestionResolved(Frame):
+    REDACT: ClassVar[tuple[str, ...]] = ("detail", "answer_echo")
     question_id: str = Field(min_length=1, max_length=200)
     generation: int = Field(default=0, ge=0)
     outcome: Literal["accepted", "timed_out", "failed", "canceled", "answered_locally"]
@@ -236,6 +263,7 @@ class QuestionResolved(Frame):
 
 
 class VerifyResult(Frame):
+    REDACT: ClassVar[tuple[str, ...]] = ("tail", "error")
     attempt_id: str = Field(min_length=1, max_length=200)
     run_id: str = Field(max_length=36)
     generation: int = Field(ge=0)
@@ -283,6 +311,7 @@ class Ack(Frame):
 
 
 class Outcome(Frame):
+    REDACT: ClassVar[tuple[str, ...]] = ("detail",)
     command_id: str = Field(max_length=100)
     state: Literal["executed", "failed", "rejected", "uncertain"]
     detail: str = Field(default="", max_length=300)
@@ -336,6 +365,8 @@ def report(db, bot, host_id, frame):
     result = sessions.upsert(db, bot.owner_id, frame.tool, frame.session_id, frame.report,
                              reveal="records:read" in bot.scopes)
     row = sessions.find(db, bot.owner_id, frame.tool, frame.session_id)
+    if host_id and row.host_id not in (None, host_id):
+        host_session(db, bot.owner_id, host_id, frame.tool, frame.session_id)  # Refuses: another host's session.
     if host_id:
         row.host_id = host_id
         if frame.surf and frame.incarnation >= row.incarnation:
@@ -355,13 +386,15 @@ def turn(db, bot, host_id, frame):
         with contextlib.suppress(DomainError):  # An older generation's turn is kept but does not attach.
             coordinator.attach(db, host_id, run.id, frame.generation, frame.tool, frame.provider_session_id,
                                surf=frame.surf, incarnation=frame.incarnation)
-    row = sessions.claim(db, owner, tool_name(frame.tool), frame.provider_session_id)
+    row = host_session(db, owner, host_id, frame.tool, frame.provider_session_id)
     db.flush()
     row.host_id = host_id or row.host_id
     if frame.surf and frame.incarnation >= row.incarnation:
         row.surf, row.incarnation = frame.surf, frame.incarnation
     text, cut = clip_bytes(frame.text, TURN_TEXT_BYTES)
     prompt, _ = clip_bytes(frame.prompt, 4000)
+    if not retention.admit(db, owner, text, prompt):
+        text, prompt, cut = "", "", True  # Over today's ingestion quota: the turn counts, its text is dropped.
     inserted = db.scalar(
         insert(AgentTurn)
         .values(id=str(uuid.uuid4()), owner_id=owner, session_pk=row.id, host_id=host_id,
@@ -383,9 +416,20 @@ def turn(db, bot, host_id, frame):
     return {"turn_id": inserted, "truncated": frame.truncated or cut, "missing": frame.missing}
 
 
+def host_session(db, owner, host_id, tool, session_id):
+    """Claim a provider session for this host. A session another host reported, or one bound to a run
+    Eridani assigned another host, is refused: naming its id must not move it (stage F, M2)."""
+    row = sessions.claim(db, owner, tool_name(tool), session_id)
+    if host_id:
+        run = coordinator.run_for_session(db, row, lock=False)
+        if (row.host_id and row.host_id != host_id) or (run is not None and run.host_id != host_id):
+            raise DomainError("RUN_NOT_BOUND", "That session belongs to another host.", 409)
+    return row
+
+
 def surface_session(db, owner, host_id, frame):
     if frame.tool and frame.session_id:
-        return sessions.claim(db, owner, tool_name(frame.tool), frame.session_id)
+        return host_session(db, owner, host_id, frame.tool, frame.session_id)
     if not frame.surf:
         raise DomainError("INVALID_ARGUMENT", "Name the surface or the session.")
     return db.scalar(
@@ -419,7 +463,7 @@ def status(db, bot, host_id, frame):
     applied = apply_state(db, bot.owner_id, host_id, row, frame.state, frame.since, frame.incarnation, frame.surf, detail)
     if applied:
         attach_by_surface(db, host_id, row, frame)
-        coordinator.on_status(db, row, frame)
+        coordinator.on_status(db, row, frame, host_id=host_id)
     return {"session_id": row.id, "applied": applied}
 
 
@@ -441,11 +485,12 @@ def exited(db, bot, host_id, frame):
     if row is None:
         raise DomainError("UNKNOWN_SURFACE", "No session is reported for that surface yet.", 404)
     db.flush()
-    detail = {"exit_code": frame.code} if frame.code is not None else {}
+    detail = {k: v for k, v in (("exit_code", frame.code), ("reason", frame.reason)) if v not in (None, "")}
     applied = apply_state(db, bot.owner_id, host_id, row, "exited", frame.exited_at or frame.since or now(),
                           frame.incarnation, frame.surf, detail)
     if applied:
-        coordinator.on_exit(db, row, detail=f"exit code {frame.code}" if frame.code is not None else "")
+        said = "; ".join(filter(None, (f"exit code {frame.code}" if frame.code is not None else "", frame.reason)))
+        coordinator.on_exit(db, row, detail=said, host_id=host_id)
     return {"session_id": row.id, "applied": applied}
 
 
@@ -454,7 +499,12 @@ def snapshot(db, bot, host_id, frame):
     at = frame.at or now()
     seen, applied = set(), 0
     for surface in frame.surfaces:
-        row = surface_session(db, bot.owner_id, host_id, surface)
+        try:
+            row = surface_session(db, bot.owner_id, host_id, surface)
+        except DomainError as exc:
+            if exc.code != "RUN_NOT_BOUND":
+                raise
+            continue  # Another host's session: never re-homed by this host's snapshot.
         if row is None:
             continue
         db.flush()
@@ -627,8 +677,11 @@ def connected(host, clock=None):
 
 
 def public_host(host):
+    db = object_session(host)
     return encode({
         "id": host.id, "name": host.name, "machine": host.machine, "connected": connected(host),
+        # Over the owner's daily ingestion quota (stage F, L7): turns arrive without their text until tomorrow.
+        "status": "degraded" if db is not None and retention.degraded(db, host.owner_id) else "ok",
         "last_seen_at": host.last_seen_at, "conn_epoch": host.conn_epoch, "caps": host.caps.get("caps", []),
         "harnesses": host.caps.get("harnesses", {}), "proto": host.proto,
     })
@@ -642,8 +695,14 @@ def admit(credential_id, hello):
         advisory(db, f"agent-host:{bot.owner_id}:{hello.server_id}")
         host = db.scalar(select(AgentHost).where(AgentHost.owner_id == bot.owner_id, AgentHost.server_id == hello.server_id))
         if host is None:
+            hosts = db.scalar(select(func.count(AgentHost.id)).where(AgentHost.credential_id == bot.id))
+            if hosts >= HOSTS_PER_CREDENTIAL:
+                raise DomainError("HOST_LIMIT", f"This link key already serves {HOSTS_PER_CREDENTIAL} remotea servers.", 403)
             host = AgentHost(owner_id=bot.owner_id, account_id=bot.account_id, server_id=hello.server_id, conn_epoch=0)
             db.add(host)
+        elif host.credential_id != bot.id and not successor(db, host.credential_id, bot):
+            # A host stays bound to the key it first linked with, or to that key's rotation (stage F, info I2).
+            raise DomainError("HOST_BOUND", "That remotea server is linked with another key.", 403)
         host.credential_id, host.account_id = bot.id, bot.account_id
         host.name, host.machine, host.boot_id, host.proto = hello.hostname, hello.machine, hello.boot_id, hello.proto
         host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
@@ -655,11 +714,24 @@ def admit(credential_id, hello):
         return {"owner": bot.owner_id, "host_id": host.id, "conn_epoch": host.conn_epoch}
 
 
+def successor(db, previous_id, bot):
+    """The new key is a rotation of the host's previous one: same account and name (the remotea link key)."""
+    from .models import BotCredential
+
+    previous = db.get(BotCredential, previous_id) if previous_id else None
+    return previous is None or (previous.account_id == bot.account_id and previous.name == bot.name
+                                and previous.owner_id == bot.owner_id)
+
+
 def holding(db, credential_id, host_id, epoch):
     """Re-check the key (a privileged write) and the lease before any effect of this connection."""
-    bot = bot_access.authorize(db, required="agents:control", credential_id=credential_id)
-    if not enabled(db, bot.owner_id):
+    from .models import BotCredential
+
+    key = db.get(BotCredential, credential_id)
+    if key is not None and not enabled(db, key.owner_id):
+        # Disabling also revokes the key; the host still hears that remotea was turned off.
         raise Closed(4403, "disabled", {"reason": "disabled"})
+    bot = bot_access.authorize(db, required="agents:control", credential_id=credential_id)
     host = db.get(AgentHost, host_id, with_for_update=True)
     if host is None or host.owner_id != bot.owner_id or host.conn_epoch != epoch:
         raise Closed(4001, "superseded", {"reason": "superseded"})
@@ -680,7 +752,8 @@ def refused_access(exc):
     """After the upgrade: 4401 when the key no longer authenticates, 4403 when it lacks permission."""
     if exc.status == 401:
         return Closed(4401, "auth failed", {"reason": "access_revoked"})
-    return Closed(4403, "forbidden", {"reason": "disabled" if exc.code == "REMOTEA_DISABLED" else "access_revoked"})
+    reason = {"REMOTEA_DISABLED": "disabled", "HOST_LIMIT": "host_limit", "HOST_BOUND": "host_bound"}
+    return Closed(4403, "forbidden", {"reason": reason.get(exc.code, "access_revoked")})
 
 
 def wire(frame):
@@ -753,6 +826,7 @@ def acked(db, host_id, frame):
                                (frame.outcome or {}).get("result"))
         return
     row.status, row.updated_at = "acked", now()
+    coordinator.redact_spawn(row)
     facts = {k: v for k, v in (frame.outcome or {}).items() if k in ("surf", "incarnation")}
     row.outcome = {"state": "accepted", **facts}
     if row.kind == "spawn" and row.run_id and facts.get("surf"):
@@ -788,6 +862,7 @@ class Link:
         self.chunks = {}
         self.snapshots = {}
         self.closed = False
+        self.caps = []
         # Queued effects wait until this connection's sessions.snapshot is reconciled (C08).
         self.reconciled = False
 
@@ -829,9 +904,12 @@ class Link:
         if not (isinstance(logical, str) and 0 < len(logical) <= 100 and isinstance(i, int) and isinstance(n, int)
                 and 0 <= i < n <= MAX_PARTS and isinstance(data, str)):
             raise DomainError("INVALID_ARGUMENT", "Malformed chunk.")
+        clock = time.monotonic()
+        for key in [k for k, v in self.chunks.items() if clock - v["at"] > PARTIAL_SECONDS]:
+            self.chunks.pop(key)
         if logical not in self.chunks and len(self.chunks) >= MAX_PENDING_CHUNKS:
             raise DomainError("RATE_LIMITED", "Too many partial frames.", 429)
-        entry = self.chunks.setdefault(logical, {"n": n, "parts": {}, "size": 0})
+        entry = self.chunks.setdefault(logical, {"n": n, "parts": {}, "size": 0, "at": clock})
         if entry["n"] != n:
             raise DomainError("INVALID_ARGUMENT", "Chunk count changed.")
         if i not in entry["parts"]:
@@ -852,16 +930,21 @@ class Link:
             return frame
         logical, i, n = part.get("of"), part.get("i"), part.get("n")
         if not (isinstance(logical, str) and 0 < len(logical) <= 100 and isinstance(i, int) and isinstance(n, int)
-                and 0 < n <= MAX_PARTS and 0 <= i <= n):
+                and 0 < n <= MAX_PARTS and 1 <= i <= n):
+            # remotea numbers snapshot parts 1..n; 0..n used to be accepted, so n parts could arrive with one missing.
             raise DomainError("INVALID_ARGUMENT", "Malformed snapshot part.")
+        clock = time.monotonic()
+        for key in [k for k, v in self.snapshots.items() if clock - v["at"] > PARTIAL_SECONDS]:
+            self.snapshots.pop(key)  # A partial snapshot that never completed (stage F, L3).
         if logical not in self.snapshots and len(self.snapshots) >= MAX_PENDING_CHUNKS:
             raise DomainError("RATE_LIMITED", "Too many partial snapshots.", 429)
-        entry = self.snapshots.setdefault(logical, {"n": n, "parts": {}, "first": frame})
+        entry = self.snapshots.setdefault(logical, {"n": n, "parts": {}, "sizes": {}, "first": frame, "at": clock})
         surfaces = frame.get("surfaces") or []
         if not isinstance(surfaces, list) or entry["n"] != n:
             raise DomainError("INVALID_ARGUMENT", "Malformed snapshot part.")
         entry["parts"][i] = surfaces
-        if sum(len(p) for p in entry["parts"].values()) > 1000:
+        entry["sizes"][i] = len(json.dumps(surfaces))
+        if sum(len(p) for p in entry["parts"].values()) > 1000 or sum(entry["sizes"].values()) > MAX_ASSEMBLED:
             self.snapshots.pop(logical)
             raise DomainError("INVALID_ARGUMENT", "Snapshot too large.", 413)
         if len(entry["parts"]) < n:
@@ -908,7 +991,7 @@ class Link:
             try:
                 reply = await self.effect(context_request, body)
             except DomainError as exc:
-                reply = {"text": f"Eridani could not load this session's context ({exc.code})."}
+                reply = {"text": f"Eridani could not load this session's context ({exc.code}).", "scope": "candidates"}
             await self.send("context.response", req_id=body.req_id, **reply)
             return NO_ACK
         if kind == "verify.result":
@@ -952,6 +1035,10 @@ class Link:
                 if not isinstance(frame, dict) or frame.get("t") == "chunk" or not isinstance(frame.get("id"), str):
                     raise DomainError("INVALID_ARGUMENT", "Malformed chunked frame.")
                 identity = frame["id"][:100]
+            if isinstance(frame.get("op_id"), str) and not isinstance(frame.get("digest"), str) and "digest" in self.caps:
+                # A host that advertises `digest` stamps every op_id frame; a bare one is refused (stage F).
+                return {"acked_id": identity, **echo, "ok": False,
+                        "error": {"code": "DIGEST_REQUIRED", "message": "Frames with an op_id carry its digest."}}
             if isinstance(frame.get("digest"), str) and isinstance(frame.get("op_id"), str) \
                     and frame["digest"] != digest(frame):
                 logger.warning("agent link: digest mismatch on %s op_id=%s host=%s", str(frame.get("t"))[:40],
@@ -964,7 +1051,8 @@ class Link:
             return {"acked_id": identity, **echo, "ok": False,
                     "error": {"code": "INVALID_ARGUMENT", "message": "Invalid frame.", "data": errors}}
         except DomainError as exc:
-            if exc.status == 401 or exc.code in {"ACCESS_REVOKED", "INSUFFICIENT_SCOPE", "READ_ONLY", "REMOTEA_DISABLED"}:
+            if exc.status == 401 or exc.code in {"ACCESS_REVOKED", "INSUFFICIENT_SCOPE", "READ_ONLY", "REMOTEA_DISABLED",
+                                                  "PERSONAL_WORKSPACE"}:
                 raise refused_access(exc) from None
             retry = {"retry": True} if exc.code in RETRYABLE else {}
             return {"acked_id": identity, **echo, "ok": False, **retry, "error": {"code": exc.code, "message": exc.message}}
@@ -1045,6 +1133,7 @@ async def agent_link(websocket: WebSocket):
         except TimeoutError:
             raise Closed(1000, "probe") from None
         link.owner, link.host_id, link.epoch = admitted["owner"], admitted["host_id"], admitted["conn_epoch"]
+        link.caps = list(hello.caps)
         previous = LINKS.get(link.host_id)
         LINKS[link.host_id] = link
         if previous is not None:

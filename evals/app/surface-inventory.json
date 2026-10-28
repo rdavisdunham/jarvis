@@ -50,6 +50,10 @@
       "feature": "agent_control"
     },
     {
+      "name": "control.confirm",
+      "feature": "agent_control"
+    },
+    {
       "name": "control.message",
       "feature": "agent_control"
     },
@@ -840,13 +844,6 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/chat",
-      "handler": "chat_endpoint",
-      "source": "apps/api/jarvis/api.py",
-      "feature": "chat_agent"
-    },
-    {
-      "method": "POST",
       "path": "/api/v1/commands",
       "handler": "command",
       "source": "apps/api/jarvis/api.py",
@@ -1350,11 +1347,39 @@
       "feature": "agent_control"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/remotea/pending",
+      "handler": "pending",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/pending/{identity}/confirm",
+      "handler": "confirm_pending",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/pending/{identity}/decline",
+      "handler": "decline_pending",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/remotea/questions/{identity}/answer",
       "handler": "answer",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "memory_dream"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/quiet-bypass",
+      "handler": "set_quiet_bypass",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
     },
     {
       "method": "GET",

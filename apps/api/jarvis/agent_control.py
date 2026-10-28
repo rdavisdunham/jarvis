@@ -6,6 +6,7 @@ resolves the owned task and host, checks the expected revision and records the s
 its outbound command in one transaction (run_coordinator.py owns the transitions).
 """
 
+import json
 import re
 from datetime import timedelta
 
@@ -278,7 +279,10 @@ def start_run(db, owner, account_id, body, *, actor):
     if not host_harness(host, body.harness):
         raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {body.harness} yet.", 409)
     branch = branch_for(db, owner, task)
-    interview = (not task.prd_note_id) if body.interview is None else body.interview
+    # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
+    # an interview that does run only adds to them (agent_plan.plan_floor).
+    planned = bool(task.success_criteria) and bool(task.verify)
+    interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
@@ -296,7 +300,7 @@ def start_run(db, owner, account_id, body, *, actor):
     else:
         plan = freeze(db, owner, run, task)
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
-    token = coordinator.mint_token(run)
+    token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
         "target": {"id": target.host_target, **({"repo": target.repo} if target.repo else {}), "branch": branch,
@@ -336,8 +340,14 @@ def send_message(db, owner, run_id, body, *, actor):
         coordinator.transition(db, run, coordinator.phase(run), actor=actor, reason=body.mode)
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "text": body.text,
                                            "mode": body.mode})
+    sent(run, actor, body.text, mode=body.mode)
     run.last_progress_at = now()
     return public_run(db, run)
+
+
+def sent(run, actor, text, **values):
+    """Every text that leaves for the agent, with who sent it, on the run timeline (stage F, M5)."""
+    coordinator.note(run, "sent", actor=actor.record(), text=text[:2000], **values)
 
 
 def replan(db, owner, run_id, body, *, actor):
@@ -415,6 +425,9 @@ def answer_question(db, owner, question_id, body, *, actor):
     if question is None:
         raise DomainError("NOT_FOUND", "That question was not found.", 404)
     coordinator.answer(db, question, [a.model_dump() for a in body.answers], actor=actor)
+    run = db.get(AgentRun, question.run_id) if question.run_id else None
+    if run is not None:
+        sent(run, actor, json.dumps(question.answers, ensure_ascii=False), kind="answer", question_id=question.id)
     return public_question(question)
 
 
@@ -453,7 +466,16 @@ def public_command(c):
                    "outcome": c.outcome, "created_at": c.created_at, "updated_at": c.updated_at})
 
 
-def public_run(db, run, *, detail=False):
+DETAIL_PAGE = 100
+
+
+def page(db, query, column, limit, offset):
+    """The newest `limit` rows after skipping `offset` newest, oldest first; and whether older ones remain."""
+    rows = list(db.scalars(query.order_by(column.desc()).offset(offset).limit(limit + 1)))
+    return list(reversed(rows[:limit])), len(rows) > limit
+
+
+def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
     session = db.get(AgentSession, run.session_pk) if run.session_pk else None
@@ -480,8 +502,12 @@ def public_run(db, run, *, detail=False):
     }
     if detail:
         plan = coordinator.frozen(db, run)
-        turns = db.scalars(select(AgentTurn).where(
-            (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or ""))).order_by(AgentTurn.created_at))
+        # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
+        turns, more_turns = page(db, select(AgentTurn).where(
+            (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or ""))), AgentTurn.created_at,
+            limit, offset)
+        commands, more_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
+                                       AgentCommand.created_at, limit, offset)
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
                   "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children}
@@ -493,8 +519,8 @@ def public_run(db, run, *, detail=False):
             history=run.history or [],
             turns=[{"id": t.id, "seq": t.seq, "text": t.text[:4000], "clipped": len(t.text) > 4000, "truncated": t.truncated,
                     "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]} for t in turns],
-            commands=[public_command(c) for c in db.scalars(
-                select(AgentCommand).where(AgentCommand.run_id == run.id).order_by(AgentCommand.created_at))],
+            commands=[public_command(c) for c in commands],
+            more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
             questions=[public_question(q) for q in db.scalars(
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
@@ -575,18 +601,188 @@ def run_for(db, owner, target):
     return ids[0]
 
 
+def owner_control(db, owner):
+    """control.* is personal-workspace only and owner-only (stage F, D1), whoever is calling."""
+    from .access import actor as account
+    from .access import role
+    from .bot_access import shared
+
+    if shared(db, owner) or role(db, owner, account(db, owner), lock=True) != "owner":
+        raise DomainError("PERSONAL_WORKSPACE", "Agent control works only in your personal workspace.", 403)
+
+
+# ---------------------------------------------------------------- two-phase control from Eri (stage F, M5, D3)
+
+PENDING_TTL = timedelta(minutes=10)
+# A spoken or typed yes: the whole request is a short affirmation, nothing else.
+AFFIRMATIVE = re.compile(r"^\W*(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|do it|go ahead|go|send it|start it|"
+                         r"please do|yes please|yes,? (?:do it|go ahead|send it|start it|confirm))\W*$", re.IGNORECASE)
+
+
+def current_work(db):
+    """The queued-work row this call runs under, or None (browser, legacy chat, jobs)."""
+    from .access import execution
+    from .models import AgentWork
+
+    grant = execution.get()
+    return db.get(AgentWork, grant["id"]) if grant else None
+
+
+def work_message(row):
+    from .work_crypto import unseal
+
+    return str((unseal(row.input_ciphertext) or {}).get("message") or "") if row else ""
+
+
+def propose(db, owner, account, tool, args, actor):
+    """control_start / control_message from Eri: resolve and validate now, act only after the owner confirms."""
+    work = current_work(db)
+    if tool == "control.start":
+        task = owned(db, Task, args.task_id or task_by_name(db, owner, args.task), owner)
+        arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
+        summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d"
+    else:
+        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        task = db.get(Task, run.task_id)
+        arguments, run_id = {"run_id": run.id, "text": args.text, "mode": args.mode}, run.id
+        verb = "Interrupt and steer" if args.mode == "steer" else "Send to"
+        summary = f"{verb} the agent on \u201c{(task.title if task else '')[:200]}\u201d: \u201c{args.text[:300]}\u201d"
+    from .session_models import AgentPendingControl
+
+    row = AgentPendingControl(owner_id=owner, account_id=account, work_id=work.id if work else None, tool=tool,
+                              arguments=arguments, summary=summary, run_id=run_id, status="pending",
+                              actor=actor.record(), decided_via="", expires_at=now() + PENDING_TTL)
+    db.add(row)
+    db.flush()
+    emit(db, owner, "agent.changed", run_id or row.id)
+    return {"status": "pending_confirmation", "pending_id": row.id, "summary": summary,
+            "expires_at": row.expires_at.isoformat(),
+            "next": "Nothing was sent yet. Read the summary to the owner and ask them to confirm. They can tap "
+                    "Confirm on the remotea page, or answer yes in their next message; then call control_confirm "
+                    "with this pending_id. Never confirm on their behalf."}
+
+
+def public_pending(row):
+    return encode({"id": row.id, "tool": row.tool, "summary": row.summary, "run_id": row.run_id,
+                   "status": row.status, "created_at": row.created_at, "expires_at": row.expires_at,
+                   "decided_via": row.decided_via, "decided_at": row.decided_at})
+
+
+def pending_list(db, owner):
+    from .session_models import AgentPendingControl
+
+    rows = db.scalars(select(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
+                                                        AgentPendingControl.status == "pending",
+                                                        AgentPendingControl.expires_at > now())
+                      .order_by(AgentPendingControl.created_at.desc()).limit(20))
+    return [public_pending(r) for r in rows]
+
+
+def decide(db, owner, pending_id, *, confirm, via, actor):
+    """Run (or drop) a pending control. `via` is "app" for the remotea page, else "voice"/"chat" (control_confirm)."""
+    from .access import actor as account
+    from .session_models import AgentPendingControl
+
+    row = db.scalar(select(AgentPendingControl).where(AgentPendingControl.id == pending_id,
+                                                      AgentPendingControl.owner_id == owner).with_for_update())
+    if row is None:
+        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    if row.status != "pending":
+        raise DomainError("PENDING_CLOSED", f"That agent action was already {row.status}.", 409,
+                          data={"status": row.status})
+    if row.expires_at <= now():
+        row.status = "expired"
+        raise DomainError("PENDING_EXPIRED", "That agent action expired; ask again.", 409)
+    row.decided_at, row.decided_via = now(), via
+    if not confirm:
+        row.status = "declined"
+        emit(db, owner, "agent.changed", row.run_id or row.id)
+        return public_pending(row)
+    # The proposer stays on record; the owner's confirmation is what lets it through.
+    confirmed = Actor(actor.kind, credential_id=actor.credential_id, reason="confirmed:" + row.id)
+    args = row.arguments
+    if row.tool == "control.start":
+        result = start_run(db, owner, row.account_id or account(db, owner),
+                           StartInput(task_id=args["task_id"], harness=args.get("harness", "claude")), actor=confirmed)
+        run = coordinator.load(db, owner, result["id"])
+        coordinator.note(run, "confirmed", pending_id=row.id, proposed_by=row.actor, via=via)
+        row.run_id = result["id"]
+    else:
+        run = coordinator.load(db, owner, args["run_id"])
+        coordinator.note(run, "confirmed", pending_id=row.id, proposed_by=row.actor, via=via)
+        result = send_message(db, owner, args["run_id"], MessageInput(text=args["text"], mode=args["mode"]),
+                              actor=confirmed)
+    row.status, row.result = "confirmed", {"run_id": result.get("id")}
+    return {**public_pending(row), "run": result}
+
+
+def spoken_confirmation(db, owner, args):
+    """control_confirm from Eri: only a later request from the owner that is itself a short yes, for the newest
+    pending action of that account (so the yes is unambiguous). Declining needs no proof."""
+    from .session_models import AgentPendingControl
+
+    work = current_work(db)
+    if work is None or work.credential_id:
+        raise DomainError("CONFIRM_IN_APP", "Confirm this on the remotea page.", 403)
+    row = db.get(AgentPendingControl, args.pending_id)
+    if row is None or row.owner_id != owner:
+        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    if args.decision == "decline" or row.status != "pending":
+        return "chat"  # Declining needs no proof; a closed one is refused by decide().
+    newest = db.scalar(select(AgentPendingControl.id).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+        AgentPendingControl.status == "pending").order_by(AgentPendingControl.created_at.desc()).limit(1))
+    from .models import Job
+
+    job = db.get(Job, work.id)
+    if (row.work_id == work.id or row.account_id != work.account_id or newest != row.id
+            or job is None or job.created_at < row.created_at
+            or not AFFIRMATIVE.match(work_message(work)[:80])):
+        raise DomainError("CONFIRMATION_REQUIRED",
+                          "Only the owner's own yes, in their next message, confirms this. Ask them, or let them "
+                          "tap Confirm on the remotea page.", 409, data={"pending_id": row.id})
+    return "voice" if work.voice_session_id else "chat"
+
+
+def journal_control(db, owner, tool, command_id, result):
+    """Agent control in the action journal: visible, never undoable (stage F, M5)."""
+    from uuid import uuid4
+
+    from .access import actor as account
+    from .models import ActionChange
+    from .work_crypto import seal
+
+    if not get_settings().integration_encryption_key or not isinstance(result, dict):
+        return
+    title = result.get("summary") or (result.get("task") or {}).get("title") or tool
+    entity = result.get("run_id") or result.get("id") or command_id
+    after = {"title": str(title)[:300], "status": result.get("status") or result.get("state"),
+             "_undo_blocked": "Agent control cannot be undone here; stop the run on the remotea page instead."}
+    db.add(ActionChange(id=str(uuid4()), owner_id=owner, account_id=account(db, owner), command_id=command_id,
+                        tool=tool, entity_kind="agent_run", entity_id=str(entity)[:36], before_ciphertext=None,
+                        after_ciphertext=seal(after)))
+
+
 def mutate(db, owner, tool, args, command_id):
-    """domain.mutate entrance for control.* (voice). Same functions as the remotea page."""
+    """domain.mutate entrance for control.* (voice, chat). start and message are two-phase (propose, then the
+    owner confirms); status, stop and answer stay immediate."""
+    result = control_command(db, owner, tool, args)
+    journal_control(db, owner, tool, command_id, result)
+    return result
+
+
+def control_command(db, owner, tool, args):
     from .access import actor as account
     from .agent_actor import current
 
     agent_link.gate(db, owner)
+    owner_control(db, owner)
     actor = current()
-    if tool == "control.start":
-        task_id = args.task_id or task_by_name(db, owner, args.task)
-        return start_run(db, owner, account(db, owner), StartInput(task_id=task_id, harness=args.harness), actor=actor)
-    if tool == "control.message":
-        return send_message(db, owner, run_for(db, owner, args), MessageInput(text=args.text, mode=args.mode), actor=actor)
+    if tool in ("control.start", "control.message"):
+        return propose(db, owner, account(db, owner), tool, args, actor)
+    if tool == "control.confirm":
+        via = spoken_confirmation(db, owner, args)
+        return decide(db, owner, args.pending_id, confirm=args.decision == "confirm", via=via, actor=actor)
     if tool == "control.stop":
         return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
     if tool == "control.answer":

@@ -65,6 +65,8 @@ PERSONAL_PATHS = (
     "/api/v1/jobs",
     "/api/v1/push",
     "/api/v1/auth/google/",
+    # remotea drives agents with the owner's OS privileges: personal workspace only (stage F, D1).
+    "/api/v1/remotea",
 )
 
 
@@ -126,7 +128,6 @@ def request_access(request, namespace, permission, account):
             "PERSONAL_WORKSPACE", "Use your personal workspace for memory and connected accounts.", 403
         )
     reads = {
-        "/api/v1/chat",
         "/api/v1/conversations",
         "/api/v1/ui/sync",
         "/api/v1/task-views",

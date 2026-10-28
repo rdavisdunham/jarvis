@@ -20,7 +20,7 @@ from .db import session_scope
 from .domain import DomainError, emit, enqueue_job
 from .google_auth import unseal
 from .linear_client import LinearClient, LinearFailure
-from .models import Job, LinearConnection, LinearIssue, Task, now
+from .models import Job, LinearConnection, LinearIssue, now
 from .session_models import AgentAttempt, AgentRun, AgentSession
 
 ATTEMPTS = 5
@@ -84,27 +84,36 @@ def pull_requests(db, run):
 
 
 def comment_body(db, run):
-    """Plain facts from persisted run state; the judge's summary is quoted as its own line."""
-    task = db.get(Task, run.task_id)
+    """Structured facts only (stage F, L5): criteria ids and their status, the verification result, PR links and
+    the marker. Free text (the judge's summary, task title, host-reported branch) stays in Eridani: the Linear
+    issue may be visible to client collaborators."""
     verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                    AgentAttempt.status == "done")
                         .order_by(AgentAttempt.created_at.desc()).limit(1))
+    check = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify",
+                                                 AgentAttempt.status.in_(("passed", "failed")))
+                      .order_by(AgentAttempt.created_at.desc()).limit(1))
     approved = ((run.sync_state or {}).get("completion") or {}).get("approved")
     lines = ["Completed by an Eridani agent run" + (" (approved by the operator)." if approved else ".")]
-    if task:
-        lines.append(f"Task: {task.title[:300]}")
-    if run.branch:
-        lines.append(f"Branch: `{run.branch}`")
+    criteria = [c for c in ((verdict.result or {}).get("criteria") or []) if isinstance(c, dict)] if verdict else []
+    if criteria:
+        lines.append("Criteria: " + ", ".join(f"{str(c.get('id'))[:40]} {'met' if c.get('status') == 'met' else 'not met'}"
+                                              for c in criteria[:50]))
+    if check is not None:
+        lines.append(f"Verification {check.verify_id[:64]}: {check.status}")
     prs = pull_requests(db, run)
     if prs:
         lines.append("Pull requests: " + ", ".join(prs))
     lines.append(f"Turns: {run.turn_count} of {run.turn_cap} · done means: "
                  + POLICY_TEXT.get(run.completion_policy, "code ready"))
-    summary = ((verdict.result or {}).get("summary") or "").strip() if verdict else ""
-    if summary:
-        lines.append("Judge: " + " ".join(summary.split())[:1200])
     lines += ["", marker(run.id)]
     return "\n".join(lines)
+
+
+def ours(comment, viewer, wanted):
+    """A comment this connection posted for this run: the marker and, when Linear names it, our own author."""
+    author = (comment.get("user") or {}).get("id") if "user" in comment else viewer
+    return wanted in (comment.get("body") or "") and (viewer is None or author == viewer)
 
 
 def process_comment(job_id, client_factory=LinearClient):
@@ -135,13 +144,14 @@ def process_comment(job_id, client_factory=LinearClient):
             emit(db, owner, "agent.changed", run.id)
             return
         body, attempted, wanted = comment_body(db, run), bool(state.get("attempted")), marker(run.id)
+        viewer = conn.viewer_id
         job.status, job.result = "running", {"attempts": attempt}
     client = client_factory(key)
     try:
         found = None
         if attempted:
             # Reconcile first: the earlier write may have been accepted with its response lost.
-            found = next((c for c in client.comments(payload["remote_id"]) if wanted in (c.get("body") or "")), None)
+            found = next((c for c in client.comments(payload["remote_id"]) if ours(c, viewer, wanted)), None)
         if found is None:
             with session_scope() as db:
                 run = db.get(AgentRun, payload["run_id"], with_for_update=True)

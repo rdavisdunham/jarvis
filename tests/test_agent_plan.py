@@ -172,7 +172,7 @@ def test_submit_plan_is_run_scoped_and_checks_revision_and_verify(verifying_host
     plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
                 **{**PLAN, "success_criteria": [{"text": "tests pass", "kind": "verify", "verify_id": "tests"}],
                    "verify": {"target_id": "jarvis", "verify_id": "tests"}})
-    assert plan["verify"] == {"target_id": "jarvis", "verify_id": "tests"}
+    assert plan["verify"] == {"target_id": "jarvis", "verify_id": "tests", "by": "agent"}
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert coordinator.desired(db, row).get("verify") is None  # Pending: the host learns it once executing.

@@ -83,3 +83,14 @@ describe("approval and the judge", () => {
     expect(entries[2].detail).toBe("Add the docs page");
   });
 });
+
+describe("text sent to the agent (stage F)", () => {
+  it("puts every sent text on the timeline with who sent it", () => {
+    const entries = timeline(detail({ history: [
+      { at: "2026-10-28T10:01:00Z", event: "sent", text: "Change course.", actor: { kind: "human", reason: "confirmed:p1" } },
+      { at: "2026-10-28T10:02:00Z", event: "sent", text: "Also docs.", actor: { kind: "human" } },
+    ] }));
+    expect(entries.map(e => [e.title, e.detail])).toEqual([
+      ["Sent by Eri, confirmed by you", "Change course."], ["Sent by you", "Also docs."]]);
+  });
+});

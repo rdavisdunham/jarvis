@@ -36,7 +36,7 @@ def fake(started_state, linear, monkeypatch):  # noqa: F811
         if "commentCreate" in text:
             data = variables["input"]
             created = {"id": f"comment-{len(self.comments) + 1}", "url": "https://linear.app/c", "body": data["body"]}
-            self.comments.append({**created, "issue": data["issueId"]})
+            self.comments.append({**created, "issue": data["issueId"], "user": {"id": "me"}})
             if self.lose_comment:
                 self.lose_comment = False
                 raise LinearFailure("unavailable", retry=True, unknown=True)  # Accepted, response lost.
@@ -296,3 +296,21 @@ def test_completion_policy_is_a_gate_field_while_a_run_owns_the_task(host):  # n
             execute(db, OWNER, "policy-edit", "task.update",
                     {"task_id": task.id, "expected_revision": task.revision, "completion_policy": "pr_merged"})
     assert refused.value.code == "RUN_OWNS_COMPLETION"
+
+
+def test_the_comment_carries_structured_facts_only_and_reconciles_only_our_own(host, fake):  # noqa: F811
+    """Stage F, L5 + info: no judge summary, title or branch in Linear; a stranger's marker comment is not adopted."""
+    from jarvis.session_models import AgentAttempt
+
+    _, run_id = approved_run(host, fake)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        db.add(AgentAttempt(owner_id=run.owner_id, run_id=run_id, kind="judge", status="done", generation=1,
+                            turn_seq=1, plan_revision=1, result={"summary": "internal path /home/davin/secret",
+                                                                  "criteria": [{"id": "c1", "status": "met"}]}))
+        db.flush()
+        body = agent_sync.comment_body(db, run)
+    assert "c1 met" in body and "/home/davin" not in body and "Judge" not in body and "Branch" not in body
+    assert agent_sync.ours({"body": "x eridani-run:r", "user": {"id": "me"}}, "me", "eridani-run:r")
+    assert not agent_sync.ours({"body": "x eridani-run:r", "user": {"id": "stranger"}}, "me", "eridani-run:r")
+

@@ -123,6 +123,9 @@ def binding(db, bot, body):
 
 
 def task_plan(db, bot, body):
+    from .agent_link import gate
+
+    gate(db, bot.owner_id)  # With remotea off, no in-session tool answers (stage F, L1).
     actor, run = binding(db, bot, body)
     task_id = str(body.task_id) if body.task_id else (run.task_id if run else None)
     if not task_id:
@@ -147,9 +150,15 @@ def task_plan(db, bot, body):
 
 def task_step(db, bot, body):
     """Per-step compare-and-set. A linked step is a checklist entry: ticking it never completes the child task."""
+    from .agent_link import gate
+
+    gate(db, bot.owner_id)
     actor, run = binding(db, bot, body)
     if run is not None and actor.verified and run.task_id != str(body.task_id):
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
+    if not (run is not None and actor.verified) and "tasks:write" not in bot.scopes:
+        # Without the run's token only a key that may edit tasks anyway ticks steps (stage F, L1).
+        raise DomainError("RUN_TOKEN_REQUIRED", "Pass the run_token from your Eridani session context.", 401)
     advisory(db, f"workspace:{bot.owner_id}")
     task = owned(db, Task, str(body.task_id), bot.owner_id, lock=True)
     steps = list(task.steps or [])
@@ -176,6 +185,9 @@ def task_step(db, bot, body):
 
 def run_scoped(db, bot, body, states):
     """task_interview and submit_plan: only the run's own session (run token), only in these phases."""
+    from .agent_link import gate
+
+    gate(db, bot.owner_id)
     actor, run = binding(db, bot, body)
     if run is None or not actor.verified:
         raise DomainError("RUN_TOKEN_REQUIRED", "Pass the run_token from your Eridani session context.", 401)
@@ -259,6 +271,7 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
                                            "text": prompts.planning(row)}, source="eridani")
+    coordinator.note(run, "sent", actor=actor.record(), text=prompts.planning(row)[:2000], kind="interview_answers")
     return public_interview(row)
 
 
@@ -323,6 +336,27 @@ def save_prd(db, run, task, content):
     return created["data"]["id"]
 
 
+POLICY_ORDER = ("code_ready", "pr_open", "pr_merged")
+
+
+def plan_floor(task, criteria, verify, policy):
+    """What a human set is a floor (stage F, M1, decision D2): the agent may add criteria, never remove,
+    reword or weaken a human-authored one, clear or swap the verify, or lower the completion policy.
+    Agent-authored criteria from an earlier plan are the agent's own and may be replaced."""
+    kept = [c for c in task.success_criteria or [] if c.get("by") != "agent"]
+    taken = {c.get("id") for c in kept}
+    added = [{**c.model_dump(exclude_none=True), "by": "agent"} for c in criteria if not c.id or c.id not in taken]
+    for c in added:
+        if c.get("id") in taken:
+            c.pop("id")
+    if task.verify and task.verify.get("by") != "agent":
+        verify = task.verify
+    current = task.completion_policy or "code_ready"
+    if policy is None or POLICY_ORDER.index(policy) < POLICY_ORDER.index(current):
+        policy = None  # Keep the task's own.
+    return kept + added, verify, policy
+
+
 def submit_plan(db, bot, body):
     """Planning only: write the PRD note and the task's template plan, then freeze run plan revision N+1."""
     actor, run = run_scoped(db, bot, body, coordinator.PLANNING)
@@ -336,7 +370,9 @@ def submit_plan(db, bot, body):
         if body.verify.target_id not in targets or body.verify.verify_id not in offered:
             raise DomainError("VERIFY_UNKNOWN", "Name a verify id this run's execution target offers.", 400,
                               data={"verify_ids": sorted(offered)})
-        verify = body.verify.model_dump()
+        verify = {**body.verify.model_dump(), "by": "agent"}
+    if task.verify and task.verify.get("by") != "agent":
+        verify = task.verify  # The floor (see plan_floor); a verify criterion must name the human's verify.
     for criterion in body.success_criteria:
         if criterion.kind == "verify" and (not verify or criterion.verify_id != verify["verify_id"]):
             raise DomainError("INVALID_ARGUMENT", "A verify criterion names the plan's verify_id.")
@@ -345,13 +381,15 @@ def submit_plan(db, bot, body):
     open_row = coordinator.open_interview(db, run)
     if open_row is not None:
         open_row.status, open_row.updated_at = "superseded", now()  # The agent went ahead without the answers.
-    with acting(coordinator.judge_actor(run)):
+    criteria, verify, policy = plan_floor(task, body.success_criteria, verify, body.completion_policy)
+    writer = Actor("run_session", credential_id=actor.credential_id, run_id=run.id, generation=run.generation,
+                   capability="plan_write")
+    with acting(writer):
         prd_id = save_prd(db, run, task, prd_content(body.prd, kids))
         db.refresh(task)
         execute(db, run.owner_id, f"submit-plan:{run.id}:{run.generation}:{task.revision}", "task.update", {
             "task_id": task.id, "expected_revision": task.revision, "prd_note_id": prd_id, "steps": steps,
-            "success_criteria": [c.model_dump(exclude_none=True) for c in body.success_criteria], "verify": verify,
-            **({"completion_policy": body.completion_policy} if body.completion_policy else {})})
+            "success_criteria": criteria, "verify": verify, **({"completion_policy": policy} if policy else {})})
     db.refresh(task)
     revision = (run.plan_revision or 0) + 1
     note = db.get(Note, prd_id)
