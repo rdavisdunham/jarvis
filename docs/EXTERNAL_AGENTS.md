@@ -165,3 +165,16 @@ Without `records:read`, a key sees whether a session is filed, but not the filed
 - Changing `resume` doesn't trigger a new summary.
 
 A settled session (quiet for 10 minutes) gets one summary and one embedding per content change, via the `summarize_session` job.
+
+### Session ledger visibility and freshness
+
+Session-only bot keys can read filing IDs and folder paths, but linked record titles
+require **records:read** in both session and folder-rule responses, including mutation
+responses. Browser users keep their authorized workspace labels.
+
+The Sessions panel loads older results with **Load more sessions**. It refreshes the
+loaded range every 30 seconds while visible, pauses polling in hidden tabs, and does
+not repeatedly run an idle semantic search. **Refresh sessions** is always available.
+Terminal labels are **Reported live/restoring**: these are collector snapshots, not
+verified current connections. Existing data has no trustworthy terminal-observation
+timestamp; transcript activity and filing edits must not be treated as heartbeats.

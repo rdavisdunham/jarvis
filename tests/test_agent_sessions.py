@@ -147,6 +147,40 @@ def test_bot_keys_manage_folder_rules(client):
         assert len(dispatch("session_rules", {})["items"]) == 1
 
 
+
+@pytest.mark.parametrize("can_read_records", [False, True])
+def test_folder_rule_responses_respect_record_title_scope(client, can_read_records):
+    first, second = create("client", "Private client title"), create("project", "Private project title")
+    scopes = ["sessions:write"] + (["records:read"] if can_read_records else [])
+    credential, headers = key(client, scopes)
+    _, reader = key(client, ["sessions:read"] + (["records:read"] if can_read_records else []))
+    external = TestClient(app)
+    first_body = {"path_prefix": "/work/first", "record_id": first["id"]}
+    second_body = {"path_prefix": "/work/second", "record_id": second["id"]}
+    # Browser callers retain their normal authorized record labels.
+    browser_rules = client.post("/api/v1/sessions/rules", json=first_body).json()
+    assert browser_rules["items"][0]["record_title"] == first["title"]
+
+    def check(response, count):
+        items = response["items"]
+        assert len(items) == count
+        expected = {first["id"]: first["title"], second["id"]: second["title"]}
+        for item in items:
+            assert item["record_title"] == (expected[item["record_id"]] if can_read_records else None)
+
+    check(external.get("/api/v1/external/sessions/rules", headers=reader).json(), 1)
+    saved = external.post("/api/v1/external/sessions/rules", headers=headers, json=second_body)
+    assert saved.status_code == 200, saved.text
+    check(saved.json(), 2)
+    with bind(credential["id"]):
+        check(dispatch("session_rules", {}), 2)
+        check(dispatch("session_rule", second_body), 2)
+    second_id = next(r["id"] for r in saved.json()["items"] if r["record_id"] == second["id"])
+    deleted = external.delete(f"/api/v1/external/sessions/rules/{second_id}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    check(deleted.json(), 1)
+
+
 def test_search_ranks_issue_keys_folders_and_text(client):
     issue("ENG-7", "Billing export")
     _, headers = key(client, ["sessions:write", "sessions:read"])

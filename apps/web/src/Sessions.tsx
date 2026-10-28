@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, ExternalLink, FolderInput, Trash2, X } from "lucide-react";
 import { api, post } from "./api";
+import { sessionPages, watchSessionChanges, type SessionPage, type SessionPageState } from "./sessionPages";
 import { Dialog, Popover } from "./ux";
 
 export type AgentSession = {
@@ -11,7 +12,7 @@ export type AgentSession = {
   resume: { cmd?: string; url?: string; hint?: string; live?: { state: "live" | "lost"; workspace: string; terminal: string; host: string } };
   filed: { source: string | null; record_id: string | null; task_id: string | null; record_title: string | null };
 };
-type Listing = { items: AgentSession[]; total: number; next_offset: number | null };
+type Listing = SessionPage<AgentSession>;
 type Rule = { id: string; path_prefix: string; record_id: string; record_title: string | null };
 type Choice = { id: string; title: string; type_name?: string };
 type View = "all" | "live" | "unfiled" | "rules";
@@ -63,8 +64,8 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
     {(item.summary || item.first_prompt) && <p className="work-result">{item.summary || item.first_prompt}</p>}
     <p className="session-place" title={item.cwd}>{place}{item.environment && <small> · {item.environment}</small>}{item.turn_count > 0 && <small> · {item.turn_count} {item.turn_count === 1 ? "prompt" : "prompts"}</small>}</p>
     <div className="session-filed">
-      {live && <span className={"chip " + (live.state === "live" ? "chip-done" : "chip-due-today")} title={[live.host, live.terminal].filter(Boolean).join(" · ")}>
-        {live.state === "live" ? "Live" : "Restoring"} in remotea · {live.workspace || "Inbox"}</span>}
+      {live && <span className={"chip " + (live.state === "live" ? "chip-done" : "chip-due-today")} title={[live.host, live.terminal, "Collector snapshot; current terminal status is unverified."].filter(Boolean).join(" · ")}>
+        {live.state === "live" ? "Reported live" : "Reported restoring"} in remotea · {live.workspace || "Inbox"}</span>}
       {item.filed.record_id
         ? <span>Filed under <strong>{item.filed.record_title ?? "a record"}</strong> {filedBy[item.filed.source ?? ""] ?? ""}</span>
         : <span className="chip chip-due-today">Unfiled</span>}
@@ -111,26 +112,31 @@ function Rules({ onChanged }: { onChanged: () => void }) {
 
 const empty: Record<View, string> = {
   all: "No sessions yet. Run the session collector on your work machine to report them.",
-  live: "Nothing is running in a remotea terminal right now.",
+  live: "No live terminal reports. Current status depends on the collector.",
   unfiled: "Every session is filed.",
   rules: "",
 };
 
 export function SessionsPanel({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState(""), [view, setView] = useState<View>("all");
-  const [data, setData] = useState<Listing | null>(null), [error, setError] = useState(""), [tick, setTick] = useState(0);
+  const [{ data, error, loading }, setListing] = useState<SessionPageState<AgentSession>>({ data: null, error: "", loading: false });
+  const loader = useRef<ReturnType<typeof sessionPages<AgentSession>> | null>(null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   useEffect(() => {
-    let live = true;
-    const timer = setTimeout(() => {
-      if (view === "rules") return;
-      const params = new URLSearchParams({ limit: "50", ...(query.trim() ? { query: query.trim() } : {}), ...(view === "live" || view === "unfiled" ? { [view]: "true" } : {}) });
-      void api<Listing>("/sessions?" + params).then(r => { if (live) { setData(r); setError(""); } }).catch(e => live && setError(e.message));
-    }, query ? 250 : 0);
-    return () => { live = false; clearTimeout(timer); };
-  }, [query, view, tick]);
-  const refresh = () => setTick(t => t + 1);
+    if (view === "rules") return;
+    const pages = sessionPages<AgentSession>((offset, limit) => {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset),
+        ...(query.trim() ? { query: query.trim() } : {}),
+        ...(view === "live" || view === "unfiled" ? { [view]: "true" } : {}) });
+      return api<Listing>("/sessions?" + params);
+    }, setListing);
+    loader.current = pages;
+    const timer = setTimeout(() => { void pages.refresh(); }, query ? 250 : 0);
+    const stopWatching = watchSessionChanges(() => { void pages.refresh(); }, !!query.trim());
+    return () => { clearTimeout(timer); stopWatching(); pages.dispose(); loader.current = null; };
+  }, [query, view]);
+  const refresh = () => { void loader.current?.refresh(); };
   return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel sessions-panel" aria-label="Agent sessions"
     onKeyDown={event => { if (event.key === "Escape") onClose(); }}>
     <header><div><h2>Sessions</h2><p>Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p></div>
@@ -143,9 +149,16 @@ export function SessionsPanel({ onClose }: { onClose: () => void }) {
       </div>
     </div>
     {error && <p role="alert">{error}</p>}
+    {view !== "rules" && <div className="activity-toolbar">
+      <span className="footnote">{data ? data.items.length + " of " + data.total + " sessions" : loading ? "Loading sessions…" : ""}</span>
+      <button className="btn btn-ghost btn-sm" disabled={loading} onClick={refresh}>Refresh sessions</button>
+    </div>}
+    {view === "live" && <p className="footnote">These are the last reported terminal states; current status may have changed.</p>}
     {view === "rules" ? <div className="activity-items"><Rules onChanged={refresh}/></div> : <>
       {data && !data.items.length && <p className="activity-empty">{query ? "No sessions match." : empty[view]}</p>}
-      <div className="activity-items">{data?.items.map(item => <SessionCard key={item.id} item={item} onChanged={refresh}/>)}</div>
+      <div className="activity-items" aria-busy={loading}>{data?.items.map(item => <SessionCard key={item.id} item={item} onChanged={refresh}/>)}
+        {data?.next_offset != null && <button className="btn btn-soft" disabled={loading} onClick={() => void loader.current?.more()}>{loading ? "Loading…" : "Load more sessions"}</button>}
+      </div>
     </>}
   </Dialog>;
 }
