@@ -46,6 +46,22 @@
       "feature": "google_writes"
     },
     {
+      "name": "control.answer",
+      "feature": "agent_control"
+    },
+    {
+      "name": "control.message",
+      "feature": "agent_control"
+    },
+    {
+      "name": "control.start",
+      "feature": "agent_control"
+    },
+    {
+      "name": "control.stop",
+      "feature": "agent_control"
+    },
+    {
       "name": "goal.create",
       "feature": "organization"
     },
@@ -386,6 +402,10 @@
     {
       "name": "calendar_write_status",
       "feature": "google_sync"
+    },
+    {
+      "name": "control_status",
+      "feature": "agent_control"
     },
     {
       "name": "linear_compare",
@@ -1529,6 +1549,13 @@
       "method": "POST",
       "path": "/api/v1/sessions/{identity}/archive",
       "handler": "archive",
+      "source": "apps/api/jarvis/session_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sessions/{identity}/autolink/undo",
+      "handler": "undo_autolink",
       "source": "apps/api/jarvis/session_routes.py",
       "feature": "external_agents"
     },

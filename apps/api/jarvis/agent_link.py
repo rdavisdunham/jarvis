@@ -41,7 +41,7 @@ from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, emit, encode
 from .models import OwnerSettings, now
-from .session_models import AgentCommand, AgentHost, AgentParity, AgentSession, AgentTurn
+from .session_models import AgentCommand, AgentHost, AgentParity, AgentParityDay, AgentSession, AgentTurn
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -542,8 +542,57 @@ def parity(db, bot, host_id, tool, session_id, body):
     entry.host_id = host_id or entry.host_id
     entry.missing, entry.matched, entry.diff = row is None, row is not None and not diff, diff
     entry.reports, entry.updated_at = (entry.reports or 0) + 1, now()
+    count_day(db, owner, "missing" if entry.missing else "matched" if entry.matched else "mismatched")
     db.flush()
     return {"matched": entry.matched, "missing": entry.missing, "fields": sorted(diff)}
+
+
+# Cutover readiness (stage E): this many consecutive clean days, ending today or yesterday.
+CLEAN_DAYS = 7
+
+
+def owner_today(db, owner, clock=None):
+    from .domain import preferences, zone
+
+    return (clock or now()).astimezone(zone(preferences(db, owner)["timezone"])).date()
+
+
+def count_day(db, owner, outcome):
+    """One parity report on the owner's local day; insert-or-increment so concurrent reports never collide."""
+    day = owner_today(db, owner)
+    values = {"reports": 1, "matched": 0, "mismatched": 0, "missing": 0, outcome: 1}
+    table = AgentParityDay.__table__
+    statement = insert(table).values(id=str(uuid.uuid4()), owner_id=owner, day=day, updated_at=now(), **values)
+    db.execute(statement.on_conflict_do_update(
+        constraint="uq_agent_parity_day",
+        set_={k: table.c[k] + statement.excluded[k] for k in values} | {"updated_at": statement.excluded.updated_at}))
+
+
+def clean_day(row):
+    """A day counts when the new collector reported and no session differed from the current collector.
+
+    `missing` (a session only the new collector saw) does not count against it: the new collector seeing
+    more is not a regression, and the old collector often reports the same session minutes later."""
+    return row is not None and row.reports > 0 and row.mismatched == 0
+
+
+def readiness(db, owner, clock=None):
+    """{ready, streak, days[...]}: ready after CLEAN_DAYS consecutive clean days ending today or yesterday
+    (today may still be in progress)."""
+    today = owner_today(db, owner, clock)
+    rows = {r.day: r for r in db.scalars(select(AgentParityDay).where(
+        AgentParityDay.owner_id == owner, AgentParityDay.day >= today - timedelta(days=CLEAN_DAYS + 1)))}
+    start = today if clean_day(rows.get(today)) else today - timedelta(days=1)
+    streak = 0
+    while clean_day(rows.get(start - timedelta(days=streak))) and streak < CLEAN_DAYS:
+        streak += 1
+    days = []
+    for back in range(CLEAN_DAYS):
+        day = today - timedelta(days=back)
+        row = rows.get(day)
+        counts = {k: getattr(row, k) for k in ("reports", "matched", "mismatched", "missing")} if row else {"reports": 0}
+        days.append({"day": day.isoformat(), **counts, "clean": clean_day(row)})
+    return {"ready": streak >= CLEAN_DAYS, "streak": streak, "needed": CLEAN_DAYS, "days": days}
 
 
 def parity_summary(db, owner):
@@ -566,6 +615,7 @@ def parity_summary(db, owner):
         "last_report_at": max((r.updated_at for r in rows), default=None),
         "recent": [{"tool": r.tool, "session_id": r.session_id, "missing": r.missing, "diff": r.diff,
                     "updated_at": r.updated_at} for r in problems],
+        "cutover": readiness(db, owner),
     })
 
 

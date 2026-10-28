@@ -44,6 +44,21 @@ FRESH_READS = (
 )
 
 
+# Agent-run control (stage E): voice and chat get these only while remotea is enabled for the owner.
+# They sit in the `agents` tool group, never in CORE, and no bot scope maps to them.
+CONTROL_TOOLS = ("control_status", "control_start", "control_message", "control_answer", "control_stop")
+
+
+def remotea_tools(definitions, owner):
+    """Drop the control tools unless the owner turned remotea on (Settings → remotea)."""
+    from .agent_link import enabled
+    from .db import session_scope
+
+    with session_scope() as db:
+        on = enabled(db, owner)
+    return definitions if on else [d for d in definitions if d["name"] not in CONTROL_TOOLS]
+
+
 def validate(policy):
     if policy not in POLICIES:
         raise ValueError("Unknown tool policy")

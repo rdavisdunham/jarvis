@@ -89,6 +89,8 @@ REASONS = {
     "judge_met": "The success criteria are met.",
     "awaiting_integration": "Merge the sub-task pull requests into this branch.",
     "integrated": "Sub-task work was merged; checking the combined code.",
+    "awaiting_merge": "The criteria are met; merge the pull request to finish.",
+    "merged": "The pull request merged; confirming the result.",
 }
 
 
@@ -132,6 +134,10 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
+    if to == "completed":
+        from .agent_sync import queue_comment
+
+        queue_comment(db, run)  # Once per run; the run marker reconciles a lost write (agent_sync.py).
     if to == "needs_you":
         notify(db, run, "agent_stuck", "An agent needs you", REASONS.get(reason, reason or "The run needs attention."),
                key=f"{run.id}:{run.state_revision}")
@@ -338,19 +344,24 @@ def external_completion(db, run, actor):
 
 def mark_in_progress(db, run):
     """The observed start moves the task to In Progress through task.update, so Linear follows."""
+    from . import agent_sync
     from .domain import execute
+    from .linear_sync import for_run
 
     task = db.get(Task, run.task_id)
     if task is None or task.status in {"in_progress", "completed", "cancelled"} or task.archived:
         return
     try:
-        with db.begin_nested(), acting(COORDINATOR):
+        with db.begin_nested(), acting(COORDINATOR), for_run(run.id, "in_progress") as outcome:
             execute(db, run.owner_id, f"run-start:{run.id}", "task.update",
                     {"task_id": task.id, "expected_revision": task.revision, "status": "in_progress"})
     except DomainError as exc:
         # Local start and source sync are separate outcomes; a refused status never undoes the start.
-        run.sync_state = {**(run.sync_state or {}), "in_progress": {"error": exc.code, "message": exc.message[:300]}}
-        note(run, "sync_failed", code=exc.code)
+        outcome = {"status": "blocked", "code": exc.code, "message": exc.message[:300]}
+    if outcome.get("status"):
+        agent_sync.save(run, "in_progress", outcome)
+        if outcome["status"] == "blocked":
+            note(run, "sync_failed", code=outcome.get("code"))
 
 
 def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="", incarnation=None):
@@ -783,7 +794,8 @@ def on_verdict(db, attempt, final):
                                    "text": prompts.gap(final.get("gap", ""), final.get("criteria") or [])},
                 source="eridani")
         return run
-    return transition(db, run, "needs_you", actor=actor, reason="judge_needs_you", detail=final.get("gap", ""))
+    reason = "awaiting_merge" if "pr_not_merged" in (final.get("rules") or []) else "judge_needs_you"
+    return transition(db, run, "needs_you", actor=actor, reason=reason, detail=final.get("gap", ""))
 
 
 def judge_failed(db, attempt, kind, detail=""):
@@ -798,10 +810,15 @@ def complete_by_judge(db, run, actor):
     """auto_complete: the judge completes the task, then the run stops and settles as completed."""
     from .domain import execute
 
+    from . import agent_sync
+    from .linear_sync import for_run
+
     task = db.get(Task, run.task_id)
-    with acting(actor):
+    with acting(actor), for_run(run.id, "done") as outcome:
         execute(db, run.owner_id, f"run-judge-complete:{run.id}:{run.generation}:{run.turn_seq}", "task.complete",
                 {"task_id": task.id, "expected_revision": task.revision})
+    if outcome.get("status"):
+        agent_sync.save(run, "done", outcome)
     notify(db, run, "agent_done", "An agent completed a task", "The success criteria were met; the task is complete.",
            key=f"{run.id}:auto")
     return request_stop(db, run, actor=actor, reason="judge_met", final="completed")
@@ -877,9 +894,26 @@ def integration_pending(db, run, plan):
     return pending
 
 
+def branch_merged(db, run):
+    """The host's worktrees report says the run's branch merged into its base (completion policy pr_merged)."""
+    host = db.get(AgentHost, run.host_id)
+    report = ((host.caps or {}).get("worktrees") or {}).get("worktrees") or [] if host else []
+    return any(isinstance(w, dict) and w.get("branch") == run.branch and w.get("merged") is True for w in report) \
+        if run.branch else False
+
+
 def check_integrations(db, owner, host_id):
-    """After a worktrees.report: a parent whose children are now merged goes back to work on the combined code."""
+    """After a worktrees.report: a parent whose children are now merged goes back to work on the combined code,
+    and a run waiting for its own pull request to merge (pr_merged) is checked once more."""
     from . import agent_prompts as prompts
+
+    for run in db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
+                                                 AgentRun.state == "needs_you", AgentRun.state_reason == "awaiting_merge")
+                          .with_for_update()):
+        if branch_merged(db, run) and run.surf:
+            transition(db, run, "executing", reason="merged")
+            command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
+                                       "text": prompts.merged(run.branch)}, source="eridani")
 
     for run in db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
                                                  AgentRun.state == "awaiting_integration").with_for_update()):

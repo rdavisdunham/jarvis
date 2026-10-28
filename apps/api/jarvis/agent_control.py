@@ -1,11 +1,13 @@
 """The command service for agent runs: start, message/steer, stop, approve, answer and execution targets.
 
-Browser routes (remotea_routes.py) and, from stage E, voice call these; each authenticates the actor,
+Browser routes (remotea_routes.py) and voice (`control.*` through domain.mutate, `control_status`) call
+these; each authenticates the actor,
 resolves the owned task and host, checks the expected revision and records the state change plus
 its outbound command in one transaction (run_coordinator.py owns the transitions).
 """
 
 import re
+from datetime import timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -17,6 +19,7 @@ from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit, encode, owned
 from .models import Note, StructureRecord, Task, now
+from .agent_control_schema import COMMANDS  # noqa: F401  (voice commands; domain.COMMANDS includes them)
 from .session_models import (
     TERMINAL_RUN_STATES,
     AgentAttempt,
@@ -236,10 +239,11 @@ def freeze(db, owner, run, task):
     plan = AgentRunPlan(owner_id=owner, run_id=run.id, revision=1, task_plan_revision=task.plan_revision or 0,
                         title=task.title, prd_text=prd or task.notes or "", steps=list(task.steps or []),
                         criteria=list(task.success_criteria or []), verify=task.verify,
+                        completion_policy=task.completion_policy or "code_ready",
                         required_children=[c.id for c in coordinator.children(db, task)
                                            if any(s.get("task_id") == c.id for s in task.steps or [])])
     db.add(plan)
-    run.plan_revision = 1
+    run.plan_revision, run.completion_policy = 1, plan.completion_policy
     return plan
 
 
@@ -279,7 +283,7 @@ def start_run(db, owner, account_id, body, *, actor):
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
                    model=body.model or HARNESSES[body.harness], turn_cap=task.turn_cap or 15,
-                   worktree="", completion_policy="approve", sync_state={},
+                   worktree="", completion_policy=task.completion_policy or "code_ready", sync_state={},
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
@@ -393,10 +397,15 @@ def approve(db, owner, run_id, body, *, actor):
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    from . import agent_sync
+    from .linear_sync import for_run
+
     task = db.get(Task, run.task_id)
-    with acting(Actor("human", credential_id=actor.credential_id, reason="approve")):
+    with acting(Actor("human", credential_id=actor.credential_id, reason="approve")), for_run(run.id, "done") as outcome:
         execute(db, owner, f"run-approve:{run.id}", "task.complete", {"task_id": task.id, "expected_revision": task.revision})
     db.refresh(run)
+    if outcome.get("status"):
+        agent_sync.save(run, "done", outcome)
     return public_run(db, run)
 
 
@@ -460,6 +469,10 @@ def public_run(db, run, *, detail=False):
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
         "integration": (run.sync_state or {}).get("integration") or [],
+        "completion_policy": run.completion_policy,
+        # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
+        "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
+                   for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
         "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host)} if host else None,
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
@@ -514,3 +527,124 @@ def unmerged(db, owner):
                     "target", "path", "branch", "base", "ahead", "behind", "unpushed", "uncommitted", "untracked",
                     "merged", "active", "reasons")}})
     return encode({"items": items})
+
+
+# ---------------------------------------------------------------- voice (control.*, control_status)
+
+
+def task_by_name(db, owner, name):
+    """A task from a spoken name (navigation_find's matcher) or an exact Linear identifier; one match or ask."""
+    from .navigation import find
+
+    keys = sessions.issue_keys(name)
+    if len(keys) == 1 and keys[0] == name.strip().upper():
+        issue = sessions.known_issues(db, owner, keys).get(keys[0])
+        if issue:
+            return issue["task_id"]
+    found = find(db, owner, name)
+    ids = []
+    for match in found["matches"]:
+        if match["kind"] == "task":
+            ids.append(match["id"])
+        elif match["kind"] == "record":
+            record = db.get(StructureRecord, match["id"])
+            if record is not None and record.task_id:
+                ids.append(record.task_id)
+    ids = list(dict.fromkeys(ids))
+    if len(ids) != 1:
+        titles = [db.get(Task, i).title for i in ids[:8]]
+        raise DomainError("AMBIGUOUS_TASK" if ids else "NOT_FOUND",
+                          "Which task? " + "; ".join(titles) if ids else f"No task named {name!r}.",
+                          409 if ids else 404, data={"candidates": [{"task_id": i, "title": t} for i, t in zip(ids, titles)]})
+    return ids[0]
+
+
+def run_for(db, owner, target):
+    """The run a voice command means: by id, by task, or the only active run."""
+    if target.run_id:
+        return coordinator.load(db, owner, target.run_id, lock=False).id
+    task_id = target.task_id or (task_by_name(db, owner, target.task) if target.task else None)
+    query = select(AgentRun.id).where(AgentRun.owner_id == owner, AgentRun.state.not_in(TERMINAL_RUN_STATES))
+    if task_id:
+        query = query.where(AgentRun.task_id == task_id)
+    ids = list(db.scalars(query.limit(5)))
+    if len(ids) != 1:
+        raise DomainError("AMBIGUOUS_RUN" if ids else "NOT_FOUND",
+                          "Several agents are running; name the task." if ids else "No agent is running on that.",
+                          409 if ids else 404)
+    return ids[0]
+
+
+def mutate(db, owner, tool, args, command_id):
+    """domain.mutate entrance for control.* (voice). Same functions as the remotea page."""
+    from .access import actor as account
+    from .agent_actor import current
+
+    agent_link.gate(db, owner)
+    actor = current()
+    if tool == "control.start":
+        task_id = args.task_id or task_by_name(db, owner, args.task)
+        return start_run(db, owner, account(db, owner), StartInput(task_id=task_id, harness=args.harness), actor=actor)
+    if tool == "control.message":
+        return send_message(db, owner, run_for(db, owner, args), MessageInput(text=args.text, mode=args.mode), actor=actor)
+    if tool == "control.stop":
+        return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
+    if tool == "control.answer":
+        if args.interview_id:
+            from .agent_plan import InterviewAnswers, answer_interview
+
+            return answer_interview(db, owner, args.interview_id, InterviewAnswers(answers=args.responses), actor=actor)
+        return answer_question(db, owner, args.question_id,
+                               AnswerInput(answers=[AnswerItem(**a.model_dump()) for a in args.answers]), actor=actor)
+    raise DomainError("INVALID_ARGUMENT", "That action is not available.")
+
+
+def spoken_run(db, run):
+    """A compact run for voice: what it is doing, what it waits for, and the ids to answer with."""
+    from .agent_plan import public_interview
+
+    item = public_run(db, run)
+    questions = [{"question_id": q.id, "remote_answerable": q.remote_answerable, "status": q.status,
+                  "items": [{"item_id": i.get("id"), "text": i.get("text"), "multi": bool(i.get("multi")),
+                             "choices": [{"id": c.get("id"), "label": c.get("label")} for c in i.get("choices") or []]}
+                            for i in q.items or []]}
+                 for q in coordinator.open_questions(db, run)]
+    interview = coordinator.open_interview(db, run)
+    linear = (run.sync_state or {}).get("linear") or {}
+    return {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
+            "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
+            "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
+            "questions": questions,
+            "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
+            if interview else None,
+            "linear": {k: (v or {}).get("status") for k, v in linear.items()} or None}
+
+
+def status(db, owner, args):
+    """control_status: active runs (or one), with open questions; recently settled runs in brief."""
+    if not agent_link.enabled(db, owner):
+        return {"enabled": False, "message": "remotea is off; turn it on in Settings to run agents."}
+    runs = []
+    if args.get("run_id") or args.get("task_id") or args.get("task"):
+        from .agent_control_schema import Target
+
+        target = Target.model_validate({k: args[k] for k in ("run_id", "task_id", "task") if args.get(k)})
+        if target.run_id:
+            runs = [coordinator.load(db, owner, target.run_id, lock=False)]
+        else:
+            task_id = target.task_id or task_by_name(db, owner, target.task)
+            runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.task_id == task_id)
+                                   .order_by(AgentRun.created_at.desc()).limit(1)))
+    else:
+        runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner,
+                                                      AgentRun.state.not_in(TERMINAL_RUN_STATES))
+                               .order_by(AgentRun.created_at.desc()).limit(10)))
+    recent = list(db.scalars(select(AgentRun).where(
+        AgentRun.owner_id == owner, AgentRun.state.in_(TERMINAL_RUN_STATES),
+        AgentRun.finished_at >= now() - timedelta(hours=24)).order_by(AgentRun.finished_at.desc()).limit(5)))
+    hosts = [{"name": h.name, "connected": agent_link.connected(h)}
+             for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner))]
+    return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
+                   "recently_finished": [{"run_id": r.id, "task": (db.get(Task, r.task_id).title if r.task_id else ""),
+                                          "state": r.state, "finished_at": r.finished_at} for r in recent
+                                         if r not in runs]})

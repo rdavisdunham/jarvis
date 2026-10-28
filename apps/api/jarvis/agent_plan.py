@@ -88,6 +88,8 @@ class SubmitPlanInput(Input):
     steps: list[PlanStepInput] = Field(default_factory=list, max_length=100)
     success_criteria: list[CriterionInput] = Field(min_length=1, max_length=50)
     verify: VerifyInput | None = None
+    # What "done" means; omitted keeps the task's policy (default code_ready).
+    completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     expected_plan_revision: int = Field(ge=0)
 
 
@@ -131,7 +133,8 @@ def task_plan(db, bot, body):
         "task_id": task.id, "title": task.title, "status": task.status, "revision": task.revision,
         "plan_revision": task.plan_revision, "prd": note.content if note and not note.archived else task.notes,
         "steps": [{k: s.get(k) for k in ("id", "title", "status", "note", "task_id", "revision")} for s in task.steps or []],
-        "success_criteria": task.success_criteria or [], "actor": actor.record(),
+        "success_criteria": task.success_criteria or [], "completion_policy": task.completion_policy,
+        "actor": actor.record(),
     }
     if run is not None and run.task_id == task.id:
         plan = coordinator.frozen(db, run)
@@ -347,19 +350,21 @@ def submit_plan(db, bot, body):
         db.refresh(task)
         execute(db, run.owner_id, f"submit-plan:{run.id}:{run.generation}:{task.revision}", "task.update", {
             "task_id": task.id, "expected_revision": task.revision, "prd_note_id": prd_id, "steps": steps,
-            "success_criteria": [c.model_dump(exclude_none=True) for c in body.success_criteria], "verify": verify})
+            "success_criteria": [c.model_dump(exclude_none=True) for c in body.success_criteria], "verify": verify,
+            **({"completion_policy": body.completion_policy} if body.completion_policy else {})})
     db.refresh(task)
     revision = (run.plan_revision or 0) + 1
     note = db.get(Note, prd_id)
     db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision,
                         task_plan_revision=task.plan_revision or 0, title=task.title, prd_text=note.content if note else "",
                         steps=list(task.steps or []), criteria=list(task.success_criteria or []), verify=task.verify,
-                        required_children=[c.id for c in kids]))
-    run.plan_revision, run.plan_pending = revision, True
+                        completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids]))
+    run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
     coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record())
     emit(db, run.owner_id, "agent.changed", run.id)
     return encode({"plan_revision": revision, "task_plan_revision": task.plan_revision, "prd_note_id": prd_id,
                    "steps": task.steps, "success_criteria": task.success_criteria, "verify": task.verify,
+                   "completion_policy": task.completion_policy,
                    "actor": actor.record(), "next": "Stop now. Eridani starts execution when this turn ends."})

@@ -3,7 +3,8 @@
 One job (`agent_judge`, queue jarvis-memory) per judge attempt, bound to (run, generation, turn_seq,
 plan_revision). Evidence is fixed when the job starts: the frozen plan, the root turn's final
 response (flagged if truncated), the bound verification attempt and the criteria record from earlier
-verdicts. Hard rules run first and bound what the model may conclude; the model is Luna through the
+verdicts, plus the plan's completion policy with the session's PR links and the host's merge report.
+Hard rules run first and bound what the model may conclude; the model is Luna through the
 extraction helper (decision 20). A refusal, incomplete answer, timeout, budget deferral or invalid
 output is a non-verdict: retried twice, then the run goes to needs_you. Only the coordinator commits
 a verdict (run_coordinator.on_verdict), under compare-and-set on the attempt tuple.
@@ -24,9 +25,10 @@ from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError
 from .models import Job, now
-from .session_models import AgentAttempt, AgentRun, AgentTurn
+from .session_models import AgentAttempt, AgentRun, AgentSession, AgentTurn
 
 PROMPT_VERSION = "judge-v1"
+POLICIES = ("code_ready", "pr_open", "pr_merged")
 RETRIES = 2
 TURN_CHARS = 24_000
 TAIL_CHARS = 6_000
@@ -130,10 +132,33 @@ def decide(evidence, model):
         gap = gap or "Not every success criterion is met: " + ", ".join(c["id"] for c in record if c["status"] != "met")
     if verdict == "not_met" and not gap.strip():
         gap = "Not every success criterion is met: " + ", ".join(c["id"] for c in record if c["status"] != "met")
+    if verdict == "met":
+        verdict, gap = policy_rule(evidence.get("completion") or {}, rules) or (verdict, gap)
     steps = [{"id": s.id, "status": s.status if s.status != "disputed" or verify_failed else "unclear"}
              for s in out.steps]
     return {"verdict": verdict, "gap": gap[:4000], "summary": out.summary[:2000], "criteria": record, "steps": steps,
             "rules": rules, "verify_failed": verify_failed}
+
+
+def policy_rule(completion, rules):
+    """What "done" means beyond the criteria: (verdict, gap) when the plan's completion policy is not met yet.
+
+    code_ready: the criteria are enough. pr_open: the session must have a pull request on record (the
+    session's pr_urls metadata, not a claim in the turn). pr_merged: that pull request merged, as the host's
+    worktrees report says (the branch merged into its base); agents never merge, so that needs Davin."""
+    policy = completion.get("policy") or "code_ready"
+    if policy not in ("pr_open", "pr_merged"):
+        return None
+    branch = completion.get("branch") or "this branch"
+    if not completion.get("pr_urls"):
+        rules.append("pr_required")
+        return "not_met", (f"This plan is done only with a pull request open. Eridani has no pull request recorded for "
+                           f"this session yet: if you have not opened one for {branch}, open it now (never merge it); "
+                           "if you have, print its URL.")
+    if policy == "pr_merged" and not completion.get("merged"):
+        rules.append("pr_not_merged")
+        return "needs_you", f"The criteria are met; merge {completion['pr_urls'][0]} to finish (the run re-checks then)."
+    return None
 
 
 # ---------------------------------------------------------------- the model
@@ -211,8 +236,18 @@ def evidence_for(db, attempt):
                  "truncated": bool(turn and turn.truncated) or len(text) > TURN_CHARS, "missing": turn is None},
         "verify": verify_evidence(verify, attempt),
         "criteria_record": (earlier.result or {}).get("criteria", []) if earlier else [],
+        "completion": completion_evidence(db, run, plan),
         "turn_count": run.turn_count, "turn_cap": run.turn_cap,
     }
+
+
+def completion_evidence(db, run, plan):
+    from .agent_sessions import pull_requests
+
+    session = db.get(AgentSession, run.session_pk) if run.session_pk else None
+    return {"policy": (plan.completion_policy if plan else None) or "code_ready", "branch": run.branch,
+            "pr_urls": pull_requests(session.pr_urls if session else []),
+            "merged": coordinator.branch_merged(db, run)}
 
 
 def process(job_id, model=None):

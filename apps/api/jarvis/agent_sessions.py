@@ -147,6 +147,14 @@ def issue_keys(text):
     return list(dict.fromkeys(m.upper() for m in ISSUE_KEY.findall(text or "")))
 
 
+PULL_REQUEST = re.compile(r"^https://[^\s/]+/[^\s]+/(pull|merge_requests)/[0-9]+(?:[/?#][^\s]*)?$")
+
+
+def pull_requests(urls):
+    """Validated pull/merge request links from the session's metadata (the collector or remotea reports them)."""
+    return [u for u in dict.fromkeys(urls or []) if isinstance(u, str) and PULL_REQUEST.match(u)][:10]
+
+
 def known_issues(db, owner, keys):
     """Only identifiers of synced Linear issues count; "gpt-5" or "utf-8" never file a session."""
     if not keys:
@@ -174,13 +182,21 @@ def matching_rule(db, owner, cwd):
 
 
 def resolve(db, row):
-    """Automatic filing, strongest evidence first: branch issue key, one mentioned issue, folder rule."""
+    """Automatic filing, strongest evidence first: branch issue key, one mentioned issue, folder rule.
+
+    A dream link (`auto`, agent_autolink.py) stays while the evidence it was inferred from is unchanged."""
     branch = issue_keys(row.branch)
     mentioned = issue_keys("\n".join((row.title, row.first_prompt, row.last_prompt)))
     issues = known_issues(db, row.owner_id, list(dict.fromkeys(branch + mentioned)))
     row.issue_refs = [{"identifier": k, **issues[k]} for k in dict.fromkeys(branch + mentioned) if k in issues]
     if row.binding_source in PROTECTED:
         return
+    if row.binding_source == "auto":
+        from .agent_autolink import evidence_revision
+
+        if row.task_id and row.binding_evidence == evidence_revision(row):
+            return
+        row.binding_evidence = ""  # The evidence changed: file it afresh; the next dream cycle reconsiders it.
     hits = [k for k in branch if k in issues] or [k for k in mentioned if k in issues]
     task, record, source = None, None, ""
     if hits and (len(hits) == 1 or hits[0] in branch):
@@ -259,6 +275,11 @@ def queue_summary(db, row):
 def link(db, owner, tool, session_id, body, *, source="manual", reveal=True):
     """File a session by hand. It may arrive before the collector has reported it."""
     row = claim(db, owner, tool, session_id)
+    if row.binding_source == "auto":
+        from .agent_autolink import reject
+
+        reject(db, row)  # Replacing or clearing a dream link is an Undo: it is never proposed again.
+        row.binding_evidence = ""
     if body.clear:
         row.binding_source = ""
     elif body.identifier:
@@ -376,6 +397,7 @@ def public(db, row, *, titles=None, reveal=True, score=None):
             "reason": (row.state_detail or {}).get("reason", ""),
         } if row.state else None,
         "filed": {
+            # "auto": filed by the dream sequence (agent_autolink.py); the page offers Undo.
             "source": row.binding_source or None,
             "record_id": row.record_id,
             "task_id": row.task_id,

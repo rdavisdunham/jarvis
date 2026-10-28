@@ -32,6 +32,7 @@ PREFIX = {
     "ui": "site_controls",
     "work": "queue",
     "organization": "organization",
+    "control": "agent_control",
 }
 EXACT = {
     "task.create": "task_capture",

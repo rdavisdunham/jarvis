@@ -57,3 +57,45 @@ Add Eridani's MCP server (`/api/v1/external/mcp/`) to Claude Code or Codex with 
 - `session_link` to file the current session
 
 `session_hook.py` is a Claude Code `SessionStart` hook. It tells the agent its own session ID so it can call `session_link`.
+
+## Retirement
+
+remotea's own collector replaces this one. Until the cutover it runs in parity mode: Eridani compares its
+reports with this collector's and stores only this collector's. Never run both as the store's source at once.
+These steps mirror remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover;
+`remotea eridani collector authoritative` prints them too.
+
+**Ready.** Eridani's remotea page shows the parity summary as "ready for cutover": 7 consecutive clean days in your
+timezone, ending today or yesterday. A clean day has at least one parity report and no mismatches. Reports for
+sessions only remotea saw (missing here) don't count against a day. Readiness is computed by
+`agent_link.readiness` and returned as `cutover` from `GET /api/v1/remotea/parity`.
+
+**Steps** (Davin runs these on the work host; nothing runs them automatically):
+1. Before. The parity summary shows "ready for cutover", and the remotea release with the cutover is the one
+   installed and running.
+2. `remotea eridani collector authoritative`. Within 30 s the link reconnects with `collector.authoritative`,
+   `remotea status --json` turns `version: 2`, and every source is sent once more, without the parity flag.
+   From here on, a forgotten timer of this collector stops learning about remotea terminals (it reads only
+   version 1) and logs "remotea status unavailable; keeping the last known terminals". It still sends its other
+   reports, so step 3 is required.
+3. `systemctl --user disable --now eridani-collector.timer`.
+4. `remotea hooks --remove-legacy-collector --dry-run`, then without `--dry-run`. It removes only the
+   `SessionStart` handler that runs `session_hook.py`, and keeps the original as
+   `~/.claude/settings.json.remotea-backup`. Sessions in remotea terminals still learn their own session id; a
+   Claude session started outside remotea no longer does.
+5. Watch one cycle. `remotea eridani status` shows the link ready, no refusals, the outbox draining. A new or
+   resumed session appears in Eridani with its resume hint. The agents' MCP key (`cli-agents`) still works: it is
+   not part of the cutover.
+6. One release later, after a clean cutover:
+   - remove the units: `rm ~/.config/systemd/user/eridani-collector.{service,timer}`, then
+     `systemctl --user daemon-reload`;
+   - remove the token directory: `rm -r ~/.config/eridani-collector`;
+   - revoke the old collector credential in Eridani under **Settings → Integrations → Connected agents**. Never the
+     remotea link key or `cli-agents`.
+
+**Rollback** (any time before step 6): `remotea eridani collector parity`, then
+`systemctl --user enable --now eridani-collector.timer`, and put the `SessionStart` hook back by hand if you want
+it (`python3 ~/jarvis/scripts/session_collector/session_hook.py`). Both sides kept their fingerprints, so going
+back sends nothing new.
+
+The code in this directory stays until a later stage removes it.

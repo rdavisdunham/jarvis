@@ -86,3 +86,8 @@ def replan(reason=""):
 def integrated(branch):
     return ("The sub-task pull requests were merged into " + branch + ". Pull them into this worktree, make sure "
             "the combined code still meets the success criteria (run the checks), then end your turn.")
+
+
+def merged(branch):
+    return ("The pull request for " + branch + " was merged. Make sure your worktree reflects the merged result and "
+            "the success criteria still hold (run the checks), then end your turn.")

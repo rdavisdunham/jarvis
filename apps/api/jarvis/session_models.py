@@ -1,7 +1,7 @@
 """External agent sessions (Claude Code, Codex, desktop apps) and the rules that file them."""
 
-from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from datetime import date, datetime
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base, now, uid
@@ -36,6 +36,8 @@ class AgentSession(Base):
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Explicit and manual filing is never replaced by automatic rebinding.
     binding_source: Mapped[str] = mapped_column(String(20), default="")
+    # binding_source="auto": the evidence revision the dream sequence linked at (agent_autolink.py).
+    binding_evidence: Mapped[str] = mapped_column(String(64), default="", server_default="")
     record_id: Mapped[str | None] = mapped_column(ForeignKey("structure_records.id"), index=True)
     task_id: Mapped[str | None] = mapped_column(ForeignKey("tasks.id"), index=True)
     fingerprint: Mapped[str] = mapped_column(String(64), default="")
@@ -185,6 +187,20 @@ class AgentParity(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class AgentParityDay(Base):
+    """Collector parity per owner and day (owner's timezone); seven clean days in a row → ready for cutover."""
+    __tablename__ = "agent_parity_days"
+    __table_args__ = (UniqueConstraint("owner_id", "day", name="uq_agent_parity_day"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    reports: Mapped[int] = mapped_column(Integer, default=0)
+    matched: Mapped[int] = mapped_column(Integer, default=0)
+    mismatched: Mapped[int] = mapped_column(Integer, default=0)
+    missing: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 TERMINAL_RUN_STATES = ("completed", "stopped", "capped", "failed")
 
 
@@ -288,6 +304,8 @@ class AgentRunPlan(Base):
     verify: Mapped[dict | None] = mapped_column(JSONB)
     # Direct child task ids the plan requires (F02); removing one is a plan change.
     required_children: Mapped[list] = mapped_column(JSONB, default=list)
+    # code_ready | pr_open | pr_merged: what "done" means for this plan (agent_judge hard rules).
+    completion_policy: Mapped[str] = mapped_column(String(20), default="code_ready", server_default="code_ready")
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
