@@ -48,8 +48,8 @@ def frame(t, **values):
 
 
 def hello(ws, server_id="desk-1", **values):
-    ws.send_json(frame("hello", server_id=server_id, boot_id="boot-1", hostname="desk", machine="WSL",
-                       proto=1, caps=["session.report", "turn", "status"], **values))
+    ws.send_json(frame("hello", **{"server_id": server_id, "boot_id": "boot-1", "hostname": "desk", "machine": "WSL",
+                                    "proto": 1, "caps": ["session.report", "turn", "status"], **values}))
     welcome = ws.receive_json()
     assert welcome["t"] == "welcome", welcome
     return welcome
@@ -302,7 +302,7 @@ def test_disabling_closes_a_connected_link(client):
         assert ack is None and bye["t"] == "bye" and bye["reason"] == "disabled"
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
-    assert closed.value.code == 4003
+    assert closed.value.code == 4403
 
 
 def test_enabling_mints_the_link_key_once(client):
@@ -335,3 +335,91 @@ def test_viewers_cannot_hold_control_keys(client):
     assert response.status_code == 403
     assert guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["sessions:read"], "expires_in_days": 30}).status_code == 201
     assert refused(bearer(token)).status_code == 403
+
+
+def ms(value):
+    return int(value.timestamp() * 1000)
+
+
+def test_host_wire_format_from_remotea(client):
+    """Frames exactly as remotea's stage B link sends them (epoch-ms times, provider ids, in-frame parts)."""
+    token = enable(client)["token"]
+    start = now()
+    sid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+    with connect(bearer(token)) as ws:
+        ws.send_json({"v": 1, "id": "h1", "conn_epoch": None, "at": ms(start), "t": "hello", "server_id": "59e4bb0b-8fe5",
+                      "boot_id": "b1", "hostname": "DavisPC", "machine": "e2e-box", "proto": 1, "version": "0.1.0",
+                      "caps": ["session.report", "session.report.parity", "turn", "status", "exit", "sessions.snapshot",
+                               "chunking", "journal"],
+                      "harnesses": {"claude": {"version": None, "observe": True, "capture": True}}})
+        welcome = ws.receive_json()
+        assert welcome["t"] == "welcome" and welcome["acked_id"] == "h1"
+        assert isinstance(welcome["at"], int) and isinstance(welcome["server_time"], int)
+        epoch = welcome["conn_epoch"]
+        envelope = {"v": 1, "conn_epoch": epoch, "at": ms(start)}
+        reported = {**envelope, "id": "r1", "t": "session.report", "entity": "claude_code:" + sid, "revision": "e7e9",
+                    "tool": "claude_code", "session_id": sid, "report": SESSION, "op_id": "op-r1", "digest": "x"}
+        ws.send_json(reported)
+        ack = ws.receive_json()
+        assert ack["acked_id"] == "r1" and ack["op_id"] == "op-r1" and ack["ok"]
+        ws.send_json({**envelope, "id": "s1", "t": "status", "entity": "status:surf-1", "surf": "surf-1", "incarnation": 1,
+                      "revision": ms(start), "state": "idle", "since": ms(start), "provider": "claude",
+                      "provider_session_id": sid, "op_id": "op-s1", "digest": "x"})
+        assert ws.receive_json()["outcome"]["applied"] is True
+        ws.send_json({**envelope, "id": "t1", "t": "turn", "surf": "surf-1", "incarnation": 1, "run_id": None,
+                      "generation": 0, "provider": "claude", "tool": "claude_code", "provider_session_id": sid,
+                      "provider_turn_id": sid + ":surf-1:2", "root": True, "seq": 2, "text": "", "truncated": False,
+                      "missing": True, "source": "hook", "ended_at": ms(start), "op_id": "op-t1", "digest": "x"})
+        assert ws.receive_json()["outcome"]["missing"] is True
+        later = start + timedelta(seconds=2)
+        for i, surfaces in ((2, []), (1, [{"surf": "surf-1", "incarnation": 1, "state": "live", "agent_state": "working",
+                                           "since": ms(later), "provider": "claude", "provider_session_id": sid,
+                                           "turn_seq": 2, "run_id": None, "generation": 0}])):
+            ws.send_json({**envelope, "id": f"p{i}", "t": "sessions.snapshot", "part": {"of": "snap-1", "i": i, "n": 2},
+                          "surfaces": surfaces, "journal": {"pending": [], "uncertain": []}, "op_id": "op-snap", "digest": "x"})
+        assert ws.receive_json()["outcome"] == {"pending": True}
+        assert ws.receive_json()["t"] == "runs.snapshot"
+        assert ws.receive_json()["outcome"] == {"applied": 1, "ended": 0}
+        ws.send_json({**envelope, "id": "x1", "t": "exit", "surf": "surf-1", "incarnation": 1, "code": 0,
+                      "exited_at": ms(later + timedelta(seconds=1)), "op_id": "op-x1", "digest": "x"})
+        assert ws.receive_json()["outcome"]["applied"] is True
+        ws.send_json({**envelope, "id": "c1", "t": "command.outcome", "command_id": "op-unknown", "state": "rejected",
+                      "detail": "unsupported", "op_id": "op-c1", "digest": "x"})
+        assert ws.receive_json()["outcome"] == {"recorded": False}
+        ws.send_json({**envelope, "id": "bye1", "t": "bye", "reason": "shutdown"})
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert closed.value.code == 1000
+    with session_scope() as db:
+        row = db.scalar(select(AgentSession))
+        assert row.state == "exited" and ms(row.state_since) == ms(later + timedelta(seconds=1))
+        assert db.scalar(select(func.count()).select_from(AgentTurn)) == 1
+
+
+def test_connect_probe_does_not_take_the_lease(client):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as live:
+        epoch = hello(live)["conn_epoch"]
+        with connect(bearer(token)) as checking:
+            welcome = hello(checking, boot_id="probe-1234")
+            assert welcome["probe"] is True and welcome["conn_epoch"] == epoch
+            checking.send_json(frame("bye", reason="probe"))
+        assert send(live, "session.report", tool="claude_code", session_id="s1", report=SESSION)["ok"]
+
+
+def test_revoked_key_closes_with_4401(client):
+    first = enable(client)
+    with connect(bearer(first["token"])) as ws:
+        hello(ws)
+        client.post(f"/api/v1/bot-keys/{first['key']['id']}/revoke")
+        ws.send_json(frame("session.report", tool="claude_code", session_id="s1", report=SESSION))
+        assert ws.receive_json()["t"] == "bye"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert closed.value.code == 4401
+
+
+def test_digest_matches_the_host_definition():
+    message = {"v": 1, "id": "e", "conn_epoch": 2, "at": 1, "t": "status", "state": "idle", "surf": "s", "op_id": "o", "digest": "d"}
+    expected = __import__("hashlib").sha256('{"state":"idle","surf":"s","t":"status"}'.encode()).hexdigest()
+    assert agent_link.digest(message) == expected

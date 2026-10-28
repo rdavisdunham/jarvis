@@ -69,7 +69,9 @@ After the upgrade, Eridani closes with these codes (kept distinct from handshake
 | Code | Meaning |
 |---|---|
 | 4001 | superseded by a newer connection for the same host (preceded by `bye {reason:"superseded"}`) |
-| 4003 | key revoked, membership changed or remotea turned off (`bye {reason:"access_revoked"|"disabled"}`) |
+| 4401 | key no longer authenticates (revoked/expired; `bye {reason:"access_revoked"}`). The host waits 5 minutes before retrying |
+| 4403 | missing scope, viewer, or remotea turned off (`bye {reason:"access_revoked"|"disabled"}`). Same 5-minute back-off |
+| 1000 | normal close after the host's own `bye`, or after a `connect` probe |
 | 4400 | protocol error: first frame not `hello`, malformed envelope or JSON |
 | 1003 | binary frame |
 | 1008 | rate limit exceeded repeatedly (`bye {reason:"rate_limited"}`) |
@@ -85,24 +87,35 @@ still matches, so a superseded socket never marks the live one offline. Startup 
 ## Frames
 
 Every frame is JSON text: `{v: 1, id, t, at, conn_epoch?, ...}`. `id` is the transport id (≤100 chars).
+**Timestamps on the wire are epoch milliseconds** (`at`, `since`, `exited_at`, `ended_at`, `server_time`,
+`expires_at`); Eridani also accepts ISO-8601 with a zone inbound. An `outcome` inside an ack keeps the
+HTTP API's ISO encoding, so a `session.report` outcome is byte-identical to the HTTP response.
+Effectful frames carry a stable `op_id` and a `digest`: sha256 hex of the canonical JSON (keys sorted at
+every level, no whitespace, non-ASCII kept) of the frame minus `v, id, conn_epoch, at, op_id, digest`
+(`agent_link.digest`). Stage B accepts inbound digests without enforcing them; stage C stamps commands.
 A frame carrying a `conn_epoch` other than the current one is answered `STALE_EPOCH`. Unknown fields are
 ignored; unknown `t` values get `ack {ok:false, error:{code:"UNSUPPORTED"}}` (capability negotiation: each
 side only uses what the other advertised).
 
-Each inbound frame (except `ack` and partial chunks) is answered with
-`ack {acked_id, ok, outcome?, error?: {code, message, data?}}`. Each runs in its own short transaction.
+Each inbound frame (except `ack`, `bye` and partial chunks) is answered with
+`ack {acked_id, op_id?, ok, retry?, outcome?, error?: {code, message, data?}}`. `acked_id` is the envelope
+`id` of the frame being acked; `op_id` is echoed. `ok:false, retry:true` (RATE_LIMITED, UNKNOWN_SURFACE,
+STALE_EPOCH) means resend later; `ok:false` without `retry` is a permanent refusal. Each frame runs in its
+own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, caps[], harnesses{}` | must be first, within 15 s |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
-| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, prompt?, source: hook\|rollout` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; any `run_id` → `RUN_NOT_BOUND` until runs exist (stage C) |
-| up | `status` | `surf, incarnation, state, since, reason?, effective_permission_mode?, tool?, session_id?` | sets the session's `state`/`state_since`. Older incarnation, or same incarnation with an earlier `since`, is ignored (`applied:false`). Without `tool`+`session_id`, the surface maps to the newest session reported with that `surf` on this host (`UNKNOWN_SURFACE` otherwise) |
-| up | `exit` | `surf, incarnation, since?, code?, tool?, session_id?` | state `exited` |
-| up | `sessions.snapshot` | `surfaces: [status…], complete, at` | applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first replies `runs.snapshot {runs: [], questions: []}` (empty until stage C) |
+| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; any `run_id` → `RUN_NOT_BOUND` until runs exist (stage C) |
+| up | `status` | `surf, incarnation, state, since, reason?, effective_permission_mode?, provider?+provider_session_id? (or tool?+session_id?)` | sets the session's `state`/`state_since`. Older incarnation, or same incarnation with an earlier `since`, is ignored (`applied:false`). Without a provider (or tool) and session id, the surface maps to the newest session reported with that `surf` on this host (`UNKNOWN_SURFACE` otherwise) |
+| up | `exit` | `surf, incarnation, exited_at?, code?, provider?+provider_session_id?` | state `exited` at `exited_at` |
+| up | `sessions.snapshot` | `surfaces: [{surf, incarnation, state: live\|lost\|exited, agent_state, since, provider, provider_session_id, …}], part?: {of, i, n}` | a large snapshot arrives as several frames sharing `part.of`; non-final parts are acked `{pending:true}` and reconciliation runs once all `n` parts arrived. `live` takes the surface's `agent_state` (working/needs_you/idle). Applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first replies `runs.snapshot {runs: [], questions: []}` (empty until stage C) |
 | up | `chunk` | `part: {of, i, n}, data` | parts of one logical frame (n ≤ 64, ≤ 1 MiB total, ≤ 4 in flight); the ack names the logical frame's id. Eridani chunks its own frames above 256 KiB the same way |
-| up | `ack` | `acked_id, ok, outcome?` | acknowledges a command (stage C) |
+| up | `ack` | `acked_id, op_id?, ok, outcome?` | acknowledges a command (stage C) |
+| up | `command.outcome` | `command_id, state: executed\|failed\|rejected\|uncertain, detail` | recorded on the command (in B the host rejects every command as `unsupported`) |
+| up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
 
 `state` values: `working`, `needs_you`, `idle` (shown as **Live**), `restoring`, `lost` (shown as

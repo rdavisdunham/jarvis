@@ -11,15 +11,24 @@ transaction that re-checks the key (a privileged write) and the connection's lea
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import time
 import uuid
-from datetime import timedelta
-from typing import Literal
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from starlette.concurrency import run_in_threadpool
@@ -47,9 +56,12 @@ TICK_SECONDS = 30  # Re-authorize, renew the lease and drain commands.
 LEASE = timedelta(seconds=90)
 REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
-SERVER_CAPS = ["chunk", "session.report", "session.parity", "turn", "status", "exit", "sessions.snapshot"]
+SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "turn", "status", "exit",
+               "sessions.snapshot", "command.outcome"]
 # Command kind -> host capability it needs. Stage C adds spawn/input/answer/stop/verify.
 COMMANDS: dict[str, str] = {}
+# Refusals the host should resend later (ack retry:true); any other refusal is permanent.
+RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}
 LIVE_STATES = ("working", "needs_you", "idle")
 STATES = (*LIVE_STATES, "restoring", "lost", "exited")
 HARNESS_TOOLS = {"claude": "claude_code", "codex": "codex_cli"}
@@ -59,6 +71,20 @@ class Closed(Exception):
     def __init__(self, code, reason, bye=None):
         self.code, self.reason, self.bye = code, reason, bye
         super().__init__(reason)
+
+
+def wire_time(value):
+    """Timestamps on the wire are epoch milliseconds; ISO-8601 with a zone is also accepted."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return datetime.fromtimestamp(value / 1000, UTC)
+    return value
+
+
+WireTime = Annotated[AwareDatetime, BeforeValidator(wire_time)]
+
+
+def epoch_ms(value):
+    return int(value.timestamp() * 1000)
 
 
 class Frame(BaseModel):
@@ -72,6 +98,7 @@ class Hello(Frame):
     hostname: str = Field(default="", max_length=100)
     machine: str = Field(default="", max_length=100)
     proto: int = Field(default=PROTO, ge=1, le=100)
+    version: str | None = Field(default=None, max_length=40)
     caps: list[str] = Field(default_factory=list, max_length=100)
     harnesses: dict[str, dict] = Field(default_factory=dict, max_length=10)
 
@@ -97,40 +124,84 @@ class Turn(Frame):
     seq: int = Field(default=0, ge=0)
     text: str = Field(default="", max_length=MAX_ASSEMBLED)
     truncated: bool = False
+    missing: bool = False
     prompt: str = Field(default="", max_length=MAX_ASSEMBLED)
     source: Literal["hook", "rollout"] = "hook"
 
 
-class Status(Frame):
+class Surface(Frame):
+    """Names a terminal surface, and optionally the provider session it runs (tool/provider + session id)."""
     surf: str = Field(default="", max_length=100)
     incarnation: int = Field(default=0, ge=0)
+    tool: str | None = Field(default=None, max_length=30)
+    session_id: str | None = Field(default=None, max_length=100)
+    provider: str | None = Field(default=None, max_length=30)
+    provider_session_id: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def identity(self):
+        self.tool = self.tool or self.provider
+        self.session_id = self.session_id or self.provider_session_id
+        if not (self.tool and self.session_id):
+            self.tool = self.session_id = None
+        return self
+
+
+class Status(Surface):
     state: Literal[STATES]
-    since: AwareDatetime
-    reason: str = Field(default="", max_length=200)
+    since: WireTime
+    reason: str = Field(default="", max_length=300)
     effective_permission_mode: str = Field(default="", max_length=40)
-    tool: str | None = Field(default=None, max_length=30)
-    session_id: str | None = Field(default=None, max_length=100)
 
 
-class Exit(Frame):
-    surf: str = Field(default="", max_length=100)
-    incarnation: int = Field(default=0, ge=0)
-    since: AwareDatetime | None = None
+class SnapshotSurface(Status):
+    # The host reports terminal state live|lost|exited and the agent's own state separately.
+    state: Literal[(*STATES, "live")]
+    agent_state: str | None = Field(default=None, max_length=20)
+
+    @model_validator(mode="after")
+    def merged(self):
+        if self.state == "live":
+            self.state = self.agent_state if self.agent_state in LIVE_STATES else "idle"
+        return self
+
+
+class Exit(Surface):
+    since: WireTime | None = None
+    exited_at: WireTime | None = None
     code: int | None = None
-    tool: str | None = Field(default=None, max_length=30)
-    session_id: str | None = Field(default=None, max_length=100)
 
 
 class Snapshot(Frame):
-    surfaces: list[Status] = Field(default_factory=list, max_length=1000)
+    surfaces: list[SnapshotSurface] = Field(default_factory=list, max_length=1000)
     complete: bool = True
-    at: AwareDatetime | None = None
+    at: WireTime | None = None
 
 
 class Ack(Frame):
     acked_id: str = Field(max_length=100)
     ok: bool = True
     outcome: dict | None = None
+
+
+class Outcome(Frame):
+    command_id: str = Field(max_length=100)
+    state: Literal["executed", "failed", "rejected", "uncertain"]
+    detail: str = Field(default="", max_length=300)
+
+
+DIGEST_EXCLUDED = {"v", "id", "conn_epoch", "at", "op_id", "digest"}
+
+
+def digest(frame):
+    """Operation digest shared with the host: sha256 of canonical JSON of the frame minus its envelope.
+
+    Keys sorted at every level, no whitespace, non-ASCII kept. `t` is included. Stage C stamps
+    outbound commands with it; stage B accepts inbound digests without enforcing them.
+    """
+    body = {k: v for k, v in frame.items() if k not in DIGEST_EXCLUDED}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def enabled(db, owner):
@@ -203,7 +274,7 @@ def turn(db, bot, host_id, frame):
     row.last_turn_seq = max(row.last_turn_seq or 0, frame.seq)
     row.updated_at = now()
     emit(db, owner, "agent.changed", row.id)
-    return {"turn_id": inserted, "truncated": frame.truncated or cut}
+    return {"turn_id": inserted, "truncated": frame.truncated or cut, "missing": frame.missing}
 
 
 def surface_session(db, owner, host_id, frame):
@@ -249,7 +320,8 @@ def exited(db, bot, host_id, frame):
         raise DomainError("UNKNOWN_SURFACE", "No session is reported for that surface yet.", 404)
     db.flush()
     detail = {"exit_code": frame.code} if frame.code is not None else {}
-    applied = apply_state(db, bot.owner_id, host_id, row, "exited", frame.since or now(), frame.incarnation, frame.surf, detail)
+    applied = apply_state(db, bot.owner_id, host_id, row, "exited", frame.exited_at or frame.since or now(),
+                          frame.incarnation, frame.surf, detail)
     return {"session_id": row.id, "applied": applied}
 
 
@@ -384,12 +456,33 @@ def holding(db, credential_id, host_id, epoch):
     """Re-check the key (a privileged write) and the lease before any effect of this connection."""
     bot = bot_access.authorize(db, required="agents:control", credential_id=credential_id)
     if not enabled(db, bot.owner_id):
-        raise Closed(4003, "disabled", {"reason": "disabled"})
+        raise Closed(4403, "disabled", {"reason": "disabled"})
     host = db.get(AgentHost, host_id, with_for_update=True)
     if host is None or host.owner_id != bot.owner_id or host.conn_epoch != epoch:
         raise Closed(4001, "superseded", {"reason": "superseded"})
     host.last_seen_at, host.lease_until = now(), now() + LEASE
     return bot
+
+
+def probe(credential_id, hello):
+    """`remotea eridani connect` checks the key with boot_id probe-*; that must not take the live lease."""
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:control", credential_id=credential_id)
+        gate(db, bot.owner_id)
+        host = db.scalar(select(AgentHost).where(AgentHost.owner_id == bot.owner_id, AgentHost.server_id == hello.server_id))
+        return {"host_id": host.id if host else None, "conn_epoch": host.conn_epoch if host else 0}
+
+
+def refused_access(exc):
+    """After the upgrade: 4401 when the key no longer authenticates, 4403 when it lacks permission."""
+    if exc.status == 401:
+        return Closed(4401, "auth failed", {"reason": "access_revoked"})
+    return Closed(4403, "forbidden", {"reason": "disabled" if exc.code == "REMOTEA_DISABLED" else "access_revoked"})
+
+
+def wire(frame):
+    """Protocol timestamps (at, server_time, expires_at) travel as epoch ms; an `outcome` keeps the API's own encoding."""
+    return {k: epoch_ms(v) if isinstance(v, datetime) else v for k, v in frame.items()}
 
 
 def release(host_id, epoch):
@@ -423,6 +516,16 @@ def drain(db, host, epoch):
     return frames
 
 
+def outcome(db, host_id, frame):
+    """command.outcome is separate from the ack: what the host did with a command."""
+    row = db.get(AgentCommand, frame.command_id) or db.scalar(
+        select(AgentCommand).where(AgentCommand.host_id == host_id, AgentCommand.op_id == frame.command_id))
+    if row and row.host_id == host_id:
+        row.status, row.updated_at = frame.state, now()
+        row.outcome = {"state": frame.state, "detail": frame.detail}
+    return {"recorded": bool(row and row.host_id == host_id)}
+
+
 def acked(db, host_id, frame):
     row = db.get(AgentCommand, frame.acked_id)
     if row and row.host_id == host_id and row.status == "sent":
@@ -443,10 +546,11 @@ class Link:
         self.window = (time.monotonic(), 0, 0)
         self.strikes = 0
         self.chunks = {}
+        self.snapshots = {}
         self.closed = False
 
     async def send(self, kind, **values):
-        frame = encode({"v": PROTO, "id": str(uuid.uuid4()), "conn_epoch": self.epoch, "t": kind, "at": now(), **values})
+        frame = encode(wire({"v": PROTO, "id": str(uuid.uuid4()), "conn_epoch": self.epoch, "t": kind, "at": now(), **values}))
         text = json.dumps(frame)
         if len(text.encode()) <= MAX_FRAME:
             await self.websocket.send_text(text)
@@ -456,7 +560,7 @@ class Link:
         parts = [text[i:i + size] for i in range(0, len(text), size)]
         for i, data in enumerate(parts):
             await self.websocket.send_text(json.dumps({
-                "v": PROTO, "id": str(uuid.uuid4()), "conn_epoch": self.epoch, "t": "chunk",
+                "v": PROTO, "id": str(uuid.uuid4()), "conn_epoch": self.epoch, "t": "chunk", "at": epoch_ms(now()),
                 "part": {"of": frame["id"], "i": i, "n": len(parts)}, "data": data}))
 
     async def close(self, code, reason, bye=None):
@@ -499,6 +603,30 @@ class Link:
         self.chunks.pop(logical)
         return json.loads("".join(entry["parts"][k] for k in range(n)))
 
+    def snapshot_parts(self, frame):
+        """The host splits a large sessions.snapshot into frames sharing part.of; reconcile once all arrive."""
+        part = frame.get("part")
+        if not part:
+            return frame
+        logical, i, n = part.get("of"), part.get("i"), part.get("n")
+        if not (isinstance(logical, str) and 0 < len(logical) <= 100 and isinstance(i, int) and isinstance(n, int)
+                and 0 < n <= MAX_PARTS and 0 <= i <= n):
+            raise DomainError("INVALID_ARGUMENT", "Malformed snapshot part.")
+        if logical not in self.snapshots and len(self.snapshots) >= MAX_PENDING_CHUNKS:
+            raise DomainError("RATE_LIMITED", "Too many partial snapshots.", 429)
+        entry = self.snapshots.setdefault(logical, {"n": n, "parts": {}, "first": frame})
+        surfaces = frame.get("surfaces") or []
+        if not isinstance(surfaces, list) or entry["n"] != n:
+            raise DomainError("INVALID_ARGUMENT", "Malformed snapshot part.")
+        entry["parts"][i] = surfaces
+        if sum(len(p) for p in entry["parts"].values()) > 1000:
+            self.snapshots.pop(logical)
+            raise DomainError("INVALID_ARGUMENT", "Snapshot too large.", 413)
+        if len(entry["parts"]) < n:
+            return None
+        self.snapshots.pop(logical)
+        return {**entry["first"], "surfaces": [s for k in sorted(entry["parts"]) for s in entry["parts"][k]]}
+
     def effect(self, handler, frame):
         def run():
             with session_scope() as db:
@@ -520,6 +648,9 @@ class Link:
         if kind == "exit":
             return await self.effect(exited, Exit.model_validate(frame))
         if kind == "sessions.snapshot":
+            frame = self.snapshot_parts(frame)
+            if frame is None:
+                return {"pending": True}
             result = await self.effect(snapshot, Snapshot.model_validate(frame))
             await self.send("runs.snapshot", runs=result.pop("runs"), questions=[])
             return result
@@ -527,6 +658,10 @@ class Link:
             body = Ack.model_validate(frame)
             await self.effect(lambda db, bot, host, f: acked(db, host, f), body)
             return None
+        if kind == "command.outcome":
+            return await self.effect(lambda db, bot, host, f: outcome(db, host, f), Outcome.model_validate(frame))
+        if kind == "bye":
+            raise Closed(1000, str(frame.get("reason") or "bye")[:60])
         raise DomainError("UNSUPPORTED", f"This server does not handle {str(kind)[:40]!r} frames.")
 
     async def handle(self, text):
@@ -536,7 +671,7 @@ class Link:
             self.strikes += 1
             if self.strikes > 3:
                 raise Closed(1008, "rate limited", {"reason": "rate_limited"})
-            return {"ok": False, "error": {"code": "RATE_LIMITED", "message": "Slow down."}}
+            return {"ok": False, "retry": True, "error": {"code": "RATE_LIMITED", "message": "Slow down."}}
         try:
             frame = json.loads(text)
         except ValueError:
@@ -544,8 +679,10 @@ class Link:
         if not isinstance(frame, dict) or frame.get("v") != PROTO or not isinstance(frame.get("id"), str):
             raise Closed(4400, "invalid envelope")
         identity = frame["id"][:100]
+        echo = {"op_id": frame["op_id"][:100]} if isinstance(frame.get("op_id"), str) else {}
         if frame.get("conn_epoch") not in (None, self.epoch):
-            return {"acked_id": identity, "ok": False, "error": {"code": "STALE_EPOCH", "message": "Superseded connection."}}
+            return {"acked_id": identity, **echo, "ok": False, "retry": True,
+                    "error": {"code": "STALE_EPOCH", "message": "Superseded connection."}}
         try:
             if frame.get("t") == "chunk":
                 frame = self.assemble(frame)
@@ -557,14 +694,16 @@ class Link:
             outcome = await self.dispatch(frame)
         except ValidationError as exc:
             errors = [{"loc": [str(p) for p in e["loc"]], "msg": e["msg"]} for e in exc.errors()[:5]]
-            return {"acked_id": identity, "ok": False, "error": {"code": "INVALID_ARGUMENT", "message": "Invalid frame.", "data": errors}}
+            return {"acked_id": identity, **echo, "ok": False,
+                    "error": {"code": "INVALID_ARGUMENT", "message": "Invalid frame.", "data": errors}}
         except DomainError as exc:
-            if exc.status == 401 or exc.code in {"ACCESS_REVOKED", "INSUFFICIENT_SCOPE", "READ_ONLY"}:
-                raise Closed(4003, "access revoked", {"reason": "access_revoked"}) from None
-            return {"acked_id": identity, "ok": False, "error": {"code": exc.code, "message": exc.message}}
+            if exc.status == 401 or exc.code in {"ACCESS_REVOKED", "INSUFFICIENT_SCOPE", "READ_ONLY", "REMOTEA_DISABLED"}:
+                raise refused_access(exc) from None
+            retry = {"retry": True} if exc.code in RETRYABLE else {}
+            return {"acked_id": identity, **echo, "ok": False, **retry, "error": {"code": exc.code, "message": exc.message}}
         if frame.get("t") == "ack":
             return None
-        return {"acked_id": identity, "ok": True, **({"outcome": outcome} if outcome is not None else {})}
+        return {"acked_id": identity, **echo, "ok": True, **({"outcome": outcome} if outcome is not None else {})}
 
     async def tick(self):
         def run():
@@ -623,9 +762,18 @@ async def agent_link(websocket: WebSocket):
         except (TimeoutError, ValueError, ValidationError):
             raise Closed(4400, "expected hello") from None
         try:
+            if hello.boot_id.startswith("probe-"):
+                checked = await run_in_threadpool(probe, credential_id, hello)
+                await link.send("welcome", acked_id=frame["id"][:100] if isinstance(frame.get("id"), str) else "",
+                                **checked, server_time=now(), replay_horizon=REPLAY_HORIZON_DAYS * 86400, probe=True,
+                                proto=PROTO, caps=SERVER_CAPS, max_frame=MAX_FRAME)
+                await asyncio.wait_for(websocket.receive(), HELLO_SECONDS)
+                raise Closed(1000, "probe")
             admitted = await run_in_threadpool(admit, credential_id, hello)
-        except DomainError:
-            raise Closed(4003, "access revoked", {"reason": "access_revoked"}) from None
+        except DomainError as exc:
+            raise refused_access(exc) from None
+        except TimeoutError:
+            raise Closed(1000, "probe") from None
         link.owner, link.host_id, link.epoch = admitted["owner"], admitted["host_id"], admitted["conn_epoch"]
         previous = LINKS.get(link.host_id)
         LINKS[link.host_id] = link
