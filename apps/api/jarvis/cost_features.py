@@ -19,6 +19,7 @@ LABELS = {
     "note_tasks": "Tasks extracted from notes",
     "search_indexing": "Workspace search indexing",
     "semantic_search": "Semantic search",
+    "session_ledger": "Agent session summaries and search",
     "unattributed": "Earlier or unclassified usage",
 }
 

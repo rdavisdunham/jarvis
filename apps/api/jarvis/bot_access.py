@@ -26,6 +26,8 @@ SCOPES = {
     "notes:read": "Read notes",
     "notes:write": "Create and edit notes",
     "work:run": "Ask Eri to work using this key's permitted records and tools",
+    "sessions:read": "Read the agent session ledger: where coding and chat work happened",
+    "sessions:write": "Report agent sessions and file them under issues or records",
 }
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
@@ -60,6 +62,7 @@ READ_SCOPES = {
     "note_read": "notes:read",
     "note_lists": "notes:read", "note_list_items": "notes:read",
     "time_resolve": None,
+    "session_search": "sessions:read",
 }
 
 

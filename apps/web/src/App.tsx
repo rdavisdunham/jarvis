@@ -17,6 +17,7 @@ import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth,
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
+import { SessionsPanel } from "./Sessions";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import {
   readView,
@@ -74,6 +75,7 @@ import {
   Settings2,
   Shield,
   Square,
+  SquareTerminal,
   Sun,
   Trash2,
   VolumeX,
@@ -333,6 +335,7 @@ export default function App() {
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
@@ -2360,6 +2363,10 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
+            <button className="btn btn-ghost activity-toggle" aria-label="Agent sessions" title="Agent sessions: where work happened in Claude Code, Codex and ChatGPT"
+              onClick={() => setSessionsOpen(true)}>
+              <SquareTerminal size={18}/><span>Sessions</span>
+            </button>
             <button
               className={"icon-button " + (unread ? "has-notice" : "")}
               aria-label={
@@ -3107,6 +3114,7 @@ export default function App() {
       </button>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
+      {sessionsOpen && <SessionsPanel onClose={() => setSessionsOpen(false)}/>}
       <div className="voice-glow" ref={glowRef} aria-hidden="true">
         <i />
         <i />

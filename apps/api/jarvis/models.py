@@ -693,6 +693,8 @@ from .search_models import SearchDocument, SearchIndexState, SearchPreference, S
 
 from .note_list_models import NoteList, NoteOrganization, NoteEntrySource  # noqa: E402,F401
 
+from .session_models import AgentSession, AgentSessionRule  # noqa: E402,F401
+
 
 class GoogleEventAnnotation(Base):
     """Durable owner/account/source identity, deliberately independent of the replaceable event cache."""

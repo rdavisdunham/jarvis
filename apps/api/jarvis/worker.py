@@ -75,6 +75,10 @@ def perform_job(job_id):
     if kind == "organize_note":
         from .note_lists import process
         return process(job_id)
+    if kind == "summarize_session":
+        from .agent_sessions import summarize
+
+        return summarize(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -145,7 +149,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
