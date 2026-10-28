@@ -1,6 +1,6 @@
 # Eridani — active roadmap
 
-Updated October 4, 2026. This is the single active work checklist.
+Updated October 27, 2026. This is the single active work checklist.
 The [web v1 PRD](ERIDANI_WEB_V1_PRD.md) defines scope and acceptance;
 the [latency plan](ERI_LATENCY_PLAN.md) defines the response-speed work.
 Start with the [documentation index](README.md) for implementation and operations guides.
@@ -14,6 +14,85 @@ headings do not set today's priority.
 Finish line: a dependable invite-only web planner on desktop and Pixel Fold,
 with clear organization, fast capture, reliable Eri actions and guided setup.
 Android follows the release checks and seven-day/50-interaction pilot.
+
+## Current finishing pass — October 27
+
+The owner approved finishing machine-run checks and fixes, deferring checks that
+need their physical phone or interactive sign-in. Mission control is a discussion
+next, not authorization to start runners.
+
+- [x] Recheck new session work: PRs #58–60 merged; main a1e2ff4 CI passed.
+  PR #40 subsequently merged as 2e3655d after all required CI checks passed;
+  Railway reported production success for that revision. Lean-v1 stays opt-in.
+- [x] Inspect production through the signed-in app: readiness/liveness pass;
+  recent Claude/Codex sessions, summaries and filing are visible in the cloud.
+  This proves ingestion, not authoritative terminal liveness. GitHub's Railway
+  deployment record reports production success for main a1e2ff4; individual
+  service configuration and database readback still need Railway access.
+- [x] Typed production smoke: create a disposable local task and note; correct
+  the task's due date while the note request finishes; read back date/body;
+  revert the date; archive both records and verify active views are clean.
+  Three model submissions, about $0.02 rounded recorded agent spend. Functional
+  evidence only, not a phone/audio or controlled latency baseline.
+- [x] Inspect real dream outcomes: latest memory review scanned 10 facts, merged 0
+  and queued 0 questions. Latest organization review reported no independent human
+  training examples and activated no rules. Nine memories were visible; open
+  Questions was empty. Field understanding had no recorded run. Private content
+  remains in the app; only aggregate findings are recorded here.
+- [x] Finish PR #40: preserve qualifying context, validate model/cache behavior
+  and correctness in matched isolated trials. All 36 comparison trials and three
+  two-turn follow-ups passed; total provider cost $0.094552521. Lean median was
+  8.8% lower and cost 16.7% lower than discovery in the small synthetic sample.
+  Merge/CI verified; discovery remains default. See [validation](ERI_LEAN_POLICY_VALIDATION.md).
+- [x] Implement chat focus, cross-kind read-only navigation and owner-only Google
+  RSVP, including source conflict checks and compensating Revert. Synthetic
+  browser/provider checks are in [usability validation](USABILITY_FOLLOWUP_VALIDATION.md);
+  release and real-device/provider acceptance are separate.
+- [x] Repair session folder-rule title visibility, pagination and freshness labeling.
+  REST/MCP responses respect records:read; list refresh preserves loaded depth.
+  Terminal labels describe reported snapshots, not proven current liveness.
+- [x] Repair creation Revert after note indexing. Only Note.index_state is
+  excluded from creation equality; revisions, timestamps, content and backlinks
+  retain their guards. Task creation/canonical reads did not reproduce this bug.
+- [x] Reconcile local integration evidence: full backend 1,065 passed / 1 skipped;
+  final occurrence-navigation regressions 15 passed; frontend 243 passed / 1 skipped;
+  offline eval harness 95 passed / 2 skipped, coverage ratchet unchanged; production
+  build, correctness lint, fresh migrations/model check and 14 synthetic browser
+  flows passed. Required PR CI and finishing deployment are tracked in GitHub.
+  Physical voice, locked-phone delivery, real provider writes and new-user
+  acceptance remain deferred.
+- [ ] Restore Railway access for individual API/worker/config and SQL readback. CLI reports
+  unauthorized; connector authentication did not complete and web access needs
+  GitHub sign-in. Public health and signed-in app work. No credentials changed.
+- [ ] Follow up learning quality: semantic paraphrase duplication and apparent
+  profile/fact disagreements are outside the current exact/spelling/keyed review.
+  Queue proposals with provenance; never silently choose a personal fact or learn
+  from the agent's own filing. The no-training message can also mean eligible
+  examples landed entirely in the held-out split; expose counts before diagnosing
+  missing capture.
+- [ ] Reconcile historic unconfirmed usage separately from recorded charges and
+  active reservations; never clear it as zero without provider evidence.
+  Production has no active reservation but historic unsettled sessions remain.
+
+## Next discussion — runner mission control
+
+The owner wants task success criteria to drive a Play/start action, with Eri
+starting and conversing with local Claude Code/Codex runners, tracking work in
+Eridani and reflecting selected progress/results to linked Linear issues.
+Implementation waits for the design conversation.
+
+- Reuse the session ledger for context, linked sessions, summaries and artifacts.
+  It observes work and offers resume commands; it is not a runner API.
+- Discuss Task/record → Run → Attempt, durable command IDs, ordered events,
+  host heartbeats/leases and restart reconciliation.
+- Discuss explicit-start first, per-run repository/tool/time/cost authority,
+  isolated working directories and approval policies for merge/deploy.
+- Separate agent-reported completion from checked success criteria and accepted
+  completion. Preserve edits, receipts and a recoverable event history.
+- Keep local credentials local; define what may be shared with a workspace or
+  Linear. Never execute arbitrary saved resume-command strings.
+- Record the owner's intended UI and flow before building a controller or
+  autonomous schedules. Ledger hardening can proceed independently.
 
 ## Completed planning and implementation reconciliation
 
@@ -32,7 +111,7 @@ Android follows the release checks and seven-day/50-interaction pilot.
   October 4 refresh reconciles deployed work and Claude's Organization additions;
   Luna low remains the default reasoning profile. The owner accepted Fast processing
   for interactive Luna work after the October 4 comparison; application default,
-  tier-aware accounting and queue pinning are implemented locally. Scheduled
+  tier-aware accounting and queue pinning were deployed in PR #35. Scheduled
   learning stays Standard. Production/device acceptance remains pending.
   See [validation and smoke comparison](SPEED_1_2_VALIDATION.md).
 - [x] Separate current documentation from historical plans, audits and release reports.
@@ -94,13 +173,12 @@ are engineering work, not outstanding owner decisions.
   forwarding are separate; interruption, provider ACKs and transcripts never
   resolve a question. Optional invitations no longer ride in task-result tails.
   Direct Add subtask also completes the accepted ordinary-record nesting flow.
-- [ ] **REV2 — inspect actual learning results.** With authorized account access,
-  verify last runs, extracted facts, merges, proposals, errors and unanswered reviews.
-  Worker activity and synthetic tests do not prove production usefulness.
-  October 3: Railway project/service access confirmed. Private Postgres has no
-  public URL; Railway SSH reports no configured SSH key. No account-data query
-  completed, no database port was opened and no production data was changed.
-  Questions now exposes persisted run/results for inspection in the signed-in app.
+- [x] **REV2 — inspect actual learning results.** October 27 signed-in inspection
+  confirmed persisted successful extraction/index/review runs and saved facts.
+  Latest memory review: 10 scanned, 0 merged/questions. Organization review:
+  no training examples, 0 activated rules. No open questions; field assessment
+  not run. Concrete quality gaps are recorded in the current finishing pass;
+  successful jobs do not establish useful organization learning.
 - [ ] **Acceptance before pilot.** Cover multiple legal homes, self-nesting, custom
   types, source-backed edits, access, pagination, deep links, Back/drafts and folded/
   unfolded layouts. Test Live-only review offers, long results, interrupted voice,
@@ -144,14 +222,14 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   Dispatch wakeups, separate maintenance and initial stage logs are already shipped.
   Preserve outbox recovery, speech completeness and conversational turn protection.
   Do not remove the durable queue or promise savings from timer arithmetic.
-- [x] **SPEED1 — measurement implementation (local).** Join committed acceptance/
+- [x] **SPEED1 — measurement implementation (deployed in PR #35).** Join committed acceptance/
   outcome, invocations, retries, model usage/cost and visible typed-chat card/reply
   timing. Bound and authorize browser reports; preserve failures/censored traces.
   Reuse eval artifacts and Langfuse export without enabling live content tracing.
 - [ ] **SPEED1 — production/device baseline.** After an approved rollout, prove known
   requests appear in API/worker logs. Measure actual /work, requested content display,
   Live speech and phone behavior; the old empty log sample proves no baseline.
-- [x] **SPEED2 — selectable Luna no reasoning (local).** Explicit none profile and eval
+- [x] **SPEED2 — selectable Luna no reasoning (deployed in PR #35).** Explicit none profile and eval
   selection implemented; low stays default and queued jobs retain their profile.
   Four matched scenarios passed per profile. Total smoke spend including discarded
   fixture-invalid runs: $0.032171889. See the validation report for limits.
@@ -165,13 +243,14 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   4.860 s median versus the earlier Fast/low sample's 4.272 s. No demonstrated
   added speed benefit; unequal cache state/sample size prevents a general ranking.
   Cost $0.023133768. Keep low reasoning as the default; no production change.
-- [x] **Accepted default — Luna low + Fast (local).** Interactive Luna requests explicitly
+- [x] **Accepted default — Luna low + Fast (deployed).** Interactive Luna requests explicitly
   request Fast. Keep maintenance/learning and unqualified eval campaigns Standard.
   Capture tier at acceptance; old jobs without a tier keep Standard. Reserve at
   premium rates and account for returned default/priority tiers, labelling missing
   tier metadata as estimated. Settings expose the effective tier. Override with
   `JARVIS_AGENT_SERVICE_TIER=default` on API/worker to return to Standard.
-  Included in the October 4 speed release; production/device acceptance remains separate.
+  Included in the October 4 speed release; October 27 Settings readback confirms
+  low reasoning plus Fast. Joined timing and physical-device acceptance remain separate.
 - [x] **Speed release.** PR #35 merged; required PR/main CI passed. API and worker
   deployed `5938697` and public health/new frontend assets were verified.
 - [ ] **Real-use speed baseline.** Verify returned tier/cost and joined timing on a
@@ -195,8 +274,9 @@ See [Batch A verification](BATCH_A_VALIDATION.md) for exact evidence and remaini
   trials passed, total $0.270826294. Median backend 4.853 → 3.524 s for discovery,
   3.246 s with both stages. See [verification](ERI_ROUND_REDUCTION_VALIDATION.md).
   Defer early completion: keep the final response and full-request checks.
-- [ ] **SPEED4 staged rollout acceptance.** CI/deploy discovery, test typed and
-  GPT-Live capture/clarifications on the phone, then activate reads-v1 and repeat
+- [ ] **SPEED4 staged rollout acceptance.** PR #36 CI and October 4 deployment
+  succeeded. October 27 typed capture, correction and date Revert passed.
+  GPT-Live phone capture/clarifications remain pending; then activate reads-v1 and repeat
   sparse edits, full-content edits, connected writes and partial answers.
   Rollback affects new jobs only; accepted work retains its policy.
 - [x] Begin binding release-core eval cases and add regression coverage with Batch A.
