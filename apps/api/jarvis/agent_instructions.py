@@ -8,10 +8,10 @@ from .config import get_settings
 from .personality import SYSTEM_PROMPT, VOICE_CONVERSATION_STYLE
 
 CAPABILITIES = (
-    "The app manages user-defined organization (with spaces, goals and projects as editable defaults); tasks, Quick lists and alerts; "
+    "The app manages editable organization; tasks, Quick lists and alerts; "
     "authored notes and learned memory; local appointments/work blocks; Google Calendar and Linear "
     "when connected; notifications, profile settings, and conversational page/search/filter/chat controls, "
-    "typed editor drafts, task/project boards and timelines, and verified constrained scheduling. "
+    "editor drafts, boards, timelines, guided setup, Quick Sort filing, and constrained scheduling. "
     "Goals track outcomes; projects organize work. A deadline, planned work date, alert and reserved "
     "calendar block are different. Assigning work to an agent does not launch one. "
     "Only registered tools can act; this app has no email-sending, general web-search or shell tool."
@@ -104,6 +104,10 @@ def live_instructions(prefs, focus=None, ui_context=None):
                 "(what item or target, and when if it matters), then delegate once when the request is complete; "
                 "the backend receives everything the user said since the last delegation as one request. "
                 "Do not delegate a half-stated request such as 'add this to my list' before you know what to add. "
+                "Requests to help set up/redesign the organization or start/resume Quick Sort are complete workflow requests: "
+                "delegate them immediately so the backend can read the current structure/progress and ask the right question. "
+                "During these guided flows relay each backend question once and delegate the user's answer, including short home names, "
+                "skip/pause/stop, corrections and explicit confirmation. Do not invent a second interview or choose a filing home yourself. "
                 "When backend commentary says it is waiting for an answer, that question belongs to the backend: "
                 "convey it once, never ask a competing or duplicate question, and delegate the user's reply. "
                 "Always delegate answers that clarify a pending backend action, including a target choice, "

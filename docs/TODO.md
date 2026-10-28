@@ -74,6 +74,34 @@ next, not authorization to start runners.
   active reservations; never clear it as zero without provider evidence.
   Production has no active reservation but historic unsettled sessions remain.
 
+## Requested follow-ups — connected-source onboarding and durable Google access
+
+- [ ] **Optional Linear structure onboarding.** On connection (and later from
+  integration settings), offer a reviewable mapping of Linear teams/projects into
+  Eridani types and real Home records. Let the owner reuse existing types/Homes,
+  create selected missing ones, choose different destinations, or skip structure
+  mapping and import normally. Preview the resulting tree, issue counts and any
+  schema changes before applying. Do not assume a Linear team/project means
+  “Client”; ask for or confirm that meaning. Preserve source IDs and sync metadata;
+  repeated setup/sync must reuse mappings without duplicating projects or issues.
+  New imported issues inherit the configured Home unless explicitly overridden.
+  Allow later remapping with an affected-record preview and keep intentional local
+  exceptions. Filing in Eridani must not silently move an issue to another Linear
+  project; source-field edits continue through the existing write-back policy.
+  Include partial failures/retries, reconnect, renamed/archived source projects,
+  imported existing issues and user corrections in acceptance tests.
+- [ ] **Stop weekly Google Calendar reauthorization.** Inspect the OAuth consent
+  app publishing status, current scopes and refresh-token lifecycle. External
+  Google OAuth apps in Testing commonly receive seven-day refresh tokens for
+  Calendar access ([Google documentation](https://developers.google.com/identity/protocols/oauth2#expiration)). Prepare the production publishing/verification requirements,
+  reconnect once after the relevant configuration change, and verify durable
+  refresh across more than a week. Also test token preservation on reconnect
+  (Google may omit a new refresh token), encrypted storage, concurrent refresh,
+  revocation/invalid_grant handling and an actionable reconnect UI. Do not promise
+  never to reauthorize: user revocation and provider security changes still apply.
+  Production consent configuration and any verification submission remain a
+  separate follow-up; adding this TODO does not alter Google credentials/scopes.
+
 ## Next discussion — runner mission control
 
 The owner wants task success criteria to drive a Play/start action, with Eri
@@ -93,6 +121,68 @@ Implementation waits for the design conversation.
   Linear. Never execute arbitrary saved resume-command strings.
 - Record the owner's intended UI and flow before building a controller or
   autonomous schedules. Ledger hardening can proceed independently.
+
+- [ ] **Wmux one-click connection and harness tools (future).** Sign into Eridani
+  from the Wmux terminal multiplexer through an SSO-style connection flow. That
+  connection should let Wmux report sessions/context directly to Eridani and let
+  Eridani control authorized Wmux runners through the mission-control Run model.
+  Wmux should expose/inject the available Eridani and runner tools into whichever
+  supported harness is running inside it (for example, Claude Code or Codex), with
+  task/run/session identity carried through calls. Plan scoped, revocable pairing
+  and harness-specific tool adapters; avoid copying account credentials into model
+  prompts. This is a future product requirement, not an implemented authentication
+  or execution capability.
+
+## Current batch — guided structure setup and Quick Sort
+
+Requested October 27–28; implemented on codex/guided-setup-quick-sort.
+Release verification is in progress. Mission-control planning follows this batch.
+
+- [x] Set up/Resume/Refine with Eri now submits a normal durable chat request.
+  Manual form answers are saved first, unrelated chat drafts survive, and a lost
+  acceptance response retries the same turn/work ID. Logout/new chat invalidates
+  old retry closures. Voice delegates guided starts and subsequent answers.
+- [x] Guided setup saves actual interview answers in design_notes and can preview
+  the complete supported Definition: types, fields/reusable field library,
+  statuses, behaviors, allowed Homes, extra relationships and tree layout.
+  Existing IDs/definitions are retained or archived; omitted definitions are
+  rejected. Changed answers/replacement previews expire older unapplied previews.
+- [x] Review the actual proposal/impact, confirm in a later turn, apply through the
+  existing guarded structure API, then mark setup complete. Example names do not
+  create real work; named clients/projects are separate normal records.
+- [x] Quick Sort tools start a bounded persistent snapshot (20 items by default,
+  maximum 50) of active unfiled tasks, notes, selected records or a Home subtree.
+  The first version sorts eligible leaf records; containers with children are
+  excluded. Start another pass for more items; no moving-offset pagination.
+- [x] Ask one server-authored Home question at a time. Exact unique names and full
+  paths resolve directly; duplicate names offer breadcrumb choices. Fuzzy
+  proposals require a later confirmation of the saved destination. The server
+  ends the tool round at its question so later speculative calls cannot run.
+- [x] Skip/leave unfiled, pause, resume, stop and Activity answers persist through
+  the existing clarification system. Unrelated requests stay independent.
+  Empty Continue, stale/replayed answers and duplicate skip calls are rejected;
+  interrupted/mismatched questions pause recoverably.
+- [x] Normal Home updates create action-history Edit/Revert receipts. Explicit
+  captured Home choices alone count as human learning evidence; inferred
+  classifications/tags, suggestions and skipped items do not. Learning-off and
+  shared-workspace exclusions remain. Undo suppresses evidence and dependent
+  learned rules/review questions; later Home changes invalidate obsolete Quick
+  Sort evidence without labeling an agent correction as human.
+- [x] Add 25 Quick Sort and five full-setup cases to the eval catalog. Bind exact
+  deterministic assertions; leave unsupported model/device acceptance unclaimed.
+- [x] Local verification: 1,128 backend regressions passed before the final three
+  added boundary tests; the later targeted/eval run passed 146 tests with two
+  explicit skips. Frontend: 246 passed, one skipped; production build passed.
+  Fresh migration upgrade/model agreement passed. Browser guided launch,
+  dirty-save, stable retry and phone/fold layouts passed in the isolated fixture.
+- [ ] Required PR CI on the final revision, merge and production verification.
+- [ ] Physical phone/Live check: start setup, answer its questions, confirm a
+  proposal; Quick Sort several tasks, use an ambiguous Home, skip/pause/resume,
+  then Revert. The owner deferred interactive/device checks for now.
+- [ ] Extend the same interview entry point to Types & fields if useful; no second
+  interview runtime. Broader container sorting and bulk/correction conversation
+  shortcuts can follow after real use. Current corrections use the existing
+  Edit/Revert tools; a new Quick Sort selection can record a fresh human choice.
 
 ## Completed planning and implementation reconciliation
 
@@ -120,7 +210,8 @@ Implementation waits for the design conversation.
 
 October 3 follow-up: the owner approved this direction after A–D. ORG0–4 and
 REV1 are implemented; production inspection and device acceptance remain below. See [the follow-up plan](ERIDANI_WEB_V1_PRD.md#10-organization-and-review-delivery-follow-up).
-The guided structure interview is deferred. Flexible types, modular reusable fields,
+The guided structure interview is now specified in the next-batch section above;
+implementation is still pending. Flexible types, modular reusable fields,
 one Home plus extra links, actionable projects and subtree move choices are accepted.
 See PRD section 10.8 for the accepted single-hierarchy subtask design and advisory
 blocking. The product plan is ready to implement; migration preflight and verification
@@ -449,12 +540,10 @@ A checked implementation task never replaces connected-provider or physical-devi
 
 ## Explicitly deferred, not forgotten
 
-- **Chat about it — guided task-space design (later).** A future Types & fields
-  entry point starts a resumable Eri interview using the current structure and
-  concrete examples. Clarify types, fields, homes and links; preview before/after
-  and require explicit apply. Support skip/resume and preserve existing data.
-  Reuse the current agent/tool runtime. Defer both button and interview, with no
-  inert CTA in the current UI/backend batch.
+- **Chat about it — guided task-space design.** Promoted into the
+  [guided setup and Quick Sort batch](#current-batch--guided-structure-setup-and-quick-sort)
+  above. Reuse that resumable interview from Types & fields as well as personal
+  setup; do not ship an inert button or a second interview runtime.
 
 - Independent R2 exports, isolated restore drills, key escrow and stale/failed-backup
   alerts remain deferred under the recorded owner decision. Revisit before broader

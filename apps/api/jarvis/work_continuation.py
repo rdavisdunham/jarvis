@@ -80,6 +80,8 @@ def answer(row, arguments):
         if current.parent_id or current.resources or current.result.get("receipt_ids") or db.scalar(select(Command.id).where(
             Command.owner_id == row.owner_id, Command.id.startswith(row.id + ":")).limit(1)):
             raise DomainError("INVALID_DEPENDENCY", "Answer the clarification before performing any other actions.")
+        from .quick_sort import before_answer
+        before_answer(db, current, target)
         adopt(db, current, target, question)
     raise WorkContinued()
 
@@ -118,6 +120,8 @@ def adopt(db, current, target, question):
     data["continuation_request"] = earlier["message"]
     data["clarification_history"] = history
     data["clarification_answer"] = {"question": question["question"], "answer": data["message"]}
+    from .quick_sort import capture_answer
+    capture_answer(db, current, target, question, data)
     current.input_ciphertext = seal(data)
     current.parent_id = root.id
     current.result = {**current.result, "continuation_root": root.id,

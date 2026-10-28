@@ -63,9 +63,9 @@ def test_invalid_campaign_limits(tmp_path, amount):
 
 
 def test_every_catalog_entry_has_a_type_and_honest_coverage():
-    assert validate_registry()["cases"] == 1051
+    assert validate_registry()["cases"] == 1081
     rows = registry()
-    assert len({r["id"] for r in rows}) == 1051
+    assert len({r["id"] for r in rows}) == 1081
     for row in rows:
         bound = {c for v in row["variants"] if v["level"] == "acceptance" for c in v["criteria"]}
         assert (row["requirement"] is None) == (bound == row["criteria_map"].keys())

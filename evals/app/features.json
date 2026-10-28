@@ -674,12 +674,31 @@
     "title": "Guided account setup",
     "description": "Batch C capture and setup with stable identities, explicit confirmation and account boundaries.",
     "order": 42,
-    "target_cases": 25,
+    "target_cases": 30,
     "source_files": [
-      "apps/api/jarvis/onboarding.py"
+      "apps/api/jarvis/onboarding.py",
+      "apps/web/src/Onboarding.tsx"
     ],
     "regression_files": [
-      "tests/test_batch_c.py"
+      "tests/test_batch_c.py",
+      "tests/test_onboarding_design.py"
+    ],
+    "status": "active"
+  },
+  {
+    "id": "quick_sort",
+    "title": "Guided Quick Sort",
+    "description": "File bounded task/note batches through explicit human Home choices, durable clarifications and reversible learning.",
+    "order": 43,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/quick_sort.py",
+      "apps/api/jarvis/work_continuation.py",
+      "apps/api/jarvis/routing.py"
+    ],
+    "regression_files": [
+      "tests/test_quick_sort.py",
+      "tests/test_quick_sort_language.py"
     ],
     "status": "active"
   }

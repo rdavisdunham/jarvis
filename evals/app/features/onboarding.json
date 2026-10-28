@@ -848,5 +848,170 @@
       "Before/after saved rows and receipts.",
       "Scenario-specific assertion results; device/voice evidence where requested."
     ]
+  },
+  {
+    "id": "onboarding.26",
+    "feature": "onboarding",
+    "title": "Preview a complete guided structure",
+    "inputs": [
+      "Describe Clients, Projects, Tasks and Notes with reusable fields, allowed Homes and an extra relationship."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The linked setup proposal contains the complete requested supported definition, retaining existing stable IDs."
+    ],
+    "invariants": [
+      "No actual named client, project, task or note is created by the preview."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use an authenticated owner and disposable synthetic database with the existing default schema."
+    ],
+    "steps": [
+      "Describe Clients, Projects, Tasks and Notes with reusable fields, allowed Homes and an extra relationship.",
+      "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
+    ],
+    "evidence": [
+      "Saved progress and proposal/command receipts.",
+      "Browser request logs and screenshots where the launch/retry path is exercised."
+    ]
+  },
+  {
+    "id": "onboarding.27",
+    "feature": "onboarding",
+    "title": "Invalidate a superseded interview preview",
+    "inputs": [
+      "Create a preview, then change design_notes or create a replacement preview."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The prior unapplied proposal expires and cannot be applied."
+    ],
+    "invariants": [
+      "An old preview cannot silently replace the newly described structure."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use an authenticated owner and disposable synthetic database with the existing default schema."
+    ],
+    "steps": [
+      "Create a preview, then change design_notes or create a replacement preview.",
+      "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
+    ],
+    "evidence": [
+      "Saved progress and proposal/command receipts.",
+      "Browser request logs and screenshots where the launch/retry path is exercised."
+    ]
+  },
+  {
+    "id": "onboarding.28",
+    "feature": "onboarding",
+    "title": "Preserve the existing design",
+    "inputs": [
+      "Omit an existing type, attached field, reusable field or relationship from a guided setup definition."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The setup preview rejects the omission and explains how to archive instead."
+    ],
+    "invariants": [
+      "No unaffected definition or record is silently discarded."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use an authenticated owner and disposable synthetic database with the existing default schema."
+    ],
+    "steps": [
+      "Omit an existing type, attached field, reusable field or relationship from a guided setup definition.",
+      "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
+    ],
+    "evidence": [
+      "Saved progress and proposal/command receipts.",
+      "Browser request logs and screenshots where the launch/retry path is exercised."
+    ]
+  },
+  {
+    "id": "onboarding.29",
+    "feature": "onboarding",
+    "title": "Launch setup with saved form answers",
+    "inputs": [
+      "Edit the setup form, then choose Talk to Eri."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Save the actual answers before submitting one guided backend request."
+    ],
+    "invariants": [
+      "Do not discard an unrelated chat draft or invent sample records."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use an authenticated owner and disposable synthetic database with the existing default schema."
+    ],
+    "steps": [
+      "Edit the setup form, then choose Talk to Eri.",
+      "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
+    ],
+    "evidence": [
+      "Saved progress and proposal/command receipts.",
+      "Browser request logs and screenshots where the launch/retry path is exercised."
+    ]
+  },
+  {
+    "id": "onboarding.30",
+    "feature": "onboarding",
+    "title": "Retry a lost setup response",
+    "inputs": [
+      "Submit setup and lose the HTTP response after acceptance, then retry."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Reuse the same turn and conversation IDs for the retry."
+    ],
+    "invariants": [
+      "A failed transport does not create a duplicate guided request; logout clears the old retry."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use an authenticated owner and disposable synthetic database with the existing default schema."
+    ],
+    "steps": [
+      "Submit setup and lose the HTTP response after acceptance, then retry.",
+      "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
+    ],
+    "evidence": [
+      "Saved progress and proposal/command receipts.",
+      "Browser request logs and screenshots where the launch/retry path is exercised."
+    ]
   }
 ]

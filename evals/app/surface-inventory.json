@@ -202,6 +202,18 @@
       "feature": "quick_capture"
     },
     {
+      "name": "quicksort.control",
+      "feature": "quick_sort"
+    },
+    {
+      "name": "quicksort.reply",
+      "feature": "quick_sort"
+    },
+    {
+      "name": "quicksort.start",
+      "feature": "quick_sort"
+    },
+    {
       "name": "record.contents",
       "feature": "custom_records"
     },
@@ -458,6 +470,10 @@
     {
       "name": "quicklist_list",
       "feature": "quick_capture"
+    },
+    {
+      "name": "quicksort_state",
+      "feature": "quick_sort"
     },
     {
       "name": "record_browse",
