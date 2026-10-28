@@ -196,9 +196,12 @@ def inverse(db, change, *, lock=False, group=True):
     if not before:
         if not hasattr(row, "archived"):
             return None, "Open this record to cancel or remove it."
-        # Review scheduling is bookkeeping, not an edit to the created record.
-        unscheduled = lambda values: {k: v for k, v in values.items() if k not in REVIEW_STATE}  # noqa: E731
-        if unscheduled(instants(snapshot(row))) != unscheduled(after):
+        # Review scheduling and a note's search-index lifecycle are bookkeeping.
+        # Keep revisions, timestamps and all authored/source fields in this guard:
+        # a real edit (even later restored) must still block undoing the creation.
+        bookkeeping = set(REVIEW_STATE) | ({"index_state"} if model is models.Note else set())
+        content = lambda values: {k: v for k, v in values.items() if k not in bookkeeping}  # noqa: E731
+        if content(instants(snapshot(row))) != content(after):
             return None, "This record changed after it was created. Review it before archiving."
         if has_linked_records(db, model, row.id):
             return None, "Other records are linked to this creation. Review those links before archiving it."
