@@ -284,16 +284,26 @@ def agent_task_step(body: dict, identity: Bot):
         return agent_plan.task_step(db, bot, session_arguments(agent_plan.StepInput, body))
 
 
-@external.post("/agents/session/{later}")
-def agent_session_later(later: str, identity: Bot):
-    """submit_plan and task_interview arrive with planning runs (stage D)."""
+@external.post("/agents/session/interview")
+def agent_task_interview(body: dict, identity: Bot):
+    """HTTP twin of the task_interview tool."""
     from . import agent_plan
+    from .external_mcp import session_arguments
 
     with session_scope() as db:
-        bot_access.authorize(db, required="agents:session")
-    if later not in ("submit_plan", "interview"):
-        raise DomainError("NOT_FOUND", "Unknown agent session tool.", 404)
-    agent_plan.not_yet(later)
+        bot = bot_access.authorize(db, required="agents:session")
+        return agent_plan.task_interview(db, bot, session_arguments(agent_plan.InterviewInput, body))
+
+
+@external.post("/agents/session/submit_plan")
+def agent_submit_plan(body: dict, identity: Bot):
+    """HTTP twin of the submit_plan tool."""
+    from . import agent_plan
+    from .external_mcp import session_arguments
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:session")
+        return agent_plan.submit_plan(db, bot, session_arguments(agent_plan.SubmitPlanInput, body))
 
 
 @external.post("/sessions/{tool}/{session_id}/link")

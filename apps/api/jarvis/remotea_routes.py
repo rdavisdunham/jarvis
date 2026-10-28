@@ -13,7 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from . import agent_control as control
-from . import agent_link, bot_access
+from . import agent_link, agent_plan, bot_access
 from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
 from .auth import Identity, authenticate
@@ -36,6 +36,11 @@ class EnableInput(BaseModel):
     rotate: bool = False
 
 
+class AutoCompleteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
 def link_url():
     origin = get_settings().origin.rstrip("/")
     return origin.replace("https://", "wss://", 1).replace("http://", "ws://", 1) + agent_link.PATH
@@ -56,6 +61,7 @@ def state(db, user):
     key = active_key(db, user)
     return {
         "enabled": agent_link.enabled(db, user.owner_id),
+        "auto_complete": coordinator.auto_complete(db, user.owner_id),
         "key": bot_access.public(key) if key else None,
         "hosts": [agent_link.public_host(h) for h in hosts],
         "link_url": link_url(),
@@ -63,13 +69,13 @@ def state(db, user):
     }
 
 
-def set_enabled(db, owner, value):
+def set_enabled(db, owner, value, key="remotea_enabled"):
     advisory(db, f"budget:{owner}")  # The same lock settings.update takes for owner preferences.
     row = db.get(OwnerSettings, owner)
     if row:
-        row.values = {**row.values, "remotea_enabled": value}
+        row.values = {**row.values, key: value}
     else:
-        db.add(OwnerSettings(owner_id=owner, values={"remotea_enabled": value}))
+        db.add(OwnerSettings(owner_id=owner, values={key: value}))
     db.flush()
     emit(db, owner, "settings.changed", owner)
 
@@ -109,6 +115,19 @@ def disable(user: User):
         if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
             raise DomainError("READ_ONLY", "Viewers cannot turn off remotea.", 403)
         set_enabled(db, user.owner_id, False)
+        return state(db, user)
+
+
+@router.post("/auto-complete")
+def set_auto_complete(body: AutoCompleteInput, user: User):
+    """Rollout flag (decision 6, default off): a met verdict completes the task without a tap."""
+    from .access import role
+
+    with session_scope() as db:
+        gated(db, user)
+        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
+            raise DomainError("READ_ONLY", "Viewers cannot change this.", 403)
+        set_enabled(db, user.owner_id, body.enabled, "remotea_auto_complete")
         return state(db, user)
 
 
@@ -241,6 +260,27 @@ def approve(identity: UUID, body: control.ApproveInput, user: User):
     with session_scope() as db:
         writable(db, user)
         return control.approve(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/replan")
+def replan(identity: UUID, body: control.ReplanInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.replan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/verify")
+def verify(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.verify_now(db, user.owner_id, str(identity), actor=actor_for(user))
+
+
+@router.post("/interviews/{identity}/answers")
+def interview_answers(identity: UUID, body: agent_plan.InterviewAnswers, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return agent_plan.answer_interview(db, user.owner_id, str(identity), body, actor=actor_for(user))
 
 
 @router.post("/questions/{identity}/answer")

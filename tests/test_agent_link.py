@@ -491,7 +491,7 @@ def test_manual_control_round_trip_over_the_link(client):
         assert missing.json()["error"]["data"]["advertised"][0]["repo"] == "/home/davin/jarvis"
         saved = target(client, host_id)
         assert saved["repo"] == "/home/davin/jarvis" and saved["worktree_root"] == "/home/davin/wt"
-        started = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"]})
+        started = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"], "interview": False})
         assert started.status_code == 200, started.text
         run_id = started.json()["id"]
         spawn = ws.receive_json()  # Drained right after the commit, not at the next tick.
@@ -557,7 +557,7 @@ def test_reconnect_reconciles_before_resending_unacked_commands(client):
     with connect(bearer(token)) as ws:
         host_id = hello(ws, caps=C_CAPS, harnesses=C_HARNESSES)["host_id"]
         saved = target(client, host_id)
-        run_id = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"]}).json()["id"]
+        run_id = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"], "interview": False}).json()["id"]
         # Not reconciled yet on this connection: nothing is sent before the snapshot.
     with connect(bearer(token)) as ws:
         hello(ws, caps=C_CAPS, harnesses=C_HARNESSES)

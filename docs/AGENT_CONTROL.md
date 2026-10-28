@@ -218,8 +218,8 @@ any unsettled → stopping → stopped | completed | failed        executing →
 ```
 
 Stage C enters `spawning`, `executing`, `waiting_answer`, `needs_you`, `awaiting_approval`, `stopping`
-and the terminal states; `interviewing/planning/verifying/judging/awaiting_integration/replanning` are in
-the map for stage D. Rules:
+and the terminal states; stage D adds `interviewing/planning/verifying/judging/awaiting_integration/
+replanning` and `capped` (see "Planning and the loop" below). Rules:
 
 - **Nothing is assumed.** A spawn is confirmed by the provider session showing up (first `turn` or
   `status` naming the run, or a snapshot surface), a stop by an exit, a missing surface or a stop outcome,
@@ -266,6 +266,7 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `input` | `surf, incarnation, text, mode: queue\|steer` | 10 min |
 | `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
+| `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
 
 **Deterministic spawn surface.** remotea names a spawned surface
 `surf-eri-<sha256(run_id + "\0" + generation + "\0" + attempt) hex, first 32>` (`run_coordinator.surf_for`).
@@ -310,8 +311,8 @@ once and asks the run to stop (`stop_reason: task_completed_externally`); a huma
 `run_token` (from `ERIDANI_RUN_TOKEN`, or the plan text) or `tool + session_id`. A valid token binds a
 verified `run_session` actor; a bad one is `401 RUN_TOKEN_INVALID`; a session fallback is unverified.
 `task_step {step_id, status, note?, expected_revision?}` updates one step with its own revision
-(`by: agent:<run>[:unverified]`); it does not advance `plan_revision`. `submit_plan` and
-`task_interview` answer `501 NOT_YET` until stage D. `session_link` accepts `task_id`. The run token is
+(`by: agent:<run>[:unverified]`); it does not advance `plan_revision`. `task_interview` and
+`submit_plan` (stage D, below) need the run token. `session_link` accepts `task_id`. The run token is
 HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refreshed by each
 `context.request`.
 
@@ -333,3 +334,169 @@ The page shows runs (needs-you first), **Unmerged work**, and a run drawer with 
 questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve. Task details
 show **Run** only while remotea is on, disabled with a reason when no host is connected, and **Open run**
 while one is active.
+
+## Planning and the loop (stage D, migration 0029)
+
+0029 adds `agent_runs.turn_seq` (the host's seq of the root turn the run is on) and `plan_pending`,
+`agent_attempts.deadline_at/retries/verify_id/initiator`, `agent_run_plans.required_children` and
+`agent_interviews.generation/answered_at/answered_via`.
+
+```
+spawning → interviewing → planning → executing → verifying → judging → executing (not_met: the gap is the next prompt)
+                ↑ needs_you(no_plan)        ↑ replanning ←┘     │      ├→ awaiting_approval → completed (Approve)
+                                                                │      ├→ stopping(final completed) (auto_complete)
+                                                                │      ├→ awaiting_integration → executing
+                                                                │      ├→ needs_you (needs_you, no progress, no verdict)
+                                                                │      └→ capped (not_met on the last allowed turn)
+```
+
+### Interview and planning
+
+- `POST /remotea/runs` takes `interview: true|false|null`. `null` (default): a task without a PRD note is
+  interviewed; one with a PRD is frozen at once (stage C's behaviour, now with `spawn.verify` when the task
+  has a verify config). `false` runs on whatever plan the task has.
+- An interview run spawns with the interview prompt (`agent_prompts.interview`: the task, its direct
+  sub-tasks, "ask with `task_interview` and stop") and no frozen plan (`plan_revision` 0); the observed
+  start goes to `interviewing`.
+- **`task_interview {run_token, questions[≤12: {id, question, header?, options?: [{label, description?}],
+  multi?, free_text?}]}`** (interviewing only, one open interview at a time) stores an `agent_interviews`
+  row and pushes `agent_question`. A question without options takes free text.
+- **`POST /remotea/interviews/{id}/answers {answers: {question_id: label | [labels] | text}}`** checks
+  every question has an allowed answer (`INVALID_ARGUMENT`, `INTERVIEW_CLOSED`, `STALE_GENERATION`),
+  sends the answers as the next `input` ("now write the PRD with success criteria and call `submit_plan`,
+  then stop") and moves the run to `planning`.
+- **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
+  verify_id?}], verify?: {target_id, verify_id}, expected_plan_revision}`** (interviewing, planning or
+  replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
+  `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
+  its saved list or the host's advertised one (`VERIFY_UNKNOWN`); a `verify` criterion must name the
+  plan's verify id. It creates or replaces the PRD note (`PRD: <task>`, tag `prd`, linked to the task,
+  with a "Sub-tasks" section), writes the task's template plan through `task.update` as the run judge
+  (gate fields are allowed only to that actor during a run), freezes `agent_run_plans` revision N+1 with
+  `required_children`, sets `plan_pending` and moves an interviewing run to `planning`. An open interview
+  is marked `superseded`.
+- **Execution starts only when the planning turn has settled**: the next root turn of the run's
+  generation with `plan_pending` set and no open question or interview moves `planning → executing` and
+  sends the execute prompt with the frozen plan. A planning turn that ends with neither a question nor a
+  plan goes to `needs_you(no_plan)`. Interview and planning turns never count toward the cap.
+- **Re-plan** (`POST /remotea/runs/{id}/replan {reason?}`, from executing, needs_you, awaiting_approval,
+  awaiting_integration or planning) advances the generation, supersedes in-flight attempts, sends the
+  re-plan prompt (`steer` while executing, else `queue`) and goes `replanning → planning`; the next
+  `submit_plan` freezes revision N+1 the same way. `runs.snapshot` then sends `verify: null` until the new
+  revision is executing.
+
+### Sub-tasks (F02)
+
+Direct child tasks (not archived, not cancelled) seed the plan as linked steps: the agent's order first,
+missing children appended, existing step ids and statuses kept; a linked step must name a direct child.
+Their ids are frozen as `required_children` (a manual stage C freeze uses the children its linked steps
+name). A child with no run of its own is a checklist step inside the parent's run. A child with its own
+run counts only when that run is `completed` **and** the host's `worktrees.report` shows its branch
+`merged` into the parent branch (`base` = the parent run's branch). A `met` verdict with a child still
+pending moves the parent to `awaiting_integration` (push `agent_stuck`, the drawer lists what is
+pending). Each `worktrees.report` re-checks; once integrated the parent goes back to `executing` with a
+"pull the merged sub-tasks and re-check" prompt, so the combined code is verified and judged again
+before completion.
+
+### Verify attempts
+
+After each root execution turn of a run whose frozen plan has a verify config, the coordinator creates an
+`agent_attempts(kind=verify)` row bound to `(run, generation, turn_seq, plan_revision)` and queues
+`verify {attempt_id, turn_seq, plan_revision, verify_id}` (`turn_seq` is the turn frame's `seq`, so host
+attempts carry the same tuple). The run is `verifying` until the result.
+
+- `verify.result` is matched by `attempt_id` and the whole tuple (`tuple mismatch`, `unknown attempt`
+  and `late` are acked with `discarded`). Status: `passed` (exit 0), `failed`, `timed_out`, `canceled`,
+  `error`, `stale` (`stale_workspace`: the checkout changed around the run). Only `passed` passes.
+- **Host-initiated** results (`attempt_id: "local:…"`, remotea's `verify.auto`) are adopted when they
+  match the tuple of a running Eridani attempt; others are stored with `initiator: host` and never move
+  the run. `adopted` on a result names the host attempt remotea reused.
+- One deadline: 11 minutes (the host's 10 plus a minute of grace) → `timed_out`, a non-pass; a result after
+  that is discarded and noted on the attempt as `late`. A refused/failed/uncertain `verify` command is
+  `refused`/`uncertain`, also a non-pass (never `delivery_uncertain`). A host without `verify` refuses at
+  once. Every non-pass still goes to the judge.
+- **On demand**: `POST /remotea/runs/{id}/verify` uses the same machinery for the current tuple
+  (`on_demand`), refuses `VERIFY_RUNNING`/`NO_VERIFY`, and never moves the run.
+- A message or steer while verifying/judging supersedes in-flight attempts and returns to `executing`.
+- The host learns the verify config from `spawn.verify` and `runs.snapshot[].verify` (`{verify_id,
+  plan_revision}`; `null` after a re-plan clears it), and from each `verify` command.
+
+### The judge (`agent_judge.py`)
+
+Job `agent_judge` on queue `jarvis-memory`, cost feature `agent_control`, one per judge attempt.
+Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root turn's final response
+(last 24k characters; `truncated` flagged), the bound verify attempt with `fresh` (same tuple and not
+stale) and the previous verdict's per-criterion record. The prompt says all of it is untrusted data.
+
+1. **Hard rules first.** No criteria → `needs_you` and the model is not asked. Plans without criteria do
+   not enter the loop at all: they keep stage C's manual flow (turn cap → needs_you, Davin approves).
+2. **Luna** via `memory_learning.extraction_request` (the only model it accepts; decision 20) with a
+   strict schema `{verdict: met|not_met|needs_you, gap, summary, criteria: [{id, status: met|not_met|unclear,
+   evidence}], steps: [{id, status: done|not_done|disputed|unclear}]}`.
+3. **Rules again on the answer.** `met` with a required verify that is not fresh and passing: `not_met`
+   with the failure tail when it ran and failed, else `needs_you` (missing, refused, timed out, stale,
+   uncertain: the agent cannot fix that). A `verify`-kind criterion is met only with a fresh passing
+   attempt of its verify id. `met` with any criterion not met → `not_met`. Unknown criterion ids are
+   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. Each
+   rule that fired is recorded in `rules`.
+4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
+   (refusal and budget are not retried), then the attempt is `failed` and the run goes to
+   `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
+5. The attempt keeps model, `prompt_version` (`judge-v1`), cost, latency, retries and the final verdict.
+
+**Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
+`(generation, turn_seq, plan_revision)`; otherwise the attempt is `stale` and nothing moves. Every
+transition records `actor: run_judge`.
+
+- `met` → `awaiting_integration` if a required child is pending; else with **`auto_complete`** on (and
+  criteria present) the judge completes the task (`task.complete` as `run_judge`) and the run goes to
+  `stopping(judge_met, final completed)` (push `agent_done`); else `awaiting_approval` (push
+  `agent_done`). **Approve** (a human) completes it.
+- `not_met` → if `turn_count ≥ turn_cap`: `capped` (the last allowed turn was judged first; push
+  `agent_stuck`). If the last three verdicts were `not_met` with the same gap (case and spacing ignored):
+  `needs_you(no_progress_gap)`. Else back to `executing` with the gap prompt as the next `input`
+  (recorded with `source: eridani`).
+- `needs_you` → `needs_you(judge_needs_you)` with the gap; push `agent_stuck`.
+- **Steps**: the judge may mark `todo`/`doing` steps `done` (`by: judge:<run>`), may mark an agent's
+  `done` step `disputed` when the verification contradicts it, and never moves a `done` step back.
+
+Limits: the wall clock (6 h) now also covers interviewing, planning, verifying and judging; the 45-minute
+no-progress timer still applies to executing.
+
+### auto_complete
+
+`POST /remotea/auto-complete {enabled}` (owner preference `remotea_auto_complete`, default **off**;
+viewers refused); `GET /remotea/status` returns it. Settings → remotea shows the toggle with a warning
+that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
+a live run.
+
+### Outcome eval (`evals/agent_control/`)
+
+`cases.json` is a labelled suite: correct completion, plausible false success (failing tests, no evidence,
+instructions in the turn text), missing criteria, missing/timed-out verification, a stale test result, a
+source change mid-run, an ambiguous blocker, partial progress, recovery after a failure, a truncated turn,
+and two loop cases for the no-progress rule. `stub` is what a plausible (sometimes deliberately fooled)
+model answers.
+
+```
+uv run --no-sync python -m evals.agent_control.run          # stubbed model, free (CI: evals/test_agent_control.py)
+uv run --no-sync python -m evals.agent_control.run --live   # Luna through the extraction helper (paid)
+```
+
+It reports `false_completions` (met where the label is not), `stale_completions` (false completions on
+stale or changed-source evidence) and `missed_completions`, and exits non-zero on any false or stale
+completion.
+
+### Browser routes (stage D)
+
+| Route | Gated | |
+|---|---|---|
+| `POST /interviews/{id}/answers` | yes | interview form |
+| `POST /runs/{id}/replan {reason?}` | yes | |
+| `POST /runs/{id}/verify` | yes | on-demand verification |
+| `POST /auto-complete {enabled}` | yes | rollout flag |
+
+The run drawer adds the interview form (one form for all questions), success criteria with the latest
+verdict's per-criterion evidence and the last verification, pending sub-task integration, **Approve** as
+the primary action on `awaiting_approval`, **Re-plan** (the message box text is the reason) and **Verify
+now**; the timeline shows verifications, verdicts and interviews.

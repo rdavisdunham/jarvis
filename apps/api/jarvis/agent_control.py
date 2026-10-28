@@ -19,8 +19,10 @@ from .domain import DomainError, emit, encode, owned
 from .models import Note, StructureRecord, Task, now
 from .session_models import (
     TERMINAL_RUN_STATES,
+    AgentAttempt,
     AgentCommand,
     AgentHost,
+    AgentInterview,
     AgentQuestion,
     AgentRun,
     AgentRunPlan,
@@ -46,6 +48,13 @@ class StartInput(Input):
     harness: str = Field(default="claude", max_length=20)
     model: str | None = Field(default=None, pattern=MODEL)
     execution_target_id: str | None = Field(default=None, max_length=36)
+    # None: interview when the task has no PRD. False: run on the plan the task already has (stage C's manual run).
+    interview: bool | None = None
+
+
+class ReplanInput(Input):
+    reason: str = Field(default="", max_length=2000)
+    expected_revision: int | None = Field(default=None, ge=1)
 
 
 class MessageInput(Input):
@@ -217,14 +226,18 @@ def base_for(db, task):
 
 
 def freeze(db, owner, run, task):
-    """The minimal plan revision (F05): whatever PRD, steps and criteria the task already has."""
+    """The minimal plan revision (F05): whatever PRD, steps and criteria the task already has.
+
+    Required children are the direct sub-tasks its linked steps name (F02)."""
     prd = ""
     if task.prd_note_id:
         note = db.get(Note, task.prd_note_id)
         prd = note.content if note and note.owner_id == owner and not note.archived else ""
     plan = AgentRunPlan(owner_id=owner, run_id=run.id, revision=1, task_plan_revision=task.plan_revision or 0,
                         title=task.title, prd_text=prd or task.notes or "", steps=list(task.steps or []),
-                        criteria=list(task.success_criteria or []), verify=task.verify)
+                        criteria=list(task.success_criteria or []), verify=task.verify,
+                        required_children=[c.id for c in coordinator.children(db, task)
+                                           if any(s.get("task_id") == c.id for s in task.steps or [])])
     db.add(plan)
     run.plan_revision = 1
     return plan
@@ -261,6 +274,7 @@ def start_run(db, owner, account_id, body, *, actor):
     if not host_harness(host, body.harness):
         raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {body.harness} yet.", 409)
     branch = branch_for(db, owner, task)
+    interview = (not task.prd_note_id) if body.interview is None else body.interview
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
@@ -270,14 +284,21 @@ def start_run(db, owner, account_id, body, *, actor):
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
     db.flush()
-    plan = freeze(db, owner, run, task)
+    verify = None
+    if interview:
+        from . import agent_prompts as prompts
+
+        prompt = prompts.interview(task, coordinator.children(db, task), task.notes or "")[:PROMPT_CHARS]
+    else:
+        plan = freeze(db, owner, run, task)
+        prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
     token = coordinator.mint_token(run)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
         "target": {"id": target.host_target, **({"repo": target.repo} if target.repo else {}), "branch": branch,
                    "base": run.base_branch},
         "task_id": task.id, "title": task.title[:200].replace("\n", " "), "group": "Eridani",
-        "prompt": spawn_prompt(db, run, plan), "run_token": token, "env": {},
+        "prompt": prompt, "run_token": token, "env": {}, **({"verify": verify} if verify else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -301,12 +322,60 @@ def send_message(db, owner, run_id, body, *, actor):
         raise DomainError("NOT_STARTED", "The agent has not started yet; send this once it is running.", 409)
     if body.mode == "steer":
         run.generation += 1  # The steered turn belongs to the new generation (F07).
-    if run.state in coordinator.RESUMABLE or (run.state == "waiting_answer" and body.mode == "steer"):
+    if run.state in ("verifying", "judging"):
+        # Davin's message overrides this turn's check: the next turn is verified and judged instead.
+        for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id,
+                                                             AgentAttempt.status.in_(("queued", "running")))):
+            attempt.status, attempt.updated_at = "superseded", now()
         coordinator.transition(db, run, "executing", actor=actor, reason=body.mode)
+    elif run.state in coordinator.RESUMABLE or (run.state == "waiting_answer" and body.mode == "steer"):
+        coordinator.transition(db, run, coordinator.phase(run), actor=actor, reason=body.mode)
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "text": body.text,
                                            "mode": body.mode})
     run.last_progress_at = now()
     return public_run(db, run)
+
+
+def replan(db, owner, run_id, body, *, actor):
+    """Re-plan advances the generation (in-flight attempts go stale) and asks the agent for a new submit_plan."""
+    from . import agent_prompts as prompts
+
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    if run.state not in {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"}:
+        raise DomainError("RUN_SETTLED", f"A run that is {run.state} cannot re-plan.", 409)
+    if not run.surf:
+        raise DomainError("NOT_STARTED", "The agent has not started yet.", 409)
+    busy = run.state == "executing"
+    run.generation += 1
+    run.plan_pending = False
+    for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id,
+                                                         AgentAttempt.status.in_(("queued", "running")))):
+        attempt.status, attempt.updated_at = "superseded", now()
+    if run.state != "planning":
+        coordinator.transition(db, run, "replanning", actor=actor, reason="replan")
+    coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
+                                           "text": prompts.replan(body.reason), "mode": "steer" if busy else "queue"},
+                        source="eridani")
+    if run.state == "replanning":
+        coordinator.transition(db, run, "planning", actor=actor, reason="replan")
+    return public_run(db, run)
+
+
+def verify_now(db, owner, run_id, *, actor):
+    """On-demand verification: the same attempt machinery, bound to the current tuple; it never moves the run."""
+    run = coordinator.load(db, owner, run_id)
+    if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
+        raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    plan = coordinator.frozen(db, run)
+    if plan is None or not (plan.verify or {}).get("verify_id"):
+        raise DomainError("NO_VERIFY", "This run's plan has no verification.", 409)
+    if db.scalar(select(AgentAttempt.id).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify",
+                                               AgentAttempt.status == "running")):
+        raise DomainError("VERIFY_RUNNING", "A verification is already running.", 409)
+    coordinator.note(run, "verify_requested", actor=actor.record())
+    coordinator.start_verify(db, run, plan, on_demand=True)
+    return public_run(db, run, detail=True)
 
 
 def stop_run(db, owner, run_id, body, *, actor):
@@ -356,6 +425,18 @@ def public_question(q):
                    "created_at": q.created_at, "resolved_at": q.resolved_at})
 
 
+def public_attempt(a):
+    result = a.result or {}
+    return encode({"id": a.id, "kind": a.kind, "status": a.status, "generation": a.generation, "turn_seq": a.turn_seq,
+                   "plan_revision": a.plan_revision, "verify_id": a.verify_id, "initiator": a.initiator,
+                   "verdict": result.get("verdict"), "gap": result.get("gap"), "summary": result.get("summary"),
+                   "criteria": result.get("criteria"), "rules": result.get("rules"),
+                   "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
+                   "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
+                   "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
+                   "created_at": a.created_at, "updated_at": a.updated_at})
+
+
 def public_command(c):
     payload = c.payload or {}
     return encode({"id": c.id, "op_id": c.op_id, "kind": c.kind, "status": c.status, "generation": c.generation,
@@ -377,6 +458,8 @@ def public_run(db, run, *, detail=False):
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
         "turn_cap": run.turn_cap, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
+        "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
+        "integration": (run.sync_state or {}).get("integration") or [],
         "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host)} if host else None,
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
@@ -388,7 +471,12 @@ def public_run(db, run, *, detail=False):
             (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or ""))).order_by(AgentTurn.created_at))
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
-                  "criteria": plan.criteria} if plan else None,
+                  "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children}
+            if plan else None,
+            attempts=[public_attempt(a) for a in db.scalars(
+                select(AgentAttempt).where(AgentAttempt.run_id == run.id).order_by(AgentAttempt.created_at.desc()).limit(40))],
+            interviews=[agent_plan_public(i) for i in db.scalars(
+                select(AgentInterview).where(AgentInterview.run_id == run.id).order_by(AgentInterview.created_at))],
             history=run.history or [],
             turns=[{"id": t.id, "seq": t.seq, "text": t.text[:4000], "clipped": len(t.text) > 4000, "truncated": t.truncated,
                     "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]} for t in turns],
@@ -398,6 +486,12 @@ def public_run(db, run, *, detail=False):
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
     return encode(result)
+
+
+def agent_plan_public(row):
+    from .agent_plan import public_interview
+
+    return public_interview(row)
 
 
 def list_runs(db, owner, *, task_id=None, active=False, limit=50):

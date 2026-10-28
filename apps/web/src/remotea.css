@@ -67,3 +67,11 @@
   .remotea-session { padding: 14px 16px; }
   .remotea-drawer { left: auto; width: min(520px, 100vw); border-left: 1px solid var(--line); box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,.18)); }
 }
+.remotea-plan .step-disputed { color: var(--danger); }
+.remotea-criteria ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 0.9rem; }
+.remotea-criteria li { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; overflow-wrap: anywhere; }
+.remotea-criteria li.criterion-met { border-color: var(--done); }
+.remotea-criteria li.criterion-not_met { border-color: var(--danger); }
+.remotea-criteria li p { margin: 2px 0 0; color: var(--ink-3); font-size: 0.85rem; white-space: pre-wrap; }
+.remotea-integration { margin: 0; padding: 8px 12px; list-style: none; display: grid; gap: 4px; border-radius: var(--r-md); background: var(--sunken); font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-warning { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--danger-soft); color: var(--ink); font-size: 0.85rem; }

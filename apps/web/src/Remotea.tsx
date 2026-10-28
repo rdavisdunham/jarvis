@@ -3,10 +3,10 @@ import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play
 import { api, ApiError, post } from "./api";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, buildAnswers, hostSummary, isSettled, linkedRun, orderRuns, orderSessions, paritySummary, place, questionMode, REMOTEA_POLL_MS,
-  runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
-  type NeedsTarget, type Parity, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail, type RunQuestion, type Turn,
-  type UnmergedWork,
+  ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
+  paritySummary, place, questionMode, REMOTEA_POLL_MS, runButton, runControls, runLabel, stateLabel, targetOptions, timeline,
+  unmergedSummary, type Interview, type NeedsTarget, type Parity, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
+  type RunQuestion, type Turn, type UnmergedWork,
 } from "./remotea-model";
 import "./remotea.css";
 
@@ -155,6 +155,12 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
       {!readOnly && <div className="settings-form-actions">
         <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void change("/remotea/enable", { rotate: true })}>New link key</button>
       </div>}
+      <SettingRow as="label" label="Complete tasks automatically"
+        hint="When the judge finds every success criterion met, the task is completed and closed (in Linear too) without your tap. Off by default; leave it off until the outcome eval is clean.">
+        <input type="checkbox" checked={!!status.auto_complete} disabled={busy || readOnly}
+          onChange={e => void change("/remotea/auto-complete", { enabled: e.target.checked })}/>
+      </SettingRow>
+      {status.auto_complete && <p className="remotea-warning" role="note">Automatic completion is on: agents' tasks close without asking you.</p>}
     </>}
   </SettingsGroup>;
 }
@@ -233,6 +239,52 @@ function QuestionCard({ question, run, onDone }: { question: RunQuestion; run: R
   </section>;
 }
 
+export function InterviewForm({ interview, onDone }: { interview: Interview; onDone: () => void }) {
+  const [picked, setPicked] = useState<Record<string, string[]>>({}), [typed, setTyped] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const answers = interviewAnswers(interview, picked, typed);
+  const toggle = (q: string, label: string, multi: boolean) => setPicked(current => {
+    const now = current[q] ?? [];
+    return { ...current, [q]: multi ? (now.includes(label) ? now.filter(l => l !== label) : [...now, label]) : now.includes(label) ? [] : [label] };
+  });
+  const send = async () => {
+    if (!answers) return;
+    setBusy(true); setError("");
+    try { await post(`/remotea/interviews/${interview.id}/answers`, { answers }); onDone(); }
+    catch (e) { setError(message(e)); } finally { setBusy(false); }
+  };
+  return <section className="remotea-question remotea-interview" aria-label="Planning questions">
+    <p className="footnote">The agent needs these answers to write the plan.</p>
+    {interview.questions.map(q => <fieldset key={q.id} disabled={busy}>
+      <legend>{q.header ? <strong>{q.header}: </strong> : null}{q.question}{q.multi && <small> (choose any)</small>}</legend>
+      {!!q.options.length && <div className="remotea-choices">{q.options.map(o =>
+        <button key={o.label} type="button" aria-pressed={(picked[q.id] ?? []).includes(o.label)} title={o.description || undefined}
+          className={"btn btn-sm" + ((picked[q.id] ?? []).includes(o.label) ? " btn-primary" : "")}
+          onClick={() => toggle(q.id, o.label, q.multi)}>{o.label}</button>)}</div>}
+      {q.free_text && <input aria-label={"Answer: " + q.question} placeholder={q.options.length ? "Or type an answer" : "Your answer"}
+        value={typed[q.id] ?? ""} onChange={e => setTyped({ ...typed, [q.id]: e.target.value })}/>}
+    </fieldset>)}
+    <button className="btn btn-primary btn-sm" disabled={!answers || busy} onClick={() => void send()}>{busy ? "Sending…" : "Send answers"}</button>
+    {error && <p role="alert" className="work-error">{error}</p>}
+  </section>;
+}
+
+export function Criteria({ run }: { run: RunDetail }) {
+  const rows = criteriaEvidence(run);
+  if (!rows.length) return run.plan ? <p className="footnote">This plan has no success criteria, so the judge cannot complete it; you approve.</p> : null;
+  const judge = latestAttempt(run, "judge"), verify = latestAttempt(run, "verify");
+  return <details className="remotea-plan remotea-criteria" open={run.state === "awaiting_approval"}>
+    <summary>Success criteria · {rows.filter(r => r.status === "met").length}/{rows.length} met{judge?.turn_seq ? ` (turn ${judge.turn_seq})` : ""}</summary>
+    <ul>{rows.map(r => <li key={r.id} className={"criterion-" + r.status}>
+      <strong>{r.status === "met" ? "Met" : r.status === "pending" ? "Not judged" : r.status === "unclear" ? "Unclear" : "Not met"}</strong> {r.text}
+      {r.kind === "verify" && <small> · needs {r.verify_id} to pass</small>}
+      {r.evidence && <p>{r.evidence}</p>}
+    </li>)}</ul>
+    {judge?.gap && judge.verdict !== "met" && <p className="remotea-reason">{judge.gap}</p>}
+    {verify && <p className="footnote">Last verification: {verify.verify_id} {verify.status.replace("_", " ")}{verify.exit_code != null ? ` (exit ${verify.exit_code})` : ""}</p>}
+  </details>;
+}
+
 export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [run, setRun] = useState<RunDetail | null>(null), [error, setError] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
@@ -268,6 +320,11 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       </p>
       {run.reason_text && <p className="remotea-reason">{run.reason_text}</p>}
       {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
+      {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
+        <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
+      {!!run.integration?.length && <ul className="remotea-integration" aria-label="Sub-task integration">{run.integration.map(i =>
+        <li key={i.task_id}><GitBranch size={14} aria-hidden="true"/> {i.branch ? <code>{i.branch}</code> : "Sub-task"}: {i.reason}</li>)}</ul>}
+      <Criteria run={run}/>
       {!!run.plan?.steps?.length && <details className="remotea-plan">
         <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
         <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>
@@ -282,8 +339,14 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
             onClick={() => void act("steer", "message", { text, mode: "steer" })}>Steer</button>
           <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || !!busy || controls.stop.label === "Stopping…"}
             onClick={() => void act("stop", "stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
-          <button className="btn btn-sm btn-primary" disabled={!controls.approve.enabled || !!busy} title="Mark the task complete and end the run"
-            onClick={() => void act("approve", "approve", {})}><Check size={14}/>Approve</button>
+          <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || !!busy}
+            title="Mark the task complete and end the run" onClick={() => void act("approve", "approve", {})}><Check size={14}/>Approve</button>
+        </div>
+        <div className="remotea-control-row">
+          <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || !!busy} title={controls.replan.reason}
+            onClick={() => void act("replan", "replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
+          {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={!!busy || !run.surf} title="Run the plan's verification now"
+            onClick={() => void act("verify", "verify", {})}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
         </div>
         {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
       </div>}

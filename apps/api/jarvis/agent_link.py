@@ -61,9 +61,9 @@ REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
 SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "turn", "status", "exit",
                "sessions.snapshot", "command.outcome", "runs.snapshot", "question", "context", "worktrees.report",
-               "spawn", "input", "answer", "stop"]
-# Command kind -> host capability it needs. verify is stage D.
-COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop"}
+               "spawn", "input", "answer", "stop", "verify", "verify.result"]
+# Command kind -> host capability it needs.
+COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}
@@ -233,6 +233,27 @@ class QuestionResolved(Frame):
     still_open: bool = False
     detail: str = Field(default="", max_length=300)
     answer_echo: dict[str, str] | None = None
+
+
+class VerifyResult(Frame):
+    attempt_id: str = Field(min_length=1, max_length=200)
+    run_id: str = Field(max_length=36)
+    generation: int = Field(ge=0)
+    turn_seq: int = Field(ge=0)
+    plan_revision: int = Field(ge=0)
+    verify_id: str = Field(default="", max_length=64)
+    workspace_fingerprint: str = Field(default="", max_length=300)
+    exit_code: int | None = None
+    tail: str = Field(default="", max_length=MAX_ASSEMBLED)
+    truncated: bool = False
+    duration_ms: int = Field(default=0, ge=0)
+    timed_out: bool = False
+    canceled: bool = False
+    error: str | None = Field(default=None, max_length=2000)
+    # Stage D (additive on the host): a checkout that changed around the run is a non-pass.
+    stale_workspace: bool = False
+    initiator: str | None = Field(default=None, max_length=20)
+    adopted: str | None = Field(default=None, max_length=200)
 
 
 class ContextRequest(Frame):
@@ -476,7 +497,12 @@ def worktrees(db, bot, host_id, frame):
     host = db.get(AgentHost, host_id)
     host.caps = {**(host.caps or {}), "worktrees": {"at": now().isoformat(), "worktrees": frame.worktrees}}
     emit(db, bot.owner_id, "agent.changed", host_id)
+    coordinator.check_integrations(db, bot.owner_id, host_id)  # A sub-task branch may have been merged.
     return {"stored": len(frame.worktrees)}
+
+
+def verify_result(db, bot, host_id, frame):
+    return coordinator.verify_result(db, host_id, frame)
 
 
 PARITY_FIELDS = ("machine", "environment", "cwd", "repo", "branch", "title", "first_prompt", "last_prompt",
@@ -835,6 +861,8 @@ class Link:
                 reply = {"text": f"Eridani could not load this session's context ({exc.code})."}
             await self.send("context.response", req_id=body.req_id, **reply)
             return NO_ACK
+        if kind == "verify.result":
+            return await self.effect(verify_result, VerifyResult.model_validate(frame))
         if kind == "worktrees.report":
             return await self.effect(worktrees, WorktreesReport.model_validate(frame))
         if kind == "ack":
