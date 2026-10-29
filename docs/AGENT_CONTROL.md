@@ -155,7 +155,8 @@ Eridani does **not** write the session. It normalizes the report exactly as the 
 spelling, empty `resume` keys) and compares `machine, environment, cwd, repo, branch, title, first_prompt,
 last_prompt, excerpt, pr_urls, turn_count, started_at, last_active_at, resume` with the row the Python
 collector stored, keeping the latest result per session in `agent_parity`. The response is
-`{matched, missing, fields}`.
+`{matched, missing, fields}`. `resume` is compared only on its stable keys (`cmd`, `url`): `live` and `hint`
+describe the session's current remotea terminal and change over time, so both sides ignore them.
 
 `GET /api/v1/remotea/parity` (and the page's **Collector parity** panel) summarizes `total, matched,
 mismatched, missing, clean`, a count per differing field, first/last report times and the 20 most recent
