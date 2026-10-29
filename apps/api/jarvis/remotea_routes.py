@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
@@ -345,11 +345,18 @@ def pending(user: User):
         return {"items": control.pending_list(db, user.owner_id)}
 
 
+class ConfirmInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # The card's target picker: where a start that answered NEEDS_TARGET should run (owner-checked).
+    execution_target_id: str | None = Field(default=None, max_length=36)
+
+
 @router.post("/pending/{identity}/confirm")
-def confirm_pending(identity: UUID, user: User):
+def confirm_pending(identity: UUID, user: User, body: ConfirmInput | None = None):
     with session_scope() as db:
         writable(db, user)
-        return control.decide(db, user.owner_id, str(identity), confirm=True, via="app", actor=actor_for(user))
+        return control.decide(db, user.owner_id, str(identity), confirm=True, via="app", actor=actor_for(user),
+                              execution_target_id=body.execution_target_id if body else None)
 
 
 @router.post("/pending/{identity}/decline")

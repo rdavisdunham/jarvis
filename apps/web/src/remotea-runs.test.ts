@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAnswers, linkedRun, orderRuns, questionMode, runButton, runControls, targetOptions, timeline, unmergedSummary,
-  type Host, type Run, type RunDetail, type RunQuestion,
+  buildAnswers, defaultScope, linkedRun, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
+  unmergedSummary, type Host, type NeedsTarget, type Run, type RunDetail, type RunQuestion,
 } from "./remotea-model";
 
 const host = (connected: boolean): Host => ({
@@ -96,7 +96,33 @@ describe("run drawer model", () => {
       advertised: [{ host_id: "h", host_name: "desk", host_target: "jarvis", repo: "/r/jarvis", worktree_root: "" },
         { host_id: "h", host_name: "desk", host_target: "remotea", repo: "/r/remotea", worktree_root: "" }] });
     expect(options.map(o => o.key)).toEqual(["saved:s", "host:h:remotea"]);
+    expect(options[0]).toMatchObject({ label: "Jarvis", detail: "/r/jarvis" });
+    expect(options[1]).toMatchObject({ label: "remotea", detail: "/r/remotea" });
     expect(unmergedSummary({ host_id: "h", host_name: "desk", target: "jarvis", path: "/w", branch: "b", base: "main", ahead: 2,
       behind: 0, unpushed: 1, uncommitted: 0, untracked: 0, merged: false, active: false, reasons: null })).toBe("2 ahead of main · 1 unpushed");
+  });
+});
+
+describe("execution target picker", () => {
+  const need = (records: NeedsTarget["records"]): NeedsTarget => ({ task_id: "t1", candidates: [], advertised: [], records });
+
+  it("remembers the choice for the nearest record that is not a task, so sibling tasks share it", () => {
+    expect(defaultScope(need([{ id: "task-rec", title: "Fix login", type_id: "task" },
+      { id: "proj", title: "Eridani roadmap", type_id: "project" }, { id: "client", title: "Acme", type_id: "client" }]))).toBe("proj");
+    // A sub-task skips its parent task too.
+    expect(defaultScope(need([{ id: "sub", title: "Sub", type_id: "task" }, { id: "parent", title: "Parent", type_id: "task" },
+      { id: "proj", title: "Roadmap", type_id: "project" }]))).toBe("proj");
+  });
+
+  it("falls back to the task's own record, then to only this task", () => {
+    expect(defaultScope(need([{ id: "task-rec", title: "Loose task", type_id: "task" }]))).toBe("task-rec");
+    expect(defaultScope(need([{ id: "old", title: "Older server" }]))).toBe("old");
+    expect(defaultScope(need([]))).toBe("task");
+  });
+
+  it("opens the picker only for a NEEDS_TARGET that carries choices", () => {
+    expect(needsTargetData({ task_id: "t1", candidates: [], advertised: [], records: [] })).not.toBeNull();
+    expect(needsTargetData({ task_id: "t1" })).toBeNull();  // A target without a server: shown as an error instead.
+    expect(needsTargetData(null)).toBeNull();
   });
 });
