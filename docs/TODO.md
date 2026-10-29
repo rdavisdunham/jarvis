@@ -565,11 +565,20 @@ A checked implementation task never replaces connected-provider or physical-devi
   Stage F (2026-10-28 audit) made remotea personal-workspace only; see
   [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
 - verify sandboxing on the host (bubblewrap / codex sandbox, no network).
+- **Project play button (advanced, later).** A Play action on a project queues every
+  currently actionable task as remotea runs: in series when they touch the same
+  repo/target or declare dependencies, in parallel when they do not overlap. Needs
+  overlap detection, a per-host concurrency limit, an ordering view on the remotea
+  page and the same confirmation/approval gates as single runs. Requested 2026-10-28,
+  after the first single-task runs are proven.
 - Wholesale legacy-table/directory removal or whole-App refactors.
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.
 
 ## Maintenance
+
+The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
+roadmap", tag `todo-sync`) so runs can be started from them; keep both in step when closing items.
 
 Add new requests to the matching active batch or deferred list. Keep one delivery
 order. Record dates/commit/evidence when closing items; archive finished release
