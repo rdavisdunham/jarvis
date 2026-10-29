@@ -7,6 +7,8 @@ describe("connected agents", () => {
   it("exposes only selected grants and keeps paid queued work opt-in", () => {
     expect(permissionScopes({ tasks:"write", organization:"read", notes:"none" }, false)).toEqual(["tasks:write", "organization:read"]);
     expect(permissionScopes({ tasks:"read", notes:"none" }, true)).toEqual(["tasks:read", "work:run"]);
+    expect(permissionScopes({ tasks:"write", notes:"write" }, false, true)).toEqual(["tasks:write", "notes:write", "agents:session"]);
+    expect(permissionScopes({ tasks:"write" }, false, false)).not.toContain("agents:session");
   });
   it("identifies the selected workspace", () => {
     const html = renderToStaticMarkup(<BotSettings workspace="Team launch"/>);

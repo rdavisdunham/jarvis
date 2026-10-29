@@ -44,7 +44,12 @@ Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key crea
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
 account was demoted. The link re-checks on every inbound message and every 30-second tick, so revoking
 the key, removing membership or turning remotea off ends the connection. The link key never has
-`tasks:write`; the separate in-session MCP key (`cli-agents`) keeps its existing scopes.
+`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
+the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
+register it at user scope in each harness (for Claude Code:
+`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`,
+trailing slash required). Without `agents:session` the MCP server offers only the planner tools, the
+spawned agent cannot call `submit_plan`, and the run ends its planning turn in `needs_you`.
 
 ## Connection lifecycle
 
