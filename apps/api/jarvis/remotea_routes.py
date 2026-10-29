@@ -288,6 +288,13 @@ def verify(identity: UUID, user: User):
         return control.verify_now(db, user.owner_id, str(identity), actor=actor_for(user))
 
 
+@router.post("/runs/{identity}/plan-review")
+def plan_review(identity: UUID, body: agent_plan.PlanReviewInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return agent_plan.review_plan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
 @router.post("/interviews/{identity}/answers")
 def interview_answers(identity: UUID, body: agent_plan.InterviewAnswers, user: User):
     with session_scope() as db:

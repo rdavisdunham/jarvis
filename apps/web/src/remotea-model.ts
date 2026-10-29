@@ -111,6 +111,8 @@ export type Run = {
   stop_requested_at: string | null; stop_mode: string; surf: string;
   host: { id: string; name: string; connected: boolean } | null; structured_answers: boolean;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
+  /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
+  reason_detail?: string;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
   linear?: Partial<Record<"in_progress" | "done" | "comment", LinearOutcome>>;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
@@ -146,7 +148,8 @@ export type RunCommand = {
   outcome: { state?: string; detail?: string } | null; created_at: string; updated_at: string;
 };
 export type HistoryEntry = { at: string; from?: string; to?: string; reason?: string; detail?: string; event?: string;
-  kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string };
+  kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string;
+  plan_revision?: number; proposals?: string; accepted?: string[]; kept?: string[] };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -159,14 +162,22 @@ export type Attempt = {
   criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
 };
+/** What the agent proposes to change about what you set (agent_plan.plan_proposals); you accept or keep each. */
+export type Proposals = {
+  criteria?: { id: string; change: "reword" | "remove"; text: string; proposed?: string; because: string }[];
+  verify?: { current: { target_id: string; verify_id: string }; proposed: { target_id: string; verify_id: string } };
+  completion_policy?: { current: string; proposed: string };
+};
 export type RunDetail = Run & {
   plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string }[];
-    criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[] } | null;
+    criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
+    proposals?: Proposals | null } | null;
   history: HistoryEntry[];
   turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string }[];
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
 };
-export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt"; title: string; detail: string; tone: "plain" | "good" | "warn" | "attention" };
+export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
+  tone: "plain" | "good" | "warn" | "attention"; who: "agent" | "you" | "eridani" };
 
 export const TERMINAL_RUN_STATES: RunState[] = ["completed", "stopped", "capped", "failed"];
 const RUN_LABELS: Partial<Record<RunState, string>> = {
@@ -236,11 +247,36 @@ export function interviewAnswers(interview: Interview, picked: Record<string, st
     const labels = new Set(q.options.map(o => o.label));
     const chosen = (picked[q.id] ?? []).filter(l => labels.has(l));
     const text = (typed[q.id] ?? "").trim();
-    const values = [...chosen, ...(text && q.free_text ? [text] : [])];
+    const values = [...chosen, ...(text ? [text] : [])];  // Typing an answer is always allowed.
     if (!values.length || (!q.multi && values.length > 1)) return null;
     answers[q.id] = q.multi ? values : values[0];
   }
   return answers;
+}
+
+/** An option the agent marked as its recommendation ("(Recommended)" in the label or description). */
+export function recommended(option: { label: string; description?: string }) {
+  return /recommended/i.test(option.label) || /recommended/i.test(option.description ?? "");
+}
+
+/** Recommended options first, the rest in the agent's order. */
+export function orderOptions<T extends { label: string; description?: string }>(options: T[]) {
+  return [...options.filter(recommended), ...options.filter(o => !recommended(o))];
+}
+
+export type PlanDecision = { accept: boolean; text: string };
+/** The plan-review request: one decision per proposed criterion change, plus verify and policy. */
+export function planReviewBody(proposals: Proposals, decisions: Record<string, PlanDecision>, verify: "accept" | "keep",
+  completion_policy: "accept" | "keep", expected_revision: number) {
+  return {
+    decisions: (proposals.criteria ?? []).map(c => {
+      const d = decisions[c.id] ?? { accept: true, text: "" };
+      const text = d.text.trim();
+      return { id: c.id, accept: d.accept, ...(d.accept && c.change === "reword" && text && text !== c.proposed ? { text } : {}) };
+    }),
+    verify: proposals.verify ? verify : "keep", completion_policy: proposals.completion_policy ? completion_policy : "keep",
+    expected_revision,
+  };
 }
 
 /** The newest attempt of a kind (the API lists newest first). */
@@ -294,26 +330,46 @@ const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
 /** One time-ordered timeline: final responses per turn, commands with their outcomes, questions and state changes. */
 export function timeline(run: RunDetail): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
-  for (const t of run.turns) entries.push({ at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text + (t.truncated ? " [truncated]" : ""), tone: "plain" });
-  for (const c of run.commands) entries.push({ at: c.created_at, kind: "command", title: commandTitle(c), detail: c.text ?? c.outcome?.detail ?? "", tone: commandTone(c) });
+  // A text that left for the agent appears once: the "sent" history entry says who sent it, so the matching
+  // input command (same text) is skipped unless it failed, where its outcome is the news.
+  const sent = new Set(run.history.filter(h => h.event === "sent" && h.text).map(h => h.text as string));
+  for (const t of run.turns) entries.push({ at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text + (t.truncated ? " [truncated]" : ""), tone: "plain", who: "agent" });
+  for (const c of run.commands) {
+    const state = c.outcome?.state ?? c.status;
+    if (c.kind === "input" && c.text && sent.has(c.text) && !["failed", "rejected", "expired", "uncertain"].includes(state)) continue;
+    entries.push({ at: c.created_at, kind: "command", title: commandTitle(c), detail: c.kind === "input" && sent.has(c.text ?? "") ? c.outcome?.detail ?? "" : c.text ?? c.outcome?.detail ?? "",
+      tone: commandTone(c), who: "eridani" });
+  }
   for (const q of run.questions) entries.push({ at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
-    detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain" });
+    detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain", who: "agent" });
   for (const a of run.attempts ?? []) entries.push({ at: a.updated_at, kind: "attempt", title: attemptTitle(a),
-    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a) });
+    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani" });
   for (const i of run.interviews ?? []) entries.push({ at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
-    detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain" });
+    detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
   for (const h of run.history) {
     if (h.event === "sent" && h.text) {
-      // Every text sent to the agent, with who sent it (stage F): you on this page, or Eri after your confirmation.
+      // Every text sent to the agent, with who sent it (stage F): you on this page, Eri after your confirmation,
+      // or Eridani itself (interview answers as the planning prompt, the judge's gap).
       const confirmed = !!h.actor?.reason?.startsWith("confirmed:");
-      const who = confirmed ? (h.actor?.kind === "human" ? "Eri, confirmed by you" : "Eri, after your yes")
-        : h.actor?.kind === "human" ? "you" : h.actor?.kind ?? "";
-      entries.push({ at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain" });
+      const human = h.actor?.kind === "human";
+      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : h.actor?.kind === "run_judge" ? "Eridani" : h.actor?.kind ?? "";
+      entries.push({ at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain", who: human && !confirmed ? "you" : "eridani" });
+      continue;
+    }
+    if (h.event === "plan_submitted") {
+      entries.push({ at: h.at, kind: "plan", title: `Plan submitted · revision ${h.plan_revision ?? ""}`.trim(),
+        detail: h.proposals ? h.proposals + " — waiting for your review." : "", tone: h.proposals ? "attention" : "plain", who: "agent" });
+      continue;
+    }
+    if (h.event === "plan_reviewed") {
+      const accepted = (h.accepted ?? []).join(", "), kept = (h.kept ?? []).join(", ");
+      entries.push({ at: h.at, kind: "plan", title: `Plan reviewed by you · revision ${h.plan_revision ?? ""}`.trim(),
+        detail: [accepted ? "accepted " + accepted : "", kept ? "kept " + kept : ""].filter(Boolean).join(" · "), tone: "good", who: "you" });
       continue;
     }
     if (!h.to) continue;
     entries.push({ at: h.at, kind: "state", title: runLabel(h.to as RunState), detail: [h.actor?.kind === "human" ? "by you" : "", h.detail ?? ""].filter(Boolean).join(" · "),
-      tone: h.to === "needs_you" ? "attention" : h.to === "completed" ? "good" : ["failed", "stopped"].includes(h.to) ? "warn" : "plain" });
+      tone: h.to === "needs_you" ? "attention" : h.to === "completed" ? "good" : ["failed", "stopped"].includes(h.to) ? "warn" : "plain", who: "eridani" });
   }
   return entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }

@@ -304,6 +304,8 @@ class AgentRunPlan(Base):
     steps: Mapped[list] = mapped_column(JSONB, default=list)
     criteria: Mapped[list] = mapped_column(JSONB, default=list)
     verify: Mapped[dict | None] = mapped_column(JSONB)
+    # The agent's proposed changes to what a human set (agent_plan.plan_proposals); None once reviewed or when none.
+    proposals: Mapped[dict | None] = mapped_column(JSONB)
     # Direct child task ids the plan requires (F02); removing one is a plan change.
     required_children: Mapped[list] = mapped_column(JSONB, default=list)
     # code_ready | pr_open | pr_merged: what "done" means for this plan (agent_judge hard rules).

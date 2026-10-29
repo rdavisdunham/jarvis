@@ -671,6 +671,19 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 - Plan floor (`agent_plan.plan_floor`): an agent's plan may only add. Human criteria and a human verify
   are kept; what the agent adds is marked `by: "agent"`; the completion policy never drops. Clients cannot
   send `by` themselves (`Literal["agent"]`).
+- Plan review (`agent_plan.plan_proposals`, `review_plan`): the agent may *propose* a change to what a human
+  set, never apply it. In `submit_plan` a human criterion sent back with different text (plus `because`), or
+  with `drop: true`, a different verify, or a lower completion policy becomes a proposal stored on the frozen
+  plan (`agent_run_plans.proposals`). Human criteria the agent simply omits are kept, not proposed for
+  removal, so a plan that only adds never pauses. When the planning turn ends with proposals,
+  `settle_planning` moves the run to `needs_you` with reason `plan_review` instead of executing; the page
+  shows each change (original, proposed, the agent's reason) with Accept / Keep and an editable text.
+  `POST /api/v1/remotea/runs/{id}/plan-review {decisions:[{id, accept, text?}], verify, completion_policy}`
+  writes the accepted changes to the task as a human edit, freezes revision N+1 without proposals and
+  starts execution; the execute prompt opens with what was accepted and kept.
+- `reason_detail` on a run: the full text behind the current state (the judge's notes for a judge-caused
+  `needs_you`, the proposal summary for `plan_review`, else the transition's detail); `reason_text` stays
+  the one-line version.
 - Every path that completes a task (`task.update`, `task.complete`, `schedule.complete`,
   `notification.complete`, Linear sync, `auto_complete`) passes `agent_actor.gate`; `finish_task` runs it
   again as a backstop. `auto_complete` never completes a task whose plan has human criteria

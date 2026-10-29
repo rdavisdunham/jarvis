@@ -74,6 +74,9 @@ class CriterionInput(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
     kind: Literal["text", "verify"] = "text"
     verify_id: str | None = Field(default=None, max_length=64)
+    # Proposing a change to a human-authored criterion (plan_proposals): the agent's reason, and drop to propose removal.
+    because: str | None = Field(default=None, max_length=600)
+    drop: bool = False
 
 
 class VerifyInput(BaseModel):
@@ -91,6 +94,21 @@ class SubmitPlanInput(Input):
     # What "done" means; omitted keeps the task's policy (default code_ready).
     completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     expected_plan_revision: int = Field(ge=0)
+
+
+class PlanDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    id: str = Field(pattern=PLAN_ID)
+    accept: bool
+    text: str | None = Field(default=None, min_length=1, max_length=1000)  # The operator's own wording, if any.
+
+
+class PlanReviewInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decisions: list[PlanDecision] = Field(default_factory=list, max_length=50)
+    verify: Literal["accept", "keep"] = "keep"
+    completion_policy: Literal["accept", "keep"] = "keep"
+    expected_revision: int | None = None
 
 
 class InterviewAnswers(BaseModel):
@@ -345,7 +363,8 @@ def plan_floor(task, criteria, verify, policy):
     Agent-authored criteria from an earlier plan are the agent's own and may be replaced."""
     kept = [c for c in task.success_criteria or [] if c.get("by") != "agent"]
     taken = {c.get("id") for c in kept}
-    added = [{**c.model_dump(exclude_none=True), "by": "agent"} for c in criteria if not c.id or c.id not in taken]
+    added = [{**c.model_dump(exclude_none=True, exclude={"because", "drop"}), "by": "agent"}
+             for c in criteria if not c.id or c.id not in taken]
     for c in added:
         if c.get("id") in taken:
             c.pop("id")
@@ -357,8 +376,37 @@ def plan_floor(task, criteria, verify, policy):
     return kept + added, verify, policy
 
 
+def plan_proposals(task, criteria, verify, policy):
+    """What the agent wants to change about what a human set. The floor (plan_floor) never applies these; they wait
+    for the operator on the run page (review_plan). Only explicit changes count: a human criterion the agent sends
+    back with different text, or with drop=true. Human criteria the agent simply does not list are kept, not
+    proposed for removal, so an agent that only adds never pauses the run."""
+    human = {c.get("id"): c for c in task.success_criteria or [] if c.get("by") != "agent" and c.get("id")}
+    changes = []
+    for given in criteria:
+        current = human.get(given.id) if given.id else None
+        if current is None:
+            continue
+        if given.drop:
+            changes.append({"id": given.id, "change": "remove", "text": current.get("text", ""), "because": given.because or ""})
+        elif given.text.strip() != (current.get("text") or "").strip():
+            changes.append({"id": given.id, "change": "reword", "text": current.get("text", ""), "proposed": given.text.strip(),
+                            "because": given.because or ""})
+    result = {}
+    if changes:
+        result["criteria"] = changes
+    if verify and task.verify and task.verify.get("by") != "agent" and verify.get("verify_id") != task.verify.get("verify_id"):
+        result["verify"] = {"current": task.verify, "proposed": {k: v for k, v in verify.items() if k != "by"}}
+    current_policy = task.completion_policy or "code_ready"
+    if policy and POLICY_ORDER.index(policy) < POLICY_ORDER.index(current_policy):
+        result["completion_policy"] = {"current": current_policy, "proposed": policy}
+    return result or None
+
+
 def submit_plan(db, bot, body):
-    """Planning only: write the PRD note and the task's template plan, then freeze run plan revision N+1."""
+    """Planning only: write the PRD note and the task's template plan, then freeze run plan revision N+1.
+    Changes the agent proposes to human-authored criteria are stored beside the frozen plan, not applied
+    (plan_proposals); the coordinator asks the operator before execution starts."""
     actor, run = run_scoped(db, bot, body, coordinator.PLANNING)
     task = owned(db, Task, run.task_id, run.owner_id, lock=True)
     if (task.plan_revision or 0) != body.expected_plan_revision:
@@ -381,7 +429,9 @@ def submit_plan(db, bot, body):
     open_row = coordinator.open_interview(db, run)
     if open_row is not None:
         open_row.status, open_row.updated_at = "superseded", now()  # The agent went ahead without the answers.
-    criteria, verify, policy = plan_floor(task, body.success_criteria, verify, body.completion_policy)
+    agent_verify = {**body.verify.model_dump(), "by": "agent"} if body.verify else None
+    proposals = plan_proposals(task, body.success_criteria, agent_verify, body.completion_policy)
+    criteria, verify, policy = plan_floor(task, [c for c in body.success_criteria if not c.drop], verify, body.completion_policy)
     writer = Actor("run_session", credential_id=actor.credential_id, run_id=run.id, generation=run.generation,
                    capability="plan_write")
     with acting(writer):
@@ -396,13 +446,74 @@ def submit_plan(db, bot, body):
     db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision,
                         task_plan_revision=task.plan_revision or 0, title=task.title, prd_text=note.content if note else "",
                         steps=list(task.steps or []), criteria=list(task.success_criteria or []), verify=task.verify,
-                        completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids]))
+                        completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids],
+                        proposals=proposals))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
-    coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record())
+    coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record(),
+                     **({"proposals": coordinator.proposal_summary(proposals)} if proposals else {}))
     emit(db, run.owner_id, "agent.changed", run.id)
+    next_step = ("Stop now. The operator will accept or keep each change you proposed to their criteria; Eridani "
+                 "starts execution after that." if proposals else "Stop now. Eridani starts execution when this turn ends.")
     return encode({"plan_revision": revision, "task_plan_revision": task.plan_revision, "prd_note_id": prd_id,
                    "steps": task.steps, "success_criteria": task.success_criteria, "verify": task.verify,
-                   "completion_policy": task.completion_policy,
-                   "actor": actor.record(), "next": "Stop now. Eridani starts execution when this turn ends."})
+                   "completion_policy": task.completion_policy, "proposals": proposals,
+                   "actor": actor.record(), "next": next_step})
+
+
+def review_plan(db, owner, run_id, body, *, actor):
+    """The operator's decisions on the agent's proposals: accepted changes are written to the task (a human edit,
+    allowed by the gate), the plan is frozen again as the next revision without proposals, and execution starts."""
+    from .domain import execute
+
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    plan = coordinator.frozen(db, run)
+    if run.state != "needs_you" or run.state_reason != "plan_review" or plan is None or not plan.proposals:
+        raise DomainError("NO_PLAN_REVIEW", "This run is not waiting for a plan review.", 409, data={"state": run.state})
+    task = owned(db, Task, run.task_id, run.owner_id, lock=True)
+    proposals = plan.proposals
+    decided = {d.id: d for d in body.decisions}
+    accepted, kept, criteria = [], [], []
+    for criterion in task.success_criteria or []:
+        change = next((c for c in proposals.get("criteria") or [] if c["id"] == criterion.get("id")), None)
+        decision = decided.get(criterion.get("id")) if change else None
+        if change is None or decision is None or not decision.accept:
+            criteria.append(criterion)
+            if change is not None:
+                kept.append(change["id"])
+            continue
+        accepted.append(change["id"])
+        if change["change"] == "remove" and not decision.text:
+            continue
+        criteria.append({**criterion, "text": (decision.text or change.get("proposed") or criterion["text"]).strip()})
+    changes = {"success_criteria": criteria}
+    if proposals.get("verify") and body.verify == "accept":
+        changes["verify"] = {**proposals["verify"]["proposed"], "by": "human"}
+        accepted.append("verify")
+    elif proposals.get("verify"):
+        kept.append("verify")
+    if proposals.get("completion_policy") and body.completion_policy == "accept":
+        changes["completion_policy"] = proposals["completion_policy"]["proposed"]
+        accepted.append("completion_policy")
+    elif proposals.get("completion_policy"):
+        kept.append("completion_policy")
+    with acting(Actor("human", credential_id=actor.credential_id, reason="plan_review")):
+        execute(db, owner, f"plan-review:{run.id}:{plan.revision}", "task.update",
+                {"task_id": task.id, "expected_revision": task.revision, **changes})
+    db.refresh(task)
+    revision = plan.revision + 1
+    db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision, task_plan_revision=task.plan_revision or 0,
+                        title=task.title, prd_text=plan.prd_text, steps=list(task.steps or []),
+                        criteria=list(task.success_criteria or []), verify=task.verify,
+                        completion_policy=task.completion_policy or "code_ready", required_children=plan.required_children,
+                        proposals=None))
+    run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
+    coordinator.note(run, "plan_reviewed", plan_revision=revision, accepted=accepted, kept=kept, actor=actor.record())
+    preface = ("The operator reviewed your proposed changes: accepted " + (", ".join(accepted) or "none") +
+               "; kept as written " + (", ".join(kept) or "none") + ". The plan below is what you are judged against.")
+    coordinator.begin_execution(db, run, reason="plan_reviewed", preface=preface, actor=actor)
+    from .agent_control import public_run
+
+    return public_run(db, run, detail=True)
