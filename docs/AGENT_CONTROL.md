@@ -39,6 +39,7 @@ hold the key.
 |---|---|
 | `agents:control` | Open the link, report sessions/turns/status, run parity. Privileged. |
 | `agents:session` | Reserved for in-session agent tools (stage C/D: `task_plan`, `task_step`, `submit_plan`). Privileged. |
+| `agents:read` | Read runs started from tasks: `GET /api/v1/external/agents/runs[/{run_id}]` and the `run_list` / `run_get` MCP tools. Read-only, not privileged; the same read model as the remotea page. |
 
 Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key creation and every use is a
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
@@ -310,6 +311,23 @@ completion and edits of `success_criteria`, `verify` and `turn_cap` from `eri_wo
 `bot` with `409 RUN_OWNS_COMPLETION {run_id, state}`. A human or source_sync completion is recorded at
 once and asks the run to stop (`stop_reason: task_completed_externally`); a human approve ends it
 `completed`.
+
+### Reading runs (`agents:read`)
+
+A bot key with `agents:read` (Settings → Connected agents → "Read runs started from tasks") reads what the
+remotea page shows, so an assistant outside the run can review a run without a copy-paste:
+
+- `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
+  list shape of `agent_control.public_run` (state, `state_reason`, `reason_text`, task, branch, turns, host).
+- `GET /api/v1/external/agents/runs/{run_id}?limit=&offset=` (MCP `run_get`): the detail shape — frozen
+  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`,
+  `commands` (spawn, input incl. the operator's and the judge's gap prompts, stop, verify), `questions`,
+  `interviews` (questions and answers), and `attempts` (verify and judge: verdict, gap, per-criterion
+  record, rules, model, cost). Turns and commands page newest first; `more` says whether older ones remain.
+
+Reads stay available after remotea is turned off, as on the page. Owner scoping is the run's `owner_id`;
+another workspace's run is `404`. Nothing here mutates: approving, messaging and stopping remain
+cookie-authenticated browser routes.
 
 ### In-session tools (`agents:session`)
 

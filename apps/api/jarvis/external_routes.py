@@ -262,6 +262,30 @@ def agent_parity(body: ParityInput, identity: Bot):
         return agent_link.parity(db, bot, host, body.tool, body.session_id, body.report)
 
 
+@external.get("/agents/runs")
+def agent_runs(identity: Bot, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100)):
+    """Runs started from tasks, newest first (scope agents:read): the same read model as the remotea page."""
+    from . import agent_control as control
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:read")
+        return {"items": control.list_runs(db, bot.owner_id, task_id=str(task_id) if task_id else None,
+                                           active=active, limit=limit)}
+
+
+@external.get("/agents/runs/{run_id}")
+def agent_run(run_id: UUID, identity: Bot, limit: int = Query(100, ge=1, le=200), offset: int = Query(0, ge=0, le=100_000)):
+    """One run with its timeline: frozen plan, history, turns, commands, questions, interviews and verify/judge
+    attempts (scope agents:read). Paged like the browser route: newest `limit` turns/commands after `offset`."""
+    from . import agent_control as control
+    from . import run_coordinator as coordinator
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:read")
+        run = coordinator.load(db, bot.owner_id, str(run_id), lock=False)
+        return control.public_run(db, run, detail=True, limit=limit, offset=offset)
+
+
 @external.post("/agents/session/plan")
 def agent_task_plan(body: dict, identity: Bot):
     """HTTP twin of the task_plan tool (scope agents:session)."""

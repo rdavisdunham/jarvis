@@ -30,6 +30,7 @@ SCOPES = {
     "sessions:write": "Report agent sessions and file them under issues or records",
     "agents:control": "Link a remotea server: report live sessions, turns and status (remotea only)",
     "agents:session": "In-session agent tools for a linked task's plan and steps (remotea only)",
+    "agents:read": "Read runs started from tasks: state, frozen plan, turns, questions, verdicts and commands (remotea only)",
 }
 # Control scopes mutate on every use: viewers cannot hold them and each use is a write check.
 PRIVILEGED = {"agents:control", "agents:session"}

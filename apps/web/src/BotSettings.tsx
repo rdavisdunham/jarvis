@@ -6,14 +6,14 @@ import { SettingsGroup } from "./SettingsLayout";
 export type BotKey = { id: string; name: string; prefix: string; scopes: string[];
   expires_at: string; created_at: string; revoked_at: string | null; last_used_at: string | null };
 type KeyList = { items: BotKey[]; api_url: string; mcp_url: string };
-export function permissionScopes(levels: Record<string, string>, queued: boolean, runTools = false) {
+export function permissionScopes(levels: Record<string, string>, queued: boolean, runTools = false, runRead = false) {
   return [...Object.entries(levels).filter(([,level]) => level !== "none").map(([group,level]) => `${group}:${level}`),
-    ...(queued ? ["work:run"] : []), ...(runTools ? ["agents:session"] : [])];
+    ...(queued ? ["work:run"] : []), ...(runTools ? ["agents:session"] : []), ...(runRead ? ["agents:read"] : [])];
 }
 export function BotSettings({ workspace, readOnly = false, canDesign = true }: { workspace: string; readOnly?: boolean; canDesign?: boolean }) {
   const [data, setData] = useState<KeyList | null>(null), [error, setError] = useState("");
   const [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [name, setName] = useState("");
-  const [days, setDays] = useState(90), [queued, setQueued] = useState(false), [runTools, setRunTools] = useState(false);
+  const [days, setDays] = useState(90), [queued, setQueued] = useState(false), [runTools, setRunTools] = useState(false), [runRead, setRunRead] = useState(false);
   const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read", sessions: "none" });
   const [secret, setSecret] = useState(""), [visible, setVisible] = useState(false), [copied, setCopied] = useState("");
   const [revision, setRevision] = useState(0);
@@ -31,7 +31,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     event.preventDefault(); setBusy(true); setError(""); setSecret(""); setCopied("");
     try {
       const result = await post<{ credential: BotKey; token: string }>("/bot-keys", {
-        name, scopes: permissionScopes(levels, queued, runTools), expires_in_days: days,
+        name, scopes: permissionScopes(levels, queued, runTools, runRead), expires_in_days: days,
       });
       setSecret(result.token); setVisible(false); setAdding(false); setName(""); setRevision(n => n + 1);
     } catch(e) { setError((e as Error).message); setRevision(n => n + 1); }
@@ -43,7 +43,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     catch(e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const scopeLabel = (scope: string) => scope === "work:run" ? "Eri requests" : scope === "agents:session" ? "Run tools" : scope === "agents:control" ? "remotea link"
+  const scopeLabel = (scope: string) => scope === "work:run" ? "Eri requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link"
     : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
   return <SettingsGroup className="bot-settings" icon={<KeyRound size={18}/>} title="Connected agents"
     description={`Let other assistants work in ${workspace}. Their changes appear in Activity.`}
@@ -63,6 +63,8 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
         Allow requests to Eri’s background agent</label>}
       {!readOnly && <label className="inline-check wide"><input type="checkbox" checked={runTools} onChange={e => setRunTools(e.target.checked)}/>
         Run tools for coding agents started from a task (remotea): read the plan, tick steps, submit the plan</label>}
+      <label className="inline-check wide"><input type="checkbox" checked={runRead} onChange={e => setRunRead(e.target.checked)}/>
+        Read runs started from tasks (remotea): plan, timeline, questions and judge verdicts</label>
       <p className="footnote">Access applies to this workspace. Personal memory, conversations and connected accounts stay private. Revoking a key stops future actions, including queued work.</p>
       <div className="settings-form-actions"><button className="btn btn-primary" disabled={busy || !name.trim() || Object.values(levels).every(v => v === "none")}>{busy ? "Creating…" : "Create key"}</button></div>
     </form>}
