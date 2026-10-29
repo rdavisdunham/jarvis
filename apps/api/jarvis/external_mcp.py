@@ -145,8 +145,23 @@ def definitions(scopes):
             "Planning phase only: save the PRD, ordered steps (sub-tasks stay as linked steps), success_criteria "
             "(kind text, or verify naming the verify_id) and an optional verify config from your execution target, "
             "with expected_plan_revision from task_plan. Freezes the plan this run is judged against; stop after "
-            "calling it and Eridani starts execution. Needs run_token.",
+            "calling it and Eridani starts execution. The operator's own criteria are a floor: repeat them by id "
+            "verbatim, or propose a change (same id, new text or drop=true, plus because) that the operator accepts "
+            "or keeps before execution. Needs run_token.",
             agent_plan.SubmitPlanInput.model_json_schema(), False)
+    if "agents:read" in scopes:
+        add("run_list",
+            "List runs started from tasks (remotea), newest first: state, reason, task, branch, turn count and host. "
+            "task_id narrows to one task; active=true lists only runs that have not settled.",
+            schema({"task_id": UUID_SCHEMA, "active": {"type": "boolean"},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, []))
+        add("run_get",
+            "Read one run's full timeline: the frozen plan (PRD, steps, criteria, verify), state history with reasons, "
+            "agent turns, operator messages and commands, interview questions and answers, questions asked mid-run, "
+            "and every verify and judge attempt with its verdict, gap text and rules. Turns and commands are paged "
+            "newest first: limit (default 100) and offset reach older ones.",
+            schema({"run_id": UUID_SCHEMA, "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    "offset": {"type": "integer", "minimum": 0, "maximum": 100000}}, ["run_id"]))
     if "sessions:read" in scopes:
         add("session_rules", "List the folder rules that file agent sessions under records.", schema({}, []))
     add(
@@ -240,6 +255,17 @@ def dispatch(name, arguments):
             if name == "task_interview":
                 return agent_plan.task_interview(db, bot, session_arguments(agent_plan.InterviewInput, arguments))
             return agent_plan.submit_plan(db, bot, session_arguments(agent_plan.SubmitPlanInput, arguments))
+        if name in ("run_list", "run_get"):
+            from . import agent_control as control
+            from . import run_coordinator as coordinator
+
+            bot = bot_access.authorize(db, bot.owner_id, "agents:read")
+            if name == "run_list":
+                return {"items": control.list_runs(db, bot.owner_id, task_id=arguments.get("task_id"),
+                                                   active=bool(arguments.get("active")), limit=arguments.get("limit") or 50)}
+            run = coordinator.load(db, bot.owner_id, arguments["run_id"], lock=False)
+            return control.public_run(db, run, detail=True, limit=arguments.get("limit") or 100,
+                                      offset=arguments.get("offset") or 0)
         if name == "session_rules":
             return sessions.rules(db, bot.owner_id, reveal="records:read" in bot.scopes)
         if name in service.CUSTOM_READS:

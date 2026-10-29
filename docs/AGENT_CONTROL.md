@@ -39,12 +39,18 @@ hold the key.
 |---|---|
 | `agents:control` | Open the link, report sessions/turns/status, run parity. Privileged. |
 | `agents:session` | Reserved for in-session agent tools (stage C/D: `task_plan`, `task_step`, `submit_plan`). Privileged. |
+| `agents:read` | Read runs started from tasks: `GET /api/v1/external/agents/runs[/{run_id}]` and the `run_list` / `run_get` MCP tools. Read-only, not privileged; the same read model as the remotea page. |
 
 Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key creation and every use is a
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
 account was demoted. The link re-checks on every inbound message and every 30-second tick, so revoking
 the key, removing membership or turning remotea off ends the connection. The link key never has
-`tasks:write`; the separate in-session MCP key (`cli-agents`) keeps its existing scopes.
+`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
+the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
+register it at user scope in each harness (for Claude Code:
+`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`,
+trailing slash required). Without `agents:session` the MCP server offers only the planner tools, the
+spawned agent cannot call `submit_plan`, and the run ends its planning turn in `needs_you`.
 
 ## Connection lifecycle
 
@@ -155,7 +161,8 @@ Eridani does **not** write the session. It normalizes the report exactly as the 
 spelling, empty `resume` keys) and compares `machine, environment, cwd, repo, branch, title, first_prompt,
 last_prompt, excerpt, pr_urls, turn_count, started_at, last_active_at, resume` with the row the Python
 collector stored, keeping the latest result per session in `agent_parity`. The response is
-`{matched, missing, fields}`.
+`{matched, missing, fields}`. `resume` is compared only on its stable keys (`cmd`, `url`): `live` and `hint`
+describe the session's current remotea terminal and change over time, so both sides ignore them.
 
 `GET /api/v1/remotea/parity` (and the page's **Collector parity** panel) summarizes `total, matched,
 mismatched, missing, clean`, a count per differing field, first/last report times and the 20 most recent
@@ -305,6 +312,23 @@ completion and edits of `success_criteria`, `verify` and `turn_cap` from `eri_wo
 `bot` with `409 RUN_OWNS_COMPLETION {run_id, state}`. A human or source_sync completion is recorded at
 once and asks the run to stop (`stop_reason: task_completed_externally`); a human approve ends it
 `completed`.
+
+### Reading runs (`agents:read`)
+
+A bot key with `agents:read` (Settings → Connected agents → "Read runs started from tasks") reads what the
+remotea page shows, so an assistant outside the run can review a run without a copy-paste:
+
+- `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
+  list shape of `agent_control.public_run` (state, `state_reason`, `reason_text`, task, branch, turns, host).
+- `GET /api/v1/external/agents/runs/{run_id}?limit=&offset=` (MCP `run_get`): the detail shape — frozen
+  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`,
+  `commands` (spawn, input incl. the operator's and the judge's gap prompts, stop, verify), `questions`,
+  `interviews` (questions and answers), and `attempts` (verify and judge: verdict, gap, per-criterion
+  record, rules, model, cost). Turns and commands page newest first; `more` says whether older ones remain.
+
+Reads stay available after remotea is turned off, as on the page. Owner scoping is the run's `owner_id`;
+another workspace's run is `404`. Nothing here mutates: approving, messaging and stopping remain
+cookie-authenticated browser routes.
 
 ### In-session tools (`agents:session`)
 
@@ -647,6 +671,19 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 - Plan floor (`agent_plan.plan_floor`): an agent's plan may only add. Human criteria and a human verify
   are kept; what the agent adds is marked `by: "agent"`; the completion policy never drops. Clients cannot
   send `by` themselves (`Literal["agent"]`).
+- Plan review (`agent_plan.plan_proposals`, `review_plan`): the agent may *propose* a change to what a human
+  set, never apply it. In `submit_plan` a human criterion sent back with different text (plus `because`), or
+  with `drop: true`, a different verify, or a lower completion policy becomes a proposal stored on the frozen
+  plan (`agent_run_plans.proposals`). Human criteria the agent simply omits are kept, not proposed for
+  removal, so a plan that only adds never pauses. When the planning turn ends with proposals,
+  `settle_planning` moves the run to `needs_you` with reason `plan_review` instead of executing; the page
+  shows each change (original, proposed, the agent's reason) with Accept / Keep and an editable text.
+  `POST /api/v1/remotea/runs/{id}/plan-review {decisions:[{id, accept, text?}], verify, completion_policy}`
+  writes the accepted changes to the task as a human edit, freezes revision N+1 without proposals and
+  starts execution; the execute prompt opens with what was accepted and kept.
+- `reason_detail` on a run: the full text behind the current state (the judge's notes for a judge-caused
+  `needs_you`, the proposal summary for `plan_review`, else the transition's detail); `reason_text` stays
+  the one-line version.
 - Every path that completes a task (`task.update`, `task.complete`, `schedule.complete`,
   `notification.complete`, Linear sync, `auto_complete`) passes `agent_actor.gate`; `finish_task` runs it
   again as a backstop. `auto_complete` never completes a task whose plan has human criteria

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, RefreshCw, Square, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
   ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
-  cutoverSummary, linearOutcomes, paritySummary, place, POLICY_TEXT, questionMode, REMOTEA_POLL_MS, runButton, runControls, runLabel, stateLabel, targetOptions, timeline,
-  unmergedSummary, type Interview, type NeedsTarget, type Parity, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
-  type RunQuestion, type Turn, type UnmergedWork,
+  cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
+  runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
+  type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
+  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork,
 } from "./remotea-model";
 import "./remotea.css";
 
@@ -260,12 +261,15 @@ function QuestionCard({ question, run, onDone }: { question: RunQuestion; run: R
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   };
   return <section className={"remotea-question mode-" + mode} aria-label="Agent question">
+    <p className="remotea-card-kicker">The agent asks</p>
     {question.items.map(item => <fieldset key={item.id} disabled={mode !== "answer" || busy}>
       <legend>{item.header ? <strong>{item.header}: </strong> : null}{item.text}</legend>
-      {mode === "answer" && !!item.choices?.length && <div className="remotea-choices">{item.choices.map(c =>
-        <button key={c.id} type="button" aria-pressed={(picked[item.id] ?? []).includes(c.id)} title={c.description}
-          className={"btn btn-sm" + ((picked[item.id] ?? []).includes(c.id) ? " btn-primary" : "")}
-          onClick={() => toggle(item.id, c.id, !!item.multi)}>{c.label}</button>)}</div>}
+      {mode === "answer" && !!item.choices?.length && <div className="remotea-choices">{orderOptions(item.choices).map(c => {
+        const on = (picked[item.id] ?? []).includes(c.id);
+        return <button key={c.id} type="button" aria-pressed={on} title={c.description}
+          className={"btn btn-sm" + (on ? " btn-primary" : recommended(c) ? " btn-recommended" : "")}
+          onClick={() => toggle(item.id, c.id, !!item.multi)}>{c.label}</button>;
+      })}</div>}
       {mode === "answer" && <input aria-label={"Answer: " + item.text} placeholder={item.choices?.length ? "Or type an answer" : "Your answer"}
         value={typed[item.id] ?? ""} onChange={e => setTyped({ ...typed, [item.id]: e.target.value })}/>}
     </fieldset>)}
@@ -291,17 +295,72 @@ export function InterviewForm({ interview, onDone }: { interview: Interview; onD
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   };
   return <section className="remotea-question remotea-interview" aria-label="Planning questions">
-    <p className="footnote">The agent needs these answers to write the plan.</p>
+    <p className="remotea-card-kicker">Planning questions</p>
+    <p className="footnote">The agent needs these answers to write the plan. Pick an option or type your own.</p>
     {interview.questions.map(q => <fieldset key={q.id} disabled={busy}>
       <legend>{q.header ? <strong>{q.header}: </strong> : null}{q.question}{q.multi && <small> (choose any)</small>}</legend>
-      {!!q.options.length && <div className="remotea-choices">{q.options.map(o =>
-        <button key={o.label} type="button" aria-pressed={(picked[q.id] ?? []).includes(o.label)} title={o.description || undefined}
-          className={"btn btn-sm" + ((picked[q.id] ?? []).includes(o.label) ? " btn-primary" : "")}
-          onClick={() => toggle(q.id, o.label, q.multi)}>{o.label}</button>)}</div>}
-      {q.free_text && <input aria-label={"Answer: " + q.question} placeholder={q.options.length ? "Or type an answer" : "Your answer"}
-        value={typed[q.id] ?? ""} onChange={e => setTyped({ ...typed, [q.id]: e.target.value })}/>}
+      {!!q.options.length && <div className="remotea-choices">{orderOptions(q.options).map(o => {
+        const on = (picked[q.id] ?? []).includes(o.label);
+        return <button key={o.label} type="button" aria-pressed={on} title={o.description || undefined}
+          className={"btn btn-sm" + (on ? " btn-primary" : recommended(o) ? " btn-recommended" : "")}
+          onClick={() => toggle(q.id, o.label, q.multi)}>{o.label}</button>;
+      })}</div>}
+      <input aria-label={"Answer: " + q.question} placeholder={q.options.length ? "Or type an answer" : "Your answer"}
+        value={typed[q.id] ?? ""} onChange={e => setTyped({ ...typed, [q.id]: e.target.value })}/>
     </fieldset>)}
     <button className="btn btn-primary btn-sm" disabled={!answers || busy} onClick={() => void send()}>{busy ? "Sending…" : "Send answers"}</button>
+    {error && <p role="alert" className="work-error">{error}</p>}
+  </section>;
+}
+
+/** The agent proposed changes to criteria you wrote: accept or keep each one, then the plan freezes and work starts. */
+export function PlanReview({ run, onDone }: { run: RunDetail; onDone: () => void }) {
+  const proposals = run.plan?.proposals;
+  const [decisions, setDecisions] = useState<Record<string, PlanDecision>>(() =>
+    Object.fromEntries((proposals?.criteria ?? []).map(c => [c.id, { accept: true, text: c.proposed ?? "" }])));
+  const [verify, setVerify] = useState<"accept" | "keep">("accept"), [policy, setPolicy] = useState<"accept" | "keep">("accept");
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  if (!proposals || run.state_reason !== "plan_review" || run.state !== "needs_you") return null;
+  const decide = (id: string, accept: boolean) => setDecisions(d => ({ ...d, [id]: { ...(d[id] ?? { text: "" }), accept } }));
+  const send = async () => {
+    setBusy(true); setError("");
+    try { await post(`/remotea/runs/${run.id}/plan-review`, planReviewBody(proposals, decisions, verify, policy, run.state_revision)); onDone(); }
+    catch (e) { setError(message(e)); } finally { setBusy(false); }
+  };
+  const choice = (on: boolean, label: string, good: boolean, onClick: () => void) =>
+    <button type="button" aria-pressed={on} className={"btn btn-sm" + (on ? " btn-primary" : good ? " btn-recommended" : "")} onClick={onClick}>{label}</button>;
+  return <section className="remotea-question remotea-plan-review" aria-label="Plan review">
+    <p className="remotea-card-kicker">Plan review</p>
+    <p className="footnote">The agent wants to change what you set. Accept or keep each change; nothing changes until you tap Start.</p>
+    {(proposals.criteria ?? []).map(c => {
+      const d = decisions[c.id] ?? { accept: true, text: c.proposed ?? "" };
+      return <fieldset key={c.id} disabled={busy} className={"remotea-proposal change-" + c.change}>
+        <legend><code>{c.id}</code> · {c.change === "remove" ? "remove this criterion" : "change the wording"}</legend>
+        <p className="remotea-proposal-was"><span>Yours</span>{c.text}</p>
+        {c.change === "reword" && (d.accept
+          ? <label className="remotea-proposal-new"><span>Agent proposes (edit if you like)</span>
+              <textarea rows={2} value={d.text} onChange={e => setDecisions(all => ({ ...all, [c.id]: { accept: true, text: e.target.value } }))}/></label>
+          : <p className="remotea-proposal-new"><span>Agent proposes</span>{c.proposed}</p>)}
+        {c.because && <blockquote className="remotea-proposal-why">{c.because}</blockquote>}
+        <div className="remotea-choices">
+          {choice(d.accept, c.change === "remove" ? "Remove it" : "Accept", true, () => decide(c.id, true))}
+          {choice(!d.accept, "Keep mine", false, () => decide(c.id, false))}
+        </div>
+      </fieldset>;
+    })}
+    {proposals.verify && <fieldset disabled={busy} className="remotea-proposal">
+      <legend>Verification</legend>
+      <p className="remotea-proposal-was"><span>Yours</span>{proposals.verify.current.verify_id}</p>
+      <p className="remotea-proposal-new"><span>Agent proposes</span>{proposals.verify.proposed.verify_id}</p>
+      <div className="remotea-choices">{choice(verify === "accept", "Accept", true, () => setVerify("accept"))}{choice(verify === "keep", "Keep mine", false, () => setVerify("keep"))}</div>
+    </fieldset>}
+    {proposals.completion_policy && <fieldset disabled={busy} className="remotea-proposal">
+      <legend>Done means</legend>
+      <p className="remotea-proposal-was"><span>Yours</span>{POLICY_TEXT[proposals.completion_policy.current] ?? proposals.completion_policy.current}</p>
+      <p className="remotea-proposal-new"><span>Agent proposes</span>{POLICY_TEXT[proposals.completion_policy.proposed] ?? proposals.completion_policy.proposed}</p>
+      <div className="remotea-choices">{choice(policy === "accept", "Accept", true, () => setPolicy("accept"))}{choice(policy === "keep", "Keep mine", false, () => setPolicy("keep"))}</div>
+    </fieldset>}
+    <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void send()}>{busy ? "Starting…" : "Freeze the plan and start"}</button>
     {error && <p role="alert" className="work-error">{error}</p>}
   </section>;
 }
@@ -322,80 +381,109 @@ export function Criteria({ run }: { run: RunDetail }) {
   </details>;
 }
 
+const BUBBLE_FOLD = 700;
+
+/** One timeline entry as a chat bubble: the agent on the left, you on the right, Eridani's own events as system lines. */
+export function Bubble({ entry }: { entry: TimelineEntry }) {
+  const [open, setOpen] = useState(false);
+  const long = entry.detail.length > BUBBLE_FOLD;
+  const text = open || !long ? entry.detail : entry.detail.slice(0, BUBBLE_FOLD) + "…";
+  const system = entry.who === "eridani" && (entry.kind === "state" || entry.kind === "command") && !entry.detail;
+  return <li className={`remotea-bubble who-${entry.who} kind-${entry.kind} tone-${entry.tone}${system ? " system" : ""}`}>
+    <div className="remotea-bubble-head"><strong>{entry.title}</strong> <small>{ago(entry.at)}</small></div>
+    {entry.detail && <p>{text}</p>}
+    {long && <button className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
+      {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}{open ? "Less" : "Show all"}</button>}
+  </li>;
+}
+
+const ATTENTION: Run["state"][] = ["needs_you", "waiting_answer", "awaiting_approval", "awaiting_integration", "interviewing"];
+
 export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [run, setRun] = useState<RunDetail | null>(null), [error, setError] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
+  const log = useRef<HTMLDivElement>(null), stuck = useRef(true);
   const refresh = useCallback(() => {
     api<RunDetail>(`/remotea/runs/${id}`).then(r => { setRun(r); setError(""); }).catch(e => setError(message(e)));
   }, [id]);
-  useEffect(() => { setRun(null); refresh(); }, [refresh]);
+  useEffect(() => { setRun(null); stuck.current = true; refresh(); }, [refresh]);
   useAgentRefresh(refresh);
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
+  // Chat behaviour: follow new entries only while the reader is already at the bottom.
+  useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
+  const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
   const act = async (what: string, path: string, body: object) => {
     setBusy(what); setError("");
     try { await post(`/remotea/runs/${id}/${path}`, body); if (path === "message") setText(""); refresh(); }
     catch (e) { setError(message(e)); } finally { setBusy(""); }
   };
   const controls = run ? runControls(run) : null;
-  return <aside className="remotea-drawer" role="dialog" aria-label="Agent run">
-    <header>
-      <div>
+  const attention = run ? ATTENTION.includes(run.state) : false;
+  const entries = run ? timeline(run) : [];
+  return <aside className="remotea-drawer remotea-chat" role="dialog" aria-label="Agent run">
+    <header className="remotea-chat-head">
+      <div className="remotea-chat-title">
         {run && <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>}
         <h2>{run?.task?.title ?? "Run"}</h2>
+        <button className="btn-icon" aria-label="Close run" onClick={onClose}><X size={18}/></button>
       </div>
-      <button className="btn-icon" aria-label="Close run" onClick={onClose}><X size={18}/></button>
-    </header>
-    {error && <p role="alert" className="work-error">{error}</p>}
-    {!run ? !error && <p role="status">Loading run…</p> : <>
-      <p className="remotea-place">
+      {run && <p className="remotea-place">
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}/{run.turn_cap}
-      </p>
-      {run.reason_text && <p className="remotea-reason">{run.reason_text}</p>}
-      {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
-      {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
-        <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
-      {!!run.integration?.length && <ul className="remotea-integration" aria-label="Sub-task integration">{run.integration.map(i =>
-        <li key={i.task_id}><GitBranch size={14} aria-hidden="true"/> {i.branch ? <code>{i.branch}</code> : "Sub-task"}: {i.reason}</li>)}</ul>}
-      <Criteria run={run}/>
-      {run.completion_policy && run.completion_policy !== "code_ready" && <p className="footnote">{POLICY_TEXT[run.completion_policy] ?? run.completion_policy}</p>}
-      {!!linearOutcomes(run).length && <ul className="remotea-linear" aria-label="Linear sync">{linearOutcomes(run).map(o =>
-        <li key={o.key} className={"tone-" + o.tone}>{o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.text}</a> : o.text}</li>)}</ul>}
-      {!!run.plan?.steps?.length && <details className="remotea-plan">
-        <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
-        <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>
-      </details>}
-      {controls && !isSettled(run) && <div className="remotea-controls">
-        <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
-          disabled={!controls.message.enabled || !!busy} value={text} onChange={e => setText(e.target.value)}/>
-        <div className="remotea-control-row">
-          <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || !!busy} title="Queued for after the current turn"
-            onClick={() => void act("message", "message", { text, mode: "queue" })}>Message</button>
-          <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || !!busy} title="Interrupts the current turn"
-            onClick={() => void act("steer", "message", { text, mode: "steer" })}>Steer</button>
-          <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || !!busy || controls.stop.label === "Stopping…"}
-            onClick={() => void act("stop", "stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
-          <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || !!busy}
-            title="Mark the task complete and end the run" onClick={() => void act("approve", "approve", {})}><Check size={14}/>Approve</button>
-        </div>
-        <div className="remotea-control-row">
-          <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || !!busy} title={controls.replan.reason}
-            onClick={() => void act("replan", "replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
-          {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={!!busy || !run.surf} title="Run the plan's verification now"
-            onClick={() => void act("verify", "verify", {})}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
-        </div>
-        {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
+      </p>}
+      {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
+        <strong>{run.reason_text}</strong>
+        {run.reason_detail && run.reason_detail !== run.reason_text && <p>{run.reason_detail}</p>}
       </div>}
-      <ol className="remotea-timeline" aria-label="Run timeline">{timeline(run).map((e, i) =>
-        <li key={i} className={"kind-" + e.kind + " tone-" + e.tone}>
-          <div><strong>{e.title}</strong> <small>{ago(e.at)}</small></div>
-          {e.detail && <p>{e.detail}</p>}
-        </li>)}</ol>
-    </>}
+      {run && <div className="remotea-chat-facts">
+        <Criteria run={run}/>
+        {!!run.plan?.steps?.length && <details className="remotea-plan">
+          <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
+          <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>
+        </details>}
+        {run.completion_policy && run.completion_policy !== "code_ready" && <p className="footnote">{POLICY_TEXT[run.completion_policy] ?? run.completion_policy}</p>}
+        {!!run.integration?.length && <ul className="remotea-integration" aria-label="Sub-task integration">{run.integration.map(i =>
+          <li key={i.task_id}><GitBranch size={14} aria-hidden="true"/> {i.branch ? <code>{i.branch}</code> : "Sub-task"}: {i.reason}</li>)}</ul>}
+        {!!linearOutcomes(run).length && <ul className="remotea-linear" aria-label="Linear sync">{linearOutcomes(run).map(o =>
+          <li key={o.key} className={"tone-" + o.tone}>{o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.text}</a> : o.text}</li>)}</ul>}
+      </div>}
+      {error && <p role="alert" className="work-error">{error}</p>}
+    </header>
+    <div className="remotea-chat-log" ref={log} onScroll={onScroll}>
+      {!run ? !error && <p role="status">Loading run…</p> : <>
+        <ol className="remotea-timeline" aria-label="Run timeline">{entries.map((e, i) => <Bubble key={e.kind + e.at + i} entry={e}/>)}</ol>
+        <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh}/>
+        {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
+        {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
+          <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
+        {isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
+      </>}
+    </div>
+    {run && controls && !isSettled(run) && <footer className="remotea-composer">
+      <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
+        disabled={!controls.message.enabled || !!busy} value={text} onChange={e => setText(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim() && controls.message.enabled) void act("message", "message", { text, mode: "queue" }); }}/>
+      <div className="remotea-control-row">
+        <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || !!busy} title="Queued for after the current turn (Ctrl+Enter)"
+          onClick={() => void act("message", "message", { text, mode: "queue" })}>Message</button>
+        <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || !!busy} title="Interrupts the current turn"
+          onClick={() => void act("steer", "message", { text, mode: "steer" })}>Steer</button>
+        <span className="remotea-control-gap"/>
+        <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || !!busy} title={controls.replan.reason}
+          onClick={() => void act("replan", "replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
+        {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={!!busy || !run.surf} title="Run the plan's verification now"
+          onClick={() => void act("verify", "verify", {})}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
+        <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || !!busy || controls.stop.label === "Stopping…"}
+          onClick={() => void act("stop", "stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
+        <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || !!busy}
+          title="Mark the task complete and end the run" onClick={() => void act("approve", "approve", {})}><Check size={14}/>Approve</button>
+      </div>
+      {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
+    </footer>}
   </aside>;
 }
 
