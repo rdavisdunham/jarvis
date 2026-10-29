@@ -55,7 +55,7 @@ def authorize_execution(db, owner, *, write=False):
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
     return row.account_id, permission
 
-PERSONAL_TOOLS = ("review.", "onboarding.", "memory.", "settings.", "calendar.", "linear.")
+PERSONAL_TOOLS = ("review.", "onboarding.", "memory.", "settings.", "calendar.", "linear.", "control.")
 PERSONAL_PATHS = (
     "/api/v1/questions",
     "/api/v1/memory",
@@ -65,6 +65,8 @@ PERSONAL_PATHS = (
     "/api/v1/jobs",
     "/api/v1/push",
     "/api/v1/auth/google/",
+    # remotea drives agents with the owner's OS privileges: personal workspace only (stage F, D1).
+    "/api/v1/remotea",
 )
 
 
@@ -126,7 +128,6 @@ def request_access(request, namespace, permission, account):
             "PERSONAL_WORKSPACE", "Use your personal workspace for memory and connected accounts.", 403
         )
     reads = {
-        "/api/v1/chat",
         "/api/v1/conversations",
         "/api/v1/ui/sync",
         "/api/v1/task-views",
@@ -202,7 +203,7 @@ def tool_access(db, owner, name):
         check_tool(db, owner, name)
     if not db.get(SharedWorkspace, owner):
         return
-    if name.startswith(("review_", "onboarding_", "memory_", "linear_", "settings_")) or name in {
+    if name.startswith(("review_", "onboarding_", "memory_", "linear_", "settings_", "control_")) or name in {
         "calendar_event_read",
         "calendar_connection",
         "calendar_sync",

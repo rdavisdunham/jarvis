@@ -105,20 +105,12 @@ def test_maintenance_blocks_api_but_keeps_health_available(client, monkeypatch):
     assert client.get("/health/ready").status_code == 200
 
 
-def test_staging_chat_is_blocked(client, monkeypatch):
+def test_inline_chat_route_is_removed(client):
+    """Requests go through the work queue; POST /api/v1/chat ran Eri's tools as a human and was removed (stage F)."""
     from uuid import uuid4
 
-    monkeypatch.setattr(get_settings(), "external_services_enabled", False)
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "turn_id": str(uuid4()),
-            "conversation_id": str(uuid4()),
-            "message": "Do something",
-        },
-    )
-    assert response.status_code == 503
-    assert response.json()["error"]["code"] == "EXTERNAL_SERVICES_DISABLED"
+    body = {"turn_id": str(uuid4()), "conversation_id": str(uuid4()), "message": "Do something"}
+    assert client.post("/api/v1/chat", json=body).status_code in (404, 405)
 
 
 def test_worker_lease_prevents_overlap_and_releases():

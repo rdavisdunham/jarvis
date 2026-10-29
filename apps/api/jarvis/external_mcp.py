@@ -125,6 +125,28 @@ def definitions(scopes):
             sessions.RuleInput.model_json_schema(),
             False,
         )
+    if "agents:session" in scopes:
+        from . import agent_plan
+
+        add("task_plan",
+            "Read the task you are working on: PRD, steps with ids and revisions, success criteria and the run you belong to. "
+            "Pass run_token from your session context; task_id is optional when the token names the run.",
+            agent_plan.PlanQuery.model_json_schema())
+        add("task_step",
+            "Set one step's status (todo, doing, done, skipped) with an optional note. expected_revision is the step's "
+            "revision from task_plan. Ticking a linked step never completes the linked task.",
+            agent_plan.StepInput.model_json_schema(), False)
+        add("task_interview",
+            "Interview phase only: ask the operator up to 12 questions you need answered to write the PRD (options, "
+            "multi and free_text per question). They arrive as one form; the answers come back as your next prompt, "
+            "so stop after calling this. Needs run_token.",
+            agent_plan.InterviewInput.model_json_schema(), False)
+        add("submit_plan",
+            "Planning phase only: save the PRD, ordered steps (sub-tasks stay as linked steps), success_criteria "
+            "(kind text, or verify naming the verify_id) and an optional verify config from your execution target, "
+            "with expected_plan_revision from task_plan. Freezes the plan this run is judged against; stop after "
+            "calling it and Eridani starts execution. Needs run_token.",
+            agent_plan.SubmitPlanInput.model_json_schema(), False)
     if "sessions:read" in scopes:
         add("session_rules", "List the folder rules that file agent sessions under records.", schema({}, []))
     add(
@@ -207,6 +229,17 @@ def dispatch(name, arguments):
                 db, bot.owner_id, session_arguments(sessions.RuleInput, arguments),
                 reveal="records:read" in bot.scopes,
             )
+        if name in ("task_plan", "task_step", "submit_plan", "task_interview"):
+            from . import agent_plan
+
+            bot = bot_access.authorize(db, bot.owner_id, "agents:session")
+            if name == "task_plan":
+                return agent_plan.task_plan(db, bot, session_arguments(agent_plan.PlanQuery, arguments))
+            if name == "task_step":
+                return agent_plan.task_step(db, bot, session_arguments(agent_plan.StepInput, arguments))
+            if name == "task_interview":
+                return agent_plan.task_interview(db, bot, session_arguments(agent_plan.InterviewInput, arguments))
+            return agent_plan.submit_plan(db, bot, session_arguments(agent_plan.SubmitPlanInput, arguments))
         if name == "session_rules":
             return sessions.rules(db, bot.owner_id, reveal="records:read" in bot.scopes)
         if name in service.CUSTOM_READS:

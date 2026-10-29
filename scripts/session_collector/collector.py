@@ -40,11 +40,24 @@ SETTLED = timedelta(minutes=10)
 # Bump when the way sessions are read changes, so every source is re-read once; only changed reports are resent.
 READER = 2
 LIMITS = {"title": 500, "first_prompt": 4000, "last_prompt": 4000, "excerpt": 8000, "cwd": 1000, "repo": 300, "branch": 300}
-SECRETS = re.compile(
-    r"(sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}"
-    r"|AKIA[0-9A-Z]{16}|xox[abpr]-[A-Za-z0-9-]{10,}|eri_bot_[A-Za-z0-9_-]{20,}|lin_api_[A-Za-z0-9]{20,}"
-    r"|(?i:bearer)\s+[A-Za-z0-9._~+/=-]{20,})"
-)
+
+
+def shared_redaction():
+    """The secret patterns Eridani and remotea use (apps/api/jarvis/redaction.py): next to this file once
+    installed, else from the repository."""
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    for path in (here / "redaction.py", here.parents[1] / "apps/api/jarvis/redaction.py"):
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("eridani_redaction", path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.SECRETS
+    raise SystemExit("redaction.py is missing; rerun install.sh")
+
+
+SECRETS = shared_redaction()
 NOISE = ("<local-command", "<system-reminder>", "Caveat: The messages below", "[Request interrupted")
 # Voice-delegated ChatGPT desktop prompts arrive wrapped in these tags.
 WRAPPERS = re.compile(r"</?(?:realtime_delegation|input)>")

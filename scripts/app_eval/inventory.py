@@ -32,6 +32,7 @@ PREFIX = {
     "ui": "site_controls",
     "work": "queue",
     "organization": "organization",
+    "control": "agent_control",
 }
 EXACT = {
     "task.create": "task_capture",
@@ -83,8 +84,8 @@ def route_owner(path, source):
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
-    if path.startswith("/api/v1/remotea"):
-        return "agent_control"
+    if path.startswith("/api/v1/remotea") or "/external/agents/session/" in path:
+        return "agent_control"  # In-session run tools (task_plan, task_step, task_interview, submit_plan) too.
     if "/external/agents/" in path:
         return "external_agents"
     if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):

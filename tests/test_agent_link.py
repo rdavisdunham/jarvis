@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import timedelta
 
 import pytest
@@ -97,8 +98,18 @@ def test_hello_welcome_takes_a_lease_and_reports_the_host(client):
         assert {"turn", "status", "session.report"} <= set(welcome["caps"])
         hosts = client.get("/api/v1/remotea/status").json()["hosts"]
         assert [(h["id"], h["name"], h["connected"]) for h in hosts] == [(welcome["host_id"], "desk", True)]
-    hosts = client.get("/api/v1/remotea/status").json()["hosts"]
-    assert hosts[0]["connected"] is False and hosts[0]["last_seen_at"]
+        # End the connection from the server side (a binary frame is refused with 1003) and watch the lease
+        # go while the handler is still alive. Leaving the block first would race the test client's
+        # teardown, which can cancel the handler before its release runs.
+        ws.send_bytes(b"\x00")
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_text()
+        for _ in range(100):
+            hosts = client.get("/api/v1/remotea/status").json()["hosts"]
+            if hosts[0]["connected"] is False:
+                break
+            time.sleep(0.02)
+        assert hosts[0]["connected"] is False and hosts[0]["last_seen_at"]
 
 
 def test_hello_must_come_first(client):
@@ -285,11 +296,11 @@ def test_remotea_is_gated_until_enabled(client):
     assert client.get("/api/v1/bootstrap").json()["preferences"]["remotea_enabled"] is True
     assert client.post("/api/v1/remotea/disable").json()["enabled"] is False
     assert client.get("/api/v1/remotea/parity").status_code == 403
-    denied = refused(bearer(token))
-    assert denied.status_code == 403 and denied.json()["error"]["code"] == "REMOTEA_DISABLED"
+    denied = refused(bearer(token))  # Disabling revoked the link key (stage F, L1).
+    assert denied.status_code == 401 and denied.json()["error"]["code"] == "ACCESS_REVOKED"
     parity = TestClient(app).post("/api/v1/external/agents/parity", headers=bearer(token),
                                   json={"tool": "claude_code", "session_id": "s1", "report": SESSION})
-    assert parity.status_code == 403
+    assert parity.status_code == 401
 
 
 def test_disabling_closes_a_connected_link(client):
@@ -323,18 +334,21 @@ def test_enabling_mints_the_link_key_once(client):
 
 
 def test_viewers_cannot_hold_control_keys(client):
+    """Agent keys are personal-only (stage F, D1): no member of a shared workspace mints or uses one,
+    whatever their role; viewers get read-only keys only."""
     from jarvis.models import WorkspaceMember
     from test_accounts import client_for, shared
 
     guest = client_for("guest")
     workspace = shared(client, guest)
-    token = enable(guest)["token"]
+    assert guest.post("/api/v1/remotea/enable", json={}).json()["error"]["code"] == "PERSONAL_WORKSPACE"
+    response = guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["agents:control"], "expires_in_days": 30})
+    assert response.status_code == 403
     with session_scope() as db:
         db.get(WorkspaceMember, (workspace["id"], "guest")).role = "viewer"
     response = guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["agents:control"], "expires_in_days": 30})
     assert response.status_code == 403
     assert guest.post("/api/v1/bot-keys", json={"name": "x", "scopes": ["sessions:read"], "expires_in_days": 30}).status_code == 201
-    assert refused(bearer(token)).status_code == 403
 
 
 def ms(value):
@@ -356,17 +370,20 @@ def test_host_wire_format_from_remotea(client):
         assert welcome["t"] == "welcome" and welcome["acked_id"] == "h1"
         assert isinstance(welcome["at"], int) and isinstance(welcome["server_time"], int)
         epoch = welcome["conn_epoch"]
+
+        def put(message):  # The host stamps every effectful frame with the shared digest.
+            ws.send_json({**message, "digest": agent_link.digest(message)} if "digest" in message else message)
         envelope = {"v": 1, "conn_epoch": epoch, "at": ms(start)}
         reported = {**envelope, "id": "r1", "t": "session.report", "entity": "claude_code:" + sid, "revision": "e7e9",
                     "tool": "claude_code", "session_id": sid, "report": SESSION, "op_id": "op-r1", "digest": "x"}
-        ws.send_json(reported)
+        put(reported)
         ack = ws.receive_json()
         assert ack["acked_id"] == "r1" and ack["op_id"] == "op-r1" and ack["ok"]
-        ws.send_json({**envelope, "id": "s1", "t": "status", "entity": "status:surf-1", "surf": "surf-1", "incarnation": 1,
+        put({**envelope, "id": "s1", "t": "status", "entity": "status:surf-1", "surf": "surf-1", "incarnation": 1,
                       "revision": ms(start), "state": "idle", "since": ms(start), "provider": "claude",
                       "provider_session_id": sid, "op_id": "op-s1", "digest": "x"})
         assert ws.receive_json()["outcome"]["applied"] is True
-        ws.send_json({**envelope, "id": "t1", "t": "turn", "surf": "surf-1", "incarnation": 1, "run_id": None,
+        put({**envelope, "id": "t1", "t": "turn", "surf": "surf-1", "incarnation": 1, "run_id": None,
                       "generation": 0, "provider": "claude", "tool": "claude_code", "provider_session_id": sid,
                       "provider_turn_id": sid + ":surf-1:2", "root": True, "seq": 2, "text": "", "truncated": False,
                       "missing": True, "source": "hook", "ended_at": ms(start), "op_id": "op-t1", "digest": "x"})
@@ -375,18 +392,18 @@ def test_host_wire_format_from_remotea(client):
         for i, surfaces in ((2, []), (1, [{"surf": "surf-1", "incarnation": 1, "state": "live", "agent_state": "working",
                                            "since": ms(later), "provider": "claude", "provider_session_id": sid,
                                            "turn_seq": 2, "run_id": None, "generation": 0}])):
-            ws.send_json({**envelope, "id": f"p{i}", "t": "sessions.snapshot", "part": {"of": "snap-1", "i": i, "n": 2},
+            put({**envelope, "id": f"p{i}", "t": "sessions.snapshot", "part": {"of": "snap-1", "i": i, "n": 2},
                           "surfaces": surfaces, "journal": {"pending": [], "uncertain": []}, "op_id": "op-snap", "digest": "x"})
         assert ws.receive_json()["outcome"] == {"pending": True}
         assert ws.receive_json()["t"] == "runs.snapshot"
         assert ws.receive_json()["outcome"] == {"applied": 1, "ended": 0}
-        ws.send_json({**envelope, "id": "x1", "t": "exit", "surf": "surf-1", "incarnation": 1, "code": 0,
+        put({**envelope, "id": "x1", "t": "exit", "surf": "surf-1", "incarnation": 1, "code": 0,
                       "exited_at": ms(later + timedelta(seconds=1)), "op_id": "op-x1", "digest": "x"})
         assert ws.receive_json()["outcome"]["applied"] is True
-        ws.send_json({**envelope, "id": "c1", "t": "command.outcome", "command_id": "op-unknown", "state": "rejected",
+        put({**envelope, "id": "c1", "t": "command.outcome", "command_id": "op-unknown", "state": "rejected",
                       "detail": "unsupported", "op_id": "op-c1", "digest": "x"})
         assert ws.receive_json()["outcome"] == {"recorded": False}
-        ws.send_json({**envelope, "id": "bye1", "t": "bye", "reason": "shutdown"})
+        put({**envelope, "id": "bye1", "t": "bye", "reason": "shutdown"})
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
     assert closed.value.code == 1000
@@ -423,3 +440,160 @@ def test_digest_matches_the_host_definition():
     message = {"v": 1, "id": "e", "conn_epoch": 2, "at": 1, "t": "status", "state": "idle", "surf": "s", "op_id": "o", "digest": "d"}
     expected = __import__("hashlib").sha256('{"state":"idle","surf":"s","t":"status"}'.encode()).hexdigest()
     assert agent_link.digest(message) == expected
+
+
+def test_inbound_digest_mismatch_is_refused_and_logged(client, caplog):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        hello(ws)
+        message = frame("session.report", tool="claude_code", session_id="s1", report=SESSION, op_id="op-bad")
+        ws.send_json({**message, "digest": "0" * 64})
+        ack = ws.receive_json()
+        assert not ack["ok"] and ack["error"]["code"] == "DIGEST_MISMATCH" and ack["op_id"] == "op-bad"
+        assert "retry" not in ack
+        good = {**message, "id": "again", "op_id": "op-good"}
+        ws.send_json({**good, "digest": agent_link.digest(good)})
+        assert ws.receive_json()["ok"]
+    assert "op_id=op-bad" in caplog.text
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentSession)) == 1
+
+
+# ---------------------------------------------------------------- stage C frames
+
+C_CAPS = ["session.report", "turn", "status", "exit", "sessions.snapshot", "command.outcome", "question", "context",
+          "spawn", "input", "answer", "stop", "runs.snapshot", "worktrees.report"]
+C_HARNESSES = {"claude": {"version": "2.1.312", "observe": True, "capture": True, "question": True, "context": True,
+                          "resume": True, "spawn": True}}
+
+
+def signed(t, **values):
+    message = frame(t, op_id=f"op-{next(frames)}", **values)
+    return {**message, "digest": agent_link.digest(message)}
+
+
+def put(ws, t, **values):
+    message = signed(t, **values)
+    ws.send_json(message)
+    reply = ws.receive_json()
+    assert reply["t"] == "ack" and reply["acked_id"] == message["id"], reply
+    return reply
+
+
+def target(client, host_id):
+    response = client.post("/api/v1/remotea/targets", json={"host_id": host_id, "host_target": "jarvis"})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_manual_control_round_trip_over_the_link(client):
+    token = enable(client)["token"]
+    task = client.post("/api/v1/commands", json={"command_id": "c-task", "tool": "task.create",
+                                                 "arguments": {"title": "Wire the run drawer"}})
+    assert task.status_code == 200, task.text
+    task_id = task.json()["data"]["id"]
+    with connect(bearer(token)) as ws:
+        welcome = hello(ws, caps=C_CAPS, harnesses=C_HARNESSES,
+                        targets=[{"id": "jarvis", "repo": "/home/davin/jarvis", "worktree_root": "/home/davin/wt"}])
+        host_id = welcome["host_id"]
+        snap = signed("sessions.snapshot", surfaces=[], journal={"pending": [], "uncertain": []})
+        ws.send_json(snap)
+        assert ws.receive_json()["t"] == "runs.snapshot"
+        assert ws.receive_json()["acked_id"] == snap["id"]
+        missing = client.post("/api/v1/remotea/runs", json={"task_id": task_id})
+        assert missing.status_code == 409 and missing.json()["error"]["code"] == "NEEDS_TARGET"
+        assert missing.json()["error"]["data"]["advertised"][0]["repo"] == "/home/davin/jarvis"
+        saved = target(client, host_id)
+        assert saved["repo"] == "/home/davin/jarvis" and saved["worktree_root"] == "/home/davin/wt"
+        started = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"], "interview": False})
+        assert started.status_code == 200, started.text
+        run_id = started.json()["id"]
+        spawn = ws.receive_json()  # Drained right after the commit, not at the next tick.
+        assert spawn["t"] == "spawn" and spawn["run_id"] == run_id and spawn["digest"] == agent_link.digest(spawn)
+        assert isinstance(spawn["expires_at"], int) and spawn["target"]["id"] == "jarvis"
+        surf = agent_link.coordinator.surf_for(run_id, 1, 1)
+        ws.send_json(frame("ack", acked_id=spawn["id"], op_id=spawn["op_id"], ok=True,
+                           outcome={"state": "accepted", "surf": surf, "incarnation": 1}))
+        put(ws, "command.outcome", command_id=spawn["op_id"], state="executed", kind="spawn",
+            result={"surf": surf, "incarnation": 1, "worktree": "/home/davin/wt/task", "branch": spawn["target"]["branch"],
+                    "base": "main"})
+        request = frame("context.request", req_id="ctx-1", surf=surf, incarnation=1, provider="claude",
+                        provider_session_id="sess-c", source="startup", cwd="/home/davin/wt/task", run_id=run_id,
+                        generation=1)
+        ws.send_json(request)
+        context = ws.receive_json()  # Answered by req_id; never acked.
+        assert context["t"] == "context.response" and context["req_id"] == "ctx-1"
+        assert context["run_token"] in context["text"] and "/home/davin/wt/task" in context["text"]
+        detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
+        assert detail["state"] == "executing" and detail["worktree"] == "/home/davin/wt/task"
+        turn = put(ws, "turn", tool="claude_code", provider="claude", surf=surf, incarnation=1, run_id=run_id,
+                   generation=1, provider_session_id="sess-c", provider_turn_id="p-1", root=True, seq=1,
+                   text="Built the drawer.", source="hook")
+        assert turn["ok"] and "turn_id" in turn["outcome"]
+        asked = put(ws, "question", question_id="q-1", surf=surf, incarnation=1, run_id=run_id, generation=1,
+                    provider="claude", provider_session_id="sess-c", provider_request_id="toolu_9", kind="ask",
+                    group_id="g", hold_until=int((now() + timedelta(minutes=9)).timestamp() * 1000),
+                    items=[{"id": "i1", "text": "Ship it?", "choices": [{"id": "y", "label": "Yes"}, {"id": "n", "label": "No"}]}])
+        qid = asked["outcome"]["question"]
+        assert client.get(f"/api/v1/remotea/runs/{run_id}").json()["state"] == "waiting_answer"
+        answered = client.post(f"/api/v1/remotea/questions/{qid}/answer", json={"answers": [{"item_id": "i1", "choice_ids": ["y"]}]})
+        assert answered.status_code == 200 and answered.json()["status"] == "submitted"
+        down = ws.receive_json()
+        assert down["t"] == "answer" and down["provider_request_id"] == "toolu_9" and down["answers"][0]["choice_ids"] == ["y"]
+        ws.send_json(frame("ack", acked_id=down["id"], op_id=down["op_id"], ok=True, outcome={"state": "accepted"}))
+        put(ws, "question.resolved", question_id="q-1", generation=1, outcome="accepted", still_open=False,
+            answer_echo={"Ship it?": "Yes"})
+        assert client.get(f"/api/v1/remotea/runs/{run_id}").json()["state"] == "executing"
+        put(ws, "worktrees.report", worktrees=[{"target": "jarvis", "path": "/home/davin/wt/old", "branch": "task/old",
+                                                "candidate": False, "unpushed": 2, "reasons": ["2 unpushed commits"]}])
+        assert client.get("/api/v1/remotea/unmerged").json()["items"][0]["unpushed"] == 2
+        stopped = client.post(f"/api/v1/remotea/runs/{run_id}/stop", json={})
+        assert stopped.json()["state"] == "stopping"
+        stop = ws.receive_json()
+        assert stop["t"] == "stop" and stop["generation"] == 2 and stop["surf"] == surf
+        ws.send_json(frame("ack", acked_id=stop["id"], op_id=stop["op_id"], ok=True, outcome={"state": "accepted"}))
+        assert client.get(f"/api/v1/remotea/runs/{run_id}").json()["state"] == "stopping"  # Not until confirmed.
+        put(ws, "exit", surf=surf, incarnation=1, code=130, exited_at=int(now().timestamp() * 1000) + 5000,
+            provider="claude", provider_session_id="sess-c")
+    detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
+    assert detail["state"] == "stopped"
+    assert [c["kind"] for c in detail["commands"]] == ["spawn", "answer", "stop"]
+    assert detail["commands"][0]["status"] == "executed" and detail["questions"][0]["status"] == "accepted"
+    assert detail["turns"][0]["text"] == "Built the drawer."
+    with session_scope() as db:
+        assert db.get(agent_link.AgentHost, host_id).caps["targets"][0]["id"] == "jarvis"
+
+
+def test_reconnect_reconciles_before_resending_unacked_commands(client):
+    token = enable(client)["token"]
+    task_id = client.post("/api/v1/commands", json={"command_id": "c-2", "tool": "task.create",
+                                                    "arguments": {"title": "Reconnect"}}).json()["data"]["id"]
+    with connect(bearer(token)) as ws:
+        host_id = hello(ws, caps=C_CAPS, harnesses=C_HARNESSES)["host_id"]
+        saved = target(client, host_id)
+        run_id = client.post("/api/v1/remotea/runs", json={"task_id": task_id, "execution_target_id": saved["id"], "interview": False}).json()["id"]
+        # Not reconciled yet on this connection: nothing is sent before the snapshot.
+    with connect(bearer(token)) as ws:
+        hello(ws, caps=C_CAPS, harnesses=C_HARNESSES)
+        snap = signed("sessions.snapshot", surfaces=[], journal={"pending": [], "uncertain": []})
+        ws.send_json(snap)
+        runs = ws.receive_json()
+        assert runs["t"] == "runs.snapshot" and runs["runs"] == [{"run_id": run_id, "generation": 1, "desired": "continue"}]
+        assert ws.receive_json()["acked_id"] == snap["id"]
+        first = ws.receive_json()
+        assert first["t"] == "spawn" and first["run_id"] == run_id
+        with session_scope() as db:  # Unacked for a minute: the same operation goes out again.
+            row = db.scalar(select(agent_link.AgentCommand))
+            row.updated_at = now() - timedelta(minutes=2)
+        with session_scope() as db:
+            frames = agent_link.drain(db, db.get(agent_link.AgentHost, host_id), 0)
+        assert [(f["op_id"], f["digest"]) for f in frames] == [(first["op_id"], first["digest"])]
+
+
+def test_turns_for_runs_of_other_hosts_are_refused(client):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        hello(ws, caps=C_CAPS)
+        reply = put(ws, "turn", tool="claude", surf="s", provider_session_id="x", provider_turn_id="t", root=True,
+                    run_id="00000000-0000-0000-0000-000000000000", generation=1)
+    assert not reply["ok"] and reply["error"]["code"] == "RUN_NOT_BOUND"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, hostSummary, isLive, liveChip, orderSessions, paritySummary, place, stateLabel, type Host, type RemoteaSession } from "./remotea-model";
+import { ago, cutoverSummary, hostSummary, isLive, linearOutcomes, liveChip, orderSessions, paritySummary, place, stateLabel, type Host, type RemoteaSession } from "./remotea-model";
 
 const now = Date.parse("2026-10-28T12:00:00Z");
 const host = (values: Partial<Host>): Host => ({
@@ -46,5 +46,30 @@ describe("remotea model", () => {
     expect(paritySummary({ ...base, total: 4, matched: 2, missing: 1, mismatched: 1, clean: false, fields: { branch: 1 } }))
       .toBe("2 of 4 match, 1 differ, 1 unknown to the current collector. Most different: branch (1).");
     expect(place({ repo: "", branch: "main", cwd: "/home/davin/jarvis" })).toBe("jarvis · main");
+  });
+
+  it("shows when the collector is ready for cutover", () => {
+    const base = { total: 1, matched: 1, missing: 0, mismatched: 0, clean: true, fields: {}, first_report_at: null, last_report_at: null, recent: [] };
+    const day = (clean: boolean, reports = 3) => ({ day: "2026-10-28", reports, clean });
+    expect(cutoverSummary(null)).toBeNull();
+    expect(cutoverSummary(base)).toBeNull();
+    const ready = cutoverSummary({ ...base, cutover: { ready: true, streak: 7, needed: 7, days: Array(7).fill(day(true)) } });
+    expect(ready).toEqual({ ready: true, text: expect.stringContaining("Ready for cutover: 7 clean parity days") });
+    expect(ready!.text).toContain("Retirement");
+    expect(cutoverSummary({ ...base, cutover: { ready: false, streak: 3, needed: 7, days: [day(true), ...Array(6).fill(day(true))] } })!.text)
+      .toBe("Not ready for cutover: 3 of 7 clean days in a row.");
+    expect(cutoverSummary({ ...base, cutover: { ready: false, streak: 0, needed: 7, days: [day(false, 0), day(false, 0)] } })!.text)
+      .toContain("no parity reports since yesterday");
+  });
+
+  it("reports Linear outcomes apart from the run", () => {
+    expect(linearOutcomes({})).toEqual([]);
+    const out = linearOutcomes({ linear: {
+      in_progress: { status: "skipped" }, done: { status: "blocked", code: "LINEAR_CONFLICT", message: "Review the Linear difference" },
+      comment: { status: "posted", url: "https://linear.app/c" } } });
+    expect(out.map(o => o.text)).toEqual(["Done: not sent (Review the Linear difference)", "Completion comment: posted"]);
+    expect(out.map(o => o.tone)).toEqual(["warn", "ok"]);
+    expect(out[1].url).toBe("https://linear.app/c");
+    expect(linearOutcomes({ linear: { done: { status: "deferred" } } })[0].text).toBe("Done: waits for the start write");
   });
 });

@@ -61,6 +61,14 @@ def perform_job(job_id):
         from .linear_sync import process_sync, process_write
 
         return (process_write if kind == "linear_write" else process_sync)(job_id)
+    if kind == "linear_comment":
+        from .agent_sync import process_comment
+
+        return process_comment(job_id)
+    if kind == "agent_autolink":
+        from .agent_autolink import process
+
+        return process(job_id)
     if kind == "google_write":
         from .google_writes import process_write
 
@@ -79,6 +87,10 @@ def perform_job(job_id):
         from .agent_sessions import summarize
 
         return summarize(job_id)
+    if kind == "agent_judge":
+        from .agent_judge import process
+
+        return process(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -144,12 +156,12 @@ def dispatch_outbox(client, after=None):
                     "queue_name": "jarvis-intake" if job.kind == "agent_intake"
                     else "jarvis-agent" if job.kind == "agent_action"
                     else "jarvis-linear"
-                    if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write"}
+                    if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
                     else "jarvis-google"
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_autolink"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -162,6 +174,7 @@ def dispatch_outbox(client, after=None):
 def notification_url(notification):
     from urllib.parse import urlencode
     target=notification.target or {}
+    if target.get("view")=="remotea":return "/?"+urlencode({"view":"remotea","run":target.get("run_id") or ""})
     if notification.task_id:return "/?"+urlencode({"view":"tasks","tab":"all","record":"task:"+notification.task_id,"workspace":"personal"})
     if target.get("view")=="activity":return "/?view=tasks&activity=1"
     if target.get("view")=="tasks":return "/?view=tasks&tab=today"
@@ -362,6 +375,16 @@ def reap_agent_work():
             logger.exception("Could not finish stale agent request %s", identity)
 
 
+def agent_retention():
+    """Stage F, L7: drop agent data past its retention window (agent_retention.py)."""
+    from . import agent_retention as retention
+
+    with session_scope() as db:
+        counts = retention.sweep(db)
+    if any(counts.values()):
+        logger.info("Agent retention removed %s", counts)
+
+
 def isolated(name, fn, *args):
     try:
         return fn(*args)
@@ -392,6 +415,8 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .notices import scan
     from .record_reviews import queue_due_record_reviews
     from .routing import queue_due
+    from .agent_autolink import queue_autolink
+    from .run_coordinator import sweep as sweep_runs
     from .search_index import backfill as search_backfill
     from .work_intake import flush_voice
 
@@ -402,7 +427,8 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
         ("memory_reviews", queue_due_reviews), ("routing", queue_due),
-        ("record_reviews", queue_due_record_reviews),
+        ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs),
+        ("agent_autolink", queue_autolink),
     ):
         isolated(name, in_session, scan_fn)
     for model, queue in ((GoogleIdentity, queue_sync), (LinearConnection, linear_queue_sync)):
@@ -417,6 +443,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     if iteration % 12 == 0:
         isolated("housekeeping", housekeeping)
         isolated("reap_agent_work", reap_agent_work)
+        isolated("agent_retention", agent_retention)
 
 
 def housekeeping_owner(db, owner):

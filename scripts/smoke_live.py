@@ -21,17 +21,23 @@ with httpx.Client(base_url=config["JARVIS_ORIGIN"],timeout=70) as client:
     turn=str(uuid4())
     title="Acceptance check — model tool "+turn[:8]
     body={"turn_id":turn,"conversation_id":conv["id"],"message":"Create exactly one task titled '"+title+"' with no due date. This is a synthetic integration test."}
+    def work(body):
+        # Eri's requests run through the work queue (POST /api/v1/chat was removed in stage F).
+        accepted=client.post("/api/v1/work",json=body)
+        accepted.raise_for_status()
+        for _ in range(60):
+            item=client.get("/api/v1/work/"+accepted.json()["id"]).json()
+            if item["status"] not in {"queued","running","waiting_sync"}: return item
+            time.sleep(1)
+        return item
     started=time.monotonic()
-    answer=client.post("/api/v1/chat",json=body)
-    answer.raise_for_status()
+    result=work(body)
     latency=time.monotonic()-started
-    result=answer.json()
     tasks=client.get("/api/v1/tasks").json()["items"]
     matches=[t for t in tasks if t["title"]==title]
     evidence={"provider_status":result["status"],"actions":result["actions"],"model_task_count":len(matches),"chat_seconds":round(latency,2)}
     assert result["status"]=="succeeded" and len(matches)==1, evidence
-    repeat=client.post("/api/v1/chat",json=body)
-    repeat.raise_for_status()
+    work(body)  # The same turn id again is the same request, not a second task.
     assert len([t for t in client.get("/api/v1/tasks").json()["items"] if t["title"]==title])==1
     assert client.get("/api/v1/conversations/"+conv["id"]).json()["messages"]==[]
     schedule=command("schedule.create",{"title":"Acceptance check — durable reminder","when":(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat(),"timezone":"America/Chicago"})

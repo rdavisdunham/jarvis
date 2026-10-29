@@ -24,6 +24,7 @@ from .domain import DomainError, capture_source, enqueue_job, owned, preferences
 from .memory_service import prompt_context
 from .models import Conversation, Source, now, uid
 from .personality import VOICE_CONVERSATION_STYLE
+from .tool_policy import remotea_tools
 from .tools import call_tool, instructions, registry
 from .ui_control import get_context
 from .voice_options import DEFAULT_PROVIDER, ENABLED_PROVIDERS, OPTIONS
@@ -139,6 +140,7 @@ class Controller:
     async def run(self):
         settings = get_settings()
         self.memory_context = await prompt_context(self.owner)
+        tools = await asyncio.to_thread(remotea_tools, registry(), self.owner)
         try:
             async with websockets.connect(
                 f"wss://api.openai.com/v1/realtime?call_id={quote(self.call_id)}",
@@ -159,7 +161,7 @@ class Controller:
                             + self.memory_context
                             + "\n"
                             + VOICE_CONVERSATION_STYLE,
-                            "tools": registry(),
+                            "tools": tools,
                             "tool_choice": "auto",
                             "max_output_tokens": 1024,
                             "audio": {

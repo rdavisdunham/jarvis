@@ -92,7 +92,9 @@ Every frame is JSON text: `{v: 1, id, t, at, conn_epoch?, ...}`. `id` is the tra
 HTTP API's ISO encoding, so a `session.report` outcome is byte-identical to the HTTP response.
 Effectful frames carry a stable `op_id` and a `digest`: sha256 hex of the canonical JSON (keys sorted at
 every level, no whitespace, non-ASCII kept) of the frame minus `v, id, conn_epoch, at, op_id, digest`
-(`agent_link.digest`). Stage B accepts inbound digests without enforcing them; stage C stamps commands.
+(`agent_link.digest`). Since stage C the digest is enforced both ways: an inbound effectful frame whose
+digest does not match is logged with its `op_id` and answered `ack {ok:false, error:"DIGEST_MISMATCH"}`
+(no retry); every command Eridani sends is stamped, and remotea uses Eridani's digest as-is.
 A frame carrying a `conn_epoch` other than the current one is answered `STALE_EPOCH`. Unknown fields are
 ignored; unknown `t` values get `ack {ok:false, error:{code:"UNSUPPORTED"}}` (capability negotiation: each
 side only uses what the other advertised).
@@ -105,16 +107,23 @@ own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
-| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; any `run_id` → `RUN_NOT_BOUND` until runs exist (stage C) |
+| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap |
 | up | `status` | `surf, incarnation, state, since, reason?, effective_permission_mode?, provider?+provider_session_id? (or tool?+session_id?)` | sets the session's `state`/`state_since`. Older incarnation, or same incarnation with an earlier `since`, is ignored (`applied:false`). Without a provider (or tool) and session id, the surface maps to the newest session reported with that `surf` on this host (`UNKNOWN_SURFACE` otherwise) |
 | up | `exit` | `surf, incarnation, exited_at?, code?, provider?+provider_session_id?` | state `exited` at `exited_at` |
-| up | `sessions.snapshot` | `surfaces: [{surf, incarnation, state: live\|lost\|exited, agent_state, since, provider, provider_session_id, …}], part?: {of, i, n}` | a large snapshot arrives as several frames sharing `part.of`; non-final parts are acked `{pending:true}` and reconciliation runs once all `n` parts arrived. `live` takes the surface's `agent_state` (working/needs_you/idle). Applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first replies `runs.snapshot {runs: [], questions: []}` (empty until stage C) |
+| up | `sessions.snapshot` | `surfaces: [{surf, incarnation, state: live\|lost\|exited, agent_state, since, provider, provider_session_id, …}], part?: {of, i, n}` | a large snapshot arrives as several frames sharing `part.of`; non-final parts are acked `{pending:true}` and reconciliation runs once all `n` parts arrived. `live` takes the surface's `agent_state` (working/needs_you/idle). Applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first reconciles runs (below), then replies `runs.snapshot {runs: [{run_id, generation, desired: continue\|stop\|none, stop_mode?}]}` and only then resends unacked commands |
 | up | `chunk` | `part: {of, i, n}, data` | parts of one logical frame (n ≤ 64, ≤ 1 MiB total, ≤ 4 in flight); the ack names the logical frame's id. Eridani chunks its own frames above 256 KiB the same way |
-| up | `ack` | `acked_id, op_id?, ok, outcome?` | acknowledges a command (stage C) |
-| up | `command.outcome` | `command_id, state: executed\|failed\|rejected\|uncertain, detail` | recorded on the command (in B the host rejects every command as `unsupported`) |
+| up | `ack` | `acked_id, op_id?, ok, error?, retry?, outcome?` | acknowledges a command; an accepted spawn carries `outcome {state:"accepted", surf, incarnation}` |
+| up | `command.outcome` | `command_id (= op_id), kind?, state: executed\|failed\|rejected\|uncertain, detail, result?` | recorded on the command and applied to its run (below) |
+| up | `question` | `op_id, digest, surf, incarnation, run_id?, generation, provider, provider_session_id, provider_request_id, provider_turn_id?, items[], hold_until?` | a structured question the agent asked; stored once per `(session, provider_request_id)` |
+| up | `question.resolved` | `op_id, digest, question_id\|provider_request_id, status: accepted\|answered_locally\|timed_out\|canceled\|failed, still_open?, remote_answerable?` | the host's word on a question; only `accepted` confirms an answer sent from here |
+| up | `context.request` | `req_id, text, run_token?` | ephemeral, no ack: answered with `context.response {req_id, text}` |
+| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, ahead, behind, unpushed, uncommitted, untracked, merged, active, reasons}]` | replaces the host's last report; feeds **Unmerged work** |
+| down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
+| down | `spawn` / `input` / `answer` / `stop` | see **Commands** | outbox commands |
+| down | `context.response` | `req_id, text` | |
 | up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
 
@@ -128,9 +137,10 @@ Per-host bounds: 1,200 frames and 16 MiB per minute; over that, frames are answe
 the fourth time the connection closes with 1008.
 
 **Commands (stage C).** `agent_commands` is the outbox: a domain change writes the command in the same
-transaction; each tick, `drain()` expires overdue commands and sends queued ones whose kind the host
-advertised (`COMMANDS` maps kind → required capability; empty in stage B). Commands carry a stable
-`op_id` and payload `digest`, separate from the envelope id.
+transaction; each tick, `drain()` sends queued commands (and resends `sent` ones unacked for 60 s) whose
+kind the host advertised and whose `expires_at` has not passed. Commands carry a stable `op_id` and
+payload `digest`, separate from the envelope id: a resend keeps both and gets a new envelope (F06). See
+**Runs** below.
 
 ## Collector parity
 
@@ -155,7 +165,8 @@ Procedure (plan decision 23): run both collectors; the Python one stays authorit
 Investigate every differing field (timestamps, Windows/WSL path coverage, redaction, fingerprint and
 checkpoint semantics). Cut over only after the summary has been **clean for 7 days** and the host release
 is installed: then disable the Python timer, and remove its code and revoke its credential one release
-later. Do not delete the Python collector before that.
+later. Do not delete the Python collector before that. Stage E counts the days for you and lists the exact
+steps: see [Cutover](#cutover-stage-e).
 
 ## Browser routes
 
@@ -184,5 +195,522 @@ note, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same w
 the server-managed `plan_revision`. They are edited through `task.update` (browser, Eri, bots), normalized
 by `task_plan.normalize`: missing ids are assigned, unchanged steps keep their stamp, changed steps record
 who changed them, and `plan_revision` advances only when the plan actually changes. Plan fields never
-queue a Linear write. Runs (stage C) will freeze a plan revision; the per-step agent tool and completion
-gate come with them.
+queue a Linear write. A run freezes a plan revision when it starts; agents tick steps with `task_step` (below).
+
+## Runs (stage C, migration 0028)
+
+A **run** is Eridani driving one agent on one task through remotea. Tables: `execution_targets`,
+`agent_runs`, `agent_run_plans` (frozen plan revisions), `agent_attempts`, `agent_interviews`,
+`autolink_rejections`; `run_id` foreign keys on `agent_sessions`, `agent_commands`, `agent_turns` and
+`agent_questions`; `tasks.execution_target_id` gets its foreign key. At most one unsettled run per task
+(partial unique index).
+
+### Lifecycle
+
+`run_coordinator.TRANSITIONS` is the only map of legal moves; `transition()` is a compare-and-set on
+`state_revision` (`REVISION_CONFLICT` when another writer won, `ILLEGAL_TRANSITION` otherwise) and appends
+`{at, from, to, reason, detail, actor}` to `history`. Every change emits `agent.changed`.
+
+```
+queued → spawning → executing ⇄ waiting_answer
+                       ↓  ↑
+                    needs_you ⇄ awaiting_approval
+any unsettled → stopping → stopped | completed | failed        executing → capped | failed
+```
+
+Stage C enters `spawning`, `executing`, `waiting_answer`, `needs_you`, `awaiting_approval`, `stopping`
+and the terminal states; stage D adds `interviewing/planning/verifying/judging/awaiting_integration/
+replanning` and `capped` (see "Planning and the loop" below). Rules:
+
+- **Nothing is assumed.** A spawn is confirmed by the provider session showing up (first `turn` or
+  `status` naming the run, or a snapshot surface), a stop by an exit, a missing surface or a stop outcome,
+  an answer by `question.resolved {status:"accepted"}`. A timeout is never a resolution (F04).
+- **Stop is desired state** (F03). `POST …/stop` moves to `stopping`, advances `generation`, records
+  `stop_mode`/`stop_reason`/`stop_final` and queues `stop`; `runs.snapshot` repeats the desire on every
+  reconnect. A spawn never sent is canceled and the run settles at once. A second stop with `mode: kill` while
+  stopping escalates (the page's **Force stop**).
+- **Generation fences** (F07): steer and stop advance it; the host drops `queue` input of an older
+  generation and steer/stop older than its current one; Eridani ignores turns and questions of older
+  generations.
+- **needs_you reasons** (`state_reason`, shown with `reason_text`): `exited`, `surface_lost`,
+  `host_offline` (lease gone 5 minutes; both clear themselves when the surface reports again),
+  `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h), `no_progress` (45 min),
+  `turn_cap` (C pauses instead of `capped`), `question_timed_out`. Pushes: `agent_stuck` on needs_you,
+  `agent_question` on a question, `agent_done` on awaiting_approval; each opens
+  `/?view=remotea&run=<id>`.
+- **Approve** completes the task as a human (`task.complete`); the run moves to `stopping` with
+  `stop_final: completed` and becomes `completed` once the agent is gone.
+
+### Starting a run
+
+`POST /remotea/runs {task_id, harness?, model?, execution_target_id?}`:
+
+1. Target resolution: explicit → the task's `execution_target_id` → a target saved for the task's
+   record or an ancestor (nearest first) → folder rules whose path is under a target's repo → `409
+   NEEDS_TARGET {task_id, candidates, advertised, records}`. The page then saves one with
+   `POST /remotea/targets {host_id, host_target, repo, worktree_root, task_id | record_id}` and retries.
+2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (host lacks `spawn` for the harness),
+   `HARNESS_DISABLED` (opencode).
+3. The run is created in `spawning`, the plan is frozen as revision 1 (PRD note or task notes, steps,
+   criteria), a run token is minted and `spawn` is queued in the same transaction.
+
+Branch: Linear's `branchName`, else `<owner>/<identifier>-<slug>`, else `task/<id>`; base: the parent
+task's run branch, else `main`.
+
+### Commands
+
+All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expires_at (epoch ms), …}`.
+
+| `t` | Body | TTL |
+|---|---|---|
+| `spawn` | `attempt, harness, model?, target: {id, repo?, branch, base}, task_id, title, prompt, run_token, env {ERIDANI_*}, group` | 15 min |
+| `input` | `surf, incarnation, text, mode: queue\|steer` | 10 min |
+| `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
+| `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
+| `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
+
+**Deterministic spawn surface.** remotea names a spawned surface
+`surf-eri-<sha256(run_id + "\0" + generation + "\0" + attempt) hex, first 32>` (`run_coordinator.surf_for`).
+When a spawn's ack or outcome is lost, reconciliation recognizes the run's surface in `sessions.snapshot`
+by that id (or by `run_id`) and records it as accepted instead of spawning again.
+
+Outcomes: an accepted spawn ack or `executed` outcome records `surf`, `incarnation`, `worktree`,
+`branch`, `base`, `base_sha`; a failed/rejected spawn fails the run; `uncertain` input moves to
+needs_you `delivery_uncertain`; a failed answer reopens the question; an executed stop settles a stopping
+run.
+
+**Reconnect.** After `sessions.snapshot`, `reconcile()` matches each unsettled run to its surface (by
+`run_id` or the spawn surf), recovers lost spawn acks, settles stopping runs whose surface is gone,
+moves runs whose surface is missing to needs_you, marks queued/sent commands that no longer apply
+`rejected` ("stale after reconcile"), sends `runs.snapshot`, and only then drains the outbox.
+
+### Questions
+
+A `question` stores `items` (`{id, text, header?, choices?: [{id, label, description?}], multi?}`) and
+moves an executing run to `waiting_answer`. The page offers choice buttons and free text only when the
+host advertised structured answers for the harness (`harnesses[tool].question`) and the question is
+`remote_answerable`; otherwise it says to answer in the terminal. `POST /remotea/questions/{id}/answer
+{answers}` requires every item (`QUESTION_CLOSED`, `ANSWER_PENDING`, `STALE_GENERATION` refusals),
+marks it `submitted` and queues `answer`; the run resumes on `question.resolved`. `timed_out` (host
+`hold_until` passed, or the sweep) leaves it answerable only in the terminal.
+
+### Actors and the completion gate
+
+`agent_actor` decides who is acting: an explicitly bound actor (`acting(Actor(...))`), else `eri_work`
+inside Eri's execution context, else `bot` for an unbound bot key, else `human`. Authorities are
+`human`, `source_sync` (the Linear import always runs as it) and `run_judge` (the coordinator).
+
+While a task has an unsettled run, `task.update`/`task.complete`/`task.batch`/`record.update` refuse
+completion and edits of `success_criteria`, `verify` and `turn_cap` from `eri_work`, `run_session` and
+`bot` with `409 RUN_OWNS_COMPLETION {run_id, state}`. A human or source_sync completion is recorded at
+once and asks the run to stop (`stop_reason: task_completed_externally`); a human approve ends it
+`completed`.
+
+### In-session tools (`agents:session`)
+
+`task_plan` and `task_step` (MCP tools, and `POST /api/v1/external/agents/session/plan|step`) take
+`run_token` (from `ERIDANI_RUN_TOKEN`, or the plan text) or `tool + session_id`. A valid token binds a
+verified `run_session` actor; a bad one is `401 RUN_TOKEN_INVALID`; a session fallback is unverified.
+`task_step {step_id, status, note?, expected_revision?}` updates one step with its own revision
+(`by: agent:<run>[:unverified]`); it does not advance `plan_revision`. `task_interview` and
+`submit_plan` (stage D, below) need the run token. `session_link` accepts `task_id`. The run token is
+HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refreshed by each
+`context.request`.
+
+### Browser routes (runs)
+
+| Route | Gated | |
+|---|---|---|
+| `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
+| `POST /runs` | yes | start (above) |
+| `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
+| `POST /runs/{id}/message {text, mode}` | yes | queue or steer |
+| `POST /runs/{id}/stop {mode}` | no (viewers refused) | stop stays available after remotea is turned off |
+| `POST /runs/{id}/approve` | yes | |
+| `POST /questions/{id}/answer` | yes | |
+| `GET`/`POST /targets` | yes | saved and advertised targets |
+| `GET /unmerged` | yes | the hosts' last `worktrees.report` |
+
+The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
+questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve. Task details
+show **Run** only while remotea is on, disabled with a reason when no host is connected, and **Open run**
+while one is active.
+
+## Planning and the loop (stage D, migration 0029)
+
+0029 adds `agent_runs.turn_seq` (the host's seq of the root turn the run is on) and `plan_pending`,
+`agent_attempts.deadline_at/retries/verify_id/initiator`, `agent_run_plans.required_children` and
+`agent_interviews.generation/answered_at/answered_via`.
+
+```
+spawning → interviewing → planning → executing → verifying → judging → executing (not_met: the gap is the next prompt)
+                ↑ needs_you(no_plan)        ↑ replanning ←┘     │      ├→ awaiting_approval → completed (Approve)
+                                                                │      ├→ stopping(final completed) (auto_complete)
+                                                                │      ├→ awaiting_integration → executing
+                                                                │      ├→ needs_you (needs_you, no progress, no verdict)
+                                                                │      └→ capped (not_met on the last allowed turn)
+```
+
+### Interview and planning
+
+- `POST /remotea/runs` takes `interview: true|false|null`. `null` (default): a task without a PRD note is
+  interviewed; one with a PRD is frozen at once (stage C's behaviour, now with `spawn.verify` when the task
+  has a verify config). `false` runs on whatever plan the task has.
+- An interview run spawns with the interview prompt (`agent_prompts.interview`: the task, its direct
+  sub-tasks, "ask with `task_interview` and stop") and no frozen plan (`plan_revision` 0); the observed
+  start goes to `interviewing`.
+- **`task_interview {run_token, questions[≤12: {id, question, header?, options?: [{label, description?}],
+  multi?, free_text?}]}`** (interviewing only, one open interview at a time) stores an `agent_interviews`
+  row and pushes `agent_question`. A question without options takes free text.
+- **`POST /remotea/interviews/{id}/answers {answers: {question_id: label | [labels] | text}}`** checks
+  every question has an allowed answer (`INVALID_ARGUMENT`, `INTERVIEW_CLOSED`, `STALE_GENERATION`),
+  sends the answers as the next `input` ("now write the PRD with success criteria and call `submit_plan`,
+  then stop") and moves the run to `planning`.
+- **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
+  verify_id?}], verify?: {target_id, verify_id}, expected_plan_revision}`** (interviewing, planning or
+  replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
+  `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
+  its saved list or the host's advertised one (`VERIFY_UNKNOWN`); a `verify` criterion must name the
+  plan's verify id. It creates or replaces the PRD note (`PRD: <task>`, tag `prd`, linked to the task,
+  with a "Sub-tasks" section), writes the task's template plan through `task.update` as the run judge
+  (gate fields are allowed only to that actor during a run), freezes `agent_run_plans` revision N+1 with
+  `required_children`, sets `plan_pending` and moves an interviewing run to `planning`. An open interview
+  is marked `superseded`.
+- **Execution starts only when the planning turn has settled**: the next root turn of the run's
+  generation with `plan_pending` set and no open question or interview moves `planning → executing` and
+  sends the execute prompt with the frozen plan. A planning turn that ends with neither a question nor a
+  plan goes to `needs_you(no_plan)`. Interview and planning turns never count toward the cap.
+- **Re-plan** (`POST /remotea/runs/{id}/replan {reason?}`, from executing, needs_you, awaiting_approval,
+  awaiting_integration or planning) advances the generation, supersedes in-flight attempts, sends the
+  re-plan prompt (`steer` while executing, else `queue`) and goes `replanning → planning`; the next
+  `submit_plan` freezes revision N+1 the same way. `runs.snapshot` then sends `verify: null` until the new
+  revision is executing.
+
+### Sub-tasks (F02)
+
+Direct child tasks (not archived, not cancelled) seed the plan as linked steps: the agent's order first,
+missing children appended, existing step ids and statuses kept; a linked step must name a direct child.
+Their ids are frozen as `required_children` (a manual stage C freeze uses the children its linked steps
+name). A child with no run of its own is a checklist step inside the parent's run. A child with its own
+run counts only when that run is `completed` **and** the host's `worktrees.report` shows its branch
+`merged` into the parent branch (`base` = the parent run's branch). A `met` verdict with a child still
+pending moves the parent to `awaiting_integration` (push `agent_stuck`, the drawer lists what is
+pending). Each `worktrees.report` re-checks; once integrated the parent goes back to `executing` with a
+"pull the merged sub-tasks and re-check" prompt, so the combined code is verified and judged again
+before completion.
+
+### Verify attempts
+
+After each root execution turn of a run whose frozen plan has a verify config, the coordinator creates an
+`agent_attempts(kind=verify)` row bound to `(run, generation, turn_seq, plan_revision)` and queues
+`verify {attempt_id, turn_seq, plan_revision, verify_id}` (`turn_seq` is the turn frame's `seq`, so host
+attempts carry the same tuple). The run is `verifying` until the result.
+
+- `verify.result` is matched by `attempt_id` and the whole tuple (`tuple mismatch`, `unknown attempt`
+  and `late` are acked with `discarded`). Status: `passed` (exit 0), `failed`, `timed_out`, `canceled`,
+  `error`, `stale` (`stale_workspace`: the checkout changed around the run). Only `passed` passes.
+- **Host-initiated** results (`attempt_id: "local:…"`, remotea's `verify.auto`) are adopted when they
+  match the tuple of a running Eridani attempt; others are stored with `initiator: host` and never move
+  the run. `adopted` on a result names the host attempt remotea reused.
+- One deadline: 11 minutes (the host's 10 plus a minute of grace) → `timed_out`, a non-pass; a result after
+  that is discarded and noted on the attempt as `late`. A refused/failed/uncertain `verify` command is
+  `refused`/`uncertain`, also a non-pass (never `delivery_uncertain`). A host without `verify` refuses at
+  once. Every non-pass still goes to the judge.
+- **On demand**: `POST /remotea/runs/{id}/verify` uses the same machinery for the current tuple
+  (`on_demand`), refuses `VERIFY_RUNNING`/`NO_VERIFY`, and never moves the run.
+- A message or steer while verifying/judging supersedes in-flight attempts and returns to `executing`.
+- The host learns the verify config from `spawn.verify` and `runs.snapshot[].verify` (`{verify_id,
+  plan_revision}`; `null` after a re-plan clears it), and from each `verify` command.
+
+### The judge (`agent_judge.py`)
+
+Job `agent_judge` on queue `jarvis-memory`, cost feature `agent_control`, one per judge attempt.
+Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root turn's final response
+(last 24k characters; `truncated` flagged), the bound verify attempt with `fresh` (same tuple and not
+stale) and the previous verdict's per-criterion record. The prompt says all of it is untrusted data.
+
+1. **Hard rules first.** No criteria → `needs_you` and the model is not asked. Plans without criteria do
+   not enter the loop at all: they keep stage C's manual flow (turn cap → needs_you, Davin approves).
+2. **Luna** via `memory_learning.extraction_request` (the only model it accepts; decision 20) with a
+   strict schema `{verdict: met|not_met|needs_you, gap, summary, criteria: [{id, status: met|not_met|unclear,
+   evidence}], steps: [{id, status: done|not_done|disputed|unclear}]}`.
+3. **Rules again on the answer.** `met` with a required verify that is not fresh and passing: `not_met`
+   with the failure tail when it ran and failed, else `needs_you` (missing, refused, timed out, stale,
+   uncertain: the agent cannot fix that). A `verify`-kind criterion is met only with a fresh passing
+   attempt of its verify id. `met` with any criterion not met → `not_met`. Unknown criterion ids are
+   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. Each
+   rule that fired is recorded in `rules`.
+4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
+   (refusal and budget are not retried), then the attempt is `failed` and the run goes to
+   `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
+5. The attempt keeps model, `prompt_version` (`judge-v1`), cost, latency, retries and the final verdict.
+
+**Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
+`(generation, turn_seq, plan_revision)`; otherwise the attempt is `stale` and nothing moves. Every
+transition records `actor: run_judge`.
+
+- `met` → `awaiting_integration` if a required child is pending; else with **`auto_complete`** on (and
+  criteria present) the judge completes the task (`task.complete` as `run_judge`) and the run goes to
+  `stopping(judge_met, final completed)` (push `agent_done`); else `awaiting_approval` (push
+  `agent_done`). **Approve** (a human) completes it.
+- `not_met` → if `turn_count ≥ turn_cap`: `capped` (the last allowed turn was judged first; push
+  `agent_stuck`). If the last three verdicts were `not_met` with the same gap (case and spacing ignored):
+  `needs_you(no_progress_gap)`. Else back to `executing` with the gap prompt as the next `input`
+  (recorded with `source: eridani`).
+- `needs_you` → `needs_you(judge_needs_you)` with the gap; push `agent_stuck`.
+- **Steps**: the judge may mark `todo`/`doing` steps `done` (`by: judge:<run>`), may mark an agent's
+  `done` step `disputed` when the verification contradicts it, and never moves a `done` step back.
+
+Limits: the wall clock (6 h) now also covers interviewing, planning, verifying and judging; the 45-minute
+no-progress timer still applies to executing.
+
+### auto_complete
+
+`POST /remotea/auto-complete {enabled}` (owner preference `remotea_auto_complete`, default **off**;
+viewers refused); `GET /remotea/status` returns it. Settings → remotea shows the toggle with a warning
+that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
+a live run.
+
+### Outcome eval (`evals/agent_control/`)
+
+`cases.json` is a labelled suite: correct completion, plausible false success (failing tests, no evidence,
+instructions in the turn text), missing criteria, missing/timed-out verification, a stale test result, a
+source change mid-run, an ambiguous blocker, partial progress, recovery after a failure, a truncated turn,
+and two loop cases for the no-progress rule. `stub` is what a plausible (sometimes deliberately fooled)
+model answers.
+
+```
+uv run --no-sync python -m evals.agent_control.run          # stubbed model, free (CI: evals/test_agent_control.py)
+uv run --no-sync python -m evals.agent_control.run --live   # Luna through the extraction helper (paid)
+```
+
+It reports `false_completions` (met where the label is not), `stale_completions` (false completions on
+stale or changed-source evidence) and `missed_completions`, and exits non-zero on any false or stale
+completion.
+
+### Browser routes (stage D)
+
+| Route | Gated | |
+|---|---|---|
+| `POST /interviews/{id}/answers` | yes | interview form |
+| `POST /runs/{id}/replan {reason?}` | yes | |
+| `POST /runs/{id}/verify` | yes | on-demand verification |
+| `POST /auto-complete {enabled}` | yes | rollout flag |
+
+The run drawer adds the interview form (one form for all questions), success criteria with the latest
+verdict's per-criterion evidence and the last verification, pending sub-task integration, **Approve** as
+the primary action on `awaiting_approval`, **Re-plan** (the message box text is the reason) and **Verify
+now**; the timeline shows verifications, verdicts and interviews.
+
+## Sync, voice and the dream (stage E, migration 0030)
+
+Migration 0030 adds `completion_policy` to `tasks` and `agent_run_plans`, `binding_evidence` to
+`agent_sessions` and the `agent_parity_days` table.
+
+### Linear sync outcomes (`agent_sync.py`, `linear_sync.py`)
+
+A run moves its task's linked Linear issue twice: **In Progress** when the run is observed to start
+(`mark_in_progress`) and **Done** when the task completes (Approve, or the judge with `auto_complete`). On
+`completed` the coordinator also queues one **completion comment** (job `linear_comment`, queue
+`jarvis-linear`). Local state and sync state are separate: a refused or failed Linear write is recorded and
+never undoes the start or the completion. Each outcome lives on `agent_runs.sync_state["linear"]`:
+
+```
+in_progress | done: {status: queued|deferred|blocked|skipped, job_id?, after?, code?, message?, at}
+comment:            {status: queued|retrying|posted|failed|unconfirmed|skipped, job_id, marker,
+                     attempted, comment_id?, url?, reconciled?, code?, message?, at}
+```
+
+- `skipped`: the task has no Linear link (or Linear is not connected / the link is in another workspace).
+- `deferred`: another write for the issue is still in flight; the finish is queued after it (`after`).
+- `blocked`: Linear refused the write up front (`code`, `message`); the local completion stands.
+
+**Comment once.** Linear's `commentCreate` has no idempotency key. The body ends with a stable run marker
+`eridani-run:<run id>`, and the job saves `attempted: true` before it writes. A retry after an attempted
+write first reads the issue's comments for the marker; when found it saves that comment's id
+(`reconciled: true`) instead of posting again. Up to 5 attempts; a definite refusal is `failed`, an
+attempted write that can be neither confirmed nor found is `unconfirmed`. The body names the task, branch,
+pull requests, turn count, the completion policy and the judge's summary.
+
+**Ordering guard.** A stale In Progress can never reopen a completed task:
+- completing the task cancels a queued In Progress write that has not been attempted yet;
+- if one is already running, the Done write waits for it (`deferred`);
+- when any write for the issue settles while the task is finished locally and the issue is not in the
+  matching state, Eridani keeps its local status and queues the finish again (`finish_owed`) instead of
+  applying the remote state.
+
+**Pull requests** come from the session's collected `pr_urls` (validated `…/pull/N` or
+`…/merge_requests/N`, deduplicated, at most 10).
+
+**Completion policy** (`code_ready` default | `pr_open` | `pr_merged`), set on the task (`task.update`,
+`submit_plan`) and frozen onto the plan and the run like the other gate fields (`RUN_OWNS_COMPLETION` while
+a run holds it). The judge's hard rules apply it after a `met` verdict:
+- `pr_open` or `pr_merged` with no pull request → `not_met` (rule `pr_required`), so the agent is told to
+  open one;
+- `pr_merged` with the PR not merged (the host's worktree report for the run's branch) → `needs_you`
+  (rule `pr_not_merged`, reason `awaiting_merge`). The integration check resumes the run (reason
+  `merged`, prompt `merged`) once the host reports the branch merged, and the next judgment can complete.
+
+The run drawer shows the policy and each Linear outcome.
+
+### Voice commands (`control.*`)
+
+Eri drives runs through the same command service as the remotea page (`agent_control`); there is no second
+control path. The commands go through `domain.mutate` (personal tools, never offered to bots) and are
+in `VOICE_MUTATIONS`:
+
+| Tool | Input | |
+|---|---|---|
+| `control.start` | `task_id` or `task` (name), `harness?` | starts a run as the human (`start_run`) |
+| `control.message` | target, `text`, `mode: queue\|steer` | |
+| `control.stop` | target, `mode: interrupt\|kill` | |
+| `control.answer` | target, `question_id` + `answers`, or `interview_id` + `responses` | a run question or the planning interview |
+| `control_status` (read) | target? | active runs, their open questions/interview, finished in the last 24 h, hosts |
+
+A target is `run_id`, `task_id` or `task` (a spoken name); none means the only active run. Names resolve
+through an exact Linear identifier, then `navigation_find`; several matches → `AMBIGUOUS_TASK` (or
+`AMBIGUOUS_RUN`) with the candidates so Eri asks, none → `NOT_FOUND`. Every command passes the remotea
+gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog group are in the model's
+registry only while remotea is enabled (`tool_policy.remotea_tools`, applied to chat, voice and work
+runs).
+
+### Dream auto-link (`agent_autolink.py`)
+
+Job `agent_autolink` (queue `jarvis-memory`) runs from the supervisor cycle at most once per 20 hours per
+owner with remotea enabled. It looks at sessions active in the last 30 days that are unfiled or filed only
+by a folder rule, have an embedding and are not a run's session.
+
+- **Candidates:** tasks of the records under the session's record (not the home's own task), plus tasks
+  named by exact Linear identifiers resolved in the connected workspace. Open tasks and tasks completed in
+  the last 30 days; never archived, template or cancelled.
+- **Score:** best cosine between the session's embedding and the task record's search vectors, plus 0.25
+  when the session names the task's issue. Link when the top score is ≥ **0.62** and leads the runner-up
+  by ≥ **0.12**. These constants are **provisional**: tuned on the labelled fixtures in
+  `tests/test_agent_autolink.py`, not yet on real sessions.
+- An automatic link is `binding_source: "auto"` with `binding_evidence` (a digest of title, first prompt,
+  repo, branch, folder, issue keys and summary fingerprint). `resolve()` keeps it through collector
+  refreshes and rule rebinds until that evidence changes, then files the session afresh.
+- **Undo** (`POST /sessions/{id}/autolink/undo`, the Sessions page's "Filed … by the dream sequence ·
+  Undo") or a manual relink writes an `autolink_rejections` tombstone for (session, task). The pair is
+  blocked for good; if the rejected task would still rank first, the session stays unfiled rather than
+  promoting the runner-up.
+- Inferred links never start work: runs start only from a task, with the execution-target rules.
+
+### Cutover (stage E)
+
+`GET /remotea/parity` adds `cutover {ready, streak, needed: 7, days[7]}`, from `agent_parity_days` (one
+row per owner and day in the owner's timezone, counting reports, matched, mismatched and missing). A day
+is **clean** when it had at least one parity report and no mismatch; sessions only remotea saw (`missing`)
+do not count against it. `ready` means 7 consecutive clean days ending today, or yesterday while today
+has no reports yet. The page's parity summary then reads "· ready for cutover".
+
+The procedure is the host's (`remotea eridani collector authoritative`, the `status --json` v2
+interlock, `remotea hooks --remove-legacy-collector`); Davin runs it. The exact steps and the rollback are
+in [`scripts/session_collector/README.md` § Retirement](../scripts/session_collector/README.md#retirement),
+which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover.
+
+## Security model (stage F, migration 0031)
+
+Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
+per finding, each the audit's reproduction turned around.
+
+### Personal workspace only
+
+remotea is a single-person feature until the multi-user design on the roadmap
+([TODO](TODO.md#explicitly-deferred-not-forgotten)) lands. `/api/v1/remotea` is a personal path
+(`access.PERSONAL_PATHS`), and every remotea route, the link and the `control.*` tools refuse with
+`PERSONAL_WORKSPACE` when the namespace is a shared workspace or the caller is not its owner
+(`remotea_routes.owner_only`, `agent_control.owner_control`). `bot_access` refuses to mint
+`agents:control` or `agents:session` keys in a shared namespace, and refuses such a key at use if one
+already exists there. Turning remotea off revokes the link key; a live host still gets `bye{disabled}`.
+
+### Hosts and frames
+
+- Session-keyed frames (`turn`, `status`, `exit`, `question`, `session.report`) are host-bound: a frame
+  naming a session owned by another host, or by another host's run, is refused with `RUN_NOT_BOUND`
+  (`agent_link.host_session`) and never moves that run.
+- A `server_id` stays bound to its first credential unless the new key is a rotation of it (same owner,
+  account and name); otherwise `bye{host_bound}`. One key registers at most 3 hosts (`bye{host_limit}`).
+- A host that advertises the `digest` cap must stamp every frame carrying an `op_id`.
+- Snapshot parts are numbered `1..n` (as remotea sends them; the brief said `i < n`, which would refuse
+  every real final part), bounded in bytes, and partial snapshots and chunks expire after 60 s.
+- `context.request` answers `scope: "run"` (plan and run token) only for a run bound to this host;
+  otherwise `scope: "candidates"` with only the fenced candidate list (≤ 4000 chars).
+
+### Actors, the plan floor and the completion gate
+
+- Actor kinds (`agent_actor.KINDS`): `human` (the app, or the owner's confirmed yes), `eri_work` (the model
+  in chat or voice), `run_session` (an agent inside a run, proved by its run token), `run_judge`,
+  `source_sync` (Linear) and `bot`. Only `human`, `source_sync` and `run_judge` may complete a run-owned
+  task or edit its gate fields. An actor may carry a `capability` (`plan_write` for `submit_plan`: gate
+  fields under the plan floor, never completion), recorded with every write.
+- Plan floor (`agent_plan.plan_floor`): an agent's plan may only add. Human criteria and a human verify
+  are kept; what the agent adds is marked `by: "agent"`; the completion policy never drops. Clients cannot
+  send `by` themselves (`Literal["agent"]`).
+- Every path that completes a task (`task.update`, `task.complete`, `schedule.complete`,
+  `notification.complete`, Linear sync, `auto_complete`) passes `agent_actor.gate`; `finish_task` runs it
+  again as a backstop. `auto_complete` never completes a task whose plan has human criteria
+  (`human_gate`).
+- `task_step` needs a verified run token or a key with `tasks:write`. The in-session tools refuse while
+  remotea is off.
+
+### Two-phase control from Eri
+
+`control.start` and `control.message` from Eri only propose: they store an `agent_pending_controls` row
+(10-minute expiry) and nothing reaches the host. The owner confirms on the remotea page
+(`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
+works only from a later request by the same account whose own text is a plain yes, for the newest
+pending item. `control.stop`, `control.answer` and `control_status` stay immediate. Background,
+parked-continuation and bot work get no `control_*` tools (`tool_policy.live_work`). Every text sent to an
+agent is a `sent` entry on the run's timeline with who sent it; every `control.*` call is in the action
+journal, visible but never undoable.
+
+### Prompt injection
+
+Task text, Linear text and candidate titles reach the agent only inside nonce fences
+(`agent_prompts.fence`, `<<<LABEL_xxxxxxxxxxxx` … `LABEL_xxxxxxxxxxxx>>>`), with `<<<`/`>>>` broken up
+inside. Linear-sourced tasks say so ("written by an external party").
+
+### Run tokens
+
+A run token is HMAC-SHA256 over the run id and a per-spawn random salt, keyed by HKDF of the integration
+key (info `eridani-run-token-v1`); only the salt is stored. It expires once, at the wall-clock limit plus
+24 h; `context.request` does not slide it. The spawn command's copy becomes `[redacted]` once the spawn
+is acked or attached. Rotation is per spawn, not per generation: remotea passes the token as
+`ERIDANI_RUN_TOKEN` at spawn, and a steer delivers no new SessionStart, so a rotated token could not reach
+the agent.
+
+### Redaction
+
+`redaction.py` holds the 12 patterns of remotea's `docs/remotea/redaction.md` (the collector loads the
+same file). Host free text is redacted on ingestion: turn text and prompt, status and exit reasons,
+question text and choices, `question.resolved` details, verify tails and errors, outcome details, and
+the session ledger's title, prompts and excerpt.
+
+### Retention and quotas (`agent_retention.py`)
+
+The worker's housekeeping pass (every 12th supervisor cycle) deletes:
+
+| Data | Kept for |
+|---|---|
+| Turns of sessions no run owns | 30 days |
+| A settled run's turns, questions, attempts, interviews and commands (the run, plans and history stay) | 90 days after it finished |
+| The payload of a settled command | 7 days |
+| `agent_parity`, `agent_parity_days`, `agent_ingest_days`, expired pending controls | 30 days |
+
+Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it the turn
+is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the next
+day. `GET /remotea/runs/{id}` pages turns and commands: the newest `limit` (default 100, ≤ 200), `offset`
+for older, `more.turns` / `more.commands` when there are more.
+
+### Notifications and transport
+
+An agent's question is `urgent` (it pushes through quiet hours) only when the owner turns on
+"Agent questions break quiet hours" (`agent_quiet_bypass`, `POST /remotea/quiet-bypass`). A run sends at
+most 3 pushes per 10 minutes; the remotea page still shows everything. Responses carry
+`Strict-Transport-Security: max-age=31536000; includeSubDomains`. `POST /api/v1/chat` is gone; chat goes
+through `/api/v1/work`. CI runs on every pull request, whatever its base.
+
+### Not yet
+
+Verify commands run on the host without a sandbox (bubblewrap / codex sandbox, no network) — roadmap.

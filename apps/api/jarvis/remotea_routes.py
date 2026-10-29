@@ -12,7 +12,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
-from . import agent_link, bot_access
+from . import agent_control as control
+from . import agent_link, agent_plan, bot_access
+from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
 from .auth import Identity, authenticate
 from .config import get_settings
@@ -32,6 +34,11 @@ RECENT_EXIT_HOURS = 24
 class EnableInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rotate: bool = False
+
+
+class AutoCompleteInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
 
 
 def link_url():
@@ -54,6 +61,8 @@ def state(db, user):
     key = active_key(db, user)
     return {
         "enabled": agent_link.enabled(db, user.owner_id),
+        "auto_complete": coordinator.auto_complete(db, user.owner_id),
+        "quiet_bypass": coordinator.quiet_bypass(db, user.owner_id),
         "key": bot_access.public(key) if key else None,
         "hosts": [agent_link.public_host(h) for h in hosts],
         "link_url": link_url(),
@@ -61,13 +70,13 @@ def state(db, user):
     }
 
 
-def set_enabled(db, owner, value):
+def set_enabled(db, owner, value, key="remotea_enabled"):
     advisory(db, f"budget:{owner}")  # The same lock settings.update takes for owner preferences.
     row = db.get(OwnerSettings, owner)
     if row:
-        row.values = {**row.values, "remotea_enabled": value}
+        row.values = {**row.values, key: value}
     else:
-        db.add(OwnerSettings(owner_id=owner, values={"remotea_enabled": value}))
+        db.add(OwnerSettings(owner_id=owner, values={key: value}))
     db.flush()
     emit(db, owner, "settings.changed", owner)
 
@@ -75,6 +84,7 @@ def set_enabled(db, owner, value):
 @router.get("/status")
 def status(user: User):
     with session_scope() as db:
+        owner_only(db, user)
         return state(db, user)
 
 
@@ -82,6 +92,7 @@ def status(user: User):
 def enable(body: EnableInput, user: User):
     """Turn remotea on and mint the link key. The token appears in this response only."""
     with session_scope() as db:
+        owner_only(db, user)
         key = active_key(db, user)
         minted = None
         if key is None or body.rotate:
@@ -89,29 +100,54 @@ def enable(body: EnableInput, user: User):
             if key is not None:
                 advisory(db, "bot:" + key.id)
                 key.revoked_at = now()
-        else:
-            from .access import role
-
-            if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-                raise DomainError("READ_ONLY", "Viewers cannot turn on remotea.", 403)
         set_enabled(db, user.owner_id, True)
         return {**state(db, user), "token": minted["token"] if minted else None}
 
 
 @router.post("/disable")
 def disable(user: User):
-    """Stop admitting the link; connected hosts are closed on their next re-authorization."""
-    from .access import role
-
+    """Stop admitting the link and revoke its key; connected hosts are closed on their next re-authorization."""
     with session_scope() as db:
-        if role(db, user.owner_id, user.account_id, lock=True) == "viewer":
-            raise DomainError("READ_ONLY", "Viewers cannot turn off remotea.", 403)
+        owner_only(db, user)
         set_enabled(db, user.owner_id, False)
+        # The link key dies with the switch (stage F, L1): turning remotea on again mints a new one.
+        key = active_key(db, user)
+        if key is not None:
+            advisory(db, "bot:" + key.id)
+            key.revoked_at = now()
+        return state(db, user)
+
+
+@router.post("/auto-complete")
+def set_auto_complete(body: AutoCompleteInput, user: User):
+    """Rollout flag (decision 6, default off): a met verdict completes the task without a tap."""
+    with session_scope() as db:
+        gated(db, user)
+        set_enabled(db, user.owner_id, body.enabled, "remotea_auto_complete")
+        return state(db, user)
+
+
+@router.post("/quiet-bypass")
+def set_quiet_bypass(body: AutoCompleteInput, user: User):
+    """Stage F, L8 (default off): an agent's question is urgent, so it pushes through quiet hours."""
+    with session_scope() as db:
+        gated(db, user)
+        set_enabled(db, user.owner_id, body.enabled, "agent_quiet_bypass")
         return state(db, user)
 
 
 def gated(db, user):
+    owner_only(db, user)
     agent_link.gate(db, user.owner_id)
+
+
+def owner_only(db, user):
+    """remotea is personal-workspace only (stage F, D1): PERSONAL_PATHS refuses shared namespaces before
+    this runs; the role check is the backstop so no member role ever drives an agent."""
+    from .access import role
+
+    if bot_access.shared(db, user.owner_id) or role(db, user.owner_id, user.account_id, lock=True) != "owner":
+        raise DomainError("PERSONAL_WORKSPACE", "remotea works only in your personal workspace.", 403)
 
 
 def last_turns(db, ids):
@@ -175,3 +211,142 @@ def parity(user: User):
     with session_scope() as db:
         gated(db, user)
         return agent_link.parity_summary(db, user.owner_id)
+
+
+# ---------------------------------------------------------------- runs (stage C)
+
+
+def actor_for(user):
+    from .agent_actor import Actor
+
+    return Actor("human")
+
+
+def writable(db, user):
+    gated(db, user)
+
+
+@router.get("/runs")
+def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100)):
+    # Inspection and stop stay available after remotea is turned off, for runs that have not settled.
+    with session_scope() as db:
+        owner_only(db, user)
+        return {"items": control.list_runs(db, user.owner_id, task_id=str(task_id) if task_id else None,
+                                           active=active, limit=limit)}
+
+
+@router.post("/runs")
+def start(body: control.StartInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.start_run(db, user.owner_id, user.account_id, body, actor=actor_for(user))
+
+
+@router.get("/runs/{identity}")
+def run_detail(identity: UUID, user: User, limit: int = Query(control.DETAIL_PAGE, ge=1, le=200),
+               offset: int = Query(0, ge=0, le=100_000)):
+    with session_scope() as db:
+        # Like the list, detail stays readable after remotea is turned off; only the owner reads it.
+        owner_only(db, user)
+        run = coordinator.load(db, user.owner_id, str(identity), lock=False)
+        return control.public_run(db, run, detail=True, limit=limit, offset=offset)
+
+
+@router.post("/runs/{identity}/message")
+def message(identity: UUID, body: control.MessageInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.send_message(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/stop")
+def stop(identity: UUID, body: control.StopInput, user: User):
+    # Stop stays available while remotea is being turned off: recovery controls outlive admission.
+    with session_scope() as db:
+        owner_only(db, user)
+        return control.stop_run(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/approve")
+def approve(identity: UUID, body: control.ApproveInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.approve(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/replan")
+def replan(identity: UUID, body: control.ReplanInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.replan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/verify")
+def verify(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.verify_now(db, user.owner_id, str(identity), actor=actor_for(user))
+
+
+@router.post("/interviews/{identity}/answers")
+def interview_answers(identity: UUID, body: agent_plan.InterviewAnswers, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return agent_plan.answer_interview(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/questions/{identity}/answer")
+def answer(identity: UUID, body: control.AnswerInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.answer_question(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.get("/targets")
+def targets(user: User):
+    from .session_models import ExecutionTarget
+
+    with session_scope() as db:
+        gated(db, user)
+        rows = db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == user.owner_id)
+                          .order_by(ExecutionTarget.created_at))
+        return {"items": [control.public_target(t) for t in rows], "advertised": control.advertised(db, user.owner_id)}
+
+
+@router.post("/targets")
+def save_target(body: control.TargetInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.save_target(db, user.owner_id, body)
+
+
+@router.get("/unmerged")
+def unmerged(user: User):
+    with session_scope() as db:
+        gated(db, user)
+        return control.unmerged(db, user.owner_id)
+
+
+# ---------------------------------------------------------------- Eri's pending control (stage F, M5)
+
+
+@router.get("/pending")
+def pending(user: User):
+    """control_start / control_message Eri proposed, waiting for the owner's tap."""
+    with session_scope() as db:
+        gated(db, user)
+        return {"items": control.pending_list(db, user.owner_id)}
+
+
+@router.post("/pending/{identity}/confirm")
+def confirm_pending(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.decide(db, user.owner_id, str(identity), confirm=True, via="app", actor=actor_for(user))
+
+
+@router.post("/pending/{identity}/decline")
+def decline_pending(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return control.decide(db, user.owner_id, str(identity), confirm=False, via="app", actor=actor_for(user))

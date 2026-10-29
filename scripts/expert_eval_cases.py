@@ -217,7 +217,8 @@ def fingerprint(data):
         if row.get("alert_urgent") is False:row.pop("alert_urgent")
         for field,default in (("is_quick_list",False),("quick_section",""),("quick_order",0),
                               ("steps",[]),("prd_note_id",None),("success_criteria",[]),("verify",None),
-                              ("turn_cap",15),("execution_target_id",None),("plan_revision",0)):
+                              ("turn_cap",15),("execution_target_id",None),("plan_revision",0),
+                              ("completion_policy","code_ready")):
             if row.get(field)==default:row.pop(field,None)
     return hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
 

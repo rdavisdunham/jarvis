@@ -96,6 +96,12 @@ def normalize(scopes):
     return sorted(values)
 
 
+def shared(db, owner):
+    from .models import SharedWorkspace
+
+    return db.get(SharedWorkspace, owner) is not None
+
+
 def authorize(db, owner=None, required=None, *, write=False, credential_id=None):
     from .access import role
 
@@ -112,6 +118,9 @@ def authorize(db, owner=None, required=None, *, write=False, credential_id=None)
         raise DomainError("ACCESS_REVOKED", "This bot key expired or was revoked.", 401)
     if required and required not in row.scopes:
         raise DomainError("INSUFFICIENT_SCOPE", f"This bot key needs {required} permission.", 403)
+    if required in PRIVILEGED and shared(db, row.owner_id):
+        # A key minted before the personal-only rule (stage F, D1) stops working here.
+        raise DomainError("PERSONAL_WORKSPACE", "Agent keys work only in your personal workspace.", 403)
     if write and permission == "viewer":
         raise DomainError("READ_ONLY", "This workspace currently grants view access only.", 403)
     return row
@@ -167,6 +176,8 @@ def create(db, owner, account, name, scopes, days):
         raise DomainError("READ_ONLY", "Viewers can create read-only keys.", 403)
     if "schema:write" in scopes and permission != "owner":
         raise DomainError("OWNER_REQUIRED", "Only the workspace owner can grant structure editing.", 403)
+    if PRIVILEGED & set(scopes) and shared(db, owner):
+        raise DomainError("PERSONAL_WORKSPACE", "Agent keys exist only in your personal workspace.", 403)
     # Secrets are returned once; neither the database nor receipts store the token.
     token = "eri_bot_" + secrets.token_urlsafe(32)
     row = BotCredential(

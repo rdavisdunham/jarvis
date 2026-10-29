@@ -1,8 +1,8 @@
 name: CI
 
 on:
+  # Stage F, L13: every pull request, including stacked ones whose base is not main.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:

@@ -1,4 +1,5 @@
-"""A task's execution plan: ordered steps with stable ids, success criteria, verify config and turn cap.
+"""A task's execution plan: ordered steps with stable ids, success criteria, verify config, turn cap and
+completion policy (code_ready | pr_open | pr_merged: what "done" means for the judge).
 
 The plan on a task is a template; agent runs (stage C) freeze their own revision. Every entrance
 (browser, Eri, external bots) goes through task.update, so this module is the single normalization
@@ -10,7 +11,8 @@ import secrets
 from .domain import Criterion, DomainError, PlanStep, owned
 from .models import Note, Task, now
 
-PLAN_FIELDS = ("steps", "prd_note_id", "success_criteria", "verify", "turn_cap", "execution_target_id")
+PLAN_FIELDS = ("steps", "prd_note_id", "success_criteria", "verify", "turn_cap", "completion_policy",
+               "execution_target_id")
 
 
 def new_id(prefix):

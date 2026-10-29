@@ -18,7 +18,7 @@ from .calendar_details import web_link
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, enqueue_job, owned
-from .models import Job, LinearIssue, now
+from .models import Job, LinearIssue, Task, now
 from .session_models import AgentSession, AgentSessionRule
 from .structure_models import StructureRecord
 
@@ -89,16 +89,25 @@ class SessionInput(Input):
     def links(cls, values):
         return list(dict.fromkeys(secure_url(v.strip()) for v in values if v.strip()))
 
+    @field_validator("title", "first_prompt", "last_prompt", "excerpt")
+    @classmethod
+    def redacted(cls, value):
+        # The collector redacts before sending; Eridani applies the same patterns again (stage F, L6).
+        from .redaction import redact
+
+        return redact(value)
+
 
 class LinkInput(Input):
     identifier: str | None = Field(default=None, max_length=30)
     record_id: UUID | None = None
+    task_id: UUID | None = None
     clear: bool = False
 
     @model_validator(mode="after")
     def one_target(self):
-        if sum(bool(v) for v in (self.identifier, self.record_id, self.clear)) != 1:
-            raise ValueError("Give exactly one of identifier, record_id or clear.")
+        if sum(bool(v) for v in (self.identifier, self.record_id, self.task_id, self.clear)) != 1:
+            raise ValueError("Give exactly one of identifier, record_id, task_id or clear.")
         return self
 
 
@@ -146,6 +155,14 @@ def issue_keys(text):
     return list(dict.fromkeys(m.upper() for m in ISSUE_KEY.findall(text or "")))
 
 
+PULL_REQUEST = re.compile(r"^https://[^\s/]+/[^\s]+/(pull|merge_requests)/[0-9]+(?:[/?#][^\s]*)?$")
+
+
+def pull_requests(urls):
+    """Validated pull/merge request links from the session's metadata (the collector or remotea reports them)."""
+    return [u for u in dict.fromkeys(urls or []) if isinstance(u, str) and PULL_REQUEST.match(u)][:10]
+
+
 def known_issues(db, owner, keys):
     """Only identifiers of synced Linear issues count; "gpt-5" or "utf-8" never file a session."""
     if not keys:
@@ -173,13 +190,21 @@ def matching_rule(db, owner, cwd):
 
 
 def resolve(db, row):
-    """Automatic filing, strongest evidence first: branch issue key, one mentioned issue, folder rule."""
+    """Automatic filing, strongest evidence first: branch issue key, one mentioned issue, folder rule.
+
+    A dream link (`auto`, agent_autolink.py) stays while the evidence it was inferred from is unchanged."""
     branch = issue_keys(row.branch)
     mentioned = issue_keys("\n".join((row.title, row.first_prompt, row.last_prompt)))
     issues = known_issues(db, row.owner_id, list(dict.fromkeys(branch + mentioned)))
     row.issue_refs = [{"identifier": k, **issues[k]} for k in dict.fromkeys(branch + mentioned) if k in issues]
     if row.binding_source in PROTECTED:
         return
+    if row.binding_source == "auto":
+        from .agent_autolink import evidence_revision
+
+        if row.task_id and row.binding_evidence == evidence_revision(row):
+            return
+        row.binding_evidence = ""  # The evidence changed: file it afresh; the next dream cycle reconsiders it.
     hits = [k for k in branch if k in issues] or [k for k in mentioned if k in issues]
     task, record, source = None, None, ""
     if hits and (len(hits) == 1 or hits[0] in branch):
@@ -258,6 +283,11 @@ def queue_summary(db, row):
 def link(db, owner, tool, session_id, body, *, source="manual", reveal=True):
     """File a session by hand. It may arrive before the collector has reported it."""
     row = claim(db, owner, tool, session_id)
+    if row.binding_source == "auto":
+        from .agent_autolink import reject
+
+        reject(db, row)  # Replacing or clearing a dream link is an Undo: it is never proposed again.
+        row.binding_evidence = ""
     if body.clear:
         row.binding_source = ""
     elif body.identifier:
@@ -268,6 +298,11 @@ def link(db, owner, tool, session_id, body, *, source="manual", reveal=True):
             )
         task = issues[body.identifier.upper()]["task_id"]
         row.task_id, row.record_id, row.binding_source = task, record_for_task(db, owner, task), source
+    elif body.task_id:
+        task = owned(db, Task, str(body.task_id), owner)
+        if task.archived:
+            raise DomainError("NOT_FOUND", "That task is archived.", 404)
+        row.task_id, row.record_id, row.binding_source = task.id, record_for_task(db, owner, task.id), source
     else:
         target = owned(db, StructureRecord, str(body.record_id), owner)
         if target.archived:
@@ -370,6 +405,7 @@ def public(db, row, *, titles=None, reveal=True, score=None):
             "reason": (row.state_detail or {}).get("reason", ""),
         } if row.state else None,
         "filed": {
+            # "auto": filed by the dream sequence (agent_autolink.py); the page offers Undo.
             "source": row.binding_source or None,
             "record_id": row.record_id,
             "task_id": row.task_id,

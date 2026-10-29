@@ -28,6 +28,13 @@ UPDATE_QUERY = (
     + ISSUE_FIELDS
     + "}}}"
 )
+# The completion comment of an agent run (agent_sync.py). Linear has no idempotency key for commentCreate,
+# so a write whose response was lost is reconciled by finding the run marker in the issue's comments.
+COMMENT_QUERY = "mutation EriComment($input:CommentCreateInput!){commentCreate(input:$input){success comment{id url body}}}"
+COMMENTS_QUERY = (
+    "query EriComments($id:String!,$after:String){issue(id:$id){comments(first:100,after:$after){nodes{id url body user{id}}"
+    " pageInfo{hasNextPage endCursor}}}}"
+)
 
 
 class LinearClient:
@@ -94,6 +101,25 @@ class LinearClient:
             if error.code == "not_found":
                 return None
             raise
+
+    def comment(self, issue_id, body):
+        saved = self.query(COMMENT_QUERY, {"input": {"issueId": issue_id, "body": body}})["commentCreate"]
+        if not saved.get("success") or not (saved.get("comment") or {}).get("id"):
+            raise LinearFailure("invalid_response", retry=True, unknown=True)
+        return saved["comment"]
+
+    def comments(self, issue_id, max_pages=20):
+        out, cursor = [], None
+        for _ in range(max_pages):
+            issue = self.query(COMMENTS_QUERY, {"id": issue_id, "after": cursor}).get("issue")
+            if issue is None:
+                raise LinearFailure("not_found")
+            page = issue["comments"]
+            out.extend(page["nodes"])
+            if not page["pageInfo"]["hasNextPage"] or not page["pageInfo"].get("endCursor"):
+                return out
+            cursor = page["pageInfo"]["endCursor"]
+        raise LinearFailure("range_too_large")
 
     def identity(self):
         result = self.query("query EriIdentity{viewer{id name} organization{id name}}")

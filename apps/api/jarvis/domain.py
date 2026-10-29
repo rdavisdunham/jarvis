@@ -88,11 +88,14 @@ class Criterion(Args):
     text: str = Field(min_length=1, max_length=1000)
     kind: Literal["text", "verify"] = "text"
     verify_id: str | None = Field(default=None, max_length=100)
+    # "agent" when submit_plan wrote it; a human-authored criterion has no marker (stage F, M1).
+    by: Literal["agent"] | None = None
 
 
 class VerifyConfig(Args):
     target_id: str = Field(min_length=1, max_length=100)
     verify_id: str = Field(min_length=1, max_length=100)
+    by: Literal["agent"] | None = None
 
 
 class TaskChanges(Args):
@@ -128,6 +131,7 @@ class TaskChanges(Args):
     success_criteria: list[Criterion] | None = Field(default=None, max_length=50)
     verify: VerifyConfig | None = None
     turn_cap: int | None = Field(default=None, ge=1, le=100)
+    completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     execution_target_id: str | None = Field(default=None, max_length=36)
 
 
@@ -273,7 +277,7 @@ COMMANDS = {
 # Update null policy: absent keeps, null clears. Fields here cannot be cleared, so
 # generated tool schemas omit null for them; CLEARED maps null to the empty value.
 NOT_NULL = {
-    "task.update": {"title", "status", "archived", "steps", "success_criteria", "turn_cap"},
+    "task.update": {"title", "status", "archived", "steps", "success_criteria", "turn_cap", "completion_policy"},
     "schedule.update": {"title", "when", "timezone", "task_id"},
     "space.update": {"name", "archived"},
     "area.update": {"name", "archived", "space_id"},
@@ -637,6 +641,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
+    if tool.startswith("control."):
+        from .agent_control import mutate as control_mutate
+        return control_mutate(db, owner, tool, args, command_id)
     from .organization import project_changes
 
     if tool.startswith(("structure.", "record.")):
@@ -751,6 +758,9 @@ def mutate(db, owner, tool, args, command_id):
         from .task_plan import normalize as normalize_plan
 
         normalize_plan(db, owner, task, changes)
+        from .agent_actor import gate as run_gate
+
+        run_gate(db, owner, task, changes)
         from .linear_sync import before_task_update
 
         before_task_update(db, owner, task, changes)
@@ -767,7 +777,7 @@ def mutate(db, owner, tool, args, command_id):
         if task.status in {"completed", "cancelled"} or task.archived:
             from .task_alerts import finish_task
 
-            finish_task(db, task, task.status, sync_external=False)
+            finish_task(db, task, task.status, sync_external=False, gated=True)
         else:
             task.revision += 1
             task.updated_at = now()
@@ -867,9 +877,12 @@ def mutate(db, owner, tool, args, command_id):
                 )
             row.status, row.next_run_at, row.completed_at = "completed", None, now()
             if row.task_id:
+                from .agent_actor import gate as run_gate
                 from .task_alerts import finish_task
 
-                finish_task(db, owned(db, Task, row.task_id, owner, lock=True))
+                task = owned(db, Task, row.task_id, owner, lock=True)
+                run_gate(db, owner, task, {"status": "completed"})  # The run completion gate (stage F, M3).
+                finish_task(db, task, gated=True)
             for notice in db.scalars(
                 select(Notification)
                 .join(Occurrence, Notification.occurrence_id == Occurrence.id)
@@ -962,9 +975,12 @@ def mutate(db, owner, tool, args, command_id):
             if item.category not in {"reminder","deadline"} or not item.task_id:
                 raise DomainError("INVALID_ARGUMENT","Open this notification to respond; it does not complete a task.")
             if item.task_id:
+                from .agent_actor import gate as run_gate
                 from .task_alerts import finish_task
 
-                finish_task(db, owned(db, Task, item.task_id, owner, lock=True))
+                task = owned(db, Task, item.task_id, owner, lock=True)
+                run_gate(db, owner, task, {"status": "completed"})  # The run completion gate (stage F, M3).
+                finish_task(db, task, gated=True)
             item.completed_at = item.completed_at or now()
             if item.occurrence_id:
                 occurrence = db.get(Occurrence, item.occurrence_id)
@@ -1149,3 +1165,6 @@ COMMANDS.update(SETUP_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)
+
+from .agent_control_schema import COMMANDS as CONTROL_COMMANDS
+COMMANDS.update(CONTROL_COMMANDS)

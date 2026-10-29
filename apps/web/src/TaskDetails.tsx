@@ -15,6 +15,7 @@ import { useEditor, choice, nullableId, tagsField } from "./editor-control";
 import type { Task, Schedule } from "./types";
 import type { Organization } from "./productivity";
 import type { NoteRecord } from "./Notes";
+const RunTask = lazy(() => import("./Remotea").then((m) => ({ default: m.RunTask })));
 const LinearTask = lazy(() => import("./Linear").then((m) => ({ default: m.LinearTask })));
 type Props = {
   id: string;
@@ -30,6 +31,9 @@ type Props = {
   onNewNote: (task: Task) => void;
   onReminder: (schedule: Schedule | null, task: Task) => void;
   onBlock: (task: Task) => void;
+  /** remotea is on: offer the Run control. */
+  remotea?: boolean;
+  onOpenRun?: (run: string) => void;
 };
 export function TaskDetails(p:Props){
  const [quick,setQuick]=useState<boolean|null>(p.tasks.find(t=>t.id===p.id)?.is_quick_list??null);
@@ -466,6 +470,7 @@ function StandardTaskDetails(p: Props) {
               {text("notes", "Description", "textarea", "body", "Add details")}
               <SourceDetails source={task.source}/><SourceNotes kind="task" id={p.id} canEdit={p.canEdit!==false} onGuard={annotation.update}/>
               <RecordTools kind="task" id={p.id}/>
+              {p.remotea && p.onOpenRun && <Suspense fallback={null}><RunTask taskId={p.id} canEdit={p.canEdit !== false} onOpenRun={p.onOpenRun}/></Suspense>}
               {(parent || !!children.length) && (
                 <section className="detail-section" aria-label="Related tasks">
                   <div className="detail-section-head"><h3>Related tasks</h3></div>
