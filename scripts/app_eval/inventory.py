@@ -258,7 +258,7 @@ def build():
             {
                 "path": "/api/v1/external/mcp",
                 "feature": "external_agents",
-                "note": "Mounted in api.py via external_mcp.",
+                "note": "Mounted in api.py via external_mcp; the bare path without a trailing slash is served by the same app.",
             }
         ],
     }

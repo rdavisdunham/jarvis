@@ -361,3 +361,18 @@ class MCPMount:
 
 
 mount = MCPMount()
+
+
+class BarePath:
+    """Serve /api/v1/external/mcp as the mount serves /api/v1/external/mcp/: MCP clients POST, so no redirect.
+
+    A class, not a function, so Starlette's Route treats it as a raw ASGI app for every method."""
+
+    async def __call__(self, scope, receive, send):
+        child = {**scope, "path": scope["path"] + "/", "root_path": scope.get("root_path", "") + "/api/v1/external/mcp"}
+        if "raw_path" in scope:
+            child["raw_path"] = scope["raw_path"] + b"/"
+        await mount(child, receive, send)
+
+
+bare_path = BarePath()
