@@ -567,7 +567,15 @@ A checked implementation task never replaces connected-provider or physical-devi
 - verify sandboxing on the host (bubblewrap / codex sandbox, no network).
 - Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
   `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
-  `claude mcp add` on 2026-10-29.
+  `claude mcp add` on 2026-10-29. (In progress: jarvis PR #81, written by the first agent run from a task.)
+- **Run freshness and versioning** (Eridani task, 2026-10-29). A run's worktree is based on the target
+  repo's *local* main and nothing fetches, so freshness is whoever last pulled; a reused worktree is never
+  rebased. Planned: fetch before basing (`origin/<base>`); a behind-count in the spawn prompt with "merge
+  the base first" (and re-point `down_revision` when the plan has a migration); "based on main @ sha ·
+  N behind" on the run header; Eridani-reserved migration numbers per repo for concurrent runs (a
+  reservation cannot see later merges; the release-migrations test covers that); host/server version
+  pairing in Settings. Also: the worktrees report's `merged` flag is trivially true for a fresh branch
+  with no commits of its own.
 - **Project play button (advanced, later).** A Play action on a project queues every
   currently actionable task as remotea runs: in series when they touch the same
   repo/target or declare dependencies, in parallel when they do not overlap. Needs
