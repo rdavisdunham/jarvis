@@ -5,7 +5,7 @@ import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
   ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
-  runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
+  defaultScope, needsTargetData, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork,
 } from "./remotea-model";
@@ -202,31 +202,58 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
   </section>;
 }
 
-type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string };
+/** A proposal; a start also carries what still stands in its way (no target chosen, server offline). */
+type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string;
+  task_id?: string | null; needs_target?: boolean; need?: NeedsTarget | null; problems?: { code: string; message: string }[] };
 
-/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before. */
+function without<T>(map: Record<string, T>, id: string) {
+  const { [id]: _, ...rest } = map;
+  return rest;
+}
+
+/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before.
+ * A start with no target shows the task's target picker on its card; picking one saves it and confirms. */
 export function PendingControls() {
-  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState(""), [error, setError] = useState("");
-  const refresh = useCallback(() => { api<{ items: PendingControl[] }>("/remotea/pending").then(r => setItems(r.items)).catch(() => setItems([])); }, []);
+  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState("");
+  // Per card: the last refusal, and the picker's data (from the listing or a NEEDS_TARGET refusal; null: cancelled).
+  const [errors, setErrors] = useState<Record<string, string>>({}), [needs, setNeeds] = useState<Record<string, NeedsTarget | null>>({});
+  const refresh = useCallback(() => {
+    api<{ items: PendingControl[] }>("/remotea/pending").then(r => {
+      const open = new Set(r.items.map(p => p.id));
+      const keep = <T,>(map: Record<string, T>) => Object.fromEntries(Object.entries(map).filter(([id]) => open.has(id)));
+      setItems(r.items); setErrors(keep); setNeeds(keep);
+    }).catch(() => setItems([]));
+  }, []);
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
-  const decide = async (id: string, decision: "confirm" | "decline") => {
-    setBusy(id); setError("");
-    try { await post(`/remotea/pending/${id}/${decision}`); refresh(); }
-    catch (e) { setError(message(e)); refresh(); }
-    finally { setBusy(""); }
+  const decide = async (id: string, decision: "confirm" | "decline", target?: string) => {
+    setBusy(id); setErrors(current => without(current, id));
+    try {
+      await post(`/remotea/pending/${id}/${decision}`, target ? { execution_target_id: target } : {});
+      setNeeds(current => without(current, id));
+    } catch (e) {
+      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
+      if (need) setNeeds(current => ({ ...current, [id]: need }));
+      else setErrors(current => ({ ...current, [id]: message(e) }));
+    } finally { setBusy(""); refresh(); }
   };
-  if (!items.length && !error) return null;
+  if (!items.length) return null;
   return <section className="remotea-pending" aria-label="Waiting for your confirmation">
     <h2>Eri is waiting for you</h2>
-    {error && <p role="alert" className="work-error">{error}</p>}
-    {items.map(p => <div key={p.id} className="remotea-pending-card">
-      <p>{p.summary}</p>
-      <div className="settings-form-actions">
-        <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
-        <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
-      </div>
-    </div>)}
+    {items.map(p => {
+      const need = p.id in needs ? needs[p.id] : (p.needs_target ? p.need ?? null : null);
+      return <div key={p.id} className="remotea-pending-card">
+        <p>{p.summary}</p>
+        {(p.problems ?? []).map(problem => <p key={problem.code} className="footnote">{problem.message}</p>)}
+        {need ? <TargetPicker key={need.task_id} need={need} onSaved={target => void decide(p.id, "confirm", target)}
+          onCancel={() => setNeeds(current => ({ ...current, [p.id]: null }))}/> :
+          <div className="settings-form-actions">
+            <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
+            <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
+          </div>}
+        {errors[p.id] && <p role="alert" className="work-error">{errors[p.id]}</p>}
+      </div>;
+    })}
   </section>;
 }
 
@@ -489,14 +516,14 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
 
 function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
   const options = targetOptions(need);
-  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(need.records[0]?.id ?? "task");
+  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const save = async () => {
     const option = options.find(o => o.key === key);
     if (!option) return;
     setBusy(true); setError("");
     try {
-      if ("saved" in option && scope === "task") return onSaved(option.saved.id);
+      // Every choice is saved: for a record (its project by default), or "Only this task" binds the task itself.
       const source = "saved" in option ? option.saved : option.advertised;
       const saved = await post<{ id: string }>("/remotea/targets", {
         host_id: source.host_id, host_target: source.host_target, repo: source.repo, worktree_root: source.worktree_root,
@@ -543,7 +570,8 @@ export function RunTask({ taskId, canEdit, onOpenRun }: { taskId: string; canEdi
       const run = await post<Run>("/remotea/runs", { task_id: taskId, ...(target ? { execution_target_id: target } : {}) });
       setActive(run); onOpenRun(run.id);
     } catch (e) {
-      if (e instanceof ApiError && e.code === "NEEDS_TARGET") setNeed(e.data as NeedsTarget);
+      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
+      if (need) setNeed(need);
       else setError(message(e));
     } finally { setBusy(false); }
   };

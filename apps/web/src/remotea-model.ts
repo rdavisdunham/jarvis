@@ -388,7 +388,8 @@ export function linkedRun(search: string) {
 
 export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null };
 export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string };
-export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[]; records: { id: string; title: string }[] };
+export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
+  records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
   base: string | null; ahead: number | null; behind: number | null; unpushed: number | null; uncommitted: number | null;
   untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null };
@@ -400,6 +401,19 @@ export function targetOptions(need: NeedsTarget) {
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
     .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: t.repo || t.host_name, advertised: t }));
   return [...saved, ...offered];
+}
+
+/** The picker's default "Remember for": the nearest record that is not a task (usually the project), so the choice
+ * also covers the task's siblings; else the task's own record; else "task" (only this task). */
+export function defaultScope(need: NeedsTarget) {
+  return (need.records.find(r => r.type_id && r.type_id !== "task") ?? need.records[0])?.id ?? "task";
+}
+
+/** A NEEDS_TARGET error's data, when it carries what the picker needs (a target without a server does not). */
+export function needsTargetData(data: unknown): NeedsTarget | null {
+  const need = data as Partial<NeedsTarget> | null;
+  return need && typeof need.task_id === "string" && Array.isArray(need.candidates) && Array.isArray(need.advertised)
+    && Array.isArray(need.records) ? need as NeedsTarget : null;
 }
 
 /** A short "why it is listed" line for an unmerged worktree. */

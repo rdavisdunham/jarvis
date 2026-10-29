@@ -1,8 +1,12 @@
 import asyncio
+from uuid import uuid4
 
 import pytest
+from jarvis.domain import DomainError
 from jarvis.tools import call_tool
 from jarvis.ui_control import UIContext, UISync, dispatch, pending, states, sync
+from test_agent_runs import host, start  # noqa: F401 - pytest fixture
+from test_organization_foundation import create
 
 
 @pytest.fixture(autouse=True)
@@ -131,3 +135,22 @@ def test_every_web_view_is_a_valid_device_context():
     assert UIContext(view="remotea").view == "remotea"
     with pytest.raises(ValueError):
         UIContext(view="http://evil.invalid")
+
+
+async def test_ui_show_says_remotea_is_off():
+    with pytest.raises(DomainError) as off:
+        await call_tool("davin", "turn", 0, "ui_show", {"view": "remotea"})
+    assert off.value.code == "REMOTEA_DISABLED"
+
+
+async def test_ui_show_opens_remotea_and_one_of_your_runs(host):  # noqa: F811
+    """Eri can open the remotea page or one run (what the push deep link ?run= opens), not another
+    namespace's run or an unknown one."""
+    run_id = start(host, create("task", "Open from Eri")["task_id"])["id"]
+    action = (await call_tool("davin", "turn", 0, "ui_show", {"view": "remotea", "entity_id": run_id}))["ui_action"]
+    assert (action["view"], action["entity_id"]) == ("remotea", run_id)
+    page = (await call_tool("davin", "turn", 0, "ui_show", {"view": "remotea"}))["ui_action"]
+    assert page["entity_id"] is None
+    for owner, identity in (("stranger", run_id), ("davin", str(uuid4()))):
+        with pytest.raises(DomainError):
+            await call_tool(owner, "turn", 0, "ui_show", {"view": "remotea", "entity_id": identity})

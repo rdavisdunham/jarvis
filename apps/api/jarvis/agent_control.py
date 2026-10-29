@@ -160,7 +160,8 @@ def resolve_target(db, owner, task, explicit=None):
         "task_id": task.id,
         "candidates": [public_target(t) for t in candidates or targets],
         "advertised": advertised(db, owner),
-        "records": [{"id": r.id, "title": r.title} for r in records],
+        # type_id lets the picker default to the nearest record that is not the task itself (its project).
+        "records": [{"id": r.id, "title": r.title, "type_id": r.type_id} for r in records],
     })
 
 
@@ -178,6 +179,12 @@ def save_target(db, owner, body):
     if body.record_id and target is None:
         target = db.scalar(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner,
                                                          ExecutionTarget.record_id == body.record_id))
+    elif target is None and body.task_id:
+        # "Only this task" with a target already saved for a record: bind the task to it, do not copy it.
+        target = db.scalar(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner,
+                                                         ExecutionTarget.host_id == host.id,
+                                                         ExecutionTarget.host_target == body.host_target)
+                           .order_by(ExecutionTarget.created_at).limit(1))
     if target is None:
         target = ExecutionTarget(owner_id=owner, host_id=host.id, host_target=body.host_target, record_id=body.record_id)
         db.add(target)
@@ -258,6 +265,16 @@ def host_harness(host, harness):
     return "spawn" in caps.get("caps", []) and bool((caps.get("harnesses", {}).get(harness) or {}).get("spawn"))
 
 
+def check_host(owner, task, host, harness):
+    """The refusals between a resolved target and a spawn; start_run raises them, a proposal reports them."""
+    if host is None or host.owner_id != owner:
+        raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
+    if not agent_link.connected(host):
+        raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
+    if not host_harness(host, harness):
+        raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {harness} yet.", 409)
+
+
 def start_run(db, owner, account_id, body, *, actor):
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
@@ -272,12 +289,7 @@ def start_run(db, owner, account_id, body, *, actor):
         raise DomainError("RUN_ACTIVE", "An agent run is already working on this task.", 409, data={"run_id": active.id})
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
-    if host is None or host.owner_id != owner:
-        raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
-    if not agent_link.connected(host):
-        raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
-    if not host_harness(host, body.harness):
-        raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {body.harness} yet.", 409)
+    check_host(owner, task, host, body.harness)
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
@@ -654,13 +666,71 @@ def work_message(row):
     return str((unseal(row.input_ciphertext) or {}).get("message") or "") if row else ""
 
 
+def proposed_target(db, owner, task):
+    """resolve_target for a proposal: the target, or None when the owner still has to choose (read-only)."""
+    try:
+        return resolve_target(db, owner, task)
+    except DomainError:
+        return None  # readiness() says why; confirm resolves again.
+
+
+def readiness(db, owner, row):
+    """What stands between a pending control.start and its run, checked without acting: no target chosen
+    (`needs_target`, with the picker's data in `need`), or the target's server offline or unable to start the
+    harness (`problems`). The proposal reports it to Eri, the remotea card shows it; confirm checks again."""
+    if row.tool != "control.start":
+        return {}
+    args = row.arguments or {}
+    out = {"needs_target": False, "need": None, "target": None, "problems": []}
+    task = db.get(Task, args.get("task_id"))
+    try:
+        if task is None or task.owner_id != owner:
+            raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
+        target = resolve_target(db, owner, task, args.get("execution_target_id"))
+        out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
+        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None,
+                   args.get("harness", "claude"))
+    except DomainError as error:
+        if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
+            return {**out, "needs_target": True, "need": error.data}
+        out["problems"].append({"code": error.code, "message": error.message})
+    return out
+
+
+def proposal(db, owner, result):
+    """A control_start proposal as Eri sees it: the pending row plus what still stands in its way, and what to
+    tell the owner about it. The picker's data stays on the remotea card."""
+    from .session_models import AgentPendingControl
+
+    row = db.get(AgentPendingControl, result.get("pending_id"))
+    if row is None or row.tool != "control.start":
+        return result
+    ready = readiness(db, owner, row)
+    told = []
+    if ready["needs_target"]:
+        told.append("No repository is chosen for this task yet: tell the owner to pick where it runs on the card on "
+                    "the remotea page (the choice is remembered for the task's project), which also confirms it. A "
+                    "yes in chat cannot start it until a place is chosen.")
+    for problem in ready["problems"]:
+        told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
+                    "fixed; the proposal stays open until it expires.")
+    return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
+            "target": ready["target"], "problems": ready["problems"],
+            **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
+
+
 def propose(db, owner, account, tool, args, actor):
     """control_start / control_message from Eri: resolve and validate now, act only after the owner confirms."""
     work = current_work(db)
     if tool == "control.start":
         task = owned(db, Task, args.task_id or task_by_name(db, owner, args.task), owner)
         arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
-        summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d"
+        # Where it runs is settled now when it can be (the card then names it); without a target the card asks.
+        target = proposed_target(db, owner, task)
+        if target is not None:
+            arguments["execution_target_id"] = target.id
+        summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d" + (
+            f" in {(target.name or target.host_target)[:100]}" if target is not None else "")
     else:
         run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
         task = db.get(Task, run.task_id)
@@ -723,22 +793,33 @@ def owners_yes(db, owner, row, work):
 
 def public_pending(row):
     return encode({"id": row.id, "tool": row.tool, "summary": row.summary, "run_id": row.run_id,
+                   "task_id": (row.arguments or {}).get("task_id") if row.tool == "control.start" else None,
                    "status": row.status, "created_at": row.created_at, "expires_at": row.expires_at,
                    "decided_via": row.decided_via, "decided_at": row.decided_at})
 
 
 def pending_list(db, owner):
+    """The remotea page's open proposals, each with readiness() so a start without a target shows the picker."""
+    from sqlalchemy import update
+
     from .session_models import AgentPendingControl
 
+    # decide() refuses an expired row but its transaction rolls back; settle them here so they read as expired.
+    db.execute(update(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
+                                                 AgentPendingControl.status == "pending",
+                                                 AgentPendingControl.expires_at <= now()).values(status="expired"))
     rows = db.scalars(select(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
                                                         AgentPendingControl.status == "pending",
                                                         AgentPendingControl.expires_at > now())
                       .order_by(AgentPendingControl.created_at.desc()).limit(20))
-    return [public_pending(r) for r in rows]
+    return [{**public_pending(r), **readiness(db, owner, r)} for r in rows]
 
 
-def decide(db, owner, pending_id, *, confirm, via, actor):
-    """Run (or drop) a pending control. `via` is "app" for the remotea page, else "voice"/"chat" (control_confirm)."""
+def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=None):
+    """Run (or drop) a pending control. `via` is "app" for the remotea page, else "voice"/"chat" (control_confirm).
+
+    A start that still needs a target is refused with NEEDS_TARGET and stays pending (the transaction rolls
+    back); the page's picker then confirms again with `execution_target_id`."""
     from .access import actor as account
     from .session_models import AgentPendingControl
 
@@ -750,7 +831,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor):
         raise DomainError("PENDING_CLOSED", f"That agent action was already {row.status}.", 409,
                           data={"status": row.status})
     if row.expires_at <= now():
-        row.status = "expired"
+        # Refused, so this transaction rolls back: pending_list() marks the row expired.
         raise DomainError("PENDING_EXPIRED", "That agent action expired; ask again.", 409)
     row.decided_at, row.decided_via = now(), via
     if not confirm:
@@ -762,7 +843,9 @@ def decide(db, owner, pending_id, *, confirm, via, actor):
     args = row.arguments
     if row.tool == "control.start":
         result = start_run(db, owner, row.account_id or account(db, owner),
-                           StartInput(task_id=args["task_id"], harness=args.get("harness", "claude")), actor=confirmed)
+                           StartInput(task_id=args["task_id"], harness=args.get("harness", "claude"),
+                                      execution_target_id=execution_target_id or args.get("execution_target_id")),
+                           actor=confirmed)
         run = coordinator.load(db, owner, result["id"])
         coordinator.note(run, "confirmed", pending_id=row.id, proposed_by=row.actor, via=via)
         row.run_id = result["id"]
@@ -844,6 +927,8 @@ def mutate(db, owner, tool, args, command_id):
     """domain.mutate entrance for control.* (voice, chat). start and message are two-phase (propose, then the
     owner confirms); status, stop and answer stay immediate."""
     result = control_command(db, owner, tool, args)
+    if tool == "control.start" and isinstance(result, dict) and result.get("status") == "pending_confirmation":
+        result = proposal(db, owner, result)
     journal_control(db, owner, tool, command_id, result)
     return result
 

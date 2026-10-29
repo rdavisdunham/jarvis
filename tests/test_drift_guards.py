@@ -6,8 +6,11 @@ are read as text (the backend job has no Node), so the parsers below fail loudly
 declaration moves instead of passing on an empty match.
 """
 
+import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 from typing import get_args
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,12 +35,6 @@ def ts_union(file, name):
     return set(strings(found(rf"export type {name}\s*=([^;]+);", web(file), f"type {name} in {file}")))
 
 
-# Gaps known on this branch. Each entry is a real mismatch that someone should close; shrink the
-# set when it is fixed (the equality assertions below fail until you do).
-SITE_ACTION_VIEW_GAPS = {"remotea"}  # Eri may name it in ui_workspace/ui_search; site-actions.ts zod rejects it.
-UI_SHOW_VIEW_GAPS = {"remotea"}  # ui_show (tools.py enum and call_tool's set) cannot open the remotea page.
-
-
 def test_web_pages_match_backend_views():
     """A page the backend does not know makes every chat message from it fail validation (PR #76)."""
     from jarvis.ui_contracts import VIEWS
@@ -51,16 +48,69 @@ def test_web_pages_match_backend_views():
 
 
 def test_browser_accepts_the_views_eri_can_send():
+    """ui_workspace/ui_search/ui_show may name any page; site-actions.ts zod rejected remotea after PR #76."""
     from jarvis.tools import READ_TOOLS
     from jarvis.ui_contracts import VIEWS
 
     site_views = set(strings(found(r"export const views\s*=\s*\[(.*?)\]", web("site-actions.ts"), "views")))
-    assert site_views <= set(VIEWS)
-    assert set(VIEWS) - site_views == SITE_ACTION_VIEW_GAPS, "apps/web/src/site-actions.ts views vs VIEWS"
-    show = set(READ_TOOLS["ui_show"]["parameters"]["properties"]["view"]["enum"])
-    assert show <= set(VIEWS) and set(VIEWS) - show == UI_SHOW_VIEW_GAPS, "tools.py ui_show view enum"
-    for tool in ("ui_search", "ui_workspace", "ui_filter"):
-        assert set(READ_TOOLS[tool]["parameters"]["properties"]["view"]["enum"]) <= set(VIEWS), tool
+    assert site_views == set(VIEWS), "apps/web/src/site-actions.ts views vs ui_contracts.VIEWS"
+    for tool in ("ui_show", "ui_search", "ui_workspace"):
+        assert set(READ_TOOLS[tool]["parameters"]["properties"]["view"]["enum"]) == set(VIEWS), tool
+    # ui_filter is a deliberate subset: only pages that show filterable records.
+    assert set(READ_TOOLS["ui_filter"]["parameters"]["properties"]["view"]["enum"]) <= set(VIEWS)
+
+
+async def test_ui_show_opens_every_page_in_its_enum():
+    """call_tool once kept its own copy of the ui_show page set; it now checks the tool's enum."""
+    from jarvis.domain import DomainError
+    from jarvis.tools import READ_TOOLS, call_tool
+
+    source = (ROOT / "apps/api/jarvis/tools.py").read_text()
+    branch = found(r'if name == "ui_show":(.*?)\n    if name ==', source, "call_tool ui_show branch")
+    assert 'READ_TOOLS["ui_show"]["parameters"]["properties"]["view"]["enum"]' in branch
+    assert not re.search(r'\{\s*"organize",', branch), "call_tool ui_show: derive the page set from the enum"
+    for view in READ_TOOLS["ui_show"]["parameters"]["properties"]["view"]["enum"]:
+        if view == "remotea":
+            continue  # Gated on the remotea setting; tests/test_ui_control.py covers it.
+        assert (await call_tool("davin", "turn", 0, "ui_show", {"view": view}))["ui_action"]["view"] == view
+    try:
+        await call_tool("davin", "turn", 0, "ui_show", {"view": "elsewhere"})
+    except DomainError as error:
+        assert error.code == "INVALID_ARGUMENT"
+    else:
+        raise AssertionError("ui_show opened an unknown page")
+
+
+def test_push_and_in_app_notifications_open_the_same_place():
+    """worker.notification_url (push) and notice-target.ts (the Notifications page's Open) share the cases in
+    apps/web/src/notice-targets.json; notice-target.test.ts checks the web side against the same rows."""
+    from jarvis.worker import notification_url
+
+    cases = json.loads((WEB / "notice-targets.json").read_text())
+    for case in cases:
+        row = case["notification"]
+        url = notification_url(SimpleNamespace(task_id=row["task_id"], target=row["target"]))
+        assert url == case["url"], case["name"]
+        # The URL and the in-app destination name the same place.
+        query = {k: v[0] for k, v in parse_qs(urlsplit(url).query, keep_blank_values=True).items()}
+        opened = case["open"]
+        expected = {
+            "run": {"view": "remotea", "run": opened.get("run") or ""},
+            "task": {"view": "tasks", "tab": "all", "record": "task:" + str(opened.get("task")),
+                     "workspace": "personal"},
+            "activity": {"view": "tasks", "activity": "1"},
+            "today": {"view": "tasks", "tab": "today"},
+            "notifications": {"view": "notifications"},
+        }[opened["open"]]
+        assert query == expected, case["name"]
+    # Every target.view a notification is created with has a case.
+    creators = "".join((ROOT / "apps/api/jarvis" / f).read_text() for f in ("notices.py", "run_coordinator.py"))
+    views = set(re.findall(r'target=\{\s*"view":\s*"([a-z_]+)"', creators))
+    assert views, "notification target parser"
+    assert views <= {(c["notification"]["target"] or {}).get("view") for c in cases}, views
+    # The page's Open button goes through the shared helper.
+    button = found(r'className="notice-primary" onClick=\{(.*?)\}>Open<', web("App.tsx"), "Notifications Open button")
+    assert "noticeDestination(n)" in button
 
 
 def test_editor_kinds_match_the_browser():
@@ -83,6 +133,17 @@ def test_settings_sections_match_everywhere():
     assert sections == set(tool), "ui_contracts.py ui_workspace settings_section"
     site = strings(found(r"settings_section:\s*z\s*\.enum\(\[(.*?)\]", web("site-actions.ts"), "settings_section"))
     assert sections == set(site), "apps/web/src/site-actions.ts settings_section"
+
+
+def test_agent_docs_name_real_settings_sections():
+    """EXTERNAL_AGENTS.md said "Settings → Integrations" after the section was relabelled "Connections"."""
+    labels = re.findall(r'label: "([^"]+)"', web("settings-sections.ts"))
+    assert labels, "settings-sections.ts label parser"
+    for doc in ("EXTERNAL_AGENTS.md", "AGENT_CONTROL.md"):
+        text = (ROOT / "docs" / doc).read_text()
+        for match in re.finditer(r"Settings → ", text):
+            rest = text[match.end():]
+            assert any(rest.startswith(label) for label in labels), (doc, rest[:40])
 
 
 def test_web_run_states_match_the_coordinator():

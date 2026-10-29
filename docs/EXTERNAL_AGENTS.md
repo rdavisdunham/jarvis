@@ -2,7 +2,7 @@
 
 ## Create a connection
 
-Open **Settings → Integrations → Connected agents** in the intended workspace. Add an agent, choose its permissions and expiration, and copy the key once. It is stored only as a hash; losing it requires a new key. Revoke obsolete keys in the same panel.
+Open **Settings → Connections → Connected agents** in the intended workspace. Add an agent, choose its permissions and expiration, and copy the key once. It is stored only as a hash; losing it requires a new key. Revoke obsolete keys in the same panel.
 
 Each key is tied to one workspace and the account that created it. Switching the browser workspace does not move the key. A shared-workspace membership downgrade limits writes immediately; leaving or being removed ends access. Workspace owners can revoke keys in that workspace; other members manage their own keys.
 

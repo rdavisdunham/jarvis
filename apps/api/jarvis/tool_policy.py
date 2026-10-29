@@ -53,8 +53,8 @@ LIVE_WORK_SECONDS = 15 * 60
 
 
 def remotea_tools(definitions, owner, *, live=True):
-    """Drop the control tools unless the owner turned remotea on (Settings → remotea), and for work without a
-    present human (stage F, D3): background or long-parked work never gets control_* at all."""
+    """Drop the control tools unless the owner turned remotea on (Settings → Connections → remotea), and for
+    work without a present human (stage F, D3): background or long-parked work never gets control_* at all."""
     from .agent_link import enabled
     from .db import session_scope
 
