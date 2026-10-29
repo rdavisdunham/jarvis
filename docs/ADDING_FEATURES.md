@@ -62,14 +62,20 @@ Web (`apps/web/src/`):
       `className="page-search"` if the page has no search.
 - [ ] `task-presets.ts` `initialView`: the `?view=` deep-link allowlist. Not type-checked; a missing
       name silently opens Today.
-- [ ] `site-actions.ts` `views`: the zod enum for Eri's site controls. A view Eri may send that is
-      missing here throws in `copilot.tsx` (`actionSchema.parse`). Today `remotea` is missing on
-      purpose or by accident; see Drift guards.
+- [ ] `site-actions.ts` `views`: the zod enum for Eri's site controls. It must equal
+      `ui_contracts.VIEWS`: Eri may name any page in `ui_show`/`ui_workspace`/`ui_search`, and a view
+      missing here throws in `copilot.tsx` (`actionSchema.parse`). `remotea` was missing until the
+      fix-remotea-wiring branch.
 - [ ] Lazy chunk: large pages go in `viewChunks` with `lazy()` + `<Suspense>` (as `Remotea` does).
 - [ ] Extra deep-link parameters (for example `?view=remotea&run=<id>`) are parsed inside the page
       (`remotea-model.ts` `linkedRun`, validated as a UUID). The URL sync block in `App.tsx`
       (`navigationUrl.searchParams…`) sets/deletes only the parameters it knows; add yours there if
-      back/forward should preserve it.
+      back/forward should preserve it. In-app paths to the same place (a task card's Run, Eri's
+      `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does
+      (it also remounts the page, which reads its `run` prop only on mount).
+- [ ] If Eri may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
+      list and an `else if (action.view === "…")` that fetches the record first) and the model map in
+      `tools.py` `call_tool` (below).
 - [ ] Styling: a page stylesheet imported by the page component (`import "./remotea.css"`), using
       only tokens from `theme.css` (`--paper`, `--surface`, `--ink*`, `--violet*`, `--line*`, …; see
       `docs/DESIGN.md`). No hex colors outside `theme.css`; then dark mode works for free. A new token
@@ -85,16 +91,20 @@ Backend (`apps/api/jarvis/`):
 
 - [ ] `ui_control.py` `View` literal (validates `UIContext.view` in `UISync`).
 - [ ] `ui_contracts.py` `VIEWS` (feeds `ui_workspace` and, via `tools.py`, `ui_search`).
-- [ ] `tools.py`: `READ_TOOLS["ui_show"]` `view` enum **and** the hard-coded set in `call_tool`'s
-      `if name == "ui_show":` branch, if Eri should be able to open the page. `ui_filter`'s `view`
-      enum is a deliberate subset; leave it unless the page shows tasks.
+- [ ] `tools.py`: nothing for the page itself. `READ_TOOLS["ui_show"]`'s `view` enum is set from `VIEWS`
+      (after `READ_TOOLS.update(UI_TOOLS)`) and `call_tool`'s `ui_show` branch checks that enum. For
+      `entity_id` support add the page's model to the `model` map there (`"remotea": AgentRun`) and say
+      what the ID is in the `entity_id` description; a gated page checks its gate there (remotea calls
+      `agent_link.gate`). `ui_filter`'s `view` enum is a deliberate subset; leave it unless the page shows
+      tasks.
 - [ ] If the page has its own settings section, see section 8.
 - [ ] Personal-only pages: add the API prefix to `access.py` `PERSONAL_PATHS` (as `/api/v1/remotea`).
 
 Tests: `tests/test_drift_guards.py` (`test_web_pages_match_backend_views`,
-`test_browser_accepts_the_views_eri_can_send`), `tests/test_ui_control.py`
-(`test_every_web_view_is_a_valid_device_context`), `apps/web/src/calendar-tasks.test.ts`
-(`initialView`).
+`test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`),
+`tests/test_ui_control.py` (`test_every_web_view_is_a_valid_device_context`,
+`test_ui_show_opens_remotea_and_one_of_your_runs`), `apps/web/src/site-actions.test.ts`,
+`apps/web/src/calendar-tasks.test.ts` (`initialView`).
 
 Verify: `pytest -q tests/test_drift_guards.py tests/test_ui_control.py` and
 `cd apps/web && npx vitest run && npx tsc -b`; then open the page and send Eri a chat message from it.
@@ -127,9 +137,16 @@ Verify: `pytest -q tests/test_drift_guards.py tests/test_ui_control.py` and
 - [ ] Rate limits are per feature, not global: bot keys 120/min (`bot_access.authenticate`), pairing
       login (`login_attempts`), client latency reports, Google sign-in, queued work (`QUEUE_FULL`),
       link frames in `agent_link.py`. Add one if the route is expensive or unauthenticated.
-- [ ] Refresh the surface inventory (`scripts/app_eval/inventory.py`). `route_owner()` maps the path to
-      an eval feature and raises `New API route needs a feature owner` for an unknown prefix; add a
-      branch there. Then regenerate `evals/app/surface-inventory.json` and commit it. Guard:
+- [ ] Refresh the surface inventory (`scripts/app_eval/inventory.py`). It reads decorator paths that
+      are string literals or module-level string constants (`@router.websocket(PATH)`); anything else
+      (an f-string, an imported name) is skipped silently. `route_owner()` maps the path to an eval
+      feature (`evals/app/features.json`) and raises `New API route needs a feature owner` for an
+      unknown prefix; add a branch there. The owner must be a feature in `features.json` (guard:
+      `evals/test_app_eval.py::test_every_surface_owner_is_a_catalog_feature`); a new feature also
+      needs 25-50 scenarios in `evals/app/features/<id>.json`, a type in `scripts/app_eval/registry.py`
+      `GROUPS`, the catalog counts in `evals/test_app_eval.py` / `evals/test_campaign.py`, and a
+      regenerated `evals/app/automation-coverage.json` (`docs/CI.md`). Then regenerate
+      `evals/app/surface-inventory.json` and commit it. Guard:
       `evals/test_app_eval.py::test_surface_inventory_matches_current_app`.
 - [ ] Docs: there is no checked-in OpenAPI spec (FastAPI's defaults are not overridden). Routes are
       documented by hand: bot routes in `docs/EXTERNAL_AGENTS.md`, remotea routes in the "Browser
@@ -295,12 +312,17 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       workspaces; quiet hours via `quiet_until`; task-linked notices drop when the task is done.
 - [ ] Deep link: `worker.notification_url(notification)` maps `target` to a `/?…` URL (remotea →
       `/?view=remotea&run=<id>`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
-      the parameter (section 1). The in-app Notifications page has its own "Open" handler in `App.tsx`
-      (`notice-primary` button) that does **not** read `target.view == "remotea"`; it opens the task.
+      the parameter (section 1). The in-app Notifications page's "Open" (`notice-primary` in `App.tsx`)
+      goes through `apps/web/src/notice-target.ts` `noticeDestination`, which mirrors
+      `notification_url` in the same order. A new `target.view` needs a branch in both and a row in
+      `apps/web/src/notice-targets.json` (notification, push URL, in-app destination); the drift guard
+      fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` has no row.
 - [ ] `detailed_notifications` (preference, default off) replaces title/body with a generic text in
       the push payload; write titles that still make sense in-app only.
 - [ ] Tests: `tests/test_smart_notifications.py`, `tests/test_push_registration.py`,
-      `apps/web/src/push-subscription.test.ts`.
+      `apps/web/src/push-subscription.test.ts`, `apps/web/src/notice-target.test.ts` and
+      `tests/test_drift_guards.py::test_push_and_in_app_notifications_open_the_same_place` (both read
+      `notice-targets.json`).
 
 Change feed (SSE `GET /api/v1/events`):
 
@@ -401,7 +423,8 @@ Existing tests that pin a list in two places:
 - `tests/test_ui_control.py::test_every_web_view_is_a_valid_device_context`: `ui_control.View` ==
   `ui_contracts.VIEWS` (PR #76).
 - `evals/test_app_eval.py::test_surface_inventory_matches_current_app`: routes, commands and read
-  tools vs `evals/app/surface-inventory.json`.
+  tools vs `evals/app/surface-inventory.json`; `::test_every_surface_owner_is_a_catalog_feature`: every
+  owner the inventory assigns is a feature in `evals/app/features.json`.
 - `tests/test_tool_refinement.py`: registry == union of `tool_catalog.GROUPS` + `CORE`.
 - `tests/test_agent_voice.py::test_control_tools_are_registered_described_and_grouped`: control
   commands, `CONTROL_TOOLS`, `DESCRIPTIONS`, `GROUPS["agents"]`.
@@ -415,7 +438,10 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | Test | Asserts |
 |---|---|
 | `test_web_pages_match_backend_views` | `types.ts` `View` == `ui_control.View` == `ui_contracts.VIEWS` == `task-presets.ts` `initialView` list |
-| `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` and `tools.py` `ui_show` enum ⊆ `VIEWS`, with the known gap (`remotea`) listed explicitly; `ui_search`/`ui_workspace`/`ui_filter` ⊆ `VIEWS` |
+| `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` == `ui_show`/`ui_search`/`ui_workspace` enums == `VIEWS`; `ui_filter` ⊆ `VIEWS` |
+| `test_ui_show_opens_every_page_in_its_enum` | `call_tool`'s `ui_show` branch checks the tool's enum (no copy) and opens every page in it |
+| `test_push_and_in_app_notifications_open_the_same_place` | `worker.notification_url` gives each `notice-targets.json` row's URL, the URL and the in-app destination agree, every created `target.view` has a row, and `App.tsx` Open calls `noticeDestination` (`notice-target.test.ts` checks the web side on the same rows) |
+| `test_agent_docs_name_real_settings_sections` | every "Settings → X" in `EXTERNAL_AGENTS.md` / `AGENT_CONTROL.md` starts with a `settings-sections.ts` label |
 | `test_editor_kinds_match_the_browser` | `site-actions.ts` `editorKinds` == `ui_contracts.EDITOR_KINDS` ⊆ `EditorContext.kind` |
 | `test_settings_sections_match_everywhere` | `settings-sections.ts` == `UIContext.settings_section` == `ui_workspace` enum == `site-actions.ts` enum |
 | `test_web_run_states_match_the_coordinator` | `remotea-model.ts` `RunState` == `run_coordinator.STATES`; terminal lists equal |
@@ -426,10 +452,6 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 
 Worth adding (lists in two places with no test yet):
 
-- `tools.py` `call_tool` hard-codes the `ui_show` page set separately from `READ_TOOLS["ui_show"]`;
-  derive one from the other.
-- `worker.notification_url` vs the in-app "Open" handler in `App.tsx`: a test (or shared helper) so
-  `target.view` values open the same place from push and from the Notifications page.
 - `action_history.MODELS` keys vs `Activity.tsx` `editable`.
 - `access.PERSONAL_TOOLS` (dotted) vs `access.tool_access` prefixes (underscored): one list.
 - `external_mcp.definitions`' custom-read tuple vs `external_service.CUSTOM_READS` vs
@@ -442,18 +464,12 @@ Worth adding (lists in two places with no test yet):
 
 ## Things that surprised me or look like latent drift
 
-- **`remotea` is not a site-control page.** After PR #76, `ui_workspace` and `ui_search` accept
-  `view: "remotea"`, but `site-actions.ts` `views` does not, so the browser rejects that action; and
-  `ui_show` cannot open remotea at all. Pinned as known gaps in `test_drift_guards.py`.
-- The in-app Notifications "Open" button ignores `target.view == "remotea"`; push opens the run, the
-  page opens the task card.
-- The remotea link websocket (`agent_link.py`, `@router.websocket(PATH)`) is invisible to the surface
-  inventory: `inventory.routes()` only reads string-literal decorator paths.
-- The inventory owns remotea routes and `control.*` under feature `agent_control`, which is not a
-  feature in `evals/app/features.json` (agent-control evals live separately in `evals/agent_control/`).
+- Fixed on the fix-remotea-wiring branch: `remotea` was not a site-control page (`site-actions.ts`
+  rejected it, `ui_show` could not open it); the in-app Notifications "Open" ignored
+  `target.view == "remotea"`; the remotea link websocket was invisible to the surface inventory;
+  `agent_control` had no entry in `evals/app/features.json` (it now has 25 unbound scenarios; the
+  outcome eval stays in `evals/agent_control/`); `EXTERNAL_AGENTS.md` said "Settings → Integrations".
 - `api.py` `export` omits structure records, record templates and agent session/run tables. I could not
   tell whether that is intentional.
-- `docs/EXTERNAL_AGENTS.md` says "Settings → Integrations → Connected agents"; the section is labelled
-  "Connections" in `settings-sections.ts`.
 - `bot_access.SCOPES` is served to the web (`GET /api/v1/bot-keys` → `scopes`) but `BotSettings.tsx`
   ignores it and hard-codes the groups; rendering from the server list would remove a mirror.

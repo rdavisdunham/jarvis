@@ -13,7 +13,7 @@ GROUPS = {
     "contracts": "quick_capture onboarding task_capture task_edit task_lifecycle time_deadlines routines organization custom_schema custom_records planner_views planning notifications accounts workspaces privacy operations budget",
     "agent": "queue clarifications receipts chat_agent quick_sort",
     "pipeline": "notes note_tasks note_lists note_organization search search_aliases memory_capture memory_management memory_dream routing_rules routing_dream",
-    "integration": "google_sync google_writes linear_sync linear_writes external_agents",
+    "integration": "google_sync google_writes linear_sync linear_writes external_agents agent_control",
     "browser": "site_controls browser_settings",
     "voice": "live_voice wake_shutdown",
 }
