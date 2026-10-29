@@ -86,6 +86,7 @@ REASONS = {
     "turn_cap": "The run reached its turn cap.",
     "question_timed_out": "The question timed out here; answer it in the terminal.",
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
+    "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "no_progress_gap": "The judge found the same gap several turns in a row.",
     "judge_needs_you": "The judge says this needs you.",
     "judge_unavailable": "The judge could not reach a verdict.",
@@ -640,19 +641,38 @@ def settle_planning(db, run):
         if run.state != "needs_you":
             transition(db, run, "needs_you", reason="no_plan")
         return
+    plan = frozen(db, run)
+    if plan is not None and plan.proposals:
+        # The agent wants to change what a human set (agent_plan.plan_proposals): the operator accepts or keeps
+        # each change on the run page (review_plan) before anything is frozen for execution.
+        if run.state != "needs_you":
+            transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
+        return
     begin_execution(db, run)
 
 
-def begin_execution(db, run, reason="plan_frozen"):
+def proposal_summary(proposals):
+    parts = []
+    criteria = proposals.get("criteria") or []
+    if criteria:
+        parts.append(f"{len(criteria)} criteri" + ("on" if len(criteria) == 1 else "a"))
+    if proposals.get("verify"):
+        parts.append("the verification")
+    if proposals.get("completion_policy"):
+        parts.append("the completion policy")
+    return "Proposed changes to " + ", ".join(parts) if parts else ""
+
+
+def begin_execution(db, run, reason="plan_frozen", preface="", actor=None):
     from . import agent_prompts as prompts
 
     plan = frozen(db, run)
     run.plan_pending = False
     if run.state != "planning":
-        transition(db, run, "planning", reason="plan_frozen")
-    transition(db, run, "executing", reason=reason)
+        transition(db, run, "planning", actor=actor, reason="plan_frozen")
+    transition(db, run, "executing", actor=actor, reason=reason)
     command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
-                               "text": prompts.execute(render_plan(db, run, plan)), "mode": "queue"}, source="eridani")
+                               "text": prompts.execute(render_plan(db, run, plan), preface), "mode": "queue"}, source="eridani")
 
 
 def after_turn(db, run):

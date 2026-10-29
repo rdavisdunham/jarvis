@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Criteria, InterviewForm } from "./Remotea";
+import { Criteria, InterviewForm, PlanReview } from "./Remotea";
 import {
-  attemptTitle, criteriaEvidence, interviewAnswers, latestAttempt, runControls, timeline,
-  type Attempt, type Interview, type Run, type RunDetail,
+  attemptTitle, criteriaEvidence, interviewAnswers, latestAttempt, orderOptions, planReviewBody, runControls, timeline,
+  type Attempt, type Interview, type Proposals, type Run, type RunDetail,
 } from "./remotea-model";
 
 const run = (values: Partial<Run> = {}): Run => ({
@@ -92,5 +92,70 @@ describe("text sent to the agent (stage F)", () => {
     ] }));
     expect(entries.map(e => [e.title, e.detail])).toEqual([
       ["Sent by Eri, confirmed by you", "Change course."], ["Sent by you", "Also docs."]]);
+  });
+});
+
+describe("chat timeline", () => {
+  it("shows a sent text once, says who sent it, and tells the agent's turns from Eridani's events", () => {
+    const entries = timeline(detail({
+      history: [{ at: "2026-10-28T10:02:00Z", event: "sent", text: "Also docs.", actor: { kind: "human" } },
+        { at: "2026-10-28T10:04:00Z", event: "sent", text: "The operator answered…", actor: { kind: "run_judge" } }],
+      commands: [
+        { id: "i1", op_id: "o1", kind: "input", status: "executed", generation: 1, mode: "queue", text: "Also docs.", outcome: { state: "executed" }, created_at: "2026-10-28T10:02:01Z", updated_at: "2026-10-28T10:02:05Z" },
+        { id: "i2", op_id: "o2", kind: "input", status: "failed", generation: 1, mode: "queue", text: "The operator answered…", outcome: { state: "failed", detail: "surface gone" }, created_at: "2026-10-28T10:04:01Z", updated_at: "2026-10-28T10:04:05Z" },
+      ],
+      turns: [{ id: "t", seq: 1, text: "Done with step one.", clipped: false, truncated: false, generation: 1, at: "2026-10-28T10:03:00Z", prompt: "" }],
+    }));
+    expect(entries.map(e => [e.title, e.who])).toEqual([
+      ["Sent by you", "you"], ["Turn 1", "agent"], ["Sent by Eridani", "eridani"], ["Message · failed", "eridani"]]);
+    expect(entries[3].detail).toBe("surface gone");  // The failed delivery shows its outcome, not the text again.
+  });
+  it("puts plan submission and your review on the timeline", () => {
+    const entries = timeline(detail({ history: [
+      { at: "2026-10-28T10:05:00Z", event: "plan_submitted", plan_revision: 1, proposals: "Proposed changes to 1 criterion" },
+      { at: "2026-10-28T10:06:00Z", event: "plan_reviewed", plan_revision: 2, accepted: ["c1"], kept: ["c3"], actor: { kind: "human" } },
+    ] }));
+    expect(entries.map(e => [e.title, e.detail, e.tone])).toEqual([
+      ["Plan submitted · revision 1", "Proposed changes to 1 criterion — waiting for your review.", "attention"],
+      ["Plan reviewed by you · revision 2", "accepted c1 · kept c3", "good"]]);
+  });
+});
+
+describe("plan review", () => {
+  const proposals: Proposals = {
+    criteria: [{ id: "c1", change: "reword", text: "compares only cmd", proposed: "compares cmd and url", because: "You answered: compare cmd and url" },
+      { id: "c3", change: "remove", text: "docs updated", because: "No docs here" }],
+    completion_policy: { current: "pr_merged", proposed: "pr_open" },
+  };
+  const waiting = detail({ state: "needs_you", state_reason: "plan_review", reason_text: "The agent proposes changes…",
+    plan: { ...detail().plan!, proposals } });
+  it("renders each proposal with yours, the agent's, its reason, and Accept first in green", () => {
+    const html = renderToStaticMarkup(<PlanReview run={waiting} onDone={() => {}}/>);
+    expect(html).toContain("Plan review"); expect(html).toContain("compares only cmd"); expect(html).toContain("compares cmd and url");
+    expect(html).toContain("You answered: compare cmd and url"); expect(html).toContain("remove this criterion");
+    expect(html).toContain("Done when the pull request is merged");
+    expect(html).toMatch(/aria-pressed="true"[^>]*btn-primary[^>]*>Accept</); expect(html).toContain(">Keep mine<");
+    expect(html).toContain("Freeze the plan and start");
+    expect(renderToStaticMarkup(<PlanReview run={detail()} onDone={() => {}}/>)).toBe("");
+  });
+  it("sends one decision per change and your wording only when you changed it", () => {
+    expect(planReviewBody(proposals, { c1: { accept: true, text: " compares cmd and url " }, c3: { accept: false, text: "" } }, "accept", "keep", 7)).toEqual({
+      decisions: [{ id: "c1", accept: true }, { id: "c3", accept: false }], verify: "keep", completion_policy: "keep", expected_revision: 7 });
+    expect(planReviewBody(proposals, { c1: { accept: true, text: "compares cmd and url only" } }, "keep", "accept", 7).decisions[0])
+      .toEqual({ id: "c1", accept: true, text: "compares cmd and url only" });
+  });
+});
+
+describe("answer options", () => {
+  it("puts the recommended option first and lets you type an answer to any question", () => {
+    expect(orderOptions([{ label: "A" }, { label: "B (Recommended)" }, { label: "C", description: "recommended path" }]).map(o => o.label))
+      .toEqual(["B (Recommended)", "C", "A"]);
+    expect(interviewAnswers(interview, { where: ["Web"] }, { scope: "Only the charts", budget: "50 ms" }))
+      .toEqual({ scope: "Only the charts", where: ["Web"], budget: "50 ms" });
+    const html = renderToStaticMarkup(<InterviewForm interview={{ ...interview, questions: [{ ...interview.questions[0],
+      options: [{ label: "All" }, { label: "Charts (Recommended)" }] }] }} onDone={() => {}}/>);
+    expect(html.indexOf("Charts (Recommended)")).toBeLessThan(html.indexOf(">All<"));
+    expect(html).toMatch(/btn-recommended[^>]*>Charts \(Recommended\)/);
+    expect(html).toContain('aria-label="Answer: Which widgets?"');
   });
 });

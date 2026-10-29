@@ -61,6 +61,7 @@ def interview(task, children, notes=""):
         "Submit the questions with task_interview and stop. Do not change any code yet. If you already have "
         "everything you need, call submit_plan instead and stop.",
         TOOLS,
+        FLOOR,
     ])
 
 
@@ -78,15 +79,24 @@ def planning(interview_row):
         "Now write the PRD with success criteria and call submit_plan (prd, steps with ids, success_criteria with "
         "kind text or verify, verify config if the execution target offers one, expected_plan_revision from "
         "task_plan), then stop. Keep the linked sub-task steps. Do not start the work yet.",
+        FLOOR,
     ])
 
 
-def execute(plan_text):
-    return "\n\n".join([
+FLOOR = ("The operator's own success criteria (those without by: agent in task_plan) are the floor: repeat each one by id "
+         "with its exact text. If an answer or something you learned means one of them should change, do not reword it "
+         "silently and do not argue with it in the PRD: send the same id with the new text and a `because` that quotes "
+         "the answer, or `drop: true` with a `because` to propose removing it. Eridani shows each proposal to the "
+         "operator, who accepts or keeps it before the work starts. Criteria you add are accepted as they are.")
+
+
+def execute(plan_text, preface=""):
+    return "\n\n".join(filter(None, [
+        preface,
         "Your plan is frozen. Execute it now in this worktree. Tick steps with task_step as you go; Eridani checks "
         "every turn against the success criteria and tells you what is still missing.",
         plan_text,
-    ])
+    ]))
 
 
 def gap(verdict_gap, criteria):

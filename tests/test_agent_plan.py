@@ -291,3 +291,70 @@ def test_a_restored_surface_returns_to_the_planning_phase_not_execution(host):  
         coordinator.reconcile(db, OWNER, host.id, [SimpleNamespace(
             surf=row.surf, run_id=run_id, state="idle", incarnation=1, generation=1, session_id=None, tool="claude")])
     assert state(run_id) == ("interviewing", "surface_restored")
+
+
+def test_proposed_changes_to_human_criteria_pause_for_the_operators_review(host):  # noqa: F811
+    """The floor still never applies an agent's edit to a human criterion; instead the edit is a proposal the
+    operator accepts or keeps on the run page before anything executes. Verbatim repeats and additions never pause."""
+    created = task("Parity resume", success_criteria=[
+        {"id": "c1", "text": "compares only resume.cmd"}, {"id": "c2", "text": "history untouched"},
+        {"id": "c3", "text": "docs updated"}])
+    run_id = start(host, created["id"])["id"]
+    attached(host, run_id)
+    with session_scope() as db:
+        plan_revision = db.get(Task, created["id"]).plan_revision or 0
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, prd="Parity.", steps=[{"title": "Do it"}],
+                expected_plan_revision=plan_revision, success_criteria=[
+                    {"id": "c1", "text": "compares resume.cmd and resume.url", "because": "You answered: compare cmd and url"},
+                    {"id": "c2", "text": "history untouched"},
+                    {"id": "c3", "text": "docs updated", "drop": True, "because": "No docs for this"},
+                    {"text": "parity report shows no diffs"}])
+    assert plan["proposals"] == {"criteria": [
+        {"id": "c1", "change": "reword", "text": "compares only resume.cmd", "proposed": "compares resume.cmd and resume.url",
+         "because": "You answered: compare cmd and url"},
+        {"id": "c3", "change": "remove", "text": "docs updated", "because": "No docs for this"}]}
+    assert "accept or keep" in plan["next"]
+    with session_scope() as db:
+        t = db.get(Task, created["id"])
+        texts = [c["text"] for c in t.success_criteria]
+        assert texts[:3] == ["compares only resume.cmd", "history untouched", "docs updated"]  # Nothing applied yet.
+        assert "parity report shows no diffs" in texts and all("because" not in c and "drop" not in c for c in t.success_criteria)
+        assert coordinator.frozen(db, db.get(AgentRun, run_id)).proposals["criteria"][0]["id"] == "c1"
+    assert turn(run_id, 1) == ("needs_you", "plan_review")  # The planning turn ended: the operator has the move.
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert row.plan_pending
+        shown = control.public_run(db, row, detail=True)
+        assert shown["reason_detail"].startswith("Proposed changes to 2 criteria") and shown["plan"]["proposals"]
+        assert "accept or keep" in shown["reason_text"]
+        assert db.scalar(select(Notification).where(Notification.category == "agent_stuck"))
+    assert inputs(run_id) == []  # No execution prompt went out.
+    with session_scope() as db:
+        out = agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(decisions=[
+            {"id": "c1", "accept": True, "text": "compares resume.cmd and resume.url only"}, {"id": "c3", "accept": False}]),
+            actor=HUMAN)
+    assert out["state"] == "executing" and out["plan"]["revision"] == 2 and out["plan"]["proposals"] is None
+    texts = [c["text"] for c in out["plan"]["criteria"]]
+    assert texts[0] == "compares resume.cmd and resume.url only" and "docs updated" in texts
+    assert out["plan"]["criteria"][0].get("by") != "agent"  # Still the operator's criterion, in their wording.
+    assert "accepted c1; kept as written c3" in inputs(run_id)[-1] and "Your plan is frozen" in inputs(run_id)[-1]
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert not row.plan_pending and row.plan_revision == 2
+        assert db.get(Task, created["id"]).success_criteria[0]["text"] == "compares resume.cmd and resume.url only"
+        assert [h for h in row.history if h.get("event") == "plan_reviewed"][0]["accepted"] == ["c1"]
+    with session_scope() as db, pytest.raises(DomainError) as again:
+        agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(), actor=HUMAN)
+    assert again.value.code == "NO_PLAN_REVIEW"
+
+
+def test_a_plan_that_only_adds_or_omits_human_criteria_never_pauses(host):  # noqa: F811
+    created = task("Quiet", success_criteria=[{"id": "c1", "text": "Tests pass"}])
+    run_id = start(host, created["id"])["id"]
+    attached(host, run_id)
+    with session_scope() as db:
+        plan_revision = db.get(Task, created["id"]).plan_revision or 0
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+                **{**PLAN, "expected_plan_revision": plan_revision})  # Does not even list c1.
+    assert plan["proposals"] is None and [c["text"] for c in plan["success_criteria"]] == ["Tests pass", "p95 under 50 ms"]
+    assert turn(run_id, 1) == ("executing", "plan_frozen")

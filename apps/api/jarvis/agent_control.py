@@ -475,6 +475,24 @@ def page(db, query, column, limit, offset):
     return list(reversed(rows[:limit])), len(rows) > limit
 
 
+def reason_detail(db, run):
+    """The full text behind the current state, when there is one: the judge's notes for a judge-caused needs_you,
+    otherwise the detail recorded with the transition (REASON_TEXT is the one-line version)."""
+    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge"):
+        verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
+                                                       AgentAttempt.status == "done")
+                            .order_by(AgentAttempt.created_at.desc()).limit(1))
+        if verdict is not None:
+            result = verdict.result or {}
+            text = result.get("gap") or result.get("summary") or ""
+            if text:
+                return text[:4000]
+    for entry in reversed(run.history or []):
+        if entry.get("to") == run.state:
+            return (entry.get("detail") or "")[:300]
+    return ""
+
+
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
@@ -492,6 +510,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        "reason_detail": reason_detail(db, run),
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
@@ -510,7 +529,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                                        AgentCommand.created_at, limit, offset)
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
-                  "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children}
+                  "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children,
+                  "proposals": plan.proposals}
             if plan else None,
             attempts=[public_attempt(a) for a in db.scalars(
                 select(AgentAttempt).where(AgentAttempt.run_id == run.id).order_by(AgentAttempt.created_at.desc()).limit(40))],

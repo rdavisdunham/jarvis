@@ -81,3 +81,43 @@
 .remotea-pending { display: grid; gap: 8px; }
 .remotea-pending-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--violet); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
 .remotea-pending-card p { margin: 0; overflow-wrap: anywhere; }
+
+/* Run drawer as a chat: pinned header (state, reason, plan facts), scrolling log of bubbles, composer at the bottom. */
+.remotea-chat { padding: 0; gap: 0; overflow: hidden; }
+.remotea-chat-head { display: grid; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; max-height: 55vh; overflow: auto; }
+.remotea-chat-title { display: flex; align-items: center; gap: 8px; }
+.remotea-chat-title h2 { flex: 1; min-width: 0; margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.remotea-reason-box { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--sunken); color: var(--ink-2); font-size: 0.9rem; display: grid; gap: 4px; }
+.remotea-reason-box.attention { background: var(--violet-soft); border: 1px solid var(--violet); color: var(--ink); }
+.remotea-reason-box p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 0.85rem; max-height: 30vh; overflow: auto; }
+.remotea-chat-facts { display: grid; gap: 4px; font-size: 0.9rem; }
+.remotea-chat-facts > p { margin: 0; }
+.remotea-chat-log { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; display: grid; gap: 10px; align-content: start; background: var(--sunken); }
+.remotea-chat-log .remotea-timeline { gap: 10px; }
+.remotea-chat-end { margin: 0; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
+.remotea-timeline li.remotea-bubble { list-style: none; padding: 8px 12px; border-radius: var(--r-md); background: var(--surface); max-width: 92%; min-width: 0; justify-self: start; display: grid; gap: 4px; box-shadow: 0 1px 0 rgba(0,0,0,.04); border-left: 3px solid var(--line); }
+.remotea-timeline li.remotea-bubble.who-you { justify-self: end; background: var(--violet-soft); border-left-color: var(--violet); }
+.remotea-timeline li.remotea-bubble.who-eridani { justify-self: center; max-width: 100%; width: 100%; background: transparent; box-shadow: none; border-left-color: transparent; padding: 2px 12px; }
+.remotea-timeline li.remotea-bubble.who-eridani.kind-attempt, .remotea-timeline li.remotea-bubble.who-eridani.kind-command:not(.system) { background: var(--surface); box-shadow: 0 1px 0 rgba(0,0,0,.04); padding: 8px 12px; border-left-color: var(--line); }
+.remotea-bubble.system .remotea-bubble-head { justify-content: center; color: var(--ink-3); font-weight: 500; }
+.remotea-bubble.system .remotea-bubble-head strong { font-weight: 500; }
+.remotea-bubble.tone-good { border-left-color: var(--done) !important; }
+.remotea-bubble.tone-warn { border-left-color: var(--danger) !important; }
+.remotea-bubble.tone-attention { border-left-color: var(--violet) !important; }
+.remotea-bubble-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--ink-2); }
+.remotea-bubble-head small { color: var(--ink-3); white-space: nowrap; }
+.remotea-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 0.9rem; max-height: none; overflow: visible; }
+.remotea-bubble .btn-ghost { justify-self: start; }
+.remotea-composer { flex: none; display: grid; gap: 6px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+.remotea-composer textarea { width: 100%; resize: vertical; }
+.remotea-control-gap { flex: 1; }
+.remotea-card-kicker { margin: 0; font-size: 0.75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--violet); }
+.remotea-chat-log .remotea-question { background: var(--surface); }
+.btn.btn-recommended { background: var(--done-soft); color: var(--done); border-color: var(--done); }
+.remotea-proposal { padding: 8px 10px !important; border-radius: var(--r-md); background: var(--sunken); }
+.remotea-proposal legend { font-weight: 600; margin-bottom: 4px; }
+.remotea-proposal-was, .remotea-proposal-new { margin: 0; display: grid; gap: 2px; font-size: 0.9rem; overflow-wrap: anywhere; }
+.remotea-proposal-was span, .remotea-proposal-new span { font-size: 0.75rem; color: var(--ink-3); }
+.remotea-proposal.change-remove .remotea-proposal-was, .remotea-proposal-was + .remotea-proposal-new ~ .remotea-proposal-was { text-decoration: none; }
+.remotea-proposal-new textarea { width: 100%; resize: vertical; }
+.remotea-proposal-why { margin: 0; padding: 4px 10px; border-left: 3px solid var(--done); color: var(--ink-2); font-size: 0.85rem; font-style: italic; overflow-wrap: anywhere; }
