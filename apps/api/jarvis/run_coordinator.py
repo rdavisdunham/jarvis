@@ -81,6 +81,9 @@ REASONS = {
     "surface_lost": "The agent's terminal was lost in a host restart.",
     "exited": "The agent process exited.",
     "spawn_expired": "The host did not take the start command in time.",
+    "spawn_failed": "The host could not start the agent.",
+    "spawn_rejected": "The host refused the start command.",
+    "spawn_uncertain": "The host could not tell whether the agent started.",
     "wall_clock": "The run reached its wall-clock limit.",
     "no_progress": "No progress for a while.",
     "turn_cap": "The run reached its turn cap.",
@@ -95,6 +98,23 @@ REASONS = {
     "integrated": "Sub-task work was merged; checking the combined code.",
     "awaiting_merge": "The criteria are met; merge the pull request to finish.",
     "merged": "The pull request merged; confirming the result.",
+    # Working states: what just happened, so the page never shows a raw reason token.
+    "start": "Starting the agent.",
+    "started": "The agent is up; planning.",
+    "interview_answered": "You answered the agent's questions; it is writing the plan.",
+    "plan_submitted": "The agent submitted its plan.",
+    "plan_frozen": "The plan is frozen; the agent is working on it.",
+    "plan_reviewed": "You reviewed the plan; the agent is working on it.",
+    "turn": "Checking the last turn against the success criteria.",
+    "not_met": "Not met yet; the agent is on the next turn.",
+    "queue": "Your message is queued for the agent.",
+    "steer": "You steered the agent.",
+    "answered": "Your answer reached the agent.",
+    "question": "The agent asked a question.",
+    "replan": "Re-planning.",
+    "surface_restored": "The agent's terminal is back.",
+    "approve": "Approved.",
+    "stopped": "Stopped.",
 }
 
 

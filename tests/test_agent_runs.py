@@ -604,3 +604,22 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
         reply = coordinator.context(db, OWNER, host.id, unlinked)
     assert "session_link" in reply["text"] and "s9" in reply["text"]
     assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000
+
+
+def test_every_transition_reason_has_page_text():
+    """The run card and drawer show REASON_TEXT for the current state; a reason without text showed the raw
+    token ("plan_frozen") on the page. Every reason the coordinator, planner or control layer passes to
+    transition() must have one, and an unknown reason renders as nothing rather than as the token."""
+    import re
+    from pathlib import Path
+
+    from jarvis.agent_control import REASON_TEXT
+
+    root = Path(__file__).resolve().parents[1] / "apps" / "api" / "jarvis"
+    used = set()
+    for name in ("run_coordinator.py", "agent_plan.py", "agent_control.py"):
+        used |= set(re.findall(r'reason="([a-z_]+)"\s*[,)]', (root / name).read_text()))  # Not "spawn_" + state.
+    used |= {"spawn_failed", "spawn_rejected", "spawn_uncertain", "spawn_expired"}  # run_coordinator's "spawn_" + outcome
+    missing = sorted(r for r in used if r not in REASON_TEXT)
+    assert not missing, f"transition reasons without page text: {missing}"
+    assert REASON_TEXT.get("no_such_reason", "") == ""

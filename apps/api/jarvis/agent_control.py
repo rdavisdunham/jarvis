@@ -513,7 +513,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     result = {
         "id": run.id, "task": {"id": task.id, "title": task.title, "status": task.status} if task else None,
         "state": run.state, "state_revision": run.state_revision, "state_reason": run.state_reason,
-        "reason_text": REASON_TEXT.get(run.state_reason, run.state_reason), "state_since": run.state_since,
+        # Never a raw token: an unmapped reason shows nothing (the card then shows how long ago the state began).
+        "reason_text": REASON_TEXT.get(run.state_reason, ""), "state_since": run.state_since,
         "generation": run.generation, "plan_revision": run.plan_revision, "tool": run.tool, "model": run.model,
         "branch": run.branch, "base_branch": run.base_branch, "worktree": run.worktree,
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
