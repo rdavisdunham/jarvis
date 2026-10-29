@@ -48,8 +48,8 @@ the key, removing membership or turning remotea off ends the connection. The lin
 `tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
 the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
 register it at user scope in each harness (for Claude Code:
-`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`,
-trailing slash required). Without `agents:session` the MCP server offers only the planner tools, the
+`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`;
+the URL works with or without the trailing slash). Without `agents:session` the MCP server offers only the planner tools, the
 spawned agent cannot call `submit_plan`, and the run ends its planning turn in `needs_you`.
 
 ## Connection lifecycle

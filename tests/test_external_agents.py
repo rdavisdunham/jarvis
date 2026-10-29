@@ -219,9 +219,9 @@ def test_rate_limit_and_origin_checks(client):
     assert external.get("/api/v1/external/capabilities", headers=headers).status_code == 429
 
 
-def rpc(client, headers, method, params=None, number=1):
+def rpc(client, headers, method, params=None, number=1, path="/api/v1/external/mcp/"):
     return client.post(
-        "/api/v1/external/mcp/",
+        path,
         headers={
             **headers,
             "Accept": "application/json, text/event-stream",
@@ -261,6 +261,26 @@ def test_mcp_real_transport_lists_scoped_tools_and_shares_receipts(client):
     denied = rpc(client, headers, "tools/call", {"name": "note_create", "arguments": {"title": "No"}}).json()
     assert denied["result"]["isError"]
     assert rpc(client, {}, "tools/list").status_code == 401
+
+
+@pytest.mark.parametrize("path", ["/api/v1/external/mcp/", "/api/v1/external/mcp"])
+def test_mcp_serves_both_path_forms_without_redirect(client, path):
+    _, headers = key(client)
+    initialized = rpc(
+        client,
+        headers,
+        "initialize",
+        {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}},
+        path=path,
+    )
+    assert initialized.status_code == 200, initialized.text
+    assert not initialized.history
+    assert initialized.json()["result"]["serverInfo"]["name"] == "Eridani"
+    listed = rpc(client, headers, "tools/list", path=path)
+    assert listed.status_code == 200, listed.text
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert {"task_create", "task_update", "records_list", "changes_list"} <= names
+    assert rpc(client, {}, "tools/list", path=path).status_code == 401
 
 
 def model_result(calls=None, text=None):
