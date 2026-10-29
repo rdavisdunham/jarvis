@@ -281,6 +281,47 @@ def test_eri_start_waits_for_the_owners_own_yes(client, host, keyed):  # noqa: F
     assert again.value.code == "PENDING_CLOSED"
 
 
+def test_a_repeated_proposal_folds_and_the_owners_yes_confirms_it(client, host, keyed):  # noqa: F811
+    """A new chat turn does not carry the earlier pending_id, so the model tends to call control_start again.
+    The server folds the repeat into the open proposal, and when the request is the owner's plain yes it is the
+    confirmation itself; control_confirm also works without an id (the newest pending action)."""
+    from jarvis.domain import DomainError
+    from jarvis.session_models import AgentPendingControl
+
+    created = task("Fold me")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    pending = as_work(work_said(client, "Start the agent on fold me"), "control.start", task_id=created["id"])
+    again = as_work(work_said(client, "start the agent on fold me please"), "control.start", task_id=created["id"])
+    assert again["pending_id"] == pending["pending_id"] and again["status"] == "pending_confirmation"
+    assert "already proposed" in again["next"]
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentPendingControl)
+                         .where(AgentPendingControl.status == "pending")) == 1
+        original = db.get(AgentPendingControl, pending["pending_id"])
+        db.add(AgentPendingControl(owner_id="davin", account_id=original.account_id, work_id=None, tool="control.start",
+                                   arguments=dict(original.arguments), summary="twin", status="pending", actor={},
+                                   decided_via="", expires_at=now() + timedelta(minutes=5)))
+    done = as_work(work_said(client, "yes"), "control.start", task_id=created["id"])  # The model re-proposed after the yes.
+    assert done["status"] == "confirmed" and done["decided_via"] == "chat" and done["run"]["id"]
+    with session_scope() as db:
+        assert db.scalar(select(AgentRun).where(AgentRun.task_id == created["id"])) is not None
+        rows = {r.summary: r.status for r in db.scalars(select(AgentPendingControl))}
+        assert rows["twin"] == "superseded" and list(rows.values()).count("pending") == 0
+    other = task("No id needed")
+    with session_scope() as db:
+        db.get(Task, other["id"]).execution_target_id = host.target_id
+    as_work(work_said(client, "Start the agent on no id needed"), "control.start", task_id=other["id"])
+    with pytest.raises(DomainError) as not_yes:
+        as_work(work_said(client, "what does it do?"), "control.confirm")
+    assert not_yes.value.code == "CONFIRMATION_REQUIRED"
+    declined = as_work(work_said(client, "no"), "control.confirm", decision="decline")
+    assert declined["status"] == "declined"
+    with pytest.raises(DomainError) as nothing:
+        as_work(work_said(client, "yes"), "control.confirm")
+    assert nothing.value.code == "NOT_FOUND"
+
+
 def test_eri_steer_is_logged_with_its_source_after_the_app_confirms(client, host):  # noqa: F811
     from test_agent_voice import confirm, say
 

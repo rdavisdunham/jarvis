@@ -11,7 +11,7 @@ import re
 from datetime import timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import and_, not_, or_, select
 
 from . import agent_link
 from . import agent_sessions as sessions
@@ -739,17 +739,56 @@ def propose(db, owner, account, tool, args, actor):
         summary = f"{verb} the agent on \u201c{(task.title if task else '')[:200]}\u201d: \u201c{args.text[:300]}\u201d"
     from .session_models import AgentPendingControl
 
+    same = db.scalar(select(AgentPendingControl).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == account, AgentPendingControl.tool == tool,
+        AgentPendingControl.arguments == arguments, AgentPendingControl.status == "pending",
+        AgentPendingControl.expires_at > now()).order_by(AgentPendingControl.created_at.asc()).limit(1))
+    if same is not None:
+        # The model proposed the same thing again (a new chat turn does not carry the earlier pending_id).
+        # If this request is the owner's plain yes to that proposal, it is the confirmation; otherwise hand the
+        # existing proposal back rather than stacking another card on the remotea page.
+        via = owners_yes(db, owner, same, work)
+        if via:
+            return decide(db, owner, same.id, confirm=True, via=via, actor=actor)
+        return {**pending_reply(same), "next": "This was already proposed and is still waiting for the owner. " + NEXT}
     row = AgentPendingControl(owner_id=owner, account_id=account, work_id=work.id if work else None, tool=tool,
                               arguments=arguments, summary=summary, run_id=run_id, status="pending",
                               actor=actor.record(), decided_via="", expires_at=now() + PENDING_TTL)
     db.add(row)
     db.flush()
     emit(db, owner, "agent.changed", run_id or row.id)
-    return {"status": "pending_confirmation", "pending_id": row.id, "summary": summary,
-            "expires_at": row.expires_at.isoformat(),
-            "next": "Nothing was sent yet. Read the summary to the owner and ask them to confirm. They can tap "
-                    "Confirm on the remotea page, or answer yes in their next message; then call control_confirm "
-                    "with this pending_id. Never confirm on their behalf."}
+    return {**pending_reply(row), "next": "Nothing was sent yet. " + NEXT}
+
+
+NEXT = ("Read the summary to the owner and ask them to confirm. They can tap Confirm on the remotea page, or "
+        "answer yes in their next message; then call control_confirm (pending_id optional: the newest pending "
+        "action). Never confirm on their behalf, and never call control_start again after their yes.")
+
+
+def pending_reply(row):
+    return {"status": "pending_confirmation", "pending_id": row.id, "summary": row.summary,
+            "expires_at": row.expires_at.isoformat()}
+
+
+def owners_yes(db, owner, row, work):
+    """Is this request the owner's own plain yes to `row`? The same rule spoken_confirmation enforces: a later
+    request of the same account, not the one that proposed it, whose whole message is a short affirmation, and
+    `row` is the newest proposal that request could mean. Returns the channel ("voice"/"chat") or None."""
+    from .models import Job
+    from .session_models import AgentPendingControl
+
+    if work is None or work.credential_id or row.work_id == work.id or row.account_id != work.account_id:
+        return None
+    # The yes must be unambiguous: no *different* action proposed after this one (identical twins are this one).
+    later = db.scalar(select(AgentPendingControl.id).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+        AgentPendingControl.status == "pending", not_proposed_by(work),
+        AgentPendingControl.created_at > row.created_at,
+        not_(and_(AgentPendingControl.tool == row.tool, AgentPendingControl.arguments == row.arguments))).limit(1))
+    job = db.get(Job, work.id)
+    if later or job is None or job.created_at < row.created_at or not AFFIRMATIVE.match(work_message(work)[:80]):
+        return None
+    return "voice" if work.voice_session_id else "chat"
 
 
 def public_pending(row):
@@ -816,6 +855,11 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
         result = send_message(db, owner, args["run_id"], MessageInput(text=args["text"], mode=args["mode"]),
                               actor=confirmed)
     row.status, row.result = "confirmed", {"run_id": result.get("id")}
+    # Identical proposals still open (from before duplicates were folded) are settled by this one.
+    for twin in db.scalars(select(AgentPendingControl).where(
+            AgentPendingControl.owner_id == owner, AgentPendingControl.tool == row.tool, AgentPendingControl.arguments == row.arguments,
+            AgentPendingControl.status == "pending", AgentPendingControl.id != row.id)):
+        twin.status, twin.decided_at, twin.decided_via, twin.result = "superseded", now(), via, {"by": row.id}
     return {**public_pending(row), "run": result}
 
 
@@ -827,24 +871,37 @@ def spoken_confirmation(db, owner, args):
     work = current_work(db)
     if work is None or work.credential_id:
         raise DomainError("CONFIRM_IN_APP", "Confirm this on the remotea page.", 403)
-    row = db.get(AgentPendingControl, args.pending_id)
-    if row is None or row.owner_id != owner:
-        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    row = pending_for(db, owner, work, args.pending_id)
     if args.decision == "decline" or row.status != "pending":
         return "chat"  # Declining needs no proof; a closed one is refused by decide().
-    newest = db.scalar(select(AgentPendingControl.id).where(
-        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
-        AgentPendingControl.status == "pending").order_by(AgentPendingControl.created_at.desc()).limit(1))
-    from .models import Job
-
-    job = db.get(Job, work.id)
-    if (row.work_id == work.id or row.account_id != work.account_id or newest != row.id
-            or job is None or job.created_at < row.created_at
-            or not AFFIRMATIVE.match(work_message(work)[:80])):
+    via = owners_yes(db, owner, row, work)
+    if not via:
         raise DomainError("CONFIRMATION_REQUIRED",
                           "Only the owner's own yes, in their next message, confirms this. Ask them, or let them "
                           "tap Confirm on the remotea page.", 409, data={"pending_id": row.id})
-    return "voice" if work.voice_session_id else "chat"
+    return via
+
+
+def not_proposed_by(work):
+    from .session_models import AgentPendingControl
+
+    return or_(AgentPendingControl.work_id.is_(None), AgentPendingControl.work_id != work.id)
+
+
+def pending_for(db, owner, work, pending_id):
+    """The named pending action, or without an id the newest one of this account not proposed by this request."""
+    from .session_models import AgentPendingControl
+
+    if pending_id:
+        row = db.get(AgentPendingControl, pending_id)
+    else:
+        row = db.scalar(select(AgentPendingControl).where(
+            AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+            AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now(),
+            not_proposed_by(work)).order_by(AgentPendingControl.created_at.desc()).limit(1))
+    if row is None or row.owner_id != owner:
+        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    return row
 
 
 def journal_control(db, owner, tool, command_id, result):
@@ -887,7 +944,8 @@ def control_command(db, owner, tool, args):
         return propose(db, owner, account(db, owner), tool, args, actor)
     if tool == "control.confirm":
         via = spoken_confirmation(db, owner, args)
-        return decide(db, owner, args.pending_id, confirm=args.decision == "confirm", via=via, actor=actor)
+        row = pending_for(db, owner, current_work(db), args.pending_id)
+        return decide(db, owner, row.id, confirm=args.decision == "confirm", via=via, actor=actor)
     if tool == "control.stop":
         return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
     if tool == "control.answer":
