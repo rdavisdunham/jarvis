@@ -563,6 +563,11 @@ def comparable(value):
     return encode(value)
 
 
+def stable_resume(value):
+    """The part of `resume` that names the session; `live` and `hint` describe its current terminal and drift."""
+    return {k: v for k in ("cmd", "url") if (v := (value or {}).get(k))}
+
+
 def clip(value):
     text = json.dumps(comparable(value))
     return text if len(text) <= 300 else text[:297] + "..."
@@ -580,9 +585,11 @@ def parity(db, bot, host_id, tool, session_id, body):
     diff = {}
     if row is not None:
         for field in PARITY_FIELDS:
-            stored, reported = comparable(getattr(row, field)), comparable(values[field])
-            if stored != reported:
-                diff[field] = {"stored": clip(getattr(row, field)), "reported": clip(values[field])}
+            stored, reported = getattr(row, field), values[field]
+            if field == "resume":
+                stored, reported = stable_resume(stored), stable_resume(reported)
+            if comparable(stored) != comparable(reported):
+                diff[field] = {"stored": clip(stored), "reported": clip(reported)}
     advisory(db, f"agent-parity:{owner}:{tool}:{session_id}")
     entry = db.scalar(select(AgentParity).where(
         AgentParity.owner_id == owner, AgentParity.tool == tool, AgentParity.session_id == session_id))

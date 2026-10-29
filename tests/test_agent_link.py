@@ -285,6 +285,28 @@ def test_parity_records_differences_without_changing_the_session(client):
     assert summary["recent"][0]["diff"] or summary["recent"][1]["diff"]
 
 
+def test_parity_compares_only_the_stable_part_of_resume(client):
+    headers = bearer(enable(client)["token"])
+    live = {"cmd": "claude --resume s1", "hint": "Open it in remotea", "live": {"state": "live", "terminal": "t1"}}
+    report(headers, session_id="s1", **{**SESSION, "resume": live})
+    with session_scope() as db:
+        body = {**SESSION, "last_active_at": db.scalar(select(AgentSession.last_active_at)).isoformat()}
+
+    def check(resume):
+        response = TestClient(app).post("/api/v1/external/agents/parity", headers=headers,
+                                        json={"tool": "claude_code", "session_id": "s1", "report": {**body, "resume": resume}})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert check({"cmd": "claude --resume s1"})["matched"]
+    assert check({**live, "hint": "", "live": {"state": "lost", "terminal": "t2"}})["matched"]
+    assert check({"cmd": "claude --resume s1", "url": "https://example.com/s1"})["fields"] == ["resume"]
+    assert check({**live, "cmd": "claude --resume s2"})["fields"] == ["resume"]
+    diff = client.get("/api/v1/remotea/parity").json()["recent"][0]["diff"]["resume"]
+    assert json.loads(diff["stored"]) == {"cmd": "claude --resume s1"}
+    assert json.loads(diff["reported"]) == {"cmd": "claude --resume s2"}
+
+
 def test_remotea_is_gated_until_enabled(client):
     assert client.get("/api/v1/remotea/status").json()["enabled"] is False
     for path in ("/api/v1/remotea/sessions", "/api/v1/remotea/parity"):
