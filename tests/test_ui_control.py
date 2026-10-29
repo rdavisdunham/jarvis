@@ -118,3 +118,16 @@ async def test_exact_calendar_entry_requires_detail_target_and_is_bounded():
     ):
         with pytest.raises(DomainError):
             await call_tool("owner", "turn", 0, "ui_calendar", arguments)
+
+
+def test_every_web_view_is_a_valid_device_context():
+    """The browser reports its current page as device context; a page the backend does not know (remotea was
+    missing) made every chat message from that page fail validation before Eri saw it."""
+    from jarvis.ui_contracts import VIEWS
+    from jarvis.ui_control import View
+    from typing import get_args
+
+    assert set(get_args(View)) == set(VIEWS)
+    assert UIContext(view="remotea").view == "remotea"
+    with pytest.raises(ValueError):
+        UIContext(view="http://evil.invalid")
