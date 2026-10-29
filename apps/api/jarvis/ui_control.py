@@ -20,6 +20,7 @@ View = Literal[
     "questions",
     "notifications",
     "settings",
+    "remotea",
 ]
 
 

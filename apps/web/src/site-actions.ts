@@ -13,6 +13,7 @@ export const views = [
   "questions",
   "notifications",
   "settings",
+  "remotea",
 ] as const;
 export const editorKinds = [
   "task",

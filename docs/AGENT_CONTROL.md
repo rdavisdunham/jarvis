@@ -45,8 +45,8 @@ Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key crea
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
 account was demoted. The link re-checks on every inbound message and every 30-second tick, so revoking
 the key, removing membership or turning remotea off ends the connection. The link key never has
-`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
-the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
+`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connections →
+Connected agents with the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
 register it at user scope in each harness (for Claude Code:
 `claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`;
 the URL works with or without the trailing slash). Without `agents:session` the MCP server offers only the planner tools, the
@@ -254,8 +254,11 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
 
 1. Target resolution: explicit → the task's `execution_target_id` → a target saved for the task's
    record or an ancestor (nearest first) → folder rules whose path is under a target's repo → `409
-   NEEDS_TARGET {task_id, candidates, advertised, records}`. The page then saves one with
-   `POST /remotea/targets {host_id, host_target, repo, worktree_root, task_id | record_id}` and retries.
+   NEEDS_TARGET {task_id, candidates, advertised, records: [{id, title, type_id}]}`. The page's picker
+   then saves one with `POST /remotea/targets {host_id, host_target, repo, worktree_root, task_id | record_id}`
+   and retries. "Remember for" defaults to the nearest record that is not a task (usually the project), so
+   sibling tasks reuse the choice; "Only this task" binds just the task (reusing a target already saved
+   for a record rather than copying it).
 2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (host lacks `spawn` for the harness),
    `HARNESS_DISABLED` (opencode).
 3. The run is created in `spawning`, the plan is frozen as revision 1 (PRD note or task notes, steps,
@@ -315,7 +318,7 @@ once and asks the run to stop (`stop_reason: task_completed_externally`); a huma
 
 ### Reading runs (`agents:read`)
 
-A bot key with `agents:read` (Settings → Connected agents → "Read runs started from tasks") reads what the
+A bot key with `agents:read` (Settings → Connections → Connected agents → "Read runs started from tasks") reads what the
 remotea page shows, so an assistant outside the run can review a run without a copy-paste:
 
 - `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
@@ -491,8 +494,8 @@ no-progress timer still applies to executing.
 ### auto_complete
 
 `POST /remotea/auto-complete {enabled}` (owner preference `remotea_auto_complete`, default **off**;
-viewers refused); `GET /remotea/status` returns it. Settings → remotea shows the toggle with a warning
-that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
+viewers refused); `GET /remotea/status` returns it. Settings → Connections → remotea shows the toggle with a
+warning that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
 a live run.
 
 ### Outcome eval (`evals/agent_control/`)
@@ -697,7 +700,18 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 (10-minute expiry) and nothing reaches the host. The owner confirms on the remotea page
 (`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
 works only from a later request by the same account whose own text is a plain yes, for the newest
-pending item. `control.stop`, `control.answer` and `control_status` stay immediate. Background,
+pending item. `control.stop`, `control.answer` and `control_status` stay immediate.
+
+A proposed start resolves its target when proposed (read-only): when one resolves, its id goes into the
+row's `arguments` and the summary names it ("… in jarvis"), and confirm starts there. When none does, the
+row is still created and the result says `needs_target: true` (with `task_id`), and Eri tells the owner to
+pick where it runs on the remotea card. An offline server or a harness it cannot start is checked the same
+way and returned as `problems` for Eri to relay; neither blocks the proposal. `GET /remotea/pending` lists
+each start with that readiness (`needs_target`, the picker's `need` data, `target`, `problems`), and the
+card shows the picker in place of Confirm; picking saves the choice and confirms with
+`POST /remotea/pending/{id}/confirm {execution_target_id}` (owner-checked). A confirm refused with
+`NEEDS_TARGET`, `HOST_OFFLINE` or `HARNESS_UNAVAILABLE` leaves the row pending. Listing the pending items
+also marks the expired ones `expired` (a refused confirm rolls back its own writes). Background,
 parked-continuation and bot work get no `control_*` tools (`tool_policy.live_work`). Every text sent to an
 agent is a `sent` entry on the run's timeline with who sent it; every `control.*` call is in the action
 journal, visible but never undoable.

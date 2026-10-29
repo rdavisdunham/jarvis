@@ -281,6 +281,47 @@ def test_eri_start_waits_for_the_owners_own_yes(client, host, keyed):  # noqa: F
     assert again.value.code == "PENDING_CLOSED"
 
 
+def test_a_repeated_proposal_folds_and_the_owners_yes_confirms_it(client, host, keyed):  # noqa: F811
+    """A new chat turn does not carry the earlier pending_id, so the model tends to call control_start again.
+    The server folds the repeat into the open proposal, and when the request is the owner's plain yes it is the
+    confirmation itself; control_confirm also works without an id (the newest pending action)."""
+    from jarvis.domain import DomainError
+    from jarvis.session_models import AgentPendingControl
+
+    created = task("Fold me")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    pending = as_work(work_said(client, "Start the agent on fold me"), "control.start", task_id=created["id"])
+    again = as_work(work_said(client, "start the agent on fold me please"), "control.start", task_id=created["id"])
+    assert again["pending_id"] == pending["pending_id"] and again["status"] == "pending_confirmation"
+    assert "already proposed" in again["next"]
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentPendingControl)
+                         .where(AgentPendingControl.status == "pending")) == 1
+        original = db.get(AgentPendingControl, pending["pending_id"])
+        db.add(AgentPendingControl(owner_id="davin", account_id=original.account_id, work_id=None, tool="control.start",
+                                   arguments=dict(original.arguments), summary="twin", status="pending", actor={},
+                                   decided_via="", expires_at=now() + timedelta(minutes=5)))
+    done = as_work(work_said(client, "yes"), "control.start", task_id=created["id"])  # The model re-proposed after the yes.
+    assert done["status"] == "confirmed" and done["decided_via"] == "chat" and done["run"]["id"]
+    with session_scope() as db:
+        assert db.scalar(select(AgentRun).where(AgentRun.task_id == created["id"])) is not None
+        rows = {r.summary: r.status for r in db.scalars(select(AgentPendingControl))}
+        assert rows["twin"] == "superseded" and list(rows.values()).count("pending") == 0
+    other = task("No id needed")
+    with session_scope() as db:
+        db.get(Task, other["id"]).execution_target_id = host.target_id
+    as_work(work_said(client, "Start the agent on no id needed"), "control.start", task_id=other["id"])
+    with pytest.raises(DomainError) as not_yes:
+        as_work(work_said(client, "what does it do?"), "control.confirm")
+    assert not_yes.value.code == "CONFIRMATION_REQUIRED"
+    declined = as_work(work_said(client, "no"), "control.confirm", decision="decline")
+    assert declined["status"] == "declined"
+    with pytest.raises(DomainError) as nothing:
+        as_work(work_said(client, "yes"), "control.confirm")
+    assert nothing.value.code == "NOT_FOUND"
+
+
 def test_eri_steer_is_logged_with_its_source_after_the_app_confirms(client, host):  # noqa: F811
     from test_agent_voice import confirm, say
 
@@ -301,6 +342,106 @@ def test_eri_steer_is_logged_with_its_source_after_the_app_confirms(client, host
         run = db.get(AgentRun, run_id)
         [entry] = [h for h in run.history if h.get("event") == "sent"]
         assert entry["text"] == "Change course." and entry["mode"] == "steer" and entry["actor"]["kind"]
+
+
+def test_a_proposed_start_without_a_target_asks_on_the_card(client, host):  # noqa: F811
+    """The 2026-10-29 bug: Eri proposed a start on a task with no execution target; Confirm on the card got 409
+    NEEDS_TARGET and only showed an error. The proposal now says so, the card carries the picker's data, a
+    refused confirm leaves the proposal open, and confirming with the picked target starts the run there."""
+    from jarvis.session_models import AgentPendingControl
+    from test_agent_voice import say
+
+    created = task("Needs a home")
+    pending = say("control.start", task_id=created["id"])
+    assert pending["status"] == "pending_confirmation" and pending["needs_target"] is True
+    assert pending["task_id"] == created["id"] and pending["target"] is None
+    assert "remotea page" in pending["next"] and pending["next"].index("No repository") == 0
+    with session_scope() as db:
+        assert "execution_target_id" not in db.get(AgentPendingControl, pending["pending_id"]).arguments
+    [card] = client.get("/api/v1/remotea/pending").json()["items"]
+    assert card["id"] == pending["pending_id"] and card["task_id"] == created["id"] and card["needs_target"] is True
+    assert card["need"]["task_id"] == created["id"]
+    assert host.target_id in {c["id"] for c in card["need"]["candidates"]}
+
+    refused_confirm = client.post(f"/api/v1/remotea/pending/{pending['pending_id']}/confirm")
+    assert refused_confirm.status_code == 409, refused_confirm.text
+    error = refused_confirm.json()["error"]
+    assert error["code"] == "NEEDS_TARGET" and error["data"]["candidates"]
+    stranger = client.post(f"/api/v1/remotea/pending/{pending['pending_id']}/confirm",
+                           json={"execution_target_id": "00000000-0000-0000-0000-000000000000"})
+    assert stranger.status_code == 404, stranger.text  # Only the owner's own targets.
+    with session_scope() as db:
+        row = db.get(AgentPendingControl, pending["pending_id"])
+        assert row.status == "pending" and row.decided_at is None  # Still open for the picker.
+        assert db.scalar(select(AgentRun).where(AgentRun.task_id == created["id"])) is None
+
+    done = client.post(f"/api/v1/remotea/pending/{pending['pending_id']}/confirm",
+                       json={"execution_target_id": host.target_id})
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "confirmed" and done.json()["decided_via"] == "app"
+    with session_scope() as db:
+        run = db.get(AgentRun, done.json()["run"]["id"])
+        assert run.task_id == created["id"] and run.execution_target_id == host.target_id
+        assert db.get(AgentPendingControl, pending["pending_id"]).status == "confirmed"
+    assert client.get("/api/v1/remotea/pending").json()["items"] == []
+
+
+def test_a_target_saved_for_the_project_is_resolved_when_proposing(client, host):  # noqa: F811
+    """A sibling task in a project whose target was saved: the proposal names it and confirm uses it. An offline
+    server is reported with the proposal instead of only at confirm."""
+    from jarvis import agent_control as control
+    from jarvis.session_models import AgentPendingControl, ExecutionTarget
+    from test_agent_voice import confirm, say
+    from test_organization_foundation import create
+
+    project = create("project", "Eridani roadmap")
+    first = create("task", "First roadmap item", parent_id=project["id"])
+    second = create("task", "Second roadmap item", parent_id=project["id"])
+    with session_scope() as db:
+        saved = control.save_target(db, "davin", control.TargetInput(host_id=host.id, host_target="jarvis",
+                                                                     record_id=project["id"]))
+        assert db.get(ExecutionTarget, saved["id"]).record_id == project["id"]
+    pending = say("control.start", task_id=first["task_id"])
+    assert pending["needs_target"] is False and pending["problems"] == []
+    assert pending["summary"] == "Start Claude Code on “First roadmap item” in jarvis"
+    assert pending["target"]["id"] == saved["id"]
+    with session_scope() as db:
+        assert db.get(AgentPendingControl, pending["pending_id"]).arguments == {
+            "task_id": first["task_id"], "harness": "claude", "execution_target_id": saved["id"]}
+    run = confirm(pending)
+    with session_scope() as db:
+        assert db.get(AgentRun, run["id"]).execution_target_id == saved["id"]
+
+    with session_scope() as db:  # The remotea server drops off.
+        db.get(AgentHost, host.id).lease_until = now() - timedelta(minutes=1)
+    offline = say("control.start", task_id=second["task_id"], harness="codex")
+    assert offline["status"] == "pending_confirmation" and offline["needs_target"] is False
+    assert [p["code"] for p in offline["problems"]] == ["HOST_OFFLINE"] and "HOST_OFFLINE" in offline["next"]
+    [card] = client.get("/api/v1/remotea/pending").json()["items"]
+    assert card["problems"][0]["code"] == "HOST_OFFLINE"
+    refused_confirm = client.post(f"/api/v1/remotea/pending/{offline['pending_id']}/confirm")
+    assert refused_confirm.status_code == 409 and refused_confirm.json()["error"]["code"] == "HOST_OFFLINE"
+    with session_scope() as db:
+        assert db.get(AgentPendingControl, offline["pending_id"]).status == "pending"
+
+
+def test_expired_proposals_read_as_expired(client, host):  # noqa: F811
+    from jarvis.session_models import AgentPendingControl
+    from test_agent_voice import say
+
+    created = task("Too slow")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    pending = say("control.start", task_id=created["id"])
+    with session_scope() as db:
+        db.get(AgentPendingControl, pending["pending_id"]).expires_at = now() - timedelta(seconds=1)
+    late = client.post(f"/api/v1/remotea/pending/{pending['pending_id']}/confirm")
+    assert late.status_code == 409 and late.json()["error"]["code"] == "PENDING_EXPIRED"
+    assert client.get("/api/v1/remotea/pending").json()["items"] == []
+    with session_scope() as db:
+        assert db.get(AgentPendingControl, pending["pending_id"]).status == "expired"
+    again = client.post(f"/api/v1/remotea/pending/{pending['pending_id']}/confirm")
+    assert again.json()["error"]["code"] == "PENDING_CLOSED"
 
 
 def test_background_work_never_gets_control_tools(client, keyed):

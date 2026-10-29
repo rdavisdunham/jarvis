@@ -84,7 +84,8 @@
 
 /* Run drawer as a chat: pinned header (state, reason, plan facts), scrolling log of bubbles, composer at the bottom. */
 .remotea-chat { padding: 0; gap: 0; overflow: hidden; }
-.remotea-chat-head { display: grid; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; max-height: 55vh; overflow: auto; }
+/* Outranks `.remotea-drawer > header` (a flex row), which laid the chat header out side by side. */
+.remotea-drawer.remotea-chat > header.remotea-chat-head { display: grid; align-items: stretch; justify-content: stretch; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; max-height: 55vh; overflow: auto; }
 .remotea-chat-title { display: flex; align-items: center; gap: 8px; }
 .remotea-chat-title h2 { flex: 1; min-width: 0; margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
 .remotea-reason-box { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--sunken); color: var(--ink-2); font-size: 0.9rem; display: grid; gap: 4px; }

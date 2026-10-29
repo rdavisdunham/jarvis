@@ -3,13 +3,14 @@
 Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md),
 [Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
 
-The catalog contains **1,051 scenarios across 42 features**. The on-demand runner
+The catalog contains **1,106 scenarios across 44 features**. The on-demand runner
 indexes every scenario, selects its available adapters, and reports unmet criteria.
 This does **not** mean every scenario is automated. Current bindings cover **112**
 complete acceptance scenarios; component evidence is available for **224** cases
 (overlapping acceptance coverage). Remaining scenarios retain incomplete or physical
 acceptance requirements. Batch C adds 25 Quick-capture and 25 onboarding scenarios,
-with 12 exact deterministic bindings. See
+with 12 exact deterministic bindings. Agent control (remotea) adds 25 scenarios, not yet
+bound; its outcome eval lives in `evals/agent_control/`. See
 [automation-coverage.json](automation-coverage.json) for the per-feature backlog.
 Historical reports keep their original scenario counts and outcomes.
 
@@ -19,7 +20,7 @@ Historical reports keep their original scenario counts and outcomes.
   notifications, budgets and recovery.
 - **agent:** queued conversations, clarifications and action receipts.
 - **pipeline:** memories, both dream systems, notes/list organization and retrieval.
-- **integration:** Google Calendar, Linear and scoped external-agent API/MCP.
+- **integration:** Google Calendar, Linear, scoped external-agent API/MCP and agent control (remotea).
 - **browser:** navigation, settings and site controls, using synthetic provider/media fixtures.
 - **voice:** current Live/idle/wake/shutdown regressions; actual microphone, OS
   permissions, background behavior and real GPT-Live quality remain separate evidence.

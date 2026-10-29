@@ -11,6 +11,14 @@ import {
 } from "./work-views";
 import type { Task } from "./types";
 describe("site control contract", () => {
+  it("accepts the remotea page Eri can name (ui_show, ui_workspace, ui_search)", () => {
+    for (const action of [
+      { id: "show", kind: "show", view: "remotea" },
+      { id: "run", kind: "show", view: "remotea", entity_id: "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11" },
+      { id: "page", kind: "workspace", view: "remotea" },
+    ])
+      expect(() => validateSiteAction(actionSchema.parse(action), "today", emptyOrganization, "project")).not.toThrow();
+  });
   it("scopes saved note lists to Notes", () => {
     const list = actionSchema.parse({id:"list",kind:"workspace",view:"notes",note_list_id:"uncategorized"});
     expect(() => validateSiteAction(list, "all", emptyOrganization, "project")).not.toThrow();
