@@ -1,0 +1,10 @@
+[
+  {"name": "agent question", "notification": {"category": "agent_question", "task_id": null, "target": {"view": "remotea", "run_id": "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11", "task_id": "5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e"}}, "url": "/?view=remotea&run=0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11", "open": {"open": "run", "run": "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11"}},
+  {"name": "agent notice that also names a task", "notification": {"category": "agent_done", "task_id": "5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e", "target": {"view": "remotea", "run_id": "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11"}}, "url": "/?view=remotea&run=0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11", "open": {"open": "run", "run": "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11"}},
+  {"name": "agent notice without a run", "notification": {"category": "agent_stuck", "task_id": null, "target": {"view": "remotea"}}, "url": "/?view=remotea&run=", "open": {"open": "run", "run": null}},
+  {"name": "deadline", "notification": {"category": "deadline", "task_id": "5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e", "target": {"view": "tasks", "task_id": "5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e"}}, "url": "/?view=tasks&tab=all&record=task%3A5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e&workspace=personal", "open": {"open": "task", "task": "5d1e6c1a-1111-4b2c-8d3e-9f0a1b2c3d4e"}},
+  {"name": "failed work", "notification": {"category": "failure", "task_id": null, "target": {"view": "activity", "work_ids": ["9a8b7c6d-2222-4e3f-8a9b-0c1d2e3f4a5b"]}}, "url": "/?view=tasks&activity=1", "open": {"open": "activity"}},
+  {"name": "morning summary", "notification": {"category": "morning", "task_id": null, "target": {"view": "tasks", "tab": "today", "task_ids": []}}, "url": "/?view=tasks&tab=today", "open": {"open": "today"}},
+  {"name": "reminder without a task", "notification": {"category": "reminder", "task_id": null, "target": {}}, "url": "/?view=notifications", "open": {"open": "notifications"}},
+  {"name": "no target at all", "notification": {"category": "question", "task_id": null, "target": null}, "url": "/?view=notifications", "open": {"open": "notifications"}}
+]

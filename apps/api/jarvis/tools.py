@@ -142,26 +142,11 @@ READ_TOOLS = {
         "parameters": {
             "type": "object",
             "properties": {
-                "view": {
-                    "type": "string",
-                    "enum": [
-                        "organize",
-                        "today",
-                        "inbox",
-                        "week",
-                        "all",
-                        "reminders",
-                        "calendar",
-                        "notes",
-                        "memory",
-                        "questions",
-                        "notifications",
-                        "settings",
-                    ],
-                },
+                # The enum is ui_contracts.VIEWS, set below, so every page the browser has can be opened.
+                "view": {"type": "string"},
                 "entity_id": {
                     "type": "string",
-                    "description": "Saved record UUID: task for all; schedule for reminders; note for notes; memory for memory; goal/project/space/area/actor for organize. Required to show a specific record. Other views are page-only; use ui_calendar for dated record focus. Omit only for a page-only request.",
+                    "description": "Saved record UUID: task for all; schedule for reminders; note for notes; memory for memory; goal/project/space/area/actor for organize; agent run for remotea (opens that run). Required to show a specific record. Other views are page-only; use ui_calendar for dated record focus. Omit only for a page-only request.",
                 },
             },
             "required": ["view"],
@@ -343,6 +328,7 @@ for tool_name in ("task_list", "note_search"):
 from .ui_contracts import EDITOR_KINDS, UI_TOOLS, VIEWS
 
 READ_TOOLS.update(UI_TOOLS)
+READ_TOOLS["ui_show"]["parameters"]["properties"]["view"]["enum"] = list(VIEWS)
 READ_TOOLS["ui_filter"]["parameters"]["properties"].update({
     "project_id": {"type": "string", "maxLength": 36},
     "assignee": {"type": "string", "maxLength": 100},
@@ -950,23 +936,18 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "ui_show":
         view = arguments.get("view")
         entity_id = arguments.get("entity_id")
-        if view not in {
-            "organize",
-            "today",
-            "inbox",
-            "week",
-            "all",
-            "reminders",
-            "calendar",
-            "notes",
-            "memory",
-            "questions",
-            "notifications",
-            "settings",
-        }:
+        if view not in READ_TOOLS["ui_show"]["parameters"]["properties"]["view"]["enum"]:
             raise DomainError("INVALID_ARGUMENT", "Unknown app page.")
+        if view == "remotea":
+            from .agent_link import gate
+
+            with session_scope() as db:
+                gate(db, owner)  # Off (or a shared workspace): say so instead of opening an empty page.
         if entity_id:
-            model = {"all": Task, "reminders": Schedule, "notes": Note, "memory": Memory}.get(view)
+            from .session_models import AgentRun
+
+            models = {"all": Task, "reminders": Schedule, "notes": Note, "memory": Memory, "remotea": AgentRun}
+            model = models.get(view)
             if view == "organize":
                 from .models import Actor, Area, Goal, Space
 

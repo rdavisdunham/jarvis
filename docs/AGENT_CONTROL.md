@@ -45,8 +45,8 @@ Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key crea
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
 account was demoted. The link re-checks on every inbound message and every 30-second tick, so revoking
 the key, removing membership or turning remotea off ends the connection. The link key never has
-`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
-the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
+`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connections →
+Connected agents with the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
 register it at user scope in each harness (for Claude Code:
 `claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`,
 trailing slash required). Without `agents:session` the MCP server offers only the planner tools, the
@@ -315,7 +315,7 @@ once and asks the run to stop (`stop_reason: task_completed_externally`); a huma
 
 ### Reading runs (`agents:read`)
 
-A bot key with `agents:read` (Settings → Connected agents → "Read runs started from tasks") reads what the
+A bot key with `agents:read` (Settings → Connections → Connected agents → "Read runs started from tasks") reads what the
 remotea page shows, so an assistant outside the run can review a run without a copy-paste:
 
 - `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
@@ -491,8 +491,8 @@ no-progress timer still applies to executing.
 ### auto_complete
 
 `POST /remotea/auto-complete {enabled}` (owner preference `remotea_auto_complete`, default **off**;
-viewers refused); `GET /remotea/status` returns it. Settings → remotea shows the toggle with a warning
-that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
+viewers refused); `GET /remotea/status` returns it. Settings → Connections → remotea shows the toggle with a
+warning that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
 a live run.
 
 ### Outcome eval (`evals/agent_control/`)

@@ -34,6 +34,7 @@ import { TaskTabs } from "./TaskTabs";
 import { Today } from "./Today";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
+import { noticeDestination } from "./notice-target";
 import { MemoryEditor } from "./MemoryEditor";
 import { useEditorBridge } from "./editor-control";
 import {
@@ -343,6 +344,12 @@ export default function App() {
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
   const [remoteaRun, setRemoteaRun] = useState<string | null>(null);
+  // Bumped on every request to open a run, so the page remounts on it even if it last showed that run.
+  const [remoteaOpened, setRemoteaOpened] = useState(0);
+  function openRemoteaRun(run: string | null) {
+    if (run) { setRemoteaRun(run); setRemoteaOpened(n => n + 1); }
+    setView("remotea");
+  }
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
@@ -1384,12 +1391,12 @@ export default function App() {
     } else {
       if (
         action.entity_id &&
-        !["all", "organize", "notes", "reminders", "memory"].includes(
+        !["all", "organize", "notes", "reminders", "memory", "remotea"].includes(
           action.view ?? "",
         )
       )
         throw new Error(
-          "Choose Tasks, Projects & goals, Notes, Task alerts or Memory to open a record.",
+          "Choose Tasks, Projects & goals, Notes, Task alerts, Memory or remotea to open a record.",
         );
       setQuery("");
       setTaskStatus("all");
@@ -1440,6 +1447,10 @@ export default function App() {
           record,
         ]);
         setHighlight(record.id);
+      } else if (action.entity_id && action.view === "remotea") {
+        // Fetch first so a run that is gone fails the action instead of opening an empty drawer.
+        await api("/remotea/runs/" + encodeURIComponent(action.entity_id));
+        openRemoteaRun(action.entity_id);
       }
     }
     setError("");
@@ -2608,7 +2619,7 @@ export default function App() {
                         {timeLabel(n.scheduled_at, boot.preferences.timezone)}
                       </time>
                       <div className="notice-actions">
-                        <button className="notice-primary" onClick={()=>{if(n.task_id){const task=tasks.find(t=>t.id===n.task_id);if(task)openTaskCard(task);}else if(n.target?.view==="activity")setActivityOpen(true);else setView("today");void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
+                        <button className="notice-primary" onClick={()=>{const to=noticeDestination(n);if(to.open==="run")openRemoteaRun(to.run);else if(to.open==="task"){const task=tasks.find(t=>t.id===to.task);if(task)openTaskCard(task);}else if(to.open==="activity")setActivityOpen(true);else setView("today");/* "notifications": this list is already open; Today as before. */void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
                         {n.task_id&&["reminder","deadline"].includes(n.category??"reminder")&&<button
                           onClick={() =>
                             void mutate(
@@ -2708,7 +2719,7 @@ export default function App() {
                 }}
               />
             )}
-            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea run={remoteaRun}/></Suspense>
+            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea key={remoteaOpened} run={remoteaRun}/></Suspense>
               : <p>remotea is off. Turn it on in Settings → Connections.</p>)}
             {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
@@ -3332,7 +3343,7 @@ export default function App() {
           id={calendarDetail.entity_id}
           canEdit={boot.workspace?.role !== "viewer"}
           remotea={!!boot.preferences.remotea_enabled}
-          onOpenRun={(run) => { setCalendarDetail(null); setRemoteaRun(run); setView("remotea"); }}
+          onOpenRun={(run) => { setCalendarDetail(null); openRemoteaRun(run); }}
           onNewNote={(task) => {
             setNoteEditor(blankNote(task));
             setCalendarDetail(null);

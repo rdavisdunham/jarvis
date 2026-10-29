@@ -106,7 +106,7 @@ export interface Schedule {
 }
 export interface Notice {
   category?: string;
-  target?: {view?:string;work_ids?:string[]};
+  target?: {view?:string;work_ids?:string[];run_id?:string} | null;
   eligible_at?: string;
   completed_at: string | null;
   schedule_id: string | null;
