@@ -606,3 +606,56 @@ def test_ci_runs_on_every_pull_request():
     ci = yaml.safe_load((Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text())
     triggers = ci.get("on") or ci.get(True)
     assert "pull_request" in triggers and not (triggers["pull_request"] or {}).get("branches")
+
+
+# ---------------------------------------------------------------- agents:read: bots read run timelines
+
+
+def test_bot_keys_with_agents_read_see_run_timelines_and_others_do_not(client, host):  # noqa: F811
+    """A read-only key (agents:read) lists runs and reads one run's full timeline through the bot API and the
+    MCP tool list; a key without the scope is refused with INSUFFICIENT_SCOPE; unknown runs are 404."""
+    created = task(success_criteria=[{"id": "c1", "text": "done", "kind": "text"}])
+    run_id = start(host, created["id"])["id"]
+    attached(host, run_id)
+    reader = client.post("/api/v1/bot-keys", json={"name": "reader", "expires_in_days": 30,
+                                                   "scopes": ["agents:read", "tasks:read"]}).json()["token"]
+    blind = client.post("/api/v1/bot-keys", json={"name": "blind", "expires_in_days": 30,
+                                                  "scopes": ["tasks:read"]}).json()["token"]
+    c = TestClient(app)
+    listing = c.get("/api/v1/external/agents/runs", headers=bearer(reader), params={"task_id": created["id"]})
+    assert listing.status_code == 200, listing.text
+    assert [r["id"] for r in listing.json()["items"]] == [run_id]
+    assert listing.json()["items"][0]["task"]["id"] == created["id"]
+    detail = c.get(f"/api/v1/external/agents/runs/{run_id}", headers=bearer(reader), params={"limit": 5})
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["plan"]["criteria"][0]["id"] == "c1" and body["history"][0]["to"] == "spawning"
+    assert {"turns", "commands", "attempts", "questions", "interviews", "more"} <= body.keys()
+    assert body["commands"][0]["kind"] == "spawn" and body["more"]["limit"] == 5
+    tools = {t["name"] for t in c.get("/api/v1/external/capabilities", headers=bearer(reader)).json()["tools"]}
+    assert {"run_list", "run_get"} <= tools and "task_step" not in tools
+    tools = {t["name"] for t in c.get("/api/v1/external/capabilities", headers=bearer(blind)).json()["tools"]}
+    assert not {"run_list", "run_get"} & tools
+    for path in ("/api/v1/external/agents/runs", f"/api/v1/external/agents/runs/{run_id}"):
+        r = c.get(path, headers=bearer(blind))
+        assert r.status_code == 403 and r.json()["error"]["code"] == "INSUFFICIENT_SCOPE", r.text
+    missing = c.get(f"/api/v1/external/agents/runs/{created['id']}", headers=bearer(reader))
+    assert missing.status_code == 404
+    # The same read model through the MCP dispatcher, under the reader's identity.
+    from jarvis import external_mcp
+
+    with session_scope() as db:
+        reader_id = db.scalar(select(BotCredential.id).where(BotCredential.name == "reader"))
+    with bot_access_bind(reader_id):
+        assert [r["id"] for r in external_mcp.dispatch("run_list", {"active": True})["items"]] == [run_id]
+        got = external_mcp.dispatch("run_get", {"run_id": run_id, "limit": 3})
+        assert got["id"] == run_id and got["more"]["limit"] == 3
+    # Reading survives remotea being turned off, like the browser page.
+    assert client.post("/api/v1/remotea/disable").status_code == 200
+    assert c.get(f"/api/v1/external/agents/runs/{run_id}", headers=bearer(reader)).status_code == 200
+
+
+def bot_access_bind(credential_id):
+    from jarvis import bot_access
+
+    return bot_access.bind(credential_id)

@@ -899,6 +899,20 @@
       "feature": "external_agents"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/external/agents/runs",
+      "handler": "agent_runs",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/agents/runs/{run_id}",
+      "handler": "agent_run",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/external/agents/session/interview",
       "handler": "agent_task_interview",
