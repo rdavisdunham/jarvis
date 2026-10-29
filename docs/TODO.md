@@ -565,6 +565,9 @@ A checked implementation task never replaces connected-provider or physical-devi
   Stage F (2026-10-28 audit) made remotea personal-workspace only; see
   [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
 - verify sandboxing on the host (bubblewrap / codex sandbox, no network).
+- Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
+  `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
+  `claude mcp add` on 2026-10-29.
 - **Project play button (advanced, later).** A Play action on a project queues every
   currently actionable task as remotea runs: in series when they touch the same
   repo/target or declare dependencies, in parallel when they do not overlap. Needs
@@ -580,7 +583,9 @@ A checked implementation task never replaces connected-provider or physical-devi
 The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
 roadmap", tag `todo-sync`) so runs can be started from them; keep both in step when closing items.
 
-Add new requests to the matching active batch or deferred list. Keep one delivery
+From 2026-10-29 the Eridani task list (project "Eridani roadmap") is the source of truth for
+open work; this file mirrors it for readers of the repo. Add new requests there first, then to the
+matching active batch or deferred list here. Keep one delivery
 order. Record dates/commit/evidence when closing items; archive finished release
 narratives instead of appending another competing roadmap. The
 [full historical ledger](archive/2026-10-02/TODO_HISTORY.md) preserves detailed user
