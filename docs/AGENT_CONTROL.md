@@ -152,6 +152,70 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
 Targets are re-read on every use, so editing `eridani.json` needs no restart; the next connect's hello
 carries the change. Verify runs agent-edited code outside any sandbox (see [Not yet](#not-yet)).
 
+#### jarvis: `scripts/verify.sh`
+
+The jarvis repository carries the wrapper a verify entry calls, so the entry holds no toolchain paths of its
+own. [`scripts/verify.sh`](../scripts/verify.sh) `[--dry-run] [--no-sync] [--only api|web] [pytest args…]`:
+
+1. **PATH.** Keeps the caller's `PATH` first, then adds `~/.local/bin`, `~/.cargo/bin`, nvm's default node
+   (only when no `node` is on `PATH` yet) and `/usr/local/bin`, so `uv`, `node` and `npm` resolve under the
+   service's minimal `PATH`.
+2. **Test database.** Exports `JARVIS_ENV_FILE=""` (never the developer's `.env`). Uses the caller's
+   `JARVIS_DATABASE_URL` as given: the pytest session creates and drops its own `jarvis_test_<uuid>` database
+   on that server (`tests/conftest.py`), so one standing test server serves concurrent runs. Without it the
+   script starts a throwaway `postgres:16-alpine` container on a free loopback port (`-p 127.0.0.1::5432`),
+   waits for it over TCP and removes it on exit (an `EXIT` trap; `INT`/`TERM` exit through it).
+3. **API.** `uv sync --locked --group dev`, then `.venv/bin/python -m pytest -q --tb=short` from the
+   repository root (`tests/`); extra arguments go to pytest (`-x`, `-k agent`, a test file).
+4. **Web.** In `apps/web`: `npm ci --no-audit --no-fund` when `node_modules` is missing, `npx tsc -b`,
+   `npx vitest run`.
+
+It prints a `==> <section>` header and each command (`+ …`) and stops at the first failure with its exit
+code. `--no-sync` (or `JARVIS_VERIFY_SYNC=0` in the entry's `env`) skips `uv sync` and `npm ci`;
+`--only api|web` (or `JARVIS_VERIFY_ONLY`) runs one half; `--dry-run` prints the plan without running
+anything. Alembic (`upgrade head` / `check`) is not part of it: CI runs it against its own database.
+
+**The entry in `~/.config/remotea/eridani.json`** (Davin, on the desktop; task `3a58cf14`). Where bubblewrap
+works (it does on the desktop) a verify entry runs sandboxed: `HOME` is a temporary folder, only the
+`PATH` folders, the worktree, its venv's base Python and the entry's `mounts` exist, there is no docker
+socket and no internet. So the sandboxed entry names the toolchain in `env.PATH`, points
+`JARVIS_DATABASE_URL` at a standing test Postgres reached through `network: "loopback"`, and leaves the
+installs to the target's dependency preparation (remotea `prepare` steps, S-Q3) with `JARVIS_VERIFY_SYNC=0`.
+Added to the existing `jarvis` target (its `id`, `repo`, `worktreeRoot`, `base` and `launch` stay as they
+are; match the node path to the installed nvm version):
+
+```json
+"prepare": [
+  { "id": "api", "argv": ["/home/davin/.local/bin/uv", "sync", "--locked", "--group", "dev"], "timeout": 900 },
+  { "id": "web", "argv": ["/home/davin/.nvm/versions/node/v22.23.2/bin/npm", "ci", "--no-audit", "--no-fund"], "cwd": "apps/web", "timeout": 900,
+    "env": { "PATH": "/home/davin/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin" } }
+],
+"verify": [{
+  "id": "full",
+  "argv": ["./scripts/verify.sh"],
+  "timeout": 1800,
+  "network": "loopback",
+  "ports": [55432],
+  "env": {
+    "PATH": "/home/davin/.local/bin:/home/davin/.nvm/versions/node/v22.23.2/bin:/usr/local/bin:/usr/bin:/bin",
+    "JARVIS_DATABASE_URL": "postgresql+psycopg://postgres:verify@127.0.0.1:55432/postgres",
+    "JARVIS_VERIFY_SYNC": "0"
+  }
+}]
+```
+
+The standing test server, once: `docker run -d --restart unless-stopped --name jarvis-verify-pg -e
+POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:16-alpine`. Until the host runs a remotea build
+with `prepare` (remotea branch `target-templates`), drop `prepare` and `JARVIS_VERIFY_SYNC` and set
+`"isolation": "none"` on the entry instead: the script then runs as the server user with the network and
+docker, syncs dependencies itself and may start its own throwaway Postgres (drop `JARVIS_DATABASE_URL`,
+`network` and `ports` too). `remotea doctor` and hello's `verify_status` say whether `./scripts/verify.sh`
+resolves (it must be on the checkout's `main`, since readiness is checked against the repository).
+
+The full suite (API 470–670 s plus the web checks) can outlast Eridani's fixed 11-minute verify deadline
+above; a second, narrower entry (`["./scripts/verify.sh", "--only", "web"]`, or API arguments such as
+`["./scripts/verify.sh", "--only", "api", "-x", "tests/test_agent_control.py"]`) stays inside it.
+
 ## Messages Eridani sends to the agent
 
 Besides the spawn prompt, every text that reaches a running agent is an `input` command
