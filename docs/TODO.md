@@ -590,6 +590,21 @@ A checked implementation task never replaces connected-provider or physical-devi
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.
 
+- **Run from anywhere** (four Eridani tasks, 2026-10-29; decisions in the plan of that day).
+  (1) jarvis PR #84: a persistent, collapsible right-side run panel in the app shell (column
+  on wide screens, sheet with an edge pill on phones), a Run button on every task row (Today,
+  Tasks/Organize lists and boards, Calendar/Reminders) with Running / Needs you / Approve
+  chips, a compact Run dialog (repo, Claude Code/Codex + model, interview Auto/Skip) backed
+  by `GET /remotea/runs/preflight`, Eri's confirm cards in the chat drawer, the topbar
+  Sessions button becomes Runs (ledger moves onto the remotea page), composer keys Enter =
+  queue, Ctrl/Cmd+Enter = steer, Shift+Enter = newline. (2) Eri runs the whole thing from
+  chat and voice: looser yes, control tools preloaded while a proposal is open, repo choice
+  from chat, `control_approve` and `control_plan_review`, Live instructions, open-run device
+  context. (3) remotea PR #11 + (4) jarvis PR #85: the host sends a `prompt` frame on
+  UserPromptSubmit and Eridani stores it as a user turn, so messages typed in the terminal
+  show live as "You, in the terminal". Later discussion: which tasks get a Run button at
+  all ("feed Hayes" should not).
+
 ## Maintenance
 
 The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
