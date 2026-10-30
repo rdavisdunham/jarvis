@@ -525,7 +525,13 @@ remotea page shows, so an assistant outside the run can review a run without a c
   Stop alone, as older hosts do, so a message never appears twice),
   `commands` (spawn, input incl. the operator's and the judge's gap prompts, stop, verify), `questions`,
   `interviews` (questions and answers), and `attempts` (verify and judge: verdict, gap, per-criterion
-  record, rules, model, cost). Turns and commands page newest first; `more` says whether older ones remain.
+  record, rules, model, cost). Turns and commands page newest first (default 100 each, `limit` ≤ 200);
+  `more {turns, commands, offset, limit, remaining {turns, commands}}` says whether older ones remain and how many.
+  A turn's `text` is cut at 4,000 characters for display (`clipped: true`; the browser route
+  `GET /remotea/runs/{id}/turns/{turn_id}` returns it whole), which is not the same as `truncated` (the host cut the
+  final response, or the daily quota dropped it; the rest was never stored). `retention {expires_at, expired}`: a
+  settled run's turns and commands are deleted 90 days after it ended (`agent_retention.py`); `expires_at` is null
+  while the run is unsettled.
 
 Reads stay available after remotea is turned off, as on the page. Owner scoping is the run's `owner_id`;
 another workspace's run is `404`. Nothing here mutates: approving, messaging and stopping remain
@@ -549,7 +555,8 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
 | `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `task` |
-| `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
+| `GET /runs/{id}?limit=&offset=` | no | detail: plan, history, turns, commands with outcomes, questions; turns and commands page newest first (`more`, `retention`: see "Reading runs") |
+| `GET /runs/{id}/turns/{turn_id}` | no | one turn whole, `{id, seq, text, truncated}`, for the "Full response" of a `clipped` turn. Owner only, like detail. 404 `NOT_FOUND` for an unknown id or a turn of another run or owner; 404 `TURN_EXPIRED` once retention deleted the run's turns |
 | `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
@@ -570,6 +577,15 @@ a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
 The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
 questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve.
+
+The drawer loads the newest page of turns and commands. When `more` says older ones remain, the top of the log
+shows **Paged out** with how many remain and **Load earlier**, which fetches the next `offset` and merges it
+(`remotea-model.ts` `mergeDetail`: deduped by id, ordered by time; a later poll keeps what was loaded). The scroll
+stays on the entry that was first on screen. A turn's labels: **Clipped** (cut for display; **Full response**
+fetches the turn route and keeps the text), **Truncated by host** (the rest was never stored), and **Expired**
+(retention deleted it; also shown at the top of the log for a run past its retention). Message, Steer, Re-plan,
+Freestyle, Set verify, Approve and Stop go through `postAction` (one `action_id`, retried on a lost response);
+Verify now uses a plain `post` because its route stores no receipt.
 
 The drawer (and the side panel, which keys it by run id so draft text, busy state and scroll are per run)
 binds every control to the run it has loaded, never to the id it was asked for: a run load is latest-only
