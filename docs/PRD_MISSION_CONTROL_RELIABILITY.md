@@ -9,8 +9,8 @@ All five run batches and the "later" batch have landed: 39 of the 40 work items 
 item is S-N3 (`3a58cf14`): `scripts/verify.sh` merged in jarvis #113, and the host verify
 entry, a remotea.service restart and one live verify remain for Davin, so the live
 end-to-end run with a recorded verify result under Validation is still to do. Follow-ups
-outside the 40: the Eridani half of the S-Q5 drain (`ac6a97fe`, deferred) and swarm mode
-(`71f97d98`, in review as jarvis #121). The [roadmap mirror](TODO.md#runner-mission-control-remotea--built)
+outside the 40: swarm mode (`71f97d98`) merged as jarvis #121; the Eridani half of the
+S-Q5 drain (`ac6a97fe`) is deferred. The [roadmap mirror](TODO.md#runner-mission-control-remotea--built)
 tracks the same state.
 
 ## Goals
@@ -426,7 +426,7 @@ Astra's review (E-Q5, E-Q6): group runs by the next human action (answer, review
 - `ec4d8a54` Run cards: a tiny-model one-line summary of what the agent is doing. Done (jarvis #102).
 - `7f9da9f3` Question answering and run control for Codex and OpenCode. Done (remotea #22).
 - `0ab99d68` remotea for Brainforge members: multi-user design. Done as a design (jarvis #98, `docs/REMOTEA_MULTI_USER.md`); its build phases are not roadmap tasks yet.
-- `71f97d98` Swarm mode (Astra's E-Q4 is the same idea; build it on the batches above and the worktree writer policy S-S4). Backlog; in review as jarvis #121.
+- `71f97d98` Swarm mode (Astra's E-Q4 is the same idea; build it on the batches above and the worktree writer policy S-S4). Done (jarvis #121, merged 2026-10-30).
 - `a4d7d060` Explore when Eridani sends finish-up messages to an agent (document the triggers; show them on the timeline). Done (jarvis #99).
 - `fe21bb75` One task card; `b14920b4`, `ce2e0e8d`, `b8d2e28e` search and filter bugs (product, scheduled alongside). Done (jarvis #97; the routing decision is Davin's); the search and filter bugs are done (jarvis #95).
 

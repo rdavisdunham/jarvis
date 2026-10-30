@@ -145,8 +145,8 @@ judged success criteria and accepted completion, and local credentials stay loca
   harness launch, prepare steps, disk and run limits) before advertising it and
   prepares worktrees before spawn; Eridani shows template readiness in the Run
   dialog and setup page and refuses with `TARGET_NOT_READY` (jarvis #119).
-- Swarm mode: designed below (task `71f97d98`); in review as jarvis #121, not merged
-  as of this update.
+- [Swarm mode](AGENT_CONTROL.md#swarm-mode-migration-0040): Play on a project plans
+  its open tasks into batches of parallel runs (jarvis #121, task `71f97d98`).
 
 - [x] **Wmux one-click connection and harness tools (future).** Sign into Eridani
   from the Wmux terminal multiplexer through an SSO-style connection flow. That
@@ -222,9 +222,7 @@ judged success criteria and accepted completion, and local credentials stay loca
   floor vs interview conflicts with Edit criteria + Judge again (`ba56714a`, #111);
   multi-user design (`0ab99d68`, #98; see Explicitly deferred).
 
-Open mission-control items:
-
-- [ ] **Swarm mode (project play button, advanced, later).** Play on a project opens an
+- [x] **Swarm mode (project play button, advanced, later).** Play on a project opens an
   editable swarm plan: a planning model (Fable) groups the project's open tasks into
   batches so code will not overlap (series when they touch the same files, parallel
   when independent, one-line reason per grouping). Select/deselect tasks, move them
@@ -234,7 +232,12 @@ Open mission-control items:
   step surfaces merge order and conflicts before the next batch. Needs fetch-before-
   basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
   expanded 2026-10-29.
-  Roadmap task `71f97d98` (backlog, later); implementation in review as jarvis #121.
+  Done 2026-10-30 (jarvis #121, migration 0040): see
+  [Agent control § Swarm mode](AGENT_CONTROL.md#swarm-mode-migration-0040). The roadmap
+  export still shows task `71f97d98` as backlog; close it there.
+
+Open mission-control items:
+
 - [ ] **Eridani: recognise a remotea host draining for an upgrade** (`ac6a97fe`).
   Eridani half of remotea #32: advertise `draining` in the welcome caps, read it from
   hello and the `host.state` frame, show the host as restarting rather than offline,
