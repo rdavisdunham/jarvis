@@ -111,6 +111,14 @@
 .remotea-bubble p { grid-column: 2; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 13px; line-height: 20px; max-height: none; overflow: visible; }
 .remotea-bubble.who-you p { color: var(--ink); }
 .remotea-bubble .btn-ghost { grid-column: 2; justify-self: start; font-family: inherit; font-size: 12px; }
+.remotea-bubble .remotea-bubble-note, .remotea-bubble .work-error { grid-column: 2; font-size: 12px; color: var(--ink-3); }
+/* How complete a response is (E-N5): clipped for display, truncated by the host, paged out, expired by retention. */
+.remotea-label { display: inline-block; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); font-family: var(--font, inherit); font-size: 11px; line-height: 16px; font-weight: 500; color: var(--ink-2); background: var(--sunken); white-space: nowrap; }
+.remotea-label.label-clipped { border-style: dashed; }
+.remotea-label.label-truncated { color: var(--danger); border-color: var(--danger); background: none; }
+.remotea-label.label-paged { color: var(--violet); border-color: var(--violet); background: none; }
+.remotea-label.label-expired { color: var(--ink-3); border-style: dotted; background: none; }
+.remotea-log-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 6px; font-size: 12px; color: var(--ink-3); }
 .remotea-composer { flex: none; display: grid; gap: 6px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
 .remotea-composer textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 20px; }
 .remotea-chat-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 0.85rem; color: var(--ink-2); }

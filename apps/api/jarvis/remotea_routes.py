@@ -350,6 +350,24 @@ def run_detail(identity: UUID, user: User, limit: int = Query(control.DETAIL_PAG
         return control.public_run(db, run, detail=True, limit=limit, offset=offset)
 
 
+@router.get("/runs/{identity}/turns/{turn_id}")
+def run_turn(identity: UUID, turn_id: UUID, user: User):
+    """One turn's whole text: detail clips each turn at agent_control.TURN_CLIP (`clipped`), and the drawer's
+    "Full response" fetches the rest here. Gated like detail (owner only, readable after remotea is turned off)."""
+    from . import agent_retention as retention
+
+    with session_scope() as db:
+        owner_only(db, user)
+        run = coordinator.load(db, user.owner_id, str(identity), lock=False)
+        turn = db.scalar(control.run_turns(run).where(AgentTurn.id == str(turn_id)))
+        if turn is None:
+            if retention.run_data_expired(run):
+                raise DomainError("TURN_EXPIRED", "This response was deleted: a finished run's turns are kept "
+                                  f"{retention.RUN_DATA.days} days.", 404)
+            raise DomainError("NOT_FOUND", "That response is not part of this run.", 404)
+        return {"id": turn.id, "seq": turn.seq, "text": turn.text, "truncated": turn.truncated}
+
+
 @router.post("/runs/{identity}/message")
 def message(identity: UUID, body: control.MessageInput, user: User):
     with session_scope() as db:
