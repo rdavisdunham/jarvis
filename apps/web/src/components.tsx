@@ -772,6 +772,12 @@ export function SettingsPanel({
                 "Automatically extract useful facts and preferences, with sources and semantic search.",
             },
             {
+              key: "live_memory_updates",
+              label: "Memory during voice",
+              description:
+                "While you talk with GPT-Live, quietly give Eri saved facts that match what you are saying.",
+            },
+            {
               key: "deep_sleep_enabled",
               label: "Weekly deep sleep",
               description:
@@ -788,8 +794,9 @@ export function SettingsPanel({
                     item.key as
                       | "history_enabled"
                       | "memory_learning"
+                      | "live_memory_updates"
                       | "deep_sleep_enabled"
-                  ]
+                  ] ?? true
                 }
                 disabled={busy}
                 onChange={(e) => void onSave({ [item.key]: e.target.checked })}

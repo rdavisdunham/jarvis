@@ -14,6 +14,7 @@ export interface GoogleStatus {
   error: string;
   last_sync_at: string | null;
   stale: boolean;
+  grant?: GrantHealth | null;
   calendars: {
     id: string;
     title: string;
@@ -27,6 +28,47 @@ export interface GoogleStatus {
     last_sync_at: string | null;
   }[];
 }
+export interface GrantHealth {
+  refresh_token_issued_at: string | null;
+  refresh_token_age_days: number | null;
+  last_refresh_at: string | null;
+  rejected_at: string | null;
+  testing_mode: "likely" | "unlikely" | "unknown";
+  testing_mode_reason: string;
+}
+/** Reconnect asks for the same permissions the connection had, so editing survives a revoked grant. */
+export const reconnectPurpose = (data: GoogleStatus) =>
+  data.calendar_write_enabled ? "calendar_write" as const : "calendar" as const;
+
+/** What Google said and what to do next, when the stored grant stopped working. */
+export function ReconnectCallout({ data, disabled, onReconnect }: {
+  data: GoogleStatus; disabled: boolean; onReconnect: () => void;
+}) {
+  if (!data.calendar_enabled || data.status !== "needs_reconnect") return null;
+  return (
+    <div className="settings-callout integration-hint" role="alert">
+      <p>
+        {data.error === "revoked"
+          ? "Google stopped accepting Eridani’s Calendar access (it expired or was removed in your Google account). "
+          : "Google Calendar needs your permission again. "}
+        Sync and calendar changes are paused until you reconnect. Cached events stay in place.
+      </p>
+      {data.grant?.testing_mode === "likely" && <p>{data.grant.testing_mode_reason}</p>}
+      <button className="btn" disabled={disabled} onClick={onReconnect}>Reconnect Google Calendar</button>
+    </div>
+  );
+}
+
+const days = (value: number) => (value < 1 ? "less than a day" : value.toFixed(value < 10 ? 1 : 0) + " days");
+export function grantSummary(grant: GrantHealth) {
+  const parts = [
+    grant.refresh_token_age_days == null ? "Access granted before age tracking" : "Access granted " + days(grant.refresh_token_age_days) + " ago",
+    grant.last_refresh_at ? "last refreshed " + new Date(grant.last_refresh_at).toLocaleString() : "not refreshed yet",
+  ];
+  return parts.join(", ") + ".";
+}
+const TESTING = { likely: "Likely in Testing (7-day grants)", unlikely: "Not limited to 7 days", unknown: "Publishing status unknown" };
+
 export async function startGoogle(
   purpose: "login" | "link" | "calendar" | "calendar_write",
 ) {
@@ -155,6 +197,15 @@ export function GoogleSettings({
           )}
           {voiceActive && (
             <p className="footnote">End voice before opening Google sign-in.</p>
+          )}
+          <ReconnectCallout data={data} disabled={!data.configured || busy || voiceActive}
+            onReconnect={() => void act(() => startGoogle(reconnectPurpose(data)))} />
+          {data.calendar_enabled && data.grant && (
+            <SettingRow label="Connection health" hint={<span>
+                {grantSummary(data.grant)} {data.grant.testing_mode_reason}
+              </span>}>
+              <span className="chip">{TESTING[data.grant.testing_mode]}</span>
+            </SettingRow>
           )}
           {data.calendar_enabled && (
             <>

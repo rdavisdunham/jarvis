@@ -230,6 +230,7 @@ def shared_preferences(db, owner, values):
         "preferred_name": "workspace member",
         "history_enabled": False,
         "memory_learning": False,
+        "live_memory_updates": False,
         "deep_sleep_enabled": False, "routing_learning": False, "routing_review_enabled": False,
         "shared_workspace": workspace.name,
     }

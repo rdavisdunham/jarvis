@@ -1025,5 +1025,50 @@
       "Tool/API result or browser/device recording",
       "Assertion results and any provider/fault evidence"
     ]
+  },
+  {
+    "id": "site_controls.26",
+    "feature": "site_controls",
+    "title": "Show a named task that exists only as a calendar event.",
+    "inputs": [
+      "Show me the Lantern weekly check-in task."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The single matching calendar event (no task of that name exists) is selected and opened in its event details, not only the Calendar page for its day.",
+      "The reply does not say no task was found and does not correct the word task; it may mention that it is a calendar event when that matters.",
+      "When a task and an event share the name, or several occurrences match, Eri asks which one instead of guessing."
+    ],
+    "invariants": [
+      "Only authorized, requested effects.",
+      "No live external writes from the eval environment.",
+      "No false completion or display claims.",
+      "A name match never authorizes an edit."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "browser",
+      "protocol": "evals/app/protocols.md#browser"
+    },
+    "setup": [
+      "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
+      "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
+      "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri.",
+      "Add one local calendar event titled Lantern weekly check-in today and no task, note or record with that name."
+    ],
+    "steps": [
+      "Ask: Show me the Lantern weekly check-in task.",
+      "Capture the lookup results (navigation_find, or task_resolve with other_kinds), the open command and the device acknowledgement.",
+      "Repeat after adding a task named Lantern weekly check-in; expect a clarifying question, not an open.",
+      "Check every expected outcome and invariant. Missing fixtures, uncertain outcomes, or unavailable devices are not passes."
+    ],
+    "evidence": [
+      "Before/after record IDs and changed fields",
+      "Tool/API result or browser/device recording",
+      "Assertion results and any provider/fault evidence"
+    ]
   }
 ]
