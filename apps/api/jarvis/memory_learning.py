@@ -161,6 +161,21 @@ def extraction_request(owner, path, payload, model, allowance, timeout=45):
     )
 
 
+def profile_request(owner, job, payload, allowance, timeout=45, *, prompt_tokens=0):
+    """extraction_request by job type: the job's model_map route decides the model. Only the extraction model is
+    enabled in production (the budget ledger prices Luna only), so any other route raises like the allowlist."""
+    from .model_map import JOBS, PROFILES, route
+
+    if JOBS[job].path != "extraction":
+        raise ValueError(f"{job} is not a structured extraction job")
+    chosen = route(job, prompt_tokens)
+    profile = PROFILES.get(chosen.profile)
+    if profile is None or profile.api != "openai_responses" or profile.model != EXTRACTION_MODEL \
+            or profile.reasoning_effort != "low":
+        raise ValueError(f"Model profile {chosen.profile} is not enabled for production {job} calls")
+    return extraction_request(owner, "chat/completions", payload, EXTRACTION_MODEL, allowance, timeout)
+
+
 def embeddings(owner, texts, timeout=20):
     if not texts:
         return []
