@@ -217,6 +217,54 @@ def doctor_summary(value):
             **({"truncated": True} if truncated else {})}
 
 
+# A target template's problem levels, fails first (remotea S-Q3).
+TEMPLATE_LEVELS = ("fail", "warn")
+TEMPLATE_PROBLEMS = 20
+PREPARE_STEPS = 8
+
+
+def target_template(value):
+    """S-Q3 hello `targets[].template` as Eridani keeps it, or None when absent or malformed: `{ready, problems:
+    [{check, level: fail|warn, reason}]}`, fails first. A malformed problem is dropped alone; `reason` is one
+    redacted line (the host promises no argv, env or keys; it is redacted again here)."""
+    if not isinstance(value, dict) or not isinstance(value.get("ready"), bool):
+        return None
+    problems = []
+    for item in value.get("problems") if isinstance(value.get("problems"), list) else []:
+        if not isinstance(item, dict) or item.get("level") not in TEMPLATE_LEVELS:
+            continue
+        check, reason = short_text(120)(item.get("check")), short_text(300)(item.get("reason"))
+        if check and reason:
+            problems.append({"check": check, "level": item["level"], "reason": redact(reason)[:300]})
+        if len(problems) >= TEMPLATE_PROBLEMS:
+            break
+    problems.sort(key=lambda p: TEMPLATE_LEVELS.index(p["level"]))
+    return {"ready": value["ready"], "problems": problems}
+
+
+def target_prepare(value):
+    """S-Q3 hello `targets[].prepare`: the target's preparation step ids, or None when absent or not a list."""
+    if not isinstance(value, list):
+        return None
+    return [step for step in (short_text(64)(v) for v in value[:PREPARE_STEPS]) if step]
+
+
+def hello_targets(value):
+    """hello `targets` with the S-Q3 fields (`template`, `prepare`) normalised and the rest kept as sent. Both are
+    optional and additive: a malformed one is dropped from its target, never refused."""
+    if not isinstance(value, list):
+        return value
+    out = []
+    for item in value:
+        if isinstance(item, dict) and ("template" in item or "prepare" in item):
+            template, prepare = target_template(item.get("template")), target_prepare(item.get("prepare"))
+            item = {k: v for k, v in item.items() if k not in ("template", "prepare")}
+            item.update({**({"template": template} if template is not None else {}),
+                         **({"prepare": prepare} if prepare is not None else {})})
+        out.append(item)
+    return out
+
+
 class Hello(Frame):
     REDACT: ClassVar[tuple[str, ...]] = ("degraded_reason",)
     server_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,100}$")
@@ -227,8 +275,9 @@ class Hello(Frame):
     version: str | None = Field(default=None, max_length=40)
     caps: list[str] = Field(default_factory=list, max_length=100)
     harnesses: dict[str, dict] = Field(default_factory=dict, max_length=10)
-    # Optional: execution targets configured on the host, offered in the page's target picker.
-    targets: list[dict] = Field(default_factory=list, max_length=100)
+    # Optional: execution targets configured on the host, offered in the page's target picker. S-Q3 adds each
+    # target's `template {ready, problems}` and `prepare` step ids (hello_targets).
+    targets: Annotated[list[dict], BeforeValidator(hello_targets)] = Field(default_factory=list, max_length=100)
     # Build identity (remotea PR #18): the commit the running server was built from, whether the build had
     # uncommitted changes, how to read `harnesses`/`targets` (2: probed per-target launch and verify readiness)
     # and the installed hook helper's hash. All optional; malformed values are dropped, not refused.

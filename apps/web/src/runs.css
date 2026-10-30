@@ -128,6 +128,8 @@
 .run-dialog select { width: 100%; }
 .run-dialog-freestyle { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; font-size: 0.9rem; }
 .run-dialog-freestyle small { color: var(--ink-3); }
+.run-dialog-setup { margin: 0; }
+.run-dialog-setup .text-button { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ---- Chat drawer: Eri's proposals waiting for a tap ----------------------------------------- */
 .chat-pending { display: grid; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
@@ -181,3 +183,6 @@
   overflow-wrap: anywhere;
 }
 .remotea-run-row .run-summary-updating { color: var(--ink-3); font-style: italic; }
+
+/* ---- Freshness chips on a run row (RunsPanel.tsx RunRow, rowFreshness) ----------------------- */
+.remotea-run-row .run-row-fresh { flex-basis: 100%; }

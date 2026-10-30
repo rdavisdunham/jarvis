@@ -50,6 +50,8 @@ def connection(db, owner, generation=None):
 
 
 def summary(db, owner):
+    from .linear_structure import overview
+
     row = db.get(LinearConnection, owner)
     if not row:
         return {"connected": False, "teams": []}
@@ -78,6 +80,7 @@ def summary(db, owner):
         "recent_changes": [
             {"job_id": j.id, "status": j.status, "message": (j.result or {}).get("message", "")} for j in jobs
         ],
+        "structure": overview(row),
     }
 
 
@@ -346,12 +349,16 @@ def process_sync(job_id):
                     if rid not in seen and not link.pending_job_id and link.sync_state != "unlinked":
                         link.sync_state = "unavailable"
                         external_state(db, link)
-            # Link only parents that are also in this owner's imported scope.
+            # Link only parents that are also in this owner's imported scope. A Home filed in Eridani (a
+            # parent that is not a Linear issue) stays; a Linear parent that went away is cleared.
+            linked_tasks = {link.task_id for link in existing.values()}
             for remote in remote_rows:
                 link = existing.get(remote["id"])
                 parent = existing.get((remote.get("parent") or {}).get("id"))
                 if link and not link.pending_job_id and link.sync_state == "synced":
-                    db.get(Task, link.task_id).parent_task_id = parent.task_id if parent else None
+                    task = db.get(Task, link.task_id)
+                    if parent or task.parent_task_id in linked_tasks:
+                        task.parent_task_id = parent.task_id if parent else None
             projects = {p["id"]: p for p in conn.directory.get("projects", [])}
             for remote in remote_rows:
                 p = remote.get("project")
@@ -363,6 +370,16 @@ def process_sync(job_id):
                         ),
                     }
             conn.directory = {**directory, "teams": meta["teams"], "projects": list(projects.values())}
+            from .linear_structure import after_sync, sources
+
+            # Optional structure mapping: new issues inherit their mapped Home (linear_structure.py).
+            after_sync(
+                db,
+                owner,
+                conn,
+                [existing[r["id"]] for r in remote_rows if r["id"] in existing],
+                sources(meta["teams"], list(projects.values())),
+            )
             conn.last_sync_at = started
             if full:
                 conn.full_sync_at = started
@@ -669,6 +686,9 @@ def process_write(job_id):
                 and link.pending_job_id == job_id
             ):
                 apply_remote(db, conn, link, remote)
+                from .linear_structure import after_sync
+
+                after_sync(db, owner, conn, [link], {})  # A confirmed project change files the issue now.
                 conn.next_sync_at = now()
             elif link and link.pending_job_id == job_id:
                 link.sync_state = "unconfirmed"

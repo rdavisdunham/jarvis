@@ -3,8 +3,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0039_agent_swarms"
-down_revision = "0038_memory_review_details"
+revision = "0040_agent_swarms"
+down_revision = "0039_linear_structure"
 branch_labels = depends_on = None
 
 

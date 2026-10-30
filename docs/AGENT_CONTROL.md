@@ -277,6 +277,7 @@ while nothing is ready. It walks three steps:
 | `NO_HARNESS` | yes | add `launch.claude` or `launch.codex` and install it |
 | `MCP_NOT_CONFIGURED` | yes | New setup code, then `remotea eridani setup` (saves `eridani-mcp-token`); without it the agent cannot submit its plan |
 | `HARNESS_NOT_INSTALLED` | no | "Codex is enabled but not installed": install it on the service's PATH, or remove it from `launch` |
+| `TARGET_NOT_READY` | yes | the template check failed (remotea S-Q3): fix what each failed `check` names (repo, worktree_root, base, launch, prepare.<id>, limits.disk); `remotea doctor` shows the same check. `NO_HARNESS` and `HARNESS_NOT_INSTALLED` are not added for such a target (it is advertised with no harnesses because of the template), and each harness's `reason` is the template line. Warn-level template problems other than `verify.*` (covered by `VERIFY_NOT_READY`) are notes ("Template migrations: …"); the target also carries `template` and `prepare` |
 | `VERIFY_NOT_READY` | no | not on the service PATH: "use scripts/verify.sh or set env.PATH in eridani.json"; demanded bwrap missing: install bubblewrap or set `isolation: "none"`; bad cwd: fix `cwd` |
 | `NO_VERIFY` | no | add a `verify[]` entry |
 
@@ -439,7 +440,7 @@ own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, build_sha?, build_dirty?, caps_version?, hook_version?, degraded_reason?, doctor?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, enabled?, launch?, verify, verify_status?, mcp?}]` | must be first, within 15 s. `doctor` is the host's latest `remotea doctor` summary (see the `doctor` row): kept in `caps.doctor` with `caps.doctor_at`; a hello without it keeps the previous summary while the host still advertises `doctor` (a restarted server sends none until its first check) and drops it when the host no longer does; a malformed one is dropped, never refused. The build fields and `degraded_reason` (only while the host's journal or outbox is degraded) are kept in `caps.build` and returned on the host (above); a malformed value is dropped, never refused. Each target's `harnesses` lists the harnesses it can run, `verify` its verify ids, and a `caps_version: 2` host adds `enabled` (what its `launch` permits), `launch {claude?, codex?: {ready, version, error?}}` (each launcher's probe), `verify_status [{id, ready, reason?, isolated?, isolation?, isolation_reason?}]` (the isolation fields from a host with verify isolation, remotea S-N4) and `mcp {configured, reason?}` (whether spawned agents get Eridani's MCP server); all are kept in `caps.targets` and returned on advertised and saved targets (see **Target capabilities**). The hello's time is kept as `caps.hello_at` (the setup page's probe reports it). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, build_sha?, build_dirty?, caps_version?, hook_version?, degraded_reason?, doctor?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, enabled?, launch?, verify, verify_status?, mcp?, template?, prepare?}]` | must be first, within 15 s. `doctor` is the host's latest `remotea doctor` summary (see the `doctor` row): kept in `caps.doctor` with `caps.doctor_at`; a hello without it keeps the previous summary while the host still advertises `doctor` (a restarted server sends none until its first check) and drops it when the host no longer does; a malformed one is dropped, never refused. The build fields and `degraded_reason` (only while the host's journal or outbox is degraded) are kept in `caps.build` and returned on the host (above); a malformed value is dropped, never refused. Each target's `harnesses` lists the harnesses it can run, `verify` its verify ids, and a `caps_version: 2` host adds `enabled` (what its `launch` permits), `launch {claude?, codex?: {ready, version, error?}}` (each launcher's probe), `verify_status [{id, ready, reason?, isolated?, isolation?, isolation_reason?}]` (the isolation fields from a host with verify isolation, remotea S-N4) and `mcp {configured, reason?}` (whether spawned agents get Eridani's MCP server); remotea S-Q3 adds `template {ready, problems?: [{check, level: fail\|warn, reason}]}` (the whole target checked before it is advertised; a target that is not ready comes with `harnesses: []`) and `prepare` (its preparation step ids), normalised by `agent_link.hello_targets` (fails first, at most 20 problems, each `reason` one redacted line ≤ 300 characters, at most 8 step ids; a malformed `template` or `prepare` is dropped from its target, never refused); all are kept in `caps.targets` and returned on advertised and saved targets (see **Target capabilities**). The hello's time is kept as `caps.hello_at` (the setup page's probe reports it). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | `caps` is `agent_link.SERVER_CAPS`: what Eridani accepts, including `prompt` and `doctor` (the host sends those frames only when they are listed) |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
 | up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
@@ -661,7 +662,10 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
 2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (the host lacks `spawn` for the harness, or the
    resolved target does not enable it; the message names the target and `data` is `{harness, host_target}`),
    `HARNESS_DISABLED` (opencode), `MCP_UNCONFIGURED` (the target's hello says `mcp.configured: false`: agents
-   there get no Eridani tools and could never call `submit_plan`; refused unless `freestyle: true`).
+   there get no Eridani tools and could never call `submit_plan`; refused unless `freestyle: true`),
+   `TARGET_NOT_READY` (remotea S-Q3: the target's hello `template.ready` is false; checked before the harness, so
+   it is not reported as "does not enable <harness>". The message is "The <target> target is not ready: <check>:
+   <reason>; …" from the fail-level problems, and `data` is `{host_target, template}`).
 3. The run is created in `spawning`, the plan is frozen as revision 1 (PRD note or task notes, steps,
    criteria), a run token is minted and `spawn` is queued in the same transaction. `freestyle: true` starts the
    run in freestyle (below) and skips the interview: the agent works on the task as written, turns are recorded
@@ -687,7 +691,10 @@ advertised targets and sets `harness_note`. Another host's capabilities never ma
 For the resolved target the preflight also reports `verify_status` (as advertised, with `timeout`, `isolated`,
 `isolation` and `isolation_reason` when the host sends them), `verify_ready` (the task's verify id when it names one,
 else whether **any** id the target offers is ready, since the default pick prefers a ready one; null when the host
-did not say or there are none), `verify_reasons` `{id: reason}` and `mcp`.
+did not say or there are none), `verify_reasons` `{id: reason}`, `mcp` and `template` (remotea S-Q3; null when
+the host did not say). The picker (`remotea-model.ts` `targetOptions`) adds "not ready: <check>: <reason>; …" to a
+target whose template is not ready, and the setup view's target card a "Template: ready · prepares api, web" /
+"Template: not ready (2 failing checks)" line.
 
 `problems` (from `readiness_for`, shared by the preflight, Eri's `control_start` proposal and the remotea card) are
 `{code, message, blocking, freestyle_ok?}`. The `check_host` refusals block. `agent_control.target_problems` adds,
@@ -706,6 +713,12 @@ without a preflight does it fall back to "any connected host can spawn it". When
 a target, the dialog reads the preflight again with that `execution_target_id` and waits for **Start** instead
 of starting at once. `GET /runs/{id}` adds `verify_readiness {id: {ready, reason?}}` beside `verify_options`; the
 header's verify line says when the chosen (or an offered) command is not ready on the host.
+
+When the preflight shows something the guided setup view fixes (`remotea-model.ts` `setupReason`: a target to
+choose, a problem in `SETUP_PROBLEMS` such as `HOST_OFFLINE`, `HARNESS_UNAVAILABLE`, `MCP_UNCONFIGURED`,
+`VERIFY_NOT_READY` or `TARGET_NOT_READY`, or the picked agent ruled out for the target), the dialog adds **Open
+remotea setup** (its tooltip is the problem): it closes the dialog, opens Settings → Connections and scrolls to the
+readiness view ([Setup readiness](#setup-readiness-e-q1), `remotea-setup.ts` `revealSetup`).
 
 ### Commands
 
@@ -731,7 +744,12 @@ When a spawn's ack or outcome is lost, reconciliation recognizes the run's surfa
 by that id (or by `run_id`) and records it as accepted instead of spawning again.
 
 Outcomes: an accepted spawn ack or `executed` outcome records `surf`, `incarnation`, `worktree`,
-`branch`, `base`, `base_sha`; a failed/rejected spawn fails the run; `uncertain` input moves to
+`branch`, `base`, `base_sha`; a failed/rejected spawn fails the run (`spawn_failed` / `spawn_rejected`), except the
+two remotea S-Q3 rejections (`run_coordinator.spawn_refusal`): `target_not_ready: <reasons>` (result `{template}`:
+the template broke since hello) fails it as **`target_not_ready`** with the failed checks and "fix the target on
+the host" as detail, and `target_busy` (result `{limit, running}`: the target is at its `limits.maxRuns`) as
+**`target_busy`** with "N of M runs allowed on this target are live. Start again when one finishes, or raise
+limits.maxRuns on the target."; `uncertain` input moves to
 needs_you `delivery_uncertain` (a `worktrees.scan` or `terminal.focus` outcome never moves the run); a failed answer reopens the question; an executed stop settles a stopping
 run.
 
@@ -828,7 +846,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 |---|---|---|
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
-| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `verify_status`, `verify_ready`, `verify_reasons`, `mcp`, `task` |
+| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `verify_status`, `verify_ready`, `verify_reasons`, `mcp`, `template`, `task` |
 | `GET /runs/{id}?limit=&offset=` | no | detail: plan, history, turns, commands with outcomes, questions, attempts, `verify_readiness`, and `changes` (the review packet's PR links and branch state, under "The review packet"); turns and commands page newest first (`more`, `retention`: see "Reading runs") |
 | `GET /runs/{id}/turns/{turn_id}` | no | one turn whole, `{id, seq, text, truncated}`, for the "Full response" of a `clipped` turn. Owner only, like detail. 404 `NOT_FOUND` for an unknown id or a turn of another run or owner; 404 `TURN_EXPIRED` once retention deleted the run's turns |
 | `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
@@ -899,6 +917,13 @@ decision is red, a reassuring one green. On `awaiting_approval` the footer repea
 (verification, workspace, sandbox, host, unconfirmed controls) above the buttons. The ages tick on a local clock;
 nothing extra is fetched. In the timeline a verification card shows its exit code, "isolated" / "not sandboxed
 (<reason>)" and "complete workspace" / "workspace incomplete (<reasons>)" as separate labels (`attemptFacts`).
+
+**Freshness on run rows.** Each unsettled row in the Runs panel and the remotea page's run list (`RunsPanel.tsx`
+`RunRow`) carries compact chips from `rowFreshness(run, host, now)`, a subset of `freshnessFacts`: the host chip
+("host seen 2m ago", red past 90 s or when silent), then only the warnings that change what the row means: "stale"
+(verification from an older turn or a changed checkout), "workspace incomplete", "verify late" (past its deadline)
+and "delivery uncertain"; each chip's tooltip carries the full fact. One clock in `AttentionList` (30 s) ticks every
+row's ages; settled runs show none.
 
 **One copy of each text sent to the agent.** The host reports every prompt the agent receives, Eridani's own
 inputs included (a `user` turn, or an older host's turn `prompt`), and each copy is clipped differently (the host's
@@ -1090,7 +1115,9 @@ Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root
 stale), the previous verdict's per-criterion record, and the completion policy with the PR record
 (`pr_urls`, `merged`, and `pr_fresh` / `merged_fresh` with `as_of` times: whether the session's collector
 report and the host's worktrees report arrived after the turn). The verify evidence carries `category`, `action`
-and `infra` (true for an `infra_*` category). The prompt (`judge-v3`) says all of it is
+and `infra` (true for an `infra_*` category), and remotea's `workspace_complete` / `workspace_reasons` (whether the
+host's fingerprint covered the whole workspace; `null` / `[]` when the host did not say). The prompt (`judge-v4`)
+tells the model to say so when a verification ran on an incomplete workspace, and says all of it is
 untrusted data and that **the agent's text is a claim**: evidence is the verify attempt, the host's worktree and
 PR record and the ticked steps. A gap may only ask for what the loop can check (make the verify command pass,
 commit/push and open or update the PR, tick steps), never for pasted test output, logs or diffs. The gap prompt
@@ -1108,12 +1135,15 @@ commit/push and open or update the PR, tick steps), never for pasted test output
    with the failure tail when it ran and failed, else `needs_you` (missing, stale or canceled: the agent cannot fix that;
    refused, timed out and uncertain are infra categories and stopped at `verify_infra`). A `verify`-kind criterion is met only with a fresh passing
    attempt of its verify id. `met` with any criterion not met → `not_met`. Unknown criterion ids are
-   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. Each
-   rule that fired is recorded in `rules`.
+   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. A `met` verdict
+   whose bound verification has `workspace_complete: false` stays `met` but fires **`verify_workspace_incomplete`**:
+   the summary and every met `verify`-kind criterion's evidence are prefixed/suffixed with "Verification ran on an
+   incomplete workspace (reasons)", so the pass never reads as clean (with `auto_complete` on, the coordinator still
+   parks it as `needs_you(verify_incomplete)`). Each rule that fired is recorded in `rules`.
 4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
    (refusal and budget are not retried), then the attempt is `failed` and the run goes to
    `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
-5. The attempt keeps model, `prompt_version` (`judge-v3`), cost, latency, retries, the final verdict and the
+5. The attempt keeps model, `prompt_version` (`judge-v4`), cost, latency, retries, the final verdict and the
    completion evidence it used (`evidence.completion`).
 
 **Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
@@ -1503,7 +1533,7 @@ summary job"), written by a small model (`run_summaries.py`).
 
 Tests: `tests/test_run_summaries.py`; web `apps/web/src/run-anywhere.test.tsx` (`RunRow`, `RunButton`).
 
-## Swarm mode (migration 0039)
+## Swarm mode (migration 0040)
 
 Roadmap task 71f97d98 (Astra's E-Q4). **Play on a project opens a swarm plan, not a run.** In the organization
 views a project row's Play (`RunButton` with `project`) opens the swarm dialog (`Swarm.tsx` `SwarmDialog`); the remotea
@@ -1681,7 +1711,7 @@ way and returned as `problems` for Eri to relay; neither blocks the proposal. `G
 each start with that readiness (`needs_target`, the picker's `need` data, `target`, `problems`), and the
 card shows the picker in place of Confirm; picking saves the choice and confirms with
 `POST /remotea/pending/{id}/confirm {execution_target_id}` (owner-checked). A confirm refused with
-`NEEDS_TARGET`, `HOST_OFFLINE` or `HARNESS_UNAVAILABLE` leaves the row pending. Listing the pending items
+`NEEDS_TARGET`, `HOST_OFFLINE`, `TARGET_NOT_READY` or `HARNESS_UNAVAILABLE` leaves the row pending. Listing the pending items
 also marks the expired ones `expired` (a refused confirm rolls back its own writes). Background,
 parked-continuation and bot work get no `control_*` tools (`tool_policy.live_work`). Every text sent to an
 agent is a `sent` entry on the run's timeline with who sent it; every `control.*` call is in the action

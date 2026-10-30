@@ -11,7 +11,7 @@ class LinearFailure(Exception):
 
 ISSUE_FIELDS = """id identifier url title description dueDate priority updatedAt archivedAt
 state { id name type } team { id name key } assignee { id name }
-project { id name description } parent { id } labels(first:100) { nodes { id name } pageInfo { hasNextPage } }"""
+project { id name description archivedAt } parent { id } labels(first:100) { nodes { id name } pageInfo { hasNextPage } }"""
 ISSUE_QUERY = "query EriIssue($id:String!){issue(id:$id){" + ISSUE_FIELDS + "}}"
 ISSUES_QUERY = (
     "query EriIssues($filter:IssueFilter,$after:String){issues(first:100,after:$after,filter:$filter,includeArchived:true,orderBy:updatedAt){nodes{"
@@ -27,6 +27,15 @@ UPDATE_QUERY = (
     "mutation EriUpdate($id:String!,$input:IssueUpdateInput!){issueUpdate(id:$id,input:$input){success issue{"
     + ISSUE_FIELDS
     + "}}}"
+)
+# Structure onboarding (linear_structure.py): projects with their teams, and issue ids only, for counts.
+PROJECTS_QUERY = (
+    "query EriProjects($after:String){projects(first:100,after:$after,includeArchived:true){nodes{"
+    "id name description archivedAt teams(first:50){nodes{id}}} pageInfo{hasNextPage endCursor}}}"
+)
+ISSUE_PLACES_QUERY = (
+    "query EriIssuePlaces($filter:IssueFilter,$after:String){issues(first:100,after:$after,filter:$filter){"
+    "nodes{id team{id} project{id} parent{id}} pageInfo{hasNextPage endCursor}}}"
 )
 # The completion comment of an agent run (agent_sync.py). Linear has no idempotency key for commentCreate,
 # so a write whose response was lost is reconciled by finding the run marker in the issue's comments.
@@ -145,3 +154,9 @@ class LinearClient:
 
     def issues(self, filter):
         return self.pages(ISSUES_QUERY, "issues", {"filter": filter})
+
+    def projects(self):
+        return self.pages(PROJECTS_QUERY, "projects", max_pages=20)
+
+    def issue_places(self, filter):
+        return self.pages(ISSUE_PLACES_QUERY, "issues", {"filter": filter})

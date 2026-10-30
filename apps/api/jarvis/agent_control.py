@@ -139,7 +139,7 @@ def chain(db, owner, task):
     return [record, *parent_chain(db, owner, record.parent_id)] if record else []
 
 
-TARGET_FACTS = ("harnesses", "verify", "enabled", "launch", "verify_status", "mcp")
+TARGET_FACTS = ("harnesses", "verify", "enabled", "launch", "verify_status", "mcp", "template", "prepare")
 
 
 def public_target(target, adverts=None):
@@ -236,6 +236,28 @@ def target_mcp(item):
     return {"configured": value["configured"], **({"reason": clip(value["reason"])} if clip(value.get("reason")) else {})}
 
 
+def target_template(item):
+    """S-Q3: the target's template check as its host last advertised it, {ready, problems: [{check, level, reason}]}
+    (fails first), or None when the host did not say. A target that is not ready is advertised with no harnesses."""
+    return agent_link.target_template(item.get("template")) if isinstance(item, dict) else None
+
+
+def target_prepare(item):
+    """S-Q3: the target's preparation step ids (run in a new worktree before the agent starts), or None."""
+    return agent_link.target_prepare(item.get("prepare")) if isinstance(item, dict) else None
+
+
+def template_problem(item, host_target):
+    """Why the target's template keeps any agent from starting there (its fail-level reasons), or None when it is
+    ready or the host did not say. remotea advertises such a target with `harnesses: []` and rejects a spawn on it
+    as `target_not_ready`, so this is said instead of "does not enable <harness>"."""
+    template = target_template(item)
+    if template is None or template["ready"]:
+        return None
+    fails = [f"{p['check']}: {p['reason']}" for p in template["problems"] if p["level"] == "fail"]
+    return f"The {host_target} target is not ready: " + ("; ".join(fails) or "the host did not say why") + "."
+
+
 def target_harnesses(item):
     """The harnesses one hello target enables (remotea sends a list of names, from its `launch`), or None when the
     host did not say (older hosts: the host-wide `caps.harnesses` flags decide)."""
@@ -271,7 +293,8 @@ def advertised(db, owner):
                               "verify": [str(v.get("id") if isinstance(v, dict) else v)[:64]
                                          for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50],
                               "enabled": target_enabled(item), "launch": target_launch(item),
-                              "verify_status": target_verify_status(item), "mcp": target_mcp(item)})
+                              "verify_status": target_verify_status(item), "mcp": target_mcp(item),
+                              "template": target_template(item), "prepare": target_prepare(item)})
     return found
 
 
@@ -445,6 +468,9 @@ def harness_problem(host, harness, host_target=None):
     if host_harness(host, harness, host_target):
         return None
     item = hello_target(host, host_target) if host_target else None
+    template = template_problem(item, host_target)
+    if template:
+        return template
     probe = (target_launch(item) or {}).get(harness)
     if harness in (target_enabled(item) or []) and (probe is None or not probe["ready"]):
         why = (probe or {}).get("error") or "its launcher did not answer"
@@ -461,6 +487,12 @@ def check_host(owner, task, host, harness, host_target=None):
         raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
     if not agent_link.connected(host):
         raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
+    item = hello_target(host, host_target) if host_target else None
+    template = template_problem(item, host_target)
+    if template:
+        # remotea would reject the spawn as target_not_ready: say what the template check found instead.
+        raise DomainError("TARGET_NOT_READY", template, 409,
+                          data={"host_target": host_target, "template": target_template(item)})
     if not host_harness(host, harness, host_target):
         raise DomainError("HARNESS_UNAVAILABLE", harness_problem(host, harness, host_target), 409,
                           data={"harness": harness, **({"host_target": host_target} if host_target else {})})
@@ -1443,9 +1475,9 @@ def target_readiness(db, owner, task, execution_target_id=None):
     """The resolved target's verify and MCP readiness as its host last advertised it (caps_version 2 / PR #20):
     `verify_status` (all its ids), `verify_ready` for the ids a run would use (verify_use: the task's verify id, else
     whether any id the target offers is ready, since the default pick prefers a ready one; null when the host did
-    not say or there are none), `verify_reasons` {id: reason} for those not ready, and `mcp` {configured, reason?}
-    (null when unsaid). Nothing while no target resolves."""
-    empty = {"verify_status": None, "verify_ready": None, "verify_reasons": {}, "mcp": None}
+    not say or there are none), `verify_reasons` {id: reason} for those not ready, `mcp` {configured, reason?}
+    (null when unsaid) and `template` {ready, problems} (S-Q3; null when unsaid). Nothing while no target resolves."""
+    empty = {"verify_status": None, "verify_ready": None, "verify_reasons": {}, "mcp": None, "template": None}
     try:
         target = resolve_target(db, owner, task, execution_target_id)
     except DomainError:
@@ -1454,11 +1486,11 @@ def target_readiness(db, owner, task, execution_target_id=None):
     item = hello_target(host, target.host_target) if host is not None and host.owner_id == owner else None
     status = target_verify_status(item)
     if status is None:
-        return {**empty, "mcp": target_mcp(item)}
+        return {**empty, "mcp": target_mcp(item), "template": target_template(item)}
     used, ready = verify_use(task, status)
     return {"verify_status": status, "verify_ready": ready,
             "verify_reasons": {s["id"]: s.get("reason") or "not ready" for s in used if not s["ready"]},
-            "mcp": target_mcp(item)}
+            "mcp": target_mcp(item), "template": target_template(item)}
 
 
 def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
@@ -1547,7 +1579,8 @@ def target_setup(db, owner, host, host_target, saved=None):
            "repo": str((item or {}).get("repo") or (saved.repo if saved is not None else ""))[:1000],
            "execution_target_id": saved.id if saved is not None else None,
            "key": saved.id if saved is not None else f"host:{host.id if host else ''}:{host_target}",
-           "advertised": item is not None, "harnesses": {}, "verify": None, "mcp": None, "problems": [], "notes": []}
+           "advertised": item is not None, "harnesses": {}, "verify": None, "mcp": None,
+           "template": None, "prepare": None, "problems": [], "notes": []}
     if host is None:
         out["problems"].append(problem("HOST_MISSING", f"{label} has no remotea server.",
                                        f"{SETUP_FIX[0].upper()}{SETUP_FIX[1:]}, then pick this repository again."))
@@ -1562,6 +1595,18 @@ def target_setup(db, owner, host, host_target, saved=None):
             f"--add-repo {host_target}=<path>` does it). {RELOAD}"))
         return finish_target(out)
     enabled, launch = target_enabled(item), target_launch(item)
+    template = target_template(item)
+    out["template"], out["prepare"] = template, target_prepare(item)
+    not_ready = template_problem(item, host_target)
+    if not_ready:
+        # The host advertises it with no harnesses: the template's own reasons, not "no coding agent can start".
+        out["problems"].append(problem(
+            "TARGET_NOT_READY", not_ready,
+            f"Fix what the template check names on the host (`remotea doctor` shows the same check; `remotea eridani "
+            f"targets list` re-checks after an edit), in {CONFIG_FILE}. {RELOAD}"))
+    for p in (template or {}).get("problems") or []:
+        if p["level"] == "warn" and not p["check"].startswith("verify."):  # Verify warns are VERIFY_NOT_READY below.
+            out["notes"].append(f"Template {p['check']}: {p['reason']}.")
     for name in HARNESSES:
         why = harness_problem(host, name, host_target)
         probe = (launch or {}).get(name)
@@ -1572,12 +1617,12 @@ def target_setup(db, owner, host, host_target, saved=None):
             "launch": "probed" if probe is not None else TOO_OLD if launch is None
             else "not probed" if name in (enabled or []) else "not enabled",
             "reason": why}
-        if live and enabled is not None and name in enabled and why is not None:
+        if live and enabled is not None and name in enabled and why is not None and not not_ready:
             out["problems"].append(problem(
                 "HARNESS_NOT_INSTALLED", f"{label_h} is enabled but not installed: {why}",
                 f"Install {label_h} where the service finds it (its login shell's PATH), or remove {name} from the "
                 f"target's launch in {CONFIG_FILE}. {RELOAD}", blocks=False))
-    if live and not any(h["ready"] for h in out["harnesses"].values()):
+    if live and not not_ready and not any(h["ready"] for h in out["harnesses"].values()):
         out["problems"].append(problem(
             "NO_HARNESS", f"No coding agent can start on {label}.",
             f"Add launch.claude (or launch.codex) to the {host_target} target in {CONFIG_FILE} and install that "

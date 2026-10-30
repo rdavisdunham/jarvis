@@ -36,7 +36,7 @@ from .domain import DomainError
 from .models import Job, now
 from .session_models import AgentAttempt, AgentHost, AgentRun, AgentSession, AgentTurn
 
-PROMPT_VERSION = "judge-v3"
+PROMPT_VERSION = "judge-v4"
 POLICIES = ("code_ready", "pr_open", "pr_merged")
 RETRIES = 2
 TURN_CHARS = 24_000
@@ -54,6 +54,9 @@ SYSTEM = (
     "For each criterion give status met only when that evidence shows it; point to it. A criterion the evidence "
     "cannot show either way is unclear. When `verify.infra` is true the verification could not run on the host "
     "(`verify.category`, `verify.action`): it says nothing about the code, so never blame the code for it. "
+    "When `verify.workspace_complete` is false the host could not fingerprint the whole workspace "
+    "(`verify.workspace_reasons`), so the verification may not have tested the tree the turn left: say so in the "
+    "summary and in the evidence of every criterion that rests on it. "
     "verdict is met only when every criterion is met; not_met when the agent can close the gap itself; needs_you "
     "when only the operator can unblock it (a decision, access, an ambiguous requirement, or a criterion no "
     "evidence source can show). Write gap as an instruction to the agent that names only actions Eridani can "
@@ -111,7 +114,11 @@ def verify_evidence(attempt, judge):
             # Why it did not pass (run_coordinator.classify_verify). infra: the check could not run on the host, so it
             # says nothing about the code; the run goes to needs_you(verify_infra) with `action`, never a gap.
             "category": category, "infra": bool(category and category.startswith("infra_")),
-            "action": result.get("action", "")}
+            "action": result.get("action", ""),
+            # remotea's fingerprint completeness (run_coordinator.workspace_facts): false means the check may not have
+            # run on the tree the turn left; None when the host did not say.
+            "workspace_complete": result.get("workspace_complete"),
+            "workspace_reasons": list(result.get("workspace_reasons") or [])}
 
 
 # A not_met gap that is really "no recorded verification": the judge's own words for it.
@@ -204,10 +211,24 @@ def assess(evidence, model):
         gap = gap or "Not every success criterion is met: " + ", ".join(c["id"] for c in record if c["status"] != "met")
     if verdict == "not_met" and not gap.strip():
         gap = "Not every success criterion is met: " + ", ".join(c["id"] for c in record if c["status"] != "met")
+    summary = out.summary
+    if verdict == "met" and verify and verify.get("workspace_complete") is False:
+        # A pass on a fingerprint that missed part of the workspace may not be the tree the turn left: the verdict
+        # stands (auto_complete still parks it as verify_incomplete), but it never reads as a clean pass.
+        rules.append("verify_workspace_incomplete")
+        note = incomplete_note(verify)
+        summary = f"{note} {summary}"
+        record = [{**c, "evidence": f"{c['evidence']} ({note})"[:1000]}
+                  if c["status"] == "met" and known[c["id"]].get("kind") == "verify" else c for c in record]
     steps = [{"id": s.id, "status": s.status if s.status != "disputed" or verify_failed else "unclear"}
              for s in out.steps]
-    return {"verdict": verdict, "gap": gap[:4000], "summary": out.summary[:2000], "criteria": record, "steps": steps,
+    return {"verdict": verdict, "gap": gap[:4000], "summary": summary[:2000], "criteria": record, "steps": steps,
             "rules": rules, "verify_failed": verify_failed}
+
+
+def incomplete_note(verify):
+    reasons = "; ".join(verify.get("workspace_reasons") or []) or "the host did not say what it missed"
+    return f"Verification ran on an incomplete workspace ({reasons[:300]})."
 
 
 def verify_missing_gap(gap):

@@ -9,11 +9,13 @@ import json
 import logging
 from datetime import timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from jarvis import agent_control
 from jarvis.api import app
 from jarvis.auth import digest
 from jarvis.db import session_scope
+from jarvis.domain import DomainError
 from jarvis.models import BotCredential, now
 from jarvis.remotea_routes import MCP_KEY_NAME, MCP_KEY_SCOPES
 from jarvis.session_models import AgentHost
@@ -23,6 +25,7 @@ from test_agent_runs import (
     CAPS,
     host,  # noqa: F401 - fixture
     quiet,  # noqa: F401 - fixture
+    start,
     task,
 )
 from test_agent_security import V2_HARNESSES, V2_TARGET
@@ -260,3 +263,75 @@ def test_eri_hears_the_setup_problem_before_confirming_a_start(client, host):  #
     v2_hello(host.token, targets=({**V2_TARGET, "mcp": {"configured": True}},))
     other = task("Has tools", execution_target_id=host.target_id)
     assert "Also tell the owner" not in say("control.start", task_id=other["id"]).get("next", "")
+
+
+# ---------------------------------------------------------------- target templates (remotea S-Q3)
+
+TEMPLATE = {"ready": False, "problems": [
+    {"check": "migrations", "level": "warn", "reason": "migrations.dir is not a folder in the repository checkout"},
+    {"check": "verify.tests", "level": "warn", "reason": "its program is not on the service PATH (uv)"},
+    {"check": "repo", "level": "fail", "reason": "/home/davin/jarvis is not a git checkout"},
+    {"check": "prepare.web", "level": "fail", "reason": "npm is not on the service PATH"}]}
+NOT_READY = {**V2_TARGET, "harnesses": [], "mcp": {"configured": True}, "template": TEMPLATE, "prepare": ["api", "web"]}
+WHY = ("The jarvis target is not ready: repo: /home/davin/jarvis is not a git checkout; prepare.web: npm is not on "
+       "the service PATH.")
+
+
+def test_hello_keeps_template_and_prepare_and_drops_malformed_ones():
+    from jarvis.agent_link import Hello
+
+    frame = Hello.model_validate({"t": "hello", "server_id": "s1", "targets": [
+        {"id": "a", "template": {"ready": False, "problems": [
+            {"check": "base", "level": "fail", "reason": "  main is\nnot a branch  "},
+            {"check": "repo", "level": "fatal", "reason": "unknown level"}, {"level": "fail", "reason": "no check"},
+            "junk", {"check": "launch", "level": "warn", "reason": "x" * 400}]}, "prepare": ["api", 7, "web"]},
+        {"id": "b", "template": {"ready": "yes"}, "prepare": "api"},
+        {"id": "c", "template": {"ready": True}},
+        {"id": "d", "repo": "/r"}]})
+    a, b, c, d = frame.targets
+    assert a["template"] == {"ready": False, "problems": [
+        {"check": "base", "level": "fail", "reason": "main is not a branch"},
+        {"check": "launch", "level": "warn", "reason": "x" * 300}]}  # Fails first; one clipped line each.
+    assert a["prepare"] == ["api", "web"]
+    assert b == {"id": "b"}  # Malformed: dropped, never refused.
+    assert c["template"] == {"ready": True, "problems": []} and "prepare" not in c
+    assert d == {"id": "d", "repo": "/r"}  # An older host: nothing added.
+
+
+def test_a_template_that_is_not_ready_explains_itself(client, host):  # noqa: F811
+    v2_hello(host.token, targets=(NOT_READY,))
+    target = next(t for t in client.get("/api/v1/remotea/setup").json()["targets"] if t["host_target"] == "jarvis")
+    assert target["template"]["ready"] is False and target["prepare"] == ["api", "web"]
+    assert [p["check"] for p in target["template"]["problems"]][:2] == ["repo", "prepare.web"]  # Fails first.
+    codes = [p["code"] for p in target["problems"]]
+    # Not "no coding agent can start" or "Claude is enabled but not installed": the template's own reasons.
+    assert "TARGET_NOT_READY" in codes and "NO_HARNESS" not in codes and "HARNESS_NOT_INSTALLED" not in codes
+    problem = next(p for p in target["problems"] if p["code"] == "TARGET_NOT_READY")
+    assert problem["message"] == WHY and problem["blocks"] is True and "remotea doctor" in problem["fix"]
+    assert target["harnesses"]["claude"]["reason"] == WHY
+    assert "Template migrations: migrations.dir is not a folder in the repository checkout." in target["notes"]
+    assert not any("verify.tests" in n for n in target["notes"])  # VERIFY_NOT_READY covers it.
+    assert target["ready"] is False and target["line"].startswith("jarvis on desk: The jarvis target is not ready")
+
+    created = task("Template", execution_target_id=host.target_id)
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert body["problems"] == [{"code": "TARGET_NOT_READY", "message": WHY, "blocking": True}]
+    assert body["harnesses"] == {"claude": False, "codex": False}
+    assert body["harness_reasons"] == {"claude": WHY, "codex": WHY}
+    assert body["template"]["ready"] is False
+    with pytest.raises(DomainError) as caught:
+        start(host, created["id"])
+    assert caught.value.code == "TARGET_NOT_READY" and caught.value.message == WHY
+    assert caught.value.data["template"]["problems"][0]["check"] == "repo"
+
+    listed = client.get("/api/v1/remotea/targets").json()
+    assert listed["advertised"][0]["template"]["ready"] is False and listed["advertised"][0]["prepare"] == ["api", "web"]
+    saved = next(t for t in listed["items"] if t["id"] == host.target_id)
+    assert saved["template"]["ready"] is False
+
+    ready = {**NOT_READY, "harnesses": ["claude"], "template": {"ready": True, "problems": [TEMPLATE["problems"][0]]}}
+    v2_hello(host.token, targets=(ready,))
+    fixed = next(t for t in client.get("/api/v1/remotea/setup").json()["targets"] if t["host_target"] == "jarvis")
+    assert "TARGET_NOT_READY" not in [p["code"] for p in fixed["problems"]] and fixed["ready"] is True
+    again = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert again["harnesses"]["claude"] is True and not [p for p in again["problems"] if p["code"] == "TARGET_NOT_READY"]
