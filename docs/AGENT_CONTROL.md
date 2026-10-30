@@ -231,6 +231,16 @@ re-reads the host's last hello and says so: `{source: "hello", hello_at, note, h
 `eridani.json` makes remotea reconnect with fresh facts within 30 seconds, and `remotea eridani status --probe`
 checks on the host. When remotea adds a probe command, this route is where it is asked.
 
+**Host self-check (remotea doctor, S-Q1).** Under each host, Settings → Connections → remotea and the readiness
+view show a **Host self-check** block (`RemoteaSetup.tsx` `HostSelfCheck`, `remotea-setup.ts` `selfCheck`): the
+counts ("2 failing · 1 warning · 30 ok", or "All 30 checks ok"), the report's age ("checked 5m ago", from the
+summary's `at`), and each warn and fail line with its fix and check id, fails first; "More findings than shown"
+when the host cut the list. A host that advertises `doctor` but has sent nothing yet reads "Not reported yet"; a
+host without the cap reads "unknown (host too old)". The data is the host's `doctor` on `GET /remotea/setup` and
+`GET /remotea/status` (the `doctor` frame row under [Frames](#frames)). Self-check findings are shown, not turned
+into setup problems: they do not change a host's or target's readiness. Eri's `control_status` adds a
+`self_check` line to a host whose summary has a failure or warning.
+
 Each unready host or target also has one spoken `line` ("jarvis on desk: Agents on jarvis get no Eridani tools: …
 Fix: …"). Eri's `control_status` returns those lines as `setup` (with `setup_hint`) whenever any exists, so voice
 and chat can say why a run cannot start; a `control_start` proposal whose target passes `check_host` but would
@@ -372,8 +382,8 @@ own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, build_sha?, build_dirty?, caps_version?, hook_version?, degraded_reason?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, enabled?, launch?, verify, verify_status?, mcp?}]` | must be first, within 15 s. The build fields and `degraded_reason` (only while the host's journal or outbox is degraded) are kept in `caps.build` and returned on the host (above); a malformed value is dropped, never refused. Each target's `harnesses` lists the harnesses it can run, `verify` its verify ids, and a `caps_version: 2` host adds `enabled` (what its `launch` permits), `launch {claude?, codex?: {ready, version, error?}}` (each launcher's probe), `verify_status [{id, ready, reason?, isolated?, isolation?, isolation_reason?}]` (the isolation fields from a host with verify isolation, remotea S-N4) and `mcp {configured, reason?}` (whether spawned agents get Eridani's MCP server); all are kept in `caps.targets` and returned on advertised and saved targets (see **Target capabilities**). The hello's time is kept as `caps.hello_at` (the setup page's probe reports it). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
-| down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, build_sha?, build_dirty?, caps_version?, hook_version?, degraded_reason?, doctor?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, enabled?, launch?, verify, verify_status?, mcp?}]` | must be first, within 15 s. `doctor` is the host's latest `remotea doctor` summary (see the `doctor` row): kept in `caps.doctor` with `caps.doctor_at`; a hello without it keeps the previous summary while the host still advertises `doctor` (a restarted server sends none until its first check) and drops it when the host no longer does; a malformed one is dropped, never refused. The build fields and `degraded_reason` (only while the host's journal or outbox is degraded) are kept in `caps.build` and returned on the host (above); a malformed value is dropped, never refused. Each target's `harnesses` lists the harnesses it can run, `verify` its verify ids, and a `caps_version: 2` host adds `enabled` (what its `launch` permits), `launch {claude?, codex?: {ready, version, error?}}` (each launcher's probe), `verify_status [{id, ready, reason?, isolated?, isolation?, isolation_reason?}]` (the isolation fields from a host with verify isolation, remotea S-N4) and `mcp {configured, reason?}` (whether spawned agents get Eridani's MCP server); all are kept in `caps.targets` and returned on advertised and saved targets (see **Target capabilities**). The hello's time is kept as `caps.hello_at` (the setup page's probe reports it). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
+| down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | `caps` is `agent_link.SERVER_CAPS`: what Eridani accepts, including `prompt` and `doctor` (the host sends those frames only when they are listed) |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
 | up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
 | up | `prompt` | `surf, incarnation, run_id?, generation, tool, provider, provider_session_id, seq, text, truncated, at` | the message typed in the terminal, sent on UserPromptSubmit (as the turn starts, not when it ends); `seq` pairs with the following `turn`'s `seq`; text clipped to 4000 bytes by the host and again here. Stored as a `user` row of `agent_turns` (`provider_turn_id` = `prompt:<seq>`) once per `(session, seq)`: a resend → `{duplicate:true}`; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND`). It never counts toward the turn cap and never moves the run; the host sends it only when Eridani's `welcome` caps include `prompt` |
@@ -387,9 +397,10 @@ own short transaction.
 | up | `question.resolved` | `op_id, digest, question_id\|provider_request_id, status: accepted\|answered_locally\|timed_out\|canceled\|failed, still_open?, remote_answerable?` | the host's word on a question; only `accepted` confirms an answer sent from here |
 | up | `context.request` | `req_id, text, run_token?` | ephemeral, no ack: answered with `context.response {req_id, text}` |
 | up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, base_ref?, ahead, behind, unpushed, uncommitted, untracked, merged, merged_reason?, active, reasons}], heads?: [{target, dir, ref, head}]` | replaces the host's last report; feeds **Unmerged work**, the run header's live "N behind" and the migration counter (0033). `merged` is null with `merged_reason: "no commits of its own yet"` for a branch with no commits of its own; Eridani reads null (and a branch missing from the report) as unknown, never merged. Stored with the time it arrived (`caps.worktrees.at`), which the judge compares with the turn |
+| up | `doctor` | `op_id, digest, at, ok, warn, fail, items: [{id, level: warn\|fail, summary, fix?}], truncated?` | `remotea doctor`'s summary (remotea S-Q1): the counts cover every check, `items` only the warn and fail lines (≤ 40, `id` ≤ 120 and `summary`/`fix` ≤ 200 characters). Sent only when Eridani's `welcome` caps include `doctor` (Eridani advertises it) and only when the findings changed. Eridani keeps the newest per host in `agent_hosts.caps.doctor` (`at` as ISO-8601) with `caps.doctor_at` (when it arrived; no migration); an older `at` never replaces a newer one (`{stored:false, reason:"older"}`). Validated like the hello field (`agent_link.doctor_summary`): bad counts or `at` drop the whole summary (`{stored:false, reason:"malformed"}`, still `ok:true` so the host does not resend it); a malformed or oversized item is dropped alone and the summary marked `truncated`; a malformed `fix` is dropped from its item; text is redacted again. Fails first. Shown on the host (`public_host.doctor` with `received_at`, so `GET /remotea/status`), on the setup page's hosts (`GET /remotea/setup`, with `doctor_supported`) and in `control_status` (`hosts[].self_check`: "host desk: 2 setup problems: <first fail>…") |
 | down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
 | down | `spawn` / `input` / `answer` / `stop` / `verify` | see **Commands** | outbox commands |
-| down | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (outbox command, only to a host whose `hello.caps` has `worktrees.scan`) | the judge needs a PR record newer than the turn: the host rescans its worktrees and sends `worktrees.report` even if unchanged, re-reads the named session and sends its `session.report` even if its fingerprint is unchanged, then acks (`executed`). An older host never gets it; the judge waits for its own tick instead |
+| down | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (outbox command, only to a host whose `hello.caps` has `worktrees.scan`) | the judge needs a PR record newer than the turn: the host rescans its worktrees and sends `worktrees.report` even if unchanged, re-reads the named session and sends its `session.report` even if its fingerprint is unchanged, then acks (`executed`). An older host never gets it; the judge waits for its own tick instead. **Rescan** on the worktree maintenance view (`POST /remotea/hosts/{id}/rescan`) sends a run-less one: `run_id: "rescan", generation: 0` (the fence is informational for this command), no `tool`/`session_id`, 2 min expiry, one waiting per host |
 | down | `context.response` | `req_id, text` | |
 | up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
@@ -740,6 +751,8 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /questions/{id}/answer` | yes | |
 | `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses`, `verify`, `enabled`, `launch`, `verify_status` and `mcp` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
+| `GET /worktrees` | yes | worktree maintenance: `{hosts: [{id, name, connected, report_at, rescan, count}], items: [...]}`, every reported row with its bound `run` and `cleanup` ([Worktree maintenance](#worktree-maintenance)) |
+| `POST /hosts/{id}/rescan` | yes | queue a run-less `worktrees.scan`: `{op_id, queued, connected}` (`queued: false` returns the scan still waiting); 404 `NOT_FOUND` for another owner's or an unknown host, 409 `HOST_TOO_OLD` when the host lacks `worktrees.scan` |
 
 **Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`
 and `verify-config` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
@@ -773,6 +786,47 @@ Freestyle, Approve and the plan review send `expected_revision` = the loaded run
 does not. A `REVISION_CONFLICT` shows "This run changed; reloaded" and reloads the run instead of an error. Task details
 show **Run** only while remotea is on, disabled with a reason when no host is connected, and **Open run**
 while one is active.
+
+### Worktree maintenance
+
+Task 7be3f225 (Astra S-Q4). The remotea page has a **Worktree maintenance** section below **Unmerged work**
+(`WorktreeMaintenance.tsx`, data from `GET /remotea/worktrees`, `agent_control.worktree_maintenance`). Unlike
+`/unmerged` it lists every row of each host's last `worktrees.report`, candidates included, with the host, the
+target's `repo` (from hello `targets`), the raw report fields (`ahead`, `behind`, `unpushed`, `upstream`, `merged`,
+`uncommitted`, `untracked`, `ignored`, `candidate`, `reasons`, `writer` when the host sends it) and the bound
+`run` (the writer's run, else the newest run on that host whose worktree or branch matches: `{id, state, settled,
+task_id, task_title}`). Each host line shows its report's age and **Rescan**, which sends a run-less
+`worktrees.scan` (`POST /remotea/hosts/{id}/rescan`; disabled for a host without the cap).
+
+Rows are classed by `remotea-model.ts` `worktreeClass`, in this order:
+
+| Class | When |
+|---|---|
+| unknown | the row lacks `uncommitted`, `candidate` or `reasons` (an older host) |
+| active | `active`, a `writer`, or a bound run that has not settled |
+| reclaimable | the folder is gone (`folder missing` reason) and the row says `writer: null` |
+| dirty | uncommitted changes or untracked files |
+| unpushed | commits not on origin (`unpushed > 0`, or not merged with no upstream) |
+| unmerged | pushed but not merged into its base (an open pull request) |
+| reclaimable | the host reports it a `candidate` (nothing would be lost) and `writer: null` |
+| merged | merged, but the host keeps it for another reason (ignored files such as `.env`, a lock) |
+| unknown | anything else (detached HEAD, a failed check), or a candidate from a host that does not send `writer` |
+
+The section shows a count per class (each a filter) and a table: class, branch with host/target/path, why
+(`worktreeLoss`: what removing it would lose), and the task/run (opens the run). **Review removal** opens an
+explicit review step (`RemovalReview`, `removalPlan`): only reclaimable rows that have cleanup commands get a
+checkbox; every other row is listed under "Not offered" with what it would lose (uncommitted changes, untracked
+and ignored files, commits not on origin, a live writer, an unsettled run) and cannot be picked. **Produce
+commands** shows the picked rows' commands, grouped per host, with Copy. The commands are remotea's own
+(`worktrees.ts` `cleanupCommands`, mirrored in `agent_control.cleanup_commands` and computed server-side only for
+a row the host reports as a candidate or folder-missing, with no writer): `git -C <repo> update-ref
+refs/remotea/recovery/<branch-dir> <head>` then `git -C <repo> worktree remove <path>` (unforced, so it refuses a
+worktree that changed since the report); a gone folder gets `git -C <repo> worktree prune`.
+
+Eridani never removes a worktree itself: remotea advertises no removal command (no `worktrees.remove` cap; it
+"never removes a worktree"), so the copyable commands are the only action and there is no removal route. If
+remotea adds such a command, `POST /remotea/worktrees/remove` would send it only to a host advertising the cap and
+only for rows the server classes reclaimable.
 
 ## Planning and the loop (stage D, migration 0029)
 

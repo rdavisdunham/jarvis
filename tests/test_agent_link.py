@@ -176,7 +176,7 @@ def test_hello_doctor_summary_reaches_status_setup_and_control_status(client):
     assert "abcdef1234567890" not in summary["items"][1]["summary"] and "[redacted]" in summary["items"][1]["summary"]
     assert summary["at"].endswith("+00:00") and summary["received_at"]
     setup = client.get("/api/v1/remotea/setup").json()
-    assert setup["hosts"][0]["doctor"]["fail"] == 2
+    assert setup["hosts"][0]["doctor"]["fail"] == 2 and setup["hosts"][0]["doctor_supported"] is True
     with session_scope() as db:
         line = agent_control.status(db, "davin", {})["hosts"][0]["self_check"]
     assert line == "host desk: 2 setup problems: remotea.service is not running…"
@@ -931,3 +931,66 @@ def test_the_tick_still_drains_when_no_wake_arrives(client, monkeypatch):
         op_id = queue_stop(host_id)
         sent = ws.receive_json()  # Nothing can wake it; drained by the next tick (a 30-second test hang otherwise).
         assert sent["t"] == "stop" and sent["op_id"] == op_id
+
+
+WT = {"target": "jarvis", "base": "main", "base_ref": "origin/main", "behind": 0, "upstream": None, "ignored": 0,
+      "uncommitted": 0, "untracked": 0, "active": False, "candidate": False, "reasons": []}
+
+
+def test_worktree_maintenance_lists_every_row_and_cleanup_only_for_rows_that_lose_nothing(client):
+    """S-Q4: GET /remotea/worktrees returns candidates too, with the bound run and remotea's own cleanup commands
+    (recovery ref, then `git worktree remove`; `git worktree prune` for a gone folder) only where nothing is lost."""
+    token = enable(client)["token"]
+    rows = [
+        {**WT, "path": "/wt/done", "branch": "task/done", "head": "a" * 40, "ahead": 2, "unpushed": 0, "merged": True,
+         "upstream": "origin/task/done", "candidate": True, "writer": None},
+        {**WT, "path": "/wt/dirty", "branch": "task/dirty", "head": "b" * 40, "ahead": 1, "unpushed": 1, "merged": False,
+         "uncommitted": 3, "reasons": ["3 uncommitted change(s)", "1 unpushed commit(s)"], "writer": None},
+        {**WT, "path": "/wt/live", "branch": "task/live", "head": "c" * 40, "ahead": 0, "unpushed": None, "merged": None,
+         "active": True, "candidate": False, "reasons": ["in use by a live session"],
+         "writer": {"surf": "surf-9", "run_id": "not-a-run"}},
+        {**WT, "path": "/wt/gone", "branch": "task/gone", "head": None, "ahead": None, "unpushed": None, "merged": None,
+         "reasons": ["folder missing (git worktree prune)"], "writer": None},
+        {**WT, "path": "/wt/o'ld", "branch": "task/old", "head": "d" * 40, "ahead": 1, "unpushed": 0, "merged": True,
+         "candidate": True},  # An older host: no `writer` key.
+    ]
+    with connect(bearer(token)) as ws:
+        host_id = hello(ws, caps=[*C_CAPS, "worktrees.scan"],
+                        targets=[{"id": "jarvis", "repo": "/home/davin/jar vis", "harnesses": ["claude"], "verify": []}])["host_id"]
+        snap = signed("sessions.snapshot", surfaces=[], journal={"pending": [], "uncertain": []})
+        ws.send_json(snap)  # Commands wait for the reconcile.
+        assert ws.receive_json()["t"] == "runs.snapshot"
+        assert ws.receive_json()["acked_id"] == snap["id"]
+        put(ws, "worktrees.report", worktrees=rows)
+        body = client.get("/api/v1/remotea/worktrees").json()
+        assert body["hosts"] == [{"id": host_id, "name": "desk", "connected": True, "report_at": body["hosts"][0]["report_at"],
+                                  "rescan": True, "count": 5}]
+        items = {i["path"]: i for i in body["items"]}
+        assert items["/wt/done"]["cleanup"] == [
+            f"git -C '/home/davin/jar vis' update-ref refs/remotea/recovery/task--done {'a' * 40}",
+            "git -C '/home/davin/jar vis' worktree remove '/wt/done'"]
+        assert items["/wt/gone"]["cleanup"] == ["git -C '/home/davin/jar vis' worktree prune"]
+        assert items["/wt/dirty"]["cleanup"] is None and items["/wt/live"]["cleanup"] is None
+        assert items["/wt/live"]["writer"] == {"surf": "surf-9", "run_id": "not-a-run"} and items["/wt/live"]["run"] is None
+        assert "writer" not in items["/wt/o'ld"] and items["/wt/o'ld"]["repo"] == "/home/davin/jar vis"
+        assert items["/wt/o'ld"]["cleanup"][1] == "git -C '/home/davin/jar vis' worktree remove '/wt/o'\\''ld'"
+
+        # Rescan queues one run-less worktrees.scan; a second request returns the one still waiting.
+        first = client.post(f"/api/v1/remotea/hosts/{host_id}/rescan")
+        assert first.status_code == 200, first.text
+        assert first.json()["queued"] is True
+        sent = ws.receive_json()
+        assert sent["t"] == "worktrees.scan" and sent["run_id"] == "rescan" and sent["generation"] == 0
+        assert "owner_id" not in sent and sent["digest"] == agent_link.digest(sent)
+        again = client.post(f"/api/v1/remotea/hosts/{host_id}/rescan").json()
+        assert again == {"op_id": first.json()["op_id"], "queued": False, "connected": True}
+    unknown = client.post("/api/v1/remotea/hosts/00000000-0000-0000-0000-000000000000/rescan")
+    assert unknown.status_code == 404
+
+
+def test_rescan_needs_the_hosts_worktrees_scan_capability(client):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        host_id = hello(ws, caps=C_CAPS)["host_id"]
+        refused_scan = client.post(f"/api/v1/remotea/hosts/{host_id}/rescan")
+    assert refused_scan.status_code == 409 and refused_scan.json()["error"]["code"] == "HOST_TOO_OLD"

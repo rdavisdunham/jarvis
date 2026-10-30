@@ -1189,7 +1189,8 @@ def host_setup(host):
            "build_dirty": build["build_dirty"], "caps_version": build["caps_version"],
            "degraded_reason": build["degraded_reason"],
            # `remotea doctor`'s warn/fail lines with their fixes (null: the host does not send it).
-           "doctor": agent_link.host_doctor(host), "problems": []}
+           "doctor": agent_link.host_doctor(host),
+           "doctor_supported": "doctor" in ((host.caps or {}).get("caps") or []), "problems": []}
     if not out["connected"]:
         out["problems"].append(problem(
             "HOST_OFFLINE", f"The remotea server {name} is not connected.",

@@ -11,7 +11,13 @@ export type Host = {
   build_sha?: string | null; build?: string | null; build_dirty?: boolean | null; caps_version?: number | null; hook_version?: string | null;
   /** Set only while the host's journal or outbox is degraded (remotea PR #15): it refuses effectful commands. */
   degraded_reason?: string | null;
+  /** The host's own self-check (`remotea doctor`, S-Q1); null when it sent none (older remotea), absent from older Eridani. */
+  doctor?: DoctorSummary | null;
 };
+/** `remotea doctor`'s summary as Eridani keeps it: when the host computed it (`at`), when Eridani received it, the
+ * counts over every check, and the warn/fail lines (fails first, at most 40; `truncated` when some were left out). */
+export type DoctorItem = { id: string; level: "warn" | "fail"; summary: string; fix?: string };
+export type DoctorSummary = { at: string; received_at?: string | null; ok: number; warn: number; fail: number; items: DoctorItem[]; truncated?: boolean };
 export type Turn = {
   id: string; seq: number; text: string; length: number; clipped: boolean; truncated: boolean;
   generation: number; source: string; at: string;
@@ -654,6 +660,95 @@ export function unmergedSummary(w: UnmergedWork) {
   const parts = [w.ahead ? `${w.ahead} ahead of ${w.base || "base"}` : "", w.unpushed ? `${w.unpushed} unpushed` : "",
     w.uncommitted ? `${w.uncommitted} uncommitted` : "", w.untracked ? `${w.untracked} untracked` : ""].filter(Boolean);
   return parts.length ? parts.join(" · ") : (w.reasons ?? []).join(", ") || "unmerged";
+}
+
+// ---------------------------------------------------------------- worktree maintenance (S-Q4)
+
+/** The live session writing a worktree (remotea S-S4). */
+export type WorktreeWriter = { surf: string; run_id: string };
+/** One managed worktree from GET /remotea/worktrees: the host's worktrees.report row (candidates included), the run
+ * bound to it, and `cleanup`, remotea's own commands for a row that loses nothing (null otherwise). `writer` is
+ * absent from an older host's rows (it cannot rule out a live writer). */
+export type WorktreeRow = {
+  host_id: string; host_name: string; repo: string | null; target: string | null; path: string | null; branch: string | null;
+  base: string | null; base_ref?: string | null; head: string | null; active: boolean | null; ahead: number | null;
+  behind: number | null; unpushed: number | null; upstream: string | null; merged: boolean | null; merged_reason?: string | null;
+  uncommitted: number | null; untracked: number | null; ignored: number | null; candidate: boolean | null; reasons: string[] | null;
+  writer?: WorktreeWriter | null;
+  run: { id: string; state: string; settled: boolean; task_id: string | null; task_title: string | null } | null;
+  cleanup: string[] | null;
+};
+export type WorktreeHost = { id: string; name: string; connected: boolean; report_at: string | null; rescan: boolean; count: number };
+export type WorktreeClass = "active" | "dirty" | "unpushed" | "unmerged" | "merged" | "reclaimable" | "unknown";
+
+export const WORKTREE_CLASSES: { id: WorktreeClass; label: string; hint: string }[] = [
+  { id: "active", label: "Active", hint: "A live session writes here, or its run has not settled." },
+  { id: "dirty", label: "Dirty", hint: "Uncommitted changes or untracked files." },
+  { id: "unpushed", label: "Unpushed", hint: "Commits that are not on origin." },
+  { id: "unmerged", label: "Unmerged", hint: "Pushed but not merged into its base yet (an open pull request)." },
+  { id: "merged", label: "Merged", hint: "Merged into its base, but something else keeps it (ignored files, a lock, detached HEAD)." },
+  { id: "reclaimable", label: "Reclaimable", hint: "Merged or empty, clean, no writer: removing it loses nothing." },
+  { id: "unknown", label: "Unknown", hint: "The host did not report enough to judge (older remotea), or a check failed." },
+];
+
+const gone = (row: Pick<WorktreeRow, "reasons">) => (row.reasons ?? []).some(r => r.startsWith("folder missing"));
+
+/** Which bucket a worktree falls in, worst first: active (a live writer or an unsettled run), dirty, unpushed,
+ * unmerged, reclaimable (the host says nothing is lost and names no writer, or the folder is already gone), merged
+ * (merged, but kept by something else), unknown (an older host's row without the fields, or anything else). Only
+ * `reclaimable` is ever offered for removal. */
+export function worktreeClass(row: WorktreeRow): WorktreeClass {
+  if (typeof row.uncommitted !== "number" || typeof row.candidate !== "boolean" || !Array.isArray(row.reasons)) return "unknown";
+  if (row.active || row.writer || (row.run && !row.run.settled)) return "active";
+  const knowsWriter = "writer" in row && row.writer === null;
+  if (gone(row)) return knowsWriter ? "reclaimable" : "unknown";
+  if (row.uncommitted > 0 || (row.untracked ?? 0) > 0) return "dirty";
+  if ((row.unpushed ?? 0) > 0 || (row.merged === false && !row.upstream)) return "unpushed";
+  if (row.merged === false) return "unmerged";
+  if (row.candidate) return knowsWriter ? "reclaimable" : "unknown";
+  if (row.merged === true) return "merged";
+  return "unknown";
+}
+
+/** What removing a worktree would lose (or why it must not be removed now), one plain line each. */
+export function worktreeLoss(row: WorktreeRow): string[] {
+  const out: string[] = [];
+  if (row.writer) out.push(`a live session writes here (${row.writer.surf})`);
+  else if (row.active) out.push("a live session works here");
+  if (row.run && !row.run.settled) out.push(`its run is still ${row.run.state.replace(/_/g, " ")}`);
+  if (row.uncommitted) out.push(`${row.uncommitted} uncommitted change${row.uncommitted === 1 ? "" : "s"}`);
+  if (row.untracked) out.push(`${row.untracked} untracked file${row.untracked === 1 ? "" : "s"}`);
+  if (row.ignored) out.push(`${row.ignored} ignored file${row.ignored === 1 ? "" : "s"} (e.g. .env), deleted by a removal`);
+  if (row.unpushed) out.push(`${row.unpushed} commit${row.unpushed === 1 ? "" : "s"} not on origin`);
+  else if (row.merged === false && !row.upstream) out.push(`${row.ahead ? row.ahead + " commit(s)" : "commits"} that exist only here`);
+  else if (row.merged === false) out.push(`not merged into ${row.base_ref || row.base || "its base"}`);
+  if (!out.length && worktreeClass(row) === "unknown") out.push((row.reasons ?? []).join("; ") || "the host did not report enough to tell (update remotea)");
+  if (!out.length && worktreeClass(row) !== "reclaimable") out.push((row.reasons ?? []).join("; ") || "kept by the host");
+  return out;
+}
+
+export function worktreeCounts(rows: WorktreeRow[]) {
+  const counts = Object.fromEntries(WORKTREE_CLASSES.map(c => [c.id, 0])) as Record<WorktreeClass, number>;
+  for (const row of rows) counts[worktreeClass(row)] += 1;
+  return counts;
+}
+
+export const worktreeKey = (row: Pick<WorktreeRow, "host_id" | "path" | "branch">) => `${row.host_id}:${row.path ?? row.branch ?? ""}`;
+
+/** The review step: the reclaimable rows (each with its commands) and every other row refused with what it would
+ * lose. `commands` holds only the selected reclaimable rows' commands, grouped per host, for the owner to run there:
+ * Eridani has no removal command (remotea advertises none), and a row without commands is never included. */
+export function removalPlan(rows: WorktreeRow[], selected: ReadonlySet<string>) {
+  const reclaimable = rows.filter(r => worktreeClass(r) === "reclaimable" && r.cleanup?.length);
+  const refused = rows.filter(r => !reclaimable.includes(r)).map(row => ({ row, lost: worktreeLoss(row) }));
+  const chosen = reclaimable.filter(r => selected.has(worktreeKey(r)));
+  const hosts = [...new Set(chosen.map(r => r.host_id))];
+  const commands = hosts.flatMap(h => {
+    const mine = chosen.filter(r => r.host_id === h);
+    return [`# On ${mine[0].host_name} (in WSL): ${mine.length} worktree${mine.length === 1 ? "" : "s"}`,
+      ...mine.flatMap(r => [`# ${r.target ?? ""} ${r.branch ?? r.path ?? ""}`.trimEnd(), ...(r.cleanup ?? [])])];
+  });
+  return { reclaimable, refused, chosen, commands };
 }
 
 // ---------------------------------------------------------------- run panel, row buttons, Run modal (run from anywhere)
