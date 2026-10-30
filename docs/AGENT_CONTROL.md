@@ -494,8 +494,9 @@ inside Eri's execution context, else `bot` for an unbound bot key, else `human`.
 `human`, `source_sync` (the Linear import always runs as it) and `run_judge` (the coordinator).
 
 While a task has an unsettled run, `task.update`/`task.complete`/`task.batch`/`record.update` refuse
-completion and edits of `success_criteria`, `verify` and `turn_cap` from `eri_work`, `run_session` and
-`bot` with `409 RUN_OWNS_COMPLETION {run_id, state}`. A human or source_sync completion is recorded at
+completion and edits of the gate fields (`agent_actor.GATE_FIELDS`: `success_criteria`, `verify`, `turn_cap`,
+`completion_policy` and `prd_note_id`, so a `tasks:write` key cannot repoint a live run's PRD) from `eri_work`,
+`run_session` and `bot` with `409 RUN_OWNS_COMPLETION {run_id, state}`. A human or source_sync completion is recorded at
 once and asks the run to stop (`stop_reason: task_completed_externally`); a human approve ends it
 `completed`.
 
@@ -677,6 +678,24 @@ attempts carry the same tuple). The run is `verifying` until the result.
   that is discarded and noted on the attempt as `late`. A refused/failed/uncertain `verify` command is
   `refused`/`uncertain`, also a non-pass (never `delivery_uncertain`). A host without `verify` refuses at
   once. Every non-pass still goes to the judge.
+- **Failure category** (`run_coordinator.classify_verify`): every settled non-pass gets `result.category` and a
+  one-line `result.action` (also on host attempts kept aside), shown by `public_attempt` and the run page
+  ("Verification could not run · <action>" for infra). From the host's `error`, `exit_code`, `timed_out`, the
+  tail and the target's hello `verify_status` readiness reason (when it says the entry is not ready): the command
+  outcome and timeouts first, then the patterns in table order; an `error` nothing explains is `infra_uncertain`.
+
+  | category | when | action (example) |
+  |---|---|---|
+  | `infra_uncertain` | `uncertain` command outcome; an `error` nothing else explains | Check remotea, then Verify now |
+  | `infra_refused` | `refused` (rejected or failed `verify` command, host without `verify`); a bad `cwd` | Check the host and the verify entry in eridani.json |
+  | `infra_timeout` | `timed_out`: the host's limit, or no result by the 11-minute deadline (host offline, command expired) | Raise the entry's timeout, or check the host is online |
+  | `infra_missing_binary` | exit 127/126, "command not found", `spawn X ENOENT`, readiness "its program is not on the service PATH" | Install uv or set PATH in the verify entry (eridani.json) |
+  | `infra_database` | psycopg/SQLAlchemy `OperationalError`, "could not connect to server", connection refused, unknown database/role | Point the verify entry at a disposable test database |
+  | `infra_missing_dependency` | `ModuleNotFoundError`, "No module named", "Cannot find module" | Install the module (uv sync, npm install), or message the agent if it is the project's own |
+  | `tests_failed` | any other `failed` | Fix the failing tests |
+
+  `passed`, `canceled` and `stale` get no category (`stale` stays the judge's "could not establish" needs_you).
+  An infra category says nothing about the code: the judge parks the run (below) instead of sending a gap.
 - **On demand**: `POST /remotea/runs/{id}/verify` uses the same machinery for the current tuple
   (`on_demand`), refuses `VERIFY_RUNNING`/`NO_VERIFY`, and never moves the run.
 - A message or steer while verifying/judging supersedes in-flight attempts and returns to `executing`.
@@ -690,7 +709,8 @@ Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root
 (last 24k characters; `truncated` flagged), the bound verify attempt with `fresh` (same tuple and not
 stale), the previous verdict's per-criterion record, and the completion policy with the PR record
 (`pr_urls`, `merged`, and `pr_fresh` / `merged_fresh` with `as_of` times: whether the session's collector
-report and the host's worktrees report arrived after the turn). The prompt (`judge-v2`) says all of it is
+report and the host's worktrees report arrived after the turn). The verify evidence carries `category`, `action`
+and `infra` (true for an `infra_*` category). The prompt (`judge-v3`) says all of it is
 untrusted data and that **the agent's text is a claim**: evidence is the verify attempt, the host's worktree and
 PR record and the ticked steps. A gap may only ask for what the loop can check (make the verify command pass,
 commit/push and open or update the PR, tick steps), never for pasted test output, logs or diffs. The gap prompt
@@ -701,16 +721,19 @@ commit/push and open or update the PR, tick steps), never for pasted test output
 2. **Luna** via `memory_learning.extraction_request` (the only model it accepts; decision 20) with a
    strict schema `{verdict: met|not_met|needs_you, gap, summary, criteria: [{id, status: met|not_met|unclear,
    evidence}], steps: [{id, status: done|not_done|disputed|unclear}]}`.
-3. **Rules again on the answer.** `met` with a required verify that is not fresh and passing: `not_met`
-   with the failure tail when it ran and failed, else `needs_you` (missing, refused, timed out, stale,
-   uncertain: the agent cannot fix that). A `verify`-kind criterion is met only with a fresh passing
+3. **Rules again on the answer.** **`verify_infra`** first: a bound verification with an infra category (the
+   check could not run: missing program, module or database, timeout, refused, uncertain) makes the verdict
+   `needs_you` with the category's `action` as the gap, whatever the model said; the prompt tells the model not
+   to blame the code for it, and its steps cannot be `disputed`. Then `met` with a required verify that is not fresh and passing: `not_met`
+   with the failure tail when it ran and failed, else `needs_you` (missing, stale or canceled: the agent cannot fix that;
+   refused, timed out and uncertain are infra categories and stopped at `verify_infra`). A `verify`-kind criterion is met only with a fresh passing
    attempt of its verify id. `met` with any criterion not met → `not_met`. Unknown criterion ids are
    dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. Each
    rule that fired is recorded in `rules`.
 4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
    (refusal and budget are not retried), then the attempt is `failed` and the run goes to
    `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
-5. The attempt keeps model, `prompt_version` (`judge-v2`), cost, latency, retries, the final verdict and the
+5. The attempt keeps model, `prompt_version` (`judge-v3`), cost, latency, retries, the final verdict and the
    completion evidence it used (`evidence.completion`).
 
 **Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
@@ -745,6 +768,10 @@ transition records `actor: run_judge`.
   held verdict with the record as it now is, without asking the model again. Still unknown after the wait →
   `needs_you(pr_unknown)`. A later report that shows the PR (`pr_open`: the met path, so approval or
   auto_complete) or the merge (`pr_merged`: `executing(merged)`) moves the run on; otherwise Davin checks.
+- **`verify_infra`** (rule, checked first) → `needs_you(verify_infra)` with the action as `detail` and
+  `reason_detail`; no gap prompt is sent, whatever the verdict. `control_status` says "host setup problem:
+  <action>". After fixing the host the operator messages the agent (its next turn is verified again), uses
+  freestyle, or approves on the evidence shown. A `tests_failed` verification keeps the not_met gap prompt.
 - `needs_you` → `needs_you(judge_needs_you)` with the gap; push `agent_stuck`.
 - **Steps**: the judge may mark `todo`/`doing` steps `done` (`by: judge:<run>`), may mark an agent's
   `done` step `disputed` when the verification contradicts it, and never moves a `done` step back.
@@ -773,7 +800,7 @@ revision N+1 with nothing else changed (history `verify_set`), and a run parked 
 operator talks to the agent directly. While on, a root turn is recorded (history `turn` with `freestyle: true`)
 but not verified, judged or counted toward the turn cap, no gap prompt is sent, and the 45-minute no-progress
 timer is skipped (the wall clock still applies). Turning it on from `needs_you(judge_needs_you | no_progress_gap |
-verify_missing | no_progress | turn_cap | awaiting_merge | pr_unknown)` resumes `executing(freestyle)`; turning it off makes
+verify_missing | verify_infra | no_progress | turn_cap | awaiting_merge | pr_unknown)` resumes `executing(freestyle)`; turning it off makes
 the next turn judged again. Approve and Stop work as usual. The run header shows the toggle.
 
 ### auto_complete

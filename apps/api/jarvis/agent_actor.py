@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from .domain import DomainError
 
 KINDS = ("human", "eri_work", "run_session", "run_judge", "source_sync", "bot")
-GATE_FIELDS = ("success_criteria", "verify", "turn_cap", "completion_policy")
+GATE_FIELDS = ("success_criteria", "verify", "turn_cap", "completion_policy", "prd_note_id")
 # These may complete a run-owned task or edit its gate fields.
 AUTHORITIES = ("human", "source_sync", "run_judge")
 
