@@ -641,3 +641,56 @@ export function composerAction(e: { key: string; shiftKey: boolean; ctrlKey: boo
   if (e.key !== "Enter" || e.shiftKey || e.altKey) return null;
   return e.ctrlKey || e.metaKey ? "steer" : "queue";
 }
+
+// ---------------------------------------------------------------- the run drawer's requests and controls
+
+/** A latest-only request guard: `begin()` aborts the previous request, and only the newest one may install its
+ * result (`current()`). `cancel()` retires whatever is in flight (unmount, or the panel switched runs). */
+export type LatestOnly = { begin(): { signal: AbortSignal; current(): boolean }; cancel(): void };
+export function latestOnly(): LatestOnly {
+  let seq = 0, controller: AbortController | null = null;
+  return {
+    begin() {
+      controller?.abort();
+      const mine = ++seq, own = new AbortController();
+      controller = own;
+      return { signal: own.signal, current: () => mine === seq };
+    },
+    cancel() { controller?.abort(); controller = null; seq++; },
+  };
+}
+
+/** Load one run for the drawer through the guard. Null means "ignore this response": a newer request superseded
+ * it, or the server answered for a run other than the one asked for. */
+export async function latestRun<T extends { id: string }>(guard: LatestOnly, id: string, load: (signal: AbortSignal) => Promise<T>):
+  Promise<{ run: T } | { error: unknown } | null> {
+  const request = guard.begin();
+  try {
+    const run = await load(request.signal);
+    return request.current() && run.id === id ? { run } : null;
+  } catch (error) {
+    return request.current() ? { error } : null;
+  }
+}
+
+export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop";
+const ACTION_PATHS: Record<RunAction, string> = {
+  message: "message", steer: "message", replan: "replan", verify: "verify", "verify-config": "verify-config",
+  freestyle: "freestyle", approve: "approve", stop: "stop",
+};
+
+/** The URL and body of a drawer control, bound to the run on screen (never the panel's id prop) and carrying the
+ * state_revision the reader saw, so the server refuses it with REVISION_CONFLICT if the run moved on. Null while
+ * the loaded run is not the one the panel asked for: every control is disabled then. */
+export function runAction(run: Pick<Run, "id" | "state_revision"> | null, id: string, action: RunAction, values: Record<string, unknown> = {}) {
+  if (!run || run.id !== id) return null;
+  // Stop stays unconditional: it is the emergency path and must work from a stale view, so it sends no revision.
+  const body = action === "stop" ? { ...values } : { ...values, expected_revision: run.state_revision };
+  return { url: `/remotea/runs/${run.id}/${ACTION_PATHS[action]}`, body };
+}
+
+/** Shown (instead of an error) when a control was refused because the run changed; the drawer reloads it. */
+export const RUN_CHANGED = "This run changed; reloaded";
+export function isRevisionConflict(error: unknown) {
+  return (error as { code?: unknown } | null)?.code === "REVISION_CONFLICT";
+}

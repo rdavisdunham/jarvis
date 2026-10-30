@@ -79,11 +79,18 @@ class MessageInput(Input):
 
 class StopInput(Input):
     mode: str = Field(default="interrupt", pattern=r"^(interrupt|kill)$")
+    # Optional on purpose: Stop is the emergency path and must work from a stale view.
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
 
 class ApproveInput(Input):
+    # Required: approving completes the task, so it must be the state the approver reviewed (REVISION_CONFLICT if not).
+    expected_revision: int = Field(ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
+
+
+class VerifyNowInput(Input):
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
@@ -468,9 +475,10 @@ def replan(db, owner, run_id, body, *, actor):
     return public_run(db, run)
 
 
-def verify_now(db, owner, run_id, *, actor):
+def verify_now(db, owner, run_id, body=None, *, actor):
     """On-demand verification: the same attempt machinery, bound to the current tuple; it never moves the run."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision if body else None)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
     plan = coordinator.frozen(db, run)
@@ -529,7 +537,8 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
-FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge"}
+FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge",
+                     "pr_unknown"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -591,7 +600,7 @@ def page(db, query, column, limit, offset):
 def reason_detail(db, run):
     """The full text behind the current state, when there is one: the judge's notes for a judge-caused needs_you,
     otherwise the detail recorded with the transition (REASON_TEXT is the one-line version)."""
-    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge"):
+    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown"):
         verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                        AgentAttempt.status == "done")
                             .order_by(AgentAttempt.created_at.desc()).limit(1))

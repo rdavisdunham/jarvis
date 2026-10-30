@@ -79,7 +79,9 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                # (UserPromptSubmit), not only on the following turn's Stop.
                "prompt"]
 # Command kind -> host capability it needs.
-COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify"}
+COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
+                            # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
+                            "worktrees.scan": "worktrees.scan"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}

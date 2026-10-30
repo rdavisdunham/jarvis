@@ -298,10 +298,10 @@ def replan(identity: UUID, body: control.ReplanInput, user: User):
 
 
 @router.post("/runs/{identity}/verify")
-def verify(identity: UUID, user: User):
+def verify(identity: UUID, user: User, body: control.VerifyNowInput | None = None):
     with session_scope() as db:
         writable(db, user)
-        return control.verify_now(db, user.owner_id, str(identity), actor=actor_for(user))
+        return control.verify_now(db, user.owner_id, str(identity), body, actor=actor_for(user))
 
 
 @router.post("/runs/{identity}/verify-config")
