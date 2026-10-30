@@ -9,6 +9,7 @@ its outbound command in one transaction (run_coordinator.py owns the transitions
 import json
 import re
 from datetime import timedelta
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, not_, or_, select
@@ -60,26 +61,31 @@ class StartInput(Input):
 class FreestyleInput(Input):
     enabled: bool
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class ReplanInput(Input):
     reason: str = Field(default="", max_length=2000)
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class MessageInput(Input):
     text: str = Field(min_length=1, max_length=PROMPT_CHARS)
     mode: str = Field(default="queue", pattern=r"^(queue|steer)$")
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class StopInput(Input):
     mode: str = Field(default="interrupt", pattern=r"^(interrupt|kill)$")
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class ApproveInput(Input):
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class AnswerItem(Input):
