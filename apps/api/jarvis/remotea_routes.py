@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from . import agent_control as control
 from . import agent_link, agent_plan, bot_access
 from . import agent_receipts as receipts
+from . import agent_retention as retention
 from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
 from .auth import Identity, authenticate
@@ -123,6 +124,7 @@ def state(db, user):
         "enabled": agent_link.enabled(db, user.owner_id),
         "auto_complete": coordinator.auto_complete(db, user.owner_id),
         "quiet_bypass": coordinator.quiet_bypass(db, user.owner_id),
+        "retention_days": retention.window(db, user.owner_id).days,
         "key": bot_access.public(key) if key else None,
         # The MCP key the last setup code carried (its prefix and expiry; never the token).
         "mcp_key": bot_access.public(mcp) if (mcp := active_key(db, user, MCP_KEY_NAME)) else None,
@@ -220,6 +222,22 @@ def set_quiet_bypass(body: AutoCompleteInput, user: User):
     with session_scope() as db:
         gated(db, user)
         set_enabled(db, user.owner_id, body.enabled, "agent_quiet_bypass")
+        return state(db, user)
+
+
+class RetentionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days: int = Field(ge=retention.MIN_DAYS, le=retention.MAX_DAYS)
+
+
+@router.post("/retention")
+def set_retention(body: RetentionInput, user: User):
+    """How long a settled run's turns, commands, attempts, questions and interviews are kept before they are
+    deleted and the run's remaining copies of content are redacted (default 90 days). Works while remotea is
+    off, so the owner can shorten it after turning the feature off."""
+    with session_scope() as db:
+        owner_only(db, user)
+        set_enabled(db, user.owner_id, body.days, retention.SETTING)
         return state(db, user)
 
 
@@ -478,6 +496,17 @@ def plan_review(identity: UUID, body: agent_plan.PlanReviewInput, user: User):
     with session_scope() as db:
         writable(db, user)
         return agent_plan.review_plan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/redact")
+def redact_run(identity: UUID, user: User):
+    """Delete one settled run's content now (agent_retention.redact_now); the skeleton stays. Like stop, it
+    works after remotea is turned off; only the owner may call it."""
+    with session_scope() as db:
+        owner_only(db, user)
+        counts = retention.redact_now(db, user.owner_id, str(identity), actor=actor_for(user).record())
+        run = coordinator.load(db, user.owner_id, str(identity), lock=False)
+        return {"redacted": counts, "run": control.public_run(db, run, detail=True)}
 
 
 @router.post("/interviews/{identity}/answers")

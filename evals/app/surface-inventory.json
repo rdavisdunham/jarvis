@@ -1425,6 +1425,13 @@
       "feature": "agent_control"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/remotea/retention",
+      "handler": "set_retention",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/remotea/runs",
       "handler": "runs",
@@ -1498,6 +1505,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/plan-review",
       "handler": "plan_review",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/redact",
+      "handler": "redact_run",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
