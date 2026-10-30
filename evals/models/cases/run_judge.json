@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "job": "run_judge",
+  "description": "The run judge: did the agent's latest turn meet the frozen plan's success criteria? Reuses the labelled outcome cases from evals/agent_control (loop cases test a pure rule, not the model, and are left out). A case passes when the final verdict after the judge's hard rules and completion policy (agent_judge.decide) matches the label; the raw model verdict is recorded too.",
+  "prompt_source": "jarvis.agent_judge.request (SYSTEM, Verdict schema), then agent_judge.decide",
+  "grader": "verdict",
+  "imports": [{"path": "evals/agent_control/cases.json", "exclude_kinds": ["loop"]}],
+  "cases": []
+}

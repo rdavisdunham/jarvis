@@ -1,0 +1,305 @@
+{
+ "direction": "host",
+ "frame": "command.outcome",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "command_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "digest": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "kind": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "result": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "adopted": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "ahead": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "attempt_id": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "base": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "base_ref": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "base_sha": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "behind": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "branch": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "canceled": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "code": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "exit_code": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "exited": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "fetch": {
+       "required": false,
+       "shape": {
+        "keys": {
+         "ok": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         }
+        },
+        "types": [
+         "object"
+        ]
+       }
+      },
+      "generation": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "incarnation": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "mcp": {
+       "required": false,
+       "shape": {
+        "keys": {
+         "configured": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "reason": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         }
+        },
+        "types": [
+         "object"
+        ]
+       }
+      },
+      "mode": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "stale_workspace": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "surf": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "target": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "timed_out": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "worktree": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "state": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

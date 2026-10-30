@@ -408,6 +408,7 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 | `docs/TODO.md` | The Eridani roadmap task list in the app (project "Eridani roadmap"), which is the source of truth since 2026-10-29 | Add new work in the app first, then mirror it here; close items in both |
 | `docs/EXTERNAL_AGENTS.md` | `bot_access.SCOPES`, `external_routes.py`, `external_mcp.definitions`, the MCP URL | Any bot scope, route or MCP tool |
 | `docs/AGENT_CONTROL.md` | `agents:*` scopes, `/api/v1/remotea` routes, link frames, run states, the agent migrations | Any remotea change |
+| `tests/fixtures/protocol/<caps_version>/` | The link frames each side actually sends (keys and types), recorded by `tests/test_protocol_e2e.py` against a real remotea server | A link frame or field changes on either side: run that test locally (it skips in CI), re-record with `UPDATE_FIXTURES=1`, review the diff |
 | `docs/DESIGN.md` | `apps/web/src/theme.css` tokens | New tokens or components |
 | `docs/CI.md` | `.github/workflows/ci.yml` | CI steps or local equivalents change |
 | `docs/TASK_CARDS.md` | Both task cards' sections and every entry point that opens each | A task-card section or a route into either card changes |
