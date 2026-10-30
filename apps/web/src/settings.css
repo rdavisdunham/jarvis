@@ -692,6 +692,51 @@
 .integration-status .status-dot.on {
   background: var(--done);
 }
+/* Linear: optional Homes mapping (LinearMapping.tsx) */
+.linear-mapping .setting-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.linear-mapping-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.linear-mapping-row .settings-item-main {
+  flex: 1 1 200px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.linear-mapping-row.nested {
+  padding-left: 20px;
+}
+.linear-mapping-row select,
+.linear-mapping-row input {
+  max-width: 100%;
+}
+.linear-mapping-preview h4 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.linear-mapping-tree {
+  margin: 0;
+  padding-left: 18px;
+}
+.linear-mapping-node {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.linear-mapping-changes {
+  max-height: 240px;
+  overflow: auto;
+}
 .connection-label {
   display: inline-flex;
   align-items: center;

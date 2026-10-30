@@ -528,6 +528,8 @@ class LinearConnection(Base):
     next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(30), default="ready")
     error: Mapped[str] = mapped_column(String(200), default="")
+    # Optional mapping of Linear teams/projects onto Homes (linear_structure.py).
+    structure: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class LinearIssue(Base):
