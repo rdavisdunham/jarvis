@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Criteria, InterviewForm, PlanReview } from "./Remotea";
 import {
-  attemptTitle, criteriaEvidence, interviewAnswers, latestAttempt, orderOptions, planReviewBody, runControls, timeline,
+  attemptTitle, attemptTone, commandTitle, criteriaEvidence, interviewAnswers, latestAttempt, orderOptions, planReviewBody, runControls, timeline,
   type Attempt, type Interview, type Proposals, type Run, type RunDetail,
 } from "./remotea-model";
 
@@ -81,6 +81,30 @@ describe("approval and the judge", () => {
     const entries = timeline(detail({ attempts: [gap, failed], interviews: [interview] }));
     expect(entries.map(e => e.title)).toEqual(["Interview · waiting for you", "Verification tests · failed", "Judge · not met yet"]);
     expect(entries[2].detail).toBe("Add the docs page");
+  });
+});
+
+describe("why a verification did not pass", () => {
+  it("labels an infra attempt with its action in a setup tone, apart from failing tests", () => {
+    const infra = attempt({ kind: "verify", status: "error", verify_id: "tests", exit_code: null, category: "infra_missing_binary",
+      action: "Install `uv` or set PATH in the verify entry (eridani.json)." });
+    const failing = attempt({ kind: "verify", status: "failed", verify_id: "tests", exit_code: 1, category: "tests_failed",
+      action: "Fix the failing tests." });
+    expect(attemptTitle(infra)).toBe("Verification could not run · Install `uv` or set PATH in the verify entry (eridani.json).");
+    expect(attemptTitle(failing)).toBe("Verification tests · failed");
+    expect(attemptTone(infra)).toBe("setup");
+    expect(attemptTone(failing)).toBe("warn");
+    expect(attemptTitle(attempt({ kind: "verify", status: "timed_out", verify_id: "tests", category: "infra_timeout", action: "" })))
+      .toBe("Verification could not run · timed out");
+    const entry = timeline(detail({ attempts: [infra] })).find(e => e.kind === "attempt");
+    expect(entry?.tone).toBe("setup");
+  });
+  it("names refused, expired and uncertain commands plainly", () => {
+    const command = (state: string) => ({ id: "c", op_id: "o", kind: "verify", status: state, generation: 1, mode: null, text: null,
+      outcome: { state }, created_at: "2026-10-28T10:00:00Z", updated_at: "2026-10-28T10:00:00Z" }) as Parameters<typeof commandTitle>[0];
+    expect(commandTitle(command("rejected"))).toBe("Verify · refused by remotea");
+    expect(commandTitle(command("expired"))).toBe("Verify · expired before remotea took it");
+    expect(commandTitle(command("uncertain"))).toBe("Verify · delivery uncertain (remotea could not tell if it ran)");
   });
 });
 
