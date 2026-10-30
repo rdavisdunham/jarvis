@@ -605,6 +605,12 @@ A checked implementation task never replaces connected-provider or physical-devi
   show live as "You, in the terminal". Later discussion: which tasks get a Run button at
   all ("feed Hayes" should not).
 
+- **Explore: Eridani's own messages to a running agent** (Eridani task, 2026-10-29). While Davin
+  was messaging an agent, Eridani sent it two messages telling it to finish up and note any
+  blockers. They read well; the open question is what triggers them (turn cap approaching,
+  no-progress or wall-clock limit, judge gap, replan), how the wording is chosen, and where it
+  lives. Document the rules in `docs/AGENT_CONTROL.md` and name the trigger on the timeline bubble.
+
 ## Maintenance
 
 The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
