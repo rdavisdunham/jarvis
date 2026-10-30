@@ -106,6 +106,7 @@ def live_instructions(prefs, focus=None, ui_context=None):
                 "(what item or target, and when if it matters), then delegate once when the request is complete; "
                 "the backend receives everything the user said since the last delegation as one request. "
                 "Do not delegate a half-stated request such as 'add this to my list' before you know what to add. "
+                "Delegate show/open requests as said; a named kind is a hint (a 'task' may be a calendar event). "
                 "Requests to help set up/redesign the organization or start/resume Quick Sort are complete workflow requests: "
                 "delegate them immediately so the backend can read the current structure/progress and ask the right question. "
                 "During these guided flows relay each backend question once and delegate the user's answer, including short home names, "

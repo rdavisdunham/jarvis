@@ -1,6 +1,6 @@
 """Outbound calendar synchronization. Provider tokens never leave the server."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import httpx
@@ -11,10 +11,12 @@ from sqlalchemy import delete, select
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, check_revision, emit, enqueue_job, owned
-from .google_auth import VerificationRequest, configured, unseal
+from .google_auth import VerificationRequest, configured, seal, unseal
 from .models import GoogleCalendar, GoogleCalendarEvent, GoogleIdentity, Job, now
 
 POLL_PENDING = {"queued", "running", "retrying"}
+# Bumped when clean_event stores new fields, so each calendar resyncs fully once and old rows gain them.
+DETAILS_VERSION = 2
 
 
 class SyncFailure(Exception):
@@ -23,30 +25,133 @@ class SyncFailure(Exception):
         super().__init__(code)
 
 
+TESTING_GRANT_DAYS = 7  # Google's refresh-token lifetime for external apps left in "Testing".
+
+
+def refresh_grant(refresh_token):
+    """One call to Google's token endpoint. A rejected grant needs consent; anything retryable does not."""
+    settings = get_settings()
+    token = Credentials(
+        None,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.google_client_id,
+        client_secret=settings.google_client_secret,
+    )
+    try:
+        token.refresh(VerificationRequest())
+    except RefreshError as error:
+        # google-auth marks 5xx/transient token failures retryable; only a rejected grant needs consent.
+        if getattr(error, "retryable", False):
+            raise SyncFailure("unavailable") from None
+        details = error.args[1] if len(error.args) > 1 and isinstance(error.args[1], dict) else {}
+        failure = SyncFailure("reconnect", 401)
+        failure.revoked = details.get("error") == "invalid_grant" or "invalid_grant" in str(error.args[:1])
+        raise failure from None
+    except TransportError:
+        raise SyncFailure("unavailable") from None
+    return token
+
+
+def moment(value):
+    try:
+        return datetime.fromisoformat(value) if value else None
+    except (TypeError, ValueError):
+        return None
+
+
+def access_token(owner):
+    """A live access token for the owner's stored grant.
+
+    One refresh per account at a time: concurrent callers queue on the lock and reuse the token the first one
+    stored, so a refresh token Google rotates is saved before anyone else reads the grant. A rejected grant marks
+    the connection for reconnect once; later callers fail here without asking Google again.
+    """
+    failure = None
+    with session_scope() as db:
+        # Separate from google:{owner}; finish/disconnect take this one after it, so the order is always the same.
+        advisory(db, f"google-token:{owner}")
+        account = db.get(GoogleIdentity, owner)
+        if not account or not account.credentials or account.status == "needs_reconnect":
+            raise SyncFailure("reconnect", 401)
+        stored = unseal(account.credentials)
+        until = moment(stored.get("expires_at"))
+        if stored.get("access_token") and until and until - now() > timedelta(minutes=5):
+            return stored["access_token"]
+        try:
+            token = refresh_grant(stored["refresh_token"])
+        except SyncFailure as error:
+            if error.code != "reconnect":
+                raise
+            failure, issued = error, moment(stored.get("issued_at"))
+            account.credentials = seal({
+                **{key: value for key, value in stored.items() if key not in {"access_token", "expires_at"}},
+                "rejected_at": now().isoformat(),
+                **({"last_rejected_age_seconds": int((now() - issued).total_seconds())} if issued else {}),
+            })
+            if account.calendar_enabled:
+                account.status = "needs_reconnect"
+                account.error = "revoked" if getattr(error, "revoked", False) else "reconnect"
+                account.next_sync_at = None
+                emit(db, owner, "google.changed", owner)
+        else:
+            expiry = token.expiry.replace(tzinfo=UTC) if token.expiry else now() + timedelta(minutes=55)
+            rotated = bool(token.refresh_token) and token.refresh_token != stored["refresh_token"]
+            account.credentials = seal({
+                **stored,
+                "refresh_token": token.refresh_token or stored["refresh_token"],
+                **({"issued_at": now().isoformat()} if rotated else {}),
+                "access_token": token.token,
+                "expires_at": expiry.isoformat(),
+                "refreshed_at": now().isoformat(),
+            })
+            return token.token
+    raise failure
+
+
+def grant_health(account):
+    """Refresh-token age and freshness for Settings. Google does not report the OAuth app's publishing status,
+    so "Testing" is inferred: a grant that died after about seven days, or one that has outlived seven days."""
+    try:
+        stored = unseal(account.credentials) if account and account.credentials else None
+    except DomainError:
+        stored = None
+    if not stored:
+        return None
+    issued, refreshed = moment(stored.get("issued_at")), moment(stored.get("refreshed_at"))
+    age = (now() - issued).total_seconds() / 86400 if issued else None
+    died = stored.get("last_rejected_age_seconds")
+    limit = TESTING_GRANT_DAYS
+    if issued and refreshed and not stored.get("rejected_at") and (refreshed - issued).days >= limit:
+        testing, reason = "unlikely", f"This grant has kept refreshing for more than {limit} days."
+    elif isinstance(died, int) and limit - 1 <= died / 86400 <= limit + 1:
+        testing, reason = "likely", (
+            f"The last grant stopped working after {died / 86400:.1f} days. Google expires refresh tokens "
+            f"after {limit} days while the OAuth app is in Testing."
+        )
+    else:
+        testing, reason = "unknown", (
+            f"Google does not report publishing status. It becomes clear once a grant refreshes past {limit} days."
+        )
+    return {
+        "refresh_token_issued_at": issued.isoformat() if issued else None,
+        "refresh_token_age_days": round(age, 1) if age is not None else None,
+        "last_refresh_at": refreshed.isoformat() if refreshed else None,
+        "rejected_at": stored.get("rejected_at"),
+        "testing_mode": testing,
+        "testing_mode_reason": reason,
+    }
+
+
 class CalendarClient:
-    def __init__(self, credentials):
-        settings = get_settings()
+    def __init__(self, credentials, owner=None):
         from .config import require_external_services
         require_external_services()
-        token = Credentials(
-            None,
-            refresh_token=credentials["refresh_token"],
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=settings.google_client_id,
-            client_secret=settings.google_client_secret,
-        )
-        try:
-            token.refresh(VerificationRequest())
-        except RefreshError as error:
-            # google-auth marks 5xx/transient token failures retryable; only a rejected grant needs consent.
-            if getattr(error, "retryable", False):
-                raise SyncFailure("unavailable") from None
-            raise SyncFailure("reconnect", 401) from None
-        except TransportError:
-            raise SyncFailure("unavailable") from None
+        # With an owner, the stored grant is refreshed under its lock and the access token reused until it expires.
+        bearer = access_token(owner) if owner else refresh_grant(credentials["refresh_token"]).token
         self.client = httpx.Client(
             base_url="https://www.googleapis.com/calendar/v3/",
-            headers={"Authorization": "Bearer " + token.token},
+            headers={"Authorization": "Bearer " + bearer},
             timeout=20,
             follow_redirects=False,
         )
@@ -105,6 +210,7 @@ def connection_status(db, owner):
         "syncing": pending,
         "error": account.error if account else "",
         "last_sync_at": account.last_sync_at.isoformat() if account and account.last_sync_at else None,
+        "grant": grant_health(account) if account and account.calendar_enabled else None,
         "stale": not account
         or not account.last_sync_at
         or now() - account.last_sync_at > timedelta(minutes=15),
@@ -220,6 +326,10 @@ def clean_event(event):
     data["declined"] = any(
         a.get("self") and a.get("responseStatus") == "declined" for a in event.get("attendees", [])
     )
+    # The connected account's own answer when it is a guest, for the calendar row; writes re-check it fresh.
+    invites = [a for a in event.get("attendees", []) if a.get("self") and not a.get("organizer")]
+    if len(invites) == 1 and not event.get("organizer", {}).get("self"):
+        data["my_response"] = invites[0].get("responseStatus", "needsAction")
     return data
 
 
@@ -237,7 +347,7 @@ def process(job_id):
             row.provider_id: {
                 "id": row.id,
                 "selected": row.selected,
-                "sync_token": row.sync_token if row.details_version >= 1 else None,
+                "sync_token": row.sync_token if row.details_version >= DETAILS_VERSION else None,
                 "revision": row.revision,
             }
             for row in db.scalars(select(GoogleCalendar).where(GoogleCalendar.owner_id == owner))
@@ -245,7 +355,7 @@ def process(job_id):
         job.status = "running"
     client = None
     try:
-        client = CalendarClient(unseal(encrypted))
+        client = CalendarClient(unseal(encrypted), owner=owner)
         remote, _ = pages(
             client, "users/me/calendarList", {"maxResults": 250, "showDeleted": "true"}, limit=10
         )
@@ -346,7 +456,7 @@ def process(job_id):
                 from .planning import reconcile
 
                 reconcile(db, owner, row.id, update["events"], update["full"])
-                row.sync_token, row.last_sync_at, row.details_version = update["token"], now(), 1
+                row.sync_token, row.last_sync_at, row.details_version = update["token"], now(), DETAILS_VERSION
             account.status, account.error, account.last_sync_at = "ready", "", now()
             job.status, job.finished_at, job.result = "succeeded", now(), {"synced": True}
             emit(db, owner, "google.changed", owner)
@@ -364,7 +474,9 @@ def process(job_id):
             if job.status != "running":
                 return
             job.status, job.finished_at, job.result = "failed", now(), {"error": code}
-            if account and account.calendar_enabled and account.generation == generation:
+            # access_token may already have recorded why the grant was rejected ("revoked"); keep that.
+            if (account and account.calendar_enabled and account.generation == generation
+                    and account.status != "needs_reconnect"):
                 account.status = "needs_reconnect" if code == "reconnect" else "error"
                 account.error = code
                 account.next_sync_at = now() + timedelta(seconds=get_settings().google_poll_seconds)
@@ -428,7 +540,7 @@ def availability(owner, start, end, minutes=30):
         }
     client = None
     try:
-        client = CalendarClient(unseal(encrypted))
+        client = CalendarClient(unseal(encrypted), owner=owner)
         result = client.request(
             "freeBusy",
             body={

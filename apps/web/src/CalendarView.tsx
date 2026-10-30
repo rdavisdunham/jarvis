@@ -18,6 +18,7 @@ import {
   Timer,
 } from "lucide-react";
 import { CalendarWriteActivity } from "./CalendarWriteActivity";
+import { CalendarRsvp, canAnswer, responseLabel } from "./CalendarRsvp";
 import { Availability } from "./Availability";
 import type { CalendarEntry } from "./types";
 import type { GoogleStatus } from "./GoogleSettings";
@@ -47,6 +48,8 @@ type Props = {
   onMode: (mode: CalendarMode) => void;
   onEntry: (event: CalendarEntry) => void;
   onRetry: () => void;
+  /** Lets guest-event rows answer invitations in place; omitted, rows only show the current answer. */
+  mutate?: (tool: string, args: unknown, message: string) => Promise<unknown>;
 };
 
 /** Task = check, reminder = bell, routine = repeat, work block = timer, event = calendar. */
@@ -201,13 +204,15 @@ export function CalendarView(p: Props) {
               const siblings = e.task_id
                 ? items.filter((item) => item.task_id === e.task_id)
                 : [];
+              const answerable = !!p.mutate && canAnswer(e);
               return (
+                <div key={e.id} className="agenda-item">
                 <button
-                  key={e.id}
                   className={
                     "agenda-row cal-kind-" +
                     e.kind +
                     (e.status === "completed" ? " done" : "") +
+                    (e.declined ? " is-declined" : "") +
                     (p.highlight === e.entity_id ? " record-highlight" : "")
                   }
                   id={"record-" + e.entity_id}
@@ -242,6 +247,9 @@ export function CalendarView(p: Props) {
                       {e.projected && e.kind !== "google" && (
                         <span className="chip">Upcoming</span>
                       )}
+                      {e.my_response && !answerable && (
+                        <span className="chip">{responseLabel(e.my_response)}</span>
+                      )}
                       {e.status === "completed" && (
                         <span className="chip chip-done">Completed</span>
                       )}
@@ -262,6 +270,8 @@ export function CalendarView(p: Props) {
                     </span>
                   </span>
                 </button>
+                {answerable && <CalendarRsvp entry={e} mutate={p.mutate!} onChanged={p.onRetry} />}
+                </div>
               );
             })}
           </div>
@@ -435,7 +445,8 @@ export function CalendarView(p: Props) {
                       className={
                         "cal-pill cal-kind-" +
                         e.kind +
-                        (e.status === "completed" ? " completed" : "")
+                        (e.status === "completed" ? " completed" : "") +
+                        (e.declined ? " is-declined" : "")
                       }
                     >
                       {!spansTime(e) && <KindIcon kind={e.kind} size={12} />}
@@ -620,7 +631,8 @@ function HourGrid({
                   className={
                     "cal-pill cal-kind-" +
                     e.kind +
-                    (e.status === "completed" ? " completed" : "")
+                    (e.status === "completed" ? " completed" : "") +
+                    (e.declined ? " is-declined" : "")
                   }
                   aria-label={calendarKind(e).label + ": " + e.title}
                   title={calendarKind(e).label + ": " + e.title}
@@ -671,7 +683,8 @@ function HourGrid({
                       (height < 40 ? " is-short" : "") +
                       (narrow ? " is-narrow" + (height >= 32 ? " is-two-line" : "") : "") +
                       (depth ? " is-cascaded" : "") +
-                      (e.status === "completed" ? " completed" : "")
+                      (e.status === "completed" ? " completed" : "") +
+                      (e.declined ? " is-declined" : "")
                     }
                     style={{
                       top: (start / 60) * HOUR + 1,

@@ -73,7 +73,8 @@ def test_global_prompts_are_small_and_live_has_no_schema_mechanics():
     backend = backend_instructions(prefs)
     live = live_instructions(prefs)
     # +200 on 2026-10-29 for the agent-run capability sentence (remotea runs through Eri and Live).
-    assert len(backend.encode()) < 7700 and len(live.encode()) < 6700
+    # Live +100 on 2026-10-30: delegate show/open requests without judging the named kind (Live has no tool text).
+    assert len(backend.encode()) < 7700 and len(live.encode()) < 6800
     assert "expected_revision" not in live and "tools_load" not in live
     assert "Delegation policy:" in live and "untrusted" in live
     assert "untrusted" in backend and "tools_load" in backend
