@@ -2467,7 +2467,7 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
-            {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending); return (
+            {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending, remotea.status?.hosts ?? []); return (
               <button className={"btn btn-ghost activity-toggle " + (badge.attention ? "needs-attention" : "")} aria-label={badge.aria}
                 title="Agent runs: active runs and the ones waiting for you" onClick={() => setRunsOpen(true)}>
                 <SquareTerminal size={18}/><span>Runs</span>{badge.count > 0 && <b>{badge.count}</b>}

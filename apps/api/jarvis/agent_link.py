@@ -78,17 +78,26 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                "context.scope",
                # The host sends the user's typed prompt as its own `prompt` frame when the turn starts
                # (UserPromptSubmit), not only on the following turn's Stop.
-               "prompt"]
+               "prompt",
+               # The host's `remotea doctor` summary: in hello (`doctor`), and as a `doctor` frame when it changes.
+               "doctor"]
 # Command kind -> host capability it needs.
 COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
-                            "worktrees.scan": "worktrees.scan"}
+                            "worktrees.scan": "worktrees.scan",
+                            # Bring the run's terminal tab to the front in the host's desktop app(s).
+                            "terminal.focus": "terminal.focus"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}
 LIVE_STATES = ("working", "needs_you", "idle")
 STATES = (*LIVE_STATES, "restoring", "lost", "exited")
 HARNESS_TOOLS = {"claude": "claude_code", "codex": "codex_cli"}
+# `remotea doctor` summary limits (remotea ERIDANI_LIMITS.doctorItems / doctorTextChars / doctorIdChars).
+DOCTOR_ITEMS = 40
+DOCTOR_TEXT = 200
+DOCTOR_ID = 120
+DOCTOR_LEVELS = ("fail", "warn")
 
 
 class Closed(Exception):
@@ -148,6 +157,66 @@ def short_text(limit):
     return clean
 
 
+def text_lines(count, limit):
+    """A list of free host text lines, each one line and clipped; anything else is dropped."""
+    clean = short_text(limit)
+
+    def lines(value):
+        if not isinstance(value, list):
+            return []
+        return [line for line in (clean(v) for v in value[:count]) if line]
+    return lines
+
+
+def doctor_count(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 1_000_000 else None
+
+
+def doctor_text(value, limit):
+    """One redacted line within `limit`, or None when it is not text or is longer than the host may send."""
+    if not isinstance(value, str):
+        return None
+    line = " ".join(value.split())
+    if not line or len(line) > limit:
+        return None
+    return redact(line)[:limit]
+
+
+def doctor_item(value):
+    """One warn/fail line; None when its id, level or summary is malformed (a malformed fix is dropped alone)."""
+    if not isinstance(value, dict) or value.get("level") not in DOCTOR_LEVELS:
+        return None
+    ident = value.get("id")
+    if not isinstance(ident, str) or not ident.strip() or len(ident) > DOCTOR_ID or any(c.isspace() for c in ident):
+        return None
+    summary = doctor_text(value.get("summary"), DOCTOR_TEXT)
+    if summary is None:
+        return None
+    fix = doctor_text(value.get("fix"), DOCTOR_TEXT)
+    return {"id": ident, "level": value["level"], "summary": summary, **({"fix": fix} if fix else {})}
+
+
+def doctor_summary(value):
+    """The `remotea doctor` summary (hello `doctor`, the `doctor` frame's body) as Eridani keeps it, or None.
+
+    Counts and `at` must be well formed or the whole summary is dropped; a malformed or oversized item is dropped
+    alone and the summary marked `truncated` (as when the host itself drops items past the cap). Fails first. Text
+    is redacted again here; `at` becomes ISO-8601."""
+    if not isinstance(value, dict) or not isinstance(value.get("items"), list):
+        return None
+    counts = {k: doctor_count(value.get(k)) for k in ("ok", "warn", "fail")}
+    at = value.get("at")
+    if None in counts.values() or not isinstance(at, (int, float)) or isinstance(at, bool) or not 0 < at < 1e14:
+        return None
+    raw = value["items"]
+    kept = raw[:DOCTOR_ITEMS]
+    items = [i for i in (doctor_item(v) for v in kept) if i is not None]
+    items.sort(key=lambda i: DOCTOR_LEVELS.index(i["level"]))
+    truncated = value.get("truncated") is True or len(raw) > DOCTOR_ITEMS or len(items) < len(kept)
+    return {"at": datetime.fromtimestamp(at / 1000, UTC).isoformat(), **counts, "items": items,
+            **({"truncated": True} if truncated else {})}
+
+
 class Hello(Frame):
     REDACT: ClassVar[tuple[str, ...]] = ("degraded_reason",)
     server_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,100}$")
@@ -170,6 +239,8 @@ class Hello(Frame):
     # Present only while the host's journal or outbox is degraded (remotea PR #15), e.g.
     # "journal_unavailable (write failed: ENOSPC)": effectful commands are refused until it clears.
     degraded_reason: Annotated[str | None, BeforeValidator(short_text(300))] = None
+    # remotea doctor's latest warn/fail summary (S-Q1); absent until the host computed one, dropped when malformed.
+    doctor: Annotated[dict | None, BeforeValidator(doctor_summary)] = None
 
 
 class Report(Frame):
@@ -341,6 +412,20 @@ class VerifyResult(Frame):
     stale_workspace: bool = False
     initiator: str | None = Field(default=None, max_length=20)
     adopted: str | None = Field(default=None, max_length=200)
+    # S-N4 / S-S2 (remotea PR #24, additive): whether the command ran in the bubblewrap sandbox, and whether the
+    # fingerprint covered the whole workspace. Absent from older hosts (None); malformed values are dropped.
+    isolated: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    isolation: Annotated[str | None, BeforeValidator(lambda v: v if v in ("bwrap", "none") else None)] = None
+    isolation_reason: Annotated[str | None, BeforeValidator(short_text(300))] = None
+    workspace_complete: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    workspace_reasons: Annotated[list[str], BeforeValidator(text_lines(20, 300))] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def redacted_lines(self):
+        self.workspace_reasons = [redact(line) for line in self.workspace_reasons]
+        if self.isolation_reason:
+            self.isolation_reason = redact(self.isolation_reason)
+        return self
 
 
 class ContextRequest(Frame):
@@ -790,8 +875,45 @@ def public_host(host):
         "last_seen_at": host.last_seen_at, "conn_epoch": host.conn_epoch, "caps": host.caps.get("caps", []),
         "harnesses": host.caps.get("harnesses", {}), "proto": host.proto,
         "version": host.version, "update": remotea_release.update_for(host.version),
-        **build_identity(host),
+        **build_identity(host), "doctor": host_doctor(host),
     })
+
+
+def host_doctor(host):
+    """The host's latest `remotea doctor` summary (at, ok, warn, fail, items, truncated?) with `received_at`, or None
+    when the host never sent one (an older remotea: the page says "unknown (host too old)")."""
+    caps = (host.caps or {}) if host is not None else {}
+    summary = caps.get("doctor")
+    if not isinstance(summary, dict):
+        return None
+    return {**summary, "received_at": caps.get("doctor_at")}
+
+
+def doctor_line(host):
+    """control_status's one line for a host whose self-check found problems, or None: "host desk: 2 setup problems:
+    <first fail summary>…" (warnings alone: "N setup warnings")."""
+    summary = host_doctor(host)
+    if not summary or not (summary.get("fail") or summary.get("warn")):
+        return None
+    count, noun = (summary["fail"], "problem") if summary["fail"] else (summary["warn"], "warning")
+    items = summary.get("items") or []
+    first = items[0]["summary"] if items else "run `remotea doctor` on the host for the list"
+    more = "…" if len(items) > 1 or summary["fail"] + summary["warn"] > 1 else ""
+    plural = "s" if count != 1 else ""
+    return f"host {host.name or host.machine or 'remotea'}: {count} setup {noun}{plural}: {first}{more}"
+
+
+def store_doctor(db, bot, host_id, summary):
+    """A `doctor` frame: keep the newest summary per host (an older `at` never replaces a newer one)."""
+    if summary is None:
+        return {"stored": False, "reason": "malformed"}
+    host = db.get(AgentHost, host_id)
+    current = (host.caps or {}).get("doctor")
+    if isinstance(current, dict) and str(current.get("at") or "") > summary["at"]:
+        return {"stored": False, "reason": "older"}
+    host.caps = {**(host.caps or {}), "doctor": summary, "doctor_at": now().isoformat()}
+    emit(db, bot.owner_id, "agent.changed", host_id)
+    return {"stored": True}
 
 
 BUILD_FIELDS = ("build_sha", "build_dirty", "caps_version", "hook_version", "degraded_reason")
@@ -827,9 +949,17 @@ def admit(credential_id, hello):
         host.credential_id, host.account_id = bot.id, bot.account_id
         host.name, host.machine, host.boot_id, host.proto = hello.hostname, hello.machine, hello.boot_id, hello.proto
         host.version = hello.version or None
-        host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
+        previous = host.caps or {}
+        # The doctor summary: hello's when it carries one; else the last one while the host still advertises
+        # `doctor` (a restarted server sends none until its first check); an older remotea has none.
+        doctor = ({"doctor": hello.doctor, "doctor_at": now().isoformat()} if hello.doctor is not None
+                  else {k: previous[k] for k in ("doctor", "doctor_at") if k in previous} if "doctor" in hello.caps
+                  else {})
+        host.caps = {**{k: v for k, v in previous.items() if k == "worktrees"}, **doctor,
                      "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets,
-                     "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None}}
+                     "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None},
+                     # When these facts were sent: the setup page's probe says how old they are.
+                     "hello_at": now().isoformat()}
         host.conn_epoch = (host.conn_epoch or 0) + 1
         host.last_seen_at, host.lease_until = now(), now() + LEASE
         db.flush()
@@ -1164,6 +1294,9 @@ class Link:
             return await self.effect(verify_result, VerifyResult.model_validate(frame))
         if kind == "worktrees.report":
             return await self.effect(worktrees, WorktreesReport.model_validate(frame))
+        if kind == "doctor":
+            # Malformed is acked and dropped, not refused: the host would only resend the same summary.
+            return await self.effect(store_doctor, doctor_summary(frame))
         if kind == "ack":
             body = Ack.model_validate(frame)
             await self.effect(lambda db, bot, host, f: acked(db, host, f), body)

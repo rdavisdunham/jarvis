@@ -694,3 +694,119 @@ def test_retention_drops_old_action_receipts():
     with session_scope() as db:
         assert retention.sweep(db)["action_receipts"] == 1
         assert db.get(AgentActionReceipt, (OWNER, "new")) is not None
+
+
+# ---------------------------------------------------------------- open the run's terminal (terminal.focus)
+
+
+def focus_capable(host, *, connected=True):
+    with session_scope() as db:
+        row = db.get(AgentHost, host.id)
+        row.caps = {**row.caps, "caps": [*row.caps.get("caps", []), "terminal.focus"]}
+        if not connected:
+            row.lease_until = now() - timedelta(minutes=1)
+
+
+def answer_focus(host, state, detail="", result=None, *, timeout=10.0):
+    """The host's half, in a thread: wait for the queued terminal.focus, then report its outcome."""
+    import threading
+    import time
+
+    seen = {}
+
+    def run():
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            with session_scope() as db:
+                row = db.scalar(select(AgentCommand).where(AgentCommand.kind == "terminal.focus",
+                                                           AgentCommand.status == "queued"))
+                if row is not None:
+                    seen["frame"] = dict(row.payload)
+                    agent_link.outcome(db, host.id, SimpleNamespace(command_id=row.op_id, state=state, detail=detail,
+                                                                     result=result))
+                    return
+            time.sleep(0.05)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return thread, seen
+
+
+def test_focus_says_at_once_why_it_cannot_be_sent(host, client):
+    run_id = start(host, task()["id"])["id"]
+    url = f"/api/v1/remotea/runs/{run_id}/focus"
+    assert client.post(url).json() == {"sent": False, "reason": "no_surface"}  # Not attached: no terminal yet.
+    attached(host, run_id)
+    assert client.post(url).json() == {"sent": False, "reason": "host_too_old"}  # The host does not offer it.
+    focus_capable(host, connected=False)
+    assert client.post(url).json() == {"sent": False, "reason": "host_offline"}
+    assert not commands(run_id, "terminal.focus")
+    assert client.post("/api/v1/remotea/runs/00000000-0000-4000-8000-000000000000/focus").status_code == 404
+
+
+def test_focus_waits_for_the_host_and_reports_what_it_did(host, client):
+    run_id = start(host, task()["id"])["id"]
+    run = attached(host, run_id)
+    focus_capable(host)
+    url = f"/api/v1/remotea/runs/{run_id}/focus"
+    thread, seen = answer_focus(host, "executed", result={"desktops": 2})
+    assert client.post(url).json() == {"sent": True, "desktops": 2}
+    thread.join()
+    frame = seen["frame"]
+    assert frame["t"] == "terminal.focus" and frame["surf"] == run.surf and frame["run_id"] == run_id
+    assert frame["generation"] == run.generation and frame["expires_at"] > 0
+    thread, _ = answer_focus(host, "rejected", "no_desktop")
+    assert client.post(url).json() == {"sent": False, "reason": "no_desktop"}
+    thread.join()
+    thread, _ = answer_focus(host, "rejected", "unknown_surf")
+    assert client.post(url).json() == {"sent": False, "reason": "no_surface"}
+    thread.join()
+    thread, _ = answer_focus(host, "failed", "interrupted by a server restart")
+    assert client.post(url).json() == {"sent": False, "reason": "failed", "detail": "interrupted by a server restart"}
+    thread.join()
+    # Quiet: no timeline entry, no history note, no change to the run; the detail's commands leave it out.
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert not [h for h in row.history or [] if h.get("kind") == "terminal.focus"]
+        assert row.state_revision == run.state_revision
+    detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
+    assert not [c for c in detail["commands"] if c["kind"] == "terminal.focus"]
+    assert len(commands(run_id, "terminal.focus")) == 4
+
+
+def test_focus_nobody_answers_gives_up_and_cancels_the_request(host, client, monkeypatch):
+    run_id = start(host, task()["id"])["id"]
+    attached(host, run_id)
+    focus_capable(host)
+    monkeypatch.setattr(control, "FOCUS_WAIT_SECONDS", 0.3)
+    assert client.post(f"/api/v1/remotea/runs/{run_id}/focus").json() == {"sent": False, "reason": "no_answer"}
+    [row] = commands(run_id, "terminal.focus")
+    assert row.status == "canceled"  # Never raises a tab later.
+
+
+def test_focus_is_drained_only_to_a_host_that_offers_it_and_never_survives_a_reconnect(host, client, monkeypatch):
+    run_id = start(host, task()["id"])["id"]
+    attached(host, run_id)
+    focus_capable(host)
+    monkeypatch.setattr(control, "FOCUS_WAIT_SECONDS", 0.0)
+    monkeypatch.setattr(control, "give_up_focus", lambda *a, **k: None)  # Keep it queued for the drain below.
+    client.post(f"/api/v1/remotea/runs/{run_id}/focus")
+    with session_scope() as db:
+        host_row = db.get(AgentHost, host.id)
+        host_row.caps = {**host_row.caps, "caps": [c for c in host_row.caps["caps"] if c != "terminal.focus"]}
+        assert not [f for f in agent_link.drain(db, host_row, host_row.conn_epoch) if f["t"] == "terminal.focus"]
+        host_row.caps = {**host_row.caps, "caps": [*host_row.caps["caps"], "terminal.focus"]}
+        assert [f["t"] for f in agent_link.drain(db, host_row, host_row.conn_epoch)] == ["terminal.focus"]
+    with session_scope() as db:
+        [row] = db.scalars(select(AgentCommand).where(AgentCommand.kind == "terminal.focus"))
+        assert row.status == "sent"
+        assert coordinator.stale(db, row, db.get(AgentRun, run_id)) == "a focus request does not outlive its connection"
+        assert coordinator.TTL["terminal.focus"] == timedelta(seconds=30)
+
+
+def test_focus_is_gated_like_the_other_run_actions(host, client):
+    run_id = start(host, task()["id"])["id"]
+    attached(host, run_id)
+    assert client.post("/api/v1/remotea/disable").status_code == 200
+    r = client.post(f"/api/v1/remotea/runs/{run_id}/focus")
+    assert r.status_code == 403 and r.json()["error"]["code"] == "REMOTEA_DISABLED"
