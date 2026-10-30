@@ -126,7 +126,7 @@ own short transaction.
 | up | `question` | `op_id, digest, surf, incarnation, run_id?, generation, provider, provider_session_id, provider_request_id, provider_turn_id?, items[], hold_until?` | a structured question the agent asked; stored once per `(session, provider_request_id)` |
 | up | `question.resolved` | `op_id, digest, question_id\|provider_request_id, status: accepted\|answered_locally\|timed_out\|canceled\|failed, still_open?, remote_answerable?` | the host's word on a question; only `accepted` confirms an answer sent from here |
 | up | `context.request` | `req_id, text, run_token?` | ephemeral, no ack: answered with `context.response {req_id, text}` |
-| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, ahead, behind, unpushed, uncommitted, untracked, merged, active, reasons}]` | replaces the host's last report; feeds **Unmerged work** |
+| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, base_ref?, ahead, behind, unpushed, uncommitted, untracked, merged, merged_reason?, active, reasons}], heads?: [{target, dir, ref, head}]` | replaces the host's last report; feeds **Unmerged work**, the run header's live "N behind" and the migration counter (0033). `merged` is null with `merged_reason: "no commits of its own yet"` for a branch with no commits of its own |
 | down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
 | down | `spawn` / `input` / `answer` / `stop` | see **Commands** | outbox commands |
 | down | `context.response` | `req_id, text` | |
@@ -394,7 +394,7 @@ spawning → interviewing → planning → executing → verifying → judging �
   sends the answers as the next `input` ("now write the PRD with success criteria and call `submit_plan`,
   then stop") and moves the run to `planning`.
 - **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
-  verify_id?}], verify?: {target_id, verify_id}, expected_plan_revision}`** (interviewing, planning or
+  verify_id?}], verify?: {target_id, verify_id}, migration?: bool, expected_plan_revision}`** (interviewing, planning or
   replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
   `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
   its saved list or the host's advertised one (`VERIFY_UNKNOWN`); a `verify` criterion must name the
@@ -635,6 +635,33 @@ The procedure is the host's (`remotea eridani collector authoritative`, the `sta
 interlock, `remotea hooks --remove-legacy-collector`); Davin runs it. The exact steps and the rollback are
 in [`scripts/session_collector/README.md` § Retirement](../scripts/session_collector/README.md#retirement),
 which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover.
+
+## Run freshness (migration 0033)
+
+- **Base.** remotea fetches `origin/<base>` before basing or reusing a worktree on the target's own base
+  (local wins only when it already contains origin; a failed fetch keeps local and warns the agent). The
+  spawn outcome's `base_sha, base_ref, fetch {ok, error?}, behind, ahead` land in `agent_runs.base_facts`;
+  `public_run.base` shows them with `behind` taken live from the latest `worktrees.report` row for the
+  run's branch (`live`, `as_of`), else the spawn-time count. The drawer prints "based on main @ <sha> ·
+  N behind · as of …". An older host sends no `base_sha`: `base` is null and nothing is shown.
+- **Reuse.** A reused worktree behind its base gets a merge-first note at the top of the spawn prompt from
+  the host, plus the re-point/renumber instruction when the spawn carries `migration {number, dir}`.
+- **Migration numbers** (`migration_numbers.py`). A target takes part only when its host config lists
+  `migrations {dir, pattern?}` (remotea `eridani.json`; the folder stays host config so nothing Eridani
+  sends becomes a path). `submit_plan` with `migration: true` reserves max(host-reported head, the
+  operator's override, the highest held number) + 1 under the counter's row lock (`migration_counters`
+  per host target; `migration_reservations`, unique while held). The number is frozen on the plan,
+  shown by `task_plan` (`run.migration`, `migration_note`) and `render_plan`, and sent on later spawns
+  of the task. Released when the run ends stopped/failed/capped or a later plan drops the flag, and only
+  if no higher number is held on that counter; otherwise the gap stays. A completed run keeps its number,
+  and a later run of the same task reuses it. Settings → remotea lists each such target (head, override,
+  last reserved, next) with an override field (`GET/POST /remotea/migrations`). A reservation cannot see
+  migrations merged after it: the host's merge-first note and `tests/test_release_migrations.py` cover that.
+- **Version pairing** (`remotea_release.py`). `hello.version` is stored on the host and returned by
+  `public_host` with `update: {latest, url} | null`: set when the host trails the latest GitHub release of
+  rdavisdunham/remotea by more than one minor version (or any major). The release is looked up in a
+  background thread at most every 6 h (15 min after a failure); a 404 (no release yet) or a failure
+  shows no note.
 
 ## Security model (stage F, migration 0031)
 

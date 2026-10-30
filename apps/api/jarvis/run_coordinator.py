@@ -9,6 +9,7 @@ host's question.resolved echo.
 """
 
 import hashlib
+import re
 import hmac
 import secrets
 import uuid
@@ -158,6 +159,10 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
+    if to in TERMINAL:
+        from .migration_numbers import on_run_end
+
+        on_run_end(db, run)  # Stopped, failed or capped: the reserved migration number goes back if it can.
     if to == "completed":
         from .agent_sync import queue_comment
 
@@ -311,6 +316,7 @@ def on_outcome(db, row, state, detail="", result=None):
             run.worktree = str(facts.get("worktree") or run.worktree)
             run.branch = str(facts.get("branch") or run.branch)[:200]
             run.base_branch = str(facts.get("base") or run.base_branch)[:200]
+            run.base_facts = base_facts(facts) or run.base_facts or {}
             if run.state == "stopping":
                 stop_command(db, run)  # A stop that arrived before the surface existed.
         elif state in {"failed", "rejected"}:
@@ -1038,6 +1044,23 @@ def redact_spawn(row):
         row.payload = {**row.payload, "run_token": "[redacted]"}
 
 
+def base_facts(facts):
+    """What the spawn outcome says about the base (remotea 0.2+; absent from older hosts): sha, ref, fetch, counts."""
+    sha = facts.get("base_sha")
+    if not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{7,64}", sha)):
+        return {}
+    out = {"base_sha": sha, "at": now().isoformat()}
+    if isinstance(facts.get("base_ref"), str):
+        out["base_ref"] = facts["base_ref"][:200]
+    fetch = facts.get("fetch")
+    if isinstance(fetch, dict) and isinstance(fetch.get("ok"), bool):
+        out["fetch"] = {"ok": fetch["ok"], **({"error": str(fetch["error"])[:200]} if fetch.get("error") else {})}
+    for key in ("behind", "ahead"):
+        if isinstance(facts.get(key), int) and not isinstance(facts.get(key), bool) and facts[key] >= 0:
+            out[key] = facts[key]
+    return out
+
+
 def run_for_token(db, owner, token):
     if not token or not token.startswith("ert_") or len(token) > 200:
         return None
@@ -1073,6 +1096,10 @@ def render_plan(db, run, plan, token=None):
     if run.branch:
         lines.append(f"You work on branch {run.branch}" + (f" in {run.worktree}" if run.worktree else "") +
                      ". Never merge to main; open a pull request when the work is ready.")
+    if plan.migration:
+        from . import migration_numbers
+
+        lines.append(migration_numbers.render(plan.migration))
     lines.append("Tick steps with the Eridani task_step tool (task_id, step_id, status, expected_revision); "
                  "read the plan with task_plan. Say when you believe the task is done: Davin approves completion.")
     if token:

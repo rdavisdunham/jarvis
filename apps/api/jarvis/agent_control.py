@@ -15,6 +15,7 @@ from sqlalchemy import and_, not_, or_, select
 
 from . import agent_link
 from . import agent_sessions as sessions
+from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .config import get_settings
@@ -249,7 +250,8 @@ def freeze(db, owner, run, task):
                         criteria=list(task.success_criteria or []), verify=task.verify,
                         completion_policy=task.completion_policy or "code_ready",
                         required_children=[c.id for c in coordinator.children(db, task)
-                                           if any(s.get("task_id") == c.id for s in task.steps or [])])
+                                           if any(s.get("task_id") == c.id for s in task.steps or [])],
+                        migration=numbers.carry(db, run))
     db.add(plan)
     run.plan_revision, run.completion_policy = 1, plan.completion_policy
     return plan
@@ -304,7 +306,7 @@ def start_run(db, owner, account_id, body, *, actor):
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
     db.flush()
-    verify = None
+    verify, migration = None, None
     if interview:
         from . import agent_prompts as prompts
 
@@ -312,6 +314,8 @@ def start_run(db, owner, account_id, body, *, actor):
     else:
         plan = freeze(db, owner, run, task)
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
+        # A reused worktree behind its base: the host tells the agent to re-point this migration (optional on the wire).
+        migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
     token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
@@ -319,6 +323,7 @@ def start_run(db, owner, account_id, body, *, actor):
                    "base": run.base_branch},
         "task_id": task.id, "title": task.title[:200].replace("\n", " "), "group": "Eridani",
         "prompt": prompt, "run_token": token, "env": {}, **({"verify": verify} if verify else {}),
+        **({"migration": migration} if migration else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -505,6 +510,23 @@ def reason_detail(db, run):
     return ""
 
 
+def base_info(db, run, host):
+    """What the run is based on (spawn outcome) and how far behind it is now (the latest worktrees.report row for
+    its branch), or None for a host that did not say (older remotea)."""
+    facts = run.base_facts or {}
+    if not facts.get("base_sha"):
+        return None
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    report = ((host.caps or {}).get("worktrees") or {}) if host else {}
+    row = next((w for w in report.get("worktrees") or [] if isinstance(w, dict) and w.get("branch") == run.branch
+                and (target is None or w.get("target") == target.host_target)), None)
+    live = isinstance((row or {}).get("behind"), int)
+    return {"sha": facts["base_sha"], "ref": facts.get("base_ref") or run.base_branch, "branch": run.base_branch,
+            "fetch": facts.get("fetch"), "behind": row["behind"] if live else facts.get("behind"),
+            "behind_ref": (row.get("base_ref") or row.get("base")) if live else facts.get("base_ref"),
+            "as_of": report.get("at") if live else facts.get("at"), "live": live}
+
+
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
@@ -523,6 +545,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        "base": base_info(db, run, host),
         "reason_detail": reason_detail(db, run),
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
@@ -584,7 +607,7 @@ def unmerged(db, owner):
             if isinstance(row, dict) and not row.get("candidate"):
                 items.append({"host_id": host.id, "host_name": host.name, **{k: row.get(k) for k in (
                     "target", "path", "branch", "base", "ahead", "behind", "unpushed", "uncommitted", "untracked",
-                    "merged", "active", "reasons")}})
+                    "merged", "merged_reason", "base_ref", "active", "reasons")}})
     return encode({"items": items})
 
 

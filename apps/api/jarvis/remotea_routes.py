@@ -327,6 +327,32 @@ def save_target(body: control.TargetInput, user: User):
         return control.save_target(db, user.owner_id, body)
 
 
+class MigrationOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    host_id: str = Field(max_length=36)
+    host_target: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    # The operator's chain head; the higher of it and the host's report wins. null clears it.
+    override: int | None = Field(default=None, ge=0, le=99_999)
+
+
+@router.get("/migrations")
+def migrations(user: User):
+    from . import migration_numbers
+
+    with session_scope() as db:
+        gated(db, user)
+        return {"items": migration_numbers.listing(db, user.owner_id)}
+
+
+@router.post("/migrations")
+def set_migration_override(body: MigrationOverride, user: User):
+    from . import migration_numbers
+
+    with session_scope() as db:
+        writable(db, user)
+        return migration_numbers.set_override(db, user.owner_id, body.host_id, body.host_target, body.override)
+
+
 @router.get("/unmerged")
 def unmerged(user: User):
     with session_scope() as db:

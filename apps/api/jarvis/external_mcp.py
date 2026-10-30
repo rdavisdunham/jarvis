@@ -144,7 +144,8 @@ def definitions(scopes):
         add("submit_plan",
             "Planning phase only: save the PRD, ordered steps (sub-tasks stay as linked steps), success_criteria "
             "(kind text, or verify naming the verify_id) and an optional verify config from your execution target, "
-            "with expected_plan_revision from task_plan. Freezes the plan this run is judged against; stop after "
+            "with expected_plan_revision from task_plan. Set migration=true when the plan adds a database migration: "
+            "Eridani reserves its number. Freezes the plan this run is judged against; stop after "
             "calling it and Eridani starts execution. The operator's own criteria are a floor: repeat them by id "
             "verbatim, or propose a change (same id, new text or drop=true, plus because) that the operator accepts "
             "or keeps before execution. Needs run_token.",

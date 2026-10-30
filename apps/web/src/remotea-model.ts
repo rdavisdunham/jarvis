@@ -4,6 +4,8 @@ export type LiveState = { state: string; since: string | null; host_id: string |
 export type Host = {
   id: string; name: string; machine: string; connected: boolean; last_seen_at: string | null;
   conn_epoch: number; caps: string[]; harnesses: Record<string, unknown>; proto: number; status?: "ok" | "degraded";
+  /** remotea's own version from hello; `update` when it trails the latest release by more than one (older Eridani: absent). */
+  version?: string | null; update?: { latest: string; url: string | null } | null;
 };
 export type Turn = {
   id: string; seq: number; text: string; length: number; clipped: boolean; truncated: boolean;
@@ -56,6 +58,12 @@ export function ago(value: string | null, now = Date.now()) {
   const hours = Math.round(minutes / 60);
   if (hours < 48) return hours + "h ago";
   return Math.round(hours / 24) + "d ago";
+}
+
+/** "remotea 0.1.0 · update available" for Settings; null when the host never said its version. */
+export function versionLine(host: Host): { text: string; update: { latest: string; url: string | null } | null } | null {
+  if (!host.version) return null;
+  return { text: "remotea " + host.version + (host.update ? " · update available" : ""), update: host.update ?? null };
 }
 
 export function hostSummary(hosts: Host[], now = Date.now()) {
@@ -114,9 +122,32 @@ export type Run = {
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
+  /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
+  base?: RunBase | null;
   linear?: Partial<Record<"in_progress" | "done" | "comment", LinearOutcome>>;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
+export type MigrationTarget = {
+  host_id: string; host_name: string; host_target: string; dir: string; head: number | null; override: number | null;
+  last_reserved: number | null; next: number; reported_at: string | null;
+};
+
+export type RunBase = {
+  sha: string; ref: string; branch: string; fetch?: { ok: boolean; error?: string } | null;
+  behind?: number | null; behind_ref?: string | null; as_of?: string | null; live?: boolean;
+};
+
+/** The run header's base line: "based on main @ 1a2b3c4 · 3 behind · as of 2m ago"; null when the host did not say. */
+export function baseLine(base: RunBase | null | undefined, now = Date.now()): string | null {
+  if (!base?.sha) return null;
+  const failed = base.fetch && !base.fetch.ok;
+  const name = failed ? `local ${base.branch || base.ref} (fetch failed)` : (base.branch || base.ref.replace(/^origin\//, ""));
+  const parts = [`based on ${name} @ ${base.sha.slice(0, 7)}`];
+  if (typeof base.behind === "number") parts.push(base.behind ? `${base.behind} behind` : "up to date");
+  if (base.as_of) parts.push("as of " + ago(base.as_of, now));
+  return parts.join(" · ");
+}
+
 export type LinearOutcome = { status: string; code?: string | null; message?: string | null; url?: string | null; reconciled?: boolean | null };
 
 const LINEAR_WHAT = { in_progress: "In Progress", done: "Done", comment: "Completion comment" } as const;
