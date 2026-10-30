@@ -132,7 +132,7 @@ def read_event(owner, args):
         title = source.title
     client = None
     try:
-        client = google_calendar.CalendarClient(unseal(encrypted))
+        client = google_calendar.CalendarClient(unseal(encrypted), owner=owner)
         series_id = cached.get("recurringEventId") or (provider_event if cached.get("recurrence") else None)
         if series_id:
             if args.scope == "event":
@@ -418,7 +418,7 @@ def process_write(job_id):
         job.status, job.result = "running", {"attempts": attempts, "write_started": started}
     client = None
     try:
-        client = google_calendar.CalendarClient(unseal(encrypted))
+        client = google_calendar.CalendarClient(unseal(encrypted), owner=owner)
         acl = client.request("users/me/calendarList/" + quote(payload["provider_calendar"], safe=""))
         if acl.get("accessRole") not in WRITE_ROLES:
             raise DomainError("GOOGLE_READ_ONLY", "Google no longer allows editing this calendar.", 403)
@@ -539,7 +539,8 @@ def process_write(job_id):
                 # Same account state the sync path records, so Settings and queueing agree.
                 advisory(db, f"google:{owner}")
                 account = db.get(GoogleIdentity, owner)
-                if account and account.calendar_enabled and account.generation == payload["generation"]:
+                if (account and account.calendar_enabled and account.generation == payload["generation"]
+                        and account.status != "needs_reconnect"):
                     account.status, account.error = "needs_reconnect", "reconnect"
                     emit(db, owner, "google.changed", owner)
         if retry:

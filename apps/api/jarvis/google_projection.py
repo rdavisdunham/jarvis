@@ -86,7 +86,7 @@ def project(db, owner, start, end, timezone, warnings=None):
         def append(row, point, finish, all_day, *, source=source):
             nonlocal incomplete
             item = row.payload
-            if item.get("status") == "cancelled" or item.get("declined"):
+            if item.get("status") == "cancelled":
                 return
             # All-day dates stay dates in the viewer's calendar.
             if all_day:
@@ -129,7 +129,11 @@ def project(db, owner, start, end, timezone, warnings=None):
                         "location": item.get("location", ""),
                         "description": item.get("description", ""),
                         "meeting_url": item.get("meeting_url"),
-                        "busy": item.get("transparency") != "transparent",
+                        # Declined invitations stay visible (dimmed) so the answer can be changed or reverted,
+                        # but they never count as busy time or deadline conflicts.
+                        "busy": item.get("transparency") != "transparent" and not item.get("declined"),
+                        "declined": bool(item.get("declined")),
+                        "my_response": item.get("my_response"),
                         "read_only": not (
                             account.calendar_write_enabled and source.access_role in {"owner", "writer"}
                         ),

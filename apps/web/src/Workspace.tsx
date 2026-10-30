@@ -391,6 +391,7 @@ export function Workspace(p: Props) {
           onMode={p.onCalendarMode}
           onEntry={openEntry}
           onRetry={() => setRetry((n) => n + 1)}
+          mutate={p.mutate}
         />
       ) : p.layout === "board" && p.kind !== "reminder" ? (
         <TaskBoard

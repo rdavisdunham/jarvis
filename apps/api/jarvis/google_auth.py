@@ -241,6 +241,7 @@ def finish(state, browser, code=None, error=None):
             if linked and linked.owner_id!=owner:
                 raise DomainError("GOOGLE_ACCOUNT","That Google account is already linked to another user.",403)
         advisory(db, f"google:{owner}")
+        advisory(db, f"google-token:{owner}")  # A refresh in flight must not overwrite the grant saved here.
         identity = db.get(GoogleIdentity, owner)
         if purpose != "login":
             session = db.get(AuthSession, values["session_hash"])
@@ -272,17 +273,29 @@ def finish(state, browser, code=None, error=None):
                     "Calendar editing permission was not granted. Existing access is unchanged.",
                     403,
                 )
-            refresh = tokens.get("refresh_token")
-            if not refresh and identity.credentials:
+            previous = {}
+            if identity.credentials:
                 try:
-                    refresh = unseal(identity.credentials).get("refresh_token")
+                    previous = unseal(identity.credentials)
                 except DomainError:
                     pass
+            refresh, issued = tokens.get("refresh_token"), now().isoformat()
+            if not refresh and not previous.get("rejected_at"):
+                # Google often omits a refresh token on re-consent; the stored grant stays valid. A rejected one doesn't.
+                refresh, issued = previous.get("refresh_token"), previous.get("issued_at")
             if not refresh:
                 raise DomainError(
                     "GOOGLE_RECONNECT", "Reconnect Calendar and allow access while you are away.", 409
                 )
-            identity.credentials = seal({"refresh_token": refresh})
+            # Access tokens are not carried over: they lack any scope this consent just added.
+            identity.credentials = seal({
+                "refresh_token": refresh,
+                **({"issued_at": issued} if issued else {}),
+                **({"refreshed_at": previous["refreshed_at"]} if refresh == previous.get("refresh_token")
+                   and previous.get("refreshed_at") else {}),
+                **({"last_rejected_age_seconds": previous["last_rejected_age_seconds"]}
+                   if "last_rejected_age_seconds" in previous else {}),
+            })
             identity.calendar_write_enabled = WRITE_SCOPE in scopes
             identity.calendar_enabled, identity.status, identity.error = True, "pending", ""
             identity.generation += 1
@@ -299,6 +312,7 @@ def finish(state, browser, code=None, error=None):
 def disconnect_calendar(owner, *, unlink=False):
     with session_scope() as db:
         advisory(db, f"google:{owner}")
+        advisory(db, f"google-token:{owner}")
         identity = db.get(GoogleIdentity, owner)
         if not identity:
             return {"disconnected": True, "revoked": True}

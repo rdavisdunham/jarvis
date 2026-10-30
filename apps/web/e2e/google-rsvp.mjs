@@ -28,6 +28,15 @@ try {
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
  }
  await page.getByRole("button",{name:"Close calendar event",exact:true}).click();
+ // The same answer from the calendar row: declined stays visible but dimmed, and Revert restores it.
+ const row=page.getByRole("group",{name:"Your response to Dentist",exact:true});
+ await row.getByRole("button",{name:"No",exact:true}).click();
+ await expect(row.getByText("Saved in Google.",{exact:true})).toBeVisible();
+ await expect(page.locator(".agenda-row.is-declined").filter({hasText:"Dentist"})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await row.getByRole("button",{name:"Revert",exact:true}).click();
+ await expect(page.locator(".agenda-row.is-declined")).toHaveCount(0);
+ await expect(row.getByText("Not answered",{exact:true})).toBeVisible();
  if(errors.length)throw Error(errors.join("\n"));
- console.log("RSVP browser acceptance passed: self response, read-only organizer fields, confirmed feedback and Revert at desktop/phone widths.");
+ console.log("RSVP browser acceptance passed: self response, read-only organizer fields, confirmed feedback and Revert at desktop/phone widths, in the dialog and on the calendar row.");
 } finally {await browser.close();}

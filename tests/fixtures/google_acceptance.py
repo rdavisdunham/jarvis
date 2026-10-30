@@ -53,7 +53,7 @@ class GoogleFixture:
     }
     version = 0
 
-    def __init__(self, *_):
+    def __init__(self, *_, **__):
         pass
 
     def request(self, path, params=None, body=None, *, method=None, headers=None):

@@ -23,7 +23,7 @@ def test_google_requires_dedicated_calendar_and_cleans_only_created_id(monkeypat
     calls = []
 
     class Client:
-        def __init__(self, *args):
+        def __init__(self, *args, **kwargs):
             pass
 
         def close(self):

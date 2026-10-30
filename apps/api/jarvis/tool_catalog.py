@@ -91,7 +91,7 @@ GROUPS = {
         ],
     ),
     "calendar_write": (
-        "Google event create/update/delete and durable write status.",
+        "Google event create/update/delete, RSVP to invitations (yes/no/maybe) and durable write status.",
         [
             "calendar_connection",
             "calendar_event_read",
@@ -387,8 +387,12 @@ DESCRIPTIONS = {
     "Unavailable means unknown, never free. minutes filters minimum free-slot length, not appointment duration. "
     "Deadlines/reminders are not reserved time.",
     "calendar_list": "Read local appointments/work blocks, tasks/alerts and cached Google events in a date range "
-    "(exclusive end, <=62 days). Inspect status and freshness; use calendar_availability before claiming free time.",
-    "calendar_event_read": "Read fresh Google event details and an edit_token. Choose event/occurrence/series explicitly; "
+    "(exclusive end, <=62 days). Inspect status and freshness; use calendar_availability before claiming free time. "
+    "my_response is set on Google invitations (needsAction/accepted/tentative/declined); declined ones are listed but "
+    "busy=false. To RSVP (\"I'm not going to the 3pm\"), find the one matching invitation here, then calendar_event_read "
+    "and calendar_respond.",
+    "calendar_event_read": "Read fresh Google event details and an edit_token (response_token instead when you are a guest). "
+    "Choose event/occurrence/series explicitly; "
     "default a recurring edit to the selected occurrence unless the owner asks for the entire series.",
     "calendar_create": "Create a Google event on a chosen writable calendar only when requested. "
     "Do not publish a task deadline automatically. Guests/invitations and special types stay in Google. "
