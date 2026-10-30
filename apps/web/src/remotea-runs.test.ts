@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAnswers, defaultScope, harnessChoice, linkedRun, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
+  afterTargetSaved, buildAnswers, DEFAULT_DRAFT, defaultScope, harnessChoice, linkedRun, preflightNotes, preflightUrl, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
   unmergedSummary, verifyLine, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion,
 } from "./remotea-model";
 
@@ -77,9 +77,10 @@ describe("run drawer model", () => {
     };
     const entries = timeline(detail);
     expect(entries.map(e => e.title)).toEqual([
-      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused"]);
+      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused by remotea"]);
     expect(entries[0].detail).toBe("by you");
-    expect(entries[4].detail).toMatch(/\[truncated\]$/);
+    // The host cut this response: a label on the bubble, not text appended to the response.
+    expect(entries[4]).toMatchObject({ id: "turn:t", detail: "Done step one", turn: { id: "t", clipped: false, truncated: true } });
     expect(entries[5]).toMatchObject({ tone: "warn", detail: "Use pg" });
   });
 
@@ -142,6 +143,31 @@ describe("harnessChoice", () => {
     expect(harnessChoice(pre({ harness_reasons: undefined }), [spawning()], "codex")).toMatchObject({ ok: false, reason: /cannot start Codex/ });
   });
 
+  it("shows why an enabled harness cannot start (its launcher's error)", () => {
+    const reason = "Codex is enabled on jarvis but not installed: codex: command not found";
+    expect(harnessChoice(pre({ harness_reasons: { codex: reason } }), [spawning()], "codex")).toEqual({ ok: false, reason });
+  });
+
+  it("notes a verify command that is not ready and agents without Eridani tools", () => {
+    expect(preflightNotes(pre())).toEqual([]);
+    expect(preflightNotes(pre({ verify_ready: false, verify_reasons: { tests: "its program is not on the service PATH (uv)" },
+      mcp: { configured: false, reason: "no MCP key file at ~/.config/remotea/eridani-mcp-token" } }))).toEqual([
+      "This target's verify command is not ready (tests: its program is not on the service PATH (uv)).",
+      "Agents on this target have no Eridani tools: no MCP key file at ~/.config/remotea/eridani-mcp-token.",
+    ]);
+    expect(preflightNotes(pre({ verify_ready: true, mcp: { configured: true } }))).toEqual([]);
+    expect(preflightNotes(pre({ verify_ready: null, mcp: null }))).toEqual([]);
+    expect(preflightNotes(null)).toEqual([]);
+  });
+
+  it("re-reads the preflight for the target the picker saved instead of starting", () => {
+    expect(preflightUrl("t 1", "claude")).toBe("/remotea/runs/preflight?task_id=t%201&harness=claude");
+    const saved = afterTargetSaved(DEFAULT_DRAFT, "target-9");
+    expect(saved).toEqual({ draft: { ...DEFAULT_DRAFT, target: "target-9" }, need: null });
+    expect(preflightUrl("t1", saved.draft.harness, saved.draft.target))
+      .toBe("/remotea/runs/preflight?task_id=t1&harness=claude&execution_target_id=target-9");
+  });
+
   it("falls back to any connected host only when there is no preflight", () => {
     expect(harnessChoice(null, [spawning()], "codex")).toEqual({ ok: true });
     expect(harnessChoice(undefined, [host(true)], "codex")).toMatchObject({ ok: false, reason: /cannot start Codex/ });
@@ -162,5 +188,12 @@ describe("verifyLine", () => {
     expect(line.canSet).toBe(true);
     expect(verifyLine({ plan, verify_options: [] }).canSet).toBe(false);
     expect(verifyLine({ plan: { ...plan, criteria: [] }, verify_options: ["tests"] }).text).toBe("");
+  });
+  it("says when the host reports a verify command not ready", () => {
+    const readiness = { tests: { ready: false, reason: "its program is not on the service PATH (uv)" }, lint: { ready: true } };
+    expect(verifyLine({ plan: { ...plan, verify: { target_id: "x", verify_id: "tests" } }, verify_options: ["lint", "tests"],
+      verify_readiness: readiness }).text).toBe("Verified by tests after each turn (tests is not ready on the host: its program is not on the service PATH (uv))");
+    expect(verifyLine({ plan, verify_options: ["lint", "tests"], verify_readiness: readiness }).text)
+      .toBe("No verify command: test results cannot be recorded; tests is not ready on the host: its program is not on the service PATH (uv)");
   });
 });

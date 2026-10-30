@@ -14,6 +14,7 @@ import contextlib
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -127,7 +128,28 @@ class Frame(BaseModel):
         return self
 
 
+def sha_or_unknown(value):
+    """40 hex (lowercased) or "unknown"; anything else is dropped rather than refusing the hello."""
+    if isinstance(value, str) and (value == "unknown" or re.fullmatch(r"[0-9a-fA-F]{40}", value)):
+        return value.lower()
+    return None
+
+
+def small_int(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 < value < 1000 else None
+
+
+def short_text(limit):
+    """Free host text, one line, clipped; a non-string is dropped."""
+    def clean(value):
+        if not isinstance(value, str):
+            return None
+        return " ".join(value.split())[:limit] or None
+    return clean
+
+
 class Hello(Frame):
+    REDACT: ClassVar[tuple[str, ...]] = ("degraded_reason",)
     server_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,100}$")
     boot_id: str = Field(default="", max_length=100)
     hostname: str = Field(default="", max_length=100)
@@ -138,6 +160,16 @@ class Hello(Frame):
     harnesses: dict[str, dict] = Field(default_factory=dict, max_length=10)
     # Optional: execution targets configured on the host, offered in the page's target picker.
     targets: list[dict] = Field(default_factory=list, max_length=100)
+    # Build identity (remotea PR #18): the commit the running server was built from, whether the build had
+    # uncommitted changes, how to read `harnesses`/`targets` (2: probed per-target launch and verify readiness)
+    # and the installed hook helper's hash. All optional; malformed values are dropped, not refused.
+    build_sha: Annotated[str | None, BeforeValidator(sha_or_unknown)] = None
+    build_dirty: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    caps_version: Annotated[int | None, BeforeValidator(small_int)] = None
+    hook_version: Annotated[str | None, BeforeValidator(short_text(64))] = None
+    # Present only while the host's journal or outbox is degraded (remotea PR #15), e.g.
+    # "journal_unavailable (write failed: ENOSPC)": effectful commands are refused until it clears.
+    degraded_reason: Annotated[str | None, BeforeValidator(short_text(300))] = None
 
 
 class Report(Frame):
@@ -758,7 +790,22 @@ def public_host(host):
         "last_seen_at": host.last_seen_at, "conn_epoch": host.conn_epoch, "caps": host.caps.get("caps", []),
         "harnesses": host.caps.get("harnesses", {}), "proto": host.proto,
         "version": host.version, "update": remotea_release.update_for(host.version),
+        **build_identity(host),
     })
+
+
+BUILD_FIELDS = ("build_sha", "build_dirty", "caps_version", "hook_version", "degraded_reason")
+
+
+def build_identity(host):
+    """What the host's last hello said about its build and health; null for what an older remotea did not send.
+    `build` is the short sha ("unknown" stays as is); `degraded_reason` is set only while the host's journal or
+    outbox is degraded."""
+    build = ((host.caps or {}).get("build") or {}) if host is not None else {}
+    sha = build.get("build_sha")
+    return {"build_sha": sha, "build": sha[:7] if sha and sha != "unknown" else sha,
+            "build_dirty": build.get("build_dirty"), "caps_version": build.get("caps_version"),
+            "hook_version": build.get("hook_version"), "degraded_reason": build.get("degraded_reason")}
 
 
 def admit(credential_id, hello):
@@ -781,7 +828,8 @@ def admit(credential_id, hello):
         host.name, host.machine, host.boot_id, host.proto = hello.hostname, hello.machine, hello.boot_id, hello.proto
         host.version = hello.version or None
         host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
-                     "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets}
+                     "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets,
+                     "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None}}
         host.conn_epoch = (host.conn_epoch or 0) + 1
         host.last_seen_at, host.lease_until = now(), now() + LEASE
         db.flush()

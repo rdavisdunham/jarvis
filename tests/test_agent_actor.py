@@ -150,6 +150,27 @@ def test_gate_fields_are_reserved_during_a_run(host, field, value):  # noqa: F81
         run("task.update", task_id=task.id, expected_revision=task.revision, notes="Progress notes")
 
 
+def test_a_live_runs_prd_note_cannot_be_repointed_by_a_bot(host):  # noqa: F811
+    """PR #96 follow-up: prd_note_id is a gate field, so a tasks:write key cannot swap the PRD under a run."""
+    from jarvis.models import Note
+
+    assert "prd_note_id" in agent_actor.GATE_FIELDS
+    record, run_id = running(host)
+    with session_scope() as db:
+        note = Note(owner_id="davin", title="Other PRD", content="Do something else.")
+        db.add(note)
+        db.flush()
+        note_id = note.id
+    task = current(record)
+    for kind in REFUSED:
+        with acting(Actor(kind)), pytest.raises(DomainError) as refused:
+            run("task.update", task_id=task.id, expected_revision=task.revision, prd_note_id=note_id)
+        assert refused.value.code == "RUN_OWNS_COMPLETION" and "prd_note_id" in refused.value.message
+    assert current(record).prd_note_id != note_id
+    run("task.update", task_id=task.id, expected_revision=task.revision, prd_note_id=note_id)  # human
+    assert current(record).prd_note_id == note_id and run_row(run_id).state == "executing"
+
+
 def test_without_an_unsettled_run_agents_may_complete(host):  # noqa: F811
     record = create("task", "Free task")
     with acting(Actor("run_session")):
