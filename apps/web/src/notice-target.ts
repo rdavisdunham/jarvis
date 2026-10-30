@@ -19,3 +19,22 @@ export function noticeDestination(n: Pick<Notice, "task_id" | "target">): Notice
   if (target.view === "tasks") return { open: "today" };
   return { open: "notifications" };
 }
+
+const PRIORITY_LABELS: Record<string, string> = { urgent: "Urgent", high: "High priority", low: "Low priority" };
+
+/** The line under a notification: its priority when not normal, and its state when worth saying.
+ * Delivered (pushed to a device), read, snoozed and completed are separate states (notices.py `state`). */
+export function noticeStatus(
+  n: Pick<Notice, "state" | "importance" | "snoozed_until">,
+  when: (iso: string) => string,
+): { priority: string | null; state: string | null } {
+  return {
+    priority: PRIORITY_LABELS[n.importance ?? "normal"] ?? null,
+    state:
+      n.state === "snoozed" && n.snoozed_until
+        ? "Snoozed until " + when(n.snoozed_until)
+        : n.state === "delivered"
+          ? "Delivered"
+          : null,
+  };
+}

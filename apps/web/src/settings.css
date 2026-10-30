@@ -997,6 +997,17 @@
 .notice-actions > button.notice-primary:hover {
   background: color-mix(in srgb, var(--violet-soft) 92%, var(--violet));
 }
+.notice-state {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 18px;
+}
+.notice-state .notice-priority {
+  color: var(--violet);
+  font-weight: 500;
+}
 .notice-empty {
   display: flex;
   flex-direction: column;

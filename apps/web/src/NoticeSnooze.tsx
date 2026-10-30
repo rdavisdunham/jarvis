@@ -1,11 +1,23 @@
 import { useState } from "react";
 import "./calendar.css";
+
+/** Quick choices; the server resolves words in the owner's time zone (apps/api/jarvis/snooze_words.py). */
+export const SNOOZE_CHOICES: ReadonlyArray<readonly [string, { minutes?: number; until?: string }]> = [
+  ["10 min", { minutes: 10 }],
+  ["1 hour", { minutes: 60 }],
+  ["After lunch", { until: "after lunch" }],
+  ["This evening", { until: "this evening" }],
+  ["Tomorrow morning", { until: "tomorrow morning" }],
+  ["Next week", { until: "next week" }],
+];
+
 export function NoticeSnooze({
   onSnooze,
 }: {
   onSnooze: (args: { minutes?: number; until?: string }) => Promise<unknown>;
 }) {
   const [until, setUntil] = useState(""),
+    [words, setWords] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const save = async (args: { minutes?: number; until?: string }) => {
@@ -23,22 +35,37 @@ export function NoticeSnooze({
     <details className="notice-snooze">
       <summary>Snooze…</summary>
       <div className="notice-snooze-body">
-        {(
-          [
-            [10, "10 min"],
-            [60, "1 hour"],
-            [180, "3 hours"],
-          ] as const
-        ).map(([n, label]) => (
+        {SNOOZE_CHOICES.map(([label, args]) => (
           <button
-            key={n}
+            key={label}
             className="btn btn-sm"
             disabled={busy}
-            onClick={() => void save({ minutes: n })}
+            onClick={() => void save(args)}
           >
             {label}
           </button>
         ))}
+        <form
+          className="notice-snooze-words"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (words.trim()) void save({ until: words.trim() });
+          }}
+        >
+          <label className="field">
+            <span className="field-label-text">Or say when</span>
+            <input
+              aria-label="Snooze until, in words"
+              placeholder="in 2 hours, friday 3pm…"
+              maxLength={64}
+              value={words}
+              onChange={(e) => setWords(e.target.value)}
+            />
+          </label>
+          <button className="btn btn-soft" disabled={!words.trim() || busy}>
+            Snooze
+          </button>
+        </form>
         <label className="field">
           <span className="field-label-text">Local date and time</span>
           <input

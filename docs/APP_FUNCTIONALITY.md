@@ -244,11 +244,11 @@ Review human categorization evidence, propose task/note rules and offer bounded 
 
 ### 22. Smarter notifications
 
-Quiet hours, urgency, deadline alerts, summaries, snooze, dismiss and completion.
+Quiet hours, priority levels, bundles and digests, deadline alerts, summaries, snooze in words ("tomorrow morning", "after lunch"), dismiss and completion, with delivered, read, snoozed and completed kept distinct.
 
 - Acceptance set: [25 cases](../evals/app/features/notifications.json).
-- Implementation: [notices.py](../apps/api/jarvis/notices.py), [task_alerts.py](../apps/api/jarvis/task_alerts.py), [worker.py](../apps/api/jarvis/worker.py).
-- Existing regression evidence: [test_smart_notifications.py](../tests/test_smart_notifications.py), [test_daily_polish.py](../tests/test_daily_polish.py).
+- Implementation: [notices.py](../apps/api/jarvis/notices.py), [snooze_words.py](../apps/api/jarvis/snooze_words.py), [task_alerts.py](../apps/api/jarvis/task_alerts.py), [worker.py](../apps/api/jarvis/worker.py).
+- Existing regression evidence: [test_smart_notifications.py](../tests/test_smart_notifications.py), [test_notification_bundles.py](../tests/test_notification_bundles.py), [test_snooze_words.py](../tests/test_snooze_words.py), [test_daily_polish.py](../tests/test_daily_polish.py).
 
 ### 23. Google Calendar read and sync
 
