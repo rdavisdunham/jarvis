@@ -13,7 +13,8 @@ headings do not set today's priority.
 
 Finish line: a dependable invite-only web planner on desktop and Pixel Fold,
 with clear organization, fast capture, reliable Eri actions and guided setup.
-Android follows the release checks and seven-day/50-interaction pilot.
+Android follows the release checks and seven-day/50-interaction pilot;
+see the [Android plan](ANDROID_PLAN.md).
 
 ## Current finishing pass — October 27
 
@@ -563,7 +564,8 @@ A checked implementation task never replaces connected-provider or physical-devi
 - Broader Linear project/label/cycle controls, an Eri agent inside Linear, native
   recurring appointments, MCP OAuth and signed webhooks.
 - Public self-service, broader tenancy/RLS/encryption and sharing permissions;
-  Android, background wake-word service and offline-first sync.
+  Android, background wake-word service and offline-first sync
+  ([Android plan](ANDROID_PLAN.md): TWA plus a native voice companion).
 - Ambient conversational clarification beyond setup/review; Home Assistant,
   finance and general research/execution agents; further backend-model comparisons.
 - remotea for Brainforge members: multi-user design (per-member hosts and keys, owner-only control of a
