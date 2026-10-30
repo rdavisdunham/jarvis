@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
@@ -17,6 +17,7 @@ import {
 } from "./remotea-model";
 import { postAction } from "./api";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
+import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import "./remotea.css";
 import "./runs.css";
 
@@ -438,6 +439,25 @@ export function Bubble({ entry, runId }: { entry: TimelineEntry; runId?: string 
   </li>;
 }
 
+/** Where the run's terminal is, when remotea could not bring its tab forward: host, worktree, branch, and commands
+ * to copy. */
+export function TerminalFallback({ run, result }: { run: Pick<Run, "host" | "worktree" | "branch" | "surf">; result: FocusResult | null }) {
+  const info = terminalFallback(run, result);
+  const [copied, setCopied] = useState("");
+  return <div className="remotea-terminal-fallback" role="status">
+    {info.message && <p><strong>{info.message}</strong></p>}
+    <p>The terminal is on <strong>{info.host}</strong>
+      {info.worktree && <> in <code>{info.worktree}</code></>}{info.branch && <> on branch <code>{info.branch}</code></>}.</p>
+    {info.commands.map(c => <div key={c.command} className="remotea-copy-row">
+      <small>{c.label}</small>
+      <code>{c.command}</code>
+      <button className="btn btn-ghost btn-sm" aria-label={"Copy: " + c.command}
+        onClick={() => void copyText(c.command).then(() => setCopied(c.command), () => setCopied(""))}>
+        <Copy size={14}/>{copied === c.command ? "Copied" : "Copy"}</button>
+    </div>)}
+  </div>;
+}
+
 /** The run detail as a chat. Rendered inside the app shell's RunPanel (a layout column, or a sheet on phones). */
 export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   id: string; onClose: () => void; onCollapse?: () => void;
@@ -446,6 +466,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
 }) {
   const [run, setRun] = useState<RunDetail | null>(preloaded ?? null), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
+  // "Open terminal in remotea": the host's answer (null until asked); a refusal shows where the terminal is instead.
+  const [focus, setFocus] = useState<FocusResult | null>(null);
   // Older pages of turns and commands the reader loaded (merged); kept across polls, which reload only the newest page.
   const [earlier, setEarlier] = useState<RunDetail | null>(null), [loadingEarlier, setLoadingEarlier] = useState(false);
   const log = useRef<HTMLDivElement>(null), stuck = useRef(true);
@@ -490,6 +512,18 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
+  // Not a run action: it changes nothing on the run and stores no receipt, so a plain post (a repeat only raises the
+  // tab again). The route waits a few seconds for the host's answer.
+  const openTerminal = async () => {
+    if (!run || !bound) return;
+    setBusy("focus"); setError(""); setNotice(""); setFocus(null);
+    try {
+      const result = await post<FocusResult>(`/remotea/runs/${run.id}/focus`);
+      setFocus(result);
+      if (result.sent) setNotice(focusSentText(run, result));
+    } catch (e) { setError(message(e)); }
+    finally { setBusy(""); }
+  };
   const shown = run && earlier ? mergeDetail(run, earlier) : run;
   const loadEarlier = async () => {
     const offset = shown && nextOffset(shown);
@@ -522,6 +556,13 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}/{run.turn_cap}
       </p>}
+      {run && <div className="remotea-control-row remotea-terminal-row">
+        <button className="btn btn-sm btn-ghost" disabled={off || !run.surf}
+          title={run.surf ? "Bring this run's terminal tab to the front in the remotea app" : "This run has no terminal yet"}
+          onClick={() => void openTerminal()}>
+          <SquareTerminal size={14}/>{busy === "focus" ? "Opening…" : "Open terminal in remotea"}</button>
+      </div>}
+      {run && focus && !focus.sent && <TerminalFallback run={run} result={focus}/>}
       {run && baseLine(run.base) && <p className={"remotea-place remotea-base" + (run.base?.fetch && !run.base.fetch.ok ? " stale" : "")}>
         <GitBranch size={13} aria-hidden="true"/> {baseLine(run.base)}
       </p>}

@@ -66,7 +66,11 @@ SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2)}
+       "stop": timedelta(hours=24), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2),
+       # Someone is waiting for the tab to come forward: a late one would surprise more than help.
+       "terminal.focus": timedelta(seconds=30)}
+# Commands that leave no trace on the run's timeline or history (not work the run does).
+QUIET_COMMANDS = {"terminal.focus"}
 # One verification deadline: the host's 10 minutes plus a minute of grace, then timed_out (a non-pass).
 VERIFY_DEADLINE = timedelta(minutes=11)
 JUDGE_DEADLINE = timedelta(minutes=15)
@@ -275,7 +279,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                        status="queued", expires_at=expires)
     db.add(row)
     db.flush()
-    if run:
+    if run and kind not in QUIET_COMMANDS:
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
              **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
@@ -306,6 +310,8 @@ def on_outcome(db, row, state, detail="", result=None):
     """What the host did with a command (command.outcome, or a duplicate's recorded outcome on ack)."""
     if not settle_command(db, row, state, detail, result):
         return
+    if row.kind in QUIET_COMMANDS:
+        return  # The route waiting on it reads the outcome; the run itself is not touched.
     run = db.get(AgentRun, row.run_id, with_for_update=True) if row.run_id else None
     if row.kind == "answer":
         question = db.scalar(select(AgentQuestion).where(AgentQuestion.answer_op_id == row.op_id))
@@ -1426,6 +1432,8 @@ def desired(db, run):
 
 def stale(db, row, run):
     """Why a queued command must not run after a reconnect, or None (C08)."""
+    if row.kind in QUIET_COMMANDS:
+        return "a focus request does not outlive its connection"
     if run is None:
         return None
     if run.state in TERMINAL:

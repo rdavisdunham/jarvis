@@ -150,3 +150,12 @@
 .remotea-migration-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
 .remotea-migration-form .field { min-width: 0; flex: 1 1 8rem; }
 .remotea-migration-form input { width: 100%; }
+
+/* "Open terminal in remotea": where the terminal is, when its tab could not be brought forward. */
+.remotea-terminal-row { margin-top: 4px; }
+.remotea-terminal-fallback { margin: 6px 0; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 13px; }
+.remotea-terminal-fallback p { margin: 0 0 4px; }
+.remotea-terminal-fallback code { overflow-wrap: anywhere; }
+.remotea-copy-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
+.remotea-copy-row small { flex-basis: 100%; color: var(--ink-3, var(--ink-2)); }
+.remotea-copy-row code { flex: 1 1 auto; min-width: 0; }

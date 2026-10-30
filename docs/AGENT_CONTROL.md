@@ -293,6 +293,7 @@ own short transaction.
 | down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
 | down | `spawn` / `input` / `answer` / `stop` / `verify` | see **Commands** | outbox commands |
 | down | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (outbox command, only to a host whose `hello.caps` has `worktrees.scan`) | the judge needs a PR record newer than the turn: the host rescans its worktrees and sends `worktrees.report` even if unchanged, re-reads the named session and sends its `session.report` even if its fingerprint is unchanged, then acks (`executed`). An older host never gets it; the judge waits for its own tick instead |
+| down | `terminal.focus` | `surf, run_id, generation, expires_at` (outbox command, only to a host whose `hello.caps` has `terminal.focus`) | "Open terminal in remotea": the host asks its connected desktop app(s) to bring the run's tab to the front. `executed` (`result.desktops`) when at least one app was told; `rejected` `no_desktop` when none is connected (or none understands it), `unknown_surf` when the surface is gone or not the run's. Quiet: no timeline entry or history note, never moves the run, and a queued one is rejected at reconcile (it never survives a reconnect) |
 | down | `context.response` | `req_id, text` | |
 | up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
@@ -457,6 +458,7 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
 | `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
 | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (the judge's PR evidence, below) | 2 min |
+| `terminal.focus` | `surf` ("Open terminal in remotea", below) | 30 s |
 
 Commands are rows in `agent_commands` (status `queued`). Whichever process queues one, the host's
 socket drains it within about a second of the commit (see "Wake" under Connection lifecycle), or at
@@ -469,7 +471,7 @@ by that id (or by `run_id`) and records it as accepted instead of spawning again
 
 Outcomes: an accepted spawn ack or `executed` outcome records `surf`, `incarnation`, `worktree`,
 `branch`, `base`, `base_sha`; a failed/rejected spawn fails the run; `uncertain` input moves to
-needs_you `delivery_uncertain` (a `worktrees.scan` outcome never moves the run); a failed answer reopens the question; an executed stop settles a stopping
+needs_you `delivery_uncertain` (a `worktrees.scan` or `terminal.focus` outcome never moves the run); a failed answer reopens the question; an executed stop settles a stopping
 run.
 
 **Reconnect.** After `sessions.snapshot`, `reconcile()` matches each unsettled run to its surface (by
@@ -560,6 +562,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `GET /runs/{id}/turns/{turn_id}` | no | one turn whole, `{id, seq, text, truncated}`, for the "Full response" of a `clipped` turn. Owner only, like detail. 404 `NOT_FOUND` for an unknown id or a turn of another run or owner; 404 `TURN_EXPIRED` once retention deleted the run's turns |
 | `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
+| `POST /runs/{id}/focus` | yes | "Open terminal in remotea": queues `terminal.focus` for the run's current surface and waits up to 6 s for the host's answer. `{sent: true, desktops}`, or `{sent: false, reason, detail?}` with `reason` `no_surface` (no terminal yet, or the host says it is gone), `host_offline`, `host_too_old` (the host does not advertise `terminal.focus`), `no_desktop` (no desktop app connected to the host), `no_answer` (no answer in time; a still-queued request is canceled) or `failed`. The first three are answered without queuing anything. Changes nothing on the run (no revision, no timeline entry) and takes no `action_id`: a repeat only raises the tab again |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
 | `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses` and `verify` when the host sent them |
@@ -578,6 +581,15 @@ a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
 The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
 questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve.
+
+**Open terminal in remotea** (drawer header, any run with a terminal, settled ones included) posts
+`/runs/{id}/focus`; the remotea desktop app raises its window and selects the run's tab. When that cannot happen
+(`sent: false`) the drawer says why and shows where the terminal is instead (`remotea-model.ts`
+`terminalFallback`): the host's name, the worktree path and branch, and commands to copy: `cd <worktree>` and
+`remotea screen <surf>` (remotea has no interactive attach command). The other direction: a remotea tab Eridani
+started shows a small ↗ button and, in its context menu, **Open in Eridani** and **Copy run link**, which open
+`<Eridani>/?view=remotea&run=<id>` (the host records Eridani's web URL on the session; see remotea's
+`docs/remotea/eridani-link.md`, "Open in Eridani, and the terminal from Eridani").
 
 The drawer loads the newest page of turns and commands. When `more` says older ones remain, the top of the log
 shows **Paged out** with how many remain and **Load earlier**, which fetches the next `offset` and merges it

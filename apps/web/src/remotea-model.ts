@@ -783,3 +783,45 @@ export const RUN_CHANGED = "This run changed; reloaded";
 export function isRevisionConflict(error: unknown) {
   return (error as { code?: unknown } | null)?.code === "REVISION_CONFLICT";
 }
+
+/** POST /remotea/runs/{id}/focus: whether a desktop app was told to bring the run's terminal tab forward. */
+export type FocusResult = { sent: true; desktops?: number | null } | { sent: false; reason: string; detail?: string };
+
+/** Why the tab could not be brought forward, in words (the reasons the route returns). */
+export const FOCUS_TEXT: Record<string, string> = {
+  no_desktop: "No remotea desktop app is connected to this host right now.",
+  host_offline: "The remotea server is offline.",
+  no_surface: "This run has no terminal open on the host.",
+  host_too_old: "This host's remotea server is too old to open terminals from here; update it.",
+  no_answer: "The remotea server did not answer in time.",
+  failed: "The remotea server could not open the terminal.",
+};
+
+/** A path as one POSIX shell word: single-quoted unless it is plainly safe. */
+export function shellWord(value: string) {
+  return /^[A-Za-z0-9_./~:@%+=,-]+$/.test(value) ? value : "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+/** Where to find the terminal by hand when the tab could not be brought forward: the host, the worktree and branch,
+ * and commands to copy (remotea has no interactive attach: `cd` into the worktree, `remotea screen` to look). */
+export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf">, result: FocusResult | null) {
+  const reason = result && !result.sent ? result.reason : null;
+  const commands: { label: string; command: string }[] = [];
+  if (run.worktree) commands.push({ label: "Open a shell in the worktree", command: "cd " + shellWord(run.worktree) });
+  if (run.surf && /^surf-[A-Za-z0-9_-]+$/.test(run.surf))
+    commands.push({ label: "See the terminal's screen", command: "remotea screen " + run.surf });
+  return {
+    message: reason ? (FOCUS_TEXT[reason] ?? FOCUS_TEXT.failed) + (result && !result.sent && result.detail ? " (" + result.detail + ")" : "") : "",
+    host: run.host?.name || "the remotea host",
+    worktree: run.worktree || null,
+    branch: run.branch || null,
+    commands,
+  };
+}
+
+/** The status line after a successful focus. */
+export function focusSentText(run: Pick<Run, "host">, result: FocusResult) {
+  if (!result.sent) return "";
+  const where = run.host?.name ? " on " + run.host.name : "";
+  return "Brought the terminal forward in remotea" + where + ".";
+}

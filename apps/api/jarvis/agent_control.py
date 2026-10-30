@@ -582,6 +582,56 @@ def public_attempt(a):
                    "created_at": a.created_at, "updated_at": a.updated_at})
 
 
+# ---------------------------------------------------------------- open the run's terminal (terminal.focus)
+
+FOCUS_WAIT_SECONDS = 6.0  # How long the route waits for the host's answer before giving up.
+FOCUS_POLL_SECONDS = 0.2
+# The host's rejection detail -> the reason the page shows.
+FOCUS_REASONS = {"no_desktop": "no_desktop", "unknown_surf": "no_surface"}
+
+
+def focus_terminal(db, owner, run_id):
+    """Queue `terminal.focus` for the run's current surface, or say at once why it cannot be sent.
+
+    Returns `(op_id, None)` when queued, or `(None, reason)`: `no_surface` (the run never got a terminal),
+    `host_offline` (no host, or its link is down), `host_too_old` (the host does not advertise `terminal.focus`).
+    Nothing about the run changes: the command is quiet (no timeline entry, no history note).
+    """
+    run = coordinator.load(db, owner, run_id, lock=False)
+    if not run.surf:
+        return None, "no_surface"
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    if host is None or not agent_link.connected(host):
+        return None, "host_offline"
+    if "terminal.focus" not in ((host.caps or {}).get("caps") or []):
+        return None, "host_too_old"
+    row = coordinator.command(db, run, "terminal.focus", {"surf": run.surf}, source="human")
+    return row.op_id, None
+
+
+def focus_result(db, owner, op_id):
+    """What became of a queued focus: `{sent: true}`, `{sent: false, reason}`, or None while the host has not
+    answered."""
+    row = db.scalar(select(AgentCommand).where(AgentCommand.owner_id == owner, AgentCommand.op_id == op_id))
+    if row is None:
+        return {"sent": False, "reason": "no_answer"}
+    if row.status == "executed":
+        return {"sent": True, "desktops": ((row.outcome or {}).get("result") or {}).get("desktops")}
+    if row.status in ("queued", "sent", "acked"):
+        return None
+    detail = str((row.outcome or {}).get("detail") or "")
+    return {"sent": False, "reason": FOCUS_REASONS.get(detail, "no_answer" if row.status == "expired" else "failed"),
+            **({"detail": detail[:300]} if detail and detail not in FOCUS_REASONS else {})}
+
+
+def give_up_focus(db, owner, op_id):
+    """The wait is over: a focus still queued is canceled so it never raises a tab later."""
+    row = db.scalar(select(AgentCommand).where(AgentCommand.owner_id == owner, AgentCommand.op_id == op_id)
+                    .with_for_update())
+    if row is not None and row.status == "queued":
+        coordinator.settle_command(db, row, "canceled", "nobody is waiting any more")
+
+
 def public_command(c):
     payload = c.payload or {}
     return encode({"id": c.id, "op_id": c.op_id, "kind": c.kind, "status": c.status, "generation": c.generation,
@@ -687,8 +737,9 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         plan = coordinator.frozen(db, run)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
         turns, more_turns, older_turns = page(db, run_turns(run), AgentTurn.created_at, limit, offset)
-        commands, more_commands, older_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
-                                                       AgentCommand.created_at, limit, offset)
+        commands, more_commands, older_commands = page(db, select(AgentCommand).where(
+            AgentCommand.run_id == run.id, AgentCommand.kind.not_in(coordinator.QUIET_COMMANDS)),
+            AgentCommand.created_at, limit, offset)
         expires = retention.run_data_expires(run)
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
