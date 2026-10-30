@@ -1167,6 +1167,64 @@ def test_a_target_that_does_not_enable_codex_cannot_start_it(client, host):  # n
     assert saved["harnesses"] == ["claude"] and saved["verify"] == ["tests"]
 
 
+V2_HARNESSES = {**HARNESSES, "codex": {**HARNESSES["codex"], "installed": False, "spawn": False,
+                                       "launch_error": "codex: command not found"}}
+V2_TARGET = {"id": "jarvis", "repo": "/home/davin/jarvis", "worktree_root": "/home/davin/wt",
+             "harnesses": ["claude"], "enabled": ["claude", "codex"],
+             "launch": {"claude": {"ready": True, "version": "2.1.312"},
+                        "codex": {"ready": False, "version": None, "error": "codex: command not found"}},
+             "verify": ["tests", "lint"],
+             "verify_status": [{"id": "tests", "ready": False, "reason": "its program is not on the service PATH (uv)"},
+                               {"id": "lint", "ready": True}],
+             "mcp": {"configured": False, "reason": "no MCP key file at /home/davin/.config/remotea/eridani-mcp-token"}}
+
+
+def test_caps_v2_target_facts_reach_preflight_and_targets(client, host):  # noqa: F811
+    """remotea PR #18/#20 per-target facts: a harness enabled but not installed is explained with the launcher's
+    error, verify readiness comes from verify_status (for the task's verify id, else every id), and MCP readiness
+    from `mcp`. The picker's targets carry the same facts, saved or only advertised."""
+    with connect(bearer(host.token)) as ws:
+        hello(ws, caps=CAPS, harnesses=V2_HARNESSES, caps_version=2, targets=[V2_TARGET])
+    with session_scope() as db:
+        db.get(AgentHost, host.id).lease_until = now() + timedelta(hours=1)
+    created = task("Caps v2", execution_target_id=host.target_id)
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert body["harnesses"] == {"claude": True, "codex": False}
+    assert body["harness_reasons"] == {"codex": "Codex is enabled on jarvis but not installed: codex: command not found"}
+    assert body["verify_ready"] is False
+    assert body["verify_reasons"] == {"tests": "its program is not on the service PATH (uv)"}
+    assert [s["id"] for s in body["verify_status"]] == ["tests", "lint"]
+    assert body["mcp"] == {"configured": False, "reason": V2_TARGET["mcp"]["reason"]}
+    with pytest.raises(DomainError) as caught:
+        start(host, created["id"], harness="codex")
+    assert caught.value.code == "HARNESS_UNAVAILABLE" and "not installed" in caught.value.message
+
+    linted = task("Lint only", execution_target_id=host.target_id,
+                  verify={"target_id": host.target_id, "verify_id": "lint"})
+    ready = client.get(f"/api/v1/remotea/runs/preflight?task_id={linted['id']}").json()
+    assert ready["verify_ready"] is True and ready["verify_reasons"] == {}
+
+    listed = client.get("/api/v1/remotea/targets").json()
+    advert = listed["advertised"][0]
+    assert advert["enabled"] == ["claude", "codex"] and advert["launch"]["codex"]["ready"] is False
+    assert advert["verify_status"][0]["ready"] is False and advert["mcp"]["configured"] is False
+    saved = next(t for t in listed["items"] if t["id"] == host.target_id)
+    assert saved["launch"]["codex"]["error"] == "codex: command not found" and saved["mcp"]["configured"] is False
+
+    run = start(host, created["id"])
+    detail = client.get(f"/api/v1/remotea/runs/{run['id']}").json()
+    assert detail["verify_readiness"] == {"tests": {"ready": False, "reason": "its program is not on the service PATH (uv)"},
+                                          "lint": {"ready": True}}
+
+
+def test_older_hosts_report_no_target_readiness(client, host):  # noqa: F811
+    created = task("Old host readiness", execution_target_id=host.target_id)
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert body["verify_ready"] is None and body["verify_status"] is None and body["mcp"] is None
+    advert = client.get("/api/v1/remotea/targets").json()["advertised"][0]
+    assert advert["enabled"] is None and advert["launch"] is None and advert["mcp"] is None
+
+
 def test_another_hosts_capabilities_cannot_make_the_target_look_ready(client, host):  # noqa: F811
     """S-S1: a second connected host that enables Codex everywhere does not make the Claude-only target startable
     with Codex. While no target resolves, preflight reports the union over the offered targets, with a note."""

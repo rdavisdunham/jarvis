@@ -335,6 +335,9 @@ def on_outcome(db, row, state, detail="", result=None):
         return
     if row.kind == "spawn":
         facts = result or {}
+        mcp = mcp_facts(facts)
+        if mcp is not None:
+            run.sync_state = {**(run.sync_state or {}), "mcp": mcp}
         if state == "executed":
             run.surf = str(facts.get("surf") or run.surf)[:120]
             run.incarnation = int(facts.get("incarnation") or run.incarnation or 0)
@@ -697,7 +700,7 @@ def settle_planning(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
         if run.state != "needs_you":
-            transition(db, run, "needs_you", reason="no_plan")
+            transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         return
     plan = frozen(db, run)
     if plan is not None and plan.proposals:
@@ -707,6 +710,16 @@ def settle_planning(db, run):
             transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
         return
     begin_execution(db, run)
+
+
+def no_tools_detail(run):
+    """A planning turn ended without submit_plan: when the spawn said the agent had no Eridani MCP server
+    (remotea's `result.mcp.configured` false), that is why, and the operator's fix is on the host, not the plan."""
+    mcp = (run.sync_state or {}).get("mcp") or {}
+    if mcp.get("configured") is not False:
+        return ""
+    reason = mcp.get("reason") or "the host did not say why"
+    return f"The agent had no Eridani tools, so it could not call submit_plan: {reason}"
 
 
 def proposal_summary(proposals):
@@ -1274,6 +1287,16 @@ def redact_spawn(row):
     """Once the host has taken a spawn, the stored payload no longer needs the raw run token (stage F, L4)."""
     if row.kind == "spawn" and (row.payload or {}).get("run_token"):
         row.payload = {**row.payload, "run_token": "[redacted]"}
+
+
+def mcp_facts(facts):
+    """The spawn outcome's `mcp {configured, reason?}` (remotea PR #20; absent from older hosts)."""
+    mcp = facts.get("mcp") if isinstance(facts, dict) else None
+    if not isinstance(mcp, dict) or not isinstance(mcp.get("configured"), bool):
+        return None
+    reason = mcp.get("reason")
+    return {"configured": mcp["configured"],
+            **({"reason": " ".join(reason.split())[:200]} if isinstance(reason, str) and reason.strip() else {})}
 
 
 def base_facts(facts):

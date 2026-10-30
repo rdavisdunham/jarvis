@@ -85,9 +85,13 @@ export function Remotea() {
   const cutover = cutoverSummary(parity);
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
-      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
+      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}
+        {(status?.hosts ?? []).filter(h => h.connected).map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+          <small key={h.id} className="remotea-host-build"> · {line!.text}{line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</small>)}
+      </span>
       <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
     </section>
+    {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
     <PendingControls/>
     <RunList onOpen={openRun}/>
@@ -138,11 +142,13 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
       {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
         <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
           hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
           <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
-            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}
+            {line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</span>
         </SettingRow>)}
       <MigrationSettings readOnly={readOnly}/>
       {token && <div className="bot-secret" role="region" aria-label="remotea link key">
@@ -614,7 +620,9 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   </section>;
 }
 
-export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
+export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run" }: {
+  need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void; saveLabel?: string;
+}) {
   const options = targetOptions(need);
   const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -645,7 +653,7 @@ export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; o
     </>}
     <div className="remotea-control-row">
       <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
-      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>Save and run</button>
+      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>{saveLabel}</button>
     </div>
     {error && <p role="alert" className="work-error">{error}</p>}
   </div>;
