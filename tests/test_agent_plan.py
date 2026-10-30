@@ -127,6 +127,11 @@ def test_interview_answers_planning_and_execution_after_settle(host):  # noqa: F
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert row.turn_count == 0 and not row.plan_pending  # Interview and planning turns never count.
+        # Every text Eridani wrote is on the timeline with why it was sent (docs/AGENT_CONTROL.md, Messages Eridani
+        # sends to the agent): the answers as the planning prompt (your action), then the execute prompt (automatic).
+        sent = [h for h in row.history if h.get("event") == "sent"]
+        assert [(h["kind"], h["actor"]["kind"]) for h in sent] == [("interview_answers", "human"), ("execute", "eridani")]
+        assert sent[-1]["text"] == inputs(run_id)[-1][:2000]
     with pytest.raises(DomainError) as locked:
         call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **{**PLAN, "expected_plan_revision": 1})
     assert locked.value.code == "PLAN_LOCKED"
