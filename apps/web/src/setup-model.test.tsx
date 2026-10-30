@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SetupProposalDetails } from "./Onboarding";
-import { setupTypeRows } from "./setup-model";
-import type { Proposal, SchemaType } from "./structure-types";
+import { SETUP_REQUEST, setupTypeRows, typesFieldsRequest } from "./setup-model";
+import { StructureEditor } from "./StructureEditor";
+import type { Proposal, Schema, SchemaType } from "./structure-types";
 
 function type(id: string, name: string, parent_types: string[] = []): SchemaType {
   return { id, name, plural: name, description: name + " definition", parent_types,
@@ -45,5 +46,28 @@ describe("guided setup schema preview", () => {
     const ids = setupTypeRows(copy).map(r => r.type.id);
     expect(new Set(ids).size).toBe(3);
     expect(ids).toHaveLength(3);
+  });
+});
+
+describe("Types & fields entry into guided setup", () => {
+  it("resumes the same setup interview, narrowed to types and fields", () => {
+    const request = typesFieldsRequest();
+    expect(request).toContain("Resume my saved setup");
+    expect(request).toContain("one useful question at a time");
+    expect(request).toMatch(/field options and which types each field applies to/);
+    expect(request).toContain("preview the changes before applying them");
+    expect(request).not.toContain("Start with");
+    expect(request).not.toBe(SETUP_REQUEST);
+  });
+  it("names only a type the owner chose", () => {
+    expect(typesFieldsRequest(" Client ")).toContain("Start with my Client type.");
+    expect(typesFieldsRequest("  ")).toBe(typesFieldsRequest());
+  });
+  it("offers Refine with Eri only where the interview can run", () => {
+    const schema: Schema = { revision: 3, types: [type("client", "Client")], relationships: [], field_library: [], understandings: [] };
+    const editor = (onTalk?: () => Promise<void>) => renderToStaticMarkup(
+      <StructureEditor schema={schema} onClose={() => {}} onApplied={async () => {}} onTalk={onTalk}/>);
+    expect(editor(async () => {})).toContain("Refine with Eri");
+    expect(editor()).not.toContain("Refine with Eri");
   });
 });
