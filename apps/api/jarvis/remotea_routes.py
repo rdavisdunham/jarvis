@@ -351,7 +351,9 @@ def targets(user: User):
         gated(db, user)
         rows = db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == user.owner_id)
                           .order_by(ExecutionTarget.created_at))
-        return {"items": [control.public_target(t) for t in rows], "advertised": control.advertised(db, user.owner_id)}
+        adverts = control.advertised(db, user.owner_id)
+        index = control.advert_index(adverts)
+        return {"items": [control.public_target(t, index) for t in rows], "advertised": adverts}
 
 
 @router.post("/targets")

@@ -121,21 +121,56 @@ def chain(db, owner, task):
     return [record, *parent_chain(db, owner, record.parent_id)] if record else []
 
 
-def public_target(target):
-    return encode({"id": target.id, "host_id": target.host_id, "host_target": target.host_target, "name": target.name,
-                   "repo": target.repo, "worktree_root": target.worktree_root, "record_id": target.record_id})
+def public_target(target, adverts=None):
+    """A saved target; with `adverts` (advertised() keyed by (host_id, host_target)) it also carries the harnesses
+    and verify ids its host advertised for it, when the host said."""
+    out = {"id": target.id, "host_id": target.host_id, "host_target": target.host_target, "name": target.name,
+           "repo": target.repo, "worktree_root": target.worktree_root, "record_id": target.record_id}
+    advert = (adverts or {}).get((target.host_id, target.host_target))
+    if advert:
+        out.update({k: advert[k] for k in ("harnesses", "verify") if advert.get(k) is not None})
+    return encode(out)
+
+
+def target_harnesses(item):
+    """The harnesses one hello target enables (remotea sends a list of names, from its `launch`), or None when the
+    host did not say (older hosts: the host-wide `caps.harnesses` flags decide)."""
+    value = item.get("harnesses") if isinstance(item, dict) else None
+    if isinstance(value, list):
+        return sorted({v for v in value if isinstance(v, str)})
+    if isinstance(value, dict):
+        return sorted(k for k, v in value.items() if isinstance(k, str) and v
+                      and (not isinstance(v, dict) or v.get("spawn", True)))
+    return None
+
+
+def hello_target(host, host_target):
+    """The host's hello entry for one of its targets, or None."""
+    for item in ((host.caps or {}).get("targets") or []) if host is not None else []:
+        if isinstance(item, dict) and item.get("id") == host_target:
+            return item
+    return None
 
 
 def advertised(db, owner):
-    """Targets hosts listed in hello (optional on the wire); the picker offers them."""
+    """Targets hosts listed in hello (optional on the wire); the picker offers them. `harnesses` is the list the
+    target enables (null when the host did not say), `verify` its verify ids."""
     found = []
     for host in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         for item in (host.caps or {}).get("targets") or []:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
                 found.append({"host_id": host.id, "host_name": host.name, "host_target": item["id"][:64],
                               "repo": str(item.get("repo") or "")[:1000],
-                              "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000]})
+                              "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000],
+                              "harnesses": target_harnesses(item),
+                              "verify": [str(v.get("id") if isinstance(v, dict) else v)[:64]
+                                         for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50]})
     return found
+
+
+def advert_index(adverts):
+    """advertised() keyed by (host_id, host_target), for public_target."""
+    return {(a["host_id"], a["host_target"]): a for a in adverts}
 
 
 def resolve_target(db, owner, task, explicit=None):
@@ -168,10 +203,12 @@ def resolve_target(db, owner, task, explicit=None):
         if matches:
             candidates = list(matches.values())
             break
+    adverts = advertised(db, owner)
+    index = advert_index(adverts)
     raise DomainError("NEEDS_TARGET", "Choose where this task's agent should run. The choice is saved.", 409, data={
         "task_id": task.id,
-        "candidates": [public_target(t) for t in candidates or targets],
-        "advertised": advertised(db, owner),
+        "candidates": [public_target(t, index) for t in candidates or targets],
+        "advertised": adverts,
         # type_id lets the picker default to the nearest record that is not the task itself (its project).
         "records": [{"id": r.id, "title": r.title, "type_id": r.type_id} for r in records],
     })
@@ -276,19 +313,43 @@ def spawn_prompt(db, run, plan):
     return ("Work on this Eridani task in the current worktree.\n\n" + text)[:PROMPT_CHARS]
 
 
-def host_harness(host, harness):
-    caps = host.caps or {}
-    return "spawn" in caps.get("caps", []) and bool((caps.get("harnesses", {}).get(harness) or {}).get("spawn"))
+HARNESS_LABELS = {"claude": "Claude Code", "codex": "Codex"}
 
 
-def check_host(owner, task, host, harness):
+def host_harness(host, harness, host_target=None):
+    """Can this host start `harness` (on `host_target`)? The host must advertise `spawn` and the harness's host-wide
+    spawn flag; when its hello entry for `host_target` lists `harnesses`, the target must enable it too (remotea
+    refuses a harness missing from the target's `launch`). Hosts without per-target flags keep the host-wide rule."""
+    caps = (host.caps or {}) if host is not None else {}
+    if "spawn" not in caps.get("caps", []) or not ((caps.get("harnesses") or {}).get(harness) or {}).get("spawn"):
+        return False
+    enabled = target_harnesses(hello_target(host, host_target)) if host_target else None
+    return enabled is None or harness in enabled
+
+
+def harness_problem(host, harness, host_target=None):
+    """Why `harness` cannot start on this host/target (None when it can); the message names the target."""
+    label = HARNESS_LABELS.get(harness, harness)
+    if host is None:
+        return "That execution target has no remotea server."
+    if not agent_link.connected(host):
+        return "The remotea server is not connected."
+    if not host_harness(host, harness):
+        return f"This remotea server cannot start {label} yet."
+    if not host_harness(host, harness, host_target):
+        return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
+    return None
+
+
+def check_host(owner, task, host, harness, host_target=None):
     """The refusals between a resolved target and a spawn; start_run raises them, a proposal reports them."""
     if host is None or host.owner_id != owner:
         raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
     if not agent_link.connected(host):
         raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
-    if not host_harness(host, harness):
-        raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {harness} yet.", 409)
+    if not host_harness(host, harness, host_target):
+        raise DomainError("HARNESS_UNAVAILABLE", harness_problem(host, harness, host_target), 409,
+                          data={"harness": harness, **({"host_target": host_target} if host_target else {})})
 
 
 def start_run(db, owner, account_id, body, *, actor):
@@ -305,7 +366,7 @@ def start_run(db, owner, account_id, body, *, actor):
         raise DomainError("RUN_ACTIVE", "An agent run is already working on this task.", 409, data={"run_id": active.id})
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
-    check_host(owner, task, host, body.harness)
+    check_host(owner, task, host, body.harness, target.host_target)
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
@@ -796,7 +857,8 @@ def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
             raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
         target = resolve_target(db, owner, task, execution_target_id)
         out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
-        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None, harness)
+        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None, harness,
+                   target.host_target)
     except DomainError as error:
         if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
             return {**out, "needs_target": True, "need": error.data}
@@ -812,18 +874,43 @@ def readiness(db, owner, row):
     return readiness_for(db, owner, db.get(Task, args.get("task_id")), args.get("harness", "claude"), args.get("execution_target_id"))
 
 
+def target_capabilities(db, owner, task, execution_target_id=None):
+    """(harnesses, harness_reasons, harness_note): which harnesses the task's target can start and why not. The
+    resolved target decides; while none resolves, the union over the picker's candidates (saved and advertised), with
+    a note saying so. Another host's capabilities never make the resolved target look ready."""
+    try:
+        target = resolve_target(db, owner, task, execution_target_id)
+    except DomainError as error:
+        if error.code != "NEEDS_TARGET" or not isinstance(error.data, dict):
+            return {name: False for name in HARNESSES}, {}, None
+        pairs = {(t["host_id"], t["host_target"]) for t in error.data.get("candidates") or []} | \
+            {(t["host_id"], t["host_target"]) for t in error.data.get("advertised") or []}
+        hosts = {h.id: h for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner))}
+        out = {name: any(hid in hosts and agent_link.connected(hosts[hid]) and host_harness(hosts[hid], name, ht)
+                         for hid, ht in pairs) for name in HARNESSES}
+        reasons = {name: f"No target offered for this task can start {HARNESS_LABELS.get(name, name)}."
+                   for name, ok in out.items() if not ok}
+        return out, reasons, "No target is chosen yet; these are what any offered target can start."
+    host = db.get(AgentHost, target.host_id) if target.host_id else None
+    reasons = {name: harness_problem(host if host is not None and host.owner_id == owner else None, name,
+                                     target.host_target) for name in HARNESSES}
+    return ({name: reason is None for name, reason in reasons.items()},
+            {name: reason for name, reason in reasons.items() if reason}, None)
+
+
 def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
     """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
-    the interview would run (start_run's rule), which harnesses a connected server can spawn, and the task's title."""
+    the interview would run (start_run's rule), which harnesses the task's target can spawn (`harness_reasons` says
+    why not; `harness_note` is set while no target resolves), and the task's title."""
     task = owned(db, Task, task_id, owner)
     out = readiness_for(db, owner, task, harness, execution_target_id)
     active = coordinator_active(db, task.id)
     planned = bool(task.success_criteria) and bool(task.verify)
-    hosts = list(db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)))
+    harnesses, reasons, note = target_capabilities(db, owner, task, execution_target_id)
     return {**out, "task": {"id": task.id, "title": task.title},
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
             "interview": not task.prd_note_id and not planned,
-            "harnesses": {name: any(agent_link.connected(h) and host_harness(h, name) for h in hosts) for name in HARNESSES}}
+            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note}
 
 
 def proposal(db, owner, result):
