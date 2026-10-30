@@ -19,6 +19,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, ClassVar, Literal
 
+import psycopg
 from fastapi import APIRouter, WebSocket
 from fastapi.responses import JSONResponse
 from pydantic import (
@@ -30,7 +31,7 @@ from pydantic import (
     ValidationError,
     model_validator,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import object_session
 from starlette.concurrency import run_in_threadpool
@@ -41,7 +42,7 @@ from . import bot_access
 from . import remotea_release
 from . import run_coordinator as coordinator
 from .config import get_settings
-from .db import session_scope
+from .db import engine, session_scope
 from .domain import DomainError, advisory, emit, encode
 from .models import OwnerSettings, now
 from .redaction import redact
@@ -61,7 +62,10 @@ HOSTS_PER_CREDENTIAL = 3  # Distinct server_ids one link key may register (stage
 FRAMES_PER_MINUTE = 1200
 BYTES_PER_MINUTE = 16 * 1_048_576
 HELLO_SECONDS = 15
-TICK_SECONDS = 30  # Re-authorize, renew the lease and drain commands.
+TICK_SECONDS = 30  # Re-authorize, renew the lease and drain commands (the recovery when no wake arrives).
+CHANNEL = "agent_link"  # pg_notify channel; the payload is a host id that has newly queued commands.
+LISTEN_IDLE_SECONDS = 30  # A quiet listener checks its connection this often.
+LISTEN_BACKOFF = (0.5, 30.0)  # First and longest wait before the listener reconnects.
 LEASE = timedelta(seconds=90)
 REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
@@ -917,6 +921,47 @@ def wake(host_id):
     link = LINKS.get(host_id)
     if link is not None and link.loop is not None:
         link.loop.call_soon_threadsafe(link.wakeup.set)
+
+
+def notify_host(db, host_id):
+    """Wake the host's link in whichever web process holds it (the worker has no sockets).
+
+    Runs inside the transaction that queued the command: Postgres delivers the notify only when that
+    transaction commits (never on rollback), so the link cannot drain before the row is visible.
+    """
+    db.execute(text("SELECT pg_notify(:channel, :host)"), {"channel": CHANNEL, "host": str(host_id)})
+
+
+def listen_dsn():
+    return engine().url.set(drivername="postgresql").render_as_string(hide_password=False)
+
+
+async def listen():
+    """Lifespan task in each web process: LISTEN on CHANNEL and wake the local link each notify names.
+
+    A notify for a host whose socket lives in another process or replica (or nowhere) finds no local
+    link and is ignored. A lost connection is retried with backoff; notifies sent while disconnected are
+    gone, so each (re)connect wakes every local link once. The TICK_SECONDS drain covers the gap.
+    """
+    delay = LISTEN_BACKOFF[0]
+    while True:
+        try:
+            async with await psycopg.AsyncConnection.connect(
+                    listen_dsn(), autocommit=True, connect_timeout=10, application_name="eridani-agent-link") as conn:
+                await conn.execute(f"LISTEN {CHANNEL}")
+                delay = LISTEN_BACKOFF[0]
+                for host_id in list(LINKS):
+                    wake(host_id)
+                while True:
+                    async for note in conn.notifies(timeout=LISTEN_IDLE_SECONDS):
+                        wake(note.payload)
+                    await conn.execute("SELECT 1")  # Raises if the quiet connection died.
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - any loss: reconnect; never take the web process down
+            logger.warning("agent link listener disconnected (%s); reconnecting in %.1fs", type(exc).__name__, delay)
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, LISTEN_BACKOFF[1])
 
 
 class Link:

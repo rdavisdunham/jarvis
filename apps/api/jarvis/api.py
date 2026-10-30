@@ -6,7 +6,7 @@ import json
 import time
 import threading
 from collections import defaultdict, deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
@@ -57,11 +57,18 @@ async def lifespan(app):
     validate_deployment(get_settings())
     from .external_mcp import mount as mcp_mount
     mcp_app = mcp_mount.build()
-    async with mcp_app.router.lifespan_context(mcp_app):
-        yield
-    from .agent_link import shutdown as close_agent_links
+    from . import agent_link
 
-    await close_agent_links()
+    # Commands queued by the worker (or another web process) wake this process's sockets (pg NOTIFY).
+    listener = asyncio.create_task(agent_link.listen())
+    try:
+        async with mcp_app.router.lifespan_context(mcp_app):
+            yield
+    finally:
+        listener.cancel()
+        with suppress(asyncio.CancelledError):
+            await listener
+    await agent_link.shutdown()
     from .voice import controllers
 
     await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
