@@ -208,7 +208,7 @@ def finish(db, row, status, message, **result):
                 "quiet",
                 "receipt_ids",
                 "related_request_id", "continuation_root", "continuation_ids", "continued_as",
-                "answered_clarification_id", "archived_at",
+                "answered_clarification_id", "archived_at", "pending_confirmation",
             }
         }
         row.result["message"] = (

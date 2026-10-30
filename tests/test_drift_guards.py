@@ -198,3 +198,14 @@ def test_external_record_kinds_and_mcp_reads_agree():
     for name in service.CUSTOM_READS:
         scope = bot_access.READ_SCOPES[name]
         assert name in {d["name"] for d in definitions({scope})}, (name, scope)
+
+
+def test_run_dialog_harnesses_match_the_backend():
+    """The Run dialog's agent choices (remotea-model.ts HARNESSES) are a copy of agent_control.HARNESSES: same
+    harness ids, and the first model listed for each is the backend's default (startBody omits it then)."""
+    from jarvis.agent_control import HARNESSES
+
+    source = web("remotea-model.ts")
+    block = found(r"export const HARNESSES = \[(.*?)\] as const;", source, "HARNESSES")
+    entries = re.findall(r'id: "([a-z]+)", label: "[^"]+", models: \[\{ id: "([^"]+)"', block)
+    assert dict(entries) == HARNESSES, "apps/web/src/remotea-model.ts HARNESSES vs apps/api/jarvis/agent_control.py HARNESSES"

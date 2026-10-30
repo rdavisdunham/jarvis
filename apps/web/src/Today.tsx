@@ -9,6 +9,7 @@ import { clockLabel, dueBucket, shortDate } from "./work-views";
 import { shiftDate } from "./workspace";
 import { plural, priorityLabels } from "./ux";
 import { TodayReviews } from "./Reviews";
+import { RunButton } from "./RunButton";
 import "./today.css";
 
 type Props = {
@@ -145,6 +146,7 @@ export function Today(p: Props) {
         {withDue && <DueChip task={task} today={p.today} />}
       </div>
     </div>
+    <div className="row-actions"><RunButton taskId={task.id} title={task.title}/></div>
   </li>;
   const glyph = (e: CalendarEntry) => e.kind === "task" ? <CircleCheck size={15} /> : e.kind === "reminder" ? <Bell size={15} />
     : e.kind === "routine" ? <Repeat2 size={15} /> : <span className={"sched-dot" + (e.kind === "block" ? " is-block" : "")} />;

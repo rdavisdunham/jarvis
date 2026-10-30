@@ -154,8 +154,9 @@ def last_turns(db, ids):
     if not ids:
         return {}
     latest = {}
-    for row in db.scalars(
-        select(AgentTurn).where(AgentTurn.session_pk.in_(ids)).order_by(AgentTurn.session_pk, AgentTurn.seq.desc(), AgentTurn.created_at.desc())
+    for row in db.scalars(  # The agent's last response; a typed prompt (role "user") is not a response.
+        select(AgentTurn).where(AgentTurn.session_pk.in_(ids), AgentTurn.role == "assistant")
+        .order_by(AgentTurn.session_pk, AgentTurn.seq.desc(), AgentTurn.created_at.desc())
         .ext(distinct_on(AgentTurn.session_pk))
     ):
         latest[row.session_pk] = row
@@ -164,8 +165,9 @@ def last_turns(db, ids):
 
 def public_turn(row, limit=None):
     text = row.text if limit is None else row.text[:limit]
-    return encode({"id": row.id, "seq": row.seq, "text": text, "length": len(row.text), "clipped": len(text) < len(row.text),
-                   "truncated": row.truncated, "generation": row.generation, "source": row.source, "at": row.created_at})
+    return encode({"id": row.id, "seq": row.seq, "role": row.role, "text": text, "length": len(row.text),
+                   "clipped": len(text) < len(row.text), "truncated": row.truncated, "generation": row.generation,
+                   "source": row.source, "at": row.created_at})
 
 
 @router.get("/sessions")
@@ -240,6 +242,15 @@ def start(body: control.StartInput, user: User):
     with session_scope() as db:
         writable(db, user)
         return control.start_run(db, user.owner_id, user.account_id, body, actor=actor_for(user))
+
+
+@router.get("/runs/preflight")
+def preflight(task_id: UUID, user: User, harness: str = Query("claude", max_length=20), execution_target_id: UUID | None = None):
+    """What Run would do on this task: where it runs (or the picker's choices), the run already on it, whether the
+    agent interviews first, and which harnesses the server can start. Read-only; the Run dialog shows it."""
+    with session_scope() as db:
+        gated(db, user)
+        return control.preflight(db, user.owner_id, str(task_id), harness, str(execution_target_id) if execution_target_id else None)
 
 
 @router.get("/runs/{identity}")

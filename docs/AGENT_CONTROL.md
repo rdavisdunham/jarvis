@@ -116,7 +116,8 @@ own short transaction.
 | up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
-| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap |
+| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
+| up | `prompt` | `surf, incarnation, run_id?, generation, tool, provider, provider_session_id, seq, text, truncated, at` | the message typed in the terminal, sent on UserPromptSubmit (as the turn starts, not when it ends); `seq` pairs with the following `turn`'s `seq`; text clipped to 4000 bytes by the host and again here. Stored as a `user` row of `agent_turns` (`provider_turn_id` = `prompt:<seq>`) once per `(session, seq)`: a resend → `{duplicate:true}`; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND`). It never counts toward the turn cap and never moves the run; the host sends it only when Eridani's `welcome` caps include `prompt` |
 | up | `status` | `surf, incarnation, state, since, reason?, effective_permission_mode?, provider?+provider_session_id? (or tool?+session_id?)` | sets the session's `state`/`state_since`. Older incarnation, or same incarnation with an earlier `since`, is ignored (`applied:false`). Without a provider (or tool) and session id, the surface maps to the newest session reported with that `surf` on this host (`UNKNOWN_SURFACE` otherwise) |
 | up | `exit` | `surf, incarnation, exited_at?, code?, provider?+provider_session_id?` | state `exited` at `exited_at` |
 | up | `sessions.snapshot` | `surfaces: [{surf, incarnation, state: live\|lost\|exited, agent_state, since, provider, provider_session_id, …}], part?: {of, i, n}` | a large snapshot arrives as several frames sharing `part.of`; non-final parts are acked `{pending:true}` and reconciliation runs once all `n` parts arrived. `live` takes the surface's `agent_state` (working/needs_you/idle). Applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first reconciles runs (below), then replies `runs.snapshot {runs: [{run_id, generation, desired: continue\|stop\|none, stop_mode?}]}` and only then resends unacked commands |
@@ -135,7 +136,7 @@ own short transaction.
 
 `state` values: `working`, `needs_you`, `idle` (shown as **Live**), `restoring`, `lost` (shown as
 **Restoring**), `exited` (**Ended**). `since` must carry a timezone. Every stored change emits
-`session.changed` (report, status, exit, snapshot) or `agent.changed` (turn stored, host connected or
+`session.changed` (report, status, exit, snapshot) or `agent.changed` (turn or prompt stored, host connected or
 disconnected) on the change feed. The web client skips both in the workspace reload and forwards them as
 `eri-agents-changed` to the remotea page and Sessions drawer.
 
@@ -324,7 +325,11 @@ remotea page shows, so an assistant outside the run can review a run without a c
 - `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
   list shape of `agent_control.public_run` (state, `state_reason`, `reason_text`, task, branch, turns, host).
 - `GET /api/v1/external/agents/runs/{run_id}?limit=&offset=` (MCP `run_get`): the detail shape — frozen
-  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`,
+  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`
+  (`{id, seq, role, text, clipped, truncated, generation, at, prompt}`: `role` is `assistant` for the agent's
+  final response or `user` for the message typed in the terminal, stored from the host's `prompt` frame; an
+  assistant turn's `prompt` (≤ 500 chars here) carries the typed message only when the host sent it with the
+  Stop alone, as older hosts do, so a message never appears twice),
   `commands` (spawn, input incl. the operator's and the judge's gap prompts, stop, verify), `questions`,
   `interviews` (questions and answers), and `attempts` (verify and judge: verdict, gap, per-criterion
   record, rules, model, cost). Turns and commands page newest first; `more` says whether older ones remain.
@@ -350,6 +355,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 |---|---|---|
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
+| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses`, `task` |
 | `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
 | `POST /runs/{id}/message {text, mode}` | yes | queue or steer |
 | `POST /runs/{id}/stop {mode}` | no (viewers refused) | stop stays available after remotea is turned off |
@@ -592,14 +598,21 @@ in `VOICE_MUTATIONS`:
 | `control.message` | target, `text`, `mode: queue\|steer` | |
 | `control.stop` | target, `mode: interrupt\|kill` | |
 | `control.answer` | target, `question_id` + `answers`, or `interview_id` + `responses` | a run question or the planning interview |
-| `control_status` (read) | target? | active runs, their open questions/interview, finished in the last 24 h, hosts |
+| `control.confirm` | `pending_id?`, `decision: confirm\|decline`, `execution_target_id?` | the owner's yes to a proposed start/message (below); a start that asked where to run takes the chosen target |
+| `control.approve` | target? | immediate: approves a run that is `awaiting_approval` (`agent_control.approve`); any other state is refused with `NOT_AWAITING_APPROVAL` naming the state |
+| `control.plan_review` | target?, `decisions: [{id, accept, text?}]`, `verify?`, `completion_policy?` | immediate: the owner's decisions on a `plan_review` (`agent_plan.review_plan`; the server supplies `expected_revision`); otherwise `NO_PLAN_REVIEW` |
+| `control_status` (read) | target? | active runs, their open questions/interview, `plan_review` proposals, the judge's `awaiting_approval` summary, open proposals (`pending`, with target options), finished in the last 24 h, hosts |
 
-A target is `run_id`, `task_id` or `task` (a spoken name); none means the only active run. Names resolve
-through an exact Linear identifier, then `navigation_find`; several matches → `AMBIGUOUS_TASK` (or
-`AMBIGUOUS_RUN`) with the candidates so Eri asks, none → `NOT_FOUND`. Every command passes the remotea
-gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog group are in the model's
-registry only while remotea is enabled (`tool_policy.remotea_tools`, applied to chat, voice and work
-runs).
+A target is `run_id`, `task_id` or `task` (a spoken name); none means the run open on the owner's screen
+(`UIContext.open_run_id`, which the remotea page sends and `context_prompt` names as "Open run: <id>"), else
+the only active run. Names resolve through an exact Linear identifier, then `navigation_find`; several
+matches → `AMBIGUOUS_TASK` (or `AMBIGUOUS_RUN`) with the candidates so Eri asks, none → `NOT_FOUND`. Every
+command passes the remotea gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog
+group are in the model's registry only while remotea is enabled (`tool_policy.remotea_tools`, applied to
+chat, voice and work runs); `approve` and `plan_review` act only on a run already waiting for the human, so
+they need no second confirmation. External bots never see any of them (no scope maps to `control.*`).
+While an account has a proposal waiting, queued work preloads `control_confirm` and `control_status`
+(`work_runner.preloaded_controls`) so the owner's yes needs no `tools_load` round.
 
 ### Dream auto-link (`agent_autolink.py`)
 
@@ -727,15 +740,25 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 ### Two-phase control from Eri
 
 `control.start` and `control.message` from Eri only propose: they store an `agent_pending_controls` row
-(10-minute expiry) and nothing reaches the host. The owner confirms on the remotea page
+(10-minute expiry) and nothing reaches the host. The owner confirms on the card in chat, on the remotea page
 (`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
-works only from a later request by the same account whose own text is a plain yes, for the newest
-pending item. `control.stop`, `control.answer` and `control_status` stay immediate.
+works only from a later request by the same account whose own text is the owner's yes, for the newest
+pending item. The yes (`agent_control.is_yes`) is a message that starts with an affirmative (yes, yeah,
+yep, yup, sure, ok, okay, confirm, go ahead, go, do it, start it, send it, please do), has at most 12 words
+in its first 200 characters, is not a question and contains no but / instead / actually / not / don't /
+no / wait / cancel / change: "yes start the agent", "yeah go for it" and the joined voice speech "ok cool
+yes" count; "yes but change the model" does not (`CONFIRMATION_REQUIRED`). `control.stop`,
+`control.answer`, `control.approve`, `control.plan_review` and `control_status` stay immediate.
 
 A proposed start resolves its target when proposed (read-only): when one resolves, its id goes into the
 row's `arguments` and the summary names it ("… in jarvis"), and confirm starts there. When none does, the
-row is still created and the result says `needs_target: true` (with `task_id`), and Eri tells the owner to
-pick where it runs on the remotea card. An offline server or a harness it cannot start is checked the same
+row is still created and the result says `needs_target: true` (with `task_id`) and lists `targets`: the
+saved candidates by `execution_target_id` and the advertised-but-unsaved ones by the key
+`host:<host_id>:<host_target>` (the same options the card's picker builds), so Eri asks "run it in jarvis
+or remotea?" and confirms with `control.confirm {execution_target_id}`; the owner's short answer naming the
+chosen place counts as their yes. An advertised choice is saved first (`save_target`, for the task's
+nearest non-task record, else the task itself, as the picker defaults it), then the run starts there.
+`control_status` lists the same open proposals under `pending`. An offline server or a harness it cannot start is checked the same
 way and returned as `problems` for Eri to relay; neither blocks the proposal. `GET /remotea/pending` lists
 each start with that readiness (`needs_target`, the picker's `need` data, `target`, `problems`), and the
 card shows the picker in place of Confirm; picking saves the choice and confirms with

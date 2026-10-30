@@ -47,7 +47,7 @@ FRESH_READS = (
 # Agent-run control (stage E): voice and chat get these only while remotea is enabled for the owner.
 # They sit in the `agents` tool group, never in CORE, and no bot scope maps to them.
 CONTROL_TOOLS = ("control_status", "control_start", "control_message", "control_confirm", "control_answer",
-                 "control_stop")
+                 "control_stop", "control_approve", "control_plan_review")
 # Work younger than this was started by a person who is still there (a chat message or a GPT-Live turn).
 LIVE_WORK_SECONDS = 15 * 60
 

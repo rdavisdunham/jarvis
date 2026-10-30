@@ -19,7 +19,11 @@ import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth,
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
-import { SessionsPanel } from "./Sessions";
+import { RunsPanel } from "./RunsPanel";
+import { RunPanel } from "./RunPanel";
+import { PendingControls } from "./PendingControls";
+import { useRemotea, useRemoteaActions } from "./remotea-context";
+import { runsBadge } from "./remotea-model";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import {
   readView,
@@ -152,6 +156,7 @@ const SchedulingPreferences = lazy(() => viewChunks.preferences().then((m) => ({
 const NotificationPreferences = lazy(() => viewChunks.preferences().then((m) => ({ default: m.NotificationPreferences })));
 const ThemeSetting = lazy(() => viewChunks.preferences().then((m) => ({ default: m.ThemeSetting })));
 const Remotea = lazy(() => viewChunks.remotea().then((m) => ({ default: m.Remotea })));
+const RunTaskDialog = lazy(() => import("./RunTaskDialog").then((m) => ({ default: m.RunTaskDialog })));
 const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
@@ -343,15 +348,13 @@ export default function App() {
     [chatText, setChatText] = useState(""),
     [thinking, setThinking] = useState(false);
   const [syncWarning, setSyncWarning] = useState("");
-  const [remoteaRun, setRemoteaRun] = useState<string | null>(null);
-  // Bumped on every request to open a run, so the page remounts on it even if it last showed that run.
-  const [remoteaOpened, setRemoteaOpened] = useState(0);
+  // Runs show in the shell's side panel (RunPanel), on whatever page is open; the remotea page is not required.
+  const remotea = useRemotea(), remoteaActions = useRemoteaActions();
   function openRemoteaRun(run: string | null) {
-    if (run) { setRemoteaRun(run); setRemoteaOpened(n => n + 1); }
-    setView("remotea");
+    if (run) remoteaActions.openRun(run); else setView("remotea");
   }
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
-  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [runsOpen, setRunsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
   const conversationEpoch = useRef(0);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
@@ -463,7 +466,11 @@ export default function App() {
   const [memoryRevision, setMemoryRevision] = useState(0);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const mobile = useMaxWidth(COMPACT_MAX_WIDTH);
+  const phone = useMaxWidth(PHONE_MAX_WIDTH);
   useBodyLock(mobile && (companion || sidebar || searchOpen));
+  const panelSheet = phone && !!remotea.panel.run && !remotea.panel.collapsed;
+  useEffect(() => { if (remotea.panel.run && mobile) setCompanion(false); }, [remotea.panel.run, mobile]);
+  useEffect(() => { remoteaActions.setEnabled(!!boot?.preferences.remotea_enabled); }, [boot?.preferences.remotea_enabled, remoteaActions]);
   const uiResults = useRef<
     { id: string; status: string; message?: string; data?: unknown }[]
   >([]);
@@ -1450,6 +1457,7 @@ export default function App() {
       } else if (action.entity_id && action.view === "remotea") {
         // Fetch first so a run that is gone fails the action instead of opening an empty drawer.
         await api("/remotea/runs/" + encodeURIComponent(action.entity_id));
+        setView("remotea");
         openRemoteaRun(action.entity_id);
       }
     }
@@ -1910,6 +1918,8 @@ export default function App() {
           ? null
           : (selected?.id ?? null),
     selected_schedule_id: scheduleEditor?.schedule?.id ?? null,
+    // The run open in the side panel: "approve it" / "answer that" resolve to it without naming the run.
+    open_run_id: remotea.panel.run,
     selected_task_ids: selectedTaskIds
       .filter((id) => tasks.some((t) => t.id === id))
       .slice(0, 100),
@@ -1988,7 +1998,7 @@ export default function App() {
   }, [editors.summary?.kind, editors.summary?.record_id, collectionContext.design]);
   const detailKey = (detail: typeof editors.summary) => detail ? `${detail.kind}:${detail.record_id ?? "new"}:${detail.mode}` : "";
   const navigation = {view, settingsSection, query, savedViewState, collectionContext, calendarMode, calendarDay,
-    noteListId, notesMode, showArchived, todayList, companion, activityOpen, sidebar, searchOpen, detail: editors.summary,
+    noteListId, notesMode, showArchived, todayList, companion, activityOpen, sidebar, searchOpen, detail: editors.summary, runPanel: remotea.panel.run,
     selected, reminder, scheduleEditor, noteEditor, googleEvent, calendarDetail, bulkEditor, editingMemory, organizationEditor};
   const navigationUrl = isTaskTab(view) && !dashboard ? viewLink(savedViewState) : new URL(location.href);
   if (!isTaskTab(view) || dashboard) {navigationUrl.searchParams.set("view", view); navigationUrl.searchParams.delete("tab"); navigationUrl.searchParams.delete("state");}
@@ -2004,9 +2014,10 @@ export default function App() {
     navigationUrl.searchParams.set("contents",String(collectionContext.section??"groups"));
   }else{navigationUrl.searchParams.delete("home");navigationUrl.searchParams.delete("layout");navigationUrl.searchParams.delete("contents");}
   if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
+  if (remotea.panel.run) navigationUrl.searchParams.set("run", remotea.panel.run); else navigationUrl.searchParams.delete("run");
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
     page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : ""),
-    layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
+    layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", remotea.panel.run ? "run:" + remotea.panel.run : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
     url: navigationUrl.href, onError: setError,
     restore: async target => {
       if (collectionContext.design && collectionContext.design_dirty && (!target.collectionContext.design || view !== target.view)) {
@@ -2019,6 +2030,7 @@ export default function App() {
       setQuery(target.query); setSettingsSection(target.settingsSection); setCalendarMode(target.calendarMode);
       setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setNoteListId(target.noteListId); setShowArchived(target.showArchived);
       setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
+      if (target.runPanel !== remotea.panel.run) { if (target.runPanel) remoteaActions.openRun(target.runPanel); else remoteaActions.closePanel(); }
       const collection = target.collectionContext;
       (isTaskTab(target.view) ? setTaskRecordControl : setRecordControl)({nonce: crypto.randomUUID(), type_id: String(collection.type_id ?? ""), parent_id: String(collection.parent_id ?? ""),
         section:String(collection.section??"groups"), layout: String(collection.layout ?? "browse"), group: String(collection.group ?? "status"), field: String(collection.field ?? ""),
@@ -2431,10 +2443,11 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
-            <button className="btn btn-ghost activity-toggle" aria-label="Agent sessions" title="Agent sessions: where work happened in Claude Code, Codex and ChatGPT"
-              onClick={() => setSessionsOpen(true)}>
-              <SquareTerminal size={18}/><span>Sessions</span>
-            </button>
+            {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending); return (
+              <button className={"btn btn-ghost activity-toggle " + (badge.attention ? "needs-attention" : "")} aria-label={badge.aria}
+                title="Agent runs: active runs and the ones waiting for you" onClick={() => setRunsOpen(true)}>
+                <SquareTerminal size={18}/><span>Runs</span>{badge.count > 0 && <b>{badge.count}</b>}
+              </button>); })()}
             <button
               className={"icon-button " + (unread ? "has-notice" : "")}
               aria-label={
@@ -2467,7 +2480,7 @@ export default function App() {
           </div>
         )}
         <div className={"workspace " + (mobile && companion ? "chat-sheet-open" : "")}>
-          <main className={"content" + (view === "settings" ? " settings-page" : "")} inert={mobile && companion}>
+          <main className={"content" + (view === "settings" ? " settings-page" : "")} inert={(mobile && companion) || panelSheet}>
             {!dashboard && view !== "calendar" && <div className="page-heading">
               <h1>{titles[view]}</h1>
             </div>}
@@ -2719,7 +2732,7 @@ export default function App() {
                 }}
               />
             )}
-            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea key={remoteaOpened} run={remoteaRun}/></Suspense>
+            {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea/></Suspense>
               : <p>remotea is off. Turn it on in Settings → Connections.</p>)}
             {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
@@ -3086,6 +3099,7 @@ export default function App() {
             {voiceState?.error && (
               <p className="voice-error">{voiceState.error}</p>
             )}
+            <PendingControls compact onMore={() => { setView("remotea"); if (mobile) setCompanion(false); }}/>
             <form className="chat-compose" onSubmit={sendChat}>
               <textarea
                 ref={chatInput}
@@ -3157,9 +3171,12 @@ export default function App() {
               Cloud models process what you send.
             </p>
           </aside>
+          <RunPanel phone={phone}/>
         </div>
       </div>
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
+      {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
+        onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}/></Suspense>}
       <div className="tabbar" role="navigation" aria-label="Phone navigation">
         {nav.filter(item => item.tab).map(item => {
           const current = item.id === "today" ? dashboard : item.id === "all" ? isTaskTab(view) && !dashboard : view === item.id;
@@ -3191,7 +3208,7 @@ export default function App() {
       </button>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
-      {sessionsOpen && <SessionsPanel onClose={() => setSessionsOpen(false)}/>}
+      {runsOpen && <RunsPanel onClose={() => setRunsOpen(false)} onOpenPage={() => setView("remotea")}/>}
       <div className="voice-glow" ref={glowRef} aria-hidden="true">
         <i />
         <i />

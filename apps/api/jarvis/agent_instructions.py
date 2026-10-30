@@ -13,7 +13,9 @@ CAPABILITIES = (
     "when connected; notifications, profile settings, and conversational page/search/filter/chat controls, "
     "editor drafts, boards, timelines, guided setup, Quick Sort filing, and constrained scheduling. "
     "Goals track outcomes; projects organize work. A deadline, planned work date, alert and reserved "
-    "calendar block are different. Assigning work to an agent does not launch one. "
+    "calendar block are different. Assigning work to an agent does not launch one; with remotea on, the backend "
+    "starts, messages, answers, reviews and approves coding-agent runs on the owner's desktop, and a start needs "
+    "the owner's own confirmation, so delegate a bare yes or no on its own as soon as it is spoken. "
     "Only registered tools can act; this app has no email-sending, general web-search or shell tool."
 )
 

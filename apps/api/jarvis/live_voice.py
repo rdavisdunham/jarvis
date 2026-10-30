@@ -454,11 +454,16 @@ class LiveController(Controller):
                 for leaf, snapshot in zip(leaves, snapshots):
                     remote = [action for action in snapshot["actions"] if action.get("remote_status")]
                     if any(action["remote_status"] != "succeeded" for action in remote):
-                        texts.append("A connected-service change needs attention. Review Activity.")
+                        text = "A connected-service change needs attention. Review Activity."
                     elif remote:
-                        texts.append("Synchronization confirmed: " + ", ".join(action["title"] for action in remote))
+                        text = "Synchronization confirmed: " + ", ".join(action["title"] for action in remote)
                     else:
-                        texts.append(snapshot.get("message", ""))
+                        text = snapshot.get("message", "")
+                    if text and (leaf.result or {}).get("pending_confirmation"):
+                        # A proposed agent action (control_start / control_message): Live must ask for the owner's yes
+                        # and delegate it on its own as soon as it is spoken.
+                        text += " It is waiting for your yes."
+                    texts.append(text)
                 # One result per tick: never mark a question announced after truncating it out.
                 notices.extend(t for t in texts if t)
                 stamps.append(stamp)

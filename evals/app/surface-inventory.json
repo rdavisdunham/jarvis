@@ -50,11 +50,19 @@
       "feature": "agent_control"
     },
     {
+      "name": "control.approve",
+      "feature": "agent_control"
+    },
+    {
       "name": "control.confirm",
       "feature": "agent_control"
     },
     {
       "name": "control.message",
+      "feature": "agent_control"
+    },
+    {
+      "name": "control.plan_review",
       "feature": "agent_control"
     },
     {
@@ -1427,6 +1435,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs",
       "handler": "start",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/runs/preflight",
+      "handler": "preflight",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
