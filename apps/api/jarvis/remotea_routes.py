@@ -242,6 +242,15 @@ def start(body: control.StartInput, user: User):
         return control.start_run(db, user.owner_id, user.account_id, body, actor=actor_for(user))
 
 
+@router.get("/runs/preflight")
+def preflight(task_id: UUID, user: User, harness: str = Query("claude", max_length=20), execution_target_id: UUID | None = None):
+    """What Run would do on this task: where it runs (or the picker's choices), the run already on it, whether the
+    agent interviews first, and which harnesses the server can start. Read-only; the Run dialog shows it."""
+    with session_scope() as db:
+        gated(db, user)
+        return control.preflight(db, user.owner_id, str(task_id), harness, str(execution_target_id) if execution_target_id else None)
+
+
 @router.get("/runs/{identity}")
 def run_detail(identity: UUID, user: User, limit: int = Query(control.DETAIL_PAGE, ge=1, le=200),
                offset: int = Query(0, ge=0, le=100_000)):

@@ -1,35 +1,24 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, RefreshCw, Square, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
+import { useAgentRefresh } from "./remotea-refresh";
+import { useRemotea, useRemoteaActions } from "./remotea-context";
+import { PendingControls } from "./PendingControls";
+import { RunRow } from "./RunsPanel";
+import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, baseLine, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
+  ago, ATTENTION_STATES, baseLine, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
-  defaultScope, needsTargetData, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
+  defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import "./remotea.css";
+import "./runs.css";
 
 async function copyText(value: string) {
   await navigator.clipboard.writeText(value);
-}
-
-/** Refresh on agent/session change-feed signals (coalesced), with a slower poll as the fallback. */
-function useAgentRefresh(refresh: () => void) {
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const soon = () => { if (!timer) timer = setTimeout(() => { timer = null; refresh(); }, 300); };
-    const poll = window.setInterval(() => { if (document.visibilityState === "visible") refresh(); }, REMOTEA_POLL_MS);
-    window.addEventListener("eri-agents-changed", soon);
-    document.addEventListener("visibilitychange", soon);
-    return () => {
-      if (timer) clearTimeout(timer);
-      window.clearInterval(poll);
-      window.removeEventListener("eri-agents-changed", soon);
-      document.removeEventListener("visibilitychange", soon);
-    };
-  }, [refresh]);
 }
 
 function TurnText({ session, turn }: { session: string; turn: Turn }) {
@@ -70,9 +59,9 @@ function SessionRow({ item }: { item: RemoteaSession }) {
   </article>;
 }
 
-export function Remotea({ run }: { run?: string | null } = {}) {
-  const [open, setOpen] = useState<string | null>(() => run ?? linkedRun(location.search));
-  useEffect(() => { if (run) setOpen(run); }, [run]);
+export function Remotea() {
+  // The run detail lives in the app shell's side panel (RunPanel), so it stays open across pages.
+  const { openRun } = useRemoteaActions();
   const [status, setStatus] = useState<RemoteaStatus | null>(null);
   const [items, setItems] = useState<RemoteaSession[] | null>(null);
   const [parity, setParity] = useState<Parity | null>(null);
@@ -98,9 +87,8 @@ export function Remotea({ run }: { run?: string | null } = {}) {
     </section>
     {error && <p className="error-banner" role="alert">{error}</p>}
     <PendingControls/>
-    <RunList onOpen={setOpen}/>
+    <RunList onOpen={openRun}/>
     <UnmergedList/>
-    {open && <RunDrawer id={open} onClose={() => setOpen(null)}/>}
     <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
       {items && !items.length && <p className="activity-empty">No agent sessions are running in remotea right now.</p>}
       {items?.map(item => <SessionRow key={item.id} item={item}/>)}
@@ -113,6 +101,10 @@ export function Remotea({ run }: { run?: string | null } = {}) {
       {!!parity?.recent.length && <ul>{parity.recent.slice(0, 8).map(r =>
         <li key={r.tool + r.session_id}><code>{r.session_id.slice(0, 12)}</code> {r.missing ? "not reported by the current collector" : Object.keys(r.diff).join(", ")}</li>)}</ul>}
     </details>
+    <section className="remotea-ledger" aria-label="Session ledger">
+      <h2>Session ledger</h2>
+      <SessionsLedger/>
+    </section>
   </div>;
 }
 
@@ -240,66 +232,7 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
     <h2>Runs</h2>
     {error && <p role="alert" className="work-error">{error}</p>}
     {!active.length && <p className="footnote">No runs are active.</p>}
-    {[...active, ...recent].map(r => <button key={r.id} className={"remotea-run-row state-" + r.state} onClick={() => onOpen(r.id)}>
-      <span className={"remotea-state run-state-" + r.state}>{runLabel(r.state)}</span>
-      <span className="remotea-run-title">{r.task?.title ?? "Task"}</span>
-      <small>{r.reason_text || ago(r.state_since)}</small>
-    </button>)}
-  </section>;
-}
-
-/** A proposal; a start also carries what still stands in its way (no target chosen, server offline). */
-type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string;
-  task_id?: string | null; needs_target?: boolean; need?: NeedsTarget | null; problems?: { code: string; message: string }[] };
-
-function without<T>(map: Record<string, T>, id: string) {
-  const { [id]: _, ...rest } = map;
-  return rest;
-}
-
-/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before.
- * A start with no target shows the task's target picker on its card; picking one saves it and confirms. */
-export function PendingControls() {
-  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState("");
-  // Per card: the last refusal, and the picker's data (from the listing or a NEEDS_TARGET refusal; null: cancelled).
-  const [errors, setErrors] = useState<Record<string, string>>({}), [needs, setNeeds] = useState<Record<string, NeedsTarget | null>>({});
-  const refresh = useCallback(() => {
-    api<{ items: PendingControl[] }>("/remotea/pending").then(r => {
-      const open = new Set(r.items.map(p => p.id));
-      const keep = <T,>(map: Record<string, T>) => Object.fromEntries(Object.entries(map).filter(([id]) => open.has(id)));
-      setItems(r.items); setErrors(keep); setNeeds(keep);
-    }).catch(() => setItems([]));
-  }, []);
-  useEffect(() => { refresh(); }, [refresh]);
-  useAgentRefresh(refresh);
-  const decide = async (id: string, decision: "confirm" | "decline", target?: string) => {
-    setBusy(id); setErrors(current => without(current, id));
-    try {
-      await post(`/remotea/pending/${id}/${decision}`, target ? { execution_target_id: target } : {});
-      setNeeds(current => without(current, id));
-    } catch (e) {
-      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
-      if (need) setNeeds(current => ({ ...current, [id]: need }));
-      else setErrors(current => ({ ...current, [id]: message(e) }));
-    } finally { setBusy(""); refresh(); }
-  };
-  if (!items.length) return null;
-  return <section className="remotea-pending" aria-label="Waiting for your confirmation">
-    <h2>Eri is waiting for you</h2>
-    {items.map(p => {
-      const need = p.id in needs ? needs[p.id] : (p.needs_target ? p.need ?? null : null);
-      return <div key={p.id} className="remotea-pending-card">
-        <p>{p.summary}</p>
-        {(p.problems ?? []).map(problem => <p key={problem.code} className="footnote">{problem.message}</p>)}
-        {need ? <TargetPicker key={need.task_id} need={need} onSaved={target => void decide(p.id, "confirm", target)}
-          onCancel={() => setNeeds(current => ({ ...current, [p.id]: null }))}/> :
-          <div className="settings-form-actions">
-            <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
-            <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
-          </div>}
-        {errors[p.id] && <p role="alert" className="work-error">{errors[p.id]}</p>}
-      </div>;
-    })}
+    {[...active, ...recent].map(r => <RunRow key={r.id} run={r} onOpen={onOpen}/>)}
   </section>;
 }
 
@@ -470,9 +403,8 @@ export function Bubble({ entry }: { entry: TimelineEntry }) {
   </li>;
 }
 
-const ATTENTION: Run["state"][] = ["needs_you", "waiting_answer", "awaiting_approval", "awaiting_integration", "interviewing"];
-
-export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) {
+/** The run detail as a chat. Rendered inside the app shell's RunPanel (a layout column, or a sheet on phones). */
+export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: () => void; onCollapse?: () => void }) {
   const [run, setRun] = useState<RunDetail | null>(null), [error, setError] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
   const log = useRef<HTMLDivElement>(null), stuck = useRef(true);
@@ -481,17 +413,6 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
   }, [id]);
   useEffect(() => { setRun(null); stuck.current = true; refresh(); }, [refresh]);
   useAgentRefresh(refresh);
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", key);
-    return () => window.removeEventListener("keydown", key);
-  }, [onClose]);
-  // The floating Eri launcher sits bottom-right, over this drawer's composer and Approve button: while the
-  // drawer is open the shell moves it clear (remotea.css, body.run-drawer-open).
-  useEffect(() => {
-    document.body.classList.add("run-drawer-open");
-    return () => document.body.classList.remove("run-drawer-open");
-  }, []);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
   const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
@@ -501,13 +422,14 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
     catch (e) { setError(message(e)); } finally { setBusy(""); }
   };
   const controls = run ? runControls(run) : null;
-  const attention = run ? ATTENTION.includes(run.state) : false;
+  const attention = run ? ATTENTION_STATES.includes(run.state) : false;
   const entries = run ? timeline(run) : [];
-  return <aside className="remotea-drawer remotea-chat" role="dialog" aria-label="Agent run">
+  return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
         {run && <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>}
         <h2>{run?.task?.title ?? "Run"}</h2>
+        {onCollapse && <button className="btn-icon" aria-label="Collapse run panel" title="Collapse" onClick={onCollapse}><PanelRightClose size={18}/></button>}
         <button className="btn-icon" aria-label="Close run" onClick={onClose}><X size={18}/></button>
       </div>
       {run && <p className="remotea-place">
@@ -548,11 +470,18 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
     {run && controls && !isSettled(run) && <footer className="remotea-composer">
       <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
         disabled={!controls.message.enabled || !!busy} value={text} onChange={e => setText(e.target.value)}
-        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim() && controls.message.enabled) void act("message", "message", { text, mode: "queue" }); }}/>
+        onKeyDown={e => {
+          // Enter queues, Ctrl/Cmd+Enter steers, Shift+Enter is a new line.
+          const action = composerAction(e);
+          if (!action || !text.trim()) return;
+          if (action === "queue" ? !controls.message.enabled : !controls.steer.enabled) { if (action === "queue") e.preventDefault(); return; }
+          e.preventDefault();
+          void act(action === "queue" ? "message" : "steer", "message", { text, mode: action });
+        }}/>
       <div className="remotea-control-row">
-        <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || !!busy} title="Queued for after the current turn (Ctrl+Enter)"
+        <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || !!busy} title="Queued for after the current turn (Enter)"
           onClick={() => void act("message", "message", { text, mode: "queue" })}>Message</button>
-        <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || !!busy} title="Interrupts the current turn"
+        <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || !!busy} title="Interrupts the current turn (Ctrl+Enter)"
           onClick={() => void act("steer", "message", { text, mode: "steer" })}>Steer</button>
         <span className="remotea-control-gap"/>
         <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || !!busy} title={controls.replan.reason}
@@ -566,10 +495,10 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       </div>
       {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
     </footer>}
-  </aside>;
+  </section>;
 }
 
-function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
+export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
   const options = targetOptions(need);
   const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -606,38 +535,22 @@ function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved:
   </div>;
 }
 
-/** The task detail's Run control: starts a run, asks for a target when needed, and opens the active run. */
-export function RunTask({ taskId, canEdit, onOpenRun }: { taskId: string; canEdit: boolean; onOpenRun: (id: string) => void }) {
-  const [status, setStatus] = useState<RemoteaStatus | null>(null), [active, setActive] = useState<Run | null>(null);
-  const [need, setNeed] = useState<NeedsTarget | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const refresh = useCallback(() => {
-    Promise.all([api<RemoteaStatus>("/remotea/status"), api<{ items: Run[] }>(`/remotea/runs?task_id=${taskId}&active=true&limit=1`)])
-      .then(([s, r]) => { setStatus(s); setActive(r.items[0] ?? null); }).catch(() => {});
-  }, [taskId]);
-  useEffect(() => { refresh(); }, [refresh]);
-  useAgentRefresh(refresh);
-  if (!status) return null;
-  const button = runButton(status.enabled, status.hosts, active);
+/** The task detail's Run control: opens the Run dialog, or the task's active run in the side panel. Reads the
+ * app-wide remotea state (no fetch of its own); hidden while remotea is off. */
+export function RunTask({ taskId, canEdit, onOpenRun }: { taskId: string; canEdit: boolean; onOpenRun?: (id: string) => void }) {
+  const { enabled, status, runsByTask } = useRemotea();
+  const { openRun, openStart } = useRemoteaActions();
+  if (!enabled) return null;
+  const active = runsByTask.get(taskId) ?? null;
+  const button = runButton(enabled, status?.hosts ?? [], active);
   if (!button.visible) return null;
-  const start = async (target?: string) => {
-    setBusy(true); setError(""); setNeed(null);
-    try {
-      const run = await post<Run>("/remotea/runs", { task_id: taskId, ...(target ? { execution_target_id: target } : {}) });
-      setActive(run); onOpenRun(run.id);
-    } catch (e) {
-      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
-      if (need) setNeed(need);
-      else setError(message(e));
-    } finally { setBusy(false); }
-  };
+  const open = (id: string) => { onOpenRun?.(id); openRun(id); };
   return <section className="detail-section remotea-run-task" aria-label="Agent run">
     <div className="remotea-control-row">
-      <button className={"btn btn-sm" + (active ? "" : " btn-primary")} disabled={button.disabled || busy || (!active && !canEdit)}
-        title={button.reason || undefined} onClick={() => active ? onOpenRun(active.id) : void start()}>
-        <Play size={14}/>{busy ? "Starting…" : button.label}</button>
+      <button className={"btn btn-sm" + (active ? "" : " btn-primary")} disabled={button.disabled || (!active && !canEdit)}
+        title={button.reason || undefined} onClick={() => active ? open(active.id) : openStart(taskId)}>
+        <Play size={14}/>{button.label}</button>
       {button.reason && <small>{button.reason}</small>}
     </div>
-    {need && <TargetPicker need={need} onSaved={id => void start(id)} onCancel={() => setNeed(null)}/>}
-    {error && <p role="alert" className="work-error">{error}</p>}
   </section>;
 }

@@ -698,27 +698,43 @@ def proposed_target(db, owner, task):
         return None  # readiness() says why; confirm resolves again.
 
 
-def readiness(db, owner, row):
-    """What stands between a pending control.start and its run, checked without acting: no target chosen
-    (`needs_target`, with the picker's data in `need`), or the target's server offline or unable to start the
-    harness (`problems`). The proposal reports it to Eri, the remotea card shows it; confirm checks again."""
-    if row.tool != "control.start":
-        return {}
-    args = row.arguments or {}
+def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
+    """What stands between a task and a run on it, checked without acting: no target chosen (`needs_target`, with
+    the picker's data in `need`), or the target's server offline or unable to start the harness (`problems`)."""
     out = {"needs_target": False, "need": None, "target": None, "problems": []}
-    task = db.get(Task, args.get("task_id"))
     try:
         if task is None or task.owner_id != owner:
             raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
-        target = resolve_target(db, owner, task, args.get("execution_target_id"))
+        target = resolve_target(db, owner, task, execution_target_id)
         out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
-        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None,
-                   args.get("harness", "claude"))
+        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None, harness)
     except DomainError as error:
         if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
             return {**out, "needs_target": True, "need": error.data}
         out["problems"].append({"code": error.code, "message": error.message})
     return out
+
+
+def readiness(db, owner, row):
+    """readiness_for a pending control.start. The proposal reports it to Eri, the card shows it; confirm checks again."""
+    if row.tool != "control.start":
+        return {}
+    args = row.arguments or {}
+    return readiness_for(db, owner, db.get(Task, args.get("task_id")), args.get("harness", "claude"), args.get("execution_target_id"))
+
+
+def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
+    """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
+    the interview would run (start_run's rule), which harnesses a connected server can spawn, and the task's title."""
+    task = owned(db, Task, task_id, owner)
+    out = readiness_for(db, owner, task, harness, execution_target_id)
+    active = coordinator_active(db, task.id)
+    planned = bool(task.success_criteria) and bool(task.verify)
+    hosts = list(db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)))
+    return {**out, "task": {"id": task.id, "title": task.title},
+            "active_run": {"id": active.id, "state": active.state} if active is not None else None,
+            "interview": not task.prd_note_id and not planned,
+            "harnesses": {name: any(agent_link.connected(h) and host_harness(h, name) for h in hosts) for name in HARNESSES}}
 
 
 def proposal(db, owner, result):

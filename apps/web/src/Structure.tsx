@@ -14,6 +14,7 @@ import { OrganizationTree } from "./OrganizationTree";
 import { SourceBadge } from "./SourceDetails";
 import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
+import { RunButton } from "./RunButton";
 import { StructureEditor } from "./StructureEditor";
 import { StartFromTemplateDialog, useTemplates, useUndoToast } from "./Templates";
 import { templatesFor } from "./template-model";
@@ -184,7 +185,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(r.status_id&&r.status_meaning!=="open"){const name=rt?.statuses.find(s=>s.id===r.status_id)?.name;if(name)out.push(<span key="status" className={"chip"+(r.status_meaning==="completed"?" chip-done":"")}>{name}</span>);}
     return out;
   };
-  const rowActions=(r:CustomRecord)=>r.task_id&&onTask?<div className="row-actions"><button className="btn-icon" aria-label={"Schedule and linked notes for "+r.title} title="Schedule and linked notes" onClick={()=>onTask(r.task_id!)}><CalendarClock size={17}/></button></div>:null;
+  const rowActions=(r:CustomRecord)=>r.task_id?<div className="row-actions"><RunButton taskId={r.task_id} title={r.title}/>{onTask&&<button className="btn-icon" aria-label={"Schedule and linked notes for "+r.title} title="Schedule and linked notes" onClick={()=>onTask(r.task_id!)}><CalendarClock size={17}/></button>}</div>:null;
   const row=(r:CustomRecord)=>{const meta=chips(r);return <article key={r.id} className={"row work-row"+(r.status_meaning==="completed"?" done":"")+(selecting&&r.task_id&&selectedIds.includes(r.task_id)?" selected":"")} data-record-id={r.id}>
     {lead(r)}
     <div className="row-main">
@@ -199,7 +200,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       <button className="board-rec-title" onClick={()=>open(r)}>{r.title}</button>
       {canEdit&&<button aria-label={"Move "+r.title} className="btn-icon board-rec-grip" onPointerDown={e=>grip(e,r.id)}><GripVertical size={16}/></button>}
     </div>
-    {(!!meta.length||(r.task_id&&onTask))&&<div className="board-rec-foot">
+    {(!!meta.length||r.task_id)&&<div className="board-rec-foot">
       <div className="chip-row">{meta}</div>
       {rowActions(r)}
     </div>}
