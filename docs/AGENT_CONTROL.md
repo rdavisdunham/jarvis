@@ -371,12 +371,23 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /runs` | yes | start (above) |
 | `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `task` |
 | `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
-| `POST /runs/{id}/message {text, mode}` | yes | queue or steer |
-| `POST /runs/{id}/stop {mode}` | no (viewers refused) | stop stays available after remotea is turned off |
-| `POST /runs/{id}/approve` | yes | |
+| `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
+| `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off |
+| `POST /runs/{id}/approve {expected_revision?, action_id?}` | yes | |
 | `POST /questions/{id}/answer` | yes | |
 | `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses` and `verify` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
+
+**Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`
+and `verify-config` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
+(`agent_action_receipts`: owner, action id, run, route, a SHA-256 of the route, run and body without
+`action_id`, and the response) in the same transaction as the effect (`agent_receipts.once`). A repeat with the
+same `action_id` and body returns the stored response and acts no more: one `AgentCommand`, one steer
+generation, one stop. The same `action_id` with a different body, route or run is refused with 409
+`ACTION_MISMATCH`. A refused action (409 `NOT_STARTED`, `REVISION_CONFLICT`, …) rolls back and stores nothing,
+so the same id may act later. Without `action_id` every request acts. Receipts are kept 7 days. The web helper
+`postAction(path, body)` in `apps/web/src/api.ts` sets one `action_id` per call and resends the same body after
+a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
 The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
 questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve. Task details
@@ -568,10 +579,10 @@ completion.
 | Route | Gated | |
 |---|---|---|
 | `POST /interviews/{id}/answers` | yes | interview form |
-| `POST /runs/{id}/replan {reason?}` | yes | |
-| `POST /runs/{id}/verify` | yes | on-demand verification |
-| `POST /runs/{id}/verify-config {verify_id}` | yes | set the plan's verify command mid-run (new revision) |
-| `POST /runs/{id}/freestyle {enabled}` | yes | judge, verify, cap and gap prompts off while on |
+| `POST /runs/{id}/replan {reason?, action_id?}` | yes | |
+| `POST /runs/{id}/verify` | yes | on-demand verification (a second request while one runs is refused, `VERIFY_RUNNING`) |
+| `POST /runs/{id}/verify-config {verify_id, action_id?}` | yes | set the plan's verify command mid-run (new revision) |
+| `POST /runs/{id}/freestyle {enabled, action_id?}` | yes | judge, verify, cap and gap prompts off while on |
 | `POST /auto-complete {enabled}` | yes | rollout flag |
 
 The run drawer adds the interview form (one form for all questions), success criteria with the latest
@@ -845,6 +856,7 @@ The worker's housekeeping pass (every 12th supervisor cycle) deletes:
 | A settled run's turns, questions, attempts, interviews and commands (the run, plans and history stay) | 90 days after it finished |
 | The payload of a settled command | 7 days |
 | `agent_parity`, `agent_parity_days`, `agent_ingest_days`, expired pending controls | 30 days |
+| Run action receipts (`agent_action_receipts`) | 7 days |
 
 Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it the turn
 is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the next

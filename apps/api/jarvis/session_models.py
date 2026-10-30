@@ -410,6 +410,22 @@ class AgentIngestDay(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class AgentActionReceipt(Base):
+    """One browser run action (message, replan, stop, approve, freestyle, verify-config) by its client action_id.
+
+    A retry with the same action_id and body returns `result` instead of acting twice; the same id with another
+    body is refused (ACTION_MISMATCH). Written in the action's transaction; kept 7 days (agent_retention.py)."""
+    __tablename__ = "agent_action_receipts"
+    __table_args__ = (Index("ix_agent_action_receipts_created_at", "created_at"),)
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    action_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36))
+    kind: Mapped[str] = mapped_column(String(30))
+    digest: Mapped[str] = mapped_column(String(64))
+    result: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class MigrationCounter(Base):
     """Migration numbers for one repository: a host's execution target id (several ExecutionTarget rows may share it).
 

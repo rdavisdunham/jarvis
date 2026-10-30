@@ -611,6 +611,13 @@ A checked implementation task never replaces connected-provider or physical-devi
   no-progress or wall-clock limit, judge gap, replan), how the wording is chosen, and where it
   lives. Document the rules in `docs/AGENT_CONTROL.md` and name the trigger on the timeline bubble.
 
+- **Mission control reliability PRD** (2026-10-30, `docs/PRD_MISSION_CONTROL_RELIABILITY.md`). Forty
+  Eridani roadmap tasks (tag `astra-review`) from Astra's three-app integration review plus the open
+  remotea items: run-panel control correctness and revision-bound decisions, browser action idempotency,
+  per-target capabilities, timeline paging; host verification readiness; server stop-wins-over-steer,
+  journal containment, token revocation, Node alignment, build identity; desktop durable intents and
+  hide-vs-end; readiness and failure categories; feature expansion. Run batches and order are in the PRD.
+
 ## Maintenance
 
 The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
