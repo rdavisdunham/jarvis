@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type ReactNode, lazy, Suspense} from "react";
+import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
 import { HomePicker } from "./HomePicker";
@@ -10,11 +10,12 @@ import { Link2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog, priorityLabels } from "./ux";
 import { useStructureActions } from "./structure-actions";
-import { SaveAsTemplateDialog } from "./Templates";
+import { AddSubtask, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule, useTaskCardHost } from "./TaskCardSections";
+import { TASK_CARD_SECTIONS } from "./task-card-sections";
+import type { Task } from "./types";
 import { ReviewProps } from "./Reviews";
 import type { Schema, SchemaField, CustomRecord } from "./structure-types";
 import "./details.css";
-const RunTask=lazy(()=>import("./Remotea").then(m=>({default:m.RunTask})));
 
 /** One compact label / value row in a detail card's properties list. */
 export function Prop({label, hint, children}: {label: string; hint?: string; children: ReactNode}) {
@@ -51,13 +52,14 @@ const DUE = ["due_date","due_time","due_timezone"];
 
 export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClose,onChanged,onOpen}:{schema:Schema;initial:CustomRecord;choices:CustomRecord[];canEdit:boolean;onClose:()=>void;onChanged:()=>Promise<void>;onOpen?:(r:CustomRecord)=>void}){
   const [choices,setChoices]=useState(initialChoices),[relatedQuery,setRelatedQuery]=useState("");
-  const [childTitle,setChildTitle]=useState(""),[childRefresh,setChildRefresh]=useState(0);
+  const [childRefresh,setChildRefresh]=useState(0);
   const [contents,setContents]=useState<ContentsSummary|undefined>(initial.contents);
   const [children,setChildren]=useState<CustomRecord[]>([]),[childOffset,setChildOffset]=useState(0),[childNext,setChildNext]=useState<number|null>(null);
   const [contentsAction,setContentsAction]=useState<{operation:"move"|"archive";parentId?:string|null}|null>(null);
   const [row,setRow]=useState(initial);const [body,setBody]=useState(initial.body);const [title,setTitle]=useState(initial.title);const [relation,setRelation]=useState("");const [target,setTarget]=useState("");const {run,busy,error,setError}=useStructureActions();
   const [localNotes,setLocalNotes]=useState(initial.local_notes??"");
-  const [templating,setTemplating]=useState(false),[notice,setNotice]=useState("");
+  const [notice,setNotice]=useState("");
+  const host=useTaskCardHost();
   const [failed,setFailed]=useState<Record<string,unknown>|null>(null);
   const [comparison,setComparison]=useState<CustomRecord|null>(null);
   const current=useRef(row);current.current=row;const flight=useRef<Promise<unknown>|null>(null);
@@ -103,6 +105,9 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   const rest=fields.filter(f=>!DUE.includes(f.binding??"")&&f!==priority);
   const home=row.home.map(h=>h.title).join(" / ");
   const links=row.links.map(l=>({l,other:l.source_id===row.id?l.target_id:l.source_id}));
+  const hostTask=row.task_id?host?.tasks.find(x=>x.id===row.task_id):undefined;
+  /** Close this card, then open a shell editor (note, reminder, time block) for this task. */
+  const handOff=(open:(task:Task)=>void)=>finish().then(()=>hostTask??api<Task>("/tasks/"+row.task_id)).then(task=>{onClose();open(task);}).catch(e=>{if(e instanceof Error&&e.message)setError(e.message);});
   return <Dialog className="detail-card" aria-label={t.name+" details"} onBackdrop={()=>{if(!busy)close();}}>
     <header className="detail-head">
       <span className="detail-kind">{t.name}</span>
@@ -120,18 +125,22 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
       <div className="detail-main">
         <textarea rows={1} className="detail-title" aria-label="Record title" value={title} disabled={locked} onChange={e=>setTitle(e.target.value)} onBlur={()=>{if(title.trim()&&title!==row.title)void save({title}).catch(()=>{});}}/>
         <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={4} placeholder="Add details" onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
-        <details className="detail-section"><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
+        <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
         <RecordTools kind="record" id={row.id}/>
-        {row.task_id&&<Suspense fallback={null}><RunTask taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={()=>{if(!busy)close();}}/></Suspense>}
+        {row.task_id&&<TaskRun taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={()=>{if(!busy)close();}}/>}
         {contents&&contents.work_total>0&&<p className="detail-progress">{contents.work_done}/{contents.work_total} descendants completed{contents.ready_to_complete?" · Ready for your final check":""}. Completing this record leaves child statuses unchanged.</p>}
         {!!row.blockers?.length&&<p className="detail-alert">Unfinished prerequisites: {row.blockers.map(b=>b.title).join(", ")}. You can still record progress.</p>}
-        {childType&&canEdit&&!row.archived&&<form className="org-add detail-subtask" onSubmit={e=>{e.preventDefault();void finish().then(()=>run("record.create",{type_id:childType.id,title:childTitle,parent_id:row.id,schema_revision:schema.revision})).then(async()=>{setChildTitle("");setChildOffset(0);setChildRefresh(v=>v+1);await onChanged();}).catch(()=>{});}}>
-          <input aria-label="New subtask" placeholder={"Add "+childType.name.toLowerCase()+" inside…"} value={childTitle} maxLength={500} disabled={locked} onChange={e=>setChildTitle(e.target.value)}/>
-          <button className="btn btn-soft btn-sm" disabled={locked||!childTitle.trim()}>Add subtask</button>
-        </form>}
+        {childType&&canEdit&&!row.archived&&<AddSubtask noun={childType.name} disabled={locked} onAdd={title=>finish().then(()=>run("record.create",{type_id:childType.id,title,parent_id:row.id,schema_revision:schema.revision})).then(async()=>{setChildOffset(0);setChildRefresh(v=>v+1);await onChanged();})}/>}
         {(children.length>0||childOffset>0)&&<section className="detail-section" aria-label="Work in this home"><div className="detail-section-head"><h3>Contents</h3><span className="detail-count">{contents?.direct??children.length}</span></div>{children.map(r=><div className="detail-link-row" key={r.id}><button className="text-button" onClick={()=>void finish().then(()=>onOpen?.(r)).catch(()=>{})}>{r.title}</button><span className="chip">{r.type_name}</span><span>{r.status_meaning?.replaceAll("_"," ")}</span></div>)}
           <div className="org-pagination">{childOffset>0&&<button className="btn btn-sm" onClick={()=>setChildOffset(Math.max(0,childOffset-30))}>Previous</button>}{childNext!==null&&<button className="btn btn-sm" onClick={()=>setChildOffset(childNext)}>More contents</button>}</div></section>}
+        {row.task_id&&host&&<>
+          {/* Contents above lists the subtasks; this adds the parent task as a link. */}
+          <RelatedTasks parent={host.tasks.find(x=>x.id===hostTask?.parent_task_id)} subtasks={[]} onOpen={parent=>void finish().then(()=>api<CustomRecord>("/structure/by-core/task/"+parent.id)).then(r=>onOpen?.(r)).catch(e=>setError(e.message))}/>
+          <LinkedNotes taskId={row.task_id} disabled={locked} onOpen={id=>void finish().then(()=>{onClose();host.openNote(id);}).catch(()=>{})} onNew={()=>void handOff(task=>host.newNote(task))}/>
+          <TaskSchedule reminders={host.schedules.filter(x=>x.task_id===row.task_id)} isTemplate={!!hostTask?.is_template} disabled={locked}
+            onReminder={schedule=>void handOff(task=>host.reminder(schedule,task))} onReserve={()=>void handOff(task=>host.reserveTime(task))}/>
+        </>}
         <details className="detail-section" aria-label="Related records"><summary>Extra relationships{links.length?" · "+links.length:""}</summary>
 
           <label className="field">Find related records<input aria-label="Find related records" value={relatedQuery} onChange={e=>setRelatedQuery(e.target.value)} placeholder="Search names (first 50 matches)"/></label>
@@ -159,11 +168,10 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
             <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={alert.alert_urgent} disabled={locked} onChange={e=>void alertSave({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop></>}
           <ReviewProps row={row} canEdit={canEdit&&!locked&&!row.archived} onRecord={r=>{current.current=r;setRow(r);void onChanged();}}/>
         </div>
-        {canEdit&&<div className="detail-props-foot">{!row.archived&&!t.archived&&<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>void finish().then(()=>setTemplating(true)).catch(()=>{})}>Save as template</button>}<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
+        {canEdit&&<div className="detail-props-foot">{!row.archived&&!t.archived&&<SaveTemplate row={row} type={t} hasContents={!!(contents?.direct??children.length)} disabled={busy} beforeOpen={finish} onNotice={setNotice}/>}<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
         {notice&&<p className="detail-notice" role="status">{notice}</p>}
       </aside>
     </div>
-    {templating&&<SaveAsTemplateDialog row={row} type={t} hasContents={!!(contents?.direct??children.length)} onClose={()=>setTemplating(false)} onSaved={tpl=>{setTemplating(false);setNotice("Saved template "+tpl.name+". Find it under Start from template.");}}/>}
     {contentsAction&&<ContentsDialog row={row} schema={schema} {...contentsAction} onClose={()=>setContentsAction(null)} onDone={async()=>{await onChanged();if(contentsAction.operation==="archive")onClose();else{const next=await api<CustomRecord>("/structure/records/"+row.id);setRow(next);current.current=next;}}}/>}
   </Dialog>;
 }
