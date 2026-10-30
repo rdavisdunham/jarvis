@@ -565,22 +565,60 @@ A checked implementation task never replaces connected-provider or physical-devi
   Stage F (2026-10-28 audit) made remotea personal-workspace only; see
   [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
 - verify sandboxing on the host (bubblewrap / codex sandbox, no network).
-- **Project play button (advanced, later).** A Play action on a project queues every
-  currently actionable task as remotea runs: in series when they touch the same
-  repo/target or declare dependencies, in parallel when they do not overlap. Needs
-  overlap detection, a per-host concurrency limit, an ordering view on the remotea
-  page and the same confirmation/approval gates as single runs. Requested 2026-10-28,
-  after the first single-task runs are proven.
+- Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
+  `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
+  `claude mcp add` on 2026-10-29. (In progress: jarvis PR #81, written by the first agent run from a task.)
+- **Run freshness and versioning** (Eridani task, 2026-10-29). A run's worktree is based on the target
+  repo's *local* main and nothing fetches, so freshness is whoever last pulled; a reused worktree is never
+  rebased. Planned: fetch before basing (`origin/<base>`); a behind-count in the spawn prompt with "merge
+  the base first" (and re-point `down_revision` when the plan has a migration); "based on main @ sha ·
+  N behind" on the run header; Eridani-reserved migration numbers per repo for concurrent runs (a
+  reservation cannot see later merges; the release-migrations test covers that); host/server version
+  pairing in Settings. Also: the worktrees report's `merged` flag is trivially true for a fresh branch
+  with no commits of its own.
+- **Swarm mode (project play button, advanced, later).** Play on a project opens an
+  editable swarm plan: a planning model (Fable) groups the project's open tasks into
+  batches so code will not overlap (series when they touch the same files, parallel
+  when independent, one-line reason per grouping). Select/deselect tasks, move them
+  between batches, split or merge batches, set a per-host concurrency cap; nothing
+  spawns until Start. Start spawns one terminal per task in the batch (one worktree
+  each), each a normal run with its own gates; batches run in sequence; an integrate
+  step surfaces merge order and conflicts before the next batch. Needs fetch-before-
+  basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
+  expanded 2026-10-29.
 - Wholesale legacy-table/directory removal or whole-App refactors.
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.
+
+- **Run from anywhere** (four Eridani tasks, 2026-10-29; decisions in the plan of that day).
+  (1) jarvis PR #84: a persistent, collapsible right-side run panel in the app shell (column
+  on wide screens, sheet with an edge pill on phones), a Run button on every task row (Today,
+  Tasks/Organize lists and boards, Calendar/Reminders) with Running / Needs you / Approve
+  chips, a compact Run dialog (repo, Claude Code/Codex + model, interview Auto/Skip) backed
+  by `GET /remotea/runs/preflight`, Eri's confirm cards in the chat drawer, the topbar
+  Sessions button becomes Runs (ledger moves onto the remotea page), composer keys Enter =
+  queue, Ctrl/Cmd+Enter = steer, Shift+Enter = newline. (2) Eri runs the whole thing from
+  chat and voice: looser yes, control tools preloaded while a proposal is open, repo choice
+  from chat, `control_approve` and `control_plan_review`, Live instructions, open-run device
+  context. (3) remotea PR #11 + (4) jarvis PR #85: the host sends a `prompt` frame on
+  UserPromptSubmit and Eridani stores it as a user turn, so messages typed in the terminal
+  show live as "You, in the terminal". Later discussion: which tasks get a Run button at
+  all ("feed Hayes" should not).
+
+- **Explore: Eridani's own messages to a running agent** (Eridani task, 2026-10-29). While Davin
+  was messaging an agent, Eridani sent it two messages telling it to finish up and note any
+  blockers. They read well; the open question is what triggers them (turn cap approaching,
+  no-progress or wall-clock limit, judge gap, replan), how the wording is chosen, and where it
+  lives. Document the rules in `docs/AGENT_CONTROL.md` and name the trigger on the timeline bubble.
 
 ## Maintenance
 
 The unchecked items above were synced to the Eridani app on 2026-10-28 (project "Eridani
 roadmap", tag `todo-sync`) so runs can be started from them; keep both in step when closing items.
 
-Add new requests to the matching active batch or deferred list. Keep one delivery
+From 2026-10-29 the Eridani task list (project "Eridani roadmap") is the source of truth for
+open work; this file mirrors it for readers of the repo. Add new requests there first, then to the
+matching active batch or deferred list here. Keep one delivery
 order. Record dates/commit/evidence when closing items; archive finished release
 narratives instead of appending another competing roadmap. The
 [full historical ledger](archive/2026-10-02/TODO_HISTORY.md) preserves detailed user
