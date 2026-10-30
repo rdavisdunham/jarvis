@@ -247,6 +247,7 @@ class SettingsUpdate(Args):
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
     memory_learning: bool | None = None
+    live_memory_updates: bool | None = None
     deep_sleep_enabled: bool | None = None
     history_days: int | None = Field(default=None, ge=0, le=36500)
     timezone: str | None = None
@@ -379,6 +380,8 @@ def preferences(db, owner):
         "preferred_name": settings.owner_name,
         "history_enabled": True,
         "memory_learning": True,
+        # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
+        "live_memory_updates": True,
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
         "routing_review_day": 0, "routing_review_hour": 3,
@@ -947,10 +950,13 @@ def mutate(db, owner, tool, args, command_id):
         return resolve(db, owner, args, command_id)
     if tool == "memory.capture":
         source = capture_source(db, owner, args.content, f"capture:{command_id}", explicit=True)
+        from .memory_review import attribution
+
         memory = Memory(
             owner_id=owner,
             source_id=source.id,
             content=args.content,
+            attribution=attribution(command_id),
             fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
         )
         db.add(memory)
@@ -963,10 +969,13 @@ def mutate(db, owner, tool, args, command_id):
         old.suppressed, old.embedding = True, None
         if tool == "memory.correct":
             source = capture_source(db, owner, args.content, f"correction:{command_id}", explicit=True)
+            from .memory_review import attribution
+
             row = Memory(
                 owner_id=owner,
                 source_id=source.id,
                 content=args.content,
+                attribution=attribution(command_id),
                 fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
                 supersedes_id=old.id,
                 fact_key=old.fact_key,

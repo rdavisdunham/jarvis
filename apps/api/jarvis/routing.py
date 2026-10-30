@@ -448,6 +448,30 @@ def latest_evidence(db, owner):
     return list(latest.values())
 
 
+def split(evidence):
+    """Stable per-record split (one in five held out) so revisions of a training record never leak into
+    held-out evaluation. Returns (training, held_out)."""
+    training, held = [], []
+    for e in evidence:
+        (training if int(fingerprint(e.record_id)[:8], 16) % 5 else held).append(e)
+    return training, held
+
+
+def split_counts(evidence):
+    training, held = split(evidence)
+    return {"eligible": len(evidence), "training": len(training), "held_out": len(held)}
+
+
+def no_training_message(counts):
+    """An empty training set has two causes; say which, with counts, before anyone diagnoses missing capture."""
+    if not counts["eligible"]:
+        return "No independent human organization examples yet."
+    return (
+        f"All {counts['eligible']} human organization example(s) landed in the held-out evaluation split "
+        "(about one in five records is held out), so none are available for training yet. Capture is working."
+    )
+
+
 @feature("organization_learning")
 def process(job_id):
     with session_scope() as db:
@@ -463,8 +487,8 @@ def process(job_id):
         alias_questions = list({q["id"]:q for q in [*alias_questions,*routing_candidates(db,owner)]}.values())
         review.questions = alias_questions
         evidence = latest_evidence(db, owner)
-        # Stable per-record split prevents revisions of a training record leaking into held-out evaluation.
-        training = [e for e in evidence if int(fingerprint(e.record_id)[:8], 16) % 5]
+        training, _ = split(evidence)
+        counts = split_counts(evidence)
         evidence_fingerprint = fingerprint(
             [(e.id, e.record_revision) for e in evidence] + [("schema", revision)]
         )
@@ -483,6 +507,7 @@ def process(job_id):
             review.summary = {
                 "message": "No new organization evidence since the last review.",
                 "evidence_fingerprint": evidence_fingerprint,
+                "split": counts,
             }
             review.finished_at = now()
             job.status = "succeeded"
@@ -491,13 +516,15 @@ def process(job_id):
         if not training:
             review.status = "pending" if alias_questions else "completed"
             review.summary = {
-                "message": "Review search vocabulary before using it to organize work." if alias_questions else "No independent human organization examples yet.",
+                "message": "Review search vocabulary before using it to organize work." if alias_questions else no_training_message(counts),
                 "activated": [],
                 "questions": len(alias_questions),
+                "split": counts,
             }
             review.finished_at = now()
             job.status = "succeeded"
             job.finished_at = now()
+            job.result = {"split": counts}
             return
         from .note_lists import all_lists
         payload = {
@@ -529,8 +556,7 @@ def process(job_id):
             review.status = "stale"
             return
         evidence = latest_evidence(db, owner)
-        training = [e for e in evidence if int(fingerprint(e.record_id)[:8], 16) % 5]
-        held = [e for e in evidence if not int(fingerprint(e.record_id)[:8], 16) % 5]
+        training, held = split(evidence)
         questions = alias_questions
         activated = []
         paused = []
@@ -623,6 +649,7 @@ def process(job_id):
             "paused": paused,
             "questions": len(questions),
             "checkpoint": len(evidence),
+            "split": split_counts(evidence),
             "evidence_fingerprint": fingerprint(
                 [(e.id, e.record_revision) for e in evidence] + [("schema", revision)]
             ),
@@ -632,6 +659,7 @@ def process(job_id):
         review.revision += 1
         job.status = "succeeded"
         job.finished_at = now()
+        job.result = {"split": review.summary["split"]}
         emit(db, owner, "routing.changed", review.id)
 
 
@@ -674,6 +702,8 @@ def state(db, owner):
             for k, v in preferences(db, owner).items()
             if k.startswith("routing_") or k in {"work_windows", "timezone"}
         },
+        # Current human evidence by split, so an empty training set is never mistaken for missing capture.
+        "split": split_counts(latest_evidence(db, owner)),
         "quality_gate": "Learned automatic rules require 3 independent examples, 100 held-out human-reviewed matches and at least 95% precision. Explicitly confirmed rules can start immediately.",
     }
 

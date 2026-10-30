@@ -229,7 +229,11 @@ GPT-Live (`live_voice.py`) delegates to queued work.
       added by prefix: `planning.`, `linear.`, `space.`, …, `control.`). Per-field null rules go in
       `domain.NOT_NULL`.
 - [ ] Tool group and discovery (`tool_catalog.py`): put the tool name in a `GROUPS` entry (or `CORE`
-      if always loaded); a richer description goes in `DESCRIPTIONS`. Guard:
+      if always loaded; `CORE` stays under 20 tools, guarded by `tests/test_tool_refinement.py` and
+      `tests/test_agent_models.py`); a richer description goes in `DESCRIPTIONS`. `ToolSession.follow`
+      makes the open tool of a single selected navigation match (`navigation.opener`: `navigation_find`'s
+      `selected` or `task_resolve`'s `other_kinds.selected`) callable next round without a `tools_load`;
+      both chat runners call it. Guard:
       `tests/test_tool_refinement.py` asserts every registry tool is in a group or `CORE`, and each group
       has fewer than 10 tools.
 - [ ] Policy (`tool_policy.py`): `lean-v1` moves tools via `LEAN_DEFERRED` / `LEAN_EXTRA`. Anything
@@ -292,7 +296,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0038_linear_structure`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0039_linear_structure`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a

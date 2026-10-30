@@ -1,4 +1,10 @@
 import type { SourceInfo } from "./SourceDetails";
+/** Usage buckets from budget.summary: recorded charges, active reservations, unconfirmed holds. */
+export interface UsageBuckets {
+  recorded: { usd: number; records: number };
+  reserved: { usd: number; sessions: number };
+  unconfirmed: { usd: number; sessions: number; historic_usd: number; historic_sessions: number; oldest_at: string | null };
+}
 export interface Task {
   is_quick_list?: boolean; quick_list_parent_id?: string|null; quick_section?: string; quick_order?: number;
   source?: SourceInfo;
@@ -79,6 +85,9 @@ export interface CalendarEntry {
   url?: string | null;
   location?: string;
   busy?: boolean;
+  /** Google invitations only: the connected account's answer, and whether it is "declined" (shown dimmed). */
+  my_response?: string | null;
+  declined?: boolean;
   conflicts?: string[];
   title: string;
   date: string;
@@ -164,6 +173,7 @@ export interface Preferences {
   preferred_name: string;
   history_enabled: boolean;
   memory_learning: boolean;
+  live_memory_updates?: boolean;
   deep_sleep_enabled: boolean;
   history_days: number;
   timezone: string;
@@ -209,6 +219,8 @@ export interface Bootstrap {
         usage_by_model: Record<string, number>;
         budget_mode: string;
         reserved_usd: number;
+        unconfirmed_sessions?: number;
+        buckets?: UsageBuckets;
         limit_usd: number;
         remaining_usd: number;
       };

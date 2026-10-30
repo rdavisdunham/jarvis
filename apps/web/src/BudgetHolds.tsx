@@ -4,6 +4,8 @@ type Hold = {
   id: string;
   model: string;
   state: string;
+  bucket?: "reserved" | "unconfirmed";
+  historic?: boolean;
   created_at: string;
   recorded_usd: number;
   held_usd: number;
@@ -25,7 +27,7 @@ export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
       active = false;
     };
   }, []);
-  const uncertain = holds.filter((h) => h.state === "uncertain");
+  const uncertain = holds.filter((h) => (h.bucket ?? (h.state === "uncertain" ? "unconfirmed" : "reserved")) === "unconfirmed");
   if (error) return <p className="footnote">{error}</p>;
   if (!uncertain.length) return null;
   return (
@@ -41,6 +43,7 @@ export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
             <strong>{h.model}</strong>
             <span className="budget-hold-meta">
               <span className="chip">{new Date(h.created_at).toLocaleString()}</span>
+              {h.historic && <span className="chip">Earlier month</span>}
               <span className="chip">
                 {h.reason === "activity_lease_expired"
                   ? "Connection ended without a final report"

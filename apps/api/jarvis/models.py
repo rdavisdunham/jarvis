@@ -345,6 +345,8 @@ class MemoryReview(Base):
     memory_ids: Mapped[list] = mapped_column(JSONB)
     memory_revisions: Mapped[list] = mapped_column(JSONB)
     kind: Mapped[str] = mapped_column(String(30), default="spelling")
+    # How the pair was found (method, similarity, the profile value it disagrees with); shown as provenance.
+    details: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     status: Mapped[str] = mapped_column(String(30), default="pending")
     revision: Mapped[int] = mapped_column(Integer, default=1)
     result_memory_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))

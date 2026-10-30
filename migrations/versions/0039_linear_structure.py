@@ -3,8 +3,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "0038_linear_structure"
-down_revision = "0037_notification_bundles"
+revision = "0039_linear_structure"
+down_revision = "0038_memory_review_details"
 branch_labels = depends_on = None
 
 

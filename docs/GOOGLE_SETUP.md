@@ -81,8 +81,34 @@ The chosen view is remembered on the current browser.
 
 Recurring-event changes offer **This occurrence** or **Entire series**. All-day
 forms use inclusive first/last dates. Google stores the end date exclusively.
-Guest invitations and special Google events stay in Google's own editor in this
-release; the event dialog provides a Google link.
+Events with guests and special Google events keep their title, time and description
+in Google's own editor (`blocked_event` in `google_writes.py`); the event dialog
+provides a Google link.
+
+### Answering invitations (RSVP)
+
+When the connected account is a guest, Eridani offers **Yes / Maybe / No** in the
+event dialog, on the event's row in the Calendar agenda, and through Eri ("I'm not
+going to the 3pm": `calendar_list` → `calendar_event_read` → `calendar_respond`).
+It needs Calendar editing (`calendar.events`) and a calendar marked **Can edit**.
+
+- Only the account's own `attendees[self].responseStatus` is written, with a PATCH
+  that sets `attendeesOmitted` and an `If-Match` ETag. Title, time, description and
+  other guests are untouched; a Google edit in between fails as a conflict.
+- A response shows **Sending to Google…**, then **Saved** or the conflict/failure
+  message, like other source edits. **Revert** restores the previous answer, from
+  the row, the dialog or the agent Activity receipt, and refuses if Google changed
+  the event since.
+- **Organizer notification:** responses use `sendUpdates=all`, so the organizer is
+  told, as when answering in Google Calendar. The dialog has a checkbox to answer
+  quietly (`sendUpdates=none`); Eri's `calendar_respond` takes `notify=false`.
+  The agenda row always notifies.
+- **Declined events are dimmed, not hidden.** They stay on the calendar struck
+  through so the answer can be changed or reverted, but they are not busy time:
+  they never show as deadline conflicts. Google's free/busy (availability) already
+  ignores them. `calendar_list` reports `my_response` and `declined` for Eri.
+- Cached events gain the `my_response` field on the first sync after this change:
+  each calendar resyncs fully once (`DETAILS_VERSION` in `google_calendar.py`).
 
 **Recent calendar changes** tracks write results. A queued change is not yet saved.
 If an outcome is unconfirmed, check Google before creating a replacement; repeat
@@ -138,6 +164,55 @@ Google refresh tokens for external apps in Testing generally expire after seven
 days when Calendar scopes are included. Reconnect Calendar when requested, or use
 the appropriate publishing configuration for your personal app once ready.
 [Google token expiration guidance](https://developers.google.com/identity/protocols/oauth2#expiration)
+
+### How Eridani keeps the grant
+
+- The refresh token, and the short-lived access token cached beside it, are stored
+  only in `google_identities.credentials`, Fernet-encrypted with
+  `JARVIS_INTEGRATION_ENCRYPTION_KEY`. Neither reaches the browser, the API or logs.
+- **Reconnect keeps the grant.** Google often omits a new refresh token when you
+  consent again; Eridani then keeps the stored one and its age. A grant Google
+  already rejected is not reused: that reconnect must return a new token.
+- **One refresh at a time.** Every Google call takes the account's
+  `google-token:<owner>` lock, reuses the cached access token until five minutes
+  before it expires, and otherwise refreshes once and saves the result (including a
+  rotated refresh token) before anyone else reads it. Sync, writes, event reads and
+  availability share it, so concurrent work cannot lose a token.
+- **Revocation.** When Google answers `invalid_grant` (expired or revoked), the
+  connection is marked **needs reconnect** once. Later sync, writes and reads fail
+  locally instead of retrying Google, and Settings → Google shows what happened
+  with a **Reconnect Google Calendar** button that asks for the same permissions
+  (editing included). Transient token-endpoint errors stay temporary and retry.
+- **Connection health** in Settings → Google (and `grant` in
+  `GET /api/v1/integrations/google`) shows how long ago access was granted, when it
+  was last refreshed, and whether the app looks like it is in Testing. Google does
+  not report publishing status, so this is inferred: "likely" when the previous
+  grant died after about seven days, "not limited" once the current grant has
+  refreshed for more than seven days, otherwise "unknown". Grants stored before
+  this change show no age until the next reconnect.
+
+### Stopping the weekly reconnect: steps only the owner can do
+
+Nothing in code can extend a Testing grant past seven days. In Google Cloud Console,
+for the existing Eridani project and OAuth client:
+
+1. **Google Auth Platform → Audience:** confirm the user type is External and the
+   status is Testing. Select **Publish app** to move it to **In production**. The
+   personal-use exception above applies while the app is unverified; Google may show
+   an unverified-app warning at consent.
+2. **Data Access:** check the declared scopes are exactly the four listed in step 4
+   of the publishing section. Do not add scopes.
+3. If Google requires it for production with Calendar scopes, complete branding and
+   the sensitive-scope verification in the publishing section above.
+4. In Eridani, **Settings → Google → Reconnect Calendar** (or **Reconnect editing**
+   if editing is on) once after publishing, so the grant is issued under the
+   production audience. Grants issued while in Testing keep their seven-day expiry.
+5. After eight days, check **Connection health** reads "Not limited to 7 days".
+
+Reauthorization can still be needed after this: revoking access in your Google
+account, six months without use, Google's limit
+on live refresh tokens per client, security reviews, or scope changes all end a
+grant. Eridani then asks to reconnect instead of failing silently.
 
 **Disconnect Calendar** removes cached Google events and attempts to revoke the
 grant; the linked sign-in identity stays. If Google's revocation service cannot be

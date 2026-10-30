@@ -101,7 +101,7 @@ def provider(monkeypatch):
     monkeypatch.setattr(settings, "google_client_secret", "fixture-secret")
     monkeypatch.setattr(settings, "integration_encryption_key", Fernet.generate_key().decode())
     fake = Provider()
-    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_: fake)
+    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_, **__: fake)
     with session_scope() as db:
         account = GoogleIdentity(
             owner_id="davin",
@@ -610,3 +610,39 @@ def test_rsvp_recurrence_changes_only_the_explicit_target(provider, scope):
     assert status(job)["status"]=="succeeded"
     assert provider.events[target]["attendees"][0]["responseStatus"]=="tentative"
     assert provider.events[untouched]["attendees"][0]["responseStatus"]=="needsAction"
+
+
+async def test_eri_declines_the_3pm_invitation_through_its_tools(provider, monkeypatch):
+    """ "I'm not going to the 3pm": calendar_list finds the invitation, then read, respond, verify, revert."""
+    import asyncio
+
+    from jarvis.tools import call_tool
+
+    existing(provider, summary="Design review", organizer={"self": False, "email": "host@example.test"},
+             start={"dateTime": "2026-09-18T15:00:00-05:00", "timeZone": "America/Chicago"},
+             end={"dateTime": "2026-09-18T16:00:00-05:00", "timeZone": "America/Chicago"},
+             attendees=[{"self": True, "email": "owner@example.test", "responseStatus": "needsAction"}])
+
+    async def worker(_seconds):  # Stands in for the job worker while call_tool polls the receipt.
+        with session_scope() as db:
+            queued = list(db.scalars(select(Job.id).where(Job.kind == "google_write", Job.status == "queued")))
+        for job_id in queued:
+            process_write(job_id)
+
+    monkeypatch.setattr(asyncio, "sleep", worker)
+    day = {"start": "2026-09-18", "end": "2026-09-19", "timezone": "America/Chicago"}
+    listed = await call_tool("davin", "rsvp", 0, "calendar_list", day)
+    entry = next(e for e in listed["items"] if e["kind"] == "google" and e["at"].startswith("2026-09-18T15:00"))
+    assert entry["my_response"] == "needsAction" and entry["busy"]
+    detail = await call_tool("davin", "rsvp", 1, "calendar_event_read", {"event_id": entry["entity_id"]})
+    assert detail["can_respond"] and not detail["editable"]
+    outcome = await call_tool("davin", "rsvp", 2, "calendar_respond",
+                              {"response_token": detail["response_token"], "response": "declined"})
+    assert outcome["status"] == "succeeded" and outcome["can_revert"]
+    assert provider.events["existing"]["attendees"][0]["responseStatus"] == "declined"
+    listed = await call_tool("davin", "rsvp", 3, "calendar_list", day)
+    entry = next(e for e in listed["items"] if e["entity_id"] == entry["entity_id"])
+    assert entry["declined"] and not entry["busy"] and entry["my_response"] == "declined"
+    undo = await call_tool("davin", "rsvp", 4, "calendar_response_revert", {"job_id": outcome["job_id"]})
+    assert undo["status"] == "succeeded"
+    assert provider.events["existing"]["attendees"][0]["responseStatus"] == "needsAction"
