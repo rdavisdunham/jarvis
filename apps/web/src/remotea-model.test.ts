@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ago, baseLine, cutoverSummary, hostSummary, isLive, linearOutcomes, liveChip, orderSessions, paritySummary, place, stateLabel, type Host, type RemoteaSession, versionLine } from "./remotea-model";
+import {
+  ago, baseLine, cutoverSummary, hostSummary, isLive, linearOutcomes, liveChip, orderSessions, paritySummary, place, stateLabel, timeline, TYPED_TITLE,
+  type Host, type RemoteaSession, type Run, type RunDetail, versionLine,
+} from "./remotea-model";
 
 const now = Date.parse("2026-10-28T12:00:00Z");
 const host = (values: Partial<Host>): Host => ({
@@ -93,5 +96,47 @@ describe("run freshness", () => {
     expect(versionLine(host({ version: "0.1.0", update: { latest: "0.3.0", url: "https://github.com/x/releases/tag/v0.3.0" } }))?.text)
       .toBe("remotea 0.1.0 · update available");
     expect(versionLine(host({}))).toBeNull();
+  });
+});
+
+describe("typed prompts in the timeline", () => {
+  const run: Run = {
+    id: "r1", task: { id: "t1", title: "Task", status: "in_progress" }, state: "executing", state_revision: 2, state_reason: "",
+    reason_text: "", state_since: "2026-10-28T10:00:00Z", generation: 1, plan_revision: 1, tool: "claude", model: "",
+    branch: "davin/eri-1-task", base_branch: "main", worktree: "", effective_permission_mode: "", turn_count: 1, turn_cap: 40,
+    started_at: null, finished_at: null, stop_requested_at: null, stop_mode: "", surf: "surf-1",
+    host: { id: "h", name: "desk", connected: true }, structured_answers: true, session: null, created_at: "2026-10-28T09:59:00Z",
+  };
+  const turn = (values: Partial<RunDetail["turns"][number]>): RunDetail["turns"][number] => ({
+    id: "t", seq: 1, text: "", clipped: false, truncated: false, generation: 1, at: "2026-10-28T10:02:00Z", prompt: "", ...values,
+  });
+  const detail = (turns: RunDetail["turns"], history: RunDetail["history"] = []): RunDetail =>
+    ({ ...run, plan: null, history, turns, commands: [], questions: [] });
+
+  it("shows a message typed in the terminal as yours, before the agent's answer", () => {
+    // A host that sends `prompt` frames: the typed message is its own row the moment it is typed.
+    const entries = timeline(detail([
+      turn({ id: "u1", role: "user", text: "Fix the flaky test", at: "2026-10-28T10:01:00Z" }),
+      turn({ id: "a1", role: "assistant", text: "Fixed it.", at: "2026-10-28T10:02:00Z" }),
+    ]));
+    expect(entries.map(e => [e.title, e.who, e.detail])).toEqual([
+      [TYPED_TITLE, "you", "Fix the flaky test"], ["Turn 1", "agent", "Fixed it."]]);
+    expect(entries[0]).toMatchObject({ kind: "command", tone: "plain" });
+  });
+
+  it("shows the typed message from an older host's finished turn, once", () => {
+    // Older hosts send the typed message only with the turn's Stop (`prompt`), so it appears at the turn's time.
+    const entries = timeline(detail([turn({ text: "Fixed it.", prompt: "Fix the flaky test" })]));
+    expect(entries.map(e => [e.title, e.who, e.at])).toEqual([
+      [TYPED_TITLE, "you", "2026-10-28T10:02:00Z"], ["Turn 1", "agent", "2026-10-28T10:02:00Z"]]);
+    expect(entries[0].detail).toBe("Fix the flaky test");
+    // Nothing typed: no entry.
+    expect(timeline(detail([turn({ text: "Fixed it." })])).map(e => e.title)).toEqual(["Turn 1"]);
+  });
+
+  it("does not repeat a text Eridani itself sent as something you typed", () => {
+    const history = [{ at: "2026-10-28T10:00:30Z", event: "sent", text: "Use pg", actor: { kind: "human" } }];
+    const entries = timeline(detail([turn({ text: "Switched to pg.", prompt: "Use pg" })], history));
+    expect(entries.map(e => e.title)).toEqual(["Sent by you", "Turn 1"]);
   });
 });

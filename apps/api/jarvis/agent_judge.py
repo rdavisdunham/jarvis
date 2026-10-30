@@ -219,7 +219,8 @@ def cost(data):
 def evidence_for(db, attempt):
     run = db.get(AgentRun, attempt.run_id)
     plan = coordinator.frozen(db, run)
-    turn = db.scalar(select(AgentTurn).where(AgentTurn.run_id == run.id, AgentTurn.generation == attempt.generation)
+    turn = db.scalar(select(AgentTurn).where(AgentTurn.run_id == run.id, AgentTurn.generation == attempt.generation,
+                                             AgentTurn.role == "assistant")  # Never the user's typed prompt.
                      .order_by(AgentTurn.created_at.desc()).limit(1))
     verify_id = (attempt.result or {}).get("verify_attempt_id")
     verify = db.get(AgentAttempt, verify_id) if verify_id else None
