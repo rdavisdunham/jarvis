@@ -362,9 +362,13 @@ DESCRIPTIONS = {
     "schedule_complete": "Complete a one-time reminder and its linked task. Complete a recurring occurrence with notification_complete.",
     "schedule_reschedule": "Move a reminder's next alert using its current revision. This does not move a task deadline.",
     "notification_complete": "Mark one delivered reminder occurrence/task done while keeping the recurring series running. "
-    "Complete the same underlying task, closing its other outstanding alerts.",
+    "A one-time alert or deadline completes its task, closing its other outstanding alerts; one occurrence of a "
+    "repeating alert on a task completes only that occurrence, and the task stays open.",
     "notification_read": "Mark the selected delivered notification read, without completing its task.",
-    "notification_snooze": "Snooze the same delivered notification for minutes or an explicit local until time. Do not create another task/schedule or change the deadline/recurrence.",
+    "notification_snooze": "Snooze the same delivered notification for minutes, or until a time in the owner's words "
+    "('in 2 hours', 'tomorrow morning', 'after lunch', 'friday 3pm') or a local ISO time; it resolves in the owner's "
+    "time zone and the result's snoozed_until says when. Do not create another task/schedule or change the "
+    "deadline/recurrence; the next occurrence of a series still arrives.",
     "notification_dismiss": "Dismiss a delivered notification; this is not task completion.",
     "memory_capture": "Save exactly the durable fact the owner explicitly asks to remember. "
     "Do not turn assistant suggestions or quoted statements into owner beliefs. Never store credentials.",
@@ -417,7 +421,9 @@ DESCRIPTIONS = {
     "linear_resolve": "Apply only the owner's explicit choice for a previously inspected Linear conflict.",
     "linear_select": "Select Linear teams using current connection IDs/revision. Uses the direct API, not Slack or the Linear Agent.",
     "settings_update": "Change only explicitly requested profile/settings fields. Profile selects luna (low reasoning), luna-none (no reasoning), or gemini; "
-    "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization.",
+    "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization. "
+    "Notification preferences: quiet hours, notify_min_priority (low/normal/high/urgent: lower ones wait for the "
+    "digest) and digest_cadence (off/hourly/every_3_hours/daily).",
     "ui_state": "Read the authenticated device's current screen, visible IDs, filters, layouts, active editor and allowed Live voices. This is bounded ephemeral data; no connected device means no verified screen. Read before preserving existing view settings.",
     "ui_workspace": "Change view options without editing records. Work (all/today/inbox/week) supports list, board and timeline, task sorting and board grouping. Projects timeline/board requires view=organize and organization_tab=project. timeline_date plus span 14/30/90 selects the range. Notes supports keyword/semantic mode and note_list_id from note_lists (empty clears, uncategorized shows unfiled notes); Notes/organize support show_archived. Settings sections: profile, organization (routing/reviews/work hours), notifications, voice, integrations, privacy, system, sharing. Omitted options/filters are preserved; invalid combinations are refused. Wait for displayed acknowledgement.",
     "ui_search": "Search the selected page (default all). This deliberately clears project, status, organization, assignee, work-type, tag and due filters; status becomes all. If the owner wants filters retained, read ui_state and reapply them with ui_filter AFTER searching. Empty query clears search. Settings search opens the relevant settings section. Reading a record is separate from displaying it.",

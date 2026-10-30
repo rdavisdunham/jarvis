@@ -185,6 +185,14 @@ def notification_url(notification):
     return "/?view=notifications"
 
 
+def accepts(subscription, notification):
+    """A new or revived device gets alerts from its registration on, not a backlog of older ones."""
+    registered = subscription.subscription.get("registered_at")
+    return not registered or (notification.eligible_at or notification.created_at) >= datetime.fromisoformat(
+        registered
+    ) - timedelta(minutes=5)
+
+
 def prepare_deliveries():
     with session_scope() as db:
         advisory(db, "push:prepare")
@@ -196,19 +204,18 @@ def prepare_deliveries():
                 Notification.read_at.is_(None),
             )
         ).all()
-        from .notices import eligible
-        for notification in notifications:
-            if not eligible(db,notification):continue
-            subscriptions = db.scalars(
-                select(PushSubscription).where(
-                    PushSubscription.owner_id == notification.owner_id, PushSubscription.active.is_(True)
-                )
+        from .notices import eligible, plan
+        due = [notification for notification in notifications if eligible(db, notification)]
+        devices = {}
+        for owner in {notification.owner_id for notification in due}:
+            devices[owner] = db.scalars(
+                select(PushSubscription).where(PushSubscription.owner_id == owner, PushSubscription.active.is_(True))
             ).all()
-            for subscription in subscriptions:
-                registered = subscription.subscription.get("registered_at")
-                if registered and (notification.eligible_at or notification.created_at) < datetime.fromisoformat(
-                    registered
-                ) - timedelta(minutes=5):
+        # Bundles, digests and priorities decide what goes out now; nothing is planned for an owner without devices.
+        due = [notification for notification in due if devices[notification.owner_id]]
+        for notification in plan(db, due, lambda n: all(accepts(s, n) for s in devices[n.owner_id])):
+            for subscription in devices[notification.owner_id]:
+                if not accepts(subscription, notification):
                     continue
                 if not db.scalar(
                     select(Delivery.id).where(
@@ -241,8 +248,8 @@ def send_deliveries():
                 return
             subscription = db.get(PushSubscription, row.subscription_id)
             notification = db.get(Notification, row.notification_id)
-            from .notices import eligible, quiet_until
-            if notification.category == "work_result" or not subscription.active or row.generation != notification.generation or notification.read_at or notification.dismissed_at or notification.completed_at:
+            from .notices import eligible, quiet_until, spent
+            if notification.category == "work_result" or not subscription.active or row.generation != notification.generation or notification.read_at or notification.dismissed_at or notification.completed_at or spent(db, notification):
                 row.status="expired"
                 continue
             if not eligible(db,notification):
@@ -281,6 +288,10 @@ def send_deliveries():
         with session_scope() as db:
             row = db.get(Delivery, delivery_id)
             row.status = "failed" if inactive or (status == "retry" and row.attempts >= 5) else status
+            if row.status == "submitted":
+                from .notices import delivered
+
+                delivered(db, db.get(Notification, row.notification_id), row.generation)
             row.error_code, row.lease_until = error, None
             row.next_attempt_at = now() + timedelta(seconds=min(3600, 30 * 2**row.attempts))
             if inactive:

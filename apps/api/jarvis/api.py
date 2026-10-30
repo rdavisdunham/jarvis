@@ -493,6 +493,8 @@ def schedule_record(schedule_id: str, user: User):
 
 @app.get("/api/v1/notifications")
 def notifications(user: User):
+    from .notices import VEHICLES
+
     with session_scope() as db:
         return {
             "items": [
@@ -504,7 +506,7 @@ def notifications(user: User):
                 }
                 for n in db.scalars(
                     select(Notification)
-                    .where(Notification.owner_id == user.owner_id, Notification.category != "work_result", Notification.dismissed_at.is_(None), (Notification.category != "deadline") | (Notification.scheduled_at <= now()))
+                    .where(Notification.owner_id == user.owner_id, Notification.category.not_in(["work_result", *sorted(VEHICLES)]), Notification.dismissed_at.is_(None), (Notification.category != "deadline") | (Notification.scheduled_at <= now()))
                     .order_by(Notification.created_at.desc())
                     .limit(100)
                 )

@@ -113,6 +113,22 @@ def test_push_and_in_app_notifications_open_the_same_place():
     assert "noticeDestination(n)" in button
 
 
+def test_notification_states_priorities_and_preferences_match_the_browser():
+    """notices.py STATES/LEVELS and the notification settings choices are mirrored in the web app."""
+    from jarvis import notices
+    from jarvis.domain import SettingsUpdate
+
+    assert ts_union("types.ts", "NoticeState") == set(notices.STATES), "types.ts NoticeState vs notices.STATES"
+    assert ts_union("types.ts", "NoticePriority") == set(notices.LEVELS), "types.ts NoticePriority vs notices.LEVELS"
+    prefs = web("PlannerPreferences.tsx")
+    for const, field in (("NOTIFY_PRIORITIES", "notify_min_priority"), ("DIGEST_CADENCES", "digest_cadence")):
+        rows = found(rf"const {const}\s*=\s*\[(.*?)\]\s*as const", prefs, f"{const} in PlannerPreferences.tsx")
+        values = set(re.findall(r'\["([^"]+)"', rows))
+        literal = next(a for a in get_args(SettingsUpdate.model_fields[field].annotation) if a is not type(None))
+        assert values == set(get_args(literal)), f"PlannerPreferences.tsx {const} vs SettingsUpdate.{field}"
+    assert set(notices.DIGEST_HOURS) | {"off", "daily"} == set(get_args(literal))
+
+
 def test_editor_kinds_match_the_browser():
     from jarvis.ui_contracts import EDITOR_KINDS
     from jarvis.ui_control import EditorContext
