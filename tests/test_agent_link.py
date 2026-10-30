@@ -1,14 +1,14 @@
 import json
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from jarvis import agent_link
+from jarvis import agent_link, remotea_routes
 from jarvis.api import app
 from jarvis.db import session_scope
 from jarvis.models import BotCredential, Event, now
-from jarvis.session_models import AgentHost, AgentParity, AgentSession, AgentTurn
+from jarvis.session_models import AgentHost, AgentParity, AgentRun, AgentSession, AgentTurn
 from sqlalchemy import func, select
 from starlette.testclient import WebSocketDenialResponse
 from starlette.websockets import WebSocketDisconnect
@@ -195,6 +195,56 @@ def test_duplicate_turn_with_a_new_transport_id_is_stored_once(client):
         assert db.scalar(select(AgentSession.last_turn_seq)) == 5
         kinds = [e.kind for e in db.scalars(select(Event).order_by(Event.id))]
     assert kinds.count("agent.changed") >= 3  # host connect, two stored turns, disconnect
+
+
+def test_prompt_frame_stores_a_user_turn_and_the_stop_prompt_is_not_kept_twice(client):
+    token = enable(client)["token"]
+    common = {"tool": "claude", "surf": "surf-1", "incarnation": 1, "generation": 0, "provider": "claude",
+              "provider_session_id": "s1"}
+    typed = int((now() - timedelta(seconds=20)).timestamp() * 1000)
+    with connect(bearer(token)) as ws:
+        welcome = hello(ws)
+        assert "prompt" in welcome["caps"]  # The host emits `prompt` frames only when Eridani advertises it.
+        first = send(ws, "prompt", **common, seq=3, text="Fix the flaky login test.", truncated=False, at=typed)
+        again = send(ws, "prompt", **common, seq=3, text="Fix the flaky login test.", truncated=False, at=typed)
+        over = send(ws, "prompt", **common, seq=5, text="x" * 5000, truncated=False)
+        # The Stop frame still carries the prompt (every host does): already stored as the user row, so blank it.
+        done = send(ws, "turn", **common, provider_turn_id="s1:3", root=True, seq=3, text="Done: fixed it.",
+                    prompt="Fix the flaky login test.", truncated=False)
+        # An older host, or a prompt that never arrived: the Stop frame's prompt is kept as before.
+        older = send(ws, "turn", **common, provider_turn_id="s1:4", root=True, seq=4, text="Also this.",
+                     prompt="And the other one?", truncated=False)
+    assert first["ok"] and "turn_id" in first["outcome"] and first["outcome"]["truncated"] is False
+    assert again["ok"] and again["outcome"] == {"duplicate": True}
+    assert over["ok"] and over["outcome"]["truncated"] is True
+    assert done["ok"] and older["ok"]
+    with session_scope() as db:
+        turns = list(db.scalars(select(AgentTurn).order_by(AgentTurn.seq, AgentTurn.created_at)))
+        assert [(t.seq, t.role, t.provider_turn_id, t.prompt) for t in turns] == [
+            (3, "user", "prompt:3", ""), (3, "assistant", "s1:3", ""), (4, "assistant", "s1:4", "And the other one?"),
+            (5, "user", "prompt:5", "")]
+        assert turns[0].text == "Fix the flaky login test." and turns[0].run_id is None
+        assert abs((turns[0].created_at - datetime.fromtimestamp(typed / 1000, UTC)).total_seconds()) < 1
+        assert len(turns[3].text.encode()) <= agent_link.PROMPT_TEXT_BYTES and turns[3].truncated
+        assert db.scalar(select(AgentSession.last_turn_seq)) == 4  # A prompt is not a turn of the agent.
+        session_id = db.scalar(select(AgentSession.id))
+        # The Sessions drawer's "last turn" is the agent's last response, never the typed prompt.
+        assert remotea_routes.last_turns(db, [session_id])[session_id].seq == 4
+        kinds = [e.kind for e in db.scalars(select(Event).order_by(Event.id))]
+    assert kinds.count("agent.changed") >= 5  # host connect, two prompts, two turns, disconnect
+    listed = client.get(f"/api/v1/remotea/sessions/{session_id}/turns").json()["items"]
+    assert [(t["seq"], t["role"]) for t in listed] == [(5, "user"), (4, "assistant"), (3, "assistant"), (3, "user")]
+
+
+def test_prompts_for_runs_of_other_hosts_are_refused(client):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        hello(ws, caps=C_CAPS)
+        reply = send(ws, "prompt", tool="claude", surf="s", incarnation=1, provider="claude", provider_session_id="x",
+                     run_id="00000000-0000-0000-0000-000000000000", generation=1, seq=1, text="Hello?")
+    assert not reply["ok"] and reply["error"]["code"] == "RUN_NOT_BOUND"
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentTurn)) == 0
 
 
 def test_status_updates_state_in_order_and_emits_session_changed(client):
@@ -548,9 +598,13 @@ def test_manual_control_round_trip_over_the_link(client):
         assert context["run_token"] in context["text"] and "/home/davin/wt/task" in context["text"]
         detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
         assert detail["state"] == "executing" and detail["worktree"] == "/home/davin/wt/task"
+        typed = put(ws, "prompt", tool="claude_code", provider="claude", surf=surf, incarnation=1, run_id=run_id,
+                    generation=1, provider_session_id="sess-c", seq=1, text="Build the drawer.", truncated=False)
+        assert typed["ok"] and "turn_id" in typed["outcome"]
+        assert client.get(f"/api/v1/remotea/runs/{run_id}").json()["state"] == "executing"  # A prompt moves nothing.
         turn = put(ws, "turn", tool="claude_code", provider="claude", surf=surf, incarnation=1, run_id=run_id,
                    generation=1, provider_session_id="sess-c", provider_turn_id="p-1", root=True, seq=1,
-                   text="Built the drawer.", source="hook")
+                   text="Built the drawer.", prompt="Build the drawer.", source="hook")
         assert turn["ok"] and "turn_id" in turn["outcome"]
         asked = put(ws, "question", question_id="q-1", surf=surf, incarnation=1, run_id=run_id, generation=1,
                     provider="claude", provider_session_id="sess-c", provider_request_id="toolu_9", kind="ask",
@@ -581,7 +635,12 @@ def test_manual_control_round_trip_over_the_link(client):
     assert detail["state"] == "stopped"
     assert [c["kind"] for c in detail["commands"]] == ["spawn", "answer", "stop"]
     assert detail["commands"][0]["status"] == "executed" and detail["questions"][0]["status"] == "accepted"
-    assert detail["turns"][0]["text"] == "Built the drawer."
+    # The typed prompt is a user row bound to the run; the Stop frame's copy is not kept on the assistant row.
+    assert [(t["role"], t["seq"], t["text"], t["prompt"]) for t in detail["turns"]] == [
+        ("user", 1, "Build the drawer.", ""), ("assistant", 1, "Built the drawer.", "")]
+    with session_scope() as db:
+        assert {t.run_id for t in db.scalars(select(AgentTurn))} == {run_id}
+        assert db.get(AgentRun, run_id).turn_count == 1  # The prompt did not count as a turn.
     with session_scope() as db:
         assert db.get(agent_link.AgentHost, host_id).caps["targets"][0]["id"] == "jarvis"
 

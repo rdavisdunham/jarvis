@@ -239,7 +239,10 @@ export type RunDetail = Run & {
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null } | null;
   history: HistoryEntry[];
-  turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string }[];
+  /** `role` "user" is the message typed in the terminal (host `prompt` frame); absent or "assistant" is the agent's
+   *  final response, whose `prompt` carries the typed message when the host only sent it with the Stop (older hosts). */
+  turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string;
+    role?: "assistant" | "user" }[];
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
 };
 export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
@@ -393,13 +396,26 @@ const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
   answered_locally: "answered in the terminal", expired: "expired",
 };
 
+/** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
+export const TYPED_TITLE = "You, in the terminal";
+
 /** One time-ordered timeline: final responses per turn, commands with their outcomes, questions and state changes. */
 export function timeline(run: RunDetail): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   // A text that left for the agent appears once: the "sent" history entry says who sent it, so the matching
   // input command (same text) is skipped unless it failed, where its outcome is the news.
   const sent = new Set(run.history.filter(h => h.event === "sent" && h.text).map(h => h.text as string));
-  for (const t of run.turns) entries.push({ at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text + (t.truncated ? " [truncated]" : ""), tone: "plain", who: "agent" });
+  for (const t of run.turns) {
+    // The message typed in the terminal: its own row when the host sent it as the turn started, otherwise the
+    // assistant turn's `prompt` (older hosts, so only once the turn ended). A text Eridani itself sent is already
+    // a "Sent by" entry and is not repeated.
+    if (t.role === "user") {
+      entries.push({ at: t.at, kind: "command", title: TYPED_TITLE, detail: t.text, tone: "plain", who: "you" });
+      continue;
+    }
+    if (t.prompt && !sent.has(t.prompt)) entries.push({ at: t.at, kind: "command", title: TYPED_TITLE, detail: t.prompt, tone: "plain", who: "you" });
+    entries.push({ at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text + (t.truncated ? " [truncated]" : ""), tone: "plain", who: "agent" });
+  }
   for (const c of run.commands) {
     const state = c.outcome?.state ?? c.status;
     if (c.kind === "input" && c.text && sent.has(c.text) && !["failed", "rejected", "expired", "uncertain"].includes(state)) continue;
