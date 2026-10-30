@@ -1,4 +1,5 @@
 import "./ux.css";
 import App from "./App";
 import { SiteCopilot } from "./copilot";
-export default function PlannerApp() { return <SiteCopilot><App/></SiteCopilot>; }
+import { RemoteaProvider } from "./remotea-context";
+export default function PlannerApp() { return <SiteCopilot><RemoteaProvider><App/></RemoteaProvider></SiteCopilot>; }

@@ -128,12 +128,11 @@ const empty: Record<View, string> = {
   rules: "",
 };
 
-export function SessionsPanel({ onClose }: { onClose: () => void }) {
+/** The agent-sessions ledger: search, All/Live/Unfiled/Rules and the list. Lives on the remotea page; `SessionsPanel` wraps it in a dialog. */
+export function SessionsLedger() {
   const [query, setQuery] = useState(""), [view, setView] = useState<View>("all");
   const [{ data, error, loading }, setListing] = useState<SessionPageState<AgentSession>>({ data: null, error: "", loading: false });
   const loader = useRef<ReturnType<typeof sessionPages<AgentSession>> | null>(null);
-  const close = useRef<HTMLButtonElement>(null);
-  useEffect(() => { close.current?.focus(); }, []);
   useEffect(() => {
     if (view === "rules") return;
     const pages = sessionPages<AgentSession>((offset, limit) => {
@@ -148,10 +147,8 @@ export function SessionsPanel({ onClose }: { onClose: () => void }) {
     return () => { clearTimeout(timer); stopWatching(); pages.dispose(); loader.current = null; };
   }, [query, view]);
   const refresh = () => { void loader.current?.refresh(); };
-  return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel sessions-panel" aria-label="Agent sessions"
-    onKeyDown={event => { if (event.key === "Escape") onClose(); }}>
-    <header><div><h2>Sessions</h2><p>Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p></div>
-      <button ref={close} className="btn-icon" aria-label="Close sessions" onClick={onClose}><X size={20}/></button></header>
+  return <div className="sessions-ledger">
+    <p className="footnote">Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p>
     <div className="activity-toolbar session-toolbar">
       <input type="search" aria-label="Search sessions" placeholder="Topic, issue key, repo or folder…" value={query} onChange={e => setQuery(e.target.value)}/>
       <div className="segmented" role="group" aria-label="Show">
@@ -171,5 +168,15 @@ export function SessionsPanel({ onClose }: { onClose: () => void }) {
         {data?.next_offset != null && <button className="btn btn-soft" disabled={loading} onClick={() => void loader.current?.more()}>{loading ? "Loading…" : "Load more sessions"}</button>}
       </div>
     </>}
+  </div>;
+}
+
+export function SessionsPanel({ onClose }: { onClose: () => void }) {
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => { close.current?.focus(); }, []);
+  return <Dialog onBackdrop={() => onClose()} onEscape={onClose} backdropClassName="activity-backdrop" className="activity-panel sessions-panel" aria-label="Agent sessions">
+    <header><div><h2>Sessions</h2><p>Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p></div>
+      <button ref={close} className="btn-icon" aria-label="Close sessions" onClick={onClose}><X size={20}/></button></header>
+    <SessionsLedger/>
   </Dialog>;
 }

@@ -70,9 +70,10 @@ Web (`apps/web/src/`):
 - [ ] Extra deep-link parameters (for example `?view=remotea&run=<id>`) are parsed inside the page
       (`remotea-model.ts` `linkedRun`, validated as a UUID). The URL sync block in `App.tsx`
       (`navigationUrl.searchParams…`) sets/deletes only the parameters it knows; add yours there if
-      back/forward should preserve it. In-app paths to the same place (a task card's Run, Eri's
-      `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does
-      (it also remounts the page, which reads its `run` prop only on mount).
+      back/forward should preserve it. In-app paths to the same place (a task row's Run, Eri's
+      `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does:
+      it opens the run in the shell's side panel (`RunPanel.tsx`, state in `remotea-context.tsx`) on
+      whatever page is open; `?run=` is kept in the URL by that same sync block.
 - [ ] If Eri may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
       list and an `else if (action.view === "…")` that fetches the record first) and the model map in
       `tools.py` `call_tool` (below).
@@ -353,8 +354,9 @@ Two patterns exist; pick deliberately.
 Checklist:
 
 - [ ] Every surface that the gate hides: web nav (`remoteaNav` shown only when
-      `boot.preferences.remotea_enabled`), page body, the task card's Run button (`Remotea.tsx`
-      `RunTask`, rendered from `RecordCard.tsx`; state from `remotea-model.ts` `runButton`), backend routes (`gated()`), Eri tools
+      `boot.preferences.remotea_enabled`), page body, the Run controls (`RunButton.tsx` on task rows,
+      `Remotea.tsx` `RunTask` in the detail dialogs, the topbar Runs button and `RunPanel.tsx`; all read
+      `remotea-context.tsx`, which App feeds from the same preference), backend routes (`gated()`), Eri tools
       (`tool_policy.remotea_tools`), the dream (`agent_autolink.py` checks `remotea_enabled`).
 - [ ] Emit `settings.changed` after writing so other tabs reload.
 - [ ] Settings page placement: `settings-sections.ts` (8 sections). A new section must also be added
