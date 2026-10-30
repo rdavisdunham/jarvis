@@ -35,6 +35,9 @@ packages = ["apps/api/jarvis"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+  "e2e_protocol: the real remotea server against the real Eridani app (skips without node and a built remotea checkout)",
+]
 [tool.ruff]
 line-length = 110
 target-version = "py312"

@@ -312,6 +312,72 @@ kind the host advertised and whose `expires_at` has not passed. Commands carry a
 payload `digest`, separate from the envelope id: a resend keeps both and gets a new envelope (F06). See
 **Runs** below.
 
+## Testing the protocol end to end
+
+`tests/test_agent_link.py` drives Eridani with a fake host and remotea's `remote-server/tests` drive remotea
+with a fake Eridani, so each side can drift from the other while both suites stay green.
+`tests/test_protocol_e2e.py` (marker `e2e_protocol`, helpers in `tests/protocol_harness.py`) runs the real two:
+
+```
+remotea-server (node, the checkout's remote-server/dist) --ws--> LinkProxy --ws--> uvicorn jarvis.api:app --> test database
+```
+
+- **Eridani** is uvicorn on an ephemeral port with `JARVIS_ENV_FILE=""`, against the database `conftest.py`
+  made for the session, with production's websocket limits. The worker does not run: the test process plays it
+  and runs the judge job with a stubbed model (`agent_judge.process(job, model=…)`); its commands reach the
+  link through `pg_notify`, as the worker's do.
+- **remotea** runs from `$REMOTEA_CHECKOUT` (default `~/remotea/remotea`, or a `remotea` folder beside this
+  repository) with a throwaway config dir, `HOME`, repository (with a bare origin) and worktree root, on
+  ephemeral ports. It never reads `~/.config/remotea` or `~/.claude` and never touches `remotea.service`. Its
+  one target launches `claude` as a stub script that drives the real hook helper
+  (`resources/cli/wmux-hook.js`): SessionStart, then UserPromptSubmit + Stop for the spawn prompt and for each
+  input typed into it (bracketed paste, then Enter); Ctrl-C ends it. Verify is a fake command that prints
+  `3 passed`. The stub answers `--version`, so the launcher probe passes and the hello advertises `spawn`.
+- **LinkProxy** relays the link and records every frame both ways before any rewrite. It can drop acks, cut
+  the connection, re-send a frame, and make either side look older.
+
+One run, every step bounded by 30 s (about 10 s in all): connect → hello/welcome/snapshot → the run started
+over the browser routes (`POST /remotea/targets`, `POST /remotea/runs`) → `spawn` (accepted ack, executed
+outcome) → `context.request`/`context.response` → `prompt` → `turn` → `verify` (Eridani's command adopts the
+host's attempt; one run) → judging. Then a **reconnect with duplicates**: the proxy has kept Eridani's acks for
+the first `prompt` and `turn` from the host, cuts the link, and the host resends both on the new epoch;
+Eridani answers `{duplicate: true}` and stores neither again. The proxy then resends the `spawn` (same op_id and
+digest, new envelope, new epoch, as Eridani's drain does): the host acks the outcome it journaled and starts
+nothing. The new connection is also an **older peer** both ways: the hello Eridani sees lacks `caps_version`,
+build identity and the `prompt`, `worktrees.scan`, `digest`, `context.scope` and `verify.auto` caps; the
+welcome the host sees lacks `prompt` and `context.scope`. Then the judge says `not_met` → the gap is typed into
+the agent → turn 2 comes **without** a `prompt` frame and carries the typed text on the turn, which Eridani
+keeps on the assistant turn → verify → judge `met` → `awaiting_approval` → Approve → `stop` → exit → run
+`completed`, task completed. Finally: no `ok:false` ack in either direction, each prompt reached the agent once,
+one verify run per turn.
+
+**Wire fixtures.** `tests/fixtures/protocol/<caps_version>/` (the host hello's `caps_version`) holds one file
+per frame kind and direction: `host.turn.json`, `eridani.spawn.json`, acks keyed by what they acknowledge
+(`host.ack.spawn.json`, `eridani.ack.turn.json`). Each is the **shape** of what that side actually sent in the
+run, never values: keys, whether each was always present, and the JSON types, merged over every frame of that
+kind. A later run fails when a key recorded as always present is missing (a rename shows as that plus a new
+key), when a key appears that was never recorded, or when a value has a new type (`null` matches anything).
+Optional keys that depend on the machine rather than the protocol (`launch_error`, `error`, `reason`,
+`degraded_reason`, `build_dirty`, `migrations`) are never reported as new. A frame kind with no file yet is
+recorded on that run. After an intended protocol change on either side, re-record with `UPDATE_FIXTURES=1` and
+review the diff like code: it is the contract change.
+
+Run it locally (Postgres as in `docs/ADDING_FEATURES.md`). Build the checkout first: a stale `dist/` is an
+older host, and its fixtures land under another `caps_version`.
+
+```sh
+npm --prefix ~/remotea/remotea/remote-server ci          # once
+npm --prefix ~/remotea/remotea/remote-server run build   # after every remotea change
+export JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:54432/jarvis
+REMOTEA_CHECKOUT=~/remotea/remotea uv run --no-sync python -m pytest -q -s -m e2e_protocol tests/test_protocol_e2e.py
+UPDATE_FIXTURES=1 REMOTEA_CHECKOUT=… uv run --no-sync python -m pytest -q -s tests/test_protocol_e2e.py   # re-record
+PROTOCOL_E2E_FRAMES=/tmp/frames.json …   # also write every frame both ways (test tokens only) for review
+```
+
+With `-s` it prints the remotea build it ran against, the frame count and the time. It skips, with the reason,
+when `node` or `git` is not on PATH, the checkout is missing, or its `remote-server/dist` or `node_modules` is.
+CI has no remotea checkout (the repository is private), so CI skips it; see `docs/CI.md`.
+
 ## Collector parity
 
 The TypeScript collector inside remotea must match the Python collector
@@ -969,7 +1035,11 @@ already exists there. Turning remotea off revokes the link key; a live host stil
   (`agent_link.host_session`) and never moves that run.
 - A `server_id` stays bound to its first credential unless the new key is a rotation of it (same owner,
   account and name); otherwise `bye{host_bound}`. One key registers at most 3 hosts (`bye{host_limit}`).
-- A host that advertises the `digest` cap must stamp every frame carrying an `op_id`.
+- A host that advertises the `digest` cap must stamp every frame carrying an `op_id` (`DIGEST_REQUIRED`
+  otherwise). `ack` is exempt: it only echoes the op_id of the command it acknowledges. Until 2026-10-30
+  Eridani refused those acks too, so a current host's command acks were answered with an error ack and never
+  recorded (a spawn's `surf`/`incarnation` came only from the later outcome, and a command whose outcome took
+  over 60 s was resent); the end-to-end protocol test found it on its first run.
 - Snapshot parts are numbered `1..n` (as remotea sends them; the brief said `i < n`, which would refuse
   every real final part), bounded in bytes, and partial snapshots and chunks expire after 60 s.
 - `context.request` answers `scope: "run"` (plan and run token) only for a run bound to this host;

@@ -1,0 +1,131 @@
+{
+ "direction": "host",
+ "frame": "context.request",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "cwd": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "generation": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "incarnation": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "provider": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "provider_session_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "req_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "run_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "source": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "surf": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "task_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

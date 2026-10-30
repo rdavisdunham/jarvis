@@ -1,0 +1,101 @@
+{
+ "direction": "eridani",
+ "frame": "ack.sessions.snapshot",
+ "shape": {
+  "keys": {
+   "acked_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "ok": {
+    "required": true,
+    "shape": {
+     "types": [
+      "boolean"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "outcome": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "applied": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "ended": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

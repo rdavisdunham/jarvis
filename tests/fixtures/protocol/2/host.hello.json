@@ -1,0 +1,523 @@
+{
+ "direction": "host",
+ "frame": "hello",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "boot_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "build_dirty": {
+    "required": true,
+    "shape": {
+     "types": [
+      "boolean"
+     ]
+    }
+   },
+   "build_sha": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "caps": {
+    "required": true,
+    "shape": {
+     "items": {
+      "types": [
+       "string"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "caps_version": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "null"
+     ]
+    }
+   },
+   "harnesses": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "claude": {
+       "required": true,
+       "shape": {
+        "keys": {
+         "capture": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "context": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "installed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "launch_flags": {
+          "required": true,
+          "shape": {
+           "items": {
+            "types": [
+             "string"
+            ]
+           },
+           "types": [
+            "array"
+           ]
+          }
+         },
+         "observe": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "permission": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "question": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "resume": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "spawn": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "steer": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "version": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         }
+        },
+        "types": [
+         "object"
+        ]
+       }
+      },
+      "codex": {
+       "required": true,
+       "shape": {
+        "keys": {
+         "capture": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "context": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "installed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "launch_flags": {
+          "required": true,
+          "shape": {
+           "items": {
+            "types": [
+             "string"
+            ]
+           },
+           "types": [
+            "array"
+           ]
+          }
+         },
+         "observe": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "question": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "resume": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "spawn": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "steer": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "version": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         }
+        },
+        "types": [
+         "object"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "hook_version": {
+    "required": true,
+    "shape": {
+     "types": [
+      "null"
+     ]
+    }
+   },
+   "hostname": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "machine": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "proto": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "server_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "targets": {
+    "required": true,
+    "shape": {
+     "items": {
+      "keys": {
+       "enabled": {
+        "required": true,
+        "shape": {
+         "items": {
+          "types": [
+           "string"
+          ]
+         },
+         "types": [
+          "array"
+         ]
+        }
+       },
+       "harnesses": {
+        "required": true,
+        "shape": {
+         "items": {
+          "types": [
+           "string"
+          ]
+         },
+         "types": [
+          "array"
+         ]
+        }
+       },
+       "id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "launch": {
+        "required": true,
+        "shape": {
+         "keys": {
+          "claude": {
+           "required": true,
+           "shape": {
+            "keys": {
+             "ready": {
+              "required": true,
+              "shape": {
+               "types": [
+                "boolean"
+               ]
+              }
+             },
+             "version": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             }
+            },
+            "types": [
+             "object"
+            ]
+           }
+          }
+         },
+         "types": [
+          "object"
+         ]
+        }
+       },
+       "mcp": {
+        "required": true,
+        "shape": {
+         "keys": {
+          "configured": {
+           "required": true,
+           "shape": {
+            "types": [
+             "boolean"
+            ]
+           }
+          },
+          "reason": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          }
+         },
+         "types": [
+          "object"
+         ]
+        }
+       },
+       "repo": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "verify": {
+        "required": true,
+        "shape": {
+         "items": {
+          "types": [
+           "string"
+          ]
+         },
+         "types": [
+          "array"
+         ]
+        }
+       },
+       "verify_status": {
+        "required": true,
+        "shape": {
+         "items": {
+          "keys": {
+           "id": {
+            "required": true,
+            "shape": {
+             "types": [
+              "string"
+             ]
+            }
+           },
+           "ready": {
+            "required": true,
+            "shape": {
+             "types": [
+              "boolean"
+             ]
+            }
+           }
+          },
+          "types": [
+           "object"
+          ]
+         },
+         "types": [
+          "array"
+         ]
+        }
+       },
+       "worktree_root": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       }
+      },
+      "types": [
+       "object"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "version": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}
