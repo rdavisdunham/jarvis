@@ -331,8 +331,8 @@ def test_proposed_changes_to_human_criteria_pause_for_the_operators_review(host)
     assert inputs(run_id) == []  # No execution prompt went out.
     with session_scope() as db:
         out = agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(decisions=[
-            {"id": "c1", "accept": True, "text": "compares resume.cmd and resume.url only"}, {"id": "c3", "accept": False}]),
-            actor=HUMAN)
+            {"id": "c1", "accept": True, "text": "compares resume.cmd and resume.url only"}, {"id": "c3", "accept": False}],
+            expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     assert out["state"] == "executing" and out["plan"]["revision"] == 2 and out["plan"]["proposals"] is None
     texts = [c["text"] for c in out["plan"]["criteria"]]
     assert texts[0] == "compares resume.cmd and resume.url only" and "docs updated" in texts
@@ -344,7 +344,8 @@ def test_proposed_changes_to_human_criteria_pause_for_the_operators_review(host)
         assert db.get(Task, created["id"]).success_criteria[0]["text"] == "compares resume.cmd and resume.url only"
         assert [h for h in row.history if h.get("event") == "plan_reviewed"][0]["accepted"] == ["c1"]
     with session_scope() as db, pytest.raises(DomainError) as again:
-        agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(), actor=HUMAN)
+        agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(
+            expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     assert again.value.code == "NO_PLAN_REVIEW"
 
 

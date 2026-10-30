@@ -20,12 +20,21 @@ STOP = set(
 )
 
 
-@lru_cache(maxsize=128)
+# A query this short is a title lookup more often than a description; its vector is kept longer.
+SHORT_QUERY = 40
+
+
+@lru_cache(maxsize=256)
 @feature("semantic_search")
 def query_vector(owner, query, model, period, provider):
-    # Short-lived, owner-scoped reuse across result pages. Authorization and
+    # Short-lived, owner-scoped reuse across result pages and repeated lookups. Authorization and
     # canonical records are still checked afresh before and after this lookup.
     return provider(owner, [query], 3)[0]
+
+
+def vector_period(query):
+    """Cache bucket: 30 minutes for short queries, 2 minutes otherwise."""
+    return ("short", int(time.monotonic() // 1800)) if len(query) <= SHORT_QUERY else ("long", int(time.monotonic() // 120))
 
 
 def normalize(value):
@@ -42,9 +51,38 @@ def contains(text, phrase):
     return bool(phrase and (" " + phrase + " ") in (" " + normalize(text) + " "))
 
 
-def score(query, doc, vector, stored, fts=0):
+def substring(query, text, cache=None):
+    """Case-insensitive substring of the raw text ("ignor" finds "ignore", "time-var" finds
+    "time-varying"). Needs three characters so a stray letter does not match everything."""
+    needle = " ".join((query or "").casefold().split())
+    if len(needle) < 3:
+        return False
+    key = ("folded", text)
+    if cache is None or key not in cache:
+        folded = " ".join((text or "").casefold().split())
+        if cache is None:
+            return needle in folded
+        cache[key] = folded
+    return needle in cache[key]
+
+
+def doc_terms(text, cache=None):
+    if cache is None:
+        return terms(text)
+    key = ("terms", text)
+    if key not in cache:
+        cache[key] = terms(text)
+    return cache[key]
+
+
+def score(query, doc, vector, stored, fts=0, cache=None, literal=None):
+    """literal: the text a substring may match (a record's title and notes; otherwise its label).
+    Never the whole indexed text, whose type names and field labels would match everything."""
     words = terms(query)
-    lexical = len(words & terms(doc["text"])) / max(1, len(words))
+    lexical = len(words & doc_terms(doc["text"], cache)) / max(1, len(words))
+    if lexical < 0.8 and substring(query, doc.get("label", "") if literal is None else literal, cache):
+        # A literal phrase or part of a word counts nearly as much as every word matching.
+        lexical = 0.8
     similarity = (
         max((cosine(vector, v) for v in stored.vectors), default=0)
         if vector
@@ -86,6 +124,14 @@ def search(
     """withhold: core kinds ("task", "note") whose bodies the caller may not read or probe."""
     args = arguments if isinstance(arguments, SearchQuery) else SearchQuery.model_validate(arguments)
     enabled = get_settings().semantic_search_enabled
+    began = time.perf_counter()
+    timing = {}
+
+    def lap(name, since):
+        timing[name + "_ms"] = round((time.perf_counter() - since) * 1000, 1)
+        return time.perf_counter()
+
+    mark = began
     with session_scope() as db:
         permitted(db, owner, account)
         # Canonical sources are authoritative, even before indexing finishes.
@@ -96,18 +142,22 @@ def search(
         }
         if enabled:
             queue_index(db, owner, dirty=False)
-    vector, fallback = None, not enabled
-    if enabled and any(d.vectors for d in stored.values()):
+    mark = lap("snapshot", mark)
+    vector, fallback, asked = None, not enabled, False
+    # lexical_only: the browser's fast first pass; it asks for the semantic lane separately.
+    if enabled and not args.lexical_only and any(d.vectors for d in stored.values()):
+        asked = True
         try:
-            vector = query_vector(
-                owner, args.query, EMBEDDING_MODEL, int(time.monotonic() // 120), embeddings
-            )
+            vector = query_vector(owner, args.query, EMBEDDING_MODEL, vector_period(args.query), embeddings)
         except Exception:
             fallback = True
-    # Refresh after the provider call. Deleted/reassigned records and revoked access win.
+        mark = lap("embedding", mark)
     with session_scope() as db:
         permitted(db, owner, account)
-        documents, records = snapshot(db, owner)
+        if asked:
+            # Refresh after the provider call. Deleted/reassigned records and revoked access win.
+            documents, records = snapshot(db, owner)
+            mark = lap("refresh", mark)
         state = db.get(SearchIndexState, owner)
         missing = sum(
             key not in stored
@@ -145,16 +195,22 @@ def search(
                 )
             ).all()
         )
+        cache, literal = {}, {}
         for identity, data in records.items():
             r, key = data["record"], "record:" + identity
-            if key in documents and any(r.get(kind + "_id") and kind in withhold for kind in ("task", "note")):
+            hidden = any(r.get(kind + "_id") and kind in withhold for kind in ("task", "note"))
+            literal[key] = (r["title"] or "") if hidden else (r["title"] or "") + "\n" + (r["body"] or "")
+            if key in documents and hidden:
                 # Rank on the name alone, so a records-only caller cannot probe core content.
                 documents[key] = {**documents[key], "text": documents[key]["label"]}
+                literal[key] = documents[key]["label"]
                 stored.pop(key, None)
                 fts.pop(key, None)
         candidates = []
         for key, doc in documents.items():
-            value, lexical, semantic = score(args.query, doc, vector, stored.get(key), fts.get(key, 0))
+            value, lexical, semantic = score(
+                args.query, doc, vector, stored.get(key), fts.get(key, 0), cache, literal.get(key)
+            )
             exact = contains(args.query, normalize(doc["label"])) and bool(terms(doc["label"]))
             matches = [a for a in aliases if a.target_key == key]
             value += 1.5 if exact else 0.95 if matches else 0
@@ -243,6 +299,9 @@ def search(
                 args.home_id
                 and args.home_id not in {p["id"] for p in r["home"]}
                 and r["parent_id"] != args.home_id
+                # A task assigned to a legacy project belongs to it even when its record was filed
+                # elsewhere (a conflicting saved home, or a project row made after the import).
+                and r.get("project_id") != args.home_id
             ):
                 continue
             if args.statuses and r["status_meaning"] not in args.statuses:
@@ -259,7 +318,9 @@ def search(
                 continue
             key = "record:" + identity
             doc = documents.get(key) or dict(text=r["title"] + "\n" + (r["body"] or ""), fingerprint="")
-            value, lexical, semantic = score(args.query, doc, vector, stored.get(key), fts.get(key, 0))
+            value, lexical, semantic = score(
+                args.query, doc, vector, stored.get(key), fts.get(key, 0), cache, literal.get(key)
+            )
             matched = [k for k in resolved if k == key or k in data["targets"]]
             explicit = bool(resolved and len(matched) == len(resolved))
             if args.strict and not explicit:
@@ -315,7 +376,11 @@ def search(
             query=args.query,
             referring_text=referring_text,
             enabled=enabled,
-            mode="keyword_fallback" if fallback or vector is None else "hybrid",
+            mode="lexical"
+            if args.lexical_only and enabled
+            else "keyword_fallback"
+            if fallback or vector is None
+            else "hybrid",
             resolved=resolved,
             resolutions=top_candidates,
             ambiguous=not resolved and len(top_candidates) > 1,
@@ -325,12 +390,14 @@ def search(
                 status=state.status if state else "not_started", documents=len(documents), pending=missing
             ),
             search_id=None,
+            # Milliseconds per stage, so a slow search shows where the time went.
+            timing=timing,
         )
         from .bot_access import current_id
 
         from .search_learning import learning_enabled
 
-        if enabled and track and not current_id() and learning_enabled(db, owner, account):
+        if enabled and track and not args.lexical_only and not current_id() and learning_enabled(db, owner, account):
             key = request_key or str(uuid4())
             prior = db.scalar(
                 select(SearchSession).where(
@@ -357,4 +424,6 @@ def search(
                 )
             )
             result["search_id"] = prior.id
+        lap("rank", mark)
+        timing["total_ms"] = round((time.perf_counter() - began) * 1000, 1)
         return result

@@ -14,7 +14,7 @@ from jarvis import linear_sync as sync
 from jarvis import run_coordinator as coordinator
 from jarvis.db import session_scope
 from jarvis.linear_client import LinearFailure
-from jarvis.models import Job, LinearIssue, Task
+from jarvis.models import Job, LinearIssue, Task, now
 from jarvis.session_models import AgentAttempt, AgentCommand, AgentHost, AgentRun, AgentSession
 from sqlalchemy import select
 from test_agent_judge import criteria_run, judged, stub, verdict
@@ -93,7 +93,7 @@ def approved_run(host, fake):  # noqa: F811
     run_id = start(host, tid)["id"]
     attached(host, run_id)
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert state(run_id)[0] == "completed"
     return tid, run_id
@@ -152,7 +152,7 @@ def test_a_task_without_a_linear_issue_gets_no_comment(host):  # noqa: F811
     run_id = start(host, task()["id"])["id"]
     attached(host, run_id)
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert state(run_id)[0] == "completed" and "comment" not in sync_state(run_id)
     assert linear_jobs("linear_comment") == []
@@ -185,7 +185,7 @@ def test_a_start_write_in_flight_cannot_reopen_a_completed_task(host, fake):  # 
         job = db.get(Job, start_id)
         job.status, job.result = "running", {"attempts": 1, "attempted": True}
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert sync_state(run_id)["done"]["status"] == "deferred" and sync_state(run_id)["done"]["after"] == start_id
     assert [j for j in linear_jobs() if j[2] == "done"] == []
@@ -213,7 +213,7 @@ def test_a_refused_linear_finish_never_fails_the_approval(host, fake):  # noqa: 
         link = db.scalar(select(LinearIssue))
         link.sync_state, link.pending_job_id = "conflict", None
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     done = sync_state(run_id)["done"]
     assert done["status"] == "blocked" and done["code"] == "LINEAR_CONFLICT"
     with session_scope() as db:
@@ -270,12 +270,21 @@ def test_the_plan_freezes_the_policy_and_pr_merged_waits_for_the_host_merge_repo
         db.get(AgentSession, run.session_pk).pr_urls = [PR]
         branch = run.branch
     turn(run_id, 1)
+    with session_scope() as db:
+        # Both records arrive after the turn: the collector's session report and the host's worktrees report.
+        run = db.get(AgentRun, run_id)
+        coordinator.session_reported(db, db.get(AgentSession, run.session_pk))
+        host_row = db.get(AgentHost, run.host_id)
+        host_row.caps = {**host_row.caps, "worktrees": {"at": now().isoformat(), "worktrees": [
+            {"branch": branch, "base": "main", "merged": False}]}}
     assert judged(run_id, stub(verdict())) == ("needs_you", "awaiting_merge")
     with session_scope() as db:
         run = db.get(AgentRun, run_id)
         attempt = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run_id, AgentAttempt.kind == "judge")).first()
         evidence = judge.evidence_for(db, attempt)
-        assert evidence["completion"] == {"policy": "pr_merged", "branch": branch, "pr_urls": [PR], "merged": False}
+        assert {k: evidence["completion"][k] for k in ("policy", "branch", "pr_urls", "merged", "pr_fresh", "merged_fresh")} \
+            == {"policy": "pr_merged", "branch": branch, "pr_urls": [PR], "merged": False, "pr_fresh": True,
+                "merged_fresh": True}
         host_row = db.get(AgentHost, run.host_id)
         host_row.caps = {**host_row.caps, "worktrees": {"worktrees": [{"branch": branch, "base": "main", "merged": True}]}}
         db.flush()
