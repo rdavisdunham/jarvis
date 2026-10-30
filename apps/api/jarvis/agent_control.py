@@ -96,6 +96,12 @@ class VerifyNowInput(Input):
     action_id: UUID | None = None  # agent_receipts.once
 
 
+class JudgeAgainInput(Input):
+    # Required: the verdict that follows moves the run, so it must be the state (and plan) you reviewed.
+    expected_revision: int = Field(ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
+
+
 class AnswerItem(Input):
     item_id: str = Field(min_length=1, max_length=64)
     choice_ids: list[str] = Field(default_factory=list, max_length=32)
@@ -491,6 +497,30 @@ def verify_now(db, owner, run_id, body=None, *, actor):
     return public_run(db, run, detail=True)
 
 
+JUDGE_AGAIN_STATES = {"needs_you", "awaiting_approval"}
+
+
+def judge_again(db, owner, run_id, body, *, actor):
+    """Judge again: verify (when the plan has a verify command) and judge the last turn against the plan as frozen
+    now, typically after Edit criteria (agent_plan.set_criteria). The verdict moves the run as after any turn."""
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    if run.state not in JUDGE_AGAIN_STATES or run.state_reason == "plan_review":
+        raise DomainError("RUN_NOT_PARKED", f"Judge again works while the run needs you or awaits approval (not during a "
+                          f"plan review); this run is {run.state}.", 409, data={"state": run.state})
+    if run.freestyle:
+        raise DomainError("FREESTYLE", "Freestyle is on, so the judge is off; turn it off first.", 409)
+    plan = coordinator.frozen(db, run)
+    if plan is None or not plan.criteria:
+        raise DomainError("NO_CRITERIA", "This plan has no success criteria to judge against; edit them first.", 409)
+    if not run.turn_seq:
+        raise DomainError("NO_TURN", "The agent has not finished a turn to judge yet.", 409)
+    if db.scalar(select(AgentAttempt.id).where(AgentAttempt.run_id == run.id, AgentAttempt.status.in_(("running", "queued")))):
+        raise DomainError("VERIFY_RUNNING", "A verification or verdict is still in progress.", 409)
+    coordinator.judge_again(db, run, actor=actor)
+    return public_run(db, run, detail=True)
+
+
 def stop_run(db, owner, run_id, body, *, actor):
     run = coordinator.load(db, owner, run_id)
     coordinator.request_stop(db, run, actor=actor, mode=body.mode, reason="stopped_by_user",
@@ -577,6 +607,12 @@ def public_attempt(a):
                    "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
                    # Why a verification did not pass and what to do (run_coordinator.classify_verify).
                    "category": result.get("category"), "action": result.get("action"),
+                   # remotea's verify isolation and fingerprint completeness; null when the host did not say.
+                   "isolated": result.get("isolated"), "isolation": result.get("isolation"),
+                   "isolation_reason": result.get("isolation_reason"),
+                   "workspace_complete": result.get("workspace_complete"),
+                   "workspace_reasons": result.get("workspace_reasons") or [],
+                   "duration_ms": result.get("duration_ms"),
                    "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
                    "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
                    "created_at": a.created_at, "updated_at": a.updated_at})
@@ -623,7 +659,8 @@ def reason_detail(db, run):
         action = next(((a.result or {}).get("action") for a in recent if (a.result or {}).get("action")), "")
         if action:
             return action[:300]
-    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown"):
+    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown",
+                            "verify_missing"):
         verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                        AgentAttempt.status == "done")
                             .order_by(AgentAttempt.created_at.desc()).limit(1))
@@ -653,6 +690,23 @@ def base_info(db, run, host):
             "fetch": facts.get("fetch"), "behind": row["behind"] if live else facts.get("behind"),
             "behind_ref": (row.get("base_ref") or row.get("base")) if live else facts.get("base_ref"),
             "as_of": report.get("at") if live else facts.get("at"), "live": live}
+
+
+def changes_info(db, run, host, session):
+    """What the run changed, for the review packet: the pull requests the agent's session reported (collector
+    pr_urls, not a claim in its text) and the host's last worktrees report row for the run's branch (ahead, unpushed,
+    uncommitted, merged), with when each was reported. Null fields: the host did not say."""
+    from .agent_sessions import pull_requests
+
+    report = ((host.caps or {}).get("worktrees") or {}) if host else {}
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    row = next((w for w in report.get("worktrees") or [] if isinstance(w, dict) and run.branch and w.get("branch") == run.branch
+                and (target is None or not w.get("target") or w.get("target") == target.host_target)), None) or {}
+    return {"branch": run.branch, "worktree": run.worktree or row.get("path") or "",
+            "pr_urls": pull_requests(session.pr_urls if session else []),
+            "pr_as_of": (run.sync_state or {}).get("session_report_at"),
+            **{k: row.get(k) for k in ("ahead", "behind", "unpushed", "uncommitted", "untracked", "merged")},
+            "reported_at": report.get("at") if row else None}
 
 
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
@@ -708,6 +762,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                    for t in turns],
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),
+            changes=changes_info(db, run, host, session),
             more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit,
                   "remaining": {"turns": older_turns, "commands": older_commands}},
             # A settled run's turns and commands are deleted RUN_DATA after it ended (agent_retention.py).
@@ -797,24 +852,70 @@ def device_open_run(db, owner):
     return db.scalar(select(AgentRun.id).where(AgentRun.id == run_id, AgentRun.owner_id == owner))
 
 
-def run_for(db, owner, target):
-    """The run a voice command means: by id, by task, the run open on the owner's screen, or the only active run."""
+def recipient(db, run):
+    """Who a control command affects, as Eri names it before acting: task · host · branch · state."""
+    task = db.get(Task, run.task_id) if run.task_id else None
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    title, host_name = (task.title if task else "a task")[:120], ((host.name if host else "") or "remotea")[:80]
+    branch = run.branch or "no branch yet"
+    return {"run_id": run.id, "task": title, "host": host_name, "branch": run.branch or "", "state": run.state,
+            "label": f"{title} · {host_name} · {branch} · {run.state}"}
+
+
+def ambiguous(db, runs, message):
+    """Several runs fit a control command: AMBIGUOUS_RUN with each candidate, which control_command turns into a
+    needs_choice result so Eri asks instead of acting."""
+    unique = list({r.id: r for r in runs if r is not None}.values())[:8]
+    return DomainError("AMBIGUOUS_RUN", message, 409, data={"candidates": [recipient(db, r) for r in unique]})
+
+
+# Which runs a command without a run_id could mean (default: any unsettled run).
+PLAUSIBLE = {"control.approve": lambda r: r.state == "awaiting_approval",
+             "control.plan_review": lambda r: r.state == "needs_you" and r.state_reason == "plan_review"}
+
+
+def run_for(db, owner, target, tool=None):
+    """The run a voice command means: by id; by task (several tasks matching the name → every run on them is a
+    candidate); else the run open on the owner's screen when it is also the newest run the command fits; else the only
+    run it fits. Several plausible runs (or an open run that is not the newest) → AMBIGUOUS_RUN with candidates."""
+    active = AgentRun.state.not_in(TERMINAL_RUN_STATES)
     if target.run_id:
         return coordinator.load(db, owner, target.run_id, lock=False).id
-    task_id = target.task_id or (task_by_name(db, owner, target.task) if target.task else None)
-    if not task_id:
-        open_run = device_open_run(db, owner)
-        if open_run:
+    if target.task_id or target.task:
+        try:
+            task_ids, named = [target.task_id or task_by_name(db, owner, target.task)], None
+        except DomainError as error:
+            if error.code != "AMBIGUOUS_TASK":
+                raise
+            task_ids, named = [c["task_id"] for c in error.data["candidates"]], error
+        runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.task_id.in_(task_ids), active)
+                               .order_by(AgentRun.created_at.desc()).limit(8)))
+        if named is not None:
+            if not runs:
+                raise named
+            raise ambiguous(db, runs, "Several tasks match that name; say which run you mean.")
+        if not runs:
+            raise DomainError("NOT_FOUND", "No agent is running on that.", 404)
+        return runs[0].id
+    fits = PLAUSIBLE.get(tool, lambda r: True)
+    running = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, active)
+                              .order_by(AgentRun.created_at.desc()).limit(10)))
+    plausible = [r for r in running if fits(r)]
+    open_run = device_open_run(db, owner)
+    if open_run:
+        if not plausible or plausible[0].id == open_run:
             return open_run
-    query = select(AgentRun.id).where(AgentRun.owner_id == owner, AgentRun.state.not_in(TERMINAL_RUN_STATES))
-    if task_id:
-        query = query.where(AgentRun.task_id == task_id)
-    ids = list(db.scalars(query.limit(5)))
-    if len(ids) != 1:
-        raise DomainError("AMBIGUOUS_RUN" if ids else "NOT_FOUND",
-                          "Several agents are running; name the task." if ids else "No agent is running on that.",
-                          409 if ids else 404)
-    return ids[0]
+        raise ambiguous(db, [db.get(AgentRun, open_run), *plausible],
+                        "The run open on your screen is not the newest one this could mean; say which.")
+    if len(plausible) == 1:
+        return plausible[0].id
+    if plausible:
+        raise ambiguous(db, plausible, "Several agents are running; name the task.")
+    if len(running) == 1:
+        return running[0].id  # The command then says why it does not apply to this run's state.
+    if running:
+        raise ambiguous(db, running, "Several agents are running; name the task.")
+    raise DomainError("NOT_FOUND", "No agent is running on that.", 404)
 
 
 def owner_control(db, owner):
@@ -1025,7 +1126,7 @@ def propose(db, owner, account, tool, args, actor):
         summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d" + (
             f" in {(target.name or target.host_target)[:100]}" if target is not None else "")
     else:
-        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        run = coordinator.load(db, owner, run_for(db, owner, args, tool), lock=False)
         task = db.get(Task, run.task_id)
         arguments, run_id = {"run_id": run.id, "text": args.text, "mode": args.mode}, run.id
         verb = "Interrupt and steer" if args.mode == "steer" else "Send to"
@@ -1244,11 +1345,75 @@ def mutate(db, owner, tool, args, command_id):
     result = control_command(db, owner, tool, args)
     if tool == "control.start" and isinstance(result, dict) and result.get("status") == "pending_confirmation":
         result = proposal(db, owner, result)
-    journal_control(db, owner, tool, command_id, result)
+    if not (isinstance(result, dict) and result.get("status") == "needs_choice"):
+        journal_control(db, owner, tool, command_id, result)  # needs_choice did nothing; nothing to journal.
     return result
 
 
+CHOOSE = ("Nothing was done: more than one run fits. Read each candidate to the owner as task · host · branch · state "
+          "and ask which one they mean; then call {tool} again with that candidate's run_id.")
+NAME_IT = "Name the task, host and branch this affects when you tell the owner ({label})."
+
+
+def needs_choice(tool, error):
+    return {"status": "needs_choice", "tool": tool.replace(".", "_"), "message": error.message,
+            "candidates": error.data["candidates"], "next": CHOOSE.format(tool=tool.replace(".", "_"))}
+
+
 def control_command(db, owner, tool, args):
+    """E-Q6: a command whose run could be one of several returns needs_choice (each candidate as task · host · branch
+    · state) instead of acting; one that acts names its recipient so Eri's sentence is grounded."""
+    try:
+        result = control_dispatch(db, owner, tool, args)
+    except DomainError as error:
+        if error.code == "AMBIGUOUS_RUN" and (error.data or {}).get("candidates"):
+            return needs_choice(tool, error)
+        raise
+    return result
+
+
+def named(db, result, run_id):
+    """The result with its recipient: who the command affected (or, for a proposal, will affect)."""
+    run = db.get(AgentRun, run_id) if run_id else None
+    if run is None or not isinstance(result, dict):
+        return result
+    who = recipient(db, run)
+    return {**result, "recipient": who, "next": (NAME_IT.format(label=who["label"]) + " " + result.get("next", "")).strip()}
+
+
+def pending_choices(db, owner, work):
+    """control_confirm without a pending_id: the distinct proposals of this account it could mean (newest first)."""
+    from .session_models import AgentPendingControl
+
+    rows = db.scalars(select(AgentPendingControl).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+        AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now(), not_proposed_by(work))
+        .order_by(AgentPendingControl.created_at.desc()).limit(10))
+    seen, unique = set(), []
+    for row in rows:
+        key = (row.tool, json.dumps(row.arguments, sort_keys=True))
+        if key not in seen:
+            seen.add(key)
+            unique.append(row)
+    return unique
+
+
+def pending_recipient(db, owner, row):
+    """A proposal as a candidate: what it would affect (the run for a message; task, place and branch for a start)."""
+    run = db.get(AgentRun, row.run_id) if row.run_id else None
+    if row.tool == "control.message" and run is not None:
+        return {**recipient(db, run), "pending_id": row.id, "summary": row.summary}
+    task = db.get(Task, (row.arguments or {}).get("task_id")) if (row.arguments or {}).get("task_id") else None
+    target_id = (row.arguments or {}).get("execution_target_id")
+    target = db.get(ExecutionTarget, target_id) if target_id else None
+    title = (task.title if task else "a task")[:120]
+    place = ((target.name or target.host_target) if target else "no repository chosen yet")[:80]
+    branch = branch_for(db, owner, task) if task else ""
+    return {"pending_id": row.id, "run_id": None, "task": title, "host": place, "branch": branch, "state": "not started",
+            "summary": row.summary, "label": f"{title} · {place} · {branch or 'new branch'} · not started"}
+
+
+def control_dispatch(db, owner, tool, args):
     from .access import actor as account
     from .agent_actor import current
 
@@ -1256,15 +1421,33 @@ def control_command(db, owner, tool, args):
     owner_control(db, owner)
     actor = current()
     if tool in ("control.start", "control.message"):
-        return propose(db, owner, account(db, owner), tool, args, actor)
+        result = propose(db, owner, account(db, owner), tool, args, actor)
+        if tool != "control.message":
+            return result
+        from .session_models import AgentPendingControl
+
+        row = db.get(AgentPendingControl, result.get("pending_id") or result.get("id") or "")
+        return named(db, result, (row.run_id if row is not None else None) or (result.get("run") or {}).get("id"))
     if tool == "control.confirm":
+        work = current_work(db)
+        if args.decision == "confirm" and not args.pending_id and work is not None and not work.credential_id:
+            choices = pending_choices(db, owner, work)
+            if len(choices) > 1:
+                return {"status": "needs_choice", "tool": "control_confirm",
+                        "message": "Several proposals are waiting for the owner's confirmation.",
+                        "candidates": [pending_recipient(db, owner, r) for r in choices],
+                        "next": "Nothing was confirmed. Read each waiting proposal to the owner as task · host · branch "
+                                "· state and ask which one they mean. A spoken yes confirms only the newest (call "
+                                "control_confirm with its pending_id after their yes); an older one is confirmed on the "
+                                "remotea page, or after declining the newer ones."}
         via = spoken_confirmation(db, owner, args)
-        row = pending_for(db, owner, current_work(db), args.pending_id)
+        row = pending_for(db, owner, work, args.pending_id)
         confirm = args.decision == "confirm"
         target_id = chosen_target(db, owner, row, args.execution_target_id) if confirm else None
-        return decide(db, owner, row.id, confirm=confirm, via=via, actor=actor, execution_target_id=target_id)
+        result = decide(db, owner, row.id, confirm=confirm, via=via, actor=actor, execution_target_id=target_id)
+        return named(db, result, (result.get("run") or {}).get("id")) if confirm else result
     if tool == "control.approve":
-        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        run = coordinator.load(db, owner, run_for(db, owner, args, tool), lock=False)
         if run.state != "awaiting_approval":
             raise DomainError("NOT_AWAITING_APPROVAL",
                               f"This run is {run.state}" + (f" ({REASON_TEXT.get(run.state_reason) or run.state_reason})"
@@ -1273,12 +1456,13 @@ def control_command(db, owner, tool, args):
                               "from the remotea page completes the task in any state.", 409,
                               data={"run_id": run.id, "state": run.state, "state_reason": run.state_reason})
         result = approve(db, owner, run.id, ApproveInput(expected_revision=run.state_revision), actor=actor)
-        return {"status": "approved", "run_id": run.id, "task": result["task"], "state": result["state"],
-                "next": "The task is complete and the run is settling; nothing else is needed."}
+        return named(db, {"status": "approved", "run_id": run.id, "task": result["task"], "state": result["state"],
+                          "next": "The task is complete (approved by the owner, a human decision) and the run is "
+                                  "settling; nothing else is needed."}, run.id)
     if tool == "control.plan_review":
         from .agent_plan import PlanDecision, PlanReviewInput, review_plan
 
-        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        run = coordinator.load(db, owner, run_for(db, owner, args, tool), lock=False)
         plan = coordinator.frozen(db, run)
         if run.state != "needs_you" or run.state_reason != "plan_review" or plan is None or not plan.proposals:
             raise DomainError("NO_PLAN_REVIEW", f"This run is {run.state}" +
@@ -1288,18 +1472,22 @@ def control_command(db, owner, tool, args):
         body = PlanReviewInput(decisions=[PlanDecision(**d.model_dump()) for d in args.decisions], verify=args.verify,
                                completion_policy=args.completion_policy, expected_revision=run.state_revision)
         result = review_plan(db, owner, run.id, body, actor=actor)
-        return {"status": "plan_reviewed", "run_id": run.id, "task": result["task"], "state": result["state"],
-                "plan_revision": (result.get("plan") or {}).get("revision"),
-                "next": "The plan is frozen and the agent is executing against it."}
+        return named(db, {"status": "plan_reviewed", "run_id": run.id, "task": result["task"], "state": result["state"],
+                          "plan_revision": (result.get("plan") or {}).get("revision"),
+                          "next": "The plan is frozen and the agent is executing against it."}, run.id)
     if tool == "control.stop":
-        return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
+        run_id = run_for(db, owner, args, tool)
+        return named(db, stop_run(db, owner, run_id, StopInput(mode=args.mode), actor=actor), run_id)
     if tool == "control.answer":
+        # The question or interview id names its run exactly, so an answer is never ambiguous; it still names it.
         if args.interview_id:
             from .agent_plan import InterviewAnswers, answer_interview
 
-            return answer_interview(db, owner, args.interview_id, InterviewAnswers(answers=args.responses), actor=actor)
-        return answer_question(db, owner, args.question_id,
-                               AnswerInput(answers=[AnswerItem(**a.model_dump()) for a in args.answers]), actor=actor)
+            result = answer_interview(db, owner, args.interview_id, InterviewAnswers(answers=args.responses), actor=actor)
+        else:
+            result = answer_question(db, owner, args.question_id,
+                                     AnswerInput(answers=[AnswerItem(**a.model_dump()) for a in args.answers]), actor=actor)
+        return named(db, result, result.get("run_id") if isinstance(result, dict) else None)
     raise DomainError("INVALID_ARGUMENT", "That action is not available.")
 
 
@@ -1335,10 +1523,96 @@ def spoken_run(db, run):
                                              "their accept/keep decision per criterion id (text for their own "
                                              "wording), and verify / completion_policy when proposed."}
     if run.state == "awaiting_approval":
-        spoken["awaiting_approval"] = {**judge_summary(db, run),
-                                       "next": "Read the judge's summary to the owner. control_approve completes the "
-                                               "task on their say-so; control_message sends changes back instead."}
+        packet = review_packet(db, run)
+        spoken["awaiting_approval"] = {**judge_summary(db, run), "review_packet": packet,
+                                       "next": "Read the review packet's text (and the judge's summary) to the owner, "
+                                               f"naming the run ({recipient(db, run)['label']}). Approving is the owner's "
+                                               "decision, not something verification established: control_approve "
+                                               "completes the task on their say-so; control_message sends changes back "
+                                               "instead."}
+    elif run.state == "needs_you" and run.state_reason != "plan_review":
+        spoken["review_packet"] = review_packet(db, run)
     return spoken
+
+
+PR_NUMBER = re.compile(r"/(?:pull|merge_requests)/(\d+)")
+
+
+def spoken_ago(at):
+    if at is None:
+        return ""
+    seconds = max(0, (now() - at).total_seconds())
+    if seconds < 90:
+        return "just now"
+    minutes = round(seconds / 60)
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = round(minutes / 60)
+    return f"{hours} h ago" if hours < 36 else f"{round(hours / 24)} days ago"
+
+
+def review_packet(db, run):
+    """E-Q3: what a reviewer needs beside Approve, as control_status reads it out (the page's remotea-model
+    reviewPacket builds the same from GET /runs/{id}): the frozen criteria with the latest verdict per criterion, the
+    latest verification (exit code, sandboxed or not, workspace complete or not, age), the pull requests and branch
+    state, open questions, and the judge's full reason. `text` is one sentence, e.g. "2 of 3 criteria met; tests
+    passed 4 min ago in a sandbox; PR #12 open; 1 open question"."""
+    plan = coordinator.frozen(db, run)
+    attempts = list(db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id)
+                               .order_by(AgentAttempt.created_at.desc()).limit(40)))
+    judge = next((a for a in attempts if a.kind == "judge" and a.status == "done"), None)
+    verify = next((a for a in attempts if a.kind == "verify" and a.initiator != "host"), None)
+    verdicts = {c.get("id"): c for c in ((judge.result or {}).get("criteria") or [])} if judge else {}
+    status_word = {"met": "met", "not_met": "not met", "unclear": "unknown"}
+    criteria = [{"id": c.get("id"), "text": c.get("text"),
+                 "status": status_word.get((verdicts.get(c.get("id")) or {}).get("status"), "unknown")}
+                for c in (plan.criteria if plan else []) or []]
+    met = sum(c["status"] == "met" for c in criteria)
+    earlier = judge is not None and judge.plan_revision != run.plan_revision
+    parts = [f"{met} of {len(criteria)} criteria met" + (" (judged against an earlier plan)" if earlier else "")
+             if criteria else "no success criteria"]
+    tests = None
+    if verify is None:
+        parts.append("tests not run yet" if (plan and (plan.verify or {}).get("verify_id"))
+                     else "no verify command, so no test result is recorded")
+    else:
+        result = verify.result or {}
+        word = {"passed": "tests passed", "failed": "tests failed" + (f" (exit {result['exit_code']})"
+                                                                     if result.get("exit_code") is not None else ""),
+                "stale": "tests stale (the code changed during the run)", "timed_out": "tests timed out",
+                "running": "tests running"}.get(verify.status, f"tests {verify.status.replace('_', ' ')}")
+        if str(result.get("category") or "").startswith("infra_"):
+            # The check could not run (host setup): it says nothing about the code; name the fix instead.
+            word = f"verification could not run ({result.get('action') or verify.status.replace('_', ' ')})"
+        sandbox = {True: " in a sandbox", False: " outside a sandbox"}.get(result.get("isolated"), "")
+        line = f"{word} {spoken_ago(verify.updated_at or verify.created_at)}{sandbox}".replace("  ", " ")
+        if result.get("workspace_complete") is False:
+            line += " (workspace incomplete: " + "; ".join(result.get("workspace_reasons") or ["not fully read"])[:200] + ")"
+        if (verify.turn_seq, verify.plan_revision) != (run.turn_seq, run.plan_revision):
+            line += " (for an earlier turn or plan)"
+        parts.append(line)
+        tests = {"verify_id": verify.verify_id, "status": verify.status, "exit_code": result.get("exit_code"),
+                 "isolated": result.get("isolated"), "isolation_reason": result.get("isolation_reason"),
+                 "workspace_complete": result.get("workspace_complete"),
+                 "workspace_reasons": result.get("workspace_reasons") or [], "at": verify.updated_at}
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    session = db.get(AgentSession, run.session_pk) if run.session_pk else None
+    changes = changes_info(db, run, host, session)
+    numbers = [m.group(1) for m in (PR_NUMBER.search(u) for u in changes["pr_urls"]) if m]
+    if changes["pr_urls"]:
+        label = ("PR #" + ", #".join(numbers)) if numbers else ("a PR" if len(changes["pr_urls"]) == 1 else "PRs")
+        parts.append(f"{label} {'merged' if changes.get('merged') else 'open'}")
+    else:
+        pending = [f"{changes[k]} {k}" for k in ("unpushed", "uncommitted") if changes.get(k)]
+        parts.append("no PR recorded" + (f" ({', '.join(pending)} on {run.branch})" if pending else ""))
+    interview = coordinator.open_interview(db, run)
+    open_count = len(coordinator.open_questions(db, run)) +(len(interview.questions or []) if interview else 0)
+    parts.append(f"{open_count} open question{'s' if open_count != 1 else ''}" if open_count else "no open questions")
+    verdict = (judge.result or {}) if judge else {}
+    return {"text": "; ".join(parts), "criteria": criteria, "criteria_met": met, "criteria_total": len(criteria),
+            "judged_earlier_plan": earlier, "tests": tests, "pull_requests": changes["pr_urls"], "branch": run.branch,
+            "open_questions": open_count,
+            "reason": "\n\n".join(t for t in (verdict.get("summary"), verdict.get("gap")) if t)[:4000]}
 
 
 def judge_summary(db, run):

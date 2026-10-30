@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
-import { RunRow } from "./RunsPanel";
+import { AttentionList } from "./RunsPanel";
 import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, ATTENTION_STATES, baseLine, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
+  ago, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
   isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
@@ -83,6 +83,7 @@ export function Remotea() {
   useAgentRefresh(refresh);
   const hosts = hostSummary(status?.hosts ?? []);
   const cutover = cutoverSummary(parity);
+  const unmerged = useUnmerged();
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
       <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
@@ -90,8 +91,8 @@ export function Remotea() {
     </section>
     {error && <p className="error-banner" role="alert">{error}</p>}
     <PendingControls/>
-    <RunList onOpen={openRun}/>
-    <UnmergedList/>
+    <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged}/>
+    <UnmergedList items={unmerged}/>
     <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
       {items && !items.length && <p className="activity-empty">No agent sessions are running in remotea right now.</p>}
       {items?.map(item => <SessionRow key={item.id} item={item}/>)}
@@ -222,8 +223,11 @@ function message(e: unknown) {
   return (e as Error).message || "Something went wrong.";
 }
 
-function RunList({ onOpen }: { onOpen: (id: string) => void }) {
-  const [runs, setRuns] = useState<Run[] | null>(null), [error, setError] = useState("");
+/** The page's runs, grouped by the next human action (attentionGroups); the five most recent settled runs close it. */
+export function RunList({ onOpen, hosts, unmerged, preloaded }: { onOpen: (id: string) => void; hosts: Host[]; unmerged: UnmergedWork[];
+  /** Runs already in hand (tests); the list still loads. */
+  preloaded?: Run[] }) {
+  const [runs, setRuns] = useState<Run[] | null>(preloaded ?? null), [error, setError] = useState("");
   const refresh = useCallback(() => {
     api<{ items: Run[] }>("/remotea/runs?limit=20").then(r => { setRuns(orderRuns(r.items)); setError(""); }).catch(e => setError(message(e)));
   }, []);
@@ -235,15 +239,19 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
     <h2>Runs</h2>
     {error && <p role="alert" className="work-error">{error}</p>}
     {!active.length && <p className="footnote">No runs are active.</p>}
-    {[...active, ...recent].map(r => <RunRow key={r.id} run={r} onOpen={onOpen}/>)}
+    <AttentionList groups={attentionGroups([...active, ...recent], [], hosts, unmerged)} onOpen={onOpen}/>
   </section>;
 }
 
-function UnmergedList() {
+function useUnmerged() {
   const [items, setItems] = useState<UnmergedWork[]>([]);
   const refresh = useCallback(() => { api<{ items: UnmergedWork[] }>("/remotea/unmerged").then(r => setItems(r.items)).catch(() => setItems([])); }, []);
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
+  return items;
+}
+
+function UnmergedList({ items }: { items: UnmergedWork[] }) {
   if (!items.length) return null;
   return <details className="remotea-unmerged">
     <summary>Unmerged work ({items.length})</summary>
@@ -396,6 +404,75 @@ export function Criteria({ run }: { run: RunDetail }) {
   </details>;
 }
 
+const PACKET_STATUS = { met: "Met", "not met": "Not met", unknown: "Unknown" } as const;
+
+/** E-Q3: everything a reviewer needs beside Approve, from reviewPacket. Read-only in needs_you and settled runs. */
+export function ReviewPacketCard({ packet, children }: { packet: ReviewPacket; children?: ReactNode }) {
+  return <details className={"remotea-plan review-packet" + (packet.readOnly ? " read-only" : "")} open={!packet.readOnly || undefined}
+    aria-label="Review packet">
+    <summary>Review · {packet.text}</summary>
+    {packet.decision && <p className={"review-decision kind-" + packet.decision.kind}>{packet.decision.text}</p>}
+    <h4>Success criteria · {packet.met}/{packet.total} met</h4>
+    {packet.judgedEarlierPlan && <p className="footnote attention">Judged against an earlier plan: the criteria changed since. Judge again to check them.</p>}
+    {packet.criteria.length ? <ul>{packet.criteria.map(c => <li key={c.id} className={"criterion-" + c.status.replace(" ", "_")}>
+      <strong>{PACKET_STATUS[c.status]}</strong> {c.text}{c.evidence && <p>{c.evidence}</p>}
+    </li>)}</ul> : <p className="footnote">No success criteria: the judge cannot complete this run; you decide.</p>}
+    <h4>Changes</h4>
+    <p>{packet.prs.length ? packet.prs.map((p, i) => <span key={p.url}>{i ? ", " : ""}<a href={p.url} target="_blank" rel="noreferrer">{p.label}</a></span>) : null}
+      {packet.prs.length ? " " + packet.prState : packet.changesLine}
+      {packet.branch && <> · <code>{packet.branch}</code></>}{packet.worktree && <small> in <code>{packet.worktree}</code></small>}</p>
+    <h4>Tests</h4>
+    <p>{packet.testsLine}</p>
+    {!!packet.tests?.markers.length && <ul className="review-markers">{packet.tests.markers.map(m => <li key={m}>{m}</li>)}</ul>}
+    {!!packet.questions.length && <><h4>Open questions</h4><ul>{packet.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></>}
+    {packet.reason && <><h4>The judge's reason</h4><p className="review-reason">{packet.reason}</p></>}
+    {children}
+  </details>;
+}
+
+/** ba56714a: edit the success criteria (and the verify command) of a parked run, then Judge again. */
+export function CriteriaEditor({ run, onDone, onConflict, onCancel }: { run: RunDetail; onDone: () => void; onConflict: () => void; onCancel: () => void }) {
+  const [rows, setRows] = useState(() => (run.plan?.criteria ?? []).map(c => ({ id: c.id as string | undefined, text: c.text, kind: c.kind ?? "text" })));
+  const options = run.verify_options ?? [], current = run.plan?.verify?.verify_id ?? null;
+  const [verifyId, setVerifyId] = useState(current ?? "");
+  const [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const body = criteriaBody(rows, verifyId || null, current);
+  const set = (i: number, values: Partial<(typeof rows)[number]>) => setRows(all => all.map((r, j) => j === i ? { ...r, ...values } : r));
+  const save = async (judge: boolean) => {
+    if (!body) return;
+    setBusy(judge ? "judge" : "save"); setError("");
+    try {
+      const saved = await postAction<RunDetail>(`/remotea/runs/${run.id}/criteria`, { ...body, expected_revision: run.state_revision });
+      if (judge) await postAction(`/remotea/runs/${run.id}/judge`, { expected_revision: saved.state_revision });
+      onDone();
+    } catch (e) { if (isRevisionConflict(e)) onConflict(); else setError(message(e)); } finally { setBusy(""); }
+  };
+  return <section className="remotea-question criteria-editor" aria-label="Edit criteria">
+    <p className="remotea-card-kicker">Edit criteria</p>
+    <p className="footnote">Your edit freezes the next plan revision; the agent is judged against it from now on.</p>
+    {rows.map((r, i) => <fieldset key={r.id ?? "new-" + i} disabled={!!busy}>
+      <textarea aria-label={"Criterion " + (i + 1)} rows={2} value={r.text} onChange={e => set(i, { text: e.target.value })}/>
+      <div className="remotea-choices">
+        {(verifyId || r.kind === "verify") && <label className="remotea-toggle"><input type="checkbox" checked={r.kind === "verify"}
+          onChange={e => set(i, { kind: e.target.checked ? "verify" : "text" })}/><span>Needs the verify command to pass</span></label>}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows(all => all.filter((_, j) => j !== i))}>Remove</button>
+      </div>
+    </fieldset>)}
+    <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setRows(all => [...all, { id: undefined, text: "", kind: "text" }])}>Add criterion</button>
+    {!!options.length && <label className="remotea-verify-line">Verify command
+      <select aria-label="Verify command" value={verifyId} disabled={!!busy} onChange={e => setVerifyId(e.target.value)}>
+        {!current && <option value="">none</option>}
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select></label>}
+    <div className="remotea-control-row">
+      <button className="btn btn-sm btn-ghost" disabled={!!busy} onClick={onCancel}>Cancel</button>
+      <button className="btn btn-sm" disabled={!body || !!busy} onClick={() => void save(false)}>{busy === "save" ? "Saving…" : "Save"}</button>
+      <button className="btn btn-sm btn-primary" disabled={!body || !!busy} onClick={() => void save(true)}>{busy === "judge" ? "Judging…" : "Save and judge again"}</button>
+    </div>
+    {error && <p role="alert" className="work-error">{error}</p>}
+  </section>;
+}
+
 const BUBBLE_FOLD = 700;
 
 const CLIPPED_HINT = "Cut at 4,000 characters for display. Full response loads the rest.";
@@ -510,6 +587,10 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const pagedOut = earlierLine(shown?.more);
   const verify = run ? verifyLine(run) : null;
   const [verifyPick, setVerifyPick] = useState("");
+  const packet = run ? reviewPacket(run) : null;
+  // Edit criteria / Judge again: only while the run is parked for you (not during a plan review).
+  const parked = !!run && bound && !run.freestyle && (run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review"));
+  const [editing, setEditing] = useState(false);
   return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
@@ -548,7 +629,15 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         </span>}
       </div>}
       {run && <div className="remotea-chat-facts">
-        <Criteria run={run}/>
+        {packet ? <ReviewPacketCard packet={packet}>
+          {parked && !editing && <div className="remotea-control-row">
+            <button className="btn btn-sm" disabled={off} onClick={() => setEditing(true)}>Edit criteria</button>
+            <button className="btn btn-sm" disabled={off || !run.turn_seq || !run.plan?.criteria?.length} title="Check the last turn again against the criteria as they are now"
+              onClick={() => void act("judge")}>{busy === "judge" ? "Judging…" : "Judge again"}</button>
+          </div>}
+        </ReviewPacketCard> : <Criteria run={run}/>}
+        {parked && editing && <CriteriaEditor key={run.plan?.revision ?? 0} run={run} onCancel={() => setEditing(false)}
+          onDone={() => { setEditing(false); refresh(); }} onConflict={() => { setEditing(false); changed(); }}/>}
         {!!run.plan?.steps?.length && <details className="remotea-plan">
           <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
           <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>
@@ -607,8 +696,10 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || off || controls.stop.label === "Stopping…"}
           onClick={() => void act("stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
         <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || off}
-          title="Mark the task complete and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
+          title="Your decision: mark the task complete as you and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
       </div>
+      {packet && run.state === "awaiting_approval" && <p className="review-beside-approve" role="note">
+        <strong>{packet.text}.</strong> {packet.decision?.text}</p>}
       {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
     </footer>}
   </section>;

@@ -58,8 +58,10 @@ describe("panel helpers", () => {
   });
   it("counts the badge and flags attention", () => {
     const pending: PendingControl[] = [{ id: "p", tool: "control.start", summary: "Start", run_id: null, expires_at: "" }];
-    expect(runsBadge([run({})], [])).toEqual({ count: 1, attention: false, aria: "Runs, 1 active" });
+    // The badge counts what needs an action from you; a run that is just working is not counted.
+    expect(runsBadge([run({})], [])).toEqual({ count: 0, attention: false, aria: "Runs, 1 working" });
     expect(runsBadge([run({ state: "awaiting_approval" })], pending)).toMatchObject({ count: 2, attention: true });
+    expect(runsBadge([run({ state: "awaiting_approval" }), run({ id: "w" })], [])).toEqual({ count: 1, attention: true, aria: "Runs, 1 needs you, 1 working" });
     expect(runsBadge([run({ state: "completed" })], [])).toEqual({ count: 0, attention: false, aria: "Runs" });
   });
 });

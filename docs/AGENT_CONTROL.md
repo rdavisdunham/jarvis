@@ -556,7 +556,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
 | `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `task` |
-| `GET /runs/{id}?limit=&offset=` | no | detail: plan, history, turns, commands with outcomes, questions; turns and commands page newest first (`more`, `retention`: see "Reading runs") |
+| `GET /runs/{id}?limit=&offset=` | no | detail: plan, history, turns, commands with outcomes, questions, attempts, and `changes` (the review packet's PR links and branch state, under "The review packet"); turns and commands page newest first (`more`, `retention`: see "Reading runs") |
 | `GET /runs/{id}/turns/{turn_id}` | no | one turn whole, `{id, seq, text, truncated}`, for the "Full response" of a `clipped` turn. Owner only, like detail. 404 `NOT_FOUND` for an unknown id or a turn of another run or owner; 404 `TURN_EXPIRED` once retention deleted the run's turns |
 | `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
@@ -565,8 +565,8 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses` and `verify` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
 
-**Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`
-and `verify-config` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
+**Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`,
+`verify-config`, `criteria` and `judge` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
 (`agent_action_receipts`: owner, action id, run, route, a SHA-256 of the route, run and body without
 `action_id`, and the response) in the same transaction as the effect (`agent_receipts.once`). A repeat with the
 same `action_id` and body returns the stored response and acts no more: one `AgentCommand`, one steer
@@ -576,8 +576,23 @@ so the same id may act later. Without `action_id` every request acts. Receipts a
 `postAction(path, body)` in `apps/web/src/api.ts` sets one `action_id` per call and resends the same body after
 a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
-The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
-questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve.
+The page shows runs grouped by the next human action (below), **Unmerged work**, and a run drawer with the
+timeline, the questions card, the review packet and Message / Steer / Stop (**Stopping…**, then **Force stop**) /
+Approve.
+
+**Attention-first grouping (E-Q5).** The topbar Runs panel and the remotea page list group runs with
+`remotea-model.ts` `attentionGroups(runs, pending, hosts, unmerged)` (pure; `attentionKey` decides one run), in this
+order, each with a verb heading and a count, empty groups hidden: **Confirm Eri's proposal** (pending
+`control_start`/`control_message`), **Answer a question** (`waiting_answer`, `interviewing`,
+`needs_you(question_timed_out)`), **Review the plan** (`needs_you(plan_review)`), **Repair the host or setup**
+(`needs_you` for `host_offline`, `surface_lost`, `exited`, `spawn_expired`, `delivery_uncertain`, `verify_infra`, or
+any working / needs_you run whose host is offline in `hosts`), **Inspect the failed check** (every other
+`needs_you`: judge needs you, no progress, verify missing, turn cap, PR unknown, judge unavailable), **Approve**
+(`awaiting_approval`; approving needs no host, so an offline host does not move it), **Resolve unmerged work**
+(`awaiting_integration`, `needs_you(awaiting_merge)`, and a settled run whose branch is in the hosts' unmerged report
+and not active), then **Working** and **Done** (no action). Within a group the most recently changed run comes first.
+The Runs badge (`runsBadge`) counts only the action groups (proposals included); its label reads "Runs, N need you,
+M working".
 
 The drawer loads the newest page of turns and commands. When `more` says older ones remain, the top of the log
 shows **Paged out** with how many remain and **Load earlier**, which fetches the next `offset` and merges it
@@ -671,6 +686,12 @@ attempts carry the same tuple). The run is `verifying` until the result.
 - `verify.result` is matched by `attempt_id` and the whole tuple (`tuple mismatch`, `unknown attempt`
   and `late` are acked with `discarded`). Status: `passed` (exit 0), `failed`, `timed_out`, `canceled`,
   `error`, `stale` (`stale_workspace`: the checkout changed around the run). Only `passed` passes.
+- **Isolation and fingerprint completeness** (remotea `verify-isolation`, optional on the wire): `verify.result`
+  may carry `isolated` (the command really ran inside bubblewrap), `isolation` (`bwrap` | `none`, the entry's
+  mode), `isolation_reason` (≤ 300 characters, redacted, only when not isolated), `workspace_complete` (false: the
+  fingerprint cannot prove the tree unchanged) and `workspace_reasons` (what it missed). They are kept on the attempt's
+  `result` and returned by `public_attempt` (null, or `[]` for the reasons, when an older host did not send them) for
+  the review packet. The judge does not read them yet (`workspace_complete: false` is not yet treated as not fresh).
 - **Host-initiated** results (`attempt_id: "local:…"`, remotea's `verify.auto`) are adopted when they
   match the tuple of a running Eridani attempt; others are stored with `initiator: host` and never move
   the run. `adopted` on a result names the host attempt remotea reused.
@@ -794,6 +815,58 @@ adds or swaps the verify command mid-run. The task's verify is set as a human ed
 revision N+1 with nothing else changed (history `verify_set`), and a run parked in `needs_you` goes back to
 `executing(verify_set)` with a short prompt so its next turn is verified. `GET /runs/{id}` lists `verify_options`.
 
+### Edit criteria and Judge again (ba56714a)
+
+While a run is parked for the owner (`needs_you` other than `plan_review`, or `awaiting_approval`), the run page offers
+**Edit criteria** and **Judge again** under the review packet.
+
+- `POST /remotea/runs/{id}/criteria {criteria: [{id?, text, kind: text|verify}] (1–50), verify_id?, expected_revision,
+  action_id?}` (`agent_plan.set_criteria`): a human edit of the task's `success_criteria` (and, with `verify_id`, its
+  verify command, checked like `set_verify`: `VERIFY_UNKNOWN`), frozen as plan revision N+1 with nothing else changed
+  (history `criteria_set`). A `verify`-kind criterion takes the plan's verify id (refused without one). An unchanged
+  agent criterion keeps `by: agent`; an edited or new one is the human's. The run does **not** move (unlike
+  `verify-config`, which resumes a needs_you run, so the editor sets the verify command here instead), but its
+  `state_revision` advances so an Approve sent against the old criteria is refused with `REVISION_CONFLICT`. Other
+  states: `409 RUN_NOT_PARKED`. The revision is required.
+- `POST /remotea/runs/{id}/judge {expected_revision, action_id?}` (`agent_control.judge_again`,
+  `run_coordinator.judge_again`): verify the run's current turn again when the plan has a verify command
+  (`needs_you|awaiting_approval → verifying(judge_again)`), else judge it at once (`→ judging(judge_again)`), against
+  the plan as frozen now; the verdict then moves the run as after any turn (`not_met` sends the gap prompt). Refused
+  with `RUN_NOT_PARKED`, `FREESTYLE` (turn freestyle off first), `NO_CRITERIA`, `NO_TURN` (no execution turn yet) or
+  `VERIFY_RUNNING` (an attempt is still open). The editor's **Save and judge again** sends both, the second with the
+  revision the first returned.
+
+The judge's full reason is on the page twice: the header's reason box shows `reason_detail` (now also the judge's
+gap for `verify_missing`, up to 4000 characters, instead of the transition's 300-character detail), and the review
+packet shows the latest verdict's summary and gap.
+
+### The review packet (E-Q3)
+
+Beside **Approve** (and read-only in `needs_you` and settled runs) the run page shows a review packet built by
+`remotea-model.ts` `reviewPacket(run)` from `GET /runs/{id}`:
+
+- **Criteria**: the frozen criteria with the latest verdict per criterion (met, not met, unknown: `unclear` or not
+  judged) and its evidence; "judged against an earlier plan" when the verdict's `plan_revision` is older than the run's
+  (the criteria were edited since).
+- **Changes**: `changes` on the detail (`agent_control.changes_info`): the pull requests the agent's session reported
+  (collector `pr_urls`, validated links, not a claim in the turn text), `pr_as_of`, and the host's last worktrees
+  report row for the run's branch (`ahead`, `behind`, `unpushed`, `uncommitted`, `untracked`, `merged`,
+  `reported_at`), plus the branch and worktree.
+- **Tests**: the latest Eridani-bound verify attempt: status, exit code, age, in a sandbox or not, and markers in
+  words: "stale: the code changed during the run", "workspace incomplete: <reasons>", "not sandboxed (<reason>)",
+  "for an earlier turn or plan". Without a verify command it says no test result can be recorded; a verification with
+  an `infra_*` category reads "verification could not run (<action>)", never "tests failed".
+- **Open questions** (agent questions open, submitted or timed out, and an open interview) and **the judge's reason**.
+- **Decision**: on `awaiting_approval`, "Approving is your decision: it completes the task as you. It is not
+  completion established by verification." A settled run says "Approved by you" (`state_reason: approved`) or
+  "Completed by verification" (`judge_met`, auto_complete), styled differently, so a human approval is never
+  presented as independently established completion.
+
+The same packet as one sentence ("2 of 3 criteria met; tests passed 4 min ago in a sandbox; PR #12 open; 1 open
+question") is shown next to Approve, and `control_status` returns it for Eri as `awaiting_approval.review_packet`
+(`agent_control.review_packet`: `text`, `criteria`, `criteria_met`/`criteria_total`, `tests`, `pull_requests`,
+`open_questions`, `reason`; also `review_packet` on a `needs_you` run).
+
 ### Freestyle
 
 `POST /remotea/runs/{id}/freestyle {enabled, expected_revision?}` (`agent_runs.freestyle`, migration 0034): the
@@ -837,6 +910,8 @@ completion.
 | `POST /runs/{id}/verify-config {verify_id, expected_revision?, action_id?}` | yes | set the plan's verify command mid-run (new revision) |
 | `POST /runs/{id}/freestyle {enabled, expected_revision?, action_id?}` | yes | judge, verify, cap and gap prompts off while on |
 | `POST /runs/{id}/plan-review {decisions, verify, completion_policy, expected_revision}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale) |
+| `POST /runs/{id}/criteria {criteria, verify_id?, expected_revision, action_id?}` | yes | Edit criteria on a parked run (new revision; the run does not move); the revision is required |
+| `POST /runs/{id}/judge {expected_revision, action_id?}` | yes | Judge again: verify and judge the current turn against the plan as frozen now |
 | `POST /auto-complete {enabled}` | yes | rollout flag |
 
 The run drawer adds the interview form (one form for all questions), success criteria with the latest
@@ -912,13 +987,29 @@ in `VOICE_MUTATIONS`:
 | `control.confirm` | `pending_id?`, `decision: confirm\|decline`, `execution_target_id?` | the owner's yes to a proposed start/message (below); a start that asked where to run takes the chosen target |
 | `control.approve` | target? | immediate: approves a run that is `awaiting_approval` (`agent_control.approve`; the server supplies `expected_revision` from the run it checked); any other state is refused with `NOT_AWAITING_APPROVAL` naming the state |
 | `control.plan_review` | target?, `decisions: [{id, accept, text?}]`, `verify?`, `completion_policy?` | immediate: the owner's decisions on a `plan_review` (`agent_plan.review_plan`; the server supplies `expected_revision`); otherwise `NO_PLAN_REVIEW` |
-| `control_status` (read) | target? | active runs, their open questions/interview, `plan_review` proposals, the judge's `awaiting_approval` summary, open proposals (`pending`, with target options), finished in the last 24 h, hosts |
+| `control_status` (read) | target? | active runs, their open questions/interview, `plan_review` proposals, the judge's `awaiting_approval` summary with the `review_packet` (above), open proposals (`pending`, with target options), finished in the last 24 h, hosts |
 
-A target is `run_id`, `task_id` or `task` (a spoken name); none means the run open on the owner's screen
-(`UIContext.open_run_id`, which the remotea page sends and `context_prompt` names as "Open run: <id>"), else
-the only active run. Names resolve through an exact Linear identifier, then `navigation_find`; several
-matches → `AMBIGUOUS_TASK` (or `AMBIGUOUS_RUN`) with the candidates so Eri asks, none → `NOT_FOUND`. Every
-command passes the remotea gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog
+A target is `run_id`, `task_id` or `task` (a spoken name). Names resolve through an exact Linear identifier, then
+`navigation_find`; none → `NOT_FOUND`; a name matching several tasks → `AMBIGUOUS_TASK` with the candidates when none
+of them has an active run. Without a target (`run_for(db, owner, target, tool)`), the command fits every unsettled run,
+except `control.approve` (only runs `awaiting_approval`) and `control.plan_review` (only `needs_you(plan_review)`): the
+run open on the owner's screen (`UIContext.open_run_id`, which the remotea page sends and `context_prompt` names as
+"Open run: <id>") is meant when it is also the newest run the command fits (or none fits), else the only run it fits.
+
+**Recipient confirmation (E-Q6).** When more than one run is plausible (several runs fit, the open run is not the
+newest one that fits, or a spoken name matches several tasks that have active runs), `control.message`, `control.stop`,
+`control.approve` and `control.plan_review` do not act: `run_for` raises `AMBIGUOUS_RUN` with `data.candidates` and
+`control_command` returns `{status: "needs_choice", tool, message, candidates: [{run_id, task, host, branch, state,
+label: "task · host · branch · state"}], next}` (nothing proposed, sent or journaled). `control.confirm` without a
+`pending_id` while several different proposals of the account wait returns the same shape, each candidate a proposal
+(`pending_id`, `summary`; a start names its task, chosen place, the branch it will create and `not started`); a
+spoken yes still confirms only the newest (the older ones on the page, or after declining the newer). When exactly one
+run is meant, the result carries `recipient` (the same fields) and its `next` begins "Name the task, host and branch
+this affects when you tell the owner (<label>)": message proposals, stop, approve, plan review, answers (whose
+question or interview id already names one run, so they never need a choice) and confirms. Eri's tool descriptions
+(`tool_catalog.RECIPIENT`) say to name the task, host and branch before acting and to ask on `needs_choice`.
+
+Every command passes the remotea gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog
 group are in the model's registry only while remotea is enabled (`tool_policy.remotea_tools`, applied to
 chat, voice and work runs); `approve` and `plan_review` act only on a run already waiting for the human, so
 they need no second confirmation. External bots never see any of them (no scope maps to `control.*`).

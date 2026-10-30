@@ -231,6 +231,14 @@ export type Attempt = {
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
   /** Why a verification did not pass (run_coordinator.classify_verify) and the one-line fix; null when it passed. */
   category?: VerifyCategory | null; action?: string | null;
+  /** remotea verify isolation and fingerprint completeness; null/absent when the host did not say (older remotea). */
+  isolated?: boolean | null; isolation?: string | null; isolation_reason?: string | null;
+  workspace_complete?: boolean | null; workspace_reasons?: string[]; duration_ms?: number | null;
+};
+/** What the run changed (GET /runs/{id} `changes`): the session's reported PRs and the host's worktree row. */
+export type RunChanges = {
+  branch: string; worktree: string; pr_urls: string[]; pr_as_of: string | null; ahead?: number | null; behind?: number | null;
+  unpushed?: number | null; uncommitted?: number | null; untracked?: number | null; merged?: boolean | null; reported_at: string | null;
 };
 export type VerifyCategory = "tests_failed" | "infra_missing_binary" | "infra_missing_dependency" | "infra_database"
   | "infra_timeout" | "infra_refused" | "infra_uncertain";
@@ -263,6 +271,7 @@ export type RunDetail = Run & {
   more?: DetailPage;
   /** A settled run's turns and commands are deleted 90 days after it ended; `expires_at` is null while it runs. */
   retention?: { expires_at: string | null; expired: boolean };
+  changes?: RunChanges;
 };
 export type DetailPage = { turns: boolean; commands: boolean; offset: number; limit: number; remaining?: { turns: number; commands: number } };
 /** One turn's whole text (`GET /remotea/runs/{id}/turns/{turn_id}`), for a `clipped` turn's "Full response". */
@@ -397,6 +406,119 @@ export function criteriaEvidence(run: Pick<RunDetail, "plan" | "attempts">) {
     const found = byId.get(c.id);
     return { ...c, status: found?.status ?? "pending", evidence: found?.evidence ?? "", turn: judged?.turn_seq ?? null };
   });
+}
+
+// ---------------------------------------------------------------- the review packet beside Approve (E-Q3)
+
+export type PacketCriterion = { id: string; text: string; status: "met" | "not met" | "unknown"; evidence: string };
+export type PacketTests = { verifyId: string; status: string; exitCode: number | null; age: string; isolated: boolean | null;
+  /** Stale or incomplete evidence, in words: "stale: the code changed during the run", "workspace incomplete: …". */
+  markers: string[]; line: string };
+export type ReviewPacket = {
+  criteria: PacketCriterion[]; met: number; total: number;
+  /** The latest verdict was reached against an earlier plan revision (criteria edited since): Judge again. */
+  judgedEarlierPlan: boolean;
+  tests: PacketTests | null; testsLine: string;
+  prs: { url: string; label: string }[]; prState: "open" | "merged" | null; changesLine: string; branch: string; worktree: string;
+  questions: string[]; reason: string;
+  /** Approval is a human decision; "verified" is completion the judge established on its own (auto_complete). */
+  decision: { kind: "approval" | "approved" | "verified"; text: string } | null;
+  /** Only an awaiting_approval run is decided here; needs_you and settled runs show the packet read-only. */
+  readOnly: boolean;
+  text: string;
+};
+
+const PR_NUMBER = /\/(?:pull|merge_requests)\/(\d+)/;
+/** "PR #12" for a GitHub/GitLab link, else the link's path. */
+export function prLabel(url: string) {
+  const number = PR_NUMBER.exec(url)?.[1];
+  return number ? "PR #" + number : url.replace(/^https?:\/\//, "");
+}
+/** "just now", "4 min ago", "2 h ago": how old the evidence is, spoken the way control_status says it. */
+export function evidenceAge(value: string | null | undefined, now = Date.now()) {
+  if (!value) return "";
+  const seconds = Math.max(0, (now - new Date(value).getTime()) / 1000);
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 36 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+const PACKET_TESTS: Record<string, string> = { passed: "tests passed", stale: "tests stale (the code changed during the run)",
+  timed_out: "tests timed out", running: "tests running" };
+const OPEN_QUESTION = new Set(["open", "submitted", "timed_out"]);
+
+/** What a reviewer needs beside Approve: the frozen criteria with the latest verdict per criterion, the changes (PR
+ * links, branch state), the latest verification with stale/incomplete markers and its age, open questions, and the
+ * judge's full reason. Null while the run is working (nothing to review) or in a plan review (PlanReview shows it).
+ * agent_control.review_packet builds the same sentence for control_status. */
+export function reviewPacket(run: RunDetail, now = Date.now()): ReviewPacket | null {
+  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review");
+  if (!parked && !isSettled(run) && run.state !== "stopping") return null;
+  const word = { met: "met", not_met: "not met", unclear: "unknown", pending: "unknown" } as const;
+  const criteria = criteriaEvidence(run).map(c => ({ id: c.id, text: c.text, status: word[c.status as keyof typeof word] ?? "unknown",
+    evidence: c.evidence }));
+  const met = criteria.filter(c => c.status === "met").length;
+  const judge = (run.attempts ?? []).find(a => a.kind === "judge" && a.status === "done") ?? null;
+  const judgedEarlierPlan = !!judge && judge.plan_revision !== run.plan_revision;
+  const verify = (run.attempts ?? []).find(a => a.kind === "verify" && a.initiator !== "host") ?? null;
+  let tests: PacketTests | null = null, testsLine: string;
+  if (!verify) testsLine = run.plan?.verify?.verify_id ? "tests not run yet" : "no verify command, so no test result is recorded";
+  else {
+    // A verification that could not run (an infra category) says nothing about the code: name the host fix instead.
+    const status = infraAttempt(verify) ? `verification could not run (${verify.action || verify.status.replace("_", " ")})`
+      : verify.status === "failed" ? "tests failed" + (verify.exit_code != null ? ` (exit ${verify.exit_code})` : "")
+      : PACKET_TESTS[verify.status] ?? "tests " + verify.status.replace("_", " ");
+    const age = evidenceAge(verify.updated_at || verify.created_at, now);
+    const isolated = verify.isolated ?? null;
+    const markers = [
+      verify.status === "stale" ? "stale: the code changed during the run" : "",
+      verify.workspace_complete === false ? "workspace incomplete: " + ((verify.workspace_reasons ?? []).join("; ") || "not fully read") : "",
+      isolated === false ? "not sandboxed" + (verify.isolation_reason ? ` (${verify.isolation_reason})` : "") : "",
+      verify.turn_seq !== run.turn_seq || verify.plan_revision !== run.plan_revision ? "for an earlier turn or plan" : "",
+    ].filter(Boolean);
+    const sandbox = isolated === true ? " in a sandbox" : isolated === false ? " outside a sandbox" : "";
+    testsLine = `${status}${age ? " " + age : ""}${sandbox}` + (verify.workspace_complete === false ? ` (${markers.find(m => m.startsWith("workspace"))})` : "")
+      + (markers.includes("for an earlier turn or plan") ? " (for an earlier turn or plan)" : "");
+    tests = { verifyId: verify.verify_id, status: verify.status, exitCode: verify.exit_code, age, isolated, markers, line: testsLine };
+  }
+  const changes = run.changes;
+  const prs = (changes?.pr_urls ?? []).map(url => ({ url, label: prLabel(url) }));
+  let changesLine: string;
+  if (prs.length) changesLine = `${prs.map(p => p.label).join(", ")} ${changes?.merged ? "merged" : "open"}`;
+  else {
+    const pending = (["unpushed", "uncommitted"] as const).filter(k => changes?.[k]).map(k => `${changes![k]} ${k}`);
+    changesLine = "no PR recorded" + (pending.length ? ` (${pending.join(", ")} on ${run.branch})` : "");
+  }
+  const questions = [
+    ...run.questions.filter(q => OPEN_QUESTION.has(q.status)).flatMap(q => q.items.map(i => i.text)),
+    ...(run.interviews ?? []).filter(i => i.status === "open").flatMap(i => i.questions.map(q => q.question)),
+  ];
+  const reason = [judge?.summary, judge?.gap].filter(Boolean).join("\n\n") || run.reason_detail || "";
+  const done = run.state === "completed" || run.state === "stopping";
+  const decision = run.state === "awaiting_approval"
+    ? { kind: "approval" as const, text: "Approving is your decision: it completes the task as you. It is not completion established by verification." }
+    : done && run.state_reason === "approved" ? { kind: "approved" as const, text: "Approved by you: a human decision, not established by verification." }
+    : done && run.state_reason === "judge_met" ? { kind: "verified" as const, text: "Completed by verification: the judge found every criterion met; no one approved it." }
+    : null;
+  const parts = [
+    criteria.length ? `${met} of ${criteria.length} criteria met` + (judgedEarlierPlan ? " (judged against an earlier plan)" : "") : "no success criteria",
+    testsLine, changesLine,
+    questions.length ? `${questions.length} open question${questions.length === 1 ? "" : "s"}` : "no open questions",
+  ];
+  return { criteria, met, total: criteria.length, judgedEarlierPlan, tests, testsLine, prs,
+    prState: prs.length ? (changes?.merged ? "merged" : "open") : null, changesLine, branch: run.branch,
+    worktree: changes?.worktree || run.worktree, questions, reason, decision, readOnly: run.state !== "awaiting_approval",
+    text: parts.join("; ") };
+}
+
+/** Edit criteria's body: the rows as edited (blank ones dropped), the verify choice when it changed, and the
+ * revision the editor saw (POST /runs/{id}/criteria refuses a stale one). Null when nothing is left to save. */
+export function criteriaBody(rows: { id?: string; text: string; kind?: "text" | "verify" }[], verifyId: string | null,
+  current: string | null) {
+  const criteria = rows.map(r => ({ ...(r.id ? { id: r.id } : {}), text: r.text.trim(), kind: r.kind ?? "text" })).filter(r => r.text);
+  if (!criteria.length) return null;
+  return { criteria, ...(verifyId && verifyId !== current ? { verify_id: verifyId } : {}) };
 }
 
 const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passed", failed: "failed", timed_out: "timed out",
@@ -664,13 +786,74 @@ export function runChip(run: Run | undefined, hosts: Host[]):
   return { kind: "start", label: "Run", disabled: button.disabled, reason: button.reason };
 }
 
-/** The topbar Runs button: how many runs and proposals wait, and whether one needs the owner. */
-export function runsBadge(runs: Run[], pending: PendingControl[]) {
+// ---------------------------------------------------------------- attention-first grouping (E-Q5)
+
+export type AttentionKey = "confirm" | "answer" | "review_plan" | "repair" | "inspect" | "approve" | "unmerged" | "working" | "done";
+/** Groups in the order a human acts on them; `action` groups count toward the Runs badge. */
+export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolean }[] = [
+  { key: "confirm", verb: "Confirm Eri's proposal", action: true },
+  { key: "answer", verb: "Answer a question", action: true },
+  { key: "review_plan", verb: "Review the plan", action: true },
+  { key: "repair", verb: "Repair the host or setup", action: true },
+  { key: "inspect", verb: "Inspect the failed check", action: true },
+  { key: "approve", verb: "Approve", action: true },
+  { key: "unmerged", verb: "Resolve unmerged work", action: true },
+  { key: "working", verb: "Working", action: false },
+  { key: "done", verb: "Done", action: false },
+];
+// needs_you reasons the host or its setup must fix (verify_infra: a verification that could not run).
+const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra"]);
+const ANSWER_REASONS = new Set(["question_timed_out"]);
+const UNMERGED_REASONS = new Set(["awaiting_merge"]);
+
+function hostOffline(run: Run, hosts: Host[]) {
+  if (!run.host) return false;
+  const known = hosts.find(h => h.id === run.host!.id);
+  return known ? !known.connected : !run.host.connected;
+}
+function unmergedFor(run: Run, unmerged: UnmergedWork[]) {
+  return !!run.branch && unmerged.some(w => w.branch === run.branch && w.host_id === run.host?.id && !w.active);
+}
+
+/** The next human action a run waits for. A run whose host is offline (or whose setup broke) needs a repair before
+ * anything the agent could do; settled runs with unmerged work on their branch still need resolving. */
+export function attentionKey(run: Run, hosts: Host[] = [], unmerged: UnmergedWork[] = []): AttentionKey {
+  if (isSettled(run)) return unmergedFor(run, unmerged) ? "unmerged" : "done";
+  if (run.state === "stopping") return "working";
+  if (run.state === "waiting_answer" || run.state === "interviewing") return "answer";
+  if (run.state === "awaiting_approval") return "approve";
+  if (run.state === "awaiting_integration") return "unmerged";
+  if (run.state === "needs_you") {
+    if (run.state_reason === "plan_review") return "review_plan";
+    if (REPAIR_REASONS.has(run.state_reason) || hostOffline(run, hosts)) return "repair";
+    if (ANSWER_REASONS.has(run.state_reason)) return "answer";
+    if (UNMERGED_REASONS.has(run.state_reason)) return "unmerged";
+    return "inspect";
+  }
+  return hostOffline(run, hosts) ? "repair" : "working";
+}
+
+export type AttentionGroup = { key: AttentionKey; verb: string; action: boolean; count: number; runs: Run[]; pending: PendingControl[] };
+/** Runs (and Eri's proposals) grouped by the next human action, in the order to act on them; empty groups left out.
+ * Within a group the run that changed most recently comes first. */
+export function attentionGroups(runs: Run[], pending: PendingControl[], hosts: Host[] = [], unmerged: UnmergedWork[] = []): AttentionGroup[] {
+  const sorted = [...runs].sort((a, b) => new Date(b.state_since).getTime() - new Date(a.state_since).getTime());
+  return ATTENTION_GROUPS.map(g => {
+    const inGroup = sorted.filter(r => attentionKey(r, hosts, unmerged) === g.key);
+    const waiting = g.key === "confirm" ? pending : [];
+    return { ...g, runs: inGroup, pending: waiting, count: inGroup.length + waiting.length };
+  }).filter(g => g.count > 0);
+}
+
+/** The topbar Runs button: the badge counts what needs an action from you (proposals to confirm, questions, plan
+ * reviews, repairs, failed checks, approvals, unmerged work), not runs that are just working. */
+export function runsBadge(runs: Run[], pending: PendingControl[], hosts: Host[] = []) {
   const active = runs.filter(r => !isSettled(r));
-  const attention = pending.length > 0 || active.some(r => ATTENTION_STATES.includes(r.state));
-  const count = active.length + pending.length;
-  const parts = [active.length ? `${active.length} active` : "", pending.length ? `${pending.length} waiting for your confirmation` : ""].filter(Boolean);
-  return { count, attention, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
+  const groups = attentionGroups(active, pending, hosts);
+  const count = groups.filter(g => g.action).reduce((n, g) => n + g.count, 0);
+  const working = active.length - groups.filter(g => g.action).reduce((n, g) => n + g.runs.length, 0);
+  const parts = [count ? `${count} need${count === 1 ? "s" : ""} you` : "", working ? `${working} working` : ""].filter(Boolean);
+  return { count, attention: count > 0, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
 }
 
 // The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model); a drift guard reads both.
@@ -762,10 +945,11 @@ export async function latestRun<T extends { id: string }>(guard: LatestOnly, id:
   }
 }
 
-export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop";
+export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop"
+  | "criteria" | "judge";
 const ACTION_PATHS: Record<RunAction, string> = {
   message: "message", steer: "message", replan: "replan", verify: "verify", "verify-config": "verify-config",
-  freestyle: "freestyle", approve: "approve", stop: "stop",
+  freestyle: "freestyle", approve: "approve", stop: "stop", criteria: "criteria", judge: "judge",
 };
 
 /** The URL and body of a drawer control, bound to the run on screen (never the panel's id prop) and carrying the

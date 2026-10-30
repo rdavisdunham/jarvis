@@ -323,6 +323,28 @@ def test_a_repeated_proposal_folds_and_the_owners_yes_confirms_it(client, host, 
     assert nothing.value.code == "NOT_FOUND"
 
 
+def test_a_bare_yes_with_several_proposals_waiting_asks_which(client, host, keyed):  # noqa: F811
+    """E-Q6: control_confirm without a pending_id while two different proposals wait returns needs_choice (each as
+    task · place · branch · state) and starts nothing; naming the newest by pending_id after a yes confirms it, and
+    the result names task, host and branch."""
+    first, second = task("First proposal"), task("Second proposal")
+    with session_scope() as db:
+        for created in (first, second):
+            db.get(Task, created["id"]).execution_target_id = host.target_id
+    as_work(work_said(client, "Start the agent on first proposal"), "control.start", task_id=first["id"])
+    newest = as_work(work_said(client, "Start the agent on second proposal"), "control.start", task_id=second["id"])
+    choice = as_work(work_said(client, "yes"), "control.confirm")
+    assert choice["status"] == "needs_choice" and choice["tool"] == "control_confirm"
+    labels = [c["label"] for c in choice["candidates"]]
+    assert labels[0].startswith("Second proposal · jarvis · ") and labels[0].endswith(" · not started")
+    assert labels[1].startswith("First proposal · jarvis · ")
+    with session_scope() as db:
+        assert db.scalar(select(AgentRun)) is None  # Nothing started.
+    done = as_work(work_said(client, "yes, the second one"), "control.confirm", pending_id=newest["pending_id"])
+    assert done["status"] == "confirmed" and done["recipient"]["task"] == "Second proposal"
+    assert done["recipient"]["host"] and done["recipient"]["branch"] and done["recipient"]["label"] in done["next"]
+
+
 def test_eri_steer_is_logged_with_its_source_after_the_app_confirms(client, host):  # noqa: F811
     from test_agent_voice import confirm, say
 

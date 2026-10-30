@@ -290,7 +290,7 @@ class QuestionResolved(Frame):
 
 
 class VerifyResult(Frame):
-    REDACT: ClassVar[tuple[str, ...]] = ("tail", "error")
+    REDACT: ClassVar[tuple[str, ...]] = ("tail", "error", "isolation_reason")
     attempt_id: str = Field(min_length=1, max_length=200)
     run_id: str = Field(max_length=36)
     generation: int = Field(ge=0)
@@ -309,6 +309,14 @@ class VerifyResult(Frame):
     stale_workspace: bool = False
     initiator: str | None = Field(default=None, max_length=20)
     adopted: str | None = Field(default=None, max_length=200)
+    # remotea verify isolation and fingerprint completeness (additive; an older host omits them and they stay null):
+    # whether the command really ran sandboxed, the mode its entry asks for and why it was not isolated; whether the
+    # workspace fingerprint covers the whole tree and what it missed. Shown in the run's review packet.
+    isolated: bool | None = None
+    isolation: str | None = Field(default=None, max_length=20)
+    isolation_reason: str | None = Field(default=None, max_length=300)
+    workspace_complete: bool | None = None
+    workspace_reasons: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ContextRequest(Frame):

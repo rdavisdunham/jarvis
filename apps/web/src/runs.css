@@ -110,6 +110,11 @@
 /* ---- Runs topbar panel ------------------------------------------------------------------- */
 .runs-panel .activity-items { display: grid; gap: 8px; align-content: start; padding: 0 16px 16px; overflow: auto; }
 .runs-panel h3 { margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+/* E-Q5: runs grouped by the next human action (attentionGroups). */
+.run-group { display: grid; gap: 8px; }
+.run-group h3 { display: flex; align-items: baseline; gap: 6px; margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.run-group.needs-action h3 { color: var(--violet); }
+.run-group-count { font-variant-numeric: tabular-nums; font-weight: 600; }
 .runs-panel footer { margin-top: auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 
 /* ---- Run modal ---------------------------------------------------------------------------- */

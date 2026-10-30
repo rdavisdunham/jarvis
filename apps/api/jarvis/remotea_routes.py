@@ -331,6 +331,24 @@ def verify_config(identity: UUID, body: agent_plan.SetVerifyInput, user: User):
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
+@router.post("/runs/{identity}/criteria")
+def criteria(identity: UUID, body: agent_plan.SetCriteriaInput, user: User):
+    """Edit criteria on a parked run (needs_you, awaiting_approval): a human edit frozen as the next plan revision."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "criteria", body, lambda: agent_plan.set_criteria(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/judge")
+def judge_again(identity: UUID, body: control.JudgeAgainInput, user: User):
+    """Judge again: verify and judge the last turn against the plan as frozen now."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "judge", body, lambda: control.judge_again(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
 @router.post("/runs/{identity}/freestyle")
 def freestyle(identity: UUID, body: control.FreestyleInput, user: User):
     """Talk to the agent directly: turns are recorded but not verified, judged or capped while this is on."""

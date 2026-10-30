@@ -48,11 +48,12 @@ TRANSITIONS = {
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
     "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
+    # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
     "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
-                  "stopping", "failed"},
+                  "verifying", "judging", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
-    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "stopping"},
+    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
     "replanning": {"planning", "executing", "needs_you", "stopping"},
     # Only a confirmed termination (or an explicit lost-process reconciliation) settles a stop.
     "stopping": {"stopped", "completed", "failed"},
@@ -120,6 +121,8 @@ REASONS = {
     "approve": "Approved.",
     "stopped": "Stopped.",
     "verify_set": "You set the verify command; the agent's next turn is verified.",
+    "judge_again": "You asked for the last turn to be checked again against the success criteria.",
+    "criteria_set": "You edited the success criteria.",
     "freestyle": "Freestyle: you are talking to the agent directly; Eridani records turns but does not judge them.",
     "freestyle_off": "Freestyle is off; the next turn is checked against the success criteria.",
 }
@@ -766,6 +769,18 @@ def current(run, attempt):
         (run.generation, run.turn_seq, run.plan_revision)
 
 
+def judge_again(db, run, *, actor):
+    """The operator asks for the current turn to be verified (when the plan has a verify command) and judged again
+    against the plan as it is frozen now, e.g. after editing its criteria. The verdict then moves the run as after
+    any turn."""
+    plan = frozen(db, run)
+    note(run, "judge_again", plan_revision=run.plan_revision, actor=actor.record())
+    if (plan.verify or {}).get("verify_id"):
+        transition(db, run, "verifying", actor=actor, reason="judge_again")
+        return start_verify(db, run, plan)
+    return to_judging(db, run, None, reason="judge_again", actor=actor)
+
+
 def settle_verify(db, run, attempt, status, result):
     """Record a verification outcome; only a current attempt of a verifying run moves it on to the judge."""
     if attempt.status != "running":
@@ -908,7 +923,11 @@ def verify_result(db, host_id, frame):
     facts = {"exit_code": frame.exit_code, "tail": frame.tail[-8000:], "truncated": frame.truncated,
              "duration_ms": frame.duration_ms, "timed_out": frame.timed_out, "canceled": frame.canceled,
              **({"error": frame.error[:300]} if frame.error else {}),
-             **({"stale_workspace": True} if frame.stale_workspace else {})}
+             **({"stale_workspace": True} if frame.stale_workspace else {}),
+             **{k: v for k, v in (("isolated", frame.isolated), ("isolation", frame.isolation),
+                                  ("isolation_reason", frame.isolation_reason),
+                                  ("workspace_complete", frame.workspace_complete)) if v is not None},
+             **({"workspace_reasons": [str(r)[:300] for r in frame.workspace_reasons]} if frame.workspace_reasons else {})}
     attempt = None
     if frame.adopted:
         facts["adopted"] = frame.adopted[:200]  # The host reused its own attempt for this tuple.
@@ -944,13 +963,13 @@ def verify_result(db, host_id, frame):
     return {"attempt": attempt.id, "status": attempt.status}
 
 
-def to_judging(db, run, verify_attempt):
+def to_judging(db, run, verify_attempt, *, reason="turn", actor=None):
     """Queue the judge for the run's current tuple (agent_judge.py); its verdict comes back through on_verdict."""
     from .agent_judge import PROMPT_VERSION
     from .domain import enqueue_job
     from .memory_learning import EXTRACTION_MODEL
 
-    transition(db, run, "judging", reason="turn")
+    transition(db, run, "judging", actor=actor, reason=reason)
     attempt = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=run.generation, kind="judge",
                            turn_seq=run.turn_seq, plan_revision=run.plan_revision, status="queued",
                            model=EXTRACTION_MODEL, prompt_version=PROMPT_VERSION,
