@@ -28,6 +28,7 @@ records the measured results and staged phone acceptance.
 | Durable execution and action cards | [Background work](BACKGROUND_WORK_PRD.md), [clarification continuations](CLARIFICATION_CONTINUATIONS.md) |
 | Notes/list organization and search vocabulary | [Note lists](NOTE_LISTS.md), [semantic search](SEMANTIC_SEARCH.md) |
 | Account/workspace boundaries | [Accounts and sharing](ACCOUNTS_AND_SHARING.md) |
+| Future native Android client, wake word and shared voice controls (plan only) | [Android plan](ANDROID_PLAN.md) |
 
 Feature guides describe the implementation at their stated review dates; source code
 and newer accepted decisions take precedence. They are not proof of the current
