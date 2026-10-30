@@ -112,3 +112,81 @@ async def test_response_without_usage_is_not_silently_marked_paid():
     await c.close()
     with session_scope() as db:
         assert db.get(BudgetReservation, c.id).state == "uncertain"
+
+
+def historic_unconfirmed(rid, amount, recorded, days=45):
+    with session_scope() as db:
+        budget.reserve(db, "davin", rid, amount, "gpt-realtime-2.1")
+        budget.record_usage(db, "davin", rid, rid + ":response", "gpt-realtime-2.1", {}, recorded)
+        budget.close(db, "davin", rid, uncertain=True)
+        db.flush()
+        then = now() - timedelta(days=days)
+        db.get(BudgetReservation, rid).created_at = then
+        db.get(Usage, rid + ":response").created_at = then
+
+
+def test_three_usage_buckets_stay_separate():
+    historic_unconfirmed("old", 5, 0.25)
+    with session_scope() as db:
+        budget.reserve(db, "davin", "active", 2, "gpt-5.6-luna")
+        budget.record_usage(db, "davin", "active", "active:1", "gpt-5.6-luna", {}, 0.5)
+        budget.reserve(db, "davin", "lost", 1, "gpt-5.6-luna")
+        budget.close(db, "davin", "lost", uncertain=True)
+        db.flush()
+        buckets = budget.summary(db, "davin")["buckets"]
+        assert buckets["recorded"] == {"usd": pytest.approx(0.5), "records": 1}
+        assert buckets["reserved"] == {"usd": pytest.approx(1.5), "sessions": 1}
+        unconfirmed = buckets["unconfirmed"]
+        assert unconfirmed["usd"] == pytest.approx(5.75) and unconfirmed["sessions"] == 2
+        assert unconfirmed["historic_usd"] == pytest.approx(4.75) and unconfirmed["historic_sessions"] == 1
+        holds = {h["id"]: h for h in budget.holds(db, "davin")}
+        assert (holds["old"]["bucket"], holds["old"]["historic"]) == ("unconfirmed", True)
+        assert (holds["lost"]["bucket"], holds["lost"]["historic"]) == ("unconfirmed", False)
+        assert holds["active"]["bucket"] == "reserved"
+
+
+def test_reconcile_settles_only_sessions_with_provider_evidence():
+    historic_unconfirmed("old-a", 5, 0.25)
+    historic_unconfirmed("old-b", 3, 0.10, days=70)
+    historic_unconfirmed("old-c", 2, 0, days=40)
+    with session_scope() as db:
+        budget.reserve(db, "davin", "active", 2, "gpt-5.6-luna")
+    statement = [
+        {"reservation": "old-a", "final_usd": "0.40", "evidence": "OpenAI usage export 2026-09, sess_a"},
+        {"reservation": "old-c", "final_usd": "0", "evidence": ""},  # a zero without evidence is refused
+        {"reservation": "active", "final_usd": "0", "evidence": "not unconfirmed"},
+    ]
+    lookup = budget.evidence_file_lookup(statement)
+    with session_scope() as db:
+        dry = budget.reconcile_unconfirmed(db, "davin", lookup, apply=False)
+        assert [h["id"] for h in dry["settled"]] == ["old-a"]
+        assert db.get(BudgetReservation, "old-a").state == "uncertain"
+    with session_scope() as db:
+        report = budget.reconcile_unconfirmed(db, "davin", lookup)
+        assert [h["id"] for h in report["settled"]] == ["old-a"]
+        assert {h["id"]: h["why"] for h in report["unconfirmed"]} == {"old-b": "no_provider_evidence"}
+        assert {h["id"]: h["why"] for h in report["rejected"]} == {"old-c": "incomplete_evidence"}
+        assert db.get(BudgetReservation, "old-a").settlement["reason"] == "provider_evidence"
+        assert db.get(BudgetReservation, "old-b").state == "uncertain"
+        assert db.get(BudgetReservation, "old-c").state == "uncertain"
+        assert db.get(BudgetReservation, "active").state == "reserved"
+        # The adjustment lands in the session's own month, not in this month's recorded charges.
+        adjustment = db.get(Usage, "reconcile:old-a")
+        assert adjustment.amount == Decimal("0.150000") and adjustment.created_at < now() - timedelta(days=30)
+        buckets = budget.summary(db, "davin")["buckets"]
+        assert buckets["recorded"]["usd"] == 0
+        assert buckets["reserved"]["usd"] == pytest.approx(2)
+        assert buckets["unconfirmed"]["sessions"] == 2
+        assert buckets["unconfirmed"]["usd"] == pytest.approx(2.9 + 2)
+    with session_scope() as db:
+        # Re-running with the same statement is a no-op; a failing provider lookup is not evidence.
+        assert budget.reconcile_unconfirmed(db, "davin", lookup)["settled"] == []
+        failing = budget.reconcile_unconfirmed(db, "davin", lambda hold: 1 / 0)
+        assert {h["why"] for h in failing["unconfirmed"]} == {"lookup_failed:ZeroDivisionError"}
+
+
+def test_evidence_statement_names_each_reservation_once():
+    with pytest.raises(ValueError):
+        budget.evidence_file_lookup([{"final_usd": "1", "evidence": "x"}])
+    with pytest.raises(ValueError):
+        budget.evidence_file_lookup([{"reservation": "a", "final_usd": "1", "evidence": "x"}] * 2)
