@@ -654,7 +654,7 @@ which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cut
   shown by `task_plan` (`run.migration`, `migration_note`) and `render_plan`, and sent on later spawns
   of the task. Released when the run ends stopped/failed/capped or a later plan drops the flag, and only
   if no higher number is held on that counter; otherwise the gap stays. A completed run keeps its number,
-  and a later run of the same task reuses it. Settings → remotea lists each such target (head, override,
+  and a later run of the same task reuses it. Settings → Connections → remotea lists each such target (head, override,
   last reserved, next) with an override field (`GET/POST /remotea/migrations`). A reservation cannot see
   migrations merged after it: the host's merge-first note and `tests/test_release_migrations.py` cover that.
 - **Version pairing** (`remotea_release.py`). `hello.version` is stored on the host and returned by
