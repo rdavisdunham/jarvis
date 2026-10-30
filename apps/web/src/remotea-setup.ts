@@ -111,3 +111,11 @@ export function selfCheck(host: Pick<SetupHost, "doctor" | "doctor_supported">, 
 export function withProbe(report: SetupReport, probe: ProbeResult): SetupReport {
   return { ...report, targets: report.targets.map(t => (t.key === probe.target.key ? probe.target : t)) };
 }
+
+/** After opening Settings → Connections, scroll the guided setup view (RemoteaReadiness) into sight once the lazy
+ * settings chunk has rendered it; gives up quietly after about two seconds. */
+export function revealSetup(tries = 20) {
+  const view = document.querySelector('section[aria-label="remotea setup"]');
+  if (view) view.scrollIntoView({ block: "start" });
+  else if (tries > 0) window.setTimeout(() => revealSetup(tries - 1), 100);
+}

@@ -707,6 +707,12 @@ a target, the dialog reads the preflight again with that `execution_target_id` a
 of starting at once. `GET /runs/{id}` adds `verify_readiness {id: {ready, reason?}}` beside `verify_options`; the
 header's verify line says when the chosen (or an offered) command is not ready on the host.
 
+When the preflight shows something the guided setup view fixes (`remotea-model.ts` `setupReason`: a target to
+choose, a problem in `SETUP_PROBLEMS` such as `HOST_OFFLINE`, `HARNESS_UNAVAILABLE`, `MCP_UNCONFIGURED`,
+`VERIFY_NOT_READY` or `TARGET_NOT_READY`, or the picked agent ruled out for the target), the dialog adds **Open
+remotea setup** (its tooltip is the problem): it closes the dialog, opens Settings → Connections and scrolls to the
+readiness view ([Setup readiness](#setup-readiness-e-q1), `remotea-setup.ts` `revealSetup`).
+
 ### Commands
 
 All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expires_at (epoch ms), …}`.

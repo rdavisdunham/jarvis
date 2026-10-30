@@ -1,9 +1,9 @@
 import { useEffect, useId, useState } from "react";
-import { FolderGit2, Play } from "lucide-react";
+import { FolderGit2, Play, Wrench } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { Dialog } from "./ux";
 import {
-  afterTargetSaved, DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl, startBlock, startBody,
+  afterTargetSaved, DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl, setupReason, startBlock, startBody,
   type HarnessId, type NeedsTarget, type Preflight, type Run, type RunDraft,
 } from "./remotea-model";
 import { useRemotea } from "./remotea-context";
@@ -12,9 +12,19 @@ import "./runs.css";
 
 const message = (e: unknown) => (e as Error).message || "Something went wrong.";
 
+/** The dialog's way to the guided setup view, with what the preflight found as its tooltip. */
+export function SetupLink({ reason, onSetup }: { reason: string; onSetup: () => void }) {
+  return <p className="footnote run-dialog-setup">
+    <button type="button" className="text-button" title={reason} onClick={onSetup}>
+      <Wrench size={13} aria-hidden="true"/>Open remotea setup</button> to see what is missing and how to fix it.</p>;
+}
+
 /** The compact Run dialog: where it runs (resolved, or the picker), which agent and model, whether to interview
- * first. One Start button; the run opens in the side panel. */
-export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; onClose: () => void; onStarted: (runId: string) => void }) {
+ * first. One Start button; the run opens in the side panel. When the preflight reports a setup problem (no target,
+ * agents without Eridani tools, the server or the target not ready), a link opens the guided setup view (`onSetup`). */
+export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
+  taskId: string; onClose: () => void; onStarted: (runId: string) => void; onSetup?: () => void;
+}) {
   const { status } = useRemotea();
   const hosts = status?.hosts ?? [];
   const [pre, setPre] = useState<Preflight | null | undefined>(undefined);
@@ -54,6 +64,8 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
   // the tools one. Warnings (a verify command not ready) only show as notes.
   const block = startBlock(pre, draft);
   const blocked = (!!pre && !pre.active_run && !pre.needs_target && !pre.target) || !!block.problem;
+  const setup = onSetup ? setupReason(pre, draft.harness) : "";
+  const setupLink = setup && onSetup && <SetupLink reason={setup} onSetup={onSetup}/>;
   const interviewHint = draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
   return <Dialog className="dialog run-dialog" aria-labelledby={heading} onEscape={onClose} onBackdrop={onClose}>
@@ -98,12 +110,14 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
           <span>Start in freestyle</span><small>the agent has no Eridani tools to plan with</small>
         </label>}
         {block.problem && !notes.includes(block.problem.message) && <p className="footnote run-dialog-note" role="note">{block.problem.message}</p>}
+        {setupLink}
         <div className="settings-form-actions">
           <button className="btn btn-primary btn-sm" disabled={busy || blocked || !available(draft.harness)} onClick={() => void start()}>
             <Play size={14} aria-hidden="true"/>{busy ? "Starting…" : "Start"}</button>
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onClose}>Cancel</button>
         </div>
       </>}
+      {need && setupLink}
       {error && <p role="alert" className="work-error">{error}</p>}
     </>}
   </Dialog>;

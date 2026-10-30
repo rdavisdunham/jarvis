@@ -1199,6 +1199,23 @@ export function preflightNotes(p: Preflight | null | undefined): string[] {
   return notes;
 }
 
+/** Preflight problem codes that the guided setup view (Settings → Connections → remotea, `RemoteaReadiness`) explains
+ * with a fix: no server, the server offline, a target the host does not advertise or whose template is not ready,
+ * agents without Eridani tools, a harness that cannot start, a verify command that is not ready. */
+export const SETUP_PROBLEMS = new Set(["NEEDS_TARGET", "HOST_MISSING", "HOST_OFFLINE", "HOST_DEGRADED", "TARGET_NOT_ADVERTISED",
+  "TARGET_NOT_READY", "HARNESS_UNAVAILABLE", "NO_HARNESS", "MCP_UNCONFIGURED", "MCP_NOT_CONFIGURED", "VERIFY_NOT_READY"]);
+
+/** Why the Run dialog links to the guided setup view, or "" when nothing the setup view fixes stands in the way:
+ * a target to choose, a setup problem from the preflight, or the picked agent unable to start on the target. */
+export function setupReason(p: Preflight | null | undefined, harness: HarnessId): string {
+  if (!p || p.active_run) return "";
+  if (p.needs_target) return "No repository is set up for this task yet.";
+  const found = p.problems.find(x => SETUP_PROBLEMS.has(x.code));
+  if (found) return found.message;
+  if (p.harnesses?.[harness] === false) return p.harness_reasons?.[harness] || "This agent cannot start on this task's target.";
+  return "";
+}
+
 /** Whether the Run dialog may pick a harness, and why not. The preflight decides for the task's target; only
  * when there is no preflight (it failed, or is still loading) does any connected host count (`harnessAvailable`). */
 export function harnessChoice(pre: Preflight | null | undefined, hosts: Host[], id: HarnessId): { ok: boolean; reason?: string } {
