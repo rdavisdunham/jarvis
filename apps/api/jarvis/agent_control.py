@@ -1131,7 +1131,8 @@ def target_setup(db, owner, host, host_target, saved=None):
         out["harnesses"][name] = {
             "label": label_h, "ready": why is None, "enabled": (name in enabled) if enabled is not None else None,
             "version": (probe or {}).get("version"), "error": (probe or {}).get("error"),
-            "launch": "probed" if probe is not None else ("not enabled" if launch is not None else TOO_OLD),
+            "launch": "probed" if probe is not None else TOO_OLD if launch is None
+            else "not probed" if name in (enabled or []) else "not enabled",
             "reason": why}
         if live and enabled is not None and name in enabled and why is not None:
             out["problems"].append(problem(

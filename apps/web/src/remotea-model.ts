@@ -24,6 +24,9 @@ export type RemoteaSession = {
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
   hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; quiet_bypass?: boolean;
+  /** The MCP key the last setup code carried (prefix and expiry only); `setup_code` is in a minting response only. */
+  mcp_key?: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
+  setup_command?: string; setup_code?: string | null;
 };
 export type Parity = {
   total: number; matched: number; missing: number; mismatched: number; clean: boolean;
