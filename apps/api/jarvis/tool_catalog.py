@@ -299,6 +299,8 @@ DESCRIPTIONS = {
     "Includes record_id and home (main-home chain in the flexible structure).",
     "task_resolve": "Resolve conversational task references without editing: selected means explicit selected IDs, "
     "visible means current screen records, recent means this conversation, search uses descriptive keywords. "
+    "When a search finds no task, other_kinds holds same-named events, notes and records: the word task was a hint, "
+    "so open other_kinds.selected instead of saying no task exists. "
     "A singular request matching multiple tasks needs clarification; visible is never automatically singular. "
     "Returns compact rows with notes_preview, record_id and home chain; to tell duplicates apart compare home, or pass home_id "
     "(a project/client record ID) to narrow. Use task_get for full notes.",
@@ -366,9 +368,13 @@ DESCRIPTIONS = {
     "schedule_complete": "Complete a one-time reminder and its linked task. Complete a recurring occurrence with notification_complete.",
     "schedule_reschedule": "Move a reminder's next alert using its current revision. This does not move a task deadline.",
     "notification_complete": "Mark one delivered reminder occurrence/task done while keeping the recurring series running. "
-    "Complete the same underlying task, closing its other outstanding alerts.",
+    "A one-time alert or deadline completes its task, closing its other outstanding alerts; one occurrence of a "
+    "repeating alert on a task completes only that occurrence, and the task stays open.",
     "notification_read": "Mark the selected delivered notification read, without completing its task.",
-    "notification_snooze": "Snooze the same delivered notification for minutes or an explicit local until time. Do not create another task/schedule or change the deadline/recurrence.",
+    "notification_snooze": "Snooze the same delivered notification for minutes, or until a time in the owner's words "
+    "('in 2 hours', 'tomorrow morning', 'after lunch', 'friday 3pm') or a local ISO time; it resolves in the owner's "
+    "time zone and the result's snoozed_until says when. Do not create another task/schedule or change the "
+    "deadline/recurrence; the next occurrence of a series still arrives.",
     "notification_dismiss": "Dismiss a delivered notification; this is not task completion.",
     "memory_capture": "Save exactly the durable fact the owner explicitly asks to remember. "
     "Do not turn assistant suggestions or quoted statements into owner beliefs. Never store credentials.",
@@ -425,14 +431,16 @@ DESCRIPTIONS = {
     "linear_resolve": "Apply only the owner's explicit choice for a previously inspected Linear conflict.",
     "linear_select": "Select Linear teams using current connection IDs/revision. Uses the direct API, not Slack or the Linear Agent.",
     "settings_update": "Change only explicitly requested profile/settings fields. Profile selects luna (low reasoning), luna-none (no reasoning), or gemini; "
-    "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization.",
+    "OpenAI provider compatibility means Luna. Never enable integrations or permissions absent owner authorization. "
+    "Notification preferences: quiet hours, notify_min_priority (low/normal/high/urgent: lower ones wait for the "
+    "digest) and digest_cadence (off/hourly/every_3_hours/daily).",
     "ui_state": "Read the authenticated device's current screen, visible IDs, filters, layouts, active editor and allowed Live voices. This is bounded ephemeral data; no connected device means no verified screen. Read before preserving existing view settings.",
     "ui_workspace": "Change view options without editing records. Work (all/today/inbox/week) supports list, board and timeline, task sorting and board grouping. Projects timeline/board requires view=organize and organization_tab=project. timeline_date plus span 14/30/90 selects the range. Notes supports keyword/semantic mode and note_list_id from note_lists (empty clears, uncategorized shows unfiled notes); Notes/organize support show_archived. Settings sections: profile, organization (routing/reviews/work hours), notifications, voice, integrations, privacy, system, sharing. Omitted options/filters are preserved; invalid combinations are refused. Wait for displayed acknowledgement.",
     "ui_search": "Search the selected page (default all). This deliberately clears project, status, organization, assignee, work-type, tag and due filters; status becomes all. If the owner wants filters retained, read ui_state and reapply them with ui_filter AFTER searching. Empty query clears search. Settings search opens the relevant settings section. Reading a record is separate from displaying it.",
     "ui_filter": "Set exact filters while preserving every omitted field and the current search query. Work/calendar/alerts support status, project_id (preferred) or exact project name, space/area/goal, assignee ID/name, exact work_type/tag, inclusive due_from/due_through and work_kind. Empty strings clear filters. Status active excludes completed/cancelled; open means exactly open. Notes supports only project/space/area/goal; organize supports only space_id. Other pages have no record filters. Layout switches preserve these filters.",
     "ui_form": "Open a new or existing typed editor. form: task, reminder, note, goal, project, area, space, actor, event (local appointment/block), google_event, bulk or memory. Use entity_id for an existing record; bulk uses ui_select's task selection; memory requires a visible existing memory. Then ui_editor read reveals its fields/options and auto_save mode. Existing tasks and organization cards save patches immediately; notes and new forms require save. Opening does not save. Dirty editors must be saved or explicitly discarded first. Google recurrence scope/conflict choices use calendar_event_read and normal calendar tools.",
     "ui_select": "Select up to 100 current tasks for the browser bulk editor. Explicitly switches to the Work list, clears query/filters and shows all statuses. No records change. Use task_list selections with task_selection_update for identical domain edits across more than 100 records.",
-    "ui_show": "Open a page or highlight a saved record. For a named item without a known ID, use navigation_find (navigation group) across record kinds: task/event/note wording is a hint, not a filter. Open its one selected match without correcting terminology; clarify multiple plausible matches. "
+    "ui_show": "Open a page or highlight a saved record. For a named item without a known ID, use navigation_find (navigation group): it searches every record kind, and task/event/meeting/note/client wording is a hint, not a filter. Open its one selected match (a calendar event opens its details, not just the Calendar day) without correcting the owner's word; clarify multiple plausible matches. "
     "Use the matching view (all for tasks, notes for notes, organize for goals/projects, reminders for schedules, memory for facts). "
     "For a request to show/open a specific record, pass its entity_id; opening only the page is incomplete. "
     "For Organization records (clients, projects, tasks...) use ui_records(record_id): it follows opens_as, so \"show me ABC\" opens its contents and a task opens its details. "
@@ -605,6 +613,16 @@ class ToolSession:
 
     def definitions(self):
         return [self.catalog[n] for n in self.names]
+
+    def follow(self, outcome):
+        """A navigation lookup with one selected match makes its exact open tool callable next round,
+        so "show me the weekly check-in task" can open an event without a discovery round."""
+        from .navigation import opener
+        tool = opener(outcome)
+        if tool in self.catalog and tool not in self.names:
+            self.names.append(tool)
+            return tool
+        return None
 
     def load(self, arguments):
         names = [name for name in load_names(arguments) if name in self.catalog]

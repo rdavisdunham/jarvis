@@ -26,6 +26,7 @@ import { PendingControls } from "./PendingControls";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { runsBadge } from "./remotea-model";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
+import { ChatLauncher, focusComposer, startNewConversation } from "./chat-focus";
 import {
   readView,
   viewLink,
@@ -39,7 +40,7 @@ import { TaskTabs } from "./TaskTabs";
 import { Today } from "./Today";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
-import { noticeDestination } from "./notice-target";
+import { noticeDestination, noticeStatus } from "./notice-target";
 import { MemoryEditor } from "./MemoryEditor";
 import { useEditorBridge } from "./editor-control";
 import {
@@ -1562,12 +1563,14 @@ export default function App() {
   const chatInput = useRef<HTMLTextAreaElement>(null);
   const chatSubmitLock = useRef(false);
   const guidedRetries = useRef(new Map<string, () => Promise<boolean>>());
-  const focusChat = () => chatInput.current?.focus({ preventScroll: true });
-  async function newChat() {
+  const focusChat = () => focusComposer(chatInput);
+  function newChat() {
     conversationEpoch.current += 1;
     chatSubmitLock.current = false; setThinking(false);
-    // Keep direct focus inside the gesture so mobile browsers may open the keyboard.
-    if (!voice.current) focusChat();
+    // Focus inside the click so mobile browsers may open the keyboard, then again after the reset.
+    return startNewConversation(focusChat, resetConversation, !!voice.current);
+  }
+  async function resetConversation() {
     voiceGeneration.current += 1;
     const previous = voice.current;
     voice.current = null;
@@ -1592,7 +1595,6 @@ export default function App() {
     setChatText("");
     flushSync(() => setVoiceState(null));
     setError("");
-    focusChat();
   }
   function chooseProvider(provider: VoiceProvider) {
     if (!boot?.voice_options[provider]) return;
@@ -2651,12 +2653,13 @@ export default function App() {
                       <div className="notice-text">
                         <strong className="notice-title">{n.title}</strong>
                         {n.body && <p className="notice-body">{n.body}</p>}
+                        {(() => {const status=noticeStatus(n,iso=>timeLabel(iso,boot.preferences.timezone));return (status.priority||status.state)&&<small className="notice-state">{status.priority&&<span className="notice-priority">{status.priority}</span>}{status.priority&&status.state&&" · "}{status.state}</small>;})()}
                       </div>
                       <time className="notice-time" dateTime={n.scheduled_at}>
                         {timeLabel(n.scheduled_at, boot.preferences.timezone)}
                       </time>
                       <div className="notice-actions">
-                        <button className="notice-primary" onClick={()=>{const to=noticeDestination(n);if(to.open==="run")openRemoteaRun(to.run);else if(to.open==="task"){const task=tasks.find(t=>t.id===to.task);if(task)openTaskCard(task);}else if(to.open==="activity")setActivityOpen(true);else setView("today");/* "notifications": this list is already open; Today as before. */void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
+                        <button className="notice-primary" onClick={()=>{const to=noticeDestination(n);if(to.open==="run")openRemoteaRun(to.run);else if(to.open==="task"){const task=tasks.find(t=>t.id===to.task);if(task)openTaskCard(task);else void openNoteTask(to.task);/* Not in the loaded list (an occurrence's own task, another tab): fetch it. */}else if(to.open==="activity")setActivityOpen(true);else setView("today");/* "notifications": this list is already open; Today as before. */void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
                         {n.task_id&&["reminder","deadline"].includes(n.category??"reminder")&&<button
                           onClick={() =>
                             void mutate(
@@ -3219,17 +3222,8 @@ export default function App() {
           <Ellipsis size={22} aria-hidden="true" /><span aria-hidden="true">More</span>
         </button>
       </div>
-      <button type="button" className={"chat-launcher" + (companion ? " is-open" : "") + (voiceState && !voiceState.closed ? " is-listening" : "")}
-        aria-label={companion ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={companion}
-        onClick={() => {
-          const opening = !companion;
-          flushSync(() => setCompanion(opening));
-          if (opening && !voice.current) focusChat();
-        }}>
-        <span className="chat-launcher-icon" aria-hidden="true">{companion ? <X size={23}/> : <MessageCircle size={24}/>}</span>
-        {!companion && <span className="chat-launcher-label">Eri</span>}
-        {voiceState && !voiceState.closed && <span className="chat-live-dot" aria-label="Voice active"/>}
-      </button>
+      <ChatLauncher open={companion} listening={!!voiceState && !voiceState.closed} onOpenChange={setCompanion}
+        focus={() => { if (!voice.current) focusChat(); }}/>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
       {runsOpen && <RunsPanel onClose={() => setRunsOpen(false)} onOpenPage={() => setView("remotea")}/>}

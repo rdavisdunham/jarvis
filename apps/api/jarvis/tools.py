@@ -271,7 +271,7 @@ from pydantic import ValidationError
 from .google_schema import CalendarRead
 
 READ_TOOLS["navigation_find"] = {
-    "description": "Find a named item across tasks, notes, custom records and calendar entries for navigation. Task/event/note words are hints, not restrictions. Return exact detail-opening commands; only one complete match is selected. Supply start/end (exclusive) for date-specific requests; default calendar range is today through 31 days. Never use this lookup to authorize a mutation.",
+    "description": "Use for any request to show/open/find a named item. Finds it across tasks, notes, custom records and calendar entries. Task/event/meeting/note/client words are hints, not restrictions: one match of another kind is still the answer, so open it without correcting the wording. Returns exact detail-opening commands; only one complete match is selected. Supply start/end (exclusive) for date-specific requests; default calendar range is today through 31 days. Never use this lookup to authorize a mutation.",
     "parameters": {"type":"object","properties":{
         "query":{"type":"string","minLength":1,"maxLength":300},
         "start":{"type":"string","format":"date"}, "end":{"type":"string","format":"date"}},
@@ -884,6 +884,15 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
             )
             if len(result["tasks"]) == 1:
                 remember(db, owner, conversation_id, [result["tasks"][0]["id"]])
+            elif not result["tasks"] and arguments["scope"] == "search" and arguments.get("query", "").strip():
+                # "Show me the weekly check-in task" may name an event: the kind is a hint, not a filter.
+                from .navigation import find
+                try:
+                    other = find(db, owner, arguments["query"])
+                except DomainError:
+                    other = None
+                if other and other["match_count"]:
+                    result["other_kinds"] = other
             return result
     if name in {"ui_activity", "ui_chat", "ui_search", "ui_filter", "ui_form", "ui_calendar", "ui_select", "ui_workspace", "ui_editor", "ui_device", "ui_saved_view"}:
         # Validate against the fixed registry before crossing the browser boundary.
@@ -1004,10 +1013,16 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 db, owner, start, end, arguments.get("timezone") or preferences(db, owner)["timezone"]
             )
     if name == "notification_list":
+        from .notices import VEHICLES
+
         with session_scope() as db:
             rows = db.scalars(
                 select(Notification)
-                .where(Notification.owner_id == owner, Notification.dismissed_at.is_(None))
+                .where(
+                    Notification.owner_id == owner,
+                    Notification.dismissed_at.is_(None),
+                    Notification.category.not_in(sorted(VEHICLES)),
+                )
                 .order_by(Notification.created_at.desc())
                 .limit(30)
             )

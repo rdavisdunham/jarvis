@@ -107,10 +107,17 @@ export interface Schedule {
   task_id: string | null;
   completed_at: string | null;
 }
+/** apps/api/jarvis/notices.py `STATES`: delivery, read, snoozed and completed stay distinct. */
+export type NoticeState = "scheduled" | "pending" | "delivered" | "read" | "snoozed" | "dismissed" | "completed";
+export type NoticePriority = "low" | "normal" | "high" | "urgent";
 export interface Notice {
   category?: string;
-  target?: {view?:string;work_ids?:string[];run_id?:string} | null;
+  target?: {view?:string;work_ids?:string[];run_id?:string;notice_ids?:string[]} | null;
   eligible_at?: string;
+  state?: NoticeState;
+  importance?: NoticePriority;
+  snoozed_until?: string | null;
+  delivered_at?: string | null;
   completed_at: string | null;
   schedule_id: string | null;
   id: string;
@@ -160,6 +167,7 @@ export interface Preferences {
   preferred_name: string;
   history_enabled: boolean;
   memory_learning: boolean;
+  live_memory_updates?: boolean;
   deep_sleep_enabled: boolean;
   history_days: number;
   timezone: string;

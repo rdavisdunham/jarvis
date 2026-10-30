@@ -173,3 +173,43 @@ def test_agent_sessions_migration_upgrades_and_downgrades(test_database):
         if trial:trial.dispose()
         with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_notification_bundles_migration_backfills_delivery_and_downgrades(test_database):
+    name='jarvis_notices_'+uuid4().hex
+    supplied=make_url(test_database)
+    admin=create_engine(supplied.set(database='postgres'),isolation_level='AUTOCOMMIT')
+    target=supplied.set(database=name)
+    trial=None
+    with admin.connect() as c:c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env={**os.environ,'JARVIS_DATABASE_URL':target.render_as_string(hide_password=False),'JARVIS_ENV_FILE':''}
+        def migrate(*args):
+            result=subprocess.run([sys.executable,'-m','alembic',*args],cwd=ROOT,env=env,capture_output=True,text=True)
+            assert result.returncode==0,result.stdout+result.stderr
+        notice="INSERT INTO notifications (id,owner_id,title,body,scheduled_at,created_at,generation) VALUES ('{}','release-owner','{}','',now(),now(),{})"
+        migrate('upgrade','0036_run_summaries')
+        trial=create_engine(target)
+        with trial.begin() as c:
+            c.exec_driver_sql(notice.format('00000000-0000-0000-0000-000000000001','Pushed',1))
+            c.exec_driver_sql(notice.format('00000000-0000-0000-0000-000000000002','Snoozed since its push',2))
+            c.exec_driver_sql("INSERT INTO push_subscriptions (id,owner_id,device_id,subscription,active) VALUES ('sub','release-owner','d','{}',true)")
+            for identity,generation in (('00000000-0000-0000-0000-000000000001',1),('00000000-0000-0000-0000-000000000002',1)):
+                c.exec_driver_sql(f"INSERT INTO delivery_attempts (id,notification_id,subscription_id,generation,status,attempts,next_attempt_at) VALUES ('{uuid4()}','{identity}','sub',{generation},'submitted',1,now())")
+        migrate('upgrade','head');migrate('check')
+        # A previous-version writer omits the new columns; they stay empty.
+        with trial.begin() as c:c.exec_driver_sql(notice.format('00000000-0000-0000-0000-000000000003','Old writer',1))
+        from jarvis.models import Notification
+        from jarvis.notices import state
+        with Session(trial) as db:
+            rows={r.title:r for r in db.scalars(select(Notification))}
+            # Only a push at the notice's current generation counts as delivered.
+            assert {t:state(r) for t,r in rows.items()}=={'Pushed':'delivered','Snoozed since its push':'pending','Old writer':'pending'}
+            assert all(r.snoozed_until is None and r.bundle_id is None for r in rows.values())
+        migrate('downgrade','0036_run_summaries')
+        assert 'delivered_at' not in {c['name'] for c in inspect(trial).get_columns('notifications')}
+        migrate('upgrade','head')
+    finally:
+        if trial:trial.dispose()
+        with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()

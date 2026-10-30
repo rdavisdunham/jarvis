@@ -208,7 +208,12 @@ class ResolveMemory(Args):
 
 
 class NotificationAction(Args):
-    until: str | None = Field(default=None, max_length=64)
+    until: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Snooze until a local ISO date/time or words in the owner's time zone: 'in 2 hours', "
+        "'tomorrow morning', 'after lunch', 'this evening', 'friday 3pm', 'next week'.",
+    )
     notification_id: str
     minutes: int = Field(default=10, ge=1, le=10080)
 
@@ -234,12 +239,15 @@ class SettingsUpdate(Args):
     quiet_end: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     morning_summary: bool | None = None
     morning_hour: int | None = Field(default=None, ge=0, le=23)
+    notify_min_priority: Literal["low", "normal", "high", "urgent"] | None = None
+    digest_cadence: Literal["off", "hourly", "every_3_hours", "daily"] | None = None
 
     agent_profile: Literal["openai", "luna", "luna-none", "gemini", "groq"] | None = None
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
     memory_learning: bool | None = None
+    live_memory_updates: bool | None = None
     deep_sleep_enabled: bool | None = None
     history_days: int | None = Field(default=None, ge=0, le=36500)
     timezone: str | None = None
@@ -332,6 +340,10 @@ def serial(record):
                 result["quick_done"] = db.scalar(select(func.count()).select_from(Task).where(Task.owner_id==record.owner_id,Task.parent_task_id==record.id,Task.archived.is_(False),Task.status=="completed"))
             parent = db.get(Task, record.parent_task_id) if record.parent_task_id else None
             result["quick_list_parent_id"] = parent.id if parent and parent.is_quick_list else None
+    if isinstance(record, Notification):
+        from .notices import state
+
+        result["state"] = state(record)
     return result
 
 
@@ -368,6 +380,8 @@ def preferences(db, owner):
         "preferred_name": settings.owner_name,
         "history_enabled": True,
         "memory_learning": True,
+        # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
+        "live_memory_updates": True,
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
         "routing_review_day": 0, "routing_review_hour": 3,
@@ -376,6 +390,8 @@ def preferences(db, owner):
         "work_windows": [{"days": [0,1,2,3,4], "start": "08:00", "end": "17:00"}],
         "deadline_alerts": True, "quiet_enabled": True, "quiet_start": "22:00", "quiet_end": "08:00",
         "morning_summary": False, "morning_hour": 8,
+        # Below this priority a notice does not interrupt; it waits for the digest (notices.plan).
+        "notify_min_priority": "low", "digest_cadence": "hourly",
         "history_days": settings.history_days,
         "timezone": settings.timezone,
         "default_reminder_hour": settings.default_reminder_hour,
@@ -971,21 +987,25 @@ def mutate(db, owner, tool, args, command_id):
         emit(db, owner, "memory.changed", old.id)
         return {"id": old.id, "forgotten": True}
     if tool.startswith("notification."):
+        from .notices import VEHICLES, apply, carried
+
         item = owned(db, Notification, args.notification_id, owner, lock=True)
         if tool == "notification.complete":
             if item.category not in {"reminder","deadline"} or not item.task_id:
                 raise DomainError("INVALID_ARGUMENT","Open this notification to respond; it does not complete a task.")
-            if item.task_id:
+            occurrence = db.get(Occurrence, item.occurrence_id) if item.occurrence_id else None
+            schedule = owned(db, Schedule, occurrence.schedule_id, owner, lock=True) if occurrence else None
+            # One occurrence of a repeating alert on a task is done; the task and its series continue.
+            # A recurring_task occurrence is its own task, so completing it never touches the series.
+            if not (schedule and schedule.recurrence and schedule.kind == "reminder"):
                 from .agent_actor import gate as run_gate
                 from .task_alerts import finish_task
 
                 task = owned(db, Task, item.task_id, owner, lock=True)
                 run_gate(db, owner, task, {"status": "completed"})  # The run completion gate (stage F, M3).
                 finish_task(db, task, gated=True)
-            item.completed_at = item.completed_at or now()
-            if item.occurrence_id:
-                occurrence = db.get(Occurrence, item.occurrence_id)
-                schedule = owned(db, Schedule, occurrence.schedule_id, owner, lock=True)
+            apply(item, "complete")
+            if occurrence:
                 occurrence.status = "completed"
                 if not schedule.recurrence and schedule.status == "finished":
                     schedule.status, schedule.completed_at = "completed", item.completed_at
@@ -1000,9 +1020,14 @@ def mutate(db, owner, tool, args, command_id):
                     raise DomainError("INVALID_ARGUMENT", "Reopen this task before snoozing its alert.")
             from .notices import snooze
             snooze(db,item,args)
-        elif tool == "notification.dismiss":
-            item.dismissed_at = now()
-        if tool != "notification.snooze": item.read_at = now()
+        else:
+            action = "dismiss" if tool == "notification.dismiss" else "read"
+            # Opening or dismissing a bundle covers what it carried.
+            for member in carried(db, item) if item.category in VEHICLES else []:
+                if not member.completed_at:
+                    apply(member, action)
+                    emit(db, owner, "notification.changed", member.id)
+            apply(item, action)
         emit(db, owner, "notification.changed", item.id)
         return serial(item)
     if tool == "settings.update":
@@ -1103,12 +1128,15 @@ def deliver_occurrence(db, job):
         db.add(task)
         db.flush()
         emit(db, job.owner_id, "task.changed", task.id, task.revision)
+    from .notices import apply, task_importance
+
     notification = Notification(
         owner_id=job.owner_id,
         occurrence_id=occurrence.id,
         title=task.title if task and schedule.kind == "recurring_task" else schedule.title,
         task_id=task.id if task else None,
         scheduled_at=occurrence.scheduled_at,
+        importance=task_importance(task),
         body="Delivered after its scheduled time."
         if now() - occurrence.scheduled_at > timedelta(seconds=60)
         else "",
@@ -1117,6 +1145,22 @@ def deliver_occurrence(db, job):
     db.flush()
     occurrence.status = "delivered"
     emit(db, job.owner_id, "notification.changed", notification.id)
+    if schedule.recurrence and schedule.kind == "reminder":
+        # A repeating alert on one task: the new occurrence replaces an earlier one still open (snoozed or
+        # unseen), so the task never nudges twice. Each recurring_task occurrence is its own task and stays.
+        for older in db.scalars(
+            select(Notification)
+            .join(Occurrence, Notification.occurrence_id == Occurrence.id)
+            .where(
+                Occurrence.schedule_id == schedule.id,
+                Notification.id != notification.id,
+                Notification.completed_at.is_(None),
+                Notification.dismissed_at.is_(None),
+            )
+        ):
+            apply(older, "dismiss")
+            older.target = {**older.target, "superseded_by": notification.id}
+            emit(db, job.owner_id, "notification.changed", older.id)
     return {"notification_id": notification.id}
 
 

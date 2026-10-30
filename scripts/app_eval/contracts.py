@@ -687,5 +687,42 @@ def non_utc_revert(h, identity):
         eng.dispose()
 
 
+@case("site_controls.26")
+def kind_hint_navigation(h, identity):
+    """The kind a person names is a hint: one same-named calendar event opens, a second match asks."""
+    import asyncio
+
+    from jarvis.db import session_scope
+    from jarvis.domain import preferences, zone
+    from jarvis.models import now
+    from jarvis.tools import call_tool
+
+    with session_scope() as db:
+        timezone = preferences(db, h.owner)["timezone"]
+    today = now().astimezone(zone(timezone)).date().isoformat()
+    title = "Lantern weekly check-in"
+    event = h.command("planning.create", {"title": title, "start": today + "T15:00", "end": today + "T15:30",
+                                          "timezone": timezone})
+    before = {name: h.rows(name) for name in ("Task", "Note", "PlanningEntry")}
+
+    def read(tool, args):
+        result = asyncio.run(call_tool(h.owner, "eval-" + identity, 0, tool, args))
+        h.trace.append({"tool": tool, "arguments": args, "result": result})
+        return result
+
+    found = read("navigation_find", {"query": "show me the lantern weekly check in task"})
+    selected = found["selected"]
+    assert selected and selected["id"] == event["id"], "The single same-named event was not selected"
+    assert found["requested_kind"] == "task" and selected["kind_name"] == "calendar event"
+    assert selected["open"]["tool"] == "ui_calendar" and selected["open"]["arguments"]["open_details"] is True
+    resolved = read("task_resolve", {"scope": "search", "query": "lantern weekly check in"})
+    assert resolved["tasks"] == [] and resolved["other_kinds"]["selected"]["id"] == event["id"]
+    # Lookups never change records.
+    assert {name: h.rows(name) for name in before} == before
+    h.command("task.create", {"title": title})
+    again = read("navigation_find", {"query": "lantern weekly check in task"})
+    assert again["selected"] is None and again["needs_clarification"] and again["match_count"] == 2
+
+
 # Register the additional adapters after Harness and case are defined.
 from . import scenarios  # noqa: E402,F401

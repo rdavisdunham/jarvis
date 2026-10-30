@@ -142,35 +142,129 @@ def test_invalid_provider_voice_is_rejected_before_provider_call(client, monkeyp
     assert result.json()["error"]["code"] == "INVALID_ARGUMENT"
 
 
-async def test_quiet_memory_update_is_bounded_deduplicated_and_acknowledged(controller, monkeypatch):
+def saved_fact(content, **changes):
+    """A real fact and source, so the pre-send freshness recheck can see it."""
+    from jarvis.domain import serial
+    from jarvis.models import Memory
+    from uuid import uuid4
+    with session_scope() as db:
+        source = Source(owner_id="davin", native_id="fact:" + uuid4().hex, kind="chat", role="user", content=content)
+        db.add(source)
+        db.flush()
+        row = Memory(owner_id="davin", source_id=source.id, content=content, fingerprint=uuid4().hex, **changes)
+        db.add(row)
+        db.flush()
+        return serial(row)
+
+
+@pytest.fixture
+def quick_context(monkeypatch):
+    monkeypatch.setattr(live_voice, "CONTEXT_DEBOUNCE_SECONDS", 0)
+    monkeypatch.setattr(live_voice, "CONTEXT_MIN_INTERVAL_SECONDS", 0)
+
+
+def search_returning(monkeypatch, facts):
+    lookup = AsyncMock(return_value=facts)
+    monkeypatch.setattr(live_voice, "semantic_search", lookup)
+    return lookup
+
+
+def appended(c):
+    import json
+    return [json.loads(call.args[0]["content"][len(live_voice.CONTEXT_PREFIX):])
+            for call in c.send.await_args_list if call.args[0]["type"] == "session.thinking.append"]
+
+
+async def test_quiet_memory_update_is_bounded_deduplicated_and_acknowledged(controller, monkeypatch, quick_context):
     c = controller
-    monkeypatch.setattr(
-        live_voice,
-        "semantic_search",
-        AsyncMock(
-            return_value=[
-                {
-                    "id": "memory-id",
-                    "revision": 1,
-                    "source_id": "source-id",
-                    "content": "The user prefers tea.",
-                }
-            ]
-        ),
-    )
+    tea = saved_fact("The user prefers tea.")
+    search_returning(monkeypatch, [tea])
     c.groups = [{"role": "user", "content": "What drink do I prefer?", "saved": True}]
     await c.refresh_memory_context(c.input_revision)
     message = c.send.await_args.args[0]
     assert message["type"] == "session.thinking.append" and message["delegation_id"] is None
-    assert len(message["content"].encode()) <= 480
+    assert len(message["content"]) <= live_voice.CONTEXT_MAX_CHARS
+    assert appended(c)[0] == [tea["content"]]
     await c.event({"type": "session.thinking.appended", "client_event_id": message["event_id"]})
-    assert not c.context_pending
+    assert not c.context_pending and c.context_stats["facts_acknowledged"] == 1
+    # The same fact is never resent in this session.
     await c.refresh_memory_context(c.input_revision)
     c.send.assert_awaited_once()
     await c.close()
 
 
-async def test_close_cancels_pending_context_lookup_before_send(controller, monkeypatch):
+async def test_payload_is_capped_at_six_facts_and_1200_characters(controller, monkeypatch, quick_context):
+    c = controller
+    facts = [saved_fact(f"Fact number {i}: " + "x" * 280) for i in range(10)]
+    search_returning(monkeypatch, facts)
+    c.groups = [{"role": "user", "content": "Tell me everything you know.", "saved": True}]
+    await c.refresh_memory_context(c.input_revision)
+    content = c.send.await_args.args[0]["content"]
+    assert len(content) <= 1200 and live_voice.token_estimate(content) <= 450 and 1 <= len(appended(c)[0]) <= 6
+    # Facts left out for size were not marked sent; they can go in a later update.
+    assert len(c.context_sent) == len(appended(c)[0])
+    short = [saved_fact(f"Short fact {i}.") for i in range(10)]
+    search_returning(monkeypatch, short)
+    await c.refresh_memory_context(c.input_revision)
+    assert len(appended(c)[1]) == 6
+    wide = [saved_fact("東京" * 150) for _ in range(3)]
+    search_returning(monkeypatch, wide)
+    await c.refresh_memory_context(c.input_revision)
+    assert live_voice.token_estimate(c.send.await_args.args[0]["content"]) <= 450
+    await c.close()
+
+
+async def test_facts_sent_at_start_and_stale_or_deleted_facts_are_not_sent(controller, monkeypatch, quick_context):
+    from datetime import datetime, UTC
+    from jarvis.models import Memory
+    c = controller
+    at_start, deleted, corrected, live = (saved_fact(t) for t in (
+        "Already in the opening context.", "Its source was deleted.", "An old version.", "Still current."))
+    c.context_sent.add((at_start["id"], at_start["revision"]))
+    with session_scope() as db:
+        db.get(Source, deleted["source_id"]).deleted_at = datetime.now(UTC)
+        db.get(Memory, corrected["id"]).revision = 2
+    search_returning(monkeypatch, [at_start, deleted, corrected, live])
+    c.groups = [{"role": "user", "content": "What do you remember about me?", "saved": True}]
+    await c.refresh_memory_context(c.input_revision)
+    assert appended(c)[0] == [live["content"]]
+    assert c.context_stats["facts_dropped"] == 2
+    await c.close()
+
+
+async def test_retrieval_waits_for_quiet_and_runs_at_most_once_per_interval(controller, monkeypatch):
+    c = controller
+    monkeypatch.setattr(live_voice, "CONTEXT_DEBOUNCE_SECONDS", 0.05)
+    monkeypatch.setattr(live_voice, "CONTEXT_MIN_INTERVAL_SECONDS", 60)
+    lookup = search_returning(monkeypatch, [saved_fact("The user prefers tea.")])
+    for i, words in enumerate(["What drink ", "do I usually ", "prefer in the morning?"]):
+        await c.event({"type": "session.input_transcript.delta", "event_id": f"d{i}", "delta": words,
+                       "start_ms": i * 100, "end_ms": i * 100 + 90})
+    await asyncio.wait_for(c.memory_task, 2)
+    assert lookup.await_count == 1  # Three deltas, one retrieval after the quiet period.
+    await c.event({"type": "session.input_transcript.delta", "event_id": "d3", "delta": " And coffee?",
+                   "start_ms": 400, "end_ms": 500})
+    await asyncio.sleep(0.2)
+    assert lookup.await_count == 1 and not c.memory_task.done()  # Held back by the interval.
+    await c.close()
+    assert c.memory_task.cancelled()
+
+
+async def test_owner_preference_turns_mid_session_updates_off(controller, monkeypatch, quick_context):
+    from jarvis.domain import execute
+    c = controller
+    lookup = search_returning(monkeypatch, [saved_fact("The user prefers tea.")])
+    with session_scope() as db:
+        assert preferences(db, "davin")["live_memory_updates"] is True
+        execute(db, "davin", "pref-off", "settings.update", {"live_memory_updates": False})
+    c.groups = [{"role": "user", "content": "What drink do I prefer?", "saved": True}]
+    await c.refresh_memory_context(c.input_revision)
+    lookup.assert_not_awaited()
+    c.send.assert_not_awaited()
+    await c.close()
+
+
+async def test_close_cancels_pending_context_lookup_before_send(controller, monkeypatch, quick_context):
     c = controller
     started = asyncio.Event()
 

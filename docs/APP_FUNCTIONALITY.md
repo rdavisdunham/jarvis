@@ -244,11 +244,11 @@ Review human categorization evidence, propose task/note rules and offer bounded 
 
 ### 22. Smarter notifications
 
-Quiet hours, urgency, deadline alerts, summaries, snooze, dismiss and completion.
+Quiet hours, priority levels, bundles and digests, deadline alerts, summaries, snooze in words ("tomorrow morning", "after lunch"), dismiss and completion, with delivered, read, snoozed and completed kept distinct.
 
 - Acceptance set: [25 cases](../evals/app/features/notifications.json).
-- Implementation: [notices.py](../apps/api/jarvis/notices.py), [task_alerts.py](../apps/api/jarvis/task_alerts.py), [worker.py](../apps/api/jarvis/worker.py).
-- Existing regression evidence: [test_smart_notifications.py](../tests/test_smart_notifications.py), [test_daily_polish.py](../tests/test_daily_polish.py).
+- Implementation: [notices.py](../apps/api/jarvis/notices.py), [snooze_words.py](../apps/api/jarvis/snooze_words.py), [task_alerts.py](../apps/api/jarvis/task_alerts.py), [worker.py](../apps/api/jarvis/worker.py).
+- Existing regression evidence: [test_smart_notifications.py](../tests/test_smart_notifications.py), [test_notification_bundles.py](../tests/test_notification_bundles.py), [test_snooze_words.py](../tests/test_snooze_words.py), [test_daily_polish.py](../tests/test_daily_polish.py).
 
 ### 23. Google Calendar read and sync
 
@@ -316,11 +316,13 @@ Production tool discovery, context, personality, provider continuity and honest 
 
 ### 31. Conversational site controls
 
-Acknowledged navigation, filters, selection, editor control and draft protection.
+Acknowledged navigation, filters, selection, editor control and draft protection. Named-item
+navigation treats the kind the owner says ("task", "meeting", "note", "client") as a hint: one match
+of any kind opens its details without correcting the wording; several matches get a question.
 
-- Acceptance set: [25 cases](../evals/app/features/site_controls.json).
-- Implementation: [ui_control.py](../apps/api/jarvis/ui_control.py), [ui_contracts.py](../apps/api/jarvis/ui_contracts.py), [tools.py](../apps/api/jarvis/tools.py).
-- Existing regression evidence: [test_ui_control.py](../tests/test_ui_control.py), [test_batch1.py](../tests/test_batch1.py), [test_tool_refinement.py](../tests/test_tool_refinement.py).
+- Acceptance set: [26 cases](../evals/app/features/site_controls.json); `site_controls.26` (kind mismatch) has a component contract.
+- Implementation: [ui_control.py](../apps/api/jarvis/ui_control.py), [ui_contracts.py](../apps/api/jarvis/ui_contracts.py), [tools.py](../apps/api/jarvis/tools.py), [navigation.py](../apps/api/jarvis/navigation.py).
+- Existing regression evidence: [test_ui_control.py](../tests/test_ui_control.py), [test_batch1.py](../tests/test_batch1.py), [test_tool_refinement.py](../tests/test_tool_refinement.py), [test_navigation.py](../tests/test_navigation.py).
 
 ### 32. Browser navigation and settings
 
@@ -333,6 +335,22 @@ Back/Forward, persistent chat affordance, fold layouts, profile menu and prefere
 ### 33. GPT-Live sessions
 
 Live creation, captions, delegation, interruption, context updates and session recovery.
+
+Saved memory during a session. The session starts with up to six relevant saved facts in its
+instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
+at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
+at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append
+limit is 500 tokens), never a fact already sent in this session (including the opening
+ones), and only after rechecking that each fact is current (same revision, not forgotten, corrected,
+merged or superseded, and its source not deleted). Closing the session cancels a pending lookup.
+The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
+does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
+under the existing "Memory retrieval" cost feature; the session logs only counts (retrievals, facts
+sent, acknowledged, dropped as stale). Owner preference **Memory during voice**
+(`live_memory_updates`, Settings → Privacy) turns the mid-session updates off immediately, including
+in a running session; it is on by default because these context updates were already part of the
+GPT-Live design (acceptance cases `live_voice.14`/`.15`). Shared workspaces never receive personal
+memory.
 
 - Acceptance set: [25 cases](../evals/app/features/live_voice.json).
 - Implementation: [live_voice.py](../apps/api/jarvis/live_voice.py), [voice_control.py](../apps/api/jarvis/voice_control.py).

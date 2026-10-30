@@ -1192,6 +1192,13 @@
 .notice-snooze-body .field {
   flex: 1 1 200px;
 }
+.notice-snooze-words {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
 
 /* ---- Compact widths ------------------------------------------------------------------------ */
 @media (max-width: 1000px) {

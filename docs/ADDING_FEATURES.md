@@ -229,7 +229,11 @@ GPT-Live (`live_voice.py`) delegates to queued work.
       added by prefix: `planning.`, `linear.`, `space.`, …, `control.`). Per-field null rules go in
       `domain.NOT_NULL`.
 - [ ] Tool group and discovery (`tool_catalog.py`): put the tool name in a `GROUPS` entry (or `CORE`
-      if always loaded); a richer description goes in `DESCRIPTIONS`. Guard:
+      if always loaded; `CORE` stays under 20 tools, guarded by `tests/test_tool_refinement.py` and
+      `tests/test_agent_models.py`); a richer description goes in `DESCRIPTIONS`. `ToolSession.follow`
+      makes the open tool of a single selected navigation match (`navigation.opener`: `navigation_find`'s
+      `selected` or `task_resolve`'s `other_kinds.selected`) callable next round without a `tools_load`;
+      both chat runners call it. Guard:
       `tests/test_tool_refinement.py` asserts every registry tool is in a group or `CORE`, and each group
       has fewer than 10 tools.
 - [ ] Policy (`tool_policy.py`): `lean-v1` moves tools via `LEAN_DEFERRED` / `LEAN_EXTRA`. Anything
@@ -292,7 +296,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0036_run_summaries`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0037_notification_bundles`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a
@@ -321,12 +325,24 @@ Verify: `alembic upgrade head && alembic check` against the throwaway database, 
 Notifications (`models.Notification`): `category` is a free string (no enum or check constraint).
 
 - [ ] Create rows with a unique `dedup_key`, `scheduled_at`/`eligible_at`, `importance`
-      (`"urgent"` bypasses quiet hours) and a `target` dict. Existing creators: `notices.py`
-      (`deadline`, `morning`, `question`, `failure`), `domain.py` (`reminder` occurrences),
-      `run_coordinator.notify` (`agent_question`, `agent_done`, `agent_stuck`; capped at
-      `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass` makes questions urgent).
+      (`notices.LEVELS`: `low`, `normal`, `high`, `urgent`; only `"urgent"` bypasses quiet hours;
+      task alerts use `notices.task_importance`) and a `target` dict. Existing creators: `notices.py`
+      (`deadline`, `morning`, `question`, `failure`, and the push vehicles `bundle`/`digest`),
+      `domain.py` (`reminder` occurrences), `run_coordinator.notify` (`agent_question`, `agent_done`,
+      `agent_stuck`; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
+      makes questions urgent).
+- [ ] State: change `read_at`/`dismissed_at`/`completed_at`/`snoozed_until`/`delivered_at` through
+      `notices.apply` (the state machine; `notices.state` derives the one state the API returns as
+      `state`). Snoozing bumps `generation` and clears read, delivered and `bundle_id`.
 - [ ] Delivery rules in `notices.eligible`: `work_result` is never pushed; nothing in shared
       workspaces; quiet hours via `quiet_until`; task-linked notices drop when the task is done.
+      Then `notices.plan` (called by `worker.prepare_deliveries`) picks what pushes now: urgent,
+      `morning` and already-started notices alone; two or more interrupting notices due together
+      as one `bundle`; notices below the owner's `notify_min_priority` in one `digest` per
+      `digest_cadence` period; a second due notice for the same task rides with the first
+      (`bundle_id` points at its carrier). Bundles and digests (`notices.VEHICLES`) are left out of
+      `GET /api/v1/notifications` and `notification_list`; reading or dismissing one covers what it
+      carried, and a submitted push marks its carried notices delivered (`notices.delivered`).
 - [ ] Deep link: `worker.notification_url(notification)` maps `target` to a `/?…` URL (remotea →
       `/?view=remotea&run=<id>`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
       the parameter (section 1). The in-app Notifications page's "Open" (`notice-primary` in `App.tsx`)
@@ -336,7 +352,11 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` has no row.
 - [ ] `detailed_notifications` (preference, default off) replaces title/body with a generic text in
       the push payload; write titles that still make sense in-app only.
-- [ ] Tests: `tests/test_smart_notifications.py`, `tests/test_push_registration.py`,
+- [ ] Snooze words are parsed by `snooze_words.snooze_time` in the owner's zone; a quick choice added to
+      `NoticeSnooze.tsx` `SNOOZE_CHOICES` must parse
+      (`tests/test_snooze_words.py::test_every_snooze_choice_in_the_app_parses`).
+- [ ] Tests: `tests/test_smart_notifications.py`, `tests/test_notification_bundles.py`,
+      `tests/test_snooze_words.py`, `tests/test_push_registration.py`,
       `apps/web/src/push-subscription.test.ts`, `apps/web/src/notice-target.test.ts` and
       `tests/test_drift_guards.py::test_push_and_in_app_notifications_open_the_same_place` (both read
       `notice-targets.json`).
@@ -465,6 +485,7 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` == `ui_show`/`ui_search`/`ui_workspace` enums == `VIEWS`; `ui_filter` ⊆ `VIEWS` |
 | `test_ui_show_opens_every_page_in_its_enum` | `call_tool`'s `ui_show` branch checks the tool's enum (no copy) and opens every page in it |
 | `test_push_and_in_app_notifications_open_the_same_place` | `worker.notification_url` gives each `notice-targets.json` row's URL, the URL and the in-app destination agree, every created `target.view` has a row, and `App.tsx` Open calls `noticeDestination` (`notice-target.test.ts` checks the web side on the same rows) |
+| `test_notification_states_priorities_and_preferences_match_the_browser` | `types.ts` `NoticeState` == `notices.STATES`, `NoticePriority` == `notices.LEVELS`; `PlannerPreferences.tsx` `NOTIFY_PRIORITIES` / `DIGEST_CADENCES` == the `SettingsUpdate` literals |
 | `test_agent_docs_name_real_settings_sections` | every "Settings → X" in `EXTERNAL_AGENTS.md` / `AGENT_CONTROL.md` starts with a `settings-sections.ts` label |
 | `test_editor_kinds_match_the_browser` | `site-actions.ts` `editorKinds` == `ui_contracts.EDITOR_KINDS` ⊆ `EditorContext.kind` |
 | `test_settings_sections_match_everywhere` | `settings-sections.ts` == `UIContext.settings_section` == `ui_workspace` enum == `site-actions.ts` enum |
