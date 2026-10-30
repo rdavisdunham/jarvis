@@ -1083,6 +1083,99 @@ def unmerged(db, owner):
     return encode({"items": items})
 
 
+# ---------------------------------------------------------------- worktree maintenance (S-Q4)
+
+WORKTREE_FIELDS = ("target", "path", "branch", "base", "base_ref", "head", "active", "ahead", "behind", "unpushed",
+                   "upstream", "merged", "merged_reason", "uncommitted", "untracked", "ignored", "candidate", "reasons")
+FOLDER_MISSING = "folder missing"
+
+
+def shell_quote(value):
+    """remotea's `q()` in cleanupCommands: single quotes, an inner quote closed, escaped and reopened."""
+    return "'" + str(value).replace("'", "'\\''") + "'"
+
+
+def branch_dir(branch):
+    """remotea's branchDir: `user/eng-12-login` -> `user--eng-12-login`."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", branch.replace("/", "--"))
+
+
+def cleanup_commands(repo, row):
+    """The commands a person runs on the host to reclaim one worktree that loses nothing, as `remotea eridani
+    worktrees` prints them (worktrees.ts cleanupCommands): a recovery ref first, then `git worktree remove`. A row
+    whose folder is already gone needs only `git worktree prune`. None unless the host reported the row as a
+    candidate (nothing would be lost) or folder-missing, or when the repository is unknown."""
+    if not repo or not isinstance(row.get("path"), str):
+        return None
+    reasons = row.get("reasons") or []
+    gone = any(isinstance(r, str) and r.startswith(FOLDER_MISSING) for r in reasons)
+    if gone and not row.get("active") and not row.get("writer"):
+        return [f"git -C {shell_quote(repo)} worktree prune"]
+    if row.get("candidate") is not True or row.get("active") or row.get("writer"):
+        return None
+    commands = []
+    if isinstance(row.get("head"), str) and isinstance(row.get("branch"), str) and row["branch"]:
+        commands.append(f"git -C {shell_quote(repo)} update-ref refs/remotea/recovery/{branch_dir(row['branch'])} "
+                        f"{row['head']}")
+    commands.append(f"git -C {shell_quote(repo)} worktree remove {shell_quote(row['path'])}")
+    return commands
+
+
+def worktree_maintenance(db, owner):
+    """GET /remotea/worktrees: every managed worktree each host reported (worktrees.report, candidates included), with
+    its host, the run bound to it (the writer's, else the latest run on that path or branch), and for a row the host
+    says loses nothing the exact cleanup commands. Eridani never removes a worktree: remotea has no command for it."""
+    hosts, items = [], []
+    for host in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner).order_by(AgentHost.created_at)):
+        caps = host.caps or {}
+        report = caps.get("worktrees") or {}
+        repos = {t["id"]: t.get("repo") for t in caps.get("targets") or [] if isinstance(t, dict) and isinstance(t.get("id"), str)}
+        rows = [r for r in report.get("worktrees") or [] if isinstance(r, dict)]
+        hosts.append({"id": host.id, "name": host.name or host.machine or "remotea", "connected": agent_link.connected(host),
+                      "report_at": report.get("at"), "rescan": "worktrees.scan" in (caps.get("caps") or []),
+                      "count": len(rows)})
+        runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host.id)
+                               .order_by(AgentRun.created_at.desc()).limit(500)))
+        by_id = {r.id: r for r in runs}
+        for row in rows:
+            writer = row.get("writer") if isinstance(row.get("writer"), dict) else None
+            run = by_id.get(str((writer or {}).get("run_id") or "")) or next(
+                (r for r in runs if (row.get("path") and r.worktree == row.get("path"))
+                 or (row.get("branch") and r.branch == row.get("branch"))), None)
+            task = db.get(Task, run.task_id) if run is not None and run.task_id else None
+            item = {"host_id": host.id, "host_name": host.name or host.machine or "remotea",
+                    "repo": repos.get(row.get("target")), **{k: row.get(k) for k in WORKTREE_FIELDS},
+                    "run": {"id": run.id, "state": run.state, "settled": run.state in TERMINAL_RUN_STATES,
+                            "task_id": run.task_id, "task_title": task.title if task else None} if run else None,
+                    "cleanup": cleanup_commands(repos.get(row.get("target")), row)}
+            if "writer" in row:  # Absent from an older host: the page then cannot rule out a live writer.
+                item["writer"] = writer
+            items.append(item)
+    return encode({"hosts": hosts, "items": items})
+
+
+def rescan_worktrees(db, owner, host_id):
+    """POST /remotea/hosts/{id}/rescan: ask the host for a fresh worktrees.report now (`worktrees.scan`, run-less).
+    One scan waits at a time per host; a second request returns the one already queued."""
+    host = db.get(AgentHost, host_id)
+    if host is None or host.owner_id != owner:
+        raise DomainError("NOT_FOUND", "No such remotea server.", 404)
+    if "worktrees.scan" not in ((host.caps or {}).get("caps") or []):
+        raise DomainError("HOST_TOO_OLD", "This remotea server cannot rescan on request; it reports its worktrees "
+                                          "after each change and every few minutes. Update remotea.", 409)
+    waiting = db.scalar(select(AgentCommand).where(
+        AgentCommand.host_id == host.id, AgentCommand.kind == "worktrees.scan", AgentCommand.run_id.is_(None),
+        AgentCommand.status.in_(("queued", "sent")), AgentCommand.expires_at > now()).limit(1))
+    if waiting is not None:
+        return {"op_id": waiting.op_id, "queued": False, "connected": agent_link.connected(host)}
+    # The run fence is informational for worktrees.scan (remotea ignores a stale one) but must be present.
+    row = coordinator.command(db, None, "worktrees.scan", {"owner_id": owner, "run_id": "rescan", "generation": 0},
+                              host_id=host.id, source="app")
+    row.payload = {k: v for k, v in row.payload.items() if k != "owner_id"}
+    row.digest = agent_link.digest(row.payload)
+    return {"op_id": row.op_id, "queued": True, "connected": agent_link.connected(host)}
+
+
 # ---------------------------------------------------------------- voice (control.*, control_status)
 
 
@@ -1420,7 +1513,10 @@ def host_setup(host):
     out = {"id": host.id, "name": name, "connected": agent_link.connected(host), "last_seen_at": host.last_seen_at,
            "hello_at": (host.caps or {}).get("hello_at"), "version": host.version, "build": build["build"],
            "build_dirty": build["build_dirty"], "caps_version": build["caps_version"],
-           "degraded_reason": build["degraded_reason"], "problems": []}
+           "degraded_reason": build["degraded_reason"],
+           # `remotea doctor`'s warn/fail lines with their fixes (null: the host does not send it).
+           "doctor": agent_link.host_doctor(host),
+           "doctor_supported": "doctor" in ((host.caps or {}).get("caps") or []), "problems": []}
     if not out["connected"]:
         out["problems"].append(problem(
             "HOST_OFFLINE", f"The remotea server {name} is not connected.",
@@ -2217,8 +2313,11 @@ def status(db, owner, args):
     for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         degraded = agent_link.build_identity(h)["degraded_reason"]
         # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
+        check = agent_link.doctor_line(h)
         hosts.append({"name": h.name, "connected": agent_link.connected(h), "last_seen_at": h.last_seen_at,
-                      **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {})})
+                      **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {}),
+                      # The host's own self-check (remotea doctor), when it found problems.
+                      **({"self_check": check} if check else {})})
     # One line per unready host or target with its first fix (the setup page's wording): why a run cannot start.
     setup = setup_report(db, owner)["lines"]
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],

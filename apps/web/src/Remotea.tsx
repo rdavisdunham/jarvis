@@ -17,6 +17,7 @@ import {
 } from "./remotea-model";
 import { postAction } from "./api";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
+import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
@@ -115,6 +116,7 @@ export function Remotea() {
     <PendingControls/>
     <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged}/>
     <UnmergedList items={unmerged}/>
+    <WorktreeMaintenance/>
     <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
       {items && !items.length && <p className="activity-empty">No agent sessions are running in remotea right now.</p>}
       {items?.map(item => <SessionRow key={item.id} item={item}/>)}

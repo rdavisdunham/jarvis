@@ -8,6 +8,12 @@ export type SetupProgress = {
 
 export const SETUP_REQUEST = "Help me design or refine my organization in Eridani. Resume my saved setup, ask me one useful question at a time, and preview the types, fields and homes before applying changes. Treat examples as examples unless I ask you to create real items.";
 
+/** Types & fields enters the same guided setup, narrowed to type and field changes. */
+export function typesFieldsRequest(typeName?: string) {
+  const start = typeName?.trim() ? " Start with my " + typeName.trim() + " type." : "";
+  return "Help me refine the types and fields in my Eridani organization. Resume my saved setup and ask me one useful question at a time about record types, fields, field options and which types each field applies to." + start + " Keep my other types, homes and statuses unless I ask, and preview the changes before applying them.";
+}
+
 /** Display placement is separate from all of a type's permitted homes. */
 export function setupTypeRows(definition: Proposal["definition"]) {
   const types = new Map(definition.types.map(type => [type.id, type]));

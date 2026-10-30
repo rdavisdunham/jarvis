@@ -2,7 +2,7 @@ import { TypeMap } from "./TypeMap";
 import { updateType } from "./field-library";
 import { api } from "./api";
 import { useState, useEffect } from "react";
-import { Check, History, Link2, Plus, X } from "lucide-react";
+import { Check, History, Link2, Plus, Sparkles, X } from "lucide-react";
 import { Dialog } from "./ux";
 import { useStructureActions } from "./structure-actions";
 import { MultiSelect, Required, TypeEditor } from "./TypeEditor";
@@ -27,14 +27,24 @@ export function PlacementImpact({issues,types}:{issues:ProposalIssue[];types:Pic
   </section>;
 }
 
-export function StructureEditor({schema,onClose,onApplied,initialProposal,initialDraft,initialType,onDirtyChange}:{onDirtyChange?:(dirty:boolean)=>void;initialProposal?:Proposal;/** A draft started elsewhere (the Atlas Blueprint) continues here. */initialDraft?:Schema;initialType?:string;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
+export function StructureEditor({schema,onClose,onApplied,initialProposal,initialDraft,initialType,onDirtyChange,onTalk}:{onDirtyChange?:(dirty:boolean)=>void;/** Starts the guided setup interview, focused on the type the owner picked. */onTalk?:(typeName?:string)=>Promise<void>;initialProposal?:Proposal;/** A draft started elsewhere (the Atlas Blueprint) continues here. */initialDraft?:Schema;initialType?:string;schema:Schema;onClose:()=>void;onApplied:()=>Promise<void>}){
   const [draft,setDraft]=useState(()=>structuredClone(initialDraft??schema));const [selected,setSelected]=useState(initialType??schema.types[0]?.id??"");const [proposal,setProposal]=useState<Proposal|null>(initialProposal??null);const {run,busy,error,setError}=useStructureActions();
   const [visual,setVisual]=useState(true),[fieldId,setFieldId]=useState("");
   const [pane,setPane]=useState<"type"|"relationships"|"history">("type");
   const [history,setHistory]=useState<Proposal[]>([]);
   useEffect(()=>{void api<{items:Proposal[]}>("/structure/history/applied").then(r=>setHistory(r.items));},[]);
   const type=draft.types.find(t=>t.id===selected);const [statusMappings,setStatusMappings]=useState<Record<string,Record<string,string>>>({});
-  useEffect(()=>{onDirtyChange?.(busy||JSON.stringify(draft)!==JSON.stringify(schema)||Object.keys(statusMappings).length>0);},[draft,schema,busy,statusMappings,onDirtyChange]);
+  const edited=JSON.stringify(draft)!==JSON.stringify(schema)||Object.keys(statusMappings).length>0;
+  useEffect(()=>{onDirtyChange?.(busy||edited);},[edited,busy,onDirtyChange]);
+  // Only a type the owner opened is a focus; the default first selection is not.
+  const [chosen,setChosen]=useState(!!initialType),[starting,setStarting]=useState(false);
+  const talk=async()=>{
+    if(edited){setError("Preview or discard your edits before asking Eri. Eri proposes changes to the saved structure.");return;}
+    setStarting(true);setError("");
+    try{await onTalk!(chosen?type?.name:undefined);onClose();}
+    catch(e){setError(e instanceof Error?e.message:"Could not start Eri. Retry when connected.");}
+    finally{setStarting(false);}
+  };
   const update=(patch:Partial<SchemaType>)=>{const added=patch.fields?.find(f=>!type?.fields.some(old=>old.id===f.id));setDraft(updateType(draft,selected,patch));if(added)setFieldId(added.id);setProposal(null);};
   const addType=(parent?:string)=>{const t:SchemaType={id:crypto.randomUUID(),name:"New type",plural:"New types",description:"",capabilities:[],parent_types:draft.types.map(t=>t.id),fields:[],statuses:[],archived:false};setDraft({...draft,types:[...draft.types,t],type_layout:[...(draft.type_layout??[]),{type_id:t.id,parent_type_id:parent??null}]});setFieldId("");setSelected(t.id);setPane("type");setProposal(null);};
   const preview=async()=>setProposal(await run<Proposal>("structure.preview",{expected_revision:schema.revision,definition:{types:draft.types,relationships:draft.relationships,field_library:draft.field_library,type_layout:draft.type_layout},status_mappings:statusMappings}));
@@ -58,9 +68,9 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,initia
     </>:<>
       <div className="schema-view-switch"><button className="btn btn-sm" aria-pressed={visual} onClick={()=>setVisual(true)}>Visual tree</button><button className="btn btn-sm" aria-pressed={!visual} onClick={()=>setVisual(false)}>Advanced</button><button className="btn btn-sm" onClick={()=>setPane("relationships")}>Extra relationships</button>{!!history.length&&<button className="btn btn-sm" onClick={()=>setPane("history")}>Versions</button>}</div>
       <div className={"schema-dialog-body"+(visual?" visual":"")}>
-        {visual?<TypeMap schema={draft} selected={selected} fieldId={fieldId} onSelect={(id,field="")=>{setSelected(id);setFieldId(field);setPane("type");}} onChange={s=>{setDraft(s);setProposal(null);}} onAdd={addType} onError={setError}/>:
+        {visual?<TypeMap schema={draft} selected={selected} fieldId={fieldId} onSelect={(id,field="")=>{setSelected(id);setChosen(true);setFieldId(field);setPane("type");}} onChange={s=>{setDraft(s);setProposal(null);}} onAdd={addType} onError={setError}/>:
         <nav className="schema-rail" aria-label="Record types"><span className="schema-rail-label">Record types</span>
-          {draft.types.map(t=><button key={t.id} aria-current={pane==="type"&&selected===t.id} onClick={()=>{setSelected(t.id);setPane("type");}}>{t.plural}{t.archived&&<span className="chip">Archived</span>}</button>)}
+          {draft.types.map(t=><button key={t.id} aria-current={pane==="type"&&selected===t.id} onClick={()=>{setSelected(t.id);setChosen(true);setPane("type");}}>{t.plural}{t.archived&&<span className="chip">Archived</span>}</button>)}
           <button className="schema-rail-add" onClick={()=>addType()}><Plus size={15}/>New type</button>
           <div className="schema-rail-extra">
             <button aria-current={pane==="relationships"} onClick={()=>setPane("relationships")}><Link2 size={15}/>Relationships</button>
@@ -88,7 +98,7 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,initia
           <div className="schema-history">{history.map(p=><button key={p.id} className="btn btn-ghost" style={{justifyContent:"flex-start"}} disabled={busy} onClick={()=>void run<Proposal>("structure.restore",{proposal_id:p.id,expected_revision:schema.revision}).then(setProposal).catch(()=>{})}>Preview undo of version {p.schema_revision+1}</button>)}</div>
         </div>}
       </div>
-      <footer className="schema-dialog-foot"><span className="schema-foot-note">Changes apply after you review them.</span><button className="btn" onClick={onClose}>Close</button><button className="btn btn-primary" disabled={busy} onClick={()=>void preview().catch(()=>{})}>Preview changes</button></footer>
+      <footer className="schema-dialog-foot"><span className="schema-foot-note">Changes apply after you review them.</span>{onTalk&&<button className="btn" disabled={busy||starting} title="Eri asks about your types and fields, then shows a proposal to review" onClick={()=>void talk()}><Sparkles size={16} aria-hidden="true"/>{starting?"Starting…":"Refine with Eri"}</button>}<button className="btn" onClick={onClose}>Close</button><button className="btn btn-primary" disabled={busy} onClick={()=>void preview().catch(()=>{})}>Preview changes</button></footer>
     </>}
   </Dialog>;
 }

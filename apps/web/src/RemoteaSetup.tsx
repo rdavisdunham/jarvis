@@ -4,8 +4,8 @@ import { api, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { ago } from "./remotea-model";
 import {
-  harnessText, hostLine, mcpText, SETUP_COMMAND, SETUP_STDIN, setupSteps, verifyText, withProbe,
-  type ProbeResult, type SetupProblem, type SetupReport, type SetupTarget,
+  harnessText, hostLine, mcpText, selfCheck, SETUP_COMMAND, SETUP_STDIN, setupSteps, verifyText, withProbe,
+  type ProbeResult, type SetupHost, type SetupProblem, type SetupReport, type SetupTarget,
 } from "./remotea-setup";
 
 /** The one-time setup code after Enable or New setup code: copy it, then paste it into `remotea eridani setup`. */
@@ -34,6 +34,22 @@ function Problems({ items }: { items: SetupProblem[] }) {
       <strong>{p.message}</strong><span>{p.fix}</span>
     </li>)}
   </ul>;
+}
+
+/** `remotea doctor` as the host last reported it: counts, each warn/fail line with its fix, the report's age. */
+export function HostSelfCheck({ host, now }: { host: SetupHost; now?: number }) {
+  const view = selfCheck(host, now);
+  return <div className={"remotea-self-check tone-" + view.tone} role="group" aria-label={"Host self-check for " + host.name}>
+    <p><strong>Host self-check</strong> <span>{view.headline}</span>{view.age && <small> · {view.age}</small>}</p>
+    {!!host.doctor?.items.length && <ul className="remotea-setup-problems">
+      {host.doctor.items.map(i => <li key={i.id} className={i.level === "fail" ? "blocks" : "warns"}>
+        <strong><span className="remotea-check-level">{i.level === "fail" ? "Fail" : "Warn"}</span> {i.summary}</strong>
+        {i.fix && <span>{i.fix}</span>}
+        <small><code>{i.id}</code></small>
+      </li>)}
+    </ul>}
+    {view.note && <p className="footnote">{view.note}</p>}
+  </div>;
 }
 
 export function TargetCard({ target, onProbed }: { target: SetupTarget; onProbed: (probe: ProbeResult) => void }) {
@@ -96,6 +112,7 @@ export function RemoteaReadiness({ onlyWhenNotReady = false }: { onlyWhenNotRead
     {report?.hosts.map(h => <div key={h.id} className="remotea-setup-host">
       <small>{hostLine(h)} · {h.connected ? "connected" : "last seen " + ago(h.last_seen_at)}{h.hello_at && ` · last hello ${ago(h.hello_at)}`}{h.build_dirty && " · dirty build"}</small>
       <Problems items={h.problems}/>
+      <HostSelfCheck host={h}/>
     </div>)}
     {report?.targets.map(t => <TargetCard key={t.key} target={t} onProbed={p => setReport(r => (r ? withProbe(r, p) : r))}/>)}
   </section>;

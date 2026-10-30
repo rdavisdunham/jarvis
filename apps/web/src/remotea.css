@@ -201,6 +201,37 @@
 .remotea-setup-problems li.warns { background: var(--due-today-soft); }
 .remotea-setup-problems li span { color: var(--ink-2); }
 .remotea-setup-code code { overflow-wrap: anywhere; }
+/* Host self-check (remotea doctor) inside the setup view. */
+.remotea-self-check { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.remotea-self-check > p { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-self-check.tone-todo { border-color: var(--danger); }
+.remotea-self-check.tone-warn { border-color: var(--due-today); }
+.remotea-self-check.tone-unknown > p span { color: var(--ink-3); }
+.remotea-self-check small { color: var(--ink-2); }
+.remotea-check-level { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
+/* Worktree maintenance (S-Q4). */
+.remotea-maintenance { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); min-width: 0; }
+.remotea-maintenance[open] { display: grid; gap: 8px; }
+.remotea-maintenance summary { cursor: pointer; font-weight: 600; }
+.remotea-maintenance-hosts { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; }
+.remotea-maintenance-hosts li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; overflow-wrap: anywhere; }
+.remotea-maintenance-counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.remotea-maintenance-counts .chip { cursor: pointer; border: 1px solid var(--line); }
+.remotea-maintenance-counts .chip.active { border-color: var(--ink-2); font-weight: 600; }
+.remotea-maintenance-table { overflow-x: auto; max-width: 100%; }
+.remotea-maintenance table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.remotea-maintenance th, .remotea-maintenance td { text-align: left; vertical-align: top; padding: 6px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.remotea-maintenance td small { display: block; color: var(--ink-3); }
+.chip.wt-reclaimable { background: var(--done-soft); color: var(--done); }
+.chip.wt-dirty, .chip.wt-unpushed { background: var(--danger-soft); }
+.chip.wt-active, .chip.wt-unmerged { background: var(--due-today-soft); }
+.chip.wt-unknown { color: var(--ink-3); }
+.remotea-removal { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); }
+.remotea-removal h3 { margin: 0; font-size: 0.95rem; }
+.remotea-removal-list, .remotea-removal-refused ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-removal-refused small { display: block; color: var(--ink-2); }
+.remotea-removal-commands { display: grid; gap: 6px; }
+.remotea-removal-commands textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.8rem; }
 
 /* "Open terminal in remotea": where the terminal is, when its tab could not be brought forward. */
 .remotea-terminal-row { margin-top: 4px; }

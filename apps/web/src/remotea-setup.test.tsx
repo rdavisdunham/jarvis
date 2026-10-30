@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SetupCodeBox, TargetCard } from "./RemoteaSetup";
-import { harnessText, hostLine, mcpText, setupSteps, TOO_OLD, verifyText, withProbe, type SetupHost, type SetupReport, type SetupTarget } from "./remotea-setup";
+import { HostSelfCheck, SetupCodeBox, TargetCard } from "./RemoteaSetup";
+import { harnessText, hostLine, mcpText, selfCheck, setupSteps, TOO_OLD, verifyText, withProbe, type SetupHost, type SetupReport, type SetupTarget } from "./remotea-setup";
 
 const host: SetupHost = {
   id: "h1", name: "desk", connected: true, last_seen_at: "2026-10-30T10:00:00Z", hello_at: "2026-10-30T09:59:00Z",
@@ -96,5 +96,35 @@ describe("setup views", () => {
     expect(html).toContain(`Eridani tools for agents: ${TOO_OLD}`);
     expect(html).toContain('class="warns"><strong>Codex is enabled but not installed: r</strong><span>Install Codex</span>');
     expect(html).toContain("Run a readiness probe");
+  });
+});
+
+describe("host self-check (remotea doctor)", () => {
+  const now = Date.parse("2026-10-30T10:05:00Z");
+  const doctor = { at: "2026-10-30T10:00:00+00:00", received_at: "2026-10-30T10:00:01+00:00", ok: 30, warn: 1, fail: 2, items: [
+    { id: "service.active", level: "fail" as const, summary: "remotea.service is not running", fix: "systemctl --user start remotea" },
+    { id: "target.jarvis.verify.test", level: "fail" as const, summary: "verify test: uv not on PATH" },
+    { id: "hooks.codex.trust", level: "warn" as const, summary: "Codex hooks are not trusted", fix: "Run codex once" },
+  ] };
+
+  it("summarizes counts and age, or why there is no report", () => {
+    expect(selfCheck({ doctor, doctor_supported: true }, now)).toEqual({ tone: "todo", headline: "2 failing · 1 warning · 30 ok", age: "checked 5m ago", note: null });
+    expect(selfCheck({ doctor: { ...doctor, fail: 0, warn: 0, items: [] } }, now).headline).toBe("All 30 checks ok");
+    expect(selfCheck({ doctor: { ...doctor, truncated: true } }, now).note).toContain("remotea doctor");
+    expect(selfCheck({ doctor: null, doctor_supported: false }).headline).toBe(TOO_OLD);
+    expect(selfCheck({}).headline).toBe(TOO_OLD);
+    expect(selfCheck({ doctor: null, doctor_supported: true }).headline).toBe("Not reported yet");
+  });
+
+  it("renders each warn and fail line with its fix", () => {
+    const html = renderToStaticMarkup(<HostSelfCheck host={{ ...host, doctor, doctor_supported: true }} now={now}/>);
+    expect(html).toContain("<strong>Host self-check</strong> <span>2 failing · 1 warning · 30 ok</span>");
+    expect(html).toContain("checked 5m ago");
+    expect(html).toContain('class="blocks"><strong><span class="remotea-check-level">Fail</span> remotea.service is not running</strong><span>systemctl --user start remotea</span>');
+    expect(html).toContain('class="warns"><strong><span class="remotea-check-level">Warn</span> Codex hooks are not trusted</strong><span>Run codex once</span>');
+    expect(html).toContain("<code>target.jarvis.verify.test</code>");
+    const old = renderToStaticMarkup(<HostSelfCheck host={host}/>);
+    expect(old).toContain(`<span>${TOO_OLD}</span>`);
+    expect(old).not.toContain("<ul");
   });
 });

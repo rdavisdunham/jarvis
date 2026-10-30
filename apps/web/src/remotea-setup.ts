@@ -1,12 +1,15 @@
 // The guided remotea setup page (Settings → Connections → remotea, and the remotea page while nothing is ready):
 // `GET /remotea/setup` and `POST /remotea/targets/{key}/probe` (agent_control.setup_report / target_probe).
-import { ago } from "./remotea-model";
+import { ago, type DoctorSummary } from "./remotea-model";
 
 export type SetupProblem = { code: string; message: string; fix: string; blocks: boolean };
 export type SetupHost = {
   id: string; name: string; connected: boolean; last_seen_at: string | null; hello_at: string | null;
   version: string | null; build: string | null; build_dirty: boolean | null; caps_version: number | null;
   degraded_reason: string | null; problems: SetupProblem[];
+  /** `remotea doctor`'s summary (null: none received); `doctor_supported`: the host advertises `doctor`. Both
+   * absent from an Eridani without the doctor mirror. */
+  doctor?: DoctorSummary | null; doctor_supported?: boolean;
 };
 export type SetupHarness = {
   label: string; ready: boolean; enabled: boolean | null; version: string | null; error: string | null;
@@ -83,6 +86,25 @@ export function verifyText(v: SetupVerify) {
 export function mcpText(mcp: SetupTarget["mcp"]) {
   if (!mcp) return `Eridani tools for agents: ${TOO_OLD}`;
   return mcp.configured ? "Eridani tools for agents: configured" : `Eridani tools for agents: missing${mcp.reason ? " (" + mcp.reason + ")" : ""}`;
+}
+
+export type SelfCheck = { tone: "done" | "warn" | "todo" | "unknown"; headline: string; age: string | null; note: string | null };
+
+/** The "Host self-check" block's header: counts and the report's age, or why there is none. */
+export function selfCheck(host: Pick<SetupHost, "doctor" | "doctor_supported">, now = Date.now()): SelfCheck {
+  const d = host.doctor;
+  if (!d) {
+    return host.doctor_supported
+      ? { tone: "unknown", headline: "Not reported yet", age: null, note: "remotea checks itself every 5 minutes; `remotea doctor` in WSL shows it now." }
+      : { tone: "unknown", headline: TOO_OLD, age: null, note: "Update remotea to see its self-check here; `remotea doctor` needs a current remotea too." };
+  }
+  const parts = [d.fail ? `${d.fail} failing` : "", d.warn ? `${d.warn} ${d.warn === 1 ? "warning" : "warnings"}` : "", `${d.ok} ok`].filter(Boolean);
+  return {
+    tone: d.fail ? "todo" : d.warn ? "warn" : "done",
+    headline: d.fail || d.warn ? parts.join(" · ") : `All ${d.ok} checks ok`,
+    age: `checked ${ago(d.at, now)}`,
+    note: d.truncated ? "More findings than shown: run `remotea doctor` in WSL for the full list." : null,
+  };
 }
 
 /** Replace one target in the report with a probe's fresh copy (matched by its key). */
