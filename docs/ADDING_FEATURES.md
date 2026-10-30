@@ -403,6 +403,7 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 | `docs/AGENT_CONTROL.md` | `agents:*` scopes, `/api/v1/remotea` routes, link frames, run states, the agent migrations | Any remotea change |
 | `docs/DESIGN.md` | `apps/web/src/theme.css` tokens | New tokens or components |
 | `docs/CI.md` | `.github/workflows/ci.yml` | CI steps or local equivalents change |
+| `docs/TASK_CARDS.md` | Both task cards' sections and every entry point that opens each | A task-card section or a route into either card changes |
 | `docs/APP_FUNCTIONALITY.md` | Feature map, dated September 19 | New user-facing feature |
 | `evals/app/README.md`, `evals/app/surface-inventory.json` | Eval catalog and exposed surfaces | New feature, route, command or read tool |
 
@@ -438,6 +439,9 @@ Existing tests that pin a list in two places:
 - `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_others_are_refused`.
 - `apps/web/src/events.test.ts` (`signalScope` skip lists), `BotSettings.test.tsx`
   (`permissionScopes`), `calendar-tasks.test.ts` (`initialView`).
+- `apps/web/src/task-card-parity.test.tsx`: RecordCard and TaskDetails both render every section in
+  `task-card-sections.ts` `TASK_CARD_SECTIONS` for one task. A section that belongs on both task cards
+  goes in `TaskCardSections.tsx` and that constant; see `docs/TASK_CARDS.md`.
 - CI `alembic check` (models vs migrations, without server defaults).
 
 Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
