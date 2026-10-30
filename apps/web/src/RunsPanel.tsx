@@ -6,12 +6,15 @@ import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
 import "./runs.css";
 
-/** One run as a row: state, task, and why it is in that state. Used by the Runs panel and the remotea page. */
+/** One run as a row: state, task, and why it is in that state; under them, what the agent is doing now (the run
+ * summary), with a quiet "updating…" while a newer one is due. Used by the Runs panel and the remotea page. */
 export function RunRow({ run, onOpen }: { run: Run; onOpen: (id: string) => void }) {
   return <button key={run.id} className={"remotea-run-row state-" + run.state} onClick={() => onOpen(run.id)}>
     <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>
     <span className="remotea-run-title">{run.task?.title ?? "Task"}</span>
     <small>{run.reason_text || ago(run.state_since)}</small>
+    {!!run.summary && <span className="run-summary" title={run.summary_at ? "As of " + ago(run.summary_at) : undefined}>
+      {run.summary}{run.summary_stale && <span className="run-summary-updating"> updating…</span>}</span>}
   </button>;
 }
 
