@@ -240,6 +240,7 @@ class SettingsUpdate(Args):
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     history_enabled: bool | None = None
     memory_learning: bool | None = None
+    live_memory_updates: bool | None = None
     deep_sleep_enabled: bool | None = None
     history_days: int | None = Field(default=None, ge=0, le=36500)
     timezone: str | None = None
@@ -368,6 +369,8 @@ def preferences(db, owner):
         "preferred_name": settings.owner_name,
         "history_enabled": True,
         "memory_learning": True,
+        # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
+        "live_memory_updates": True,
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
         "routing_review_day": 0, "routing_review_hour": 3,

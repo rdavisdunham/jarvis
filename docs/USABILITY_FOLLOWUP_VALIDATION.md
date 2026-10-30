@@ -32,3 +32,19 @@ The new `scripts/validate_google_rsvp.py` builds an isolated fixture from forwar
 - A real phone must confirm keyboard appearance and comfortable focus with its browser/virtual keyboard. Desktop Chromium mobile viewports verify focus, not an Android keyboard.
 - A real Google invitation should be checked end-to-end for organizer delivery, recurring-instance/series behavior, and source-side Revert. The synthetic transport verifies our contract but cannot establish provider acceptance.
 - Agent routing to the new navigation group is schema-tested; a live voice request remains a normal-use check. No paid eval was needed for this follow-up.
+
+## Follow-up — 2026-10-30
+
+- Chat focus: the launcher and New chat logic now live in `apps/web/src/chat-focus.tsx`
+  (`ChatLauncher`, `startNewConversation`, `focusComposer`). A jsdom render test
+  (`chat-focus.test.tsx`) checks that `document.activeElement` is the composer at the moment the
+  click handler returns, for both the launcher and New chat, and again after New chat's async reset.
+  A real phone keyboard is still a device check.
+- Cross-kind navigation: `navigation_find` is always loaded, and its single selected match makes
+  the needed open tool (`ui_calendar`, `ui_form` or `ui_records`) callable at once. A `task_resolve`
+  search that finds no task returns `other_kinds` (the same lookup across events, notes and records),
+  so the usual first lookup for "show me the weekly check-in task" also reaches the one event. Results
+  carry `requested_kind`, `kind_name` and `kind_matches_request` so the reply names the kind only when
+  it matters. Typed chat and GPT-Live instructions treat the named kind as a hint; Live delegates such
+  requests as spoken. Eval `site_controls.26` covers the case with a component contract.
+- GPT-Live memory updates: see [GPT-Live sessions](APP_FUNCTIONALITY.md#33-gpt-live-sessions).

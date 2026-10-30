@@ -105,3 +105,72 @@ def test_multiday_local_events_deduplicate_without_collapsing_schedule_occurrenc
     assert result["match_count"] == 3
     assert result["needs_clarification"]
     assert len({item["open"]["arguments"]["calendar_entry_id"] for item in result["matches"]}) == 3
+
+
+def test_kind_mismatch_is_named_but_still_selected(provider):
+    day = now().date()
+    eid = existing(provider, summary="Weekly check-in",
+                   start={"date": day.isoformat()}, end={"date": (day + timedelta(days=1)).isoformat()})
+    with session_scope() as db:
+        result = find(db, "davin", "show me the weekly check in task")
+    assert result["requested_kind"] == "task"
+    selected = result["selected"]
+    assert selected["id"] == eid and not result["needs_clarification"]
+    assert selected["kind_name"] == "calendar event" and selected["kind_matches_request"] is False
+    assert "never correct their wording" in result["instruction"]
+    with session_scope() as db:
+        assert find(db, "davin", "open the weekly check in meeting")["selected"]["kind_matches_request"] is True
+
+
+async def test_task_lookup_with_no_task_offers_the_one_other_kind_match(provider):
+    from jarvis.tools import call_tool
+
+    day = now().date()
+    eid = existing(provider, summary="Weekly check-in",
+                   start={"date": day.isoformat()}, end={"date": (day + timedelta(days=1)).isoformat()})
+    result = await call_tool("davin", "resolve", 0, "task_resolve", {"scope": "search", "query": "weekly check in"})
+    assert result["tasks"] == []
+    other = result["other_kinds"]
+    assert other["selected"]["id"] == eid
+    assert other["selected"]["open"] == {"tool": "ui_calendar", "arguments": {
+        **other["selected"]["open"]["arguments"], "entity_id": eid, "open_details": True}}
+    # A real task match keeps the ordinary task answer, without a cross-kind detour.
+    with session_scope() as db:
+        execute(db, "davin", "capture-weekly", "task.create", {"title": "Weekly check-in"})
+    result = await call_tool("davin", "resolve", 1, "task_resolve", {"scope": "search", "query": "weekly check in"})
+    assert len(result["tasks"]) == 1 and "other_kinds" not in result
+
+
+def test_navigation_is_always_loaded_and_its_selected_opener_becomes_callable():
+    from jarvis.navigation import opener
+    from jarvis.tool_catalog import ToolSession
+    from jarvis.tools import registry
+
+    for policy in ("baseline", "discovery-v1", "reads-v1", "lean-v1"):
+        session = ToolSession(registry(), policy)
+        assert "navigation_find" in session.names and "ui_calendar" not in session.names
+        found = {"selected": {"open": {"tool": "ui_calendar", "arguments": {}}}}
+        assert opener(found) == "ui_calendar"
+        assert session.follow(found) == "ui_calendar" and "ui_calendar" in session.names
+        assert session.follow(found) is None  # Idempotent.
+        assert session.follow({"selected": None, "matches": []}) is None
+        assert session.follow({"tasks": [], "other_kinds": {"selected": {"open": {"tool": "ui_records"}}}}) == "ui_records"
+
+
+def test_typed_and_live_instructions_treat_the_kind_as_a_hint():
+    from jarvis.agent_instructions import POLICY, live_instructions
+    from jarvis.tool_catalog import DESCRIPTIONS
+
+    assert "is a hint, not a filter" in POLICY and "Never edit on a" in POLICY
+    live = live_instructions({"timezone": "America/Chicago", "default_reminder_hour": 9})
+    assert "a 'task' may be a calendar event" in live
+    assert "never tell the user" in live.lower()
+    assert "other_kinds" in DESCRIPTIONS["task_resolve"]
+    assert "navigation_find first" in DESCRIPTIONS["ui_show"]
+
+
+def test_kind_mismatch_eval_contract_passes():
+    """evals/app site_controls.26 runs here against the test database, not only in the eval harness."""
+    from scripts.app_eval.contracts import CASES, Harness
+
+    CASES["site_controls.26"](Harness({"refs": {}, "owner": "davin"}), "site_controls.26")

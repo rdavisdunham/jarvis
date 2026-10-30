@@ -666,6 +666,7 @@ async def perform(request_id):
                                 device=row.device_id,
                                 conversation_id=row.conversation_id,
                             )
+                    session.follow(outcome)
                     from .quick_sort import runner_question
                     sort_question = runner_question(row.owner_id, row.id, fn["name"], outcome)
                     if sort_question:

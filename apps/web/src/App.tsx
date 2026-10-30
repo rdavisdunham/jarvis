@@ -26,6 +26,7 @@ import { PendingControls } from "./PendingControls";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { runsBadge } from "./remotea-model";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
+import { ChatLauncher, focusComposer, startNewConversation } from "./chat-focus";
 import {
   readView,
   viewLink,
@@ -1562,12 +1563,14 @@ export default function App() {
   const chatInput = useRef<HTMLTextAreaElement>(null);
   const chatSubmitLock = useRef(false);
   const guidedRetries = useRef(new Map<string, () => Promise<boolean>>());
-  const focusChat = () => chatInput.current?.focus({ preventScroll: true });
-  async function newChat() {
+  const focusChat = () => focusComposer(chatInput);
+  function newChat() {
     conversationEpoch.current += 1;
     chatSubmitLock.current = false; setThinking(false);
-    // Keep direct focus inside the gesture so mobile browsers may open the keyboard.
-    if (!voice.current) focusChat();
+    // Focus inside the click so mobile browsers may open the keyboard, then again after the reset.
+    return startNewConversation(focusChat, resetConversation, !!voice.current);
+  }
+  async function resetConversation() {
     voiceGeneration.current += 1;
     const previous = voice.current;
     voice.current = null;
@@ -1592,7 +1595,6 @@ export default function App() {
     setChatText("");
     flushSync(() => setVoiceState(null));
     setError("");
-    focusChat();
   }
   function chooseProvider(provider: VoiceProvider) {
     if (!boot?.voice_options[provider]) return;
@@ -3219,17 +3221,8 @@ export default function App() {
           <Ellipsis size={22} aria-hidden="true" /><span aria-hidden="true">More</span>
         </button>
       </div>
-      <button type="button" className={"chat-launcher" + (companion ? " is-open" : "") + (voiceState && !voiceState.closed ? " is-listening" : "")}
-        aria-label={companion ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={companion}
-        onClick={() => {
-          const opening = !companion;
-          flushSync(() => setCompanion(opening));
-          if (opening && !voice.current) focusChat();
-        }}>
-        <span className="chat-launcher-icon" aria-hidden="true">{companion ? <X size={23}/> : <MessageCircle size={24}/>}</span>
-        {!companion && <span className="chat-launcher-label">Eri</span>}
-        {voiceState && !voiceState.closed && <span className="chat-live-dot" aria-label="Voice active"/>}
-      </button>
+      <ChatLauncher open={companion} listening={!!voiceState && !voiceState.closed} onOpenChange={setCompanion}
+        focus={() => { if (!voice.current) focusChat(); }}/>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
       {runsOpen && <RunsPanel onClose={() => setRunsOpen(false)} onOpenPage={() => setView("remotea")}/>}

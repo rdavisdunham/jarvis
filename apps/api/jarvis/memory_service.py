@@ -94,12 +94,15 @@ async def semantic_search(owner, query="", limit=10):
         ][:limit]
 
 
-async def prompt_context(owner, query=""):
+async def prompt_context(owner, query="", seen=None):
+    """seen, when given, collects (id, revision) of every fact included, so a caller can avoid resending it."""
     import json
 
     facts = await semantic_search(owner, query, 6)
     if not facts:
         return ""
+    if seen is not None:
+        seen.update((m["id"], m["revision"]) for m in facts)
     evidence = [
         {
             "id": m["id"],
@@ -116,3 +119,34 @@ async def prompt_context(owner, query=""):
         "Do not claim new memories were saved merely because they appear here.\n"
         + json.dumps(evidence, ensure_ascii=False)
     )
+
+
+def current_facts(db, owner, facts):
+    """Facts from an earlier read that are still live: same revision, not suppressed, merged or superseded,
+    and their source still exists. Used right before reusing retrieved facts after an await."""
+    if not facts:
+        return []
+    rows = {
+        m.id: m
+        for m in db.scalars(
+            select(Memory)
+            .join(Source, Source.id == Memory.source_id)
+            .where(
+                Memory.owner_id == owner,
+                Memory.id.in_([f["id"] for f in facts]),
+                Memory.suppressed.is_(False),
+                Memory.merged_into_id.is_(None),
+                Source.deleted_at.is_(None),
+            )
+        )
+    }
+    replaced = set(
+        db.scalars(
+            select(Memory.supersedes_id).where(
+                Memory.owner_id == owner,
+                Memory.supersedes_id.in_(list(rows)),
+                Memory.suppressed.is_(False),
+            )
+        )
+    )
+    return [f for f in facts if f["id"] in rows and rows[f["id"]].revision == f["revision"] and f["id"] not in replaced]

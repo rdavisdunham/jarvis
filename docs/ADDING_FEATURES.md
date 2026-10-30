@@ -225,7 +225,9 @@ GPT-Live (`live_voice.py`) delegates to queued work.
       added by prefix: `planning.`, `linear.`, `space.`, …, `control.`). Per-field null rules go in
       `domain.NOT_NULL`.
 - [ ] Tool group and discovery (`tool_catalog.py`): put the tool name in a `GROUPS` entry (or `CORE`
-      if always loaded); a richer description goes in `DESCRIPTIONS`. Guard:
+      if always loaded); a richer description goes in `DESCRIPTIONS`. `navigation_find` is in `CORE`, and
+      `ToolSession.follow` makes the open tool of its single selected match (`navigation.opener`, also
+      `task_resolve`'s `other_kinds`) callable next round without a `tools_load`; both chat runners call it. Guard:
       `tests/test_tool_refinement.py` asserts every registry tool is in a group or `CORE`, and each group
       has fewer than 10 tools.
 - [ ] Policy (`tool_policy.py`): `lean-v1` moves tools via `LEAN_DEFERRED` / `LEAN_EXTRA`. Anything
