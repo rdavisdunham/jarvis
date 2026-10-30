@@ -209,3 +209,27 @@ def test_run_dialog_harnesses_match_the_backend():
     block = found(r"export const HARNESSES = \[(.*?)\] as const;", source, "HARNESSES")
     entries = re.findall(r'id: "([a-z]+)", label: "[^"]+", models: \[\{ id: "([^"]+)"', block)
     assert dict(entries) == HARNESSES, "apps/web/src/remotea-model.ts HARNESSES vs apps/api/jarvis/agent_control.py HARNESSES"
+
+
+# remotea's eridani-mcp.ts ERIDANI_MCP_TOOLS: the tools a spawned agent is told it has. remotea's source is not in
+# this repository, so the list is pinned here; change both when remotea changes it.
+REMOTEA_MCP_TOOLS = {"task_plan", "submit_plan", "task_step", "task_interview", "session_link"}
+
+
+def test_setup_code_mcp_key_and_command_match_remotea():
+    """The MCP key a setup code carries (remotea_routes.MCP_KEY_SCOPES) offers every tool remotea tells its agents
+    about and cannot open the link; the link key never edits tasks; the web page and the docs name the same setup
+    command and code prefix as remotea_routes (remotea's parseSetupCode reads `eridani-setup:1:`)."""
+    from jarvis import remotea_routes as routes
+    from jarvis.bot_access import normalize
+    from jarvis.external_mcp import definitions
+
+    offered = {d["name"] for d in definitions(normalize(routes.MCP_KEY_SCOPES))}
+    assert REMOTEA_MCP_TOOLS <= offered, sorted(REMOTEA_MCP_TOOLS - offered)
+    assert "agents:control" not in normalize(routes.MCP_KEY_SCOPES)
+    assert "tasks:write" not in normalize(routes.KEY_SCOPES)
+    source = web("remotea-setup.ts")
+    assert found(r'export const SETUP_COMMAND = "([^"]+)"', source, "SETUP_COMMAND") == routes.SETUP_COMMAND
+    assert routes.SETUP_CODE_PREFIX == "eridani-setup:1:"
+    doc = (ROOT / "docs/AGENT_CONTROL.md").read_text()
+    assert routes.SETUP_CODE_PREFIX in doc and routes.SETUP_COMMAND in doc and "/targets/{key}/probe" in doc

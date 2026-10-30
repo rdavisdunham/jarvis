@@ -292,6 +292,13 @@ class AgentRun(Base):
     run_token_salt: Mapped[str] = mapped_column(String(64), default="", server_default="")
     # Every transition with its actor, newest last (bounded).
     history: Mapped[list] = mapped_column(JSONB, default=list)
+    # Run summaries (0036, run_summaries.py): one plain-language line on what the agent is doing now. activity_seq
+    # counts what landed (turns, questions, verdicts, state changes); summary_seq is the activity_seq the last
+    # summary job handled, so summary_seq < activity_seq means a newer summary is due.
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    summary_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    activity_seq: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
@@ -322,7 +329,8 @@ class AgentRunPlan(Base):
 
 
 class AgentAttempt(Base):
-    """One verification or judge attempt bound to (run, generation, turn_seq, plan revision); see agent_judge.py."""
+    """One verification, judge or summary attempt bound to (run, generation, turn_seq, plan revision); see
+    agent_judge.py. Summary attempts (run_summaries.py) are written once settled and only carry the cost record."""
     __tablename__ = "agent_attempts"
     __table_args__ = (Index("ix_agent_attempts_run_id_kind_status", "run_id", "kind", "status"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)

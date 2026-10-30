@@ -1,0 +1,286 @@
+{
+ "direction": "host",
+ "frame": "sessions.snapshot",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "digest": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "journal": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "pending": {
+       "required": true,
+       "shape": {
+        "types": [
+         "array"
+        ]
+       }
+      },
+      "uncertain": {
+       "required": true,
+       "shape": {
+        "types": [
+         "array"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "part": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "i": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "n": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "of": {
+       "required": true,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "surfaces": {
+    "required": true,
+    "shape": {
+     "items": {
+      "keys": {
+       "agent_state": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "branch": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "cwd": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "generation": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "group": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "incarnation": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "provider": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "provider_session_id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "run_id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "since": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "state": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "stop_requested": {
+        "required": true,
+        "shape": {
+         "types": [
+          "boolean"
+         ]
+        }
+       },
+       "surf": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "target": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "task_id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "title": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "turn_seq": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "worktree": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       }
+      },
+      "types": [
+       "object"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

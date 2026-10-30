@@ -1,0 +1,124 @@
+{
+ "direction": "eridani",
+ "frame": "runs.snapshot",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "questions": {
+    "required": true,
+    "shape": {
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "runs": {
+    "required": true,
+    "shape": {
+     "items": {
+      "keys": {
+       "desired": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "generation": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "run_id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "verify": {
+        "required": true,
+        "shape": {
+         "keys": {
+          "plan_revision": {
+           "required": true,
+           "shape": {
+            "types": [
+             "integer"
+            ]
+           }
+          },
+          "verify_id": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          }
+         },
+         "types": [
+          "object"
+         ]
+        }
+       }
+      },
+      "types": [
+       "object"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

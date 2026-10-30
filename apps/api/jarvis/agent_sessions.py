@@ -569,30 +569,31 @@ class Summary(BaseModel):
     summary: str
 
 
+def summary_request(source):
+    """The structured request summarize_text sends (pure, so scripts/model_eval.py sends the same one)."""
+    from .memory_learning import EXTRACTION_MODEL
+
+    return {
+        "model": EXTRACTION_MODEL,
+        "messages": [
+            {"role": "system", "content": SUMMARY_PROMPT},
+            {"role": "user", "content": json.dumps(source)},
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "session_summary", "strict": True, "schema": Summary.model_json_schema()},
+        },
+        "max_completion_tokens": 600,
+        "reasoning_effort": "none",
+        "store": False,
+    }
+
+
 @feature("session_ledger")
 def summarize_text(owner, source):
     from .memory_learning import EXTRACTION_MODEL, extraction_request
 
-    data = extraction_request(
-        owner,
-        "chat/completions",
-        {
-            "model": EXTRACTION_MODEL,
-            "messages": [
-                {"role": "system", "content": SUMMARY_PROMPT},
-                {"role": "user", "content": json.dumps(source)},
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "session_summary", "strict": True, "schema": Summary.model_json_schema()},
-            },
-            "max_completion_tokens": 600,
-            "reasoning_effort": "none",
-            "store": False,
-        },
-        EXTRACTION_MODEL,
-        0.02,
-    )
+    data = extraction_request(owner, "chat/completions", summary_request(source), EXTRACTION_MODEL, 0.02)
     message = data["choices"][0]["message"]
     if message.get("refusal"):
         return ""

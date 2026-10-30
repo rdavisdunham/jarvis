@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
-import { RunRow } from "./RunsPanel";
+import { AttentionList } from "./RunsPanel";
 import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, ATTENTION_STATES, baseLine, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
+  ago, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
   isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
@@ -16,8 +16,24 @@ import {
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import { postAction } from "./api";
+import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
+import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
+
+/** Facts as small labelled chips, each with its own tone (freshness in the header, a verification's facts). */
+function Facts({ facts, label, className = "" }: { facts: Fact[]; label: string; className?: string }) {
+  if (!facts.length) return null;
+  return <ul className={"remotea-fresh " + className} aria-label={label}>
+    {facts.map(f => <li key={f.key} className={"tone-" + f.tone} title={f.title}>{f.label}</li>)}</ul>;
+}
+
+/** A clock for relative times ("host seen 12 s ago"): re-renders on its own, never fetches anything. */
+function useNow(ms = 15_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), ms); return () => window.clearInterval(id); }, [ms]);
+  return now;
+}
 import "./remotea.css";
 import "./runs.css";
 
@@ -84,15 +100,21 @@ export function Remotea() {
   useAgentRefresh(refresh);
   const hosts = hostSummary(status?.hosts ?? []);
   const cutover = cutoverSummary(parity);
+  const unmerged = useUnmerged();
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
-      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
+      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}
+        {(status?.hosts ?? []).filter(h => h.connected).map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+          <small key={h.id} className="remotea-host-build"> · {line!.text}{line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</small>)}
+      </span>
       <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
     </section>
+    {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
+    <RemoteaReadiness onlyWhenNotReady/>
     <PendingControls/>
-    <RunList onOpen={openRun}/>
-    <UnmergedList/>
+    <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged}/>
+    <UnmergedList items={unmerged}/>
     <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
       {items && !items.length && <p className="activity-empty">No agent sessions are running in remotea right now.</p>}
       {items?.map(item => <SessionRow key={item.id} item={item}/>)}
@@ -114,13 +136,14 @@ export function Remotea() {
 
 export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; onChanged: () => void }) {
   const [status, setStatus] = useState<RemoteaStatus | null>(null), [token, setToken] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [copied, setCopied] = useState("");
   useEffect(() => { void api<RemoteaStatus>("/remotea/status").then(setStatus).catch(e => setError(e.message)); }, []);
   const change = async (path: string, body?: unknown) => {
     setBusy(true); setError("");
     try {
       const next = await post<RemoteaStatus>(path, body);
-      setStatus(next); setToken(next.token ?? ""); onChanged();
+      setStatus(next); setToken(next.token ?? ""); setCode(next.setup_code ?? ""); onChanged();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
@@ -130,7 +153,7 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
   return <SettingsGroup className="remotea-settings" icon={<MonitorSmartphone size={18}/>} title="remotea"
     description="Follow Claude Code and Codex sessions running in your remotea server from this app.">
     {error && <p className="error-banner" role="alert">{error}</p>}
-    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default. Turning it off revokes the link key; turning it on again shows a new one. Personal workspace only.">
+    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default. Turning it on shows a one-time setup code; turning it off revokes its keys. Personal workspace only.">
       <input type="checkbox" checked={!!status?.enabled} disabled={!status || busy || readOnly}
         onChange={e => void change(e.target.checked ? "/remotea/enable" : "/remotea/disable", e.target.checked ? {} : undefined)}/>
     </SettingRow>
@@ -139,22 +162,36 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
       {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
         <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
           hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
           <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
-            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}
+            {line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</span>
         </SettingRow>)}
-      <MigrationSettings readOnly={readOnly}/>
-      {token && <div className="bot-secret" role="region" aria-label="remotea link key">
-        <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
-        <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
-        <input id="remotea-secret" readOnly type="password" value={token} autoComplete="off" onFocus={e => e.target.select()}/>
-        <div className="bot-key-actions">
-          <button className="btn btn-primary btn-sm" onClick={() => void copy(token, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setToken("")}>Done</button>
-        </div>
+      {status.mcp_key && <SettingRow label="Agent tools key"
+        hint={`MCP key ${status.mcp_key.prefix}… · expires ${new Date(status.mcp_key.expires_at).toLocaleDateString()}. The setup code gives it to the coding agents a run starts; a new setup code replaces it.`}>
+        <span className="remotea-host-chip">{status.mcp_key.last_used_at ? "Used " + ago(status.mcp_key.last_used_at) : "Not used yet"}</span>
+      </SettingRow>}
+      {code && <SetupCodeBox code={code} onDone={() => { setCode(""); setToken(""); }}/>}
+      {!readOnly && <div className="settings-form-actions">
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void change("/remotea/setup-code", {})}>New setup code</button>
       </div>}
+      <RemoteaReadiness/>
+      <MigrationSettings readOnly={readOnly}/>
+      {token && <details className="remotea-older-key" open={!code}>
+        <summary>Older remotea without <code>eridani setup</code>: the link key alone</summary>
+        <div className="bot-secret" role="region" aria-label="remotea link key">
+          <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
+          <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
+          <input id="remotea-secret" readOnly type="password" value={token} autoComplete="off" onFocus={e => e.target.select()}/>
+          <div className="bot-key-actions">
+            <button className="btn btn-primary btn-sm" onClick={() => void copy(token, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setToken("")}>Done</button>
+          </div>
+        </div>
+      </details>}
       <div className="copy-field">
         <label className="field"><span className="field-label-text">Connect command</span>
           <input readOnly aria-label="Connect command" value={status.connect_command} onFocus={e => e.target.select()}/></label>
@@ -223,8 +260,11 @@ function message(e: unknown) {
   return (e as Error).message || "Something went wrong.";
 }
 
-function RunList({ onOpen }: { onOpen: (id: string) => void }) {
-  const [runs, setRuns] = useState<Run[] | null>(null), [error, setError] = useState("");
+/** The page's runs, grouped by the next human action (attentionGroups); the five most recent settled runs close it. */
+export function RunList({ onOpen, hosts, unmerged, preloaded }: { onOpen: (id: string) => void; hosts: Host[]; unmerged: UnmergedWork[];
+  /** Runs already in hand (tests); the list still loads. */
+  preloaded?: Run[] }) {
+  const [runs, setRuns] = useState<Run[] | null>(preloaded ?? null), [error, setError] = useState("");
   const refresh = useCallback(() => {
     api<{ items: Run[] }>("/remotea/runs?limit=20").then(r => { setRuns(orderRuns(r.items)); setError(""); }).catch(e => setError(message(e)));
   }, []);
@@ -236,15 +276,19 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
     <h2>Runs</h2>
     {error && <p role="alert" className="work-error">{error}</p>}
     {!active.length && <p className="footnote">No runs are active.</p>}
-    {[...active, ...recent].map(r => <RunRow key={r.id} run={r} onOpen={onOpen}/>)}
+    <AttentionList groups={attentionGroups([...active, ...recent], [], hosts, unmerged)} onOpen={onOpen}/>
   </section>;
 }
 
-function UnmergedList() {
+function useUnmerged() {
   const [items, setItems] = useState<UnmergedWork[]>([]);
   const refresh = useCallback(() => { api<{ items: UnmergedWork[] }>("/remotea/unmerged").then(r => setItems(r.items)).catch(() => setItems([])); }, []);
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
+  return items;
+}
+
+function UnmergedList({ items }: { items: UnmergedWork[] }) {
   if (!items.length) return null;
   return <details className="remotea-unmerged">
     <summary>Unmerged work ({items.length})</summary>
@@ -397,6 +441,75 @@ export function Criteria({ run }: { run: RunDetail }) {
   </details>;
 }
 
+const PACKET_STATUS = { met: "Met", "not met": "Not met", unknown: "Unknown" } as const;
+
+/** E-Q3: everything a reviewer needs beside Approve, from reviewPacket. Read-only in needs_you and settled runs. */
+export function ReviewPacketCard({ packet, children }: { packet: ReviewPacket; children?: ReactNode }) {
+  return <details className={"remotea-plan review-packet" + (packet.readOnly ? " read-only" : "")} open={!packet.readOnly || undefined}
+    aria-label="Review packet">
+    <summary>Review · {packet.text}</summary>
+    {packet.decision && <p className={"review-decision kind-" + packet.decision.kind}>{packet.decision.text}</p>}
+    <h4>Success criteria · {packet.met}/{packet.total} met</h4>
+    {packet.judgedEarlierPlan && <p className="footnote attention">Judged against an earlier plan: the criteria changed since. Judge again to check them.</p>}
+    {packet.criteria.length ? <ul>{packet.criteria.map(c => <li key={c.id} className={"criterion-" + c.status.replace(" ", "_")}>
+      <strong>{PACKET_STATUS[c.status]}</strong> {c.text}{c.evidence && <p>{c.evidence}</p>}
+    </li>)}</ul> : <p className="footnote">No success criteria: the judge cannot complete this run; you decide.</p>}
+    <h4>Changes</h4>
+    <p>{packet.prs.length ? packet.prs.map((p, i) => <span key={p.url}>{i ? ", " : ""}<a href={p.url} target="_blank" rel="noreferrer">{p.label}</a></span>) : null}
+      {packet.prs.length ? " " + packet.prState : packet.changesLine}
+      {packet.branch && <> · <code>{packet.branch}</code></>}{packet.worktree && <small> in <code>{packet.worktree}</code></small>}</p>
+    <h4>Tests</h4>
+    <p>{packet.testsLine}</p>
+    {!!packet.tests?.markers.length && <ul className="review-markers">{packet.tests.markers.map(m => <li key={m}>{m}</li>)}</ul>}
+    {!!packet.questions.length && <><h4>Open questions</h4><ul>{packet.questions.map((q, i) => <li key={i}>{q}</li>)}</ul></>}
+    {packet.reason && <><h4>The judge's reason</h4><p className="review-reason">{packet.reason}</p></>}
+    {children}
+  </details>;
+}
+
+/** ba56714a: edit the success criteria (and the verify command) of a parked run, then Judge again. */
+export function CriteriaEditor({ run, onDone, onConflict, onCancel }: { run: RunDetail; onDone: () => void; onConflict: () => void; onCancel: () => void }) {
+  const [rows, setRows] = useState(() => (run.plan?.criteria ?? []).map(c => ({ id: c.id as string | undefined, text: c.text, kind: c.kind ?? "text" })));
+  const options = run.verify_options ?? [], current = run.plan?.verify?.verify_id ?? null;
+  const [verifyId, setVerifyId] = useState(current ?? "");
+  const [busy, setBusy] = useState(""), [error, setError] = useState("");
+  const body = criteriaBody(rows, verifyId || null, current);
+  const set = (i: number, values: Partial<(typeof rows)[number]>) => setRows(all => all.map((r, j) => j === i ? { ...r, ...values } : r));
+  const save = async (judge: boolean) => {
+    if (!body) return;
+    setBusy(judge ? "judge" : "save"); setError("");
+    try {
+      const saved = await postAction<RunDetail>(`/remotea/runs/${run.id}/criteria`, { ...body, expected_revision: run.state_revision });
+      if (judge) await postAction(`/remotea/runs/${run.id}/judge`, { expected_revision: saved.state_revision });
+      onDone();
+    } catch (e) { if (isRevisionConflict(e)) onConflict(); else setError(message(e)); } finally { setBusy(""); }
+  };
+  return <section className="remotea-question criteria-editor" aria-label="Edit criteria">
+    <p className="remotea-card-kicker">Edit criteria</p>
+    <p className="footnote">Your edit freezes the next plan revision; the agent is judged against it from now on.</p>
+    {rows.map((r, i) => <fieldset key={r.id ?? "new-" + i} disabled={!!busy}>
+      <textarea aria-label={"Criterion " + (i + 1)} rows={2} value={r.text} onChange={e => set(i, { text: e.target.value })}/>
+      <div className="remotea-choices">
+        {(verifyId || r.kind === "verify") && <label className="remotea-toggle"><input type="checkbox" checked={r.kind === "verify"}
+          onChange={e => set(i, { kind: e.target.checked ? "verify" : "text" })}/><span>Needs the verify command to pass</span></label>}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows(all => all.filter((_, j) => j !== i))}>Remove</button>
+      </div>
+    </fieldset>)}
+    <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setRows(all => [...all, { id: undefined, text: "", kind: "text" }])}>Add criterion</button>
+    {!!options.length && <label className="remotea-verify-line">Verify command
+      <select aria-label="Verify command" value={verifyId} disabled={!!busy} onChange={e => setVerifyId(e.target.value)}>
+        {!current && <option value="">none</option>}
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select></label>}
+    <div className="remotea-control-row">
+      <button className="btn btn-sm btn-ghost" disabled={!!busy} onClick={onCancel}>Cancel</button>
+      <button className="btn btn-sm" disabled={!body || !!busy} onClick={() => void save(false)}>{busy === "save" ? "Saving…" : "Save"}</button>
+      <button className="btn btn-sm btn-primary" disabled={!body || !!busy} onClick={() => void save(true)}>{busy === "judge" ? "Judging…" : "Save and judge again"}</button>
+    </div>
+    {error && <p role="alert" className="work-error">{error}</p>}
+  </section>;
+}
+
 const BUBBLE_FOLD = 700;
 
 const CLIPPED_HINT = "Cut at 4,000 characters for display. Full response loads the rest.";
@@ -429,6 +542,7 @@ export function Bubble({ entry, runId }: { entry: TimelineEntry; runId?: string 
       {turn?.truncated && <span className="remotea-label label-truncated" title={TRUNCATED_HINT}>Truncated by host</span>}
       {expired && <span className="remotea-label label-expired" title={expired}>Expired</span>}
       <small>{ago(entry.at)}</small></div>
+    {entry.facts && <Facts facts={entry.facts} label="Verification facts"/>}
     {entry.detail && <p>{text}</p>}
     {fetchable ? <button className="btn btn-ghost btn-sm" disabled={loading} title={CLIPPED_HINT} onClick={() => void loadFull()}>
       <ChevronDown size={14}/>{loading ? "Loading…" : "Full response"}</button>
@@ -544,6 +658,13 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const pagedOut = earlierLine(shown?.more);
   const verify = run ? verifyLine(run) : null;
   const [verifyPick, setVerifyPick] = useState("");
+  const packet = run ? reviewPacket(run) : null;
+  // Edit criteria / Judge again: only while the run is parked for you (not during a plan review).
+  const parked = !!run && bound && !run.freestyle && (run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review"));
+  const [editing, setEditing] = useState(false);
+  // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
+  const now = useNow();
+  const fresh = run ? freshnessFacts(run, null, now) : [];
   return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
@@ -566,6 +687,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       {run && baseLine(run.base) && <p className={"remotea-place remotea-base" + (run.base?.fetch && !run.base.fetch.ok ? " stale" : "")}>
         <GitBranch size={13} aria-hidden="true"/> {baseLine(run.base)}
       </p>}
+      {run && !isSettled(run) && <Facts facts={fresh} label="How current this is"/>}
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>
         {run.reason_detail && run.reason_detail !== run.reason_text && <p>{run.reason_detail}</p>}
@@ -589,7 +711,15 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         </span>}
       </div>}
       {run && <div className="remotea-chat-facts">
-        <Criteria run={run}/>
+        {packet ? <ReviewPacketCard packet={packet}>
+          {parked && !editing && <div className="remotea-control-row">
+            <button className="btn btn-sm" disabled={off} onClick={() => setEditing(true)}>Edit criteria</button>
+            <button className="btn btn-sm" disabled={off || !run.turn_seq || !run.plan?.criteria?.length} title="Check the last turn again against the criteria as they are now"
+              onClick={() => void act("judge")}>{busy === "judge" ? "Judging…" : "Judge again"}</button>
+          </div>}
+        </ReviewPacketCard> : <Criteria run={run}/>}
+        {parked && editing && <CriteriaEditor key={run.plan?.revision ?? 0} run={run} onCancel={() => setEditing(false)}
+          onDone={() => { setEditing(false); refresh(); }} onConflict={() => { setEditing(false); changed(); }}/>}
         {!!run.plan?.steps?.length && <details className="remotea-plan">
           <summary>Plan · {run.plan.steps.filter(s => s.status === "done").length}/{run.plan.steps.length} steps</summary>
           <ol>{run.plan.steps.map(s => <li key={s.id} className={"step-" + s.status}>{s.title}</li>)}</ol>
@@ -624,6 +754,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       </>}
     </div>
     {run && controls && !isSettled(run) && <footer className="remotea-composer">
+      {/* What Approve rests on: the verification, its workspace and sandbox, the host, anything unconfirmed. */}
+      {run.state === "awaiting_approval" && <Facts facts={fresh.filter(APPROVAL_FACTS)} label="What approval rests on" className="remotea-approve-facts"/>}
       <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
         disabled={!controls.message.enabled || off} value={text} onChange={e => setText(e.target.value)}
         onKeyDown={e => {
@@ -648,14 +780,18 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || off || controls.stop.label === "Stopping…"}
           onClick={() => void act("stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
         <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || off}
-          title="Mark the task complete and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
+          title="Your decision: mark the task complete as you and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
       </div>
+      {packet && run.state === "awaiting_approval" && <p className="review-beside-approve" role="note">
+        <strong>{packet.text}.</strong> {packet.decision?.text}</p>}
       {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
     </footer>}
   </section>;
 }
 
-export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
+export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run" }: {
+  need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void; saveLabel?: string;
+}) {
   const options = targetOptions(need);
   const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -686,7 +822,7 @@ export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; o
     </>}
     <div className="remotea-control-row">
       <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
-      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>Save and run</button>
+      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>{saveLabel}</button>
     </div>
     {error && <p role="alert" className="work-error">{error}</p>}
   </div>;

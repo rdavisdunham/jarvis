@@ -165,7 +165,7 @@ def get_context(owner, device):
 def context_prompt(context):
     open_run = (context or {}).get("open_run_id")
     return (APP_MAP + "\nCurrent screen: " + json.dumps(context or {})
-            + (f"\nOpen run: {open_run} (control tools without a run_id or task act on it)" if open_run else ""))
+            + (f"\nOpen run: {open_run} (control tools without a run_id or task act on it when it is the newest run they fit; otherwise they return needs_choice)" if open_run else ""))
 
 
 def sync(owner, device, body):

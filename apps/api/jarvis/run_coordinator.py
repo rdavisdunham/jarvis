@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import event, func, select, update
 
 from . import agent_sessions as sessions
+from . import run_summaries as summaries
 from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit
@@ -48,11 +49,12 @@ TRANSITIONS = {
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
     "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
+    # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
     "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
-                  "stopping", "failed"},
+                  "verifying", "judging", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
-    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "stopping"},
+    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
     "replanning": {"planning", "executing", "needs_you", "stopping"},
     # Only a confirmed termination (or an explicit lost-process reconciliation) settles a stop.
     "stopping": {"stopped", "completed", "failed"},
@@ -71,8 +73,11 @@ TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer":
        "terminal.focus": timedelta(seconds=30)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
-# One verification deadline: the host's 10 minutes plus a minute of grace, then timed_out (a non-pass).
+# A verification's deadline, then timed_out (a non-pass): the target's verify timeout as its host advertised it plus
+# VERIFY_GRACE, never less than VERIFY_DEADLINE (the host's old 10-minute default plus a minute), which is also the
+# deadline when the host did not say (verify_deadline).
 VERIFY_DEADLINE = timedelta(minutes=11)
+VERIFY_GRACE = timedelta(seconds=120)
 JUDGE_DEADLINE = timedelta(minutes=15)
 # This many consecutive not_met verdicts with the same gap are no progress.
 NO_PROGRESS_VERDICTS = 3
@@ -97,6 +102,7 @@ REASONS = {
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "no_progress_gap": "The judge found the same gap several turns in a row.",
     "verify_missing": "No verify command is set, so test results cannot be recorded: set one on this run, or approve on the evidence shown.",
+    "verify_incomplete": "The criteria look met, but the verification did not cover the whole workspace, so the task was not closed automatically: review and approve.",
     "verify_infra": "Verification could not run on the host, so it says nothing about the code: fix the setup shown, then message the agent or approve on the evidence shown.",
     "judge_needs_you": "The judge says this needs you.",
     "judge_unavailable": "The judge could not reach a verdict.",
@@ -124,6 +130,8 @@ REASONS = {
     "approve": "Approved.",
     "stopped": "Stopped.",
     "verify_set": "You set the verify command; the agent's next turn is verified.",
+    "judge_again": "You asked for the last turn to be checked again against the success criteria.",
+    "criteria_set": "You edited the success criteria.",
     "freestyle": "Freestyle: you are talking to the agent directly; Eridani records turns but does not judge them.",
     "freestyle_off": "Freestyle is off; the next turn is checked against the success criteria.",
 }
@@ -169,6 +177,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
+    summaries.touch(db, run)
     if to in TERMINAL:
         from .migration_numbers import on_run_end
 
@@ -239,6 +248,8 @@ def notify(db, run, category, title, body, *, key):
         return
     task = db.get(Task, run.task_id)
     urgent = category == "agent_question" and quiet_bypass(db, run.owner_id)
+    if run.summary and category in ("agent_question", "agent_stuck"):
+        body = f"{body[:1300]}\nLatest: {run.summary}"  # What the agent was doing (run_summaries.py).
     db.add(Notification(owner_id=run.owner_id, dedup_key=dedup, category=category,
                         title=title, body=(f"{task.title}: " if task else "") + body[:1500],
                         importance="urgent" if urgent else "normal",
@@ -337,6 +348,9 @@ def on_outcome(db, row, state, detail="", result=None):
         return
     if row.kind == "spawn":
         facts = result or {}
+        mcp = mcp_facts(facts)
+        if mcp is not None:
+            run.sync_state = {**(run.sync_state or {}), "mcp": mcp}
         if state == "executed":
             run.surf = str(facts.get("surf") or run.surf)[:120]
             run.incarnation = int(facts.get("incarnation") or run.incarnation or 0)
@@ -346,6 +360,9 @@ def on_outcome(db, row, state, detail="", result=None):
             run.base_facts = base_facts(facts) or run.base_facts or {}
             if run.state == "stopping":
                 stop_command(db, run)  # A stop that arrived before the surface existed.
+            elif mcp is not None and not mcp["configured"] and needs_plan(run):
+                # No Eridani tools: the agent can never call submit_plan, so do not sit in planning waiting for it.
+                transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         elif state in {"failed", "rejected"}:
             if run.state == "stopping":
                 finish(db, run, detail="the agent never started")
@@ -507,6 +524,7 @@ def record_turn(db, run, frame):
     if frame.generation != run.generation:
         return  # A late turn from before a steer or stop (F07).
     run.last_progress_at = now()
+    summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
     if run.state == "waiting_answer":
         transition(db, run, resume_phase(run), reason="turn")
     if run.state in PLANNING:
@@ -591,6 +609,7 @@ def record_question(db, owner, host_id, frame):
     db.add(question)
     db.flush()
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)
         if run.state == "executing" and frame.generation == run.generation:
             transition(db, run, "waiting_answer", reason="question")
         notify(db, run, "agent_question", "An agent asked you something", question_text(question),
@@ -673,6 +692,7 @@ def question_resolved(db, host_id, frame):
             question.answered_via = question.answered_via if frame.outcome == "accepted" else "terminal"
     run = db.get(AgentRun, question.run_id, with_for_update=True) if question.run_id else None
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)  # The open question is part of the summary's evidence.
         waiting = run.state == "waiting_answer" or (run.state == "needs_you" and run.state_reason == "question_timed_out")
         if question.status in {"accepted", "answered_locally", "canceled"} and waiting \
                 and not [q for q in open_questions(db, run) if q.id != question.id]:
@@ -696,7 +716,7 @@ def settle_planning(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
         if run.state != "needs_you":
-            transition(db, run, "needs_you", reason="no_plan")
+            transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         return
     plan = frozen(db, run)
     if plan is not None and plan.proposals:
@@ -706,6 +726,24 @@ def settle_planning(db, run):
             transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
         return
     begin_execution(db, run)
+
+
+def needs_plan(run):
+    """A run still waiting for the agent's submit_plan (an interview run before its first plan, or planning), and
+    not a freestyle run (which never plans)."""
+    if run.freestyle or run.state in TERMINAL or run.state in ("stopping", "needs_you"):
+        return False
+    return (run.state in PLANNING and not run.plan_pending) or (run.state == "spawning" and not run.plan_revision)
+
+
+def no_tools_detail(run):
+    """A planning turn ended without submit_plan: when the spawn said the agent had no Eridani MCP server
+    (remotea's `result.mcp.configured` false), that is why, and the operator's fix is on the host, not the plan."""
+    mcp = (run.sync_state or {}).get("mcp") or {}
+    if mcp.get("configured") is not False:
+        return ""
+    reason = mcp.get("reason") or "the host did not say why"
+    return f"The agent had no Eridani tools, so it could not call submit_plan: {reason}"
 
 
 def proposal_summary(proposals):
@@ -751,11 +789,14 @@ def host_verifies(db, run):
 
 
 def start_verify(db, run, plan, *, on_demand=False):
-    """One verification attempt for the run's current (generation, turn_seq, plan_revision)."""
+    """One verification attempt for the run's current (generation, turn_seq, plan_revision). Its deadline follows the
+    verify entry's advertised timeout (verify_deadline) and is stored on the attempt, which is what the sweep reads."""
+    verify_id = str(plan.verify["verify_id"])[:64]
+    deadline, timeout = verify_deadline(db, run, verify_id)
     attempt = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=run.generation, kind="verify",
                            turn_seq=run.turn_seq, plan_revision=run.plan_revision, status="running",
-                           verify_id=str(plan.verify["verify_id"])[:64], deadline_at=now() + VERIFY_DEADLINE,
-                           result={"on_demand": on_demand})
+                           verify_id=verify_id, deadline_at=now() + deadline,
+                           result={"on_demand": on_demand, **({"timeout_s": timeout} if timeout else {})})
     db.add(attempt)
     db.flush()
     if not host_verifies(db, run):
@@ -767,9 +808,35 @@ def start_verify(db, run, plan, *, on_demand=False):
     return attempt
 
 
+def verify_deadline(db, run, verify_id):
+    """(deadline, timeout seconds or None): the verify entry's timeout from the host's hello for the run's target plus
+    VERIFY_GRACE, never under VERIFY_DEADLINE; VERIFY_DEADLINE when the host did not advertise one."""
+    from .agent_control import hello_target, verify_timeout
+    from .session_models import ExecutionTarget
+
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    timeout = verify_timeout(hello_target(host, target.host_target), verify_id) if target and host else None
+    if not timeout:
+        return VERIFY_DEADLINE, None
+    return max(VERIFY_DEADLINE, timedelta(seconds=timeout) + VERIFY_GRACE), timeout
+
+
 def current(run, attempt):
     return (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
         (run.generation, run.turn_seq, run.plan_revision)
+
+
+def judge_again(db, run, *, actor):
+    """The operator asks for the current turn to be verified (when the plan has a verify command) and judged again
+    against the plan as it is frozen now, e.g. after editing its criteria. The verdict then moves the run as after
+    any turn."""
+    plan = frozen(db, run)
+    note(run, "judge_again", plan_revision=run.plan_revision, actor=actor.record())
+    if (plan.verify or {}).get("verify_id"):
+        transition(db, run, "verifying", actor=actor, reason="judge_again")
+        return start_verify(db, run, plan)
+    return to_judging(db, run, None, reason="judge_again", actor=actor)
 
 
 def settle_verify(db, run, attempt, status, result):
@@ -908,13 +975,33 @@ def verify_status(frame):
     return "passed" if frame.exit_code == 0 else "failed"
 
 
+def workspace_facts(frame):
+    """verify.result's isolation and fingerprint-completeness facts (remotea PR #24), only those the host sent:
+    `isolated`, `isolation`, `isolation_reason`, `workspace_complete`, `workspace_reasons`."""
+    out = {k: getattr(frame, k) for k in ("isolated", "isolation", "isolation_reason", "workspace_complete")
+           if getattr(frame, k, None) is not None}
+    if out.get("workspace_complete") is False or frame.workspace_reasons:
+        out["workspace_reasons"] = list(frame.workspace_reasons)
+    return out
+
+
+def incomplete_workspace(attempt):
+    """Why this verification's evidence cannot prove the tree the turn left (remotea's `workspace_complete: false`),
+    or "" when it can or the host did not say."""
+    result = (attempt.result or {}) if attempt is not None else {}
+    if result.get("workspace_complete") is not False:
+        return ""
+    return "; ".join(result.get("workspace_reasons") or []) or "the host did not say what it missed"
+
+
 def verify_result(db, host_id, frame):
     """verify.result: matched to its attempt by id and the full tuple; anything else is discarded."""
     run = bound(db, host_id, frame.run_id)
     facts = {"exit_code": frame.exit_code, "tail": frame.tail[-8000:], "truncated": frame.truncated,
              "duration_ms": frame.duration_ms, "timed_out": frame.timed_out, "canceled": frame.canceled,
              **({"error": frame.error[:300]} if frame.error else {}),
-             **({"stale_workspace": True} if frame.stale_workspace else {})}
+             **({"stale_workspace": True} if frame.stale_workspace else {}),
+             **workspace_facts(frame)}
     attempt = None
     if frame.adopted:
         facts["adopted"] = frame.adopted[:200]  # The host reused its own attempt for this tuple.
@@ -950,13 +1037,13 @@ def verify_result(db, host_id, frame):
     return {"attempt": attempt.id, "status": attempt.status}
 
 
-def to_judging(db, run, verify_attempt):
+def to_judging(db, run, verify_attempt, *, reason="turn", actor=None):
     """Queue the judge for the run's current tuple (agent_judge.py); its verdict comes back through on_verdict."""
     from .agent_judge import PROMPT_VERSION
     from .domain import enqueue_job
     from .memory_learning import EXTRACTION_MODEL
 
-    transition(db, run, "judging", reason="turn")
+    transition(db, run, "judging", actor=actor, reason=reason)
     attempt = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=run.generation, kind="judge",
                            turn_seq=run.turn_seq, plan_revision=run.plan_revision, status="queued",
                            model=EXTRACTION_MODEL, prompt_version=PROMPT_VERSION,
@@ -1029,8 +1116,22 @@ def judged_met(db, run, plan, actor):
         run.sync_state = {**(run.sync_state or {}), "integration": pending}
         return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
     if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
+        # A fingerprint that did not cover the whole workspace cannot prove the tree it tested is the one the turn
+        # left (remotea `workspace_complete: false`): not fresh enough to close the task without a human.
+        missing = incomplete_workspace(current_verify(db, run)) if (plan.verify or {}).get("verify_id") else ""
+        if missing:
+            return transition(db, run, "needs_you", actor=actor, reason="verify_incomplete",
+                              detail=f"Verification evidence was incomplete: {missing}"[:300])
         return complete_by_judge(db, run, actor)
     return transition(db, run, "awaiting_approval", actor=actor, reason="judge_met")
+
+
+def current_verify(db, run):
+    """The newest verification of the run's current (generation, turn_seq, plan_revision), or None."""
+    return db.scalar(select(AgentAttempt).where(
+        AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify", AgentAttempt.generation == run.generation,
+        AgentAttempt.turn_seq == run.turn_seq, AgentAttempt.plan_revision == run.plan_revision)
+        .order_by(AgentAttempt.updated_at.desc()).limit(1))
 
 
 def judge_failed(db, attempt, kind, detail=""):
@@ -1273,6 +1374,16 @@ def redact_spawn(row):
     """Once the host has taken a spawn, the stored payload no longer needs the raw run token (stage F, L4)."""
     if row.kind == "spawn" and (row.payload or {}).get("run_token"):
         row.payload = {**row.payload, "run_token": "[redacted]"}
+
+
+def mcp_facts(facts):
+    """The spawn outcome's `mcp {configured, reason?}` (remotea PR #20; absent from older hosts)."""
+    mcp = facts.get("mcp") if isinstance(facts, dict) else None
+    if not isinstance(mcp, dict) or not isinstance(mcp.get("configured"), bool):
+        return None
+    reason = mcp.get("reason")
+    return {"configured": mcp["configured"],
+            **({"reason": " ".join(reason.split())[:200]} if isinstance(reason, str) and reason.strip() else {})}
 
 
 def base_facts(facts):

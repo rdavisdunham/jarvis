@@ -9,10 +9,12 @@ export function RunButton({ taskId, title, className = "" }: { taskId: string; t
   const { enabled, status, runsByTask } = useRemotea();
   const { openRun, openStart } = useRemoteaActions();
   if (!enabled) return null;
-  const chip = runChip(runsByTask.get(taskId), status?.hosts ?? []);
+  const run = runsByTask.get(taskId);
+  const chip = runChip(run, status?.hosts ?? []);
   if (chip.kind === "open") {
+    // The tooltip says what the agent is doing now (the run summary), when there is one.
     return <button type="button" className={"run-chip tone-" + chip.tone + (className ? " " + className : "")}
-      aria-label={chip.label + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
+      title={run?.summary || undefined} aria-label={chip.label + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
       <i className="run-dot" aria-hidden="true"/>{chip.label}</button>;
   }
   return <button type="button" className={"btn-icon run-start" + (className ? " " + className : "")} aria-label={"Run " + title + " with an agent"}

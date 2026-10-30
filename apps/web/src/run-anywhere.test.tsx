@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { RemoteaDataContext, type RemoteaData } from "./remotea-context";
 import { RunButton } from "./RunButton";
 import { RunPanel } from "./RunPanel";
+import { RunRow } from "./RunsPanel";
 import { PendingControlCard } from "./PendingControls";
 import {
   composerAction, HARNESSES, harnessAvailable, preflightLine, railDot, restorePanel, runChip, runsBadge, runsByTask, startBody, storedPanel,
@@ -58,8 +59,10 @@ describe("panel helpers", () => {
   });
   it("counts the badge and flags attention", () => {
     const pending: PendingControl[] = [{ id: "p", tool: "control.start", summary: "Start", run_id: null, expires_at: "" }];
-    expect(runsBadge([run({})], [])).toEqual({ count: 1, attention: false, aria: "Runs, 1 active" });
+    // The badge counts what needs an action from you; a run that is just working is not counted.
+    expect(runsBadge([run({})], [])).toEqual({ count: 0, attention: false, aria: "Runs, 1 working" });
     expect(runsBadge([run({ state: "awaiting_approval" })], pending)).toMatchObject({ count: 2, attention: true });
+    expect(runsBadge([run({ state: "awaiting_approval" }), run({ id: "w" })], [])).toEqual({ count: 1, attention: true, aria: "Runs, 1 needs you, 1 working" });
     expect(runsBadge([run({ state: "completed" })], [])).toEqual({ count: 0, attention: false, aria: "Runs" });
   });
 });
@@ -107,6 +110,11 @@ describe("RunButton", () => {
     expect(html).toContain("run-chip tone-attention");
     expect(html).toContain("Approve");
   });
+  it("shows what the agent is doing as the chip's tooltip", () => {
+    const html = render(<RunButton taskId="t1" title="Ship it"/>, data({ runsByTask: new Map([["t1", run({ summary: "Adding the parity test" })]]) }));
+    expect(html).toContain('title="Adding the parity test"');
+    expect(render(<RunButton taskId="t1" title="Ship it"/>, data({ runsByTask: new Map([["t1", run({})]]) }))).not.toContain("title=");
+  });
   it("is disabled with the reason when the server is offline", () => {
     const html = render(<RunButton taskId="t1" title="Ship it"/>, data({ status: { enabled: true, key: null, hosts: [host({ connected: false })], link_url: "", connect_command: "" } }));
     expect(html).toContain("disabled");
@@ -147,5 +155,25 @@ describe("PendingControlCard", () => {
       card={{ busy: false, error: "Nope.", need: undefined }} onDecide={() => {}} onCancelPicker={() => {}}/>);
     expect(html).toContain("Offline.");
     expect(html).toContain("Nope.");
+  });
+});
+
+describe("RunRow", () => {
+  const row = (over: Partial<Run>) => renderToStaticMarkup(<RunRow run={run(over)} onOpen={() => {}}/>);
+  it("shows the run summary under the state chip", () => {
+    const html = row({ summary: "Adding the parity test", summary_at: "2026-10-29T10:00:00Z", summary_stale: false });
+    expect(html).toContain('class="run-summary"');
+    expect(html).toContain("Adding the parity test");
+    expect(html.indexOf("Adding the parity test")).toBeGreaterThan(html.indexOf("remotea-state"));
+    expect(html).not.toContain("updating");
+  });
+  it("adds a quiet updating hint while a newer summary is due", () => {
+    const html = row({ summary: "Adding the parity test", summary_stale: true });
+    expect(html).toContain('class="run-summary-updating"');
+    expect(html).toContain("updating…");
+  });
+  it("renders no summary line before the first one", () => {
+    expect(row({})).not.toContain("run-summary");
+    expect(row({ summary: "", summary_stale: true })).not.toContain("run-summary");
   });
 });
