@@ -1,21 +1,80 @@
 # Agent control: the remotea link
 
-The remotea server (Davin's always-on terminal host in WSL) opens one outbound WebSocket to Eridani and
-reports the Claude Code and Codex sessions it runs. Eridani shows them on the **remotea** page. This is
-**stage B** of the mission-control plan: the link is read-only. Starting, steering, answering and stopping
-agents (stage C) are not implemented yet; the command journal and drain loop exist so they can be added
-without another protocol change.
+Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davin's desktop through
+**remotea**, the always-on terminal host in WSL. This page is the Eridani side; the host side is remotea's
+`docs/remotea/eridani-link.md`. What ships today (2026-10-30):
 
-Code: [`apps/api/jarvis/agent_link.py`](../apps/api/jarvis/agent_link.py) (socket, ingestion, parity),
+- **The link.** remotea opens one outbound WebSocket to Eridani (nothing on the desktop listens to the
+  internet) and reports every Claude Code and Codex session it runs, with turns, status and questions.
+  Eridani's commands are rows in a journal (`agent_commands`, each with a stable `op_id`, digest and expiry)
+  that the host drains, acks and answers with an outcome; remotea keeps its own journal and outbox, so
+  nothing is lost across restarts. After every reconnect `reconcile()` matches runs to their surfaces,
+  recovers lost spawn acks, repeats the desired state (`runs.snapshot`: stops, verify config) and only then
+  drains the outbox ([Connection lifecycle](#connection-lifecycle), [Commands](#commands)).
+- **Runs from any task.** Every task row has a Run control (task details too) while remotea is on; the Run
+  dialog picks the execution target and harness with a read-only preflight. Eri can start or message a run
+  too, in two phases: `control.start` and `control.message` only propose, and nothing reaches the host until
+  the owner says yes on the card, on the remotea page or in a later message
+  ([Two-phase control from Eri](#two-phase-control-from-eri)).
+- **Interview and planning.** A task without a PRD (and without human-written criteria and verify) starts
+  with an interview: the agent asks up to 12 questions through `task_interview`, the owner answers on one
+  form, and the agent writes the PRD and calls `submit_plan`. The **plan floor** means an agent's plan may
+  only add: a change to a human criterion, the verify command or the completion policy is a proposal, and
+  **plan review** (Accept / Keep per change) happens before any work starts
+  ([Interview and planning](#interview-and-planning), [Actors, the plan floor and the completion
+  gate](#actors-the-plan-floor-and-the-completion-gate)).
+- **The execution loop.** After each execution turn the host runs the plan's verify command in the
+  worktree, then the judge (`agent_judge.py`) compares the turn and the recorded evidence with the success
+  criteria. `not_met` sends the judge's gap as the next prompt; `met` waits for **Approve** (or for merged
+  sub-tasks, or completes the task itself when `auto_complete` is on). **Verify by default**: a plan with a
+  test-shaped criterion and no verify command gets the target's verify command picked for it, and the owner
+  can set one mid-run. The judge's rules park the run with Davin rather than loop: `verify_missing` (a gap
+  that needs a verification the plan cannot record), `proof_request` (asks to paste proof are rewritten to
+  checkable actions), `pr_unknown` (the PR record is older than the turn) and `no_progress_gap` (the same gap
+  or the same rules three verdicts in a row). The turn cap, the 6-hour wall clock and the 45-minute
+  no-progress timer park it too ([The judge](#the-judge-agent_judgepy), [Verify by default, and set
+  mid-run](#verify-by-default-and-set-mid-run)).
+- **Freestyle** switches the judge, verification, gap prompts and the turn cap off while the owner talks to
+  the agent directly; **Approve** completes the task as a human; Message (queue), Steer, Re-plan, Verify
+  now, Set verify and Stop / Force stop are on every run ([Freestyle](#freestyle)).
+- **Where you see it.** The remotea page (runs, unmerged work, hosts, parity), the **side run panel** (a
+  column beside any page, opened from a task's run chip or the topbar Runs panel; a sheet on phones), and
+  the run timeline, which names who sent every text ([Messages Eridani sends to the
+  agent](#messages-eridani-sends-to-the-agent)).
+- **Eri** has the `control_*` tools (start, message, stop, answer, confirm, approve, plan review, status)
+  while remotea is on ([Voice commands](#voice-commands-control)). **Other assistants** read runs with a
+  bot key carrying `agents:read` (`run_list` / `run_get`, [Reading runs](#reading-runs-agentsread)).
+
+Code: [`agent_link.py`](../apps/api/jarvis/agent_link.py) (socket, ingestion, parity),
+[`run_coordinator.py`](../apps/api/jarvis/run_coordinator.py) (run states, commands, verify and judge loop),
+[`agent_control.py`](../apps/api/jarvis/agent_control.py) (start, message, stop, Eri's `control.*`),
+[`agent_plan.py`](../apps/api/jarvis/agent_plan.py) (interview, `submit_plan`, plan review, verify),
+[`agent_judge.py`](../apps/api/jarvis/agent_judge.py), [`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py),
 [`remotea_routes.py`](../apps/api/jarvis/remotea_routes.py) (browser routes),
-[`task_plan.py`](../apps/api/jarvis/task_plan.py) (task plan fields), web
-[`Remotea.tsx`](../apps/web/src/Remotea.tsx) and [`remotea-model.ts`](../apps/web/src/remotea-model.ts).
+[`task_plan.py`](../apps/api/jarvis/task_plan.py) (task plan fields); web
+[`Remotea.tsx`](../apps/web/src/Remotea.tsx), [`RunPanel.tsx`](../apps/web/src/RunPanel.tsx) and
+[`remotea-model.ts`](../apps/web/src/remotea-model.ts).
+
+**History.** The feature shipped in stages, and the section headings below keep the stage that introduced
+them; they describe current behaviour unless they say otherwise. A was remotea's own spike (launching and
+observing the harnesses, no Eridani code); B the read-only link (sessions, turns, collector parity, jarvis
+#63); C runs, the actor model and manual control; D interview, planning, verify attempts and the judge loop;
+E Linear sync outcomes, Eri's voice commands, the dream auto-link and the collector cutover; F the fixes from
+the 2026-10-28 security audit (all merged by 2026-10-28, jarvis #63 to #68). Later work (verify by default,
+freestyle, the side run panel, action idempotency, per-target capabilities, judge evidence rules) is
+described in place.
 
 ## Turning it on
 
 remotea is **off by default** (preference `remotea_enabled`). While it is off, Eridani behaves exactly as
-before: no nav entry, no page, the link refuses connections, and every `/api/v1/remotea/*` route except
-`status`, `enable` and `disable` answers `403 REMOTEA_DISABLED`.
+before: no nav entry, no page, no Run controls on tasks, no `control_*` tools for Eri, the link refuses
+connections, and every `/api/v1/remotea/*` route except `status`, `enable` and `disable` answers
+`403 REMOTEA_DISABLED` (reading runs and Stop stay available).
+
+Three things are needed on the desktop: the **link key**, the **MCP key** for the spawned agents, and an
+**execution target with a verify entry**.
+
+### 1. The link key (remotea ↔ Eridani)
 
 **Settings → Connections → remotea → Show remotea** calls `POST /api/v1/remotea/enable`, which:
 
@@ -26,12 +85,93 @@ before: no nav entry, no page, the link refuses connections, and every `/api/v1/
    `remotea eridani connect --url wss://app.eridani.app/api/v1/external/agents/link`.
 
 Enabling again reuses the active key (no token in the response). **New link key** (`{"rotate": true}`)
-mints a replacement and revokes the old one. Turning remotea off keeps the key; connected hosts are told
-`bye {reason: "disabled"}` on their next message or within 30 seconds. Viewers cannot enable, disable or
-hold the key.
+mints a replacement and revokes the old one. Turning remotea off **revokes** the link key (stage F);
+connected hosts are told `bye {reason: "disabled"}` on their next message or within 30 seconds, and turning
+it on again mints a new one. Viewers cannot enable, disable or hold the key. The link key is for the host
+only: it never has `tasks:write`, and remotea refuses to hand it to an agent.
 
 `GET /api/v1/remotea/status` → `{enabled, key, hosts[], link_url, connect_command}`; a host is
 `connected` while its lease is current, otherwise the page shows when it was last seen (or "never").
+
+### 2. The MCP key (the agent inside a run ↔ Eridani)
+
+The agent a run spawns calls Eridani's MCP tools (`task_plan`, `task_interview`, `submit_plan`,
+`task_step`, `session_link`) with its run token, over a **separate** bot key. Create it in
+Settings → Connections → Connected agents → Add agent with "Run tools for coding agents started from a
+task" (adds `agents:session`) plus Task scheduling and Notes at Read & edit. Without `agents:session` the MCP server
+offers only the planner tools, the agent cannot call `submit_plan`, and the run ends its planning turn in
+`needs_you(no_plan)`. There are two ways to give the key to spawned agents:
+
+- **Host-side file (remotea PR #20, preferred).** Save the key to `~/.config/remotea/eridani-mcp-token`
+  (or the path in `mcpKeyFile`, global or per target). remotea then launches Claude with
+  `--mcp-config <file>` pointing at `https://<link host>/api/v1/external/mcp/` and Codex with
+  `-c mcp_servers.eridani.*` and the key in an environment variable for that launch only; the key never
+  reaches argv, logs or the journal. A file holding the link key, or anything that is not an `eri_bot_` key,
+  is refused. The spawn outcome reports `mcp {configured, reason?}` and each hello target says whether MCP
+  is ready, so a host without the file still spawns, but without the tools.
+- **User-scope registration in each harness** (older hosts, or the owner's own sessions):
+  `claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`
+  (the URL works with or without the trailing slash).
+
+A third, read-only key with `agents:read` (Connected agents → "Read runs started from tasks") is what an
+assistant outside the run uses to review it.
+
+### 3. An execution target with verification
+
+A run starts only in a target the host lists in `~/.config/remotea/eridani.json` (`targets[]`: `id`,
+`repo`, `worktreeRoot`, `base`, `launch` per harness, `verify[]`); see remotea's
+`docs/remotea/eridani-link.md` § Execution targets. Verification needs, per target:
+
+- **A `verify` entry whose program resolves on the service PATH.** remotea runs it as fixed argv with no
+  shell, under systemd's minimal PATH and a minimal environment (`PATH`, `HOME`, `LANG`, `CI=1`,
+  `TERM=dumb`, plus only the entry's own `env`). Use an absolute program (`/home/davin/.local/bin/uv`) or a
+  wrapper in the repository (`./scripts/verify.sh`), or set `env.PATH`. hello's `verify_status` says
+  `ready: false` with a reason ("its program is not on the service PATH …") when it does not resolve.
+- **An isolated test database.** For jarvis the entry (or its wrapper) sets `JARVIS_ENV_FILE=""` and a
+  disposable `JARVIS_DATABASE_URL` pointing at a local test Postgres, and runs `uv sync --locked --group
+  dev` first: managed worktrees get no dependency provisioning, and the suite must never touch the real
+  database.
+- **A timeout that covers the suite.** The entry's `timeout` in seconds (`--verify-timeout`); the API
+  suite takes 470–670 s, so 600 is too tight (the reliability PRD asks for 1800). But Eridani's own
+  deadline for a verify attempt is fixed at 11 minutes (`run_coordinator.VERIFY_DEADLINE`): an attempt
+  still running then is `timed_out` (a non-pass) and a later result is discarded as `late`. Until that
+  deadline follows the target's timeout, keep the verify entry under about 10 minutes (a fast subset such
+  as `pytest -x` on the touched areas plus the web checks) or expect `timed_out`.
+
+Targets are re-read on every use, so editing `eridani.json` needs no restart; the next connect's hello
+carries the change. Verify runs agent-edited code outside any sandbox (see [Not yet](#not-yet)).
+
+## Messages Eridani sends to the agent
+
+Besides the spawn prompt, every text that reaches a running agent is an `input` command
+(`mode: queue` waits for the current turn to end, `steer` interrupts it). Eridani writes some of them
+itself; each of those goes through `run_coordinator.say()`, which also records a `sent` history entry with a
+`kind`. The run timeline titles it "Sent by Eridani · <reason>" (`remotea-model.ts` `SENT_REASON`). The
+owner's own texts are "Sent by you" or "Sent by Eri, confirmed by you". Wording lives in
+[`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py) (`PROMPT_VERSION = "loop-v1"`); task, answer,
+gap and reason text inside it is fenced as data.
+
+| `kind` (timeline) | Trigger | Condition | Wording | What the agent is expected to do |
+|---|---|---|---|---|
+| (spawn prompt, not an input) | Run start | Every run | `interview()` without a plan; `agent_control.spawn_prompt` with a frozen plan | Interview: read the code, ask with `task_interview`, stop. Planned: execute the plan. |
+| `interview_answers` · "your interview answers" | Owner answers the interview form (`agent_plan.answer_interview`) | Run `interviewing`, current generation | `planning()`: the answers, the offered verify ids, the plan floor | Write the PRD and criteria, call `submit_plan`, stop; do not start the work. |
+| `execute` · "plan frozen, start work" | The planning turn settles with a frozen plan (`settle_planning`), or the owner finishes plan review (`review_plan`) | `plan_pending`, no open question or interview, no proposals left | `execute()`: "Your plan is frozen. Execute it now…" plus the rendered plan; after review it opens with what was accepted and kept | Do the work, tick steps with `task_step`. |
+| `gap` · "judge gap" | Judge verdict `not_met` (`on_verdict`) | Turn cap not reached, no `verify_missing`, not `no_progress_gap`, freestyle off | `gap()`: the judge's notes and open criteria, then "Close the gap in the code … Then end your turn … If you are blocked on something only the operator can decide, say so plainly in your final message." | Fix the code, make verify pass, commit/push and update the PR if the plan needs one, tick steps, end the turn; name any blocker in the final message. |
+| `replan` · "re-plan" | Owner presses Re-plan (`agent_control.replan`) | Executing, needs_you, awaiting_approval/integration or planning | `replan()`: "Stop the current work at a safe point", the reason, "call `submit_plan` … then stop" (`steer` while executing) | Stop at a safe point, revise the plan, `submit_plan`, stop. |
+| `verify_set` · "verify command set" | Owner sets the verify command mid-run (`agent_plan.set_verify`) | Only when the run was parked in `needs_you` (it resumes `executing`) | `verify_set()` | Make the work pass that command, end the turn. |
+| `merged` · "pull request merged" | The host reports the run's branch merged (`check_integrations`, `recheck_pr`) | `needs_you(awaiting_merge)`, or `pr_unknown` under `pr_merged` | `merged()` | Update the worktree to the merged result, re-run the checks, end the turn. |
+| `integrated` · "sub-task pull requests merged" | All required sub-task branches merged into this run's branch (`check_integrations`) | `awaiting_integration` | `integrated()` | Pull the merged sub-tasks, re-check the combined code, end the turn. |
+
+The owner's texts are not in the table: **Message** (`queue`) and **Steer** (`steer`, advances the
+generation) send exactly what was typed (`agent_control.send_message`, also Eri's confirmed
+`control.message`), and an answer to the agent's own question is an `answer` command, not an input.
+
+**There are no time-based nudges.** The turn cap, the wall clock (6 h) and the no-progress timer (45 min)
+send nothing to the agent: they move the run to `capped` or `needs_you` and push to the owner. So a
+"finish up and note any blockers" message is the **judge gap** prompt: each execution turn that ends
+`not_met` queues one (its last lines ask the agent to end its turn and say plainly what blocks it). While
+the owner is messaging a run, each of the owner's turns is judged when it ends, so two quick exchanges can
+queue two gap prompts; Freestyle stops that.
 
 ## Scopes
 
