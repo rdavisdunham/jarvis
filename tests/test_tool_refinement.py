@@ -72,7 +72,8 @@ def test_global_prompts_are_small_and_live_has_no_schema_mechanics():
         prefs = preferences(db, "davin")
     backend = backend_instructions(prefs)
     live = live_instructions(prefs)
-    assert len(backend.encode()) < 7500 and len(live.encode()) < 6500
+    # +200 on 2026-10-29 for the agent-run capability sentence (remotea runs through Eri and Live).
+    assert len(backend.encode()) < 7700 and len(live.encode()) < 6700
     assert "expected_revision" not in live and "tools_load" not in live
     assert "Delegation policy:" in live and "untrusted" in live
     assert "untrusted" in backend and "tools_load" in backend

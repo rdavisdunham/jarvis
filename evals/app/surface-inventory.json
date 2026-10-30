@@ -50,11 +50,19 @@
       "feature": "agent_control"
     },
     {
+      "name": "control.approve",
+      "feature": "agent_control"
+    },
+    {
       "name": "control.confirm",
       "feature": "agent_control"
     },
     {
       "name": "control.message",
+      "feature": "agent_control"
+    },
+    {
+      "name": "control.plan_review",
       "feature": "agent_control"
     },
     {

@@ -86,6 +86,22 @@ class UIContext(BaseModel):
     tag: str = Field(default="", max_length=40)
     due_from: str = Field(default="", max_length=10)
     due_through: str = Field(default="", max_length=10)
+    # The agent run open on the remotea page: control_* tools without a run_id or task mean this one.
+    open_run_id: str | None = Field(default=None, max_length=36)
+
+    @field_validator("open_run_id")
+    @classmethod
+    def open_run_is_a_uuid(cls, value):
+        if value in (None, ""):
+            return None
+        from uuid import UUID
+
+        try:
+            UUID(value)
+        except ValueError as exc:
+            raise ValueError("open_run_id must be a run id.") from exc
+        return value
+
     @field_validator("visible_ids", "selected_task_ids", mode="before")
     @classmethod
     def sample_long_lists(cls, value, info):
@@ -147,7 +163,9 @@ def get_context(owner, device):
 
 
 def context_prompt(context):
-    return APP_MAP + "\nCurrent screen: " + json.dumps(context or {})
+    open_run = (context or {}).get("open_run_id")
+    return (APP_MAP + "\nCurrent screen: " + json.dumps(context or {})
+            + (f"\nOpen run: {open_run} (control tools without a run_id or task act on it)" if open_run else ""))
 
 
 def sync(owner, device, body):

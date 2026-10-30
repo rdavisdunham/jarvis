@@ -154,3 +154,19 @@ async def test_ui_show_opens_remotea_and_one_of_your_runs(host):  # noqa: F811
     for owner, identity in (("stranger", run_id), ("davin", str(uuid4()))):
         with pytest.raises(DomainError):
             await call_tool(owner, "turn", 0, "ui_show", {"view": "remotea", "entity_id": identity})
+
+
+def test_open_run_id_is_a_validated_uuid_and_named_in_the_prompt():
+    """The remotea page sends the open run (a later web PR); control tools without a target then mean it."""
+    from uuid import uuid4
+
+    from pydantic import ValidationError
+    from jarvis.ui_control import context_prompt
+
+    run_id = str(uuid4())
+    assert UIContext(open_run_id=run_id).open_run_id == run_id
+    assert UIContext().open_run_id is None and UIContext(open_run_id="").open_run_id is None
+    with pytest.raises(ValidationError):
+        UIContext(open_run_id="not-a-run")
+    assert f"Open run: {run_id}" in context_prompt(UIContext(open_run_id=run_id).model_dump())
+    assert "Open run:" not in context_prompt(UIContext().model_dump()) and "Open run:" not in context_prompt(None)
