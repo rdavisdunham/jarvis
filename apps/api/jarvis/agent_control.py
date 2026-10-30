@@ -12,9 +12,10 @@ from datetime import timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, not_, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 
 from . import agent_link
+from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
@@ -591,10 +592,25 @@ def public_command(c):
 DETAIL_PAGE = 100
 
 
+TURN_CLIP = 4000  # Detail clips each turn's text here (`clipped`); GET /runs/{id}/turns/{turn_id} returns it whole.
+
+
 def page(db, query, column, limit, offset):
-    """The newest `limit` rows after skipping `offset` newest, oldest first; and whether older ones remain."""
+    """The newest `limit` rows after skipping `offset` newest, oldest first; whether older ones remain; and how many
+    older ones remain (counted only when there are some)."""
     rows = list(db.scalars(query.order_by(column.desc()).offset(offset).limit(limit + 1)))
-    return list(reversed(rows[:limit])), len(rows) > limit
+    more = len(rows) > limit
+    remaining = 0
+    if more:
+        total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+        remaining = max(0, total - offset - limit)
+    return list(reversed(rows[:limit])), more, remaining
+
+
+def run_turns(run):
+    """Turns that belong to the run: bound to it, or recorded on its session."""
+    return select(AgentTurn).where(AgentTurn.owner_id == run.owner_id,
+                                   (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or "")))
 
 
 def reason_detail(db, run):
@@ -663,11 +679,10 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     if detail:
         plan = coordinator.frozen(db, run)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
-        turns, more_turns = page(db, select(AgentTurn).where(
-            (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or ""))), AgentTurn.created_at,
-            limit, offset)
-        commands, more_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
-                                       AgentCommand.created_at, limit, offset)
+        turns, more_turns, older_turns = page(db, run_turns(run), AgentTurn.created_at, limit, offset)
+        commands, more_commands, older_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
+                                                       AgentCommand.created_at, limit, offset)
+        expires = retention.run_data_expires(run)
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
                   "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children,
@@ -680,12 +695,16 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             history=run.history or [],
             # `role` is "assistant" (a final response; `prompt` carries the typed message for older hosts) or
             # "user" (the typed message itself, sent by the host as a `prompt` frame when the turn started).
-            turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:4000], "clipped": len(t.text) > 4000,
+            # `clipped`: cut here for display, fetchable whole; `truncated`: the host cut it, the rest was never stored.
+            turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:TURN_CLIP], "clipped": len(t.text) > TURN_CLIP,
                     "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]}
                    for t in turns],
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),
-            more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
+            more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit,
+                  "remaining": {"turns": older_turns, "commands": older_commands}},
+            # A settled run's turns and commands are deleted RUN_DATA after it ended (agent_retention.py).
+            retention={"expires_at": expires, "expired": retention.run_data_expired(run)},
             questions=[public_question(q) for q in db.scalars(
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
