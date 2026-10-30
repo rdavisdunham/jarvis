@@ -16,6 +16,7 @@ import {
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import { postAction } from "./api";
+import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import "./remotea.css";
 import "./runs.css";
@@ -85,10 +86,15 @@ export function Remotea() {
   const cutover = cutoverSummary(parity);
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
-      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
+      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}
+        {(status?.hosts ?? []).filter(h => h.connected).map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+          <small key={h.id} className="remotea-host-build"> · {line!.text}{line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</small>)}
+      </span>
       <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
     </section>
+    {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
+    <RemoteaReadiness onlyWhenNotReady/>
     <PendingControls/>
     <RunList onOpen={openRun}/>
     <UnmergedList/>
@@ -113,13 +119,14 @@ export function Remotea() {
 
 export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; onChanged: () => void }) {
   const [status, setStatus] = useState<RemoteaStatus | null>(null), [token, setToken] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [copied, setCopied] = useState("");
   useEffect(() => { void api<RemoteaStatus>("/remotea/status").then(setStatus).catch(e => setError(e.message)); }, []);
   const change = async (path: string, body?: unknown) => {
     setBusy(true); setError("");
     try {
       const next = await post<RemoteaStatus>(path, body);
-      setStatus(next); setToken(next.token ?? ""); onChanged();
+      setStatus(next); setToken(next.token ?? ""); setCode(next.setup_code ?? ""); onChanged();
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   };
@@ -129,7 +136,7 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
   return <SettingsGroup className="remotea-settings" icon={<MonitorSmartphone size={18}/>} title="remotea"
     description="Follow Claude Code and Codex sessions running in your remotea server from this app.">
     {error && <p className="error-banner" role="alert">{error}</p>}
-    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default. Turning it off revokes the link key; turning it on again shows a new one. Personal workspace only.">
+    <SettingRow as="label" label="Show remotea" hint="Adds the remotea page and links your remotea server. Off by default. Turning it on shows a one-time setup code; turning it off revokes its keys. Personal workspace only.">
       <input type="checkbox" checked={!!status?.enabled} disabled={!status || busy || readOnly}
         onChange={e => void change(e.target.checked ? "/remotea/enable" : "/remotea/disable", e.target.checked ? {} : undefined)}/>
     </SettingRow>
@@ -138,22 +145,36 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
       {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
         <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
           hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
           <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
-            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}
+            {line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</span>
         </SettingRow>)}
-      <MigrationSettings readOnly={readOnly}/>
-      {token && <div className="bot-secret" role="region" aria-label="remotea link key">
-        <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
-        <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
-        <input id="remotea-secret" readOnly type="password" value={token} autoComplete="off" onFocus={e => e.target.select()}/>
-        <div className="bot-key-actions">
-          <button className="btn btn-primary btn-sm" onClick={() => void copy(token, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setToken("")}>Done</button>
-        </div>
+      {status.mcp_key && <SettingRow label="Agent tools key"
+        hint={`MCP key ${status.mcp_key.prefix}… · expires ${new Date(status.mcp_key.expires_at).toLocaleDateString()}. The setup code gives it to the coding agents a run starts; a new setup code replaces it.`}>
+        <span className="remotea-host-chip">{status.mcp_key.last_used_at ? "Used " + ago(status.mcp_key.last_used_at) : "Not used yet"}</span>
+      </SettingRow>}
+      {code && <SetupCodeBox code={code} onDone={() => { setCode(""); setToken(""); }}/>}
+      {!readOnly && <div className="settings-form-actions">
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void change("/remotea/setup-code", {})}>New setup code</button>
       </div>}
+      <RemoteaReadiness/>
+      <MigrationSettings readOnly={readOnly}/>
+      {token && <details className="remotea-older-key" open={!code}>
+        <summary>Older remotea without <code>eridani setup</code>: the link key alone</summary>
+        <div className="bot-secret" role="region" aria-label="remotea link key">
+          <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
+          <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
+          <input id="remotea-secret" readOnly type="password" value={token} autoComplete="off" onFocus={e => e.target.select()}/>
+          <div className="bot-key-actions">
+            <button className="btn btn-primary btn-sm" onClick={() => void copy(token, "key")}>{copied === "key" ? <Check size={14}/> : <Copy size={14}/>} {copied === "key" ? "Copied" : "Copy key"}</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setToken("")}>Done</button>
+          </div>
+        </div>
+      </details>}
       <div className="copy-field">
         <label className="field"><span className="field-label-text">Connect command</span>
           <input readOnly aria-label="Connect command" value={status.connect_command} onFocus={e => e.target.select()}/></label>
@@ -614,7 +635,9 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   </section>;
 }
 
-export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
+export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run" }: {
+  need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void; saveLabel?: string;
+}) {
   const options = targetOptions(need);
   const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -645,7 +668,7 @@ export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; o
     </>}
     <div className="remotea-control-row">
       <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
-      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>Save and run</button>
+      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>{saveLabel}</button>
     </div>
     {error && <p role="alert" className="work-error">{error}</p>}
   </div>;
