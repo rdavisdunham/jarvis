@@ -62,14 +62,14 @@ def test_timed_out_sync_is_fenced_without_cancelling_queued_writes(provider, mon
         def close(self):
             pass
 
-    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_: Late())
+    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_, **__: Late())
     google_calendar.process(stale_id)
     with session_scope() as db:
         job = db.get(Job, stale_id)
         assert job.status == "failed" and job.result == {"error": "sync_timed_out"}
         assert db.get(GoogleIdentity, "davin").last_sync_at is None
     assert generation() == before
-    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_: provider)
+    monkeypatch.setattr(google_calendar, "CalendarClient", lambda *_, **__: provider)
     process_write(receipt["job_id"])
     with session_scope() as db:
         assert db.get(Job, receipt["job_id"]).status == "succeeded"

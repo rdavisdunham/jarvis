@@ -79,6 +79,9 @@ export interface CalendarEntry {
   url?: string | null;
   location?: string;
   busy?: boolean;
+  /** Google invitations only: the connected account's answer, and whether it is "declined" (shown dimmed). */
+  my_response?: string | null;
+  declined?: boolean;
   conflicts?: string[];
   title: string;
   date: string;

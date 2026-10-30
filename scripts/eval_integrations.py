@@ -96,7 +96,7 @@ def calendar_transport(fixture, owner, tool_name):
     original_status = google_writes.write_status
 
     class FixtureClient:
-        def __init__(self, credentials):
+        def __init__(self, credentials, owner=None):
             if credentials != {"fixture": True}:
                 raise AssertionError("Only synthetic credentials belong in this transport")
 

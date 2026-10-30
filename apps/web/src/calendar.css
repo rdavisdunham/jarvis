@@ -1360,3 +1360,39 @@
     grid-column: 1 / -1;
   }
 }
+
+/* Declined Google invitations stay visible so the answer can be changed, but read as not happening. */
+.cal .agenda-row.is-declined .agenda-main strong,
+.cal-pill.is-declined .cal-pill-name,
+.cal-block.is-declined .cal-block-title > span {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+.cal-pill.is-declined,
+.cal-block.is-declined {
+  opacity: 0.6;
+}
+.cal-rsvp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 20px 10px 140px; /* Lines up with .agenda-main: 20 + 72 time + 12 + 24 kind + 12. */
+}
+.cal-rsvp-label {
+  color: var(--ink-2);
+  font-size: 13px;
+  margin-right: 4px;
+}
+.cal-rsvp-state {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.cal-rsvp-error {
+  color: var(--danger);
+}
+@media (max-width: 600px) {
+  .cal-rsvp {
+    padding-left: 20px;
+  }
+}

@@ -28,6 +28,8 @@ from jarvis.models import (
 )
 from sqlalchemy import delete, select
 
+RealClient = calendar.CalendarClient  # Before the autouse fixture replaces it.
+
 
 @pytest.fixture(autouse=True)
 def google_setup(monkeypatch):
@@ -41,7 +43,7 @@ def google_setup(monkeypatch):
     monkeypatch.setattr(settings, "integration_encryption_key", Fernet.generate_key().decode())
     # No provider call is allowed unless that test supplies an explicit fake.
     monkeypatch.setattr(
-        calendar, "CalendarClient", lambda *_: (_ for _ in ()).throw(AssertionError("Unexpected Google call"))
+        calendar, "CalendarClient", lambda *_, **__: (_ for _ in ()).throw(AssertionError("Unexpected Google call"))
     )
     monkeypatch.setattr(
         auth, "exchange", lambda *_: (_ for _ in ()).throw(AssertionError("Unexpected OAuth exchange"))
@@ -263,7 +265,7 @@ class Provider:
 
 
 def run_sync(monkeypatch, provider):
-    monkeypatch.setattr(calendar, "CalendarClient", lambda _: provider)
+    monkeypatch.setattr(calendar, "CalendarClient", lambda *_, **__: provider)
     with session_scope() as db:
         jid = calendar.queue_sync(db, "davin", force=True)
     calendar.process(jid)
@@ -491,13 +493,13 @@ def test_fresh_availability_merges_busy_intervals_and_never_guesses_on_partial_e
             }
         }
     }
-    monkeypatch.setattr(calendar, "CalendarClient", lambda _: Provider([response]))
+    monkeypatch.setattr(calendar, "CalendarClient", lambda *_, **__: Provider([response]))
     result = calendar.availability("davin", "2026-09-18T09:00:00-05:00", "2026-09-18T13:00:00-05:00")
     assert result["status"] == "fresh" and len(result["busy"]) == 1 and len(result["free"]) == 2
     monkeypatch.setattr(
         calendar,
         "CalendarClient",
-        lambda _: Provider([{"calendars": {"owner@example.test": {"errors": [{"reason": "notFound"}]}}}]),
+        lambda *_, **__: Provider([{"calendars": {"owner@example.test": {"errors": [{"reason": "notFound"}]}}}]),
     )
     result = calendar.availability("davin", "2026-09-18T09:00:00-05:00", "2026-09-18T13:00:00-05:00")
     assert result["status"] == "unavailable" and result["free"] == []
@@ -512,7 +514,7 @@ def test_availability_rechecks_connection_and_validates_timezones(client, monkey
                 db.get(GoogleIdentity, "davin").generation += 1
             return {"calendars": {"owner@example.test": {"busy": []}}}
 
-    monkeypatch.setattr(calendar, "CalendarClient", lambda _: Changed([]))
+    monkeypatch.setattr(calendar, "CalendarClient", lambda *_, **__: Changed([]))
     result = calendar.availability("davin", "2026-09-18T09:00:00-05:00", "2026-09-18T13:00:00-05:00")
     assert result["status"] == "unavailable"
     with pytest.raises(DomainError):
@@ -580,7 +582,7 @@ def test_calendar_disconnect_generation_invalidates_pending_consent(client, monk
 def test_revoked_refresh_grant_needs_reconnect_and_poll_does_not_loop(client, monkeypatch):
     linked()
     monkeypatch.setattr(
-        calendar, "CalendarClient", lambda _: (_ for _ in ()).throw(calendar.SyncFailure("reconnect", 401))
+        calendar, "CalendarClient", lambda *_, **__: (_ for _ in ()).throw(calendar.SyncFailure("reconnect", 401))
     )
     with session_scope() as db:
         jid = calendar.queue_sync(db, "davin", force=True)
@@ -626,7 +628,7 @@ async def test_eri_calendar_tools_use_owner_scope_and_current_availability(clien
     with session_scope() as db, pytest.raises(DomainError):
         calendar.event_detail(db, "other-owner", eid)
     monkeypatch.setattr(
-        calendar, "CalendarClient", lambda _: Provider([{"calendars": {"owner@example.test": {"busy": []}}}])
+        calendar, "CalendarClient", lambda *_, **__: Provider([{"calendars": {"owner@example.test": {"busy": []}}}])
     )
     result = await call_tool(
         "davin",
@@ -708,3 +710,229 @@ def test_invited_google_account_gets_private_identity_and_cannot_claim_owner(cli
     result=client.post("/api/v1/accounts/accept",json={"invite_id":invitation["id"]})
     assert result.status_code==200
     assert client.post("/api/v1/accounts/switch",json={"workspace_id":workspace["id"]}).status_code==200
+
+
+class Grant:
+    """Fake google.oauth2 Credentials: counts token-endpoint calls; never reaches Google."""
+
+    calls, delay, rotate, error = 0, 0.0, None, None
+
+    def __init__(self, _token, refresh_token=None, **_):
+        self.refresh_token, self.token, self.expiry = refresh_token, None, None
+
+    def refresh(self, _request):
+        type(self).calls += 1
+        time.sleep(type(self).delay)
+        if type(self).error:
+            raise type(self).error
+        self.token = f"access-{type(self).calls}"
+        self.expiry = (now() + timedelta(hours=1)).replace(tzinfo=None)  # google-auth uses naive UTC
+        if type(self).rotate:
+            self.refresh_token = type(self).rotate
+
+
+@pytest.fixture
+def grant(monkeypatch):
+    Grant.calls, Grant.delay, Grant.rotate, Grant.error = 0, 0.0, None, None
+    monkeypatch.setattr(calendar, "Credentials", Grant)
+    return Grant
+
+
+def signed_in(client, issued):
+    token, csrf = issued  # finish() replaces the browser session.
+    client.cookies.set("jarvis_session", token)
+    client.headers["X-CSRF-Token"] = csrf
+
+
+def stored():
+    with session_scope() as db:
+        row = db.get(GoogleIdentity, "davin")
+        return row, auth.unseal(row.credentials)
+
+
+def test_concurrent_refresh_asks_google_once_and_keeps_a_rotated_refresh_token(client, grant):
+    from concurrent.futures import ThreadPoolExecutor
+
+    linked()
+    grant.delay, grant.rotate = 0.3, "rotated-refresh"
+    with ThreadPoolExecutor(4) as pool:
+        tokens = list(pool.map(lambda _: calendar.access_token("davin"), range(4)))
+    assert grant.calls == 1 and set(tokens) == {"access-1"}
+    row, saved = stored()
+    assert saved["refresh_token"] == "rotated-refresh" and saved["issued_at"] and saved["refreshed_at"]
+    assert "rotated-refresh" not in row.credentials and "access-1" not in row.credentials
+    # The cached access token is reused until five minutes before it expires.
+    assert calendar.access_token("davin") == "access-1" and grant.calls == 1
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        account.credentials = auth.seal({**saved, "expires_at": (now() + timedelta(minutes=2)).isoformat()})
+    assert calendar.access_token("davin") == "access-2" and grant.calls == 2
+    assert stored()[1]["refresh_token"] == "rotated-refresh"  # Not reverted when Google omits it later.
+
+
+def test_client_with_owner_uses_the_stored_grant(client, grant, monkeypatch):
+    linked()
+    monkeypatch.setattr(get_settings(), "external_services_enabled", True)
+    provider = RealClient({"refresh_token": "snapshot-is-not-used"}, owner="davin")
+    try:
+        assert provider.client.headers["Authorization"] == "Bearer access-1"
+    finally:
+        provider.close()
+    assert stored()[1]["access_token"] == "access-1"
+    RealClient({"refresh_token": "fixture"}).close()  # No owner: a one-off refresh that stores nothing.
+    assert grant.calls == 2 and stored()[1]["access_token"] == "access-1"
+
+
+def test_rejected_grant_marks_reconnect_once_and_stops_asking_google(client, grant):
+    from google.auth.exceptions import RefreshError
+
+    linked()
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        account.credentials = auth.seal({"refresh_token": "fixture-refresh",
+                                         "issued_at": (now() - timedelta(days=7, hours=1)).isoformat()})
+    grant.error = RefreshError("invalid_grant: Token has been expired or revoked.", {"error": "invalid_grant"})
+    with pytest.raises(calendar.SyncFailure) as failure:
+        calendar.access_token("davin")
+    assert failure.value.code == "reconnect"
+    row, saved = stored()
+    assert row.status == "needs_reconnect" and row.error == "revoked" and row.next_sync_at is None
+    assert saved["rejected_at"] and 7 * 86400 < saved["last_rejected_age_seconds"] < 8 * 86400
+    with pytest.raises(calendar.SyncFailure):
+        calendar.access_token("davin")
+    assert grant.calls == 1  # No retry storm: later callers fail locally.
+    with session_scope() as db:
+        assert calendar.queue_sync(db, "davin", force=True) is None
+    status = client.get("/api/v1/integrations/google").json()
+    assert status["status"] == "needs_reconnect" and status["error"] == "revoked"
+    assert status["grant"]["testing_mode"] == "likely" and status["grant"]["rejected_at"]
+    assert "fixture-refresh" not in json.dumps(status)
+
+
+def test_sync_and_write_keep_the_revoked_reason(client, grant, monkeypatch):
+    from google.auth.exceptions import RefreshError
+    from jarvis import google_writes
+
+    linked()
+    monkeypatch.setattr(get_settings(), "external_services_enabled", True)
+    monkeypatch.setattr(calendar, "CalendarClient", RealClient)
+    grant.error = RefreshError("invalid_grant: Token has been expired or revoked.", {"error": "invalid_grant"})
+    with session_scope() as db:
+        jid = calendar.queue_sync(db, "davin", force=True)
+    calendar.process(jid)
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        assert db.get(Job, jid).status == "failed"
+        assert (account.status, account.error) == ("needs_reconnect", "revoked")
+        # A write already queued fails locally without another token request.
+        account.status = "ready"
+        job = calendar.enqueue_job(db, "davin", "google_write", {
+            "operation": "delete", "calendar_id": db.scalar(select(GoogleCalendar.id)),
+            "generation": account.generation, "provider_event": "e", "etag": "x", "provider_calendar": "p"})
+        account.calendar_write_enabled = True
+        db.scalar(select(GoogleCalendar)).access_role = "owner"
+    google_writes.process_write(job.id)
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        assert (account.status, account.error) == ("needs_reconnect", "revoked")
+    assert grant.calls == 2  # One rejected refresh per attempt; status "ready" was forced for the write.
+
+
+def test_retryable_refresh_failure_leaves_the_connection_alone(client, grant):
+    from google.auth.exceptions import RefreshError
+
+    linked()
+    grant.error = RefreshError("backend error", retryable=True)
+    with pytest.raises(calendar.SyncFailure) as failure:
+        calendar.access_token("davin")
+    assert failure.value.code == "unavailable"
+    row, saved = stored()
+    assert row.status == "ready" and "rejected_at" not in saved
+
+
+def test_reconnect_keeps_a_grant_google_omits_but_not_a_rejected_one(client, monkeypatch):
+    linked()
+    issued = (now() - timedelta(days=3)).isoformat()
+    with session_scope() as db:
+        db.get(GoogleIdentity, "davin").credentials = auth.seal({
+            "refresh_token": "kept-refresh", "issued_at": issued, "refreshed_at": issued,
+            "access_token": "old-access", "expires_at": (now() + timedelta(hours=1)).isoformat()})
+    state, browser, nonce, _ = start(client, "calendar")
+    successful_exchange(monkeypatch, nonce, scope=auth.CALENDAR_SCOPE)  # No refresh_token this time.
+    signed_in(client, auth.finish(state, browser, "code"))
+    _, saved = stored()
+    # Same grant and age; the access token is dropped so newly granted scopes take effect.
+    assert saved == {"refresh_token": "kept-refresh", "issued_at": issued, "refreshed_at": issued}
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        account.credentials = auth.seal({**saved, "rejected_at": now().isoformat(),
+                                         "last_rejected_age_seconds": 7 * 86400})
+        account.status = "needs_reconnect"
+    state, browser, nonce, _ = start(client, "calendar")
+    successful_exchange(monkeypatch, nonce, scope=auth.CALENDAR_SCOPE)
+    with pytest.raises(DomainError) as error:
+        auth.finish(state, browser, "code")
+    assert error.value.code == "GOOGLE_RECONNECT"
+    state, browser, nonce, _ = start(client, "calendar")
+    successful_exchange(monkeypatch, nonce, scope=auth.CALENDAR_SCOPE, refresh_token="new-refresh")
+    auth.finish(state, browser, "code")
+    row, saved = stored()
+    assert row.status == "pending" and saved["refresh_token"] == "new-refresh"
+    assert saved["last_rejected_age_seconds"] == 7 * 86400 and "rejected_at" not in saved
+    assert now() - calendar.moment(saved["issued_at"]) < timedelta(minutes=1)
+
+
+def test_grant_health_infers_testing_mode_from_evidence_only(client):
+    linked()
+    with session_scope() as db:
+        account = db.get(GoogleIdentity, "davin")
+        assert calendar.grant_health(account)["testing_mode"] == "unknown"
+        issued = now() - timedelta(days=9)
+        account.credentials = auth.seal({"refresh_token": "r", "issued_at": issued.isoformat(),
+                                         "refreshed_at": (issued + timedelta(days=8)).isoformat(),
+                                         "last_rejected_age_seconds": 7 * 86400})
+        health = calendar.grant_health(account)
+        # Surviving past seven days outweighs an older grant that died at seven.
+        assert health["testing_mode"] == "unlikely" and health["refresh_token_age_days"] == 9.0
+        account.credentials = auth.seal({"refresh_token": "r", "last_rejected_age_seconds": 30 * 86400})
+        assert calendar.grant_health(account)["testing_mode"] == "unknown"
+
+
+def test_declined_invitations_are_dimmed_not_busy_and_carry_my_response(client):
+    source = linked()
+    invite = {
+        "id": "invite", "summary": "Standup",
+        "start": {"dateTime": "2026-09-18T09:00:00-05:00"}, "end": {"dateTime": "2026-09-18T10:00:00-05:00"},
+        "organizer": {"email": "boss@example.test"},
+        "attendees": [{"email": "owner@example.test", "self": True, "responseStatus": "declined"},
+                      {"email": "boss@example.test", "organizer": True, "responseStatus": "accepted"}],
+    }
+    own = {**invite, "id": "own", "summary": "Mine", "organizer": {"email": "owner@example.test", "self": True},
+           "attendees": [{"email": "owner@example.test", "self": True, "organizer": True,
+                          "responseStatus": "accepted"}]}
+    with session_scope() as db:
+        for item in (invite, own):
+            db.add(GoogleCalendarEvent(calendar_id=source, provider_id=item["id"], payload=calendar.clean_event(item)))
+    with session_scope() as db:
+        rows = {r["provider_id"]: r for r in project(db, "davin", date(2026, 9, 18), date(2026, 9, 19),
+                                                       "America/Chicago")[0]}
+    assert rows["invite"]["declined"] and not rows["invite"]["busy"] and rows["invite"]["my_response"] == "declined"
+    assert rows["own"]["my_response"] is None and rows["own"]["busy"] and not rows["own"]["declined"]
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "task.create",
+                {"title": "Deadline", "due_date": "2026-09-18", "due_time": "09:30"})
+    items = client.get("/api/v1/calendar?start=2026-09-18&end=2026-09-19").json()["items"]
+    assert next(r for r in items if r["kind"] == "task")["conflicts"] == ["Mine"]
+
+
+def test_older_cached_events_resync_fully_once_for_new_fields(client, monkeypatch):
+    source = linked()
+    with session_scope() as db:
+        row = db.get(GoogleCalendar, source)
+        row.sync_token, row.details_version = "old-cursor", 1
+    p = Provider([remote_calendar(), {"items": [], "nextSyncToken": "fresh"}])
+    assert run_sync(monkeypatch, p) == "succeeded"
+    assert "syncToken" not in p.calls[-1][1]
+    p = Provider([remote_calendar(), {"items": [], "nextSyncToken": "next"}])
+    assert run_sync(monkeypatch, p) == "succeeded"
+    assert p.calls[-1][1]["syncToken"] == "fresh"
