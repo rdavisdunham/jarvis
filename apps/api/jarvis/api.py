@@ -911,6 +911,8 @@ def export(user: User, format: str = "json"):
         from .models import NoteList, NoteOrganization, NoteEntrySource
         for model in (NoteList, NoteOrganization, NoteEntrySource):
             data[model.__tablename__] = [serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))]
+        from .agent_retention import export_tables
+        data.update(export_tables(db, user.owner_id))
         data["note_task_links"] = [
             serial(link)
             for link in db.scalars(
