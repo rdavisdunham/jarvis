@@ -294,9 +294,7 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     row.answers = clean_answers(row.questions, body.answers)
     row.status, row.answered_at, row.answered_via, row.updated_at = "answered", now(), actor.kind, now()
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
-    coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                           "text": prompts.planning(row, verify_ids(db, run)[1])}, source="eridani")
-    coordinator.note(run, "sent", actor=actor.record(), text=prompts.planning(row, verify_ids(db, run)[1])[:2000], kind="interview_answers")
+    coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1]), "interview_answers", actor=actor)
     return public_interview(row)
 
 
@@ -628,7 +626,6 @@ def set_verify(db, owner, run_id, body, *, actor):
     coordinator.note(run, "verify_set", plan_revision=revision, verify_id=body.verify_id, actor=actor.record())
     if run.state == "needs_you" and run.surf:
         coordinator.transition(db, run, "executing", actor=actor, reason="verify_set")
-        coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                               "text": prompts.verify_set(body.verify_id)}, source="eridani")
+        coordinator.say(db, run, prompts.verify_set(body.verify_id), "verify_set", actor=actor)
     emit(db, run.owner_id, "agent.changed", run.id)
     return public_run(db, run, detail=True)

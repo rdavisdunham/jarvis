@@ -79,7 +79,8 @@ describe("run drawer model", () => {
     expect(entries.map(e => e.title)).toEqual([
       "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused by remotea"]);
     expect(entries[0].detail).toBe("by you");
-    expect(entries[4].detail).toMatch(/\[truncated\]$/);
+    // The host cut this response: a label on the bubble, not text appended to the response.
+    expect(entries[4]).toMatchObject({ id: "turn:t", detail: "Done step one", turn: { id: "t", clipped: false, truncated: true } });
     expect(entries[5]).toMatchObject({ tone: "warn", detail: "Use pg" });
   });
 

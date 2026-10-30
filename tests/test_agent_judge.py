@@ -221,6 +221,8 @@ def test_not_met_sends_the_gap_as_the_next_execution_turn(host):  # noqa: F811
                          .order_by(AgentCommand.created_at.desc())).first()
         assert "Add the docs page" in gap.payload["text"] and gap.payload["mode"] == "queue"
         assert row.history[-1].get("source") == "eridani" or any(h.get("source") == "eridani" for h in row.history)
+        sent = [h for h in row.history if h.get("event") == "sent"]
+        assert (sent[-1]["kind"], sent[-1]["actor"]["kind"]) == ("gap", "run_judge")
     assert turn(run_id, 2)[0] == "judging"
     with session_scope() as db:
         assert db.get(AgentRun, run_id).turn_count == 2

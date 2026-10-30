@@ -250,13 +250,23 @@ export type RunDetail = Run & {
     proposals?: Proposals | null } | null;
   history: HistoryEntry[];
   /** `role` "user" is the message typed in the terminal (host `prompt` frame); absent or "assistant" is the agent's
-   *  final response, whose `prompt` carries the typed message when the host only sent it with the Stop (older hosts). */
+   *  final response, whose `prompt` carries the typed message when the host only sent it with the Stop (older hosts).
+   *  `clipped`: the text is cut at 4,000 characters for display and the turn route returns it whole; `truncated`: the
+   *  host cut the final response (or the daily quota dropped it), so the rest was never stored. */
   turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string;
     role?: "assistant" | "user" }[];
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
   /** Verify ids the run's execution target offers (Set verify). */
   verify_options?: string[];
+  /** Turns and commands come newest first, one page at a time; this says whether older ones remain (`remaining`
+   *  counts them; older servers leave it out). After `mergeDetail` it describes the oldest page loaded. */
+  more?: DetailPage;
+  /** A settled run's turns and commands are deleted 90 days after it ended; `expires_at` is null while it runs. */
+  retention?: { expires_at: string | null; expired: boolean };
 };
+export type DetailPage = { turns: boolean; commands: boolean; offset: number; limit: number; remaining?: { turns: number; commands: number } };
+/** One turn's whole text (`GET /remotea/runs/{id}/turns/{turn_id}`), for a `clipped` turn's "Full response". */
+export type FullTurn = { id: string; seq: number; text: string; truncated: boolean };
 
 /** The header's verify control: which command runs after each turn, or that none does and what could. */
 export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options">) {
@@ -267,9 +277,12 @@ export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options">) {
   return { current, options, text: options.length ? "No verify command: test results cannot be recorded" : "This target offers no verify command",
     canSet: options.length > 0 };
 }
-export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
+/** `id` is stable across polls and older pages (the drawer keys bubbles and anchors its scroll by it); `turn` is set on
+ *  an agent response so its bubble can show Clipped / Truncated by host and fetch the whole text. */
+export type TimelineEntry = { id: string; at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
   /** `setup`: a host setup problem (a verification that could not run), distinct from `warn` (failing tests, refusals). */
-  tone: "plain" | "good" | "warn" | "setup" | "attention"; who: "agent" | "you" | "eridani" };
+  tone: "plain" | "good" | "warn" | "setup" | "attention"; who: "agent" | "you" | "eridani";
+  turn?: { id: string; clipped: boolean; truncated: boolean } };
 
 export const TERMINAL_RUN_STATES: RunState[] = ["completed", "stopped", "capped", "failed"];
 const RUN_LABELS: Partial<Record<RunState, string>> = {
@@ -422,6 +435,13 @@ const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
   answered_locally: "answered in the terminal", expired: "expired",
 };
 
+/** Why Eridani sent a text it wrote itself: the `kind` on a "sent" history entry (docs/AGENT_CONTROL.md, "Messages
+ * Eridani sends to the agent"). Kinds not listed here (an answer to the agent's question) keep the plain title. */
+export const SENT_REASON: Record<string, string> = {
+  execute: "plan frozen, start work", gap: "judge gap", replan: "re-plan", verify_set: "verify command set",
+  interview_answers: "your interview answers", merged: "pull request merged", integrated: "sub-task pull requests merged",
+};
+
 /** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
 export const TYPED_TITLE = "You, in the terminal";
 
@@ -436,50 +456,109 @@ export function timeline(run: RunDetail): TimelineEntry[] {
     // assistant turn's `prompt` (older hosts, so only once the turn ended). A text Eridani itself sent is already
     // a "Sent by" entry and is not repeated.
     if (t.role === "user") {
-      entries.push({ at: t.at, kind: "command", title: TYPED_TITLE, detail: t.text, tone: "plain", who: "you" });
+      entries.push({ id: "turn:" + t.id, at: t.at, kind: "command", title: TYPED_TITLE, detail: t.text, tone: "plain", who: "you" });
       continue;
     }
-    if (t.prompt && !sent.has(t.prompt)) entries.push({ at: t.at, kind: "command", title: TYPED_TITLE, detail: t.prompt, tone: "plain", who: "you" });
-    entries.push({ at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text + (t.truncated ? " [truncated]" : ""), tone: "plain", who: "agent" });
+    if (t.prompt && !sent.has(t.prompt)) entries.push({ id: "prompt:" + t.id, at: t.at, kind: "command", title: TYPED_TITLE, detail: t.prompt, tone: "plain", who: "you" });
+    entries.push({ id: "turn:" + t.id, at: t.at, kind: "turn", title: `Turn ${t.seq}`, detail: t.text, tone: "plain", who: "agent",
+      turn: { id: t.id, clipped: t.clipped, truncated: t.truncated } });
   }
   for (const c of run.commands) {
     const state = c.outcome?.state ?? c.status;
     if (c.kind === "input" && c.text && sent.has(c.text) && !["failed", "rejected", "expired", "uncertain"].includes(state)) continue;
-    entries.push({ at: c.created_at, kind: "command", title: commandTitle(c), detail: c.kind === "input" && sent.has(c.text ?? "") ? c.outcome?.detail ?? "" : c.text ?? c.outcome?.detail ?? "",
+    entries.push({ id: "command:" + c.id, at: c.created_at, kind: "command", title: commandTitle(c), detail: c.kind === "input" && sent.has(c.text ?? "") ? c.outcome?.detail ?? "" : c.text ?? c.outcome?.detail ?? "",
       tone: commandTone(c), who: "eridani" });
   }
-  for (const q of run.questions) entries.push({ at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
+  for (const q of run.questions) entries.push({ id: "question:" + q.id, at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
     detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain", who: "agent" });
-  for (const a of run.attempts ?? []) entries.push({ at: a.updated_at, kind: "attempt", title: attemptTitle(a),
+  for (const a of run.attempts ?? []) entries.push({ id: "attempt:" + a.id, at: a.updated_at, kind: "attempt", title: attemptTitle(a),
     detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani" });
-  for (const i of run.interviews ?? []) entries.push({ at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
+  for (const i of run.interviews ?? []) entries.push({ id: "interview:" + i.id, at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
-  for (const h of run.history) {
+  // History is never paged (and only grows), so its index is a stable id.
+  for (const [n, h] of run.history.entries()) {
+    const id = "history:" + n;
     if (h.event === "sent" && h.text) {
       // Every text sent to the agent, with who sent it (stage F): you on this page, Eri after your confirmation,
       // or Eridani itself (interview answers as the planning prompt, the judge's gap).
+      // A text Eridani wrote carries the `kind` that triggered it (run_coordinator.say), even when your action caused it.
+      const reason = h.kind ? SENT_REASON[h.kind] : undefined;
+      if (reason) {
+        entries.push({ id, at: h.at, kind: "command", title: "Sent by Eridani · " + reason, detail: h.text, tone: "plain", who: "eridani" });
+        continue;
+      }
       const confirmed = !!h.actor?.reason?.startsWith("confirmed:");
       const human = h.actor?.kind === "human";
-      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : h.actor?.kind === "run_judge" ? "Eridani" : h.actor?.kind ?? "";
-      entries.push({ at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain", who: human && !confirmed ? "you" : "eridani" });
+      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : ["run_judge", "eridani"].includes(h.actor?.kind ?? "") ? "Eridani" : h.actor?.kind ?? "";
+      entries.push({ id, at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain", who: human && !confirmed ? "you" : "eridani" });
       continue;
     }
     if (h.event === "plan_submitted") {
-      entries.push({ at: h.at, kind: "plan", title: `Plan submitted · revision ${h.plan_revision ?? ""}`.trim(),
+      entries.push({ id, at: h.at, kind: "plan", title: `Plan submitted · revision ${h.plan_revision ?? ""}`.trim(),
         detail: h.proposals ? h.proposals + " — waiting for your review." : "", tone: h.proposals ? "attention" : "plain", who: "agent" });
       continue;
     }
     if (h.event === "plan_reviewed") {
       const accepted = (h.accepted ?? []).join(", "), kept = (h.kept ?? []).join(", ");
-      entries.push({ at: h.at, kind: "plan", title: `Plan reviewed by you · revision ${h.plan_revision ?? ""}`.trim(),
+      entries.push({ id, at: h.at, kind: "plan", title: `Plan reviewed by you · revision ${h.plan_revision ?? ""}`.trim(),
         detail: [accepted ? "accepted " + accepted : "", kept ? "kept " + kept : ""].filter(Boolean).join(" · "), tone: "good", who: "you" });
       continue;
     }
     if (!h.to) continue;
-    entries.push({ at: h.at, kind: "state", title: runLabel(h.to as RunState), detail: [h.actor?.kind === "human" ? "by you" : "", h.detail ?? ""].filter(Boolean).join(" · "),
+    entries.push({ id, at: h.at, kind: "state", title: runLabel(h.to as RunState), detail: [h.actor?.kind === "human" ? "by you" : "", h.detail ?? ""].filter(Boolean).join(" · "),
       tone: h.to === "needs_you" ? "attention" : h.to === "completed" ? "good" : ["failed", "stopped"].includes(h.to) ? "warn" : "plain", who: "eridani" });
   }
   return entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+// ---------------------------------------------------------------- older pages of the timeline (E-N5)
+
+const time = (value: string) => new Date(value).getTime();
+function union<T extends { id: string }>(newer: T[], older: T[], order: (a: T, b: T) => number) {
+  const byId = new Map<string, T>();
+  for (const item of older) byId.set(item.id, item);
+  for (const item of newer) byId.set(item.id, item);  // A row in both pages: the newer copy wins (its outcome may have moved on).
+  return [...byId.values()].sort(order);
+}
+
+/** The run with an older page of turns and commands folded in: one row per id, ordered by time, and everything else
+ * (state, plan, history, questions) from `current`. `more` becomes the oldest page's, so the next Load earlier asks
+ * for the page after it. A page for another run changes nothing. Offsets count from the newest row, so turns that
+ * arrived since the first load make the older page overlap what is shown; the overlap is deduplicated, never lost. */
+export function mergeDetail(current: RunDetail, older: RunDetail): RunDetail {
+  if (older.id !== current.id) return current;
+  const turns = union(current.turns, older.turns, (a, b) => time(a.at) - time(b.at) || a.seq - b.seq);
+  const commands = union(current.commands, older.commands, (a, b) => time(a.created_at) - time(b.created_at));
+  const more = !older.more ? current.more : !current.more || older.more.offset >= current.more.offset ? older.more : current.more;
+  return { ...current, turns, commands, more };
+}
+
+/** The offset of the next older page, or null when nothing older remains. */
+export function nextOffset(run: Pick<RunDetail, "more">): number | null {
+  const more = run.more;
+  return more && (more.turns || more.commands) ? more.offset + more.limit : null;
+}
+
+/** The Paged out line beside Load earlier: how many older rows remain when the server counted them. */
+export function earlierLine(more: DetailPage | undefined): string | null {
+  if (!more || !(more.turns || more.commands)) return null;
+  const left = more.remaining;
+  if (!left || !(left.turns || left.commands)) return "Older turns and commands are not shown yet";
+  const part = (n: number, one: string) => `${n} older ${one}${n === 1 ? "" : "s"}`;
+  return [left.turns ? part(left.turns, "turn") : "", left.commands ? part(left.commands, "command") : ""].filter(Boolean).join(" and ")
+    + " not shown yet";
+}
+
+/** Where the reader is before a page is merged: the first entry whose bottom is below the top of the log, and how far
+ * its top sits from that edge (negative when it is partly scrolled off). Rows are in timeline order. */
+export function scrollAnchor(rows: { id: string; top: number; bottom: number }[], viewTop: number): { id: string; offset: number } | null {
+  const row = rows.find(r => r.bottom > viewTop);
+  return row ? { id: row.id, offset: row.top - viewTop } : null;
+}
+
+/** The scrollTop that puts the anchored entry back where it was, given where its top sits now relative to the log's top. */
+export function anchoredScrollTop(scrollTop: number, anchor: { offset: number }, nowOffset: number) {
+  return scrollTop + nowOffset - anchor.offset;
 }
 
 /** Needs-you and questions first, then working runs, then the rest, newest first. */
