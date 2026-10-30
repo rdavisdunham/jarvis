@@ -327,6 +327,36 @@ def save_target(body: control.TargetInput, user: User):
         return control.save_target(db, user.owner_id, body)
 
 
+class MigrationSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    host_id: str = Field(max_length=36)
+    host_target: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    # The folder and file pattern for this repository's migrations; empty uses the host's config (eridani.json).
+    dir: str | None = Field(default=None, max_length=200)
+    pattern: str | None = Field(default=None, max_length=200)
+    # The operator's chain head; the higher of it and the host's report wins. null clears it.
+    override: int | None = Field(default=None, ge=0, le=99_999)
+
+
+@router.get("/migrations")
+def migrations(user: User):
+    from . import migration_numbers
+
+    with session_scope() as db:
+        gated(db, user)
+        return {"items": migration_numbers.listing(db, user.owner_id)}
+
+
+@router.post("/migrations")
+def set_migration_settings(body: MigrationSettings, user: User):
+    from . import migration_numbers
+
+    with session_scope() as db:
+        writable(db, user)
+        return migration_numbers.configure(db, user.owner_id, body.host_id, body.host_target, dir=body.dir,
+                                           pattern=body.pattern, override=body.override)
+
+
 @router.get("/unmerged")
 def unmerged(user: User):
     with session_scope() as db:

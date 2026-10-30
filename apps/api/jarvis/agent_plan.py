@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 
 from . import agent_sessions as sessions
+from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .domain import PLAN_ID, DomainError, advisory, emit, encode, execute, owned
@@ -93,6 +94,8 @@ class SubmitPlanInput(Input):
     verify: VerifyInput | None = None
     # What "done" means; omitted keeps the task's policy (default code_ready).
     completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
+    # The plan adds a schema migration: Eridani reserves its number at freeze (migration_numbers.py).
+    migration: bool = False
     expected_plan_revision: int = Field(ge=0)
 
 
@@ -162,7 +165,9 @@ def task_plan(db, bot, body):
         result["run"] = {"id": run.id, "state": run.state, "generation": run.generation, "branch": run.branch,
                          "plan_revision": run.plan_revision,
                          "frozen_criteria": plan.criteria if plan else [], "turn_count": run.turn_count,
-                         "turn_cap": run.turn_cap}
+                         "turn_cap": run.turn_cap,
+                         **({"migration": {k: plan.migration[k] for k in ("number", "dir")},
+                             "migration_note": numbers.render(plan.migration)} if plan and plan.migration else {})}
     return encode(result)
 
 
@@ -443,11 +448,18 @@ def submit_plan(db, bot, body):
     db.refresh(task)
     revision = (run.plan_revision or 0) + 1
     note = db.get(Note, prd_id)
+    previous = coordinator.frozen(db, run)
+    if body.migration:
+        migration = numbers.reserve(db, run)
+    else:
+        migration = None
+        if previous is not None and previous.migration:
+            numbers.release(db, previous.migration.get("reservation_id"))  # The new plan no longer adds one.
     db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision,
                         task_plan_revision=task.plan_revision or 0, title=task.title, prd_text=note.content if note else "",
                         steps=list(task.steps or []), criteria=list(task.success_criteria or []), verify=task.verify,
                         completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids],
-                        proposals=proposals))
+                        proposals=proposals, migration=migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
@@ -459,6 +471,10 @@ def submit_plan(db, bot, body):
     return encode({"plan_revision": revision, "task_plan_revision": task.plan_revision, "prd_note_id": prd_id,
                    "steps": task.steps, "success_criteria": task.success_criteria, "verify": task.verify,
                    "completion_policy": task.completion_policy, "proposals": proposals,
+                   **({"migration": {k: migration[k] for k in ("number", "dir")}} if migration else {}),
+                   **({"migration_note": "No migrations folder is configured for this target, so no number was "
+                                         "reserved; pick the next number after the chain head."}
+                      if body.migration and not migration else {}),
                    "actor": actor.record(), "next": next_step})
 
 
@@ -508,7 +524,7 @@ def review_plan(db, owner, run_id, body, *, actor):
                         title=task.title, prd_text=plan.prd_text, steps=list(task.steps or []),
                         criteria=list(task.success_criteria or []), verify=task.verify,
                         completion_policy=task.completion_policy or "code_ready", required_children=plan.required_children,
-                        proposals=None))
+                        proposals=None, migration=plan.migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     coordinator.note(run, "plan_reviewed", plan_revision=revision, accepted=accepted, kept=kept, actor=actor.record())
     preface = ("The operator reviewed your proposed changes: accepted " + (", ".join(accepted) or "none") +

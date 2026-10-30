@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, cutoverSummary, hostSummary, isLive, linearOutcomes, liveChip, orderSessions, paritySummary, place, stateLabel, type Host, type RemoteaSession } from "./remotea-model";
+import { ago, baseLine, cutoverSummary, hostSummary, isLive, linearOutcomes, liveChip, orderSessions, paritySummary, place, stateLabel, type Host, type RemoteaSession, versionLine } from "./remotea-model";
 
 const now = Date.parse("2026-10-28T12:00:00Z");
 const host = (values: Partial<Host>): Host => ({
@@ -71,5 +71,27 @@ describe("remotea model", () => {
     expect(out.map(o => o.tone)).toEqual(["warn", "ok"]);
     expect(out[1].url).toBe("https://linear.app/c");
     expect(linearOutcomes({ linear: { done: { status: "deferred" } } })[0].text).toBe("Done: waits for the start write");
+  });
+});
+
+describe("run freshness", () => {
+  it("shows the base a run started from, behind live from the worktrees report with its time", () => {
+    const base = { sha: "1a2b3c4d5e6f", ref: "origin/main", branch: "main", fetch: { ok: true } };
+    expect(baseLine({ ...base, behind: 3, as_of: "2026-10-28T11:58:00Z", live: true }, now)).toBe("based on main @ 1a2b3c4 · 3 behind · as of 2m ago");
+    // Before the first report: the spawn-time count.
+    expect(baseLine({ ...base, behind: 0, as_of: "2026-10-28T11:59:55Z", live: false }, now)).toBe("based on main @ 1a2b3c4 · up to date · as of just now");
+    expect(baseLine({ ...base, ref: "main", fetch: { ok: false, error: "offline" }, behind: null }, now)).toBe("based on local main (fetch failed) @ 1a2b3c4");
+  });
+
+  it("shows nothing for an older host that does not send the base", () => {
+    expect(baseLine(null)).toBeNull();
+    expect(baseLine(undefined)).toBeNull();
+  });
+
+  it("pairs the remotea version with the latest release", () => {
+    expect(versionLine(host({ version: "0.3.0", update: null }))).toEqual({ text: "remotea 0.3.0", update: null });
+    expect(versionLine(host({ version: "0.1.0", update: { latest: "0.3.0", url: "https://github.com/x/releases/tag/v0.3.0" } }))?.text)
+      .toBe("remotea 0.1.0 · update available");
+    expect(versionLine(host({}))).toBeNull();
   });
 });

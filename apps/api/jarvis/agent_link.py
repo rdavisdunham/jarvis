@@ -38,6 +38,7 @@ from starlette.concurrency import run_in_threadpool
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import bot_access
+from . import remotea_release
 from . import run_coordinator as coordinator
 from .config import get_settings
 from .db import session_scope
@@ -299,6 +300,8 @@ class ContextRequest(Frame):
 
 class WorktreesReport(Frame):
     worktrees: list[dict] = Field(default_factory=list, max_length=500)
+    # Optional (remotea 0.2+): each target's newest migration number on its fresh base (migration_numbers.py).
+    heads: list[dict] = Field(default_factory=list, max_length=100)
 
 
 class Ack(Frame):
@@ -545,7 +548,10 @@ def context_request(db, bot, host_id, frame):
 def worktrees(db, bot, host_id, frame):
     """The host's managed worktrees with unmerged/unpushed checks; the page lists the unmerged ones."""
     host = db.get(AgentHost, host_id)
-    host.caps = {**(host.caps or {}), "worktrees": {"at": now().isoformat(), "worktrees": frame.worktrees}}
+    heads = [{"target": str(h["target"])[:64], "dir": str(h.get("dir") or "")[:200], "ref": str(h.get("ref") or "")[:200],
+              "head": h["head"] if isinstance(h.get("head"), int) and not isinstance(h.get("head"), bool) else None}
+             for h in frame.heads if isinstance(h, dict) and isinstance(h.get("target"), str)]
+    host.caps = {**(host.caps or {}), "worktrees": {"at": now().isoformat(), "worktrees": frame.worktrees, "heads": heads}}
     emit(db, bot.owner_id, "agent.changed", host_id)
     coordinator.check_integrations(db, bot.owner_id, host_id)  # A sub-task branch may have been merged.
     return {"stored": len(frame.worktrees)}
@@ -691,6 +697,7 @@ def public_host(host):
         "status": "degraded" if db is not None and retention.degraded(db, host.owner_id) else "ok",
         "last_seen_at": host.last_seen_at, "conn_epoch": host.conn_epoch, "caps": host.caps.get("caps", []),
         "harnesses": host.caps.get("harnesses", {}), "proto": host.proto,
+        "version": host.version, "update": remotea_release.update_for(host.version),
     })
 
 
@@ -712,6 +719,7 @@ def admit(credential_id, hello):
             raise DomainError("HOST_BOUND", "That remotea server is linked with another key.", 403)
         host.credential_id, host.account_id = bot.id, bot.account_id
         host.name, host.machine, host.boot_id, host.proto = hello.hostname, hello.machine, hello.boot_id, hello.proto
+        host.version = hello.version or None
         host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
                      "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets}
         host.conn_epoch = (host.conn_epoch or 0) + 1

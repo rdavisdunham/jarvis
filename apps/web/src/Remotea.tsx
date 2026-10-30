@@ -3,11 +3,11 @@ import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play
 import { api, ApiError, post } from "./api";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
+  ago, baseLine, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, needsTargetData, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
-  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork,
+  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import "./remotea.css";
 
@@ -143,6 +143,13 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+        <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
+          hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
+          <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+        </SettingRow>)}
+      <MigrationSettings readOnly={readOnly}/>
       {token && <div className="bot-secret" role="region" aria-label="remotea link key">
         <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
         <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
@@ -173,6 +180,45 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
       </SettingRow>
     </>}
   </SettingsGroup>;
+}
+
+/** Every advertised target: where its migrations live (Settings, else the host's eridani.json), the chain head and
+ * its override, the next number Eridani reserves when it freezes a plan that adds a migration. */
+function MigrationSettings({ readOnly }: { readOnly: boolean }) {
+  const [items, setItems] = useState<MigrationTarget[] | null>(null), [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  useEffect(() => { void api<{ items: MigrationTarget[] }>("/remotea/migrations").then(r => setItems(r.items)).catch(e => setError(message(e))); }, []);
+  if (!items?.length && !error) return null;
+  const save = async (m: MigrationTarget, draft: MigrationDraft) => {
+    const body = migrationBody(m, draft);
+    if (typeof body === "string") { setError(body); return; }
+    setBusy(m.host_id + "/" + m.host_target); setError("");
+    try { setItems((await post<{ items: MigrationTarget[] }>("/remotea/migrations", body)).items); }
+    catch (e) { setError(message(e)); } finally { setBusy(""); }
+  };
+  return <>
+    {error && <p className="error-banner" role="alert">{error}</p>}
+    {items?.map(m => <MigrationRow key={m.host_id + "/" + m.host_target + "/" + (m.dir ?? "") + "/" + (m.override ?? "")}
+      item={m} readOnly={readOnly} busy={busy === m.host_id + "/" + m.host_target} onSave={d => void save(m, d)}/>)}
+  </>;
+}
+
+export function MigrationRow({ item, readOnly, busy, onSave }: {
+  item: MigrationTarget; readOnly: boolean; busy: boolean; onSave: (draft: MigrationDraft) => void;
+}) {
+  const [draft, setDraft] = useState<MigrationDraft>(() => migrationDraft(item));
+  const field = (name: keyof MigrationDraft, label: string, placeholder: string) =>
+    <label className="field"><span className="field-label-text">{label}</span>
+      <input name={name} value={draft[name]} placeholder={placeholder} disabled={readOnly || busy}
+        inputMode={name === "override" ? "numeric" : undefined} onChange={e => setDraft(d => ({ ...d, [name]: e.target.value }))}/></label>;
+  return <SettingRow label={`Migrations · ${item.host_target}`} hint={migrationSummary(item)}>
+    <span className="remotea-migration-form">
+      {field("dir", "Folder", item.host_dir ?? "migrations/versions")}
+      {field("pattern", "File pattern", "^(\\d{4})_")}
+      {field("override", "Chain head override", item.head != null ? String(item.head) : "none")}
+      {!readOnly && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onSave(draft)}>Save</button>}
+    </span>
+  </SettingRow>;
 }
 
 // ---------------------------------------------------------------- runs (stage C)
@@ -467,6 +513,9 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       {run && <p className="remotea-place">
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}/{run.turn_cap}
+      </p>}
+      {run && baseLine(run.base) && <p className={"remotea-place remotea-base" + (run.base?.fetch && !run.base.fetch.ok ? " stale" : "")}>
+        <GitBranch size={13} aria-hidden="true"/> {baseLine(run.base)}
       </p>}
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>

@@ -131,3 +131,9 @@
 @media (max-width: 719px) {
   body.run-drawer-open .chat-launcher { display: none; }
 }
+.remotea-base { display: flex; align-items: center; gap: 4px; }
+.remotea-base.stale { color: var(--danger); }
+.remotea-version.outdated, .remotea-version.outdated a { color: var(--danger); }
+.remotea-migration-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
+.remotea-migration-form .field { min-width: 0; flex: 1 1 8rem; }
+.remotea-migration-form input { width: 100%; }
