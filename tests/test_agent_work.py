@@ -615,6 +615,36 @@ async def test_natural_speech_runs_directly_without_an_intake_model(client, monk
 
 
 @pytest.mark.asyncio
+async def test_tool_result_with_a_datetime_reaches_the_model_instead_of_failing_the_request(client, monkeypatch):
+    """A tool that returns a value json cannot encode (session_search returned datetimes until 2026-10-29) must
+    not end the whole request as failed after the tool itself succeeded: the model reads it as JSON text."""
+    from datetime import datetime, timezone
+
+    when = datetime(2026, 10, 29, 23, 24, tzinfo=timezone.utc)
+    seen = []
+
+    async def search(owner, request_id, index, name, args, **kwargs):
+        assert name == "note_search"
+        return {"items": [{"id": "n1", "title": "Groceries", "updated_at": when}], "total": 1}
+
+    async def model(agent, messages, definitions, **kwargs):
+        tool_messages = [m for m in messages if m.get("role") == "tool"]
+        if tool_messages:
+            seen.extend(tool_messages)
+            return response(message="One note: Groceries.")
+        return response([("note_search", {"query": "groceries"})])
+
+    monkeypatch.setattr(work_runner, "call_tool", search)
+    monkeypatch.setattr(work_runner, "request_model", model)
+    work, _ = accept(client, "What did I note about groceries?")
+    await work_runner.run(work["id"])
+    result = client.get("/api/v1/work/" + work["id"]).json()
+    assert result["status"] == "succeeded", result
+    assert result["message"] == "One note: Groceries." and not result.get("errors")
+    assert len(seen) == 1 and json.loads(seen[0]["content"])["items"][0]["updated_at"] == "2026-10-29T23:24:00+00:00"
+
+
+@pytest.mark.asyncio
 async def test_independent_backend_requests_execute_concurrently(client, monkeypatch):
     first = action(client, "Add Call Alex")
     second = action(client, "Add Buy milk")
