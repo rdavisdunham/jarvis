@@ -233,8 +233,8 @@ judged success criteria and accepted completion, and local credentials stay loca
   basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
   expanded 2026-10-29.
   Done 2026-10-30 (jarvis #121, migration 0040): see
-  [Agent control § Swarm mode](AGENT_CONTROL.md#swarm-mode-migration-0040). The roadmap
-  export still shows task `71f97d98` as backlog; close it there.
+  [Agent control § Swarm mode](AGENT_CONTROL.md#swarm-mode-migration-0040); task `71f97d98`
+  closed.
 
 Open mission-control items:
 
@@ -252,6 +252,14 @@ Open mission-control items:
   remotea #34 has merged) to the host's remotea Eridani config as in
   [Agent control § jarvis: `scripts/verify.sh`](AGENT_CONTROL.md#jarvis-scriptsverifysh),
   restart remotea.service and run one live verify.
+- [ ] **Swarm mode follow-ups** (backlog). Reserve migration numbers eagerly at Start;
+  an Eri swarm tool; let the planner merge tasks into one run; remotea reports each
+  run's changed files; harness token cost; advertise `limits.maxRuns`; Fable for the
+  `swarm_plan` job; the first real end-to-end swarm.
+- [ ] **remotea desktop: CDP proxy token and remaining hardening** (backlog). Build the
+  CDP proxy token from the design note in remotea's `docs/remotea/desktop-security.md`;
+  `senderFrame` checks; Electron fuses; WebContentsView; per-site permission prompts;
+  the SignPath slugs still say "wmux".
 - Not mission control: pgvector memory search (`6f3b9693`) stays under Explicitly
   deferred; the PRD lists it as out of scope.
 
