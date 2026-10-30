@@ -299,6 +299,22 @@ def verify(identity: UUID, user: User):
         return control.verify_now(db, user.owner_id, str(identity), actor=actor_for(user))
 
 
+@router.post("/runs/{identity}/verify-config")
+def verify_config(identity: UUID, body: agent_plan.SetVerifyInput, user: User):
+    """Set the plan's verify command mid-run (a new plan revision; the next turn is verified)."""
+    with session_scope() as db:
+        writable(db, user)
+        return agent_plan.set_verify(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/freestyle")
+def freestyle(identity: UUID, body: control.FreestyleInput, user: User):
+    """Talk to the agent directly: turns are recorded but not verified, judged or capped while this is on."""
+    with session_scope() as db:
+        writable(db, user)
+        return control.set_freestyle(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
 @router.post("/runs/{identity}/plan-review")
 def plan_review(identity: UUID, body: agent_plan.PlanReviewInput, user: User):
     with session_scope() as db:

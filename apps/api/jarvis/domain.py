@@ -95,7 +95,8 @@ class Criterion(Args):
 class VerifyConfig(Args):
     target_id: str = Field(min_length=1, max_length=100)
     verify_id: str = Field(min_length=1, max_length=100)
-    by: Literal["agent"] | None = None
+    # "agent": submit_plan chose it; "default": Eridani picked it for a test criterion; "human": the operator set it (the floor).
+    by: Literal["agent", "default", "human"] | None = None
 
 
 class TaskChanges(Args):

@@ -6,6 +6,7 @@ session id, and the actor is marked unverified. task_interview and submit_plan a
 they need the token and a run in its interview or planning phase.
 """
 
+import re
 from typing import Literal
 from uuid import UUID
 
@@ -293,8 +294,8 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     row.status, row.answered_at, row.answered_via, row.updated_at = "answered", now(), actor.kind, now()
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                           "text": prompts.planning(row)}, source="eridani")
-    coordinator.note(run, "sent", actor=actor.record(), text=prompts.planning(row)[:2000], kind="interview_answers")
+                                           "text": prompts.planning(row, verify_ids(db, run)[1])}, source="eridani")
+    coordinator.note(run, "sent", actor=actor.record(), text=prompts.planning(row, verify_ids(db, run)[1])[:2000], kind="interview_answers")
     return public_interview(row)
 
 
@@ -362,6 +363,51 @@ def save_prd(db, run, task, content):
 POLICY_ORDER = ("code_ready", "pr_open", "pr_merged")
 
 
+# A criterion that asks for test evidence: without a verify command the judge can never see it (run 75661a23).
+EVIDENCE = re.compile(r"\b(tests?|test suite|suites?|pytest|vitest|ci|lint|typecheck|type-check|compiles?|builds?)\b", re.IGNORECASE)
+# Verify ids a host commonly names for "the whole suite"; the first one offered wins, else the alphabetically first.
+PREFERRED_VERIFY = ("all", "full", "tests", "test", "check", "ci")
+
+
+def needs_evidence(criteria):
+    """Does any criterion (dicts or CriterionInput) ask for tests, a suite, CI, lint or a build to pass?"""
+    for c in criteria or []:
+        kind = c.get("kind") if isinstance(c, dict) else getattr(c, "kind", None)
+        text = c.get("text", "") if isinstance(c, dict) else getattr(c, "text", "")
+        if kind == "verify" or EVIDENCE.search(text or ""):
+            return True
+    return False
+
+
+def pick_verify(offered):
+    for name in PREFERRED_VERIFY:
+        if name in offered:
+            return name
+    return sorted(offered)[0] if offered else None
+
+
+def default_verify(db, run, criteria, verify):
+    """When the plan has no verify but a criterion wants test evidence, Eridani names the target's verify command
+    itself (`by: default`, not a human floor), so the judge gets a recorded result instead of the agent's claims.
+    Returns (verify, proposal): the proposal, when the target offers several, lets the operator pick or decline."""
+    if verify or not needs_evidence(criteria):
+        return verify, None
+    targets, offered = verify_ids(db, run)
+    chosen = pick_verify(offered)
+    if not chosen:
+        return None, None
+    picked = {"target_id": run.execution_target_id, "verify_id": chosen, "by": "default"}
+    proposal = {"current": None, "proposed": {"target_id": run.execution_target_id, "verify_id": chosen},
+                "options": sorted(offered), "because": "A success criterion asks for test evidence; without a verify "
+                "command the judge cannot record a result."} if len(offered) > 1 else None
+    return picked, proposal
+
+
+def human_verify(task):
+    """The task's verify when a human set it (the floor); agent- or default-chosen ones may be replaced."""
+    return task.verify if task.verify and task.verify.get("by") not in ("agent", "default") else None
+
+
 def plan_floor(task, criteria, verify, policy):
     """What a human set is a floor (stage F, M1, decision D2): the agent may add criteria, never remove,
     reword or weaken a human-authored one, clear or swap the verify, or lower the completion policy.
@@ -373,7 +419,7 @@ def plan_floor(task, criteria, verify, policy):
     for c in added:
         if c.get("id") in taken:
             c.pop("id")
-    if task.verify and task.verify.get("by") != "agent":
+    if human_verify(task):
         verify = task.verify
     current = task.completion_policy or "code_ready"
     if policy is None or POLICY_ORDER.index(policy) < POLICY_ORDER.index(current):
@@ -400,7 +446,7 @@ def plan_proposals(task, criteria, verify, policy):
     result = {}
     if changes:
         result["criteria"] = changes
-    if verify and task.verify and task.verify.get("by") != "agent" and verify.get("verify_id") != task.verify.get("verify_id"):
+    if verify and human_verify(task) and verify.get("verify_id") != task.verify.get("verify_id"):
         result["verify"] = {"current": task.verify, "proposed": {k: v for k, v in verify.items() if k != "by"}}
     current_policy = task.completion_policy or "code_ready"
     if policy and POLICY_ORDER.index(policy) < POLICY_ORDER.index(current_policy):
@@ -424,8 +470,9 @@ def submit_plan(db, bot, body):
             raise DomainError("VERIFY_UNKNOWN", "Name a verify id this run's execution target offers.", 400,
                               data={"verify_ids": sorted(offered)})
         verify = {**body.verify.model_dump(), "by": "agent"}
-    if task.verify and task.verify.get("by") != "agent":
+    if human_verify(task):
         verify = task.verify  # The floor (see plan_floor); a verify criterion must name the human's verify.
+    verify, default_proposal = default_verify(db, run, body.success_criteria, verify)
     for criterion in body.success_criteria:
         if criterion.kind == "verify" and (not verify or criterion.verify_id != verify["verify_id"]):
             raise DomainError("INVALID_ARGUMENT", "A verify criterion names the plan's verify_id.")
@@ -436,6 +483,8 @@ def submit_plan(db, bot, body):
         open_row.status, open_row.updated_at = "superseded", now()  # The agent went ahead without the answers.
     agent_verify = {**body.verify.model_dump(), "by": "agent"} if body.verify else None
     proposals = plan_proposals(task, body.success_criteria, agent_verify, body.completion_policy)
+    if default_proposal and not (proposals or {}).get("verify"):
+        proposals = {**(proposals or {}), "verify": default_proposal}
     criteria, verify, policy = plan_floor(task, [c for c in body.success_criteria if not c.drop], verify, body.completion_policy)
     writer = Actor("run_session", credential_id=actor.credential_id, run_id=run.id, generation=run.generation,
                    capability="plan_write")
@@ -510,6 +559,8 @@ def review_plan(db, owner, run_id, body, *, actor):
         accepted.append("verify")
     elif proposals.get("verify"):
         kept.append("verify")
+        if proposals["verify"].get("current") is None:
+            changes["verify"] = None  # Eridani's default pick was declined: no verification for this plan.
     if proposals.get("completion_policy") and body.completion_policy == "accept":
         changes["completion_policy"] = proposals["completion_policy"]["proposed"]
         accepted.append("completion_policy")
@@ -532,4 +583,50 @@ def review_plan(db, owner, run_id, body, *, actor):
     coordinator.begin_execution(db, run, reason="plan_reviewed", preface=preface, actor=actor)
     from .agent_control import public_run
 
+    return public_run(db, run, detail=True)
+
+
+class SetVerifyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    verify_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+VERIFY_SETTABLE = {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "verifying", "judging"}
+
+
+def set_verify(db, owner, run_id, body, *, actor):
+    """The operator adds (or swaps) the plan's verify command mid-run without a re-plan: the task's verify is set
+    as a human edit, the plan is frozen again as the next revision with nothing else changed, and a run that was
+    waiting because no result could be recorded goes back to work so the next turn is verified."""
+    from . import agent_prompts as prompts
+    from .agent_control import public_run
+
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    plan = coordinator.frozen(db, run)
+    if run.state not in VERIFY_SETTABLE or plan is None:
+        raise DomainError("RUN_SETTLED", f"A run that is {run.state} cannot change its verify command.", 409)
+    targets, offered = verify_ids(db, run)
+    if body.verify_id not in offered:
+        raise DomainError("VERIFY_UNKNOWN", "Name a verify id this run's execution target offers.", 400,
+                          data={"verify_ids": sorted(offered)})
+    task = owned(db, Task, run.task_id, run.owner_id, lock=True)
+    verify = {"target_id": run.execution_target_id, "verify_id": body.verify_id, "by": "human"}
+    with acting(Actor("human", credential_id=actor.credential_id, reason="verify_set")):
+        execute(db, owner, f"set-verify:{run.id}:{plan.revision}:{body.verify_id}", "task.update",
+                {"task_id": task.id, "expected_revision": task.revision, "verify": verify})
+    db.refresh(task)
+    revision = plan.revision + 1
+    db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision, task_plan_revision=task.plan_revision or 0,
+                        title=plan.title, prd_text=plan.prd_text, steps=list(task.steps or []), criteria=list(plan.criteria or []),
+                        verify=verify, completion_policy=plan.completion_policy, required_children=plan.required_children,
+                        proposals=None, migration=plan.migration))
+    run.plan_revision = revision
+    coordinator.note(run, "verify_set", plan_revision=revision, verify_id=body.verify_id, actor=actor.record())
+    if run.state == "needs_you" and run.surf:
+        coordinator.transition(db, run, "executing", actor=actor, reason="verify_set")
+        coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
+                                               "text": prompts.verify_set(body.verify_id)}, source="eridani")
+    emit(db, run.owner_id, "agent.changed", run.id)
     return public_run(db, run, detail=True)

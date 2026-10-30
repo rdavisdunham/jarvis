@@ -1461,6 +1461,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/freestyle",
+      "handler": "freestyle",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/message",
       "handler": "message",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -1491,6 +1498,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/verify",
       "handler": "verify",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/verify-config",
+      "handler": "verify_config",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
