@@ -484,8 +484,13 @@ export function linkedRun(search: string) {
   return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null };
-export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string };
+/** A saved target. `harnesses`/`verify` are what its host advertised for it in hello, present only when known. */
+export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null;
+  harnesses?: string[]; verify?: string[] };
+/** A target a host listed in hello. `harnesses` is what the target enables; null when the host did not say (older
+ * remotea: its host-wide flags decide). `verify` is its verify ids (absent from older Eridani). */
+export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string;
+  harnesses?: string[] | null; verify?: string[] };
 export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
@@ -601,12 +606,27 @@ export function startBody(taskId: string, draft: RunDraft) {
     ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}) };
 }
 
-/** GET /remotea/runs/preflight: what a start would do, checked without acting. */
+/** GET /remotea/runs/preflight: what a start would do, checked without acting. `harnesses` is what the task's
+ * target can start (the union over the offered targets while none is chosen, with `harness_note`);
+ * `harness_reasons` says why one cannot. */
 export type Preflight = {
   target: { id: string; name: string; repo: string } | null; needs_target: boolean; need: NeedsTarget | null;
   problems: { code: string; message: string }[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
+  harness_reasons?: Record<string, string>; harness_note?: string | null;
 };
+
+/** Whether the Run dialog may pick a harness, and why not. The preflight decides for the task's target; only
+ * when there is no preflight (it failed, or is still loading) does any connected host count (`harnessAvailable`). */
+export function harnessChoice(pre: Preflight | null | undefined, hosts: Host[], id: HarnessId): { ok: boolean; reason?: string } {
+  const label = HARNESSES.find(h => h.id === id)?.label ?? id;
+  const said = pre?.harnesses?.[id];
+  if (said === undefined) {
+    return harnessAvailable(hosts, id) ? { ok: true } : { ok: false, reason: `Your remotea server cannot start ${label} yet.` };
+  }
+  if (said) return { ok: true };
+  return { ok: false, reason: pre?.harness_reasons?.[id] || `This task's target cannot start ${label}.` };
+}
 
 export function preflightLine(p: Preflight | null): string {
   if (!p) return "Where it runs is chosen when the run starts.";
@@ -620,4 +640,57 @@ export function preflightLine(p: Preflight | null): string {
 export function composerAction(e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey?: boolean }): "queue" | "steer" | null {
   if (e.key !== "Enter" || e.shiftKey || e.altKey) return null;
   return e.ctrlKey || e.metaKey ? "steer" : "queue";
+}
+
+// ---------------------------------------------------------------- the run drawer's requests and controls
+
+/** A latest-only request guard: `begin()` aborts the previous request, and only the newest one may install its
+ * result (`current()`). `cancel()` retires whatever is in flight (unmount, or the panel switched runs). */
+export type LatestOnly = { begin(): { signal: AbortSignal; current(): boolean }; cancel(): void };
+export function latestOnly(): LatestOnly {
+  let seq = 0, controller: AbortController | null = null;
+  return {
+    begin() {
+      controller?.abort();
+      const mine = ++seq, own = new AbortController();
+      controller = own;
+      return { signal: own.signal, current: () => mine === seq };
+    },
+    cancel() { controller?.abort(); controller = null; seq++; },
+  };
+}
+
+/** Load one run for the drawer through the guard. Null means "ignore this response": a newer request superseded
+ * it, or the server answered for a run other than the one asked for. */
+export async function latestRun<T extends { id: string }>(guard: LatestOnly, id: string, load: (signal: AbortSignal) => Promise<T>):
+  Promise<{ run: T } | { error: unknown } | null> {
+  const request = guard.begin();
+  try {
+    const run = await load(request.signal);
+    return request.current() && run.id === id ? { run } : null;
+  } catch (error) {
+    return request.current() ? { error } : null;
+  }
+}
+
+export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop";
+const ACTION_PATHS: Record<RunAction, string> = {
+  message: "message", steer: "message", replan: "replan", verify: "verify", "verify-config": "verify-config",
+  freestyle: "freestyle", approve: "approve", stop: "stop",
+};
+
+/** The URL and body of a drawer control, bound to the run on screen (never the panel's id prop) and carrying the
+ * state_revision the reader saw, so the server refuses it with REVISION_CONFLICT if the run moved on. Null while
+ * the loaded run is not the one the panel asked for: every control is disabled then. */
+export function runAction(run: Pick<Run, "id" | "state_revision"> | null, id: string, action: RunAction, values: Record<string, unknown> = {}) {
+  if (!run || run.id !== id) return null;
+  // Stop stays unconditional: it is the emergency path and must work from a stale view, so it sends no revision.
+  const body = action === "stop" ? { ...values } : { ...values, expected_revision: run.state_revision };
+  return { url: `/remotea/runs/${run.id}/${ACTION_PATHS[action]}`, body };
+}
+
+/** Shown (instead of an error) when a control was refused because the run changed; the drawer reloads it. */
+export const RUN_CHANGED = "This run changed; reloaded";
+export function isRevisionConflict(error: unknown) {
+  return (error as { code?: unknown } | null)?.code === "REVISION_CONFLICT";
 }

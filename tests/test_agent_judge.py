@@ -160,7 +160,7 @@ def test_met_goes_to_awaiting_approval_when_auto_complete_is_off(host):  # noqa:
         assert db.scalar(select(Notification).where(Notification.category == "agent_done"))
         assert db.get(Task, db.get(AgentRun, run_id).task_id).status != "completed"
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     assert state(run_id)[0] in ("stopping", "completed")
 
 

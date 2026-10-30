@@ -245,7 +245,10 @@ def notify(db, run, category, title, body, *, key):
 
 
 def wake_after_commit(db, host_id):
-    """Ask the host's live link (if this process holds it) to drain right after commit."""
+    """Ask the host's live link (if this process holds it) to drain right after commit.
+
+    Other processes learn of the command through `agent_link.notify_host` (Postgres NOTIFY).
+    """
     hosts = db.info.setdefault("agent_wake", set())
     if not hosts:
         def woke(session):
@@ -259,7 +262,7 @@ def wake_after_commit(db, host_id):
 
 def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_id=None, source=""):
     """Write one outbound operation. Its op_id, digest and expiry never change across resends (F06)."""
-    from .agent_link import digest
+    from .agent_link import digest, notify_host
 
     expires = expires_at or now() + (ttl or TTL[kind])
     op_id = op_id or f"{kind}-{uuid.uuid4()}"
@@ -275,7 +278,8 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
              **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
-    wake_after_commit(db, row.host_id)
+    wake_after_commit(db, row.host_id)  # This process's socket, without a database round trip.
+    notify_host(db, row.host_id)  # Any web process's socket (the worker queues too), on commit.
     return row
 
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildAnswers, defaultScope, linkedRun, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedSummary, verifyLine, type Host, type NeedsTarget, type Run, type RunDetail, type RunQuestion,
+  buildAnswers, defaultScope, harnessChoice, linkedRun, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
+  unmergedSummary, verifyLine, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion,
 } from "./remotea-model";
 
 const host = (connected: boolean): Host => ({
@@ -124,6 +124,28 @@ describe("execution target picker", () => {
     expect(needsTargetData({ task_id: "t1", candidates: [], advertised: [], records: [] })).not.toBeNull();
     expect(needsTargetData({ task_id: "t1" })).toBeNull();  // A target without a server: shown as an error instead.
     expect(needsTargetData(null)).toBeNull();
+  });
+});
+
+describe("harnessChoice", () => {
+  const spawning = (): Host => ({ ...host(true), harnesses: { claude: { spawn: true }, codex: { spawn: true } } });
+  const pre = (values: Partial<Preflight> = {}): Preflight => ({
+    target: { id: "t", name: "jarvis", repo: "/r/jarvis" }, needs_target: false, need: null, problems: [], active_run: null,
+    interview: true, harnesses: { claude: true, codex: false },
+    harness_reasons: { codex: "The jarvis target on desk does not enable Codex." }, harness_note: null, ...values,
+  });
+
+  it("follows the preflight for the task's target, even when a connected host spawns the harness", () => {
+    expect(harnessChoice(pre(), [spawning()], "claude")).toEqual({ ok: true });
+    expect(harnessChoice(pre(), [spawning()], "codex")).toEqual({ ok: false, reason: "The jarvis target on desk does not enable Codex." });
+    // An older Eridani that sends no reasons still disables it, with a generic reason.
+    expect(harnessChoice(pre({ harness_reasons: undefined }), [spawning()], "codex")).toMatchObject({ ok: false, reason: /cannot start Codex/ });
+  });
+
+  it("falls back to any connected host only when there is no preflight", () => {
+    expect(harnessChoice(null, [spawning()], "codex")).toEqual({ ok: true });
+    expect(harnessChoice(undefined, [host(true)], "codex")).toMatchObject({ ok: false, reason: /cannot start Codex/ });
+    expect(harnessChoice(pre({ harnesses: {} }), [spawning()], "codex")).toEqual({ ok: true });
   });
 });
 

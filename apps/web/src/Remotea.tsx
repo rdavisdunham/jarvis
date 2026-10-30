@@ -11,6 +11,7 @@ import {
   ago, ATTENTION_STATES, baseLine, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
+  isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
@@ -320,7 +321,7 @@ export function InterviewForm({ interview, onDone }: { interview: Interview; onD
 }
 
 /** The agent proposed changes to criteria you wrote: accept or keep each one, then the plan freezes and work starts. */
-export function PlanReview({ run, onDone }: { run: RunDetail; onDone: () => void }) {
+export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
   const proposals = run.plan?.proposals;
   const [decisions, setDecisions] = useState<Record<string, PlanDecision>>(() =>
     Object.fromEntries((proposals?.criteria ?? []).map(c => [c.id, { accept: true, text: c.proposed ?? "" }])));
@@ -331,7 +332,11 @@ export function PlanReview({ run, onDone }: { run: RunDetail; onDone: () => void
   const send = async () => {
     setBusy(true); setError("");
     try { await post(`/remotea/runs/${run.id}/plan-review`, planReviewBody(proposals, decisions, verify, policy, run.state_revision)); onDone(); }
-    catch (e) { setError(message(e)); } finally { setBusy(false); }
+    catch (e) {
+      if (!isRevisionConflict(e)) setError(message(e));
+      else if (onConflict) onConflict();
+      else { setError(RUN_CHANGED); onDone(); }
+    } finally { setBusy(false); }
   };
   const choice = (on: boolean, label: string, good: boolean, onClick: () => void) =>
     <button type="button" aria-pressed={on} className={"btn btn-sm" + (on ? " btn-primary" : good ? " btn-recommended" : "")} onClick={onClick}>{label}</button>;
@@ -406,22 +411,39 @@ export function Bubble({ entry }: { entry: TimelineEntry }) {
 }
 
 /** The run detail as a chat. Rendered inside the app shell's RunPanel (a layout column, or a sheet on phones). */
-export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: () => void; onCollapse?: () => void }) {
-  const [run, setRun] = useState<RunDetail | null>(null), [error, setError] = useState("");
+export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
+  id: string; onClose: () => void; onCollapse?: () => void;
+  /** A run already in hand (tests); the drawer still loads `id` and binds its controls to whichever run is shown. */
+  preloaded?: RunDetail;
+}) {
+  const [run, setRun] = useState<RunDetail | null>(preloaded ?? null), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
   const log = useRef<HTMLDivElement>(null), stuck = useRef(true);
+  // Only the newest request for this drawer's run may install its response (out-of-order replies are dropped).
+  const requests = useRef<LatestOnly | null>(null);
+  requests.current ??= latestOnly();
   const refresh = useCallback(() => {
-    api<RunDetail>(`/remotea/runs/${id}`).then(r => { setRun(r); setError(""); }).catch(e => setError(message(e)));
+    void latestRun(requests.current!, id, signal => api<RunDetail>(`/remotea/runs/${id}`, { signal })).then(result => {
+      if (!result) return;
+      if ("run" in result) { setRun(result.run); setError(""); } else setError(message(result.error));
+    });
   }, [id]);
-  useEffect(() => { setRun(null); stuck.current = true; refresh(); }, [refresh]);
+  useEffect(() => { stuck.current = true; refresh(); return () => requests.current?.cancel(); }, [refresh]);
   useAgentRefresh(refresh);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
   const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
-  const act = async (what: string, path: string, body: object) => {
-    setBusy(what); setError("");
-    try { await post(`/remotea/runs/${id}/${path}`, body); if (path === "message") setText(""); refresh(); }
-    catch (e) { setError(message(e)); } finally { setBusy(""); }
+  // Controls act on the run on screen, and only once it is the run the panel asked for.
+  const bound = !!run && run.id === id;
+  const off = !!busy || !bound;
+  const changed = () => { setNotice(RUN_CHANGED); refresh(); };
+  const act = async (what: RunAction, values: Record<string, unknown> = {}) => {
+    const action = runAction(run, id, what, values);
+    if (!action) return;
+    setBusy(what); setError(""); setNotice("");
+    try { await post(action.url, action.body); if (what === "message" || what === "steer") setText(""); refresh(); }
+    catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
+    finally { setBusy(""); }
   };
   const controls = run ? runControls(run) : null;
   const attention = run ? ATTENTION_STATES.includes(run.state) : false;
@@ -449,18 +471,18 @@ export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: ()
       </div>}
       {run && !isSettled(run) && <div className="remotea-chat-modes">
         <label className="remotea-toggle" title="Talk to the agent directly: turns are recorded but not verified, judged or counted toward the cap.">
-          <input type="checkbox" checked={!!run.freestyle} disabled={!!busy || run.state === "stopping"}
-            onChange={e => void act("freestyle", "freestyle", { enabled: e.target.checked, expected_revision: run.state_revision })}/>
+          <input type="checkbox" checked={!!run.freestyle} disabled={off || run.state === "stopping"}
+            onChange={e => void act("freestyle", { enabled: e.target.checked })}/>
           <span>Freestyle</span><small>{run.freestyle ? "judge and prompts off" : "judge on"}</small>
         </label>
         {verify?.text && !run.freestyle && <span className={"remotea-verify-line" + (verify.current ? "" : " attention")}>
           {verify.text}
           {verify.canSet && <>
-            <select aria-label="Verify command" value={verifyPick || verify.current || verify.options[0]} onChange={e => setVerifyPick(e.target.value)}>
+            <select aria-label="Verify command" disabled={!bound} value={verifyPick || verify.current || verify.options[0]} onChange={e => setVerifyPick(e.target.value)}>
               {verify.options.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
-            <button className="btn btn-sm" disabled={!!busy} onClick={() => void act("verify-config", "verify-config",
-              { verify_id: verifyPick || verify.current || verify.options[0], expected_revision: run.state_revision })}>
+            <button className="btn btn-sm" disabled={off} onClick={() => void act("verify-config",
+              { verify_id: verifyPick || verify.current || verify.options[0] })}>
               {busy === "verify-config" ? "Setting…" : verify.current ? "Change" : "Set verify"}</button>
           </>}
         </span>}
@@ -477,43 +499,48 @@ export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: ()
         {!!linearOutcomes(run).length && <ul className="remotea-linear" aria-label="Linear sync">{linearOutcomes(run).map(o =>
           <li key={o.key} className={"tone-" + o.tone}>{o.url ? <a href={o.url} target="_blank" rel="noreferrer">{o.text}</a> : o.text}</li>)}</ul>}
       </div>}
+      {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}
+      {notice && <p role="status" className="remotea-reason">{notice}</p>}
       {error && <p role="alert" className="work-error">{error}</p>}
     </header>
     <div className="remotea-chat-log" ref={log} onScroll={onScroll}>
       {!run ? !error && <p role="status">Loading run…</p> : <>
         <ol className="remotea-timeline" aria-label="Run timeline">{entries.map((e, i) => <Bubble key={e.kind + e.at + i} entry={e}/>)}</ol>
-        <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh}/>
-        {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
-        {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
-          <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
+        {bound && <>
+          <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/>
+          {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
+          {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
+            <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
+        </>}
         {isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
       </>}
     </div>
     {run && controls && !isSettled(run) && <footer className="remotea-composer">
       <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
-        disabled={!controls.message.enabled || !!busy} value={text} onChange={e => setText(e.target.value)}
+        disabled={!controls.message.enabled || off} value={text} onChange={e => setText(e.target.value)}
         onKeyDown={e => {
           // Enter queues, Ctrl/Cmd+Enter steers, Shift+Enter is a new line.
           const action = composerAction(e);
-          if (!action || !text.trim()) return;
+          if (!action || !text.trim() || off) return;
           if (action === "queue" ? !controls.message.enabled : !controls.steer.enabled) { if (action === "queue") e.preventDefault(); return; }
           e.preventDefault();
-          void act(action === "queue" ? "message" : "steer", "message", { text, mode: action });
+          void act(action === "queue" ? "message" : "steer", { text, mode: action });
         }}/>
       <div className="remotea-control-row">
-        <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || !!busy} title="Queued for after the current turn (Enter)"
-          onClick={() => void act("message", "message", { text, mode: "queue" })}>Message</button>
-        <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || !!busy} title="Interrupts the current turn (Ctrl+Enter)"
-          onClick={() => void act("steer", "message", { text, mode: "steer" })}>Steer</button>
+        <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || off} title="Queued for after the current turn (Enter)"
+          onClick={() => void act("message", { text, mode: "queue" })}>Message</button>
+        <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || off} title="Interrupts the current turn (Ctrl+Enter)"
+          onClick={() => void act("steer", { text, mode: "steer" })}>Steer</button>
         <span className="remotea-control-gap"/>
-        <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || !!busy} title={controls.replan.reason}
-          onClick={() => void act("replan", "replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
-        {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={!!busy || !run.surf} title="Run the plan's verification now"
-          onClick={() => void act("verify", "verify", {})}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
-        <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || !!busy || controls.stop.label === "Stopping…"}
-          onClick={() => void act("stop", "stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
-        <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || !!busy}
-          title="Mark the task complete and end the run" onClick={() => void act("approve", "approve", {})}><Check size={14}/>Approve</button>
+        <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || off} title={controls.replan.reason}
+          onClick={() => void act("replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
+        {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={off || !run.surf} title="Run the plan's verification now"
+          onClick={() => void act("verify")}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
+        {/* Stop sends no revision (runAction): it is the emergency path and must work from a stale view. */}
+        <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || off || controls.stop.label === "Stopping…"}
+          onClick={() => void act("stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
+        <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || off}
+          title="Mark the task complete and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
       </div>
       {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}
     </footer>}

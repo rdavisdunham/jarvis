@@ -112,7 +112,8 @@ class PlanReviewInput(BaseModel):
     decisions: list[PlanDecision] = Field(default_factory=list, max_length=50)
     verify: Literal["accept", "keep"] = "keep"
     completion_policy: Literal["accept", "keep"] = "keep"
-    expected_revision: int | None = None
+    # Required: the decisions are about the proposals the reviewer saw (REVISION_CONFLICT if the run moved on).
+    expected_revision: int = Field(ge=1)
 
 
 class InterviewAnswers(BaseModel):
@@ -590,6 +591,7 @@ class SetVerifyInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     verify_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 VERIFY_SETTABLE = {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "verifying", "judging"}

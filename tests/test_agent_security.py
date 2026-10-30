@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from jarvis import run_coordinator as coordinator
 from jarvis.api import app
 from jarvis.db import session_scope
+from jarvis.domain import DomainError
 from jarvis.models import BotCredential, Task, now
 from jarvis.session_models import AgentCommand, AgentHost, AgentQuestion, AgentRun, AgentSession
 from sqlalchemy import func, select
@@ -709,6 +710,45 @@ def test_run_detail_pages_turns_and_commands(client, host):  # noqa: F811
     assert client.get(f"/api/v1/remotea/runs/{run_id}?limit=500").status_code == 422
 
 
+# ---------------------------------------------------------------- E-N3: browser controls carry the reviewed revision
+
+
+def test_approve_and_plan_review_need_the_reviewed_revision_and_stop_does_not(client, host):  # noqa: F811
+    """A stale tab cannot approve, review a plan or verify after another actor moved the run; Stop (the emergency
+    path) needs no revision."""
+    from jarvis import agent_control as control
+    from jarvis import agent_plan
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        control.ApproveInput()
+    with pytest.raises(ValidationError):
+        agent_plan.PlanReviewInput()
+    run_id = start(host, task("Reviewed")["id"])["id"]
+    base = f"/api/v1/remotea/runs/{run_id}"
+    seen = client.get(base).json()["state_revision"]  # The tab loaded the run while it was spawning.
+    attached(host, run_id)  # Then the agent started: the run moved on.
+    current = client.get(base).json()["state_revision"]
+    assert current > seen
+    for path in ("approve", "plan-review"):
+        missing = client.post(f"{base}/{path}", json={})
+        assert missing.status_code == 422, (path, missing.text)
+    for path, body in (("approve", {}), ("plan-review", {"decisions": []}), ("verify", {})):
+        stale = client.post(f"{base}/{path}", json={**body, "expected_revision": seen})
+        assert stale.status_code == 409 and stale.json()["error"]["code"] == "REVISION_CONFLICT", (path, stale.text)
+        assert stale.json()["error"]["data"]["state_revision"] == current
+    with session_scope() as db:
+        assert db.get(Task, db.get(AgentRun, run_id).task_id).status != "completed"
+    approved = client.post(f"{base}/approve", json={"expected_revision": current})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["task"]["status"] == "completed" and approved.json()["state"] == "stopping"
+
+    other = start(host, task("Emergency")["id"])["id"]
+    attached(host, other, session_id="sess-2")
+    stopped = client.post(f"/api/v1/remotea/runs/{other}/stop", json={"mode": "interrupt"})
+    assert stopped.status_code == 200 and stopped.json()["state"] == "stopping", stopped.text
+
+
 # ---------------------------------------------------------------- L8: agent pushes respect quiet hours
 
 
@@ -1002,3 +1042,94 @@ def test_preflight_shows_what_run_would_do(client, host):  # noqa: F811
         assert db.scalar(select(func.count()).select_from(AgentRun)) == 1  # Preflight never starts anything.
     missing = client.get("/api/v1/remotea/runs/preflight?task_id=00000000-0000-0000-0000-000000000000")
     assert missing.status_code == 404, missing.text
+
+
+# ---------------------------------------------------------------- per-target harnesses (E-N4, S-S1)
+
+
+def two_targets(host):  # noqa: F811
+    """The live setup that made Codex look startable: host-wide caps spawn both harnesses, but the host enables
+    Claude only on `jarvis` (its `launch` lists claude alone) and both on `scratch`."""
+    with session_scope() as db:
+        row = db.get(AgentHost, host.id)
+        row.caps = {**row.caps, "targets": [
+            {"id": "jarvis", "repo": "/home/davin/jarvis", "worktree_root": "/home/davin/wt", "harnesses": ["claude"],
+             "verify": ["tests"]},
+            {"id": "scratch", "repo": "/home/davin/scratch", "worktree_root": "/home/davin/wt2",
+             "harnesses": ["claude", "codex"], "verify": []}]}
+
+
+def test_older_hosts_without_per_target_harnesses_keep_the_host_wide_rule(client, host):  # noqa: F811
+    """A hello target without `harnesses` (an older remotea) leaves the host-wide flags in charge."""
+    created = task("Old host", execution_target_id=host.target_id)
+    listed = client.get("/api/v1/remotea/targets").json()
+    assert [(a["host_target"], a["harnesses"]) for a in listed["advertised"]] == [("jarvis", None)]
+    assert "harnesses" not in listed["items"][0]
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert body["harnesses"] == {"claude": True, "codex": True} and body["harness_reasons"] == {}
+    assert start(host, created["id"], harness="codex")["tool"] == "codex"
+
+
+def test_a_target_that_does_not_enable_codex_cannot_start_it(client, host):  # noqa: F811
+    """E-N4: preflight reports the resolved target's own harnesses, and start_run refuses one it does not enable,
+    naming the target, even though the host-wide caps say Codex can spawn."""
+    two_targets(host)
+    created = task("Claude only", execution_target_id=host.target_id)  # Resolves to the Claude-only target.
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
+    assert body["needs_target"] is False and body["target"]["id"] == host.target_id
+    assert body["harnesses"] == {"claude": True, "codex": False} and body["harness_note"] is None
+    assert set(body["harness_reasons"]) == {"codex"} and "jarvis" in body["harness_reasons"]["codex"]
+    picked = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}&harness=codex").json()
+    assert [p["code"] for p in picked["problems"]] == ["HARNESS_UNAVAILABLE"]
+
+    with pytest.raises(DomainError) as caught:
+        start(host, created["id"], harness="codex")
+    assert caught.value.code == "HARNESS_UNAVAILABLE" and "jarvis" in caught.value.message
+    assert caught.value.data == {"harness": "codex", "host_target": "jarvis"}
+    r = client.post("/api/v1/remotea/runs", json={"task_id": created["id"], "harness": "codex", "interview": False})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "HARNESS_UNAVAILABLE", r.text
+    assert "jarvis" in r.json()["error"]["message"]
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentRun)) == 0
+    assert start(host, created["id"])["tool"] == "claude"  # Claude still starts there.
+
+    # The picker sees each target's own harnesses and verify ids, saved or only advertised.
+    listed = client.get("/api/v1/remotea/targets").json()
+    assert {a["host_target"]: (a["harnesses"], a["verify"]) for a in listed["advertised"]} == {
+        "jarvis": (["claude"], ["tests"]), "scratch": (["claude", "codex"], [])}
+    saved = next(t for t in listed["items"] if t["id"] == host.target_id)
+    assert saved["harnesses"] == ["claude"] and saved["verify"] == ["tests"]
+
+
+def test_another_hosts_capabilities_cannot_make_the_target_look_ready(client, host):  # noqa: F811
+    """S-S1: a second connected host that enables Codex everywhere does not make the Claude-only target startable
+    with Codex. While no target resolves, preflight reports the union over the offered targets, with a note."""
+    two_targets(host)
+    with connect(bearer(host.token)) as ws:
+        hello(ws, server_id="laptop-1", caps=CAPS, harnesses=HARNESSES,
+              targets=[{"id": "anything", "repo": "/home/davin/anything", "harnesses": ["claude", "codex"]}])
+    with session_scope() as db:
+        for row in db.scalars(select(AgentHost)):
+            row.lease_until = now() + timedelta(hours=1)  # Both connected.
+    bound = task("Bound to jarvis", execution_target_id=host.target_id)
+    body = client.get(f"/api/v1/remotea/runs/preflight?task_id={bound['id']}").json()
+    assert body["harnesses"] == {"claude": True, "codex": False}
+    with pytest.raises(DomainError) as caught:
+        start(host, bound["id"], harness="codex")
+    assert caught.value.code == "HARNESS_UNAVAILABLE" and "jarvis" in caught.value.message
+
+    loose = task("No target yet")
+    union = client.get(f"/api/v1/remotea/runs/preflight?task_id={loose['id']}").json()
+    assert union["needs_target"] is True and union["harness_note"]
+    assert union["harnesses"] == {"claude": True, "codex": True}  # scratch and the laptop's target enable Codex.
+    candidate = next(c for c in union["need"]["candidates"] if c["id"] == host.target_id)
+    assert candidate["harnesses"] == ["claude"]
+
+    with session_scope() as db:  # The laptop disconnects and the desk offers jarvis alone.
+        for row in db.scalars(select(AgentHost)):
+            if row.id == host.id:
+                row.caps = {**row.caps, "targets": row.caps["targets"][:1]}
+            else:
+                row.lease_until = now() - timedelta(minutes=1)
+    alone = client.get(f"/api/v1/remotea/runs/preflight?task_id={loose['id']}").json()
+    assert alone["harnesses"] == {"claude": True, "codex": False} and "codex" in alone["harness_reasons"]
