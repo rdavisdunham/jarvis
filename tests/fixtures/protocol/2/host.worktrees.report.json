@@ -1,0 +1,231 @@
+{
+ "direction": "host",
+ "frame": "worktrees.report",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "digest": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "worktrees": {
+    "required": true,
+    "shape": {
+     "items": {
+      "keys": {
+       "active": {
+        "required": true,
+        "shape": {
+         "types": [
+          "boolean"
+         ]
+        }
+       },
+       "ahead": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "base": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "base_ref": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "behind": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "branch": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "candidate": {
+        "required": true,
+        "shape": {
+         "types": [
+          "boolean"
+         ]
+        }
+       },
+       "head": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "ignored": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "merged": {
+        "required": true,
+        "shape": {
+         "types": [
+          "null"
+         ]
+        }
+       },
+       "merged_reason": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "path": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "reasons": {
+        "required": true,
+        "shape": {
+         "items": {
+          "types": [
+           "string"
+          ]
+         },
+         "types": [
+          "array"
+         ]
+        }
+       },
+       "target": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "uncommitted": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "unpushed": {
+        "required": true,
+        "shape": {
+         "types": [
+          "null"
+         ]
+        }
+       },
+       "untracked": {
+        "required": true,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
+       "upstream": {
+        "required": true,
+        "shape": {
+         "types": [
+          "null"
+         ]
+        }
+       }
+      },
+      "types": [
+       "object"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

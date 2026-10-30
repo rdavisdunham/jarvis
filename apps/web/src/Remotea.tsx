@@ -18,6 +18,21 @@ import {
 import { postAction } from "./api";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
+import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
+
+/** Facts as small labelled chips, each with its own tone (freshness in the header, a verification's facts). */
+function Facts({ facts, label, className = "" }: { facts: Fact[]; label: string; className?: string }) {
+  if (!facts.length) return null;
+  return <ul className={"remotea-fresh " + className} aria-label={label}>
+    {facts.map(f => <li key={f.key} className={"tone-" + f.tone} title={f.title}>{f.label}</li>)}</ul>;
+}
+
+/** A clock for relative times ("host seen 12 s ago"): re-renders on its own, never fetches anything. */
+function useNow(ms = 15_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), ms); return () => window.clearInterval(id); }, [ms]);
+  return now;
+}
 import "./remotea.css";
 import "./runs.css";
 
@@ -449,6 +464,7 @@ export function Bubble({ entry, runId }: { entry: TimelineEntry; runId?: string 
       {turn?.truncated && <span className="remotea-label label-truncated" title={TRUNCATED_HINT}>Truncated by host</span>}
       {expired && <span className="remotea-label label-expired" title={expired}>Expired</span>}
       <small>{ago(entry.at)}</small></div>
+    {entry.facts && <Facts facts={entry.facts} label="Verification facts"/>}
     {entry.detail && <p>{text}</p>}
     {fetchable ? <button className="btn btn-ghost btn-sm" disabled={loading} title={CLIPPED_HINT} onClick={() => void loadFull()}>
       <ChevronDown size={14}/>{loading ? "Loading…" : "Full response"}</button>
@@ -531,6 +547,9 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const pagedOut = earlierLine(shown?.more);
   const verify = run ? verifyLine(run) : null;
   const [verifyPick, setVerifyPick] = useState("");
+  // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
+  const now = useNow();
+  const fresh = run ? freshnessFacts(run, null, now) : [];
   return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
@@ -546,6 +565,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       {run && baseLine(run.base) && <p className={"remotea-place remotea-base" + (run.base?.fetch && !run.base.fetch.ok ? " stale" : "")}>
         <GitBranch size={13} aria-hidden="true"/> {baseLine(run.base)}
       </p>}
+      {run && !isSettled(run) && <Facts facts={fresh} label="How current this is"/>}
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>
         {run.reason_detail && run.reason_detail !== run.reason_text && <p>{run.reason_detail}</p>}
@@ -604,6 +624,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       </>}
     </div>
     {run && controls && !isSettled(run) && <footer className="remotea-composer">
+      {/* What Approve rests on: the verification, its workspace and sandbox, the host, anything unconfirmed. */}
+      {run.state === "awaiting_approval" && <Facts facts={fresh.filter(APPROVAL_FACTS)} label="What approval rests on" className="remotea-approve-facts"/>}
       <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
         disabled={!controls.message.enabled || off} value={text} onChange={e => setText(e.target.value)}
         onKeyDown={e => {

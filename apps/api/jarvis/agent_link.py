@@ -148,6 +148,17 @@ def short_text(limit):
     return clean
 
 
+def text_lines(count, limit):
+    """A list of free host text lines, each one line and clipped; anything else is dropped."""
+    clean = short_text(limit)
+
+    def lines(value):
+        if not isinstance(value, list):
+            return []
+        return [line for line in (clean(v) for v in value[:count]) if line]
+    return lines
+
+
 class Hello(Frame):
     REDACT: ClassVar[tuple[str, ...]] = ("degraded_reason",)
     server_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,100}$")
@@ -341,6 +352,20 @@ class VerifyResult(Frame):
     stale_workspace: bool = False
     initiator: str | None = Field(default=None, max_length=20)
     adopted: str | None = Field(default=None, max_length=200)
+    # S-N4 / S-S2 (remotea PR #24, additive): whether the command ran in the bubblewrap sandbox, and whether the
+    # fingerprint covered the whole workspace. Absent from older hosts (None); malformed values are dropped.
+    isolated: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    isolation: Annotated[str | None, BeforeValidator(lambda v: v if v in ("bwrap", "none") else None)] = None
+    isolation_reason: Annotated[str | None, BeforeValidator(short_text(300))] = None
+    workspace_complete: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    workspace_reasons: Annotated[list[str], BeforeValidator(text_lines(20, 300))] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def redacted_lines(self):
+        self.workspace_reasons = [redact(line) for line in self.workspace_reasons]
+        if self.isolation_reason:
+            self.isolation_reason = redact(self.isolation_reason)
+        return self
 
 
 class ContextRequest(Frame):
@@ -1203,8 +1228,11 @@ class Link:
                 if not isinstance(frame, dict) or frame.get("t") == "chunk" or not isinstance(frame.get("id"), str):
                     raise DomainError("INVALID_ARGUMENT", "Malformed chunked frame.")
                 identity = frame["id"][:100]
-            if isinstance(frame.get("op_id"), str) and not isinstance(frame.get("digest"), str) and "digest" in self.caps:
-                # A host that advertises `digest` stamps every op_id frame; a bare one is refused (stage F).
+            if isinstance(frame.get("op_id"), str) and not isinstance(frame.get("digest"), str) and "digest" in self.caps \
+                    and frame.get("t") != "ack":
+                # A host that advertises `digest` stamps every op_id frame; a bare one is refused (stage F). An ack
+                # only echoes the op_id of the command it acknowledges (the digest is the command's), so it is exempt:
+                # refusing it dropped every command ack from a current host (found by tests/test_protocol_e2e.py).
                 return {"acked_id": identity, **echo, "ok": False,
                         "error": {"code": "DIGEST_REQUIRED", "message": "Frames with an op_id carry its digest."}}
             if isinstance(frame.get("digest"), str) and isinstance(frame.get("op_id"), str) \

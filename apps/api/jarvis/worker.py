@@ -91,6 +91,10 @@ def perform_job(job_id):
         from .agent_judge import process
 
         return process(job_id)
+    if kind == "agent_summary":
+        from .run_summaries import process
+
+        return process(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -161,7 +165,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_autolink"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -417,6 +421,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .routing import queue_due
     from .agent_autolink import queue_autolink
     from .run_coordinator import sweep as sweep_runs
+    from .run_summaries import queue_due as queue_due_summaries
     from .search_index import backfill as search_backfill
     from .work_intake import flush_voice
 
@@ -428,7 +433,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
         ("memory_reviews", queue_due_reviews), ("routing", queue_due),
         ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs),
-        ("agent_autolink", queue_autolink),
+        ("agent_autolink", queue_autolink), ("agent_summaries", queue_due_summaries),
     ):
         isolated(name, in_session, scan_fn)
     for model, queue in ((GoogleIdentity, queue_sync), (LinearConnection, linear_queue_sync)):

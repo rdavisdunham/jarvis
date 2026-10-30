@@ -146,6 +146,12 @@
 .remotea-ledger h2 { margin: 0; font-size: 0.95rem; color: var(--ink-2); }
 .remotea-base { display: flex; align-items: center; gap: 4px; }
 .remotea-base.stale { color: var(--danger); }
+/* Freshness (E-S6): each fact with its own age, apart from the run's state. */
+.remotea-fresh { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.remotea-fresh li { padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); font-size: 11px; line-height: 16px; color: var(--ink-2); background: var(--sunken); overflow-wrap: anywhere; }
+.remotea-fresh li.tone-ok { color: var(--done); border-color: var(--done); background: none; }
+.remotea-fresh li.tone-warn { color: var(--danger); border-color: var(--danger); background: none; }
+.remotea-approve-facts { padding-bottom: 4px; }
 .remotea-version.outdated, .remotea-version.outdated a { color: var(--danger); }
 .remotea-host-build { color: var(--ink-3); }
 .remotea-dirty { margin-left: 6px; padding: 0 6px; border-radius: var(--r-pill); background: var(--danger-soft); color: var(--danger); font-size: 0.75rem; }

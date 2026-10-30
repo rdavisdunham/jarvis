@@ -14,6 +14,7 @@ from jarvis.models import BotCredential, Task, now
 from jarvis.session_models import AgentCommand, AgentHost, AgentQuestion, AgentRun, AgentSession
 from sqlalchemy import func, select
 from test_agent_link import bearer, connect, enable, hello, refused, send
+from test_agent_link import frame as link_frame
 from test_agent_runs import (
     CAPS,
     HARNESSES,
@@ -540,6 +541,10 @@ def test_a_digest_capable_host_must_stamp_op_id_frames(client, host):  # noqa: F
         hello(ws, caps=[*CAPS, "digest"])
         reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-1")
         assert not reply["ok"] and reply["error"]["code"] == "DIGEST_REQUIRED"
+        # An ack echoes its command's op_id without a digest of its own: it is taken, never answered.
+        ws.send_json(link_frame("ack", acked_id="cmd-envelope", op_id="op-unknown", ok=True, outcome={"state": "accepted"}))
+        reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-3")
+        assert reply["error"]["code"] == "DIGEST_REQUIRED"  # The next reply answers this frame, not the ack.
     with connect(bearer(host.token)) as ws:  # An older host without the cap still works.
         hello(ws, caps=CAPS)
         reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-2")
@@ -1191,8 +1196,12 @@ def test_caps_v2_target_facts_reach_preflight_and_targets(client, host):  # noqa
     body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
     assert body["harnesses"] == {"claude": True, "codex": False}
     assert body["harness_reasons"] == {"codex": "Codex is enabled on jarvis but not installed: codex: command not found"}
-    assert body["verify_ready"] is False
+    # No verify id on the task: `lint` is ready, and the default pick prefers a ready id (agent_plan.pick_verify).
+    assert body["verify_ready"] is True
     assert body["verify_reasons"] == {"tests": "its program is not on the service PATH (uv)"}
+    # Agents there would have no Eridani tools: a problem that blocks Start unless the run is freestyle.
+    assert body["problems"] == [{"code": "MCP_UNCONFIGURED", "blocking": True, "freestyle_ok": True,
+                                 "message": f"Agents on this target have no Eridani tools: {V2_TARGET['mcp']['reason']}."}]
     assert [s["id"] for s in body["verify_status"]] == ["tests", "lint"]
     assert body["mcp"] == {"configured": False, "reason": V2_TARGET["mcp"]["reason"]}
     with pytest.raises(DomainError) as caught:
@@ -1211,7 +1220,11 @@ def test_caps_v2_target_facts_reach_preflight_and_targets(client, host):  # noqa
     saved = next(t for t in listed["items"] if t["id"] == host.target_id)
     assert saved["launch"]["codex"]["error"] == "codex: command not found" and saved["mcp"]["configured"] is False
 
-    run = start(host, created["id"])
+    with pytest.raises(DomainError) as no_tools:
+        start(host, created["id"])
+    assert no_tools.value.code == "MCP_UNCONFIGURED" and "no Eridani tools" in no_tools.value.message
+    run = start(host, created["id"], freestyle=True)
+    assert run["freestyle"] is True
     detail = client.get(f"/api/v1/remotea/runs/{run['id']}").json()
     assert detail["verify_readiness"] == {"tests": {"ready": False, "reason": "its program is not on the service PATH (uv)"},
                                           "lint": {"ready": True}}

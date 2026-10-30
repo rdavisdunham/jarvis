@@ -251,7 +251,9 @@ def test_eri_hears_the_setup_problem_before_confirming_a_start(client, host):  #
     v2_hello(host.token)
     created = task("Needs tools", execution_target_id=host.target_id)
     told = say("control.start", task_id=created["id"])
-    assert told["status"] == "pending_confirmation" and told["problems"] == []
+    # The start also reports MCP_UNCONFIGURED (it blocks unless the run is freestyle); the setup line adds the fix.
+    assert told["status"] == "pending_confirmation"
+    assert [p["code"] for p in told["problems"]] == ["MCP_UNCONFIGURED"] and told["problems"][0]["freestyle_ok"] is True
     assert "Also tell the owner before they confirm: jarvis on desk: Agents on jarvis get no Eridani tools" in told["next"]
     assert "remotea eridani setup" in told["next"]
 

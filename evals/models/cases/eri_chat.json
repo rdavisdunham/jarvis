@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "job": "eri_chat",
+  "description": "First step of an Eri chat turn: which tool the model calls (or none) for an owner message. The system prompt is Eri's static production instructions plus a fixed profile/time block; the tools are production definitions (tools.registry) for config.tools. Only the first call is graded: several first steps can be right, so tools_any lists them.",
+  "prompt_source": "jarvis.tools.instructions(prefs, parts=True)[0] + config.context; jarvis.tools.registry() filtered to config.tools",
+  "grader": "tool_call",
+  "config": {
+    "tools": ["task_create", "task_list", "task_resolve", "task_update", "task_complete", "schedule_create", "time_resolve",
+              "note_search", "note_create", "session_search", "control_status", "control_start", "record_search",
+              "memory_search", "calendar_list", "ui_show"],
+    "context": "Profile DATA: {\"preferred_name\": \"Davin\", \"timezone\": \"America/Chicago\", \"date_only_reminder_hour\": 10, \"workspace\": \"Personal\", \"access_role\": \"owner\"}\nCurrent time: 2026-10-28T09:15:00-05:00\nFocused task ID DATA: null",
+    "prefs": {"timezone": "America/Chicago", "default_reminder_hour": 10},
+    "max_completion_tokens": 2000
+  },
+  "cases": [
+    {
+      "id": "create-task",
+      "tags": ["tasks"],
+      "input": {"message": "Add a task to renew my passport."},
+      "expect": {"tools_any": ["task_create"], "args_contains": {"title": "passport"}},
+      "stub": {"tool": "task_create", "arguments": {"title": "Renew passport"}},
+      "stub_wrong": {"tool": "task_list", "arguments": {}}
+    },
+    {
+      "id": "today-list",
+      "tags": ["tasks", "read"],
+      "input": {"message": "What's on my plate today?"},
+      "expect": {"tools_any": ["task_list", "ui_show", "calendar_list"]},
+      "stub": {"tool": "task_list", "arguments": {}},
+      "stub_wrong": {"tool": "task_create", "arguments": {"title": "Today"}}
+    },
+    {
+      "id": "complete-by-name",
+      "tags": ["tasks", "resolve"],
+      "input": {"message": "Mark the dentist appointment task as done."},
+      "expect": {"tools_any": ["task_resolve", "task_list", "record_search", "task_complete"], "forbid_tools": ["task_create"]},
+      "stub": {"tool": "task_resolve", "arguments": {"query": "dentist appointment"}},
+      "stub_wrong": {"tool": "task_create", "arguments": {"title": "Dentist appointment"}}
+    },
+    {
+      "id": "where-did-i-work",
+      "tags": ["sessions"],
+      "input": {"message": "Where did I work on the Acme churn dashboard with Claude Code last week?"},
+      "expect": {"tools_any": ["session_search"], "args_contains": {"query": "churn"}},
+      "stub": {"tool": "session_search", "arguments": {"query": "Acme churn dashboard"}},
+      "stub_wrong": {"tool": "note_search", "arguments": {"query": "Acme churn dashboard"}}
+    },
+    {
+      "id": "recurring-reminder",
+      "tags": ["reminders"],
+      "input": {"message": "Remind me every Monday at 9am to submit my timesheet."},
+      "expect": {"tools_any": ["schedule_create", "time_resolve", "task_create"]},
+      "stub": {"tool": "schedule_create", "arguments": {"title": "Submit timesheet", "when": "Monday 09:00", "recurrence": "weekly on Monday"}},
+      "stub_wrong": {"tool": "memory_search", "arguments": {"query": "timesheet"}}
+    },
+    {
+      "id": "find-notes",
+      "tags": ["notes"],
+      "input": {"message": "Find my notes from the Q4 pricing meeting."},
+      "expect": {"tools_any": ["note_search", "record_search"], "args_contains": {"query": "pricing"}},
+      "stub": {"tool": "note_search", "arguments": {"query": "Q4 pricing meeting"}},
+      "stub_wrong": {"tool": "note_create", "arguments": {"title": "Q4 pricing meeting"}}
+    },
+    {
+      "id": "agent-status",
+      "tags": ["agents"],
+      "input": {"message": "How are my coding agents doing?"},
+      "expect": {"tools_any": ["control_status"]},
+      "stub": {"tool": "control_status", "arguments": {}},
+      "stub_wrong": {"tool": "session_search", "arguments": {}}
+    },
+    {
+      "id": "thanks-no-tool",
+      "tags": ["chat"],
+      "input": {"message": "Thanks, that's all for now!"},
+      "expect": {"tools_any": []},
+      "stub": {"text": "Anytime, Davin. I'll be here."},
+      "stub_wrong": {"tool": "task_list", "arguments": {}}
+    },
+    {
+      "id": "memory-recall",
+      "tags": ["memory"],
+      "input": {"message": "What's my cat's name again?"},
+      "expect": {"tools_any": ["memory_search"]},
+      "stub": {"tool": "memory_search", "arguments": {"query": "cat name"}},
+      "stub_wrong": {"text": "I don't know your cat's name."}
+    },
+    {
+      "id": "start-agent",
+      "tags": ["agents"],
+      "input": {"message": "Start a coding agent on the login 500 bug task."},
+      "expect": {"tools_any": ["control_start", "task_resolve", "task_list", "record_search"], "forbid_tools": ["task_create"]},
+      "stub": {"tool": "task_resolve", "arguments": {"query": "login 500 bug"}},
+      "stub_wrong": {"tool": "task_create", "arguments": {"title": "Login 500 bug"}}
+    }
+  ]
+}
