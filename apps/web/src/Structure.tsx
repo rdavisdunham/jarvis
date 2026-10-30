@@ -200,7 +200,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(r.status_id&&r.status_meaning!=="open"){const name=rt?.statuses.find(s=>s.id===r.status_id)?.name;if(name)out.push(<span key="status" className={"chip"+(r.status_meaning==="completed"?" chip-done":"")}>{name}</span>);}
     return out;
   };
-  const rowActions=(r:CustomRecord)=>r.task_id?<div className="row-actions"><RunButton taskId={r.task_id} title={r.title}/>{onTask&&<button className="btn-icon" aria-label={"Schedule and linked notes for "+r.title} title="Schedule and linked notes" onClick={()=>onTask(r.task_id!)}><CalendarClock size={17}/></button>}</div>:null;
+  const rowActions=(r:CustomRecord)=>r.task_id?<div className="row-actions"><RunButton taskId={r.task_id} title={r.title} project={r.type_id==="project"}/>{onTask&&<button className="btn-icon" aria-label={"Schedule and linked notes for "+r.title} title="Schedule and linked notes" onClick={()=>onTask(r.task_id!)}><CalendarClock size={17}/></button>}</div>:null;
   const row=(r:CustomRecord)=>{const meta=chips(r);return <article key={r.id} className={"row work-row"+(r.status_meaning==="completed"?" done":"")+(selecting&&r.task_id&&selectedIds.includes(r.task_id)?" selected":"")} data-record-id={r.id}>
     {lead(r)}
     <div className="row-main">

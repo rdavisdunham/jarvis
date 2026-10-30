@@ -498,7 +498,8 @@ def check_host(owner, task, host, harness, host_target=None):
                           data={"harness": harness, **({"host_target": host_target} if host_target else {})})
 
 
-def start_run(db, owner, account_id, body, *, actor):
+def start_run(db, owner, account_id, body, *, actor, brief=""):
+    """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt."""
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
         raise DomainError("HARNESS_DISABLED", DISABLED_HARNESSES[body.harness], 400)
@@ -545,6 +546,8 @@ def start_run(db, owner, account_id, body, *, actor):
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
         # A reused worktree behind its base: the host tells the agent to re-point this migration (optional on the wire).
         migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
+    if brief:
+        prompt = prompt[:PROMPT_CHARS - len(brief) - 2] + "\n\n" + brief
     token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,

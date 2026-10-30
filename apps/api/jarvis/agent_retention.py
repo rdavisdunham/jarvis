@@ -41,6 +41,7 @@ from .session_models import (
     AgentRun,
     AgentRunPlan,
     AgentSession,
+    AgentSwarm,
     AgentTurn,
 )
 
@@ -217,7 +218,7 @@ def sweep(db, clock=None):
     return counts
 
 
-EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentSession)
+EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentSession, AgentSwarm)
 # Not exported: run token material; agent_turns (up to 64 MiB a day per owner, built in memory here; the host
 # keeps the transcript and GET /remotea/runs/{id} pages them); agent_commands, the host-facing journal (its
 # input texts are the `sent` history entries; a spawn payload carried a run token). docs/AGENT_CONTROL.md

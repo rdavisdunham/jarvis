@@ -465,3 +465,28 @@ class MigrationReservation(Base):
     status: Mapped[str] = mapped_column(String(20), default="held", server_default="held")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AgentSwarm(Base):
+    """A swarm plan (swarm.py): a project's open tasks grouped into batches that run in sequence, the runs inside a
+    batch in parallel. `batches` is [{id, reason, state: pending|running|settled, started_at, settled_at, items:
+    [{task_id, run_id, error, retries}]}], `tasks` the planner's facts per task ({title, key, repo, target, blocked_by,
+    areas, why}), `excluded` [{task_id, title, reason}] and `planner` how the grouping was made (model or fallback)."""
+    __tablename__ = "agent_swarms"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str | None] = mapped_column(ForeignKey("user_accounts.id"))
+    record_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id"), index=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    # draft (nothing started) | running (a batch started; the next waits for Start or auto_continue) | done | canceled
+    state: Mapped[str] = mapped_column(String(20), default="draft")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    cap: Mapped[int] = mapped_column(Integer, default=3)  # Working runs per remotea host at once.
+    auto_continue: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    harness: Mapped[str] = mapped_column(String(20), default="claude")
+    batches: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    tasks: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    excluded: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    planner: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

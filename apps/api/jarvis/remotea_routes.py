@@ -16,7 +16,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from . import agent_control as control
-from . import agent_link, agent_plan, bot_access
+from . import agent_link, agent_plan, bot_access, swarm
 from . import agent_receipts as receipts
 from . import agent_retention as retention
 from . import run_coordinator as coordinator
@@ -627,3 +627,50 @@ def decline_pending(identity: UUID, user: User):
     with session_scope() as db:
         writable(db, user)
         return control.decide(db, user.owner_id, str(identity), confirm=False, via="app", actor=actor_for(user))
+
+
+# ---------------------------------------------------------------- swarm mode (swarm.py)
+
+
+@router.get("/swarms")
+def swarms(user: User, active: bool = False, limit: int = Query(20, ge=1, le=50)):
+    # Readable after remotea is turned off, like runs.
+    with session_scope() as db:
+        owner_only(db, user)
+        return {"items": swarm.list_swarms(db, user.owner_id, active=active, limit=limit)}
+
+
+@router.post("/swarms")
+def create_swarm(body: swarm.CreateInput, user: User):
+    """Play on a project: plan its open tasks into batches. Starts nothing; an open plan for the project comes back
+    as it is unless `fresh`."""
+    return swarm.create(session_scope, user.owner_id, user.account_id, body, check=lambda db: writable(db, user))
+
+
+@router.get("/swarms/{identity}")
+def swarm_detail(identity: UUID, user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        return swarm.public(db, swarm.load(db, user.owner_id, str(identity), lock=False))
+
+
+@router.post("/swarms/{identity}/edit")
+def edit_swarm(identity: UUID, body: swarm.EditInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return swarm.edit(db, user.owner_id, str(identity), body)
+
+
+@router.post("/swarms/{identity}/start")
+def start_swarm(identity: UUID, body: swarm.StartInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return swarm.start(db, user.owner_id, str(identity), body, actor=actor_for(user))
+
+
+@router.post("/swarms/{identity}/cancel")
+def cancel_swarm(identity: UUID, body: swarm.CancelInput, user: User):
+    # Like stop, cancel stays available after remotea is turned off: it only keeps later batches from starting.
+    with session_scope() as db:
+        owner_only(db, user)
+        return swarm.cancel(db, user.owner_id, str(identity), body)

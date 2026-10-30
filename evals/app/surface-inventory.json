@@ -1629,6 +1629,48 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/swarms",
+      "handler": "swarms",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/swarms",
+      "handler": "create_swarm",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/swarms/{identity}",
+      "handler": "swarm_detail",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/swarms/{identity}/cancel",
+      "handler": "cancel_swarm",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/swarms/{identity}/edit",
+      "handler": "edit_swarm",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/swarms/{identity}/start",
+      "handler": "start_swarm",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/targets",
       "handler": "targets",
       "source": "apps/api/jarvis/remotea_routes.py",

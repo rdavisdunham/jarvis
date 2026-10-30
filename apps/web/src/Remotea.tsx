@@ -18,6 +18,7 @@ import {
 import { postAction } from "./api";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { WorktreeMaintenance } from "./WorktreeMaintenance";
+import { SwarmList } from "./Swarm";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
@@ -102,6 +103,7 @@ export function Remotea() {
     <RemoteaReadiness onlyWhenNotReady/>
     <PendingControls/>
     <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged}/>
+    <SwarmList onOpenRun={openRun}/>
     <UnmergedList items={unmerged}/>
     <WorktreeMaintenance/>
     <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
