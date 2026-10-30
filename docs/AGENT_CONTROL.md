@@ -357,15 +357,23 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /runs` | yes | start (above) |
 | `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses`, `task` |
 | `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
-| `POST /runs/{id}/message {text, mode}` | yes | queue or steer |
-| `POST /runs/{id}/stop {mode}` | no (viewers refused) | stop stays available after remotea is turned off |
-| `POST /runs/{id}/approve` | yes | |
+| `POST /runs/{id}/message {text, mode, expected_revision?}` | yes | queue or steer |
+| `POST /runs/{id}/stop {mode, expected_revision?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
+| `POST /runs/{id}/approve {expected_revision}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
 | `GET`/`POST /targets` | yes | saved and advertised targets |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
 
 The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
-questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve. Task details
+questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve.
+
+The drawer (and the side panel, which keys it by run id so draft text, busy state and scroll are per run)
+binds every control to the run it has loaded, never to the id it was asked for: a run load is latest-only
+(`remotea-model.ts` `latestOnly`/`latestRun`: switching runs aborts the earlier request and a late reply,
+or one for another run, is dropped), controls stay disabled until the loaded run is the requested one, and
+each URL and body comes from `runAction`. Message, Steer, Re-plan, Verify now, the verify command,
+Freestyle, Approve and the plan review send `expected_revision` = the loaded run's `state_revision`; Stop
+does not. A `REVISION_CONFLICT` shows "This run changed; reloaded" and reloads the run instead of an error. Task details
 show **Run** only while remotea is on, disabled with a reason when no host is connected, and **Open run**
 while one is active.
 
@@ -554,10 +562,11 @@ completion.
 | Route | Gated | |
 |---|---|---|
 | `POST /interviews/{id}/answers` | yes | interview form |
-| `POST /runs/{id}/replan {reason?}` | yes | |
-| `POST /runs/{id}/verify` | yes | on-demand verification |
-| `POST /runs/{id}/verify-config {verify_id}` | yes | set the plan's verify command mid-run (new revision) |
-| `POST /runs/{id}/freestyle {enabled}` | yes | judge, verify, cap and gap prompts off while on |
+| `POST /runs/{id}/replan {reason?, expected_revision?}` | yes | |
+| `POST /runs/{id}/verify {expected_revision?}` | yes | on-demand verification; the body is optional |
+| `POST /runs/{id}/verify-config {verify_id, expected_revision?}` | yes | set the plan's verify command mid-run (new revision) |
+| `POST /runs/{id}/freestyle {enabled, expected_revision?}` | yes | judge, verify, cap and gap prompts off while on |
+| `POST /runs/{id}/plan-review {decisions, verify, completion_policy, expected_revision}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale) |
 | `POST /auto-complete {enabled}` | yes | rollout flag |
 
 The run drawer adds the interview form (one form for all questions), success criteria with the latest
@@ -629,7 +638,7 @@ in `VOICE_MUTATIONS`:
 | `control.stop` | target, `mode: interrupt\|kill` | |
 | `control.answer` | target, `question_id` + `answers`, or `interview_id` + `responses` | a run question or the planning interview |
 | `control.confirm` | `pending_id?`, `decision: confirm\|decline`, `execution_target_id?` | the owner's yes to a proposed start/message (below); a start that asked where to run takes the chosen target |
-| `control.approve` | target? | immediate: approves a run that is `awaiting_approval` (`agent_control.approve`); any other state is refused with `NOT_AWAITING_APPROVAL` naming the state |
+| `control.approve` | target? | immediate: approves a run that is `awaiting_approval` (`agent_control.approve`; the server supplies `expected_revision` from the run it checked); any other state is refused with `NOT_AWAITING_APPROVAL` naming the state |
 | `control.plan_review` | target?, `decisions: [{id, accept, text?}]`, `verify?`, `completion_policy?` | immediate: the owner's decisions on a `plan_review` (`agent_plan.review_plan`; the server supplies `expected_revision`); otherwise `NO_PLAN_REVIEW` |
 | `control_status` (read) | target? | active runs, their open questions/interview, `plan_review` proposals, the judge's `awaiting_approval` summary, open proposals (`pending`, with target options), finished in the last 24 h, hosts |
 
@@ -754,8 +763,8 @@ already exists there. Turning remotea off revokes the link key; a live host stil
   removal, so a plan that only adds never pauses. When the planning turn ends with proposals,
   `settle_planning` moves the run to `needs_you` with reason `plan_review` instead of executing; the page
   shows each change (original, proposed, the agent's reason) with Accept / Keep and an editable text.
-  `POST /api/v1/remotea/runs/{id}/plan-review {decisions:[{id, accept, text?}], verify, completion_policy}`
-  writes the accepted changes to the task as a human edit, freezes revision N+1 without proposals and
+  `POST /api/v1/remotea/runs/{id}/plan-review {decisions:[{id, accept, text?}], verify, completion_policy,
+  expected_revision}` (the revision is required: the decisions are about the proposals the reviewer saw) writes the accepted changes to the task as a human edit, freezes revision N+1 without proposals and
   starts execution; the execute prompt opens with what was accepted and kept.
 - `reason_detail` on a run: the full text behind the current state (the judge's notes for a judge-caused
   `needs_you`, the proposal summary for `plan_review`, else the transition's detail); `reason_text` stays

@@ -575,7 +575,8 @@ def test_approve_completes_the_task_as_a_human_and_settles_completed(host):
     result = start(host, task()["id"])
     attached(host, result["id"])
     with session_scope() as db:
-        approved = control.approve(db, OWNER, result["id"], control.ApproveInput(), actor=HUMAN)
+        approved = control.approve(db, OWNER, result["id"], control.ApproveInput(
+            expected_revision=db.get(AgentRun, result["id"]).state_revision), actor=HUMAN)
     assert approved["state"] == "stopping" and approved["task"]["status"] == "completed"
     [stop] = commands(result["id"], "stop")
     with session_scope() as db:
