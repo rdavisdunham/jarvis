@@ -122,3 +122,12 @@
 .remotea-proposal.change-remove .remotea-proposal-was, .remotea-proposal-was + .remotea-proposal-new ~ .remotea-proposal-was { text-decoration: none; }
 .remotea-proposal-new textarea { width: 100%; resize: vertical; }
 .remotea-proposal-why { margin: 0; padding: 4px 10px; border-left: 3px solid var(--done); color: var(--ink-2); font-size: 0.85rem; font-style: italic; overflow-wrap: anywhere; }
+
+/* While the run drawer is open, keep the floating Eri launcher off its composer and Approve button:
+   beside the drawer on wide screens, hidden on narrow ones where the drawer is the whole screen. */
+@media (min-width: 720px) {
+  body.run-drawer-open .chat-launcher { right: calc(min(520px, 100vw) + max(24px, env(safe-area-inset-right))); }
+}
+@media (max-width: 719px) {
+  body.run-drawer-open .chat-launcher { display: none; }
+}

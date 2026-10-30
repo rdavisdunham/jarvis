@@ -440,6 +440,12 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
+  // The floating Eri launcher sits bottom-right, over this drawer's composer and Approve button: while the
+  // drawer is open the shell moves it clear (remotea.css, body.run-drawer-open).
+  useEffect(() => {
+    document.body.classList.add("run-drawer-open");
+    return () => document.body.classList.remove("run-drawer-open");
+  }, []);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
   const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
