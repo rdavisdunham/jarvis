@@ -251,7 +251,13 @@ export type Attempt = {
   verify_id: string; initiator: string; verdict: "met" | "not_met" | "needs_you" | null; gap: string | null; summary: string | null;
   criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
+  /** Why a verification did not pass (run_coordinator.classify_verify) and the one-line fix; null when it passed. */
+  category?: VerifyCategory | null; action?: string | null;
 };
+export type VerifyCategory = "tests_failed" | "infra_missing_binary" | "infra_missing_dependency" | "infra_database"
+  | "infra_timeout" | "infra_refused" | "infra_uncertain";
+/** The verification could not run on the host (setup, not the code): the run needs you, the agent gets no gap. */
+export const infraAttempt = (a: Pick<Attempt, "kind" | "category">) => a.kind === "verify" && !!a.category?.startsWith("infra_");
 /** What the agent proposes to change about what you set (agent_plan.plan_proposals); you accept or keep each. */
 export type Proposals = {
   criteria?: { id: string; change: "reword" | "remove"; text: string; proposed?: string; because: string }[];
@@ -304,7 +310,8 @@ export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options" | "ver
 /** `id` is stable across polls and older pages (the drawer keys bubbles and anchors its scroll by it); `turn` is set on
  *  an agent response so its bubble can show Clipped / Truncated by host and fetch the whole text. */
 export type TimelineEntry = { id: string; at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
-  tone: "plain" | "good" | "warn" | "attention"; who: "agent" | "you" | "eridani";
+  /** `setup`: a host setup problem (a verification that could not run), distinct from `warn` (failing tests, refusals). */
+  tone: "plain" | "good" | "warn" | "setup" | "attention"; who: "agent" | "you" | "eridani";
   turn?: { id: string; clipped: boolean; truncated: boolean } };
 
 export const TERMINAL_RUN_STATES: RunState[] = ["completed", "stopped", "capped", "failed"];
@@ -427,22 +434,25 @@ const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passe
   error: "error", superseded: "superseded" };
 const VERDICT_TEXT: Record<string, string> = { met: "criteria met", not_met: "not met yet", needs_you: "needs you" };
 export function attemptTitle(a: Attempt) {
+  if (infraAttempt(a)) return `Verification could not run · ${a.action || VERIFY_TEXT[a.status] || a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.kind === "verify") return `Verification ${a.verify_id} · ${VERIFY_TEXT[a.status] ?? a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.status === "done" && a.verdict) return "Judge · " + VERDICT_TEXT[a.verdict];
   if (a.status === "failed") return "Judge · no verdict (" + (a.non_verdict ?? "error") + ")";
   return "Judge · " + a.status;
 }
-function attemptTone(a: Attempt): TimelineEntry["tone"] {
+export function attemptTone(a: Attempt): TimelineEntry["tone"] {
+  if (infraAttempt(a)) return "setup";
   if (a.kind === "verify") return a.status === "passed" ? "good" : a.status === "running" ? "plain" : "warn";
   return a.verdict === "met" ? "good" : a.verdict === "needs_you" || a.status === "failed" ? "attention" : "plain";
 }
 
-function commandTitle(c: RunCommand) {
+export function commandTitle(c: RunCommand) {
   const what = c.kind === "input" ? (c.mode === "steer" ? "Steer" : "Message") : c.kind === "spawn" ? "Start" : c.kind === "stop" ? "Stop"
     : c.kind === "answer" ? "Answer" : c.kind === "verify" ? "Verify" : c.kind;
   const state = c.outcome?.state ?? c.status;
   const shown: Record<string, string> = { queued: "queued", sent: "sent", acked: "accepted by remotea", accepted: "accepted by remotea",
-    executed: "done", failed: "failed", rejected: "refused", uncertain: "delivery uncertain", expired: "expired", canceled: "canceled" };
+    executed: "done", failed: "failed", rejected: "refused by remotea",
+    uncertain: "delivery uncertain (remotea could not tell if it ran)", expired: "expired before remotea took it", canceled: "canceled" };
   return `${what} · ${shown[state] ?? state}`;
 }
 function commandTone(c: RunCommand): TimelineEntry["tone"] {

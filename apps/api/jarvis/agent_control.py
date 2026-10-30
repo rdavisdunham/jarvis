@@ -604,8 +604,8 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
-FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge",
-                     "pr_unknown"}
+FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "verify_infra", "no_progress", "turn_cap",
+                     "awaiting_merge", "pr_unknown"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -643,6 +643,8 @@ def public_attempt(a):
                    "verdict": result.get("verdict"), "gap": result.get("gap"), "summary": result.get("summary"),
                    "criteria": result.get("criteria"), "rules": result.get("rules"),
                    "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
+                   # Why a verification did not pass and what to do (run_coordinator.classify_verify).
+                   "category": result.get("category"), "action": result.get("action"),
                    "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
                    "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
                    "created_at": a.created_at, "updated_at": a.updated_at})
@@ -681,7 +683,14 @@ def run_turns(run):
 
 def reason_detail(db, run):
     """The full text behind the current state, when there is one: the judge's notes for a judge-caused needs_you,
-    otherwise the detail recorded with the transition (REASON_TEXT is the one-line version)."""
+    otherwise the detail recorded with the transition (REASON_TEXT is the one-line version). verify_infra shows the
+    host setup action from the verification that could not run."""
+    if run.state_reason == "verify_infra":
+        recent = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify")
+                            .order_by(AgentAttempt.created_at.desc()).limit(5))
+        action = next(((a.result or {}).get("action") for a in recent if (a.result or {}).get("action")), "")
+        if action:
+            return action[:300]
     if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown"):
         verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                        AgentAttempt.status == "done")
@@ -1639,6 +1648,9 @@ def spoken_run(db, run):
               "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
               if interview else None,
               "linear": {k: (v or {}).get("status") for k, v in linear.items()} or None}
+    if run.state == "needs_you" and run.state_reason == "verify_infra":
+        # Not a failing test: the verification could not run, and the owner fixes the host.
+        spoken["why"] = "host setup problem: " + (item["reason_detail"] or "the verification could not run on the host")
     if run.state == "needs_you" and run.state_reason == "plan_review":
         plan = coordinator.frozen(db, run)
         if plan is not None and plan.proposals:

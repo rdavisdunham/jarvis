@@ -56,6 +56,8 @@
 .remotea-timeline li { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; min-width: 0; }
 .remotea-timeline li.tone-good { border-color: var(--done); }
 .remotea-timeline li.tone-warn { border-color: var(--danger); }
+/* A host setup problem (a verification that could not run): amber, not the red of a failing test. */
+.remotea-timeline li.tone-setup { border-color: var(--due-today); }
 .remotea-timeline li.tone-attention { border-color: var(--violet); }
 .remotea-timeline small { color: var(--ink-3); }
 .remotea-timeline p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 0.9rem; max-height: 40vh; overflow: auto; }
@@ -101,6 +103,7 @@
 .remotea-bubble.who-eridani::before { content: "※"; }
 .remotea-bubble.tone-good::before { color: var(--done); }
 .remotea-bubble.tone-warn::before { color: var(--danger); }
+.remotea-bubble.tone-setup::before { color: var(--due-today); }
 .remotea-bubble.tone-attention::before { color: var(--violet); }
 .remotea-bubble.system { padding: 3px 0; border-top: 0; }
 .remotea-bubble.system .remotea-bubble-head { color: var(--ink-3); font-weight: 400; }

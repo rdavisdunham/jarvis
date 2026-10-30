@@ -77,7 +77,7 @@ describe("run drawer model", () => {
     };
     const entries = timeline(detail);
     expect(entries.map(e => e.title)).toEqual([
-      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused"]);
+      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused by remotea"]);
     expect(entries[0].detail).toBe("by you");
     // The host cut this response: a label on the bubble, not text appended to the response.
     expect(entries[4]).toMatchObject({ id: "turn:t", detail: "Done step one", turn: { id: "t", clipped: false, truncated: true } });
