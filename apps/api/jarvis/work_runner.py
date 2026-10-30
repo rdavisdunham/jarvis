@@ -21,7 +21,7 @@ from .memory_service import prompt_context
 from .models import AgentWork, Command, Conversation, Job, Source, now
 from .tool_catalog import ToolSession
 from .responses_adapter import prompt_cache_key
-from .tools import call_tool, instructions, registry
+from .tools import call_tool, instructions, registry, tool_json
 from .ui_control import get_context
 from .voice_control import VOICE_END_POLICY, VOICE_END_TOOL
 from .work_crypto import unseal
@@ -754,7 +754,7 @@ async def perform(request_id):
                         "role": "tool",
                         "name": fn["name"],
                         "tool_call_id": call["id"],
-                        "content": json.dumps(outcome),
+                        "content": tool_json(outcome),
                     }
                 )
                 state["tool_index"] += 1

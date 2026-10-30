@@ -12,7 +12,7 @@ from .domain import DomainError, advisory, capture_source, enqueue_job, owned, p
 from .memory_service import prompt_context
 from .models import Conversation, Job, Source, now
 from .tool_catalog import ToolSession
-from .tools import call_tool, instructions, registry
+from .tools import call_tool, instructions, registry, tool_json
 from .ui_control import get_context
 
 
@@ -266,7 +266,7 @@ async def chat(
                             "role": "tool",
                             "name": fn["name"],
                             "tool_call_id": call["id"],
-                            "content": json.dumps(outcome),
+                            "content": tool_json(outcome),
                         }
                     )
                     if voice_ended:
