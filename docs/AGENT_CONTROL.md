@@ -90,6 +90,28 @@ owns the host: an older connection in the same process is closed with 4001 at on
 process is fenced the next time it touches the database. Disconnect clears the lease only if the epoch
 still matches, so a superseded socket never marks the live one offline. Startup never resets hosts.
 
+**Wake (when a queued command is sent).** Sockets live in the web processes (`LINKS` in
+`agent_link.py` is per process; uvicorn runs several workers, and Railway may run several replicas),
+but commands are also queued by the worker (judge gap prompts, interview planning prompts, verify,
+replan). `run_coordinator.command()` therefore does two things inside the queuing transaction:
+
+- `wake_after_commit`: after commit, sets the link's wakeup event if *this* process holds the socket
+  (no database round trip).
+- `agent_link.notify_host`: `SELECT pg_notify('agent_link', <host_id>)`. Postgres delivers a NOTIFY
+  only when the transaction commits, and never on rollback, so a link cannot drain before the command
+  row is visible. Duplicate notifies in one transaction are folded into one.
+
+Each web process runs `agent_link.listen()` as a lifespan task: one dedicated autocommit psycopg
+connection outside the SQLAlchemy pool (`application_name = eridani-agent-link`; LISTEN needs the direct
+connection `docs/CLOUD_MIGRATION.md` already requires, not a transaction pooler) that `LISTEN`s on
+`agent_link` and calls `wake(host_id)` for each notify. A notify for a host whose socket is in another
+process or replica (or nowhere) finds no local link and is ignored; that process's own listener wakes
+it. A quiet listener runs `SELECT 1` every 30 s (`LISTEN_IDLE_SECONDS`); any error reconnects with
+backoff (0.5 s doubling to 30 s, `LISTEN_BACKOFF`). Notifies sent while it is disconnected are lost, so
+every (re)connect wakes all local links once. Waking is only a hint: the drain itself is
+`drain()`'s `FOR UPDATE SKIP LOCKED` query, and the 30-second tick (`TICK_SECONDS`) still drains every
+link, so a down listener means commands wait for the tick, not that they are lost.
+
 ## Frames
 
 Every frame is JSON text: `{v: 1, id, t, at, conn_epoch?, ...}`. `id` is the transport id (≤100 chars).
@@ -293,6 +315,10 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
 | `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
+
+Commands are rows in `agent_commands` (status `queued`). Whichever process queues one, the host's
+socket drains it within about a second of the commit (see "Wake" under Connection lifecycle), or at
+the next 30-second tick if no wake arrives.
 
 **Deterministic spawn surface.** remotea names a spawned surface
 `surf-eri-<sha256(run_id + "\0" + generation + "\0" + attempt) hex, first 32>` (`run_coordinator.surf_for`).
