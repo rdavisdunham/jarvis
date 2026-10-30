@@ -11,10 +11,11 @@ import re
 from datetime import timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import and_, not_, or_, select
 
 from . import agent_link
 from . import agent_sessions as sessions
+from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .config import get_settings
@@ -160,7 +161,8 @@ def resolve_target(db, owner, task, explicit=None):
         "task_id": task.id,
         "candidates": [public_target(t) for t in candidates or targets],
         "advertised": advertised(db, owner),
-        "records": [{"id": r.id, "title": r.title} for r in records],
+        # type_id lets the picker default to the nearest record that is not the task itself (its project).
+        "records": [{"id": r.id, "title": r.title, "type_id": r.type_id} for r in records],
     })
 
 
@@ -178,6 +180,12 @@ def save_target(db, owner, body):
     if body.record_id and target is None:
         target = db.scalar(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner,
                                                          ExecutionTarget.record_id == body.record_id))
+    elif target is None and body.task_id:
+        # "Only this task" with a target already saved for a record: bind the task to it, do not copy it.
+        target = db.scalar(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner,
+                                                         ExecutionTarget.host_id == host.id,
+                                                         ExecutionTarget.host_target == body.host_target)
+                           .order_by(ExecutionTarget.created_at).limit(1))
     if target is None:
         target = ExecutionTarget(owner_id=owner, host_id=host.id, host_target=body.host_target, record_id=body.record_id)
         db.add(target)
@@ -242,7 +250,8 @@ def freeze(db, owner, run, task):
                         criteria=list(task.success_criteria or []), verify=task.verify,
                         completion_policy=task.completion_policy or "code_ready",
                         required_children=[c.id for c in coordinator.children(db, task)
-                                           if any(s.get("task_id") == c.id for s in task.steps or [])])
+                                           if any(s.get("task_id") == c.id for s in task.steps or [])],
+                        migration=numbers.carry(db, run))
     db.add(plan)
     run.plan_revision, run.completion_policy = 1, plan.completion_policy
     return plan
@@ -256,6 +265,16 @@ def spawn_prompt(db, run, plan):
 def host_harness(host, harness):
     caps = host.caps or {}
     return "spawn" in caps.get("caps", []) and bool((caps.get("harnesses", {}).get(harness) or {}).get("spawn"))
+
+
+def check_host(owner, task, host, harness):
+    """The refusals between a resolved target and a spawn; start_run raises them, a proposal reports them."""
+    if host is None or host.owner_id != owner:
+        raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
+    if not agent_link.connected(host):
+        raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
+    if not host_harness(host, harness):
+        raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {harness} yet.", 409)
 
 
 def start_run(db, owner, account_id, body, *, actor):
@@ -272,12 +291,7 @@ def start_run(db, owner, account_id, body, *, actor):
         raise DomainError("RUN_ACTIVE", "An agent run is already working on this task.", 409, data={"run_id": active.id})
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
-    if host is None or host.owner_id != owner:
-        raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
-    if not agent_link.connected(host):
-        raise DomainError("HOST_OFFLINE", "The remotea server is not connected.", 409, data={"host_id": host.id})
-    if not host_harness(host, body.harness):
-        raise DomainError("HARNESS_UNAVAILABLE", f"This remotea server cannot start {body.harness} yet.", 409)
+    check_host(owner, task, host, body.harness)
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
@@ -292,7 +306,7 @@ def start_run(db, owner, account_id, body, *, actor):
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
     db.flush()
-    verify = None
+    verify, migration = None, None
     if interview:
         from . import agent_prompts as prompts
 
@@ -300,6 +314,8 @@ def start_run(db, owner, account_id, body, *, actor):
     else:
         plan = freeze(db, owner, run, task)
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
+        # A reused worktree behind its base: the host tells the agent to re-point this migration (optional on the wire).
+        migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
     token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
@@ -307,6 +323,7 @@ def start_run(db, owner, account_id, body, *, actor):
                    "base": run.base_branch},
         "task_id": task.id, "title": task.title[:200].replace("\n", " "), "group": "Eridani",
         "prompt": prompt, "run_token": token, "env": {}, **({"verify": verify} if verify else {}),
+        **({"migration": migration} if migration else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -493,6 +510,23 @@ def reason_detail(db, run):
     return ""
 
 
+def base_info(db, run, host):
+    """What the run is based on (spawn outcome) and how far behind it is now (the latest worktrees.report row for
+    its branch), or None for a host that did not say (older remotea)."""
+    facts = run.base_facts or {}
+    if not facts.get("base_sha"):
+        return None
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    report = ((host.caps or {}).get("worktrees") or {}) if host else {}
+    row = next((w for w in report.get("worktrees") or [] if isinstance(w, dict) and w.get("branch") == run.branch
+                and (target is None or w.get("target") == target.host_target)), None)
+    live = isinstance((row or {}).get("behind"), int)
+    return {"sha": facts["base_sha"], "ref": facts.get("base_ref") or run.base_branch, "branch": run.base_branch,
+            "fetch": facts.get("fetch"), "behind": row["behind"] if live else facts.get("behind"),
+            "behind_ref": (row.get("base_ref") or row.get("base")) if live else facts.get("base_ref"),
+            "as_of": report.get("at") if live else facts.get("at"), "live": live}
+
+
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
@@ -501,7 +535,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     result = {
         "id": run.id, "task": {"id": task.id, "title": task.title, "status": task.status} if task else None,
         "state": run.state, "state_revision": run.state_revision, "state_reason": run.state_reason,
-        "reason_text": REASON_TEXT.get(run.state_reason, run.state_reason), "state_since": run.state_since,
+        # Never a raw token: an unmapped reason shows nothing (the card then shows how long ago the state began).
+        "reason_text": REASON_TEXT.get(run.state_reason, ""), "state_since": run.state_since,
         "generation": run.generation, "plan_revision": run.plan_revision, "tool": run.tool, "model": run.model,
         "branch": run.branch, "base_branch": run.base_branch, "worktree": run.worktree,
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
@@ -510,6 +545,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        "base": base_info(db, run, host),
         "reason_detail": reason_detail(db, run),
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
@@ -571,7 +607,7 @@ def unmerged(db, owner):
             if isinstance(row, dict) and not row.get("candidate"):
                 items.append({"host_id": host.id, "host_name": host.name, **{k: row.get(k) for k in (
                     "target", "path", "branch", "base", "ahead", "behind", "unpushed", "uncommitted", "untracked",
-                    "merged", "active", "reasons")}})
+                    "merged", "merged_reason", "base_ref", "active", "reasons")}})
     return encode({"items": items})
 
 
@@ -654,13 +690,71 @@ def work_message(row):
     return str((unseal(row.input_ciphertext) or {}).get("message") or "") if row else ""
 
 
+def proposed_target(db, owner, task):
+    """resolve_target for a proposal: the target, or None when the owner still has to choose (read-only)."""
+    try:
+        return resolve_target(db, owner, task)
+    except DomainError:
+        return None  # readiness() says why; confirm resolves again.
+
+
+def readiness(db, owner, row):
+    """What stands between a pending control.start and its run, checked without acting: no target chosen
+    (`needs_target`, with the picker's data in `need`), or the target's server offline or unable to start the
+    harness (`problems`). The proposal reports it to Eri, the remotea card shows it; confirm checks again."""
+    if row.tool != "control.start":
+        return {}
+    args = row.arguments or {}
+    out = {"needs_target": False, "need": None, "target": None, "problems": []}
+    task = db.get(Task, args.get("task_id"))
+    try:
+        if task is None or task.owner_id != owner:
+            raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
+        target = resolve_target(db, owner, task, args.get("execution_target_id"))
+        out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
+        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None,
+                   args.get("harness", "claude"))
+    except DomainError as error:
+        if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
+            return {**out, "needs_target": True, "need": error.data}
+        out["problems"].append({"code": error.code, "message": error.message})
+    return out
+
+
+def proposal(db, owner, result):
+    """A control_start proposal as Eri sees it: the pending row plus what still stands in its way, and what to
+    tell the owner about it. The picker's data stays on the remotea card."""
+    from .session_models import AgentPendingControl
+
+    row = db.get(AgentPendingControl, result.get("pending_id"))
+    if row is None or row.tool != "control.start":
+        return result
+    ready = readiness(db, owner, row)
+    told = []
+    if ready["needs_target"]:
+        told.append("No repository is chosen for this task yet: tell the owner to pick where it runs on the card on "
+                    "the remotea page (the choice is remembered for the task's project), which also confirms it. A "
+                    "yes in chat cannot start it until a place is chosen.")
+    for problem in ready["problems"]:
+        told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
+                    "fixed; the proposal stays open until it expires.")
+    return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
+            "target": ready["target"], "problems": ready["problems"],
+            **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
+
+
 def propose(db, owner, account, tool, args, actor):
     """control_start / control_message from Eri: resolve and validate now, act only after the owner confirms."""
     work = current_work(db)
     if tool == "control.start":
         task = owned(db, Task, args.task_id or task_by_name(db, owner, args.task), owner)
         arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
-        summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d"
+        # Where it runs is settled now when it can be (the card then names it); without a target the card asks.
+        target = proposed_target(db, owner, task)
+        if target is not None:
+            arguments["execution_target_id"] = target.id
+        summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d" + (
+            f" in {(target.name or target.host_target)[:100]}" if target is not None else "")
     else:
         run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
         task = db.get(Task, run.task_id)
@@ -669,37 +763,87 @@ def propose(db, owner, account, tool, args, actor):
         summary = f"{verb} the agent on \u201c{(task.title if task else '')[:200]}\u201d: \u201c{args.text[:300]}\u201d"
     from .session_models import AgentPendingControl
 
+    same = db.scalar(select(AgentPendingControl).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == account, AgentPendingControl.tool == tool,
+        AgentPendingControl.arguments == arguments, AgentPendingControl.status == "pending",
+        AgentPendingControl.expires_at > now()).order_by(AgentPendingControl.created_at.asc()).limit(1))
+    if same is not None:
+        # The model proposed the same thing again (a new chat turn does not carry the earlier pending_id).
+        # If this request is the owner's plain yes to that proposal, it is the confirmation; otherwise hand the
+        # existing proposal back rather than stacking another card on the remotea page.
+        via = owners_yes(db, owner, same, work)
+        if via:
+            return decide(db, owner, same.id, confirm=True, via=via, actor=actor)
+        return {**pending_reply(same), "next": "This was already proposed and is still waiting for the owner. " + NEXT}
     row = AgentPendingControl(owner_id=owner, account_id=account, work_id=work.id if work else None, tool=tool,
                               arguments=arguments, summary=summary, run_id=run_id, status="pending",
                               actor=actor.record(), decided_via="", expires_at=now() + PENDING_TTL)
     db.add(row)
     db.flush()
     emit(db, owner, "agent.changed", run_id or row.id)
-    return {"status": "pending_confirmation", "pending_id": row.id, "summary": summary,
-            "expires_at": row.expires_at.isoformat(),
-            "next": "Nothing was sent yet. Read the summary to the owner and ask them to confirm. They can tap "
-                    "Confirm on the remotea page, or answer yes in their next message; then call control_confirm "
-                    "with this pending_id. Never confirm on their behalf."}
+    return {**pending_reply(row), "next": "Nothing was sent yet. " + NEXT}
+
+
+NEXT = ("Read the summary to the owner and ask them to confirm. They can tap Confirm on the remotea page, or "
+        "answer yes in their next message; then call control_confirm (pending_id optional: the newest pending "
+        "action). Never confirm on their behalf, and never call control_start again after their yes.")
+
+
+def pending_reply(row):
+    return {"status": "pending_confirmation", "pending_id": row.id, "summary": row.summary,
+            "expires_at": row.expires_at.isoformat()}
+
+
+def owners_yes(db, owner, row, work):
+    """Is this request the owner's own plain yes to `row`? The same rule spoken_confirmation enforces: a later
+    request of the same account, not the one that proposed it, whose whole message is a short affirmation, and
+    `row` is the newest proposal that request could mean. Returns the channel ("voice"/"chat") or None."""
+    from .models import Job
+    from .session_models import AgentPendingControl
+
+    if work is None or work.credential_id or row.work_id == work.id or row.account_id != work.account_id:
+        return None
+    # The yes must be unambiguous: no *different* action proposed after this one (identical twins are this one).
+    later = db.scalar(select(AgentPendingControl.id).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+        AgentPendingControl.status == "pending", not_proposed_by(work),
+        AgentPendingControl.created_at > row.created_at,
+        not_(and_(AgentPendingControl.tool == row.tool, AgentPendingControl.arguments == row.arguments))).limit(1))
+    job = db.get(Job, work.id)
+    if later or job is None or job.created_at < row.created_at or not AFFIRMATIVE.match(work_message(work)[:80]):
+        return None
+    return "voice" if work.voice_session_id else "chat"
 
 
 def public_pending(row):
     return encode({"id": row.id, "tool": row.tool, "summary": row.summary, "run_id": row.run_id,
+                   "task_id": (row.arguments or {}).get("task_id") if row.tool == "control.start" else None,
                    "status": row.status, "created_at": row.created_at, "expires_at": row.expires_at,
                    "decided_via": row.decided_via, "decided_at": row.decided_at})
 
 
 def pending_list(db, owner):
+    """The remotea page's open proposals, each with readiness() so a start without a target shows the picker."""
+    from sqlalchemy import update
+
     from .session_models import AgentPendingControl
 
+    # decide() refuses an expired row but its transaction rolls back; settle them here so they read as expired.
+    db.execute(update(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
+                                                 AgentPendingControl.status == "pending",
+                                                 AgentPendingControl.expires_at <= now()).values(status="expired"))
     rows = db.scalars(select(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
                                                         AgentPendingControl.status == "pending",
                                                         AgentPendingControl.expires_at > now())
                       .order_by(AgentPendingControl.created_at.desc()).limit(20))
-    return [public_pending(r) for r in rows]
+    return [{**public_pending(r), **readiness(db, owner, r)} for r in rows]
 
 
-def decide(db, owner, pending_id, *, confirm, via, actor):
-    """Run (or drop) a pending control. `via` is "app" for the remotea page, else "voice"/"chat" (control_confirm)."""
+def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=None):
+    """Run (or drop) a pending control. `via` is "app" for the remotea page, else "voice"/"chat" (control_confirm).
+
+    A start that still needs a target is refused with NEEDS_TARGET and stays pending (the transaction rolls
+    back); the page's picker then confirms again with `execution_target_id`."""
     from .access import actor as account
     from .session_models import AgentPendingControl
 
@@ -711,7 +855,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor):
         raise DomainError("PENDING_CLOSED", f"That agent action was already {row.status}.", 409,
                           data={"status": row.status})
     if row.expires_at <= now():
-        row.status = "expired"
+        # Refused, so this transaction rolls back: pending_list() marks the row expired.
         raise DomainError("PENDING_EXPIRED", "That agent action expired; ask again.", 409)
     row.decided_at, row.decided_via = now(), via
     if not confirm:
@@ -723,7 +867,9 @@ def decide(db, owner, pending_id, *, confirm, via, actor):
     args = row.arguments
     if row.tool == "control.start":
         result = start_run(db, owner, row.account_id or account(db, owner),
-                           StartInput(task_id=args["task_id"], harness=args.get("harness", "claude")), actor=confirmed)
+                           StartInput(task_id=args["task_id"], harness=args.get("harness", "claude"),
+                                      execution_target_id=execution_target_id or args.get("execution_target_id")),
+                           actor=confirmed)
         run = coordinator.load(db, owner, result["id"])
         coordinator.note(run, "confirmed", pending_id=row.id, proposed_by=row.actor, via=via)
         row.run_id = result["id"]
@@ -733,6 +879,11 @@ def decide(db, owner, pending_id, *, confirm, via, actor):
         result = send_message(db, owner, args["run_id"], MessageInput(text=args["text"], mode=args["mode"]),
                               actor=confirmed)
     row.status, row.result = "confirmed", {"run_id": result.get("id")}
+    # Identical proposals still open (from before duplicates were folded) are settled by this one.
+    for twin in db.scalars(select(AgentPendingControl).where(
+            AgentPendingControl.owner_id == owner, AgentPendingControl.tool == row.tool, AgentPendingControl.arguments == row.arguments,
+            AgentPendingControl.status == "pending", AgentPendingControl.id != row.id)):
+        twin.status, twin.decided_at, twin.decided_via, twin.result = "superseded", now(), via, {"by": row.id}
     return {**public_pending(row), "run": result}
 
 
@@ -744,24 +895,37 @@ def spoken_confirmation(db, owner, args):
     work = current_work(db)
     if work is None or work.credential_id:
         raise DomainError("CONFIRM_IN_APP", "Confirm this on the remotea page.", 403)
-    row = db.get(AgentPendingControl, args.pending_id)
-    if row is None or row.owner_id != owner:
-        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    row = pending_for(db, owner, work, args.pending_id)
     if args.decision == "decline" or row.status != "pending":
         return "chat"  # Declining needs no proof; a closed one is refused by decide().
-    newest = db.scalar(select(AgentPendingControl.id).where(
-        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
-        AgentPendingControl.status == "pending").order_by(AgentPendingControl.created_at.desc()).limit(1))
-    from .models import Job
-
-    job = db.get(Job, work.id)
-    if (row.work_id == work.id or row.account_id != work.account_id or newest != row.id
-            or job is None or job.created_at < row.created_at
-            or not AFFIRMATIVE.match(work_message(work)[:80])):
+    via = owners_yes(db, owner, row, work)
+    if not via:
         raise DomainError("CONFIRMATION_REQUIRED",
                           "Only the owner's own yes, in their next message, confirms this. Ask them, or let them "
                           "tap Confirm on the remotea page.", 409, data={"pending_id": row.id})
-    return "voice" if work.voice_session_id else "chat"
+    return via
+
+
+def not_proposed_by(work):
+    from .session_models import AgentPendingControl
+
+    return or_(AgentPendingControl.work_id.is_(None), AgentPendingControl.work_id != work.id)
+
+
+def pending_for(db, owner, work, pending_id):
+    """The named pending action, or without an id the newest one of this account not proposed by this request."""
+    from .session_models import AgentPendingControl
+
+    if pending_id:
+        row = db.get(AgentPendingControl, pending_id)
+    else:
+        row = db.scalar(select(AgentPendingControl).where(
+            AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
+            AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now(),
+            not_proposed_by(work)).order_by(AgentPendingControl.created_at.desc()).limit(1))
+    if row is None or row.owner_id != owner:
+        raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
+    return row
 
 
 def journal_control(db, owner, tool, command_id, result):
@@ -787,6 +951,8 @@ def mutate(db, owner, tool, args, command_id):
     """domain.mutate entrance for control.* (voice, chat). start and message are two-phase (propose, then the
     owner confirms); status, stop and answer stay immediate."""
     result = control_command(db, owner, tool, args)
+    if tool == "control.start" and isinstance(result, dict) and result.get("status") == "pending_confirmation":
+        result = proposal(db, owner, result)
     journal_control(db, owner, tool, command_id, result)
     return result
 
@@ -802,7 +968,8 @@ def control_command(db, owner, tool, args):
         return propose(db, owner, account(db, owner), tool, args, actor)
     if tool == "control.confirm":
         via = spoken_confirmation(db, owner, args)
-        return decide(db, owner, args.pending_id, confirm=args.decision == "confirm", via=via, actor=actor)
+        row = pending_for(db, owner, current_work(db), args.pending_id)
+        return decide(db, owner, row.id, confirm=args.decision == "confirm", via=via, actor=actor)
     if tool == "control.stop":
         return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
     if tool == "control.answer":

@@ -1,18 +1,18 @@
 {
   "version": 2,
   "registry": {
-    "cases": 1081,
+    "cases": 1106,
     "types": {
       "contracts": 456,
       "pipeline": 275,
-      "integration": 125,
+      "integration": 150,
       "agent": 125,
       "browser": 50,
       "voice": 50
     },
     "fully_bound": 239,
     "component_cases": 225,
-    "sha256": "f1e5084bcc825656f940a5995f8834c38834e7dcfb0a778b3a93a1681e69cd7c"
+    "sha256": "9b0e53abe5854ba3669da83c3d9d1b864809b51007d8537bcecfdd3f53842bea"
   },
   "features": {
     "accounts": {
@@ -163,6 +163,310 @@
           "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [
             "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        }
+      ]
+    },
+    "agent_control": {
+      "catalog": 25,
+      "fully_bound": 0,
+      "component_cases": 0,
+      "supporting_suites": [
+        "tests/test_agent_link.py",
+        "tests/test_agent_runs.py",
+        "tests/test_agent_security.py",
+        "tests/test_agent_voice.py"
+      ],
+      "remaining": [
+        {
+          "case_id": "agent_control.01",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.02",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.03",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.04",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.05",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.06",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.07",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.08",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.09",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.10",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.11",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.12",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.13",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.14",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.15",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.16",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.17",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.18",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.19",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.20",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.21",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.22",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.23",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.24",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "agent_control.25",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
             "invariants.1",
             "invariants.2",
             "invariants.3"

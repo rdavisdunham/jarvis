@@ -52,7 +52,7 @@ What it can't file appears under **Unfiled**. A manual or agent `session_link` a
 
 ## Letting agents file their own session (optional)
 
-Add Eridani's MCP server (`/api/v1/external/mcp/`) to Claude Code or Codex with a `sessions:write` key. Agents can then call:
+Add Eridani's MCP server (`/api/v1/external/mcp/`, with or without the trailing slash) to Claude Code or Codex with a `sessions:write` key. Agents can then call:
 - `session_search` to find past sessions
 - `session_link` to file the current session
 

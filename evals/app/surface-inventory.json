@@ -892,6 +892,13 @@
       "feature": "external_agents"
     },
     {
+      "method": "WEBSOCKET",
+      "path": "/api/v1/external/agents/link",
+      "handler": "agent_link",
+      "source": "apps/api/jarvis/agent_link.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/external/agents/parity",
       "handler": "agent_parity",
@@ -1350,6 +1357,20 @@
       "method": "POST",
       "path": "/api/v1/remotea/interviews/{identity}/answers",
       "handler": "interview_answers",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/migrations",
+      "handler": "migrations",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/migrations",
+      "handler": "set_migration_settings",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -1911,7 +1932,7 @@
     {
       "path": "/api/v1/external/mcp",
       "feature": "external_agents",
-      "note": "Mounted in api.py via external_mcp."
+      "note": "Mounted in api.py via external_mcp; the bare path without a trailing slash is served by the same app."
     }
   ]
 }

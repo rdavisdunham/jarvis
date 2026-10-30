@@ -229,7 +229,7 @@ def test_target_resolution_order(host):
     assert missing.value.code == "NEEDS_TARGET" and missing.value.status == 409
     assert {c["host_target"] for c in missing.value.data["candidates"]} == {"jarvis", "acme"}
     assert missing.value.data["advertised"][0]["host_target"] == "jarvis"
-    assert [r["title"] for r in missing.value.data["records"]] == ["Fix login", "Acme"]
+    assert [(r["title"], r["type_id"]) for r in missing.value.data["records"]] == [("Fix login", "task"), ("Acme", "project")]
     with session_scope() as db:  # A folder rule maps the client record to one repository.
         db.add(AgentSessionRule(owner_id=OWNER, path_prefix="/home/davin/acme", record_id=client_record["id"]))
     assert resolved() == "acme"
@@ -243,6 +243,15 @@ def test_target_resolution_order(host):
     assert resolved(host.target_id) == "jarvis"  # An explicit choice wins over everything.
     with session_scope() as db:
         assert db.get(Task, tid).execution_target_id == other_id  # The same host target is reused, not duplicated.
+    sibling = create("task", "Fix signup", parent_id=client_record["id"])["task_id"]
+    with session_scope() as db:  # "Only this task" with a target saved only for a record binds the task to it.
+        scoped = control.save_target(db, OWNER, control.TargetInput(host_id=host.id, host_target="remotea",
+                                                                     repo="/home/davin/remotea", record_id=client_record["id"]))
+        count = db.scalar(select(func.count()).select_from(ExecutionTarget))
+        control.save_target(db, OWNER, control.TargetInput(host_id=host.id, host_target="remotea", task_id=sibling,
+                                                            repo="/home/davin/remotea"))
+        assert db.get(Task, sibling).execution_target_id == scoped["id"]
+        assert db.scalar(select(func.count()).select_from(ExecutionTarget)) == count
 
 
 def test_child_task_worktree_starts_from_the_parent_run_branch(host):
@@ -595,3 +604,22 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
         reply = coordinator.context(db, OWNER, host.id, unlinked)
     assert "session_link" in reply["text"] and "s9" in reply["text"]
     assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000
+
+
+def test_every_transition_reason_has_page_text():
+    """The run card and drawer show REASON_TEXT for the current state; a reason without text showed the raw
+    token ("plan_frozen") on the page. Every reason the coordinator, planner or control layer passes to
+    transition() must have one, and an unknown reason renders as nothing rather than as the token."""
+    import re
+    from pathlib import Path
+
+    from jarvis.agent_control import REASON_TEXT
+
+    root = Path(__file__).resolve().parents[1] / "apps" / "api" / "jarvis"
+    used = set()
+    for name in ("run_coordinator.py", "agent_plan.py", "agent_control.py"):
+        used |= set(re.findall(r'reason="([a-z_]+)"\s*[,)]', (root / name).read_text()))  # Not "spawn_" + state.
+    used |= {"spawn_failed", "spawn_rejected", "spawn_uncertain", "spawn_expired"}  # run_coordinator's "spawn_" + outcome
+    missing = sorted(r for r in used if r not in REASON_TEXT)
+    assert not missing, f"transition reasons without page text: {missing}"
+    assert REASON_TEXT.get("no_such_reason", "") == ""

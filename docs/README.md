@@ -23,6 +23,7 @@ records the measured results and staged phone acceptance.
 | Latest audit/repair handoff | [Claude session summary](CLAUDE_SESSION_SUMMARY.md) |
 | Feature and evaluation map, dated September 19 | [App functionality](APP_FUNCTIONALITY.md) |
 | UI conventions and design tokens | [Orbit design system](DESIGN.md) |
+| Adding a page, route, bot scope, Eri tool, command, migration or setting without breaking the rest | [Adding features](ADDING_FEATURES.md) |
 | Flexible records, field learning and notifications | [Configurable planner](CUSTOM_PLANNER_IMPLEMENTATION.md) |
 | Durable execution and action cards | [Background work](BACKGROUND_WORK_PRD.md), [clarification continuations](CLARIFICATION_CONTINUATIONS.md) |
 | Notes/list organization and search vocabulary | [Note lists](NOTE_LISTS.md), [semantic search](SEMANTIC_SEARCH.md) |

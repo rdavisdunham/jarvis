@@ -84,8 +84,10 @@ def route_owner(path, source):
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
-    if path.startswith("/api/v1/remotea") or "/external/agents/session/" in path:
-        return "agent_control"  # In-session run tools (task_plan, task_step, task_interview, submit_plan) too.
+    if (path.startswith("/api/v1/remotea") or "/external/agents/session/" in path
+            or path == "/api/v1/external/agents/link"):
+        # In-session run tools (task_plan, task_step, task_interview, submit_plan) and the host link too.
+        return "agent_control"
     if "/external/agents/" in path:
         return "external_agents"
     if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):
@@ -143,6 +145,15 @@ def route_owner(path, source):
     raise ValueError("New API route needs a feature owner: " + source + " " + path)
 
 
+def literal(node, constants):
+    """A decorator's path: a string literal or a module-level string constant; None for anything else."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    return None
+
+
 def routes():
     items = []
     modules = {f.stem: (f, ast.parse(f.read_text())) for f in sorted((ROOT / "apps/api/jarvis").glob("*.py"))}
@@ -172,6 +183,16 @@ def routes():
             mounted[aliases.get(node.args[0].id, "")] = prefix
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}
+        # Module-level string constants, so @router.websocket(PATH) is seen like a literal path.
+        constants = {
+            target.id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
         for node in ast.walk(tree):
             if (
                 isinstance(node, ast.Assign)
@@ -201,10 +222,9 @@ def routes():
                     and isinstance(deco.func.value, ast.Name)
                     and deco.func.value.id in prefixes
                     and deco.args
-                    and isinstance(deco.args[0], ast.Constant)
-                    and isinstance(deco.args[0].value, str)
+                    and (path := literal(deco.args[0], constants)) is not None
                 ):
-                    path = prefixes[deco.func.value.id] + deco.args[0].value
+                    path = prefixes[deco.func.value.id] + path
                     source = file.relative_to(ROOT).as_posix()
                     items.append(
                         {
@@ -238,7 +258,7 @@ def build():
             {
                 "path": "/api/v1/external/mcp",
                 "feature": "external_agents",
-                "note": "Mounted in api.py via external_mcp.",
+                "note": "Mounted in api.py via external_mcp; the bare path without a trailing slash is served by the same app.",
             }
         ],
     }

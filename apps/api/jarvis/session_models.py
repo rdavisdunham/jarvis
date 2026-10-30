@@ -83,6 +83,8 @@ class AgentHost(Base):
     machine: Mapped[str] = mapped_column(String(100), default="")
     boot_id: Mapped[str] = mapped_column(String(100), default="")
     proto: Mapped[int] = mapped_column(Integer, default=1)
+    # remotea's own version from hello (Settings pairs it with the latest release; 0033).
+    version: Mapped[str | None] = mapped_column(String(40))
     conn_epoch: Mapped[int] = mapped_column(Integer, default=0)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     caps: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -257,6 +259,8 @@ class AgentRun(Base):
     worktree: Mapped[str] = mapped_column(Text, default="")
     branch: Mapped[str] = mapped_column(String(200), default="")
     base_branch: Mapped[str] = mapped_column(String(200), default="")
+    # From the spawn outcome (0033): base_sha, base_ref, fetch {ok, error?}, behind, ahead at spawn.
+    base_facts: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     tool: Mapped[str] = mapped_column(String(30), default="claude")
     model: Mapped[str] = mapped_column(String(80), default="opus")
     effective_permission_mode: Mapped[str] = mapped_column(String(40), default="")
@@ -306,6 +310,8 @@ class AgentRunPlan(Base):
     verify: Mapped[dict | None] = mapped_column(JSONB)
     # The agent's proposed changes to what a human set (agent_plan.plan_proposals); None once reviewed or when none.
     proposals: Mapped[dict | None] = mapped_column(JSONB)
+    # The migration number reserved for this plan (migration_numbers.py): {number, dir, reservation_id}.
+    migration: Mapped[dict | None] = mapped_column(JSONB)
     # Direct child task ids the plan requires (F02); removing one is a plan change.
     required_children: Mapped[list] = mapped_column(JSONB, default=list)
     # code_ready | pr_open | pr_merged: what "done" means for this plan (agent_judge hard rules).
@@ -400,3 +406,36 @@ class AgentIngestDay(Base):
     day: Mapped[date] = mapped_column(Date)
     bytes: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MigrationCounter(Base):
+    """Migration numbers for one repository: a host's execution target id (several ExecutionTarget rows may share it).
+
+    `dir`/`pattern` are the operator's (Settings); unset, the host's config (hello targets[].migrations) applies.
+    The chain head comes from the host (worktrees.report heads); `override` is the operator's, and the higher wins."""
+    __tablename__ = "migration_counters"
+    __table_args__ = (UniqueConstraint("owner_id", "host_id", "host_target", name="uq_migration_counter"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
+    host_target: Mapped[str] = mapped_column(String(64))
+    dir: Mapped[str | None] = mapped_column(String(200))
+    pattern: Mapped[str | None] = mapped_column(String(200))
+    override: Mapped[int | None] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class MigrationReservation(Base):
+    """A number reserved at plan freeze for a task's migration; held until released (never reused while held)."""
+    __tablename__ = "migration_reservations"
+    __table_args__ = (Index("uq_migration_reservation_held", "counter_id", "number", unique=True,
+                            postgresql_where=text("status = 'held'")),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    counter_id: Mapped[str] = mapped_column(ForeignKey("migration_counters.id"), index=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="held", server_default="held")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

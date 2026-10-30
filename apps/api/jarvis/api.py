@@ -16,6 +16,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
+from starlette.routing import Route
 
 from . import agent_models, budget
 from .auth import Identity, authenticate, digest, sign_in
@@ -88,7 +89,7 @@ app.include_router(session_router)
 from .integration_routes import router as integration_router
 
 app.include_router(integration_router)
-from .external_mcp import mount as mcp_mount
+from .external_mcp import bare_path as mcp_bare_path, mount as mcp_mount
 from .external_routes import router as external_router
 
 app.include_router(external_router)
@@ -99,6 +100,7 @@ from .remotea_routes import router as remotea_router
 
 app.include_router(remotea_router)
 app.mount("/api/v1/external/mcp", mcp_mount)
+app.router.routes.append(Route("/api/v1/external/mcp", mcp_bare_path))
 User = Annotated[Identity, Depends(authenticate)]
 login_attempts = defaultdict(deque)
 

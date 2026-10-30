@@ -701,5 +701,25 @@
       "tests/test_quick_sort_language.py"
     ],
     "status": "active"
+  },
+  {
+    "id": "agent_control",
+    "title": "Agent control (remotea)",
+    "description": "The remotea link, runs started from tasks, two-phase control from Eri, questions, the completion gate and run notifications.",
+    "order": 44,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/agent_control.py",
+      "apps/api/jarvis/remotea_routes.py",
+      "apps/api/jarvis/agent_link.py",
+      "apps/api/jarvis/run_coordinator.py"
+    ],
+    "regression_files": [
+      "tests/test_agent_runs.py",
+      "tests/test_agent_link.py",
+      "tests/test_agent_security.py",
+      "tests/test_agent_voice.py"
+    ],
+    "status": "active"
   }
 ]

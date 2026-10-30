@@ -3,11 +3,11 @@ import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play
 import { api, ApiError, post } from "./api";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
+  ago, baseLine, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, linkedRun, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
-  runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
+  defaultScope, needsTargetData, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
-  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork,
+  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import "./remotea.css";
 
@@ -143,6 +143,13 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+        <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
+          hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
+          <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+        </SettingRow>)}
+      <MigrationSettings readOnly={readOnly}/>
       {token && <div className="bot-secret" role="region" aria-label="remotea link key">
         <strong>Copy this key now</strong><p>This is the only time it will be shown. On your desktop, run the command below and paste the key when asked.</p>
         <label className="sr-only" htmlFor="remotea-secret">remotea link key</label>
@@ -175,6 +182,45 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
   </SettingsGroup>;
 }
 
+/** Every advertised target: where its migrations live (Settings, else the host's eridani.json), the chain head and
+ * its override, the next number Eridani reserves when it freezes a plan that adds a migration. */
+function MigrationSettings({ readOnly }: { readOnly: boolean }) {
+  const [items, setItems] = useState<MigrationTarget[] | null>(null), [error, setError] = useState("");
+  const [busy, setBusy] = useState("");
+  useEffect(() => { void api<{ items: MigrationTarget[] }>("/remotea/migrations").then(r => setItems(r.items)).catch(e => setError(message(e))); }, []);
+  if (!items?.length && !error) return null;
+  const save = async (m: MigrationTarget, draft: MigrationDraft) => {
+    const body = migrationBody(m, draft);
+    if (typeof body === "string") { setError(body); return; }
+    setBusy(m.host_id + "/" + m.host_target); setError("");
+    try { setItems((await post<{ items: MigrationTarget[] }>("/remotea/migrations", body)).items); }
+    catch (e) { setError(message(e)); } finally { setBusy(""); }
+  };
+  return <>
+    {error && <p className="error-banner" role="alert">{error}</p>}
+    {items?.map(m => <MigrationRow key={m.host_id + "/" + m.host_target + "/" + (m.dir ?? "") + "/" + (m.override ?? "")}
+      item={m} readOnly={readOnly} busy={busy === m.host_id + "/" + m.host_target} onSave={d => void save(m, d)}/>)}
+  </>;
+}
+
+export function MigrationRow({ item, readOnly, busy, onSave }: {
+  item: MigrationTarget; readOnly: boolean; busy: boolean; onSave: (draft: MigrationDraft) => void;
+}) {
+  const [draft, setDraft] = useState<MigrationDraft>(() => migrationDraft(item));
+  const field = (name: keyof MigrationDraft, label: string, placeholder: string) =>
+    <label className="field"><span className="field-label-text">{label}</span>
+      <input name={name} value={draft[name]} placeholder={placeholder} disabled={readOnly || busy}
+        inputMode={name === "override" ? "numeric" : undefined} onChange={e => setDraft(d => ({ ...d, [name]: e.target.value }))}/></label>;
+  return <SettingRow label={`Migrations · ${item.host_target}`} hint={migrationSummary(item)}>
+    <span className="remotea-migration-form">
+      {field("dir", "Folder", item.host_dir ?? "migrations/versions")}
+      {field("pattern", "File pattern", "^(\\d{4})_")}
+      {field("override", "Chain head override", item.head != null ? String(item.head) : "none")}
+      {!readOnly && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onSave(draft)}>Save</button>}
+    </span>
+  </SettingRow>;
+}
+
 // ---------------------------------------------------------------- runs (stage C)
 
 function message(e: unknown) {
@@ -202,31 +248,58 @@ function RunList({ onOpen }: { onOpen: (id: string) => void }) {
   </section>;
 }
 
-type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string };
+/** A proposal; a start also carries what still stands in its way (no target chosen, server offline). */
+type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string;
+  task_id?: string | null; needs_target?: boolean; need?: NeedsTarget | null; problems?: { code: string; message: string }[] };
 
-/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before. */
+function without<T>(map: Record<string, T>, id: string) {
+  const { [id]: _, ...rest } = map;
+  return rest;
+}
+
+/** Eri's control_start / control_message wait for the owner's tap here (or a spoken yes); nothing is sent before.
+ * A start with no target shows the task's target picker on its card; picking one saves it and confirms. */
 export function PendingControls() {
-  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState(""), [error, setError] = useState("");
-  const refresh = useCallback(() => { api<{ items: PendingControl[] }>("/remotea/pending").then(r => setItems(r.items)).catch(() => setItems([])); }, []);
+  const [items, setItems] = useState<PendingControl[]>([]), [busy, setBusy] = useState("");
+  // Per card: the last refusal, and the picker's data (from the listing or a NEEDS_TARGET refusal; null: cancelled).
+  const [errors, setErrors] = useState<Record<string, string>>({}), [needs, setNeeds] = useState<Record<string, NeedsTarget | null>>({});
+  const refresh = useCallback(() => {
+    api<{ items: PendingControl[] }>("/remotea/pending").then(r => {
+      const open = new Set(r.items.map(p => p.id));
+      const keep = <T,>(map: Record<string, T>) => Object.fromEntries(Object.entries(map).filter(([id]) => open.has(id)));
+      setItems(r.items); setErrors(keep); setNeeds(keep);
+    }).catch(() => setItems([]));
+  }, []);
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
-  const decide = async (id: string, decision: "confirm" | "decline") => {
-    setBusy(id); setError("");
-    try { await post(`/remotea/pending/${id}/${decision}`); refresh(); }
-    catch (e) { setError(message(e)); refresh(); }
-    finally { setBusy(""); }
+  const decide = async (id: string, decision: "confirm" | "decline", target?: string) => {
+    setBusy(id); setErrors(current => without(current, id));
+    try {
+      await post(`/remotea/pending/${id}/${decision}`, target ? { execution_target_id: target } : {});
+      setNeeds(current => without(current, id));
+    } catch (e) {
+      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
+      if (need) setNeeds(current => ({ ...current, [id]: need }));
+      else setErrors(current => ({ ...current, [id]: message(e) }));
+    } finally { setBusy(""); refresh(); }
   };
-  if (!items.length && !error) return null;
+  if (!items.length) return null;
   return <section className="remotea-pending" aria-label="Waiting for your confirmation">
     <h2>Eri is waiting for you</h2>
-    {error && <p role="alert" className="work-error">{error}</p>}
-    {items.map(p => <div key={p.id} className="remotea-pending-card">
-      <p>{p.summary}</p>
-      <div className="settings-form-actions">
-        <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
-        <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
-      </div>
-    </div>)}
+    {items.map(p => {
+      const need = p.id in needs ? needs[p.id] : (p.needs_target ? p.need ?? null : null);
+      return <div key={p.id} className="remotea-pending-card">
+        <p>{p.summary}</p>
+        {(p.problems ?? []).map(problem => <p key={problem.code} className="footnote">{problem.message}</p>)}
+        {need ? <TargetPicker key={need.task_id} need={need} onSaved={target => void decide(p.id, "confirm", target)}
+          onCancel={() => setNeeds(current => ({ ...current, [p.id]: null }))}/> :
+          <div className="settings-form-actions">
+            <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "confirm")}>Confirm</button>
+            <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => void decide(p.id, "decline")}>Decline</button>
+          </div>}
+        {errors[p.id] && <p role="alert" className="work-error">{errors[p.id]}</p>}
+      </div>;
+    })}
   </section>;
 }
 
@@ -413,6 +486,12 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
+  // The floating Eri launcher sits bottom-right, over this drawer's composer and Approve button: while the
+  // drawer is open the shell moves it clear (remotea.css, body.run-drawer-open).
+  useEffect(() => {
+    document.body.classList.add("run-drawer-open");
+    return () => document.body.classList.remove("run-drawer-open");
+  }, []);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
   const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
@@ -434,6 +513,9 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
       {run && <p className="remotea-place">
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}/{run.turn_cap}
+      </p>}
+      {run && baseLine(run.base) && <p className={"remotea-place remotea-base" + (run.base?.fetch && !run.base.fetch.ok ? " stale" : "")}>
+        <GitBranch size={13} aria-hidden="true"/> {baseLine(run.base)}
       </p>}
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>
@@ -489,14 +571,14 @@ export function RunDrawer({ id, onClose }: { id: string; onClose: () => void }) 
 
 function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
   const options = targetOptions(need);
-  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(need.records[0]?.id ?? "task");
+  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const save = async () => {
     const option = options.find(o => o.key === key);
     if (!option) return;
     setBusy(true); setError("");
     try {
-      if ("saved" in option && scope === "task") return onSaved(option.saved.id);
+      // Every choice is saved: for a record (its project by default), or "Only this task" binds the task itself.
       const source = "saved" in option ? option.saved : option.advertised;
       const saved = await post<{ id: string }>("/remotea/targets", {
         host_id: source.host_id, host_target: source.host_target, repo: source.repo, worktree_root: source.worktree_root,
@@ -543,7 +625,8 @@ export function RunTask({ taskId, canEdit, onOpenRun }: { taskId: string; canEdi
       const run = await post<Run>("/remotea/runs", { task_id: taskId, ...(target ? { execution_target_id: target } : {}) });
       setActive(run); onOpenRun(run.id);
     } catch (e) {
-      if (e instanceof ApiError && e.code === "NEEDS_TARGET") setNeed(e.data as NeedsTarget);
+      const need = e instanceof ApiError && e.code === "NEEDS_TARGET" ? needsTargetData(e.data) : null;
+      if (need) setNeed(need);
       else setError(message(e));
     } finally { setBusy(false); }
   };

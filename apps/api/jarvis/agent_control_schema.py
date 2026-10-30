@@ -78,7 +78,8 @@ class ControlAnswer(Input):
 class ControlConfirm(Input):
     """Confirm or decline a pending control_start / control_message (stage F, two-phase control)."""
 
-    pending_id: str = Field(min_length=1, max_length=36)
+    # Omitted: the newest pending action of this account (the one the owner is answering).
+    pending_id: str | None = Field(default=None, min_length=1, max_length=36)
     decision: Literal["confirm", "decline"] = "confirm"
 
 

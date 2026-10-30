@@ -45,11 +45,11 @@ Privileged scopes (`bot_access.PRIVILEGED`) are rejected for viewers at key crea
 write check: `authorize(required="agents:control")` locks membership and fails with `READ_ONLY` if the
 account was demoted. The link re-checks on every inbound message and every 30-second tick, so revoking
 the key, removing membership or turning remotea off ends the connection. The link key never has
-`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connected agents with
-the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
+`tasks:write`. The coding agents' own MCP key is separate: create it in Settings → Connections →
+Connected agents with the "Run tools for coding agents" option (adds `agents:session`) plus task, note and record access, and
 register it at user scope in each harness (for Claude Code:
-`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`,
-trailing slash required). Without `agents:session` the MCP server offers only the planner tools, the
+`claude mcp add --scope user --transport http eridani https://app.eridani.app/api/v1/external/mcp/ --header "Authorization: Bearer <key>"`;
+the URL works with or without the trailing slash). Without `agents:session` the MCP server offers only the planner tools, the
 spawned agent cannot call `submit_plan`, and the run ends its planning turn in `needs_you`.
 
 ## Connection lifecycle
@@ -126,7 +126,7 @@ own short transaction.
 | up | `question` | `op_id, digest, surf, incarnation, run_id?, generation, provider, provider_session_id, provider_request_id, provider_turn_id?, items[], hold_until?` | a structured question the agent asked; stored once per `(session, provider_request_id)` |
 | up | `question.resolved` | `op_id, digest, question_id\|provider_request_id, status: accepted\|answered_locally\|timed_out\|canceled\|failed, still_open?, remote_answerable?` | the host's word on a question; only `accepted` confirms an answer sent from here |
 | up | `context.request` | `req_id, text, run_token?` | ephemeral, no ack: answered with `context.response {req_id, text}` |
-| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, ahead, behind, unpushed, uncommitted, untracked, merged, active, reasons}]` | replaces the host's last report; feeds **Unmerged work** |
+| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, base_ref?, ahead, behind, unpushed, uncommitted, untracked, merged, merged_reason?, active, reasons}], heads?: [{target, dir, ref, head}]` | replaces the host's last report; feeds **Unmerged work**, the run header's live "N behind" and the migration counter (0033). `merged` is null with `merged_reason: "no commits of its own yet"` for a branch with no commits of its own |
 | down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
 | down | `spawn` / `input` / `answer` / `stop` | see **Commands** | outbox commands |
 | down | `context.response` | `req_id, text` | |
@@ -254,8 +254,11 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
 
 1. Target resolution: explicit → the task's `execution_target_id` → a target saved for the task's
    record or an ancestor (nearest first) → folder rules whose path is under a target's repo → `409
-   NEEDS_TARGET {task_id, candidates, advertised, records}`. The page then saves one with
-   `POST /remotea/targets {host_id, host_target, repo, worktree_root, task_id | record_id}` and retries.
+   NEEDS_TARGET {task_id, candidates, advertised, records: [{id, title, type_id}]}`. The page's picker
+   then saves one with `POST /remotea/targets {host_id, host_target, repo, worktree_root, task_id | record_id}`
+   and retries. "Remember for" defaults to the nearest record that is not a task (usually the project), so
+   sibling tasks reuse the choice; "Only this task" binds just the task (reusing a target already saved
+   for a record rather than copying it).
 2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (host lacks `spawn` for the harness),
    `HARNESS_DISABLED` (opencode).
 3. The run is created in `spawning`, the plan is frozen as revision 1 (PRD note or task notes, steps,
@@ -315,7 +318,7 @@ once and asks the run to stop (`stop_reason: task_completed_externally`); a huma
 
 ### Reading runs (`agents:read`)
 
-A bot key with `agents:read` (Settings → Connected agents → "Read runs started from tasks") reads what the
+A bot key with `agents:read` (Settings → Connections → Connected agents → "Read runs started from tasks") reads what the
 remotea page shows, so an assistant outside the run can review a run without a copy-paste:
 
 - `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
@@ -391,7 +394,7 @@ spawning → interviewing → planning → executing → verifying → judging �
   sends the answers as the next `input` ("now write the PRD with success criteria and call `submit_plan`,
   then stop") and moves the run to `planning`.
 - **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
-  verify_id?}], verify?: {target_id, verify_id}, expected_plan_revision}`** (interviewing, planning or
+  verify_id?}], verify?: {target_id, verify_id}, migration?: bool, expected_plan_revision}`** (interviewing, planning or
   replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
   `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
   its saved list or the host's advertised one (`VERIFY_UNKNOWN`); a `verify` criterion must name the
@@ -491,8 +494,8 @@ no-progress timer still applies to executing.
 ### auto_complete
 
 `POST /remotea/auto-complete {enabled}` (owner preference `remotea_auto_complete`, default **off**;
-viewers refused); `GET /remotea/status` returns it. Settings → remotea shows the toggle with a warning
-that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
+viewers refused); `GET /remotea/status` returns it. Settings → Connections → remotea shows the toggle with a
+warning that tasks then close (in Linear too) without a tap. Keep it off until the outcome eval below is clean on
 a live run.
 
 ### Outcome eval (`evals/agent_control/`)
@@ -633,6 +636,36 @@ interlock, `remotea hooks --remove-legacy-collector`); Davin runs it. The exact 
 in [`scripts/session_collector/README.md` § Retirement](../scripts/session_collector/README.md#retirement),
 which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cutover.
 
+## Run freshness (migration 0033)
+
+- **Base.** remotea fetches `origin/<base>` before basing or reusing a worktree on the target's own base
+  (local wins only when it already contains origin; a failed fetch keeps local and warns the agent). The
+  spawn outcome's `base_sha, base_ref, fetch {ok, error?}, behind, ahead` land in `agent_runs.base_facts`;
+  `public_run.base` shows them with `behind` taken live from the latest `worktrees.report` row for the
+  run's branch (`live`, `as_of`), else the spawn-time count. The drawer prints "based on main @ <sha> ·
+  N behind · as of …". An older host sends no `base_sha`: `base` is null and nothing is shown.
+- **Reuse.** A reused worktree behind its base gets a merge-first note at the top of the spawn prompt from
+  the host, plus the re-point/renumber instruction when the spawn carries `migration {number, dir}`.
+- **Migration numbers** (`migration_numbers.py`). A target takes part only when something says where its
+  migrations live: the folder and file pattern set in Settings (stored on the counter), else the host's
+  `migrations {dir, pattern?}` in remotea `eridani.json`. The host scans and reports the chain head only for
+  its own folder (nothing Eridani sends becomes a path on the host), so a Settings folder that differs
+  counts no host head and relies on the override. `submit_plan` with `migration: true` reserves max(host-reported head, the
+  operator's override, the highest held number) + 1 under the counter's row lock (`migration_counters`
+  per host target; `migration_reservations`, unique while held). The number is frozen on the plan,
+  shown by `task_plan` (`run.migration`, `migration_note`) and `render_plan`, and sent on later spawns
+  of the task. Released when the run ends stopped/failed/capped or a later plan drops the flag, and only
+  if no higher number is held on that counter; otherwise the gap stays. A completed run keeps its number,
+  and a later run of the same task reuses it. Settings → Connections → remotea lists each such target (head, override,
+  last reserved, next) with folder, file pattern and override fields (`GET/POST /remotea/migrations
+  {host_id, host_target, dir?, pattern?, override?}`; empty values fall back to the host / clear). A reservation cannot see
+  migrations merged after it: the host's merge-first note and `tests/test_release_migrations.py` cover that.
+- **Version pairing** (`remotea_release.py`). `hello.version` is stored on the host and returned by
+  `public_host` with `update: {latest, url} | null`: set when the host trails the latest GitHub release of
+  rdavisdunham/remotea by more than one minor version (or any major). The release is looked up in a
+  background thread at most every 6 h (15 min after a failure); a 404 (no release yet) or a failure
+  shows no note.
+
 ## Security model (stage F, migration 0031)
 
 Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
@@ -697,7 +730,18 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 (10-minute expiry) and nothing reaches the host. The owner confirms on the remotea page
 (`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
 works only from a later request by the same account whose own text is a plain yes, for the newest
-pending item. `control.stop`, `control.answer` and `control_status` stay immediate. Background,
+pending item. `control.stop`, `control.answer` and `control_status` stay immediate.
+
+A proposed start resolves its target when proposed (read-only): when one resolves, its id goes into the
+row's `arguments` and the summary names it ("… in jarvis"), and confirm starts there. When none does, the
+row is still created and the result says `needs_target: true` (with `task_id`), and Eri tells the owner to
+pick where it runs on the remotea card. An offline server or a harness it cannot start is checked the same
+way and returned as `problems` for Eri to relay; neither blocks the proposal. `GET /remotea/pending` lists
+each start with that readiness (`needs_target`, the picker's `need` data, `target`, `problems`), and the
+card shows the picker in place of Confirm; picking saves the choice and confirms with
+`POST /remotea/pending/{id}/confirm {execution_target_id}` (owner-checked). A confirm refused with
+`NEEDS_TARGET`, `HOST_OFFLINE` or `HARNESS_UNAVAILABLE` leaves the row pending. Listing the pending items
+also marks the expired ones `expired` (a refused confirm rolls back its own writes). Background,
 parked-continuation and bot work get no `control_*` tools (`tool_policy.live_work`). Every text sent to an
 agent is a `sent` entry on the run's timeline with who sent it; every `control.*` call is in the action
 journal, visible but never undoable.
