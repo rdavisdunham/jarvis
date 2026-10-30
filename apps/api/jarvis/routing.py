@@ -349,9 +349,21 @@ class Candidates(BaseModel):
     candidates: list[Candidate]
 
 
+# The weekly review's instruction to the model (routing.process); scripts/model_eval.py sends it too.
+REVIEW_PROMPT = (
+    "Find precise task or note title phrases that reliably identify an existing main home from the human-labeled examples. Return at most 30 candidates. A home must be an existing ID in homes. Do not invent projects or clients. Prefer distinctive phrases over generic verbs. A phrase must occur verbatim ignoring punctuation/case in evidence. Also identify reliable non-operational classification values from the evidence using exact field and option/record IDs in the schema. Encode each value as JSON in values.value_json, or return values=[]. Never infer empty/cleared fields, dates, priority, assignee or access. No work-hour-only rules. For content records, note_tags may contain exact tags independently assigned by humans; otherwise return an empty array. List descriptions explain the tag meanings. Never learn a status or personal fact."
+)
+
+
 def infer(owner, model, prompt, payload):
     from .memory_learning import EXTRACTION_MODEL, extraction_request
 
+    result = extraction_request(owner, "chat/completions", infer_request(model, prompt, payload), EXTRACTION_MODEL, 0.08)
+    return model.model_validate_json(result["choices"][0]["message"]["content"])
+
+
+def infer_request(model, prompt, payload):
+    """The structured request `infer` sends (pure, so scripts/model_eval.py sends the same one)."""
     schema = model.model_json_schema()
     def strict(node):
         if isinstance(node, dict):
@@ -362,10 +374,7 @@ def infer(owner, model, prompt, payload):
         elif isinstance(node, list):
             for value in node: strict(value)
     strict(schema)
-    result = extraction_request(
-        owner,
-        "chat/completions",
-        {
+    return {
             "messages": [
                 {
                     "role": "system",
@@ -382,11 +391,7 @@ def infer(owner, model, prompt, payload):
                 },
             },
             "max_completion_tokens": 4000,
-        },
-        EXTRACTION_MODEL,
-        0.08,
-    )
-    return model.model_validate_json(result["choices"][0]["message"]["content"])
+    }
 
 
 @feature("field_understanding")
@@ -512,7 +517,7 @@ def process(job_id):
     result = infer(
         owner,
         Candidates,
-        "Find precise task or note title phrases that reliably identify an existing main home from the human-labeled examples. Return at most 30 candidates. A home must be an existing ID in homes. Do not invent projects or clients. Prefer distinctive phrases over generic verbs. A phrase must occur verbatim ignoring punctuation/case in evidence. Also identify reliable non-operational classification values from the evidence using exact field and option/record IDs in the schema. Encode each value as JSON in values.value_json, or return values=[]. Never infer empty/cleared fields, dates, priority, assignee or access. No work-hour-only rules. For content records, note_tags may contain exact tags independently assigned by humans; otherwise return an empty array. List descriptions explain the tag meanings. Never learn a status or personal fact.",
+        REVIEW_PROMPT,
         payload,
     )
     with session_scope() as db:

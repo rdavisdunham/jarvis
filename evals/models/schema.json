@@ -1,0 +1,168 @@
+{
+  "$defs": {
+    "Case": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "input": {
+          "additionalProperties": true,
+          "title": "Input",
+          "type": "object"
+        },
+        "expect": {
+          "additionalProperties": true,
+          "title": "Expect",
+          "type": "object"
+        },
+        "rubric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rubric"
+        },
+        "stub": {
+          "additionalProperties": true,
+          "title": "Stub",
+          "type": "object"
+        },
+        "stub_wrong": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stub Wrong"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "expect",
+        "stub"
+      ],
+      "title": "Case",
+      "type": "object"
+    },
+    "Import": {
+      "additionalProperties": false,
+      "description": "Cases reused from another eval file (the run judge reuses evals/agent_control).",
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "exclude_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Kinds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "Import",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "job": {
+      "enum": [
+        "session_summary",
+        "routing_review",
+        "eri_chat",
+        "run_judge",
+        "run_summary"
+      ],
+      "title": "Job",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "prompt_source": {
+      "title": "Prompt Source",
+      "type": "string"
+    },
+    "grader": {
+      "enum": [
+        "text",
+        "structured",
+        "tool_call",
+        "verdict"
+      ],
+      "title": "Grader",
+      "type": "string"
+    },
+    "rubric": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rubric"
+    },
+    "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+    },
+    "imports": {
+      "items": {
+        "$ref": "#/$defs/Import"
+      },
+      "title": "Imports",
+      "type": "array"
+    },
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/Case"
+      },
+      "title": "Cases",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "job",
+    "description",
+    "prompt_source",
+    "grader"
+  ],
+  "title": "CaseFile",
+  "type": "object"
+}
