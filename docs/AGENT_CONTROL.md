@@ -900,6 +900,13 @@ decision is red, a reassuring one green. On `awaiting_approval` the footer repea
 nothing extra is fetched. In the timeline a verification card shows its exit code, "isolated" / "not sandboxed
 (<reason>)" and "complete workspace" / "workspace incomplete (<reasons>)" as separate labels (`attemptFacts`).
 
+**Freshness on run rows.** Each unsettled row in the Runs panel and the remotea page's run list (`RunsPanel.tsx`
+`RunRow`) carries compact chips from `rowFreshness(run, host, now)`, a subset of `freshnessFacts`: the host chip
+("host seen 2m ago", red past 90 s or when silent), then only the warnings that change what the row means: "stale"
+(verification from an older turn or a changed checkout), "workspace incomplete", "verify late" (past its deadline)
+and "delivery uncertain"; each chip's tooltip carries the full fact. One clock in `AttentionList` (30 s) ticks every
+row's ages; settled runs show none.
+
 **One copy of each text sent to the agent.** The host reports every prompt the agent receives, Eridani's own
 inputs included (a `user` turn, or an older host's turn `prompt`), and each copy is clipped differently (the host's
 prompt at 4,000 bytes, the "sent" history entry and an input command at 2,000 characters, a turn's `prompt` at 500

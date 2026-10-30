@@ -181,3 +181,6 @@
   overflow-wrap: anywhere;
 }
 .remotea-run-row .run-summary-updating { color: var(--ink-3); font-style: italic; }
+
+/* ---- Freshness chips on a run row (RunsPanel.tsx RunRow, rowFreshness) ----------------------- */
+.remotea-run-row .run-row-fresh { flex-basis: 100%; }

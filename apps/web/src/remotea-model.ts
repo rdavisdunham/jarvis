@@ -690,6 +690,23 @@ export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_s
   }
   return facts;
 }
+/** The few freshness facts that fit a run row (RunsPanel RunRow), as compact chips: the host's lease ("host seen 2m
+ * ago", "host silent for 5m"), then only what changes how far the row can be trusted: a verification that is stale,
+ * ran on an incomplete workspace or is past its deadline, and controls whose delivery is uncertain. Each chip's title
+ * carries the full fact. Settled runs get none. */
+export function rowFreshness(run: Run, host?: Pick<Host, "connected" | "last_seen_at"> | null, now = Date.now()): Fact[] {
+  if (isSettled(run)) return [];
+  const facts = freshnessFacts(run, host, now);
+  const out = facts.filter(f => f.key === "host");
+  const v = run.verification, verify = facts.find(f => f.key === "verify");
+  const short = v?.evidence === "stale" ? "stale" : v?.evidence === "incomplete" ? "workspace incomplete"
+    : v?.evidence === "pending" && verify?.tone === "warn" ? "verify late" : "";
+  if (verify && short) out.push({ key: "verify", label: short, tone: "warn", title: verify.label });
+  const uncertain = facts.filter(f => f.key.startsWith("control:") && f.label.endsWith("delivery uncertain"));
+  if (uncertain.length) out.push({ key: "control", label: "delivery uncertain", tone: "warn", title: uncertain.map(f => f.label).join("; ") });
+  return out;
+}
+
 /** The facts an approval rests on: the verification, its workspace and sandbox, the host, and anything uncertain. */
 export const APPROVAL_FACTS = (f: Fact) => ["verify", "workspace", "sandbox", "host"].includes(f.key) || f.key.startsWith("control:");
 
