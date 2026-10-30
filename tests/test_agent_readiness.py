@@ -239,6 +239,8 @@ def test_eri_hears_a_non_blocking_problem_as_a_warning(monkeypatch):
              "problems": [{"code": "VERIFY_NOT_READY", "blocking": False,
                            "message": "This target's verify command is not ready (tests: x)."}]}
     monkeypatch.setattr(control, "readiness", lambda *_: ready)
+    # A warning no longer hides the target's setup line (test_agent_setup covers it); this fake has no target.
+    monkeypatch.setattr(control, "proposal_setup", lambda *_: None)
     pending = SimpleNamespace(tool="control.start", arguments={"task_id": "x"})
     told = control.proposal(SimpleNamespace(get=lambda *_: pending), OWNER, {"pending_id": "p", "next": ""})["next"]
     assert "can still start" in told and "Confirming fails" not in told
