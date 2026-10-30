@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import linear_commands, linear_sync, planning
+from . import linear_commands, linear_structure, linear_sync, planning
 from .auth import Identity, authenticate
 from .db import session_scope
 from .domain import DomainError, advisory, emit, owned
@@ -63,6 +63,35 @@ def linear_disconnect(user: User):
             conn.revision += 1
             emit(db, user.owner_id, "linear.changed", user.owner_id)
         return {"connected": False}
+
+
+@router.get("/api/v1/integrations/linear/mapping")
+def linear_mapping(user: User):
+    with session_scope() as db:
+        return linear_structure.view(db, user.owner_id, linear_sync.connection(db, user.owner_id))
+
+
+@router.post("/api/v1/integrations/linear/mapping/discover")
+async def linear_mapping_discover(user: User):
+    return await asyncio.to_thread(linear_structure.discover, user.owner_id)
+
+
+@router.post("/api/v1/integrations/linear/mapping/preview")
+def linear_mapping_preview(body: linear_structure.Mapping, user: User):
+    with session_scope() as db:
+        return linear_structure.preview(db, user.owner_id, body)
+
+
+@router.post("/api/v1/integrations/linear/mapping/apply")
+def linear_mapping_apply(body: linear_structure.Apply, user: User):
+    with session_scope() as db:
+        return linear_structure.apply(db, user.owner_id, body)
+
+
+@router.post("/api/v1/integrations/linear/mapping/skip")
+def linear_mapping_skip(user: User):
+    with session_scope() as db:
+        return linear_structure.skip(db, user.owner_id)
 
 
 @router.get("/api/v1/linear/tasks/{task_id}/comparison")

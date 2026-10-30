@@ -277,10 +277,12 @@ Durable idempotent event creation/edit/deletion and honest remote status.
 ### 25. Linear read and sync
 
 Credentials, selected teams/projects, imported issue mapping, pagination and reconciliation.
+Optional structure onboarding maps Linear teams/projects onto Homes with a dry-run preview
+([Linear setup](LINEAR_SETUP.md#optional-file-linear-teams-and-projects-into-homes)).
 
 - Acceptance set: [25 cases](../evals/app/features/linear_sync.json).
-- Implementation: [linear_sync.py](../apps/api/jarvis/linear_sync.py), [linear_client.py](../apps/api/jarvis/linear_client.py).
-- Existing regression evidence: [test_linear.py](../tests/test_linear.py).
+- Implementation: [linear_sync.py](../apps/api/jarvis/linear_sync.py), [linear_client.py](../apps/api/jarvis/linear_client.py), [linear_structure.py](../apps/api/jarvis/linear_structure.py).
+- Existing regression evidence: [test_linear.py](../tests/test_linear.py), [test_linear_structure.py](../tests/test_linear_structure.py).
 
 ### 26. Linear writes
 

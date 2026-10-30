@@ -1159,6 +1159,41 @@
       "feature": "linear_sync"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/integrations/linear/mapping",
+      "handler": "linear_mapping",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/mapping/apply",
+      "handler": "linear_mapping_apply",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/mapping/discover",
+      "handler": "linear_mapping_discover",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/mapping/preview",
+      "handler": "linear_mapping_preview",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/integrations/linear/mapping/skip",
+      "handler": "linear_mapping_skip",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/integrations/linear/sync",
       "handler": "linear_sync_now",

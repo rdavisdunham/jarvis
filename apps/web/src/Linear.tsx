@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, post } from "./api";
+import { LinearMapping, type MappingSummary } from "./LinearMapping";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import type { Task } from "./types";
 
@@ -23,6 +24,7 @@ export type LinearStatus = {
   users: { id: string; name: string; active: boolean }[];
   projects: { id: string; name: string }[];
   recent_changes: { job_id: string; status: string; message: string }[];
+  structure?: MappingSummary;
 };
 export function LinearSettings({
   revision,
@@ -193,6 +195,9 @@ export function LinearSettings({
               </button>
             </div>
           </fieldset>
+          {data.structure && data.team_ids.length > 0 && (
+            <LinearMapping summary={data.structure} onChanged={() => setRefresh((n) => n + 1)} />
+          )}
           <p className="footnote">
             Syncs every five minutes, with a full reconciliation daily. Alerts,
             precise due times and work blocks remain in Eridani. Removing an

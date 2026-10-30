@@ -1383,6 +1383,8 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
 
 def follow_project(db, owner, row, core, t):
     """Legacy project moves update the record home when the destination has a registry row."""
+    if core.external and "linear_home" in row.provenance:
+        return  # The Linear mapping files this issue once Linear confirms its project (linear_structure.place).
     target = core.project_id
     if not target:
         if not (row.parent_id and db.get(Project, row.parent_id)):
