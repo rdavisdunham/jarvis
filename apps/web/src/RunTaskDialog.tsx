@@ -3,7 +3,7 @@ import { FolderGit2, Play } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { Dialog } from "./ux";
 import {
-  DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, startBody,
+  afterTargetSaved, DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl, startBlock, startBody,
   type HarnessId, type NeedsTarget, type Preflight, type Run, type RunDraft,
 } from "./remotea-model";
 import { useRemotea } from "./remotea-context";
@@ -25,11 +25,13 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
   const heading = useId();
   useEffect(() => {
     let live = true;
-    api<Preflight & { task?: { id: string; title: string } }>(`/remotea/runs/preflight?task_id=${encodeURIComponent(taskId)}&harness=${draft.harness}`)
+    // Read again with the picked target once the picker saves one, so its harnesses, verify and MCP notes show
+    // before anything starts.
+    api<Preflight & { task?: { id: string; title: string } }>(preflightUrl(taskId, draft.harness, draft.target))
       .then(p => { if (!live) return; setPre(p); if (p.task) setTask(p.task); setNeed(p.needs_target && p.need ? p.need : null); })
       .catch(() => { if (live) setPre(null); });
     return () => { live = false; };
-  }, [taskId, draft.harness]);
+  }, [taskId, draft.harness, draft.target]);
   const start = async (target?: string | null) => {
     setBusy(true); setError("");
     try {
@@ -47,7 +49,11 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
   const choice = (id: HarnessId) => harnessChoice(pre, hosts, id);
   const available = (id: HarnessId) => choice(id).ok;
   const unavailable = HARNESSES.map(h => choice(h.id).reason).filter(Boolean);
-  const blocked = !!pre && !pre.active_run && !pre.needs_target && !pre.target;
+  const notes = preflightNotes(pre);
+  // A blocking problem (the server offline, agents without Eridani tools) keeps Start off; a freestyle start lifts
+  // the tools one. Warnings (a verify command not ready) only show as notes.
+  const block = startBlock(pre, draft);
+  const blocked = (!!pre && !pre.active_run && !pre.needs_target && !pre.target) || !!block.problem;
   const interviewHint = draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
   return <Dialog className="dialog run-dialog" aria-labelledby={heading} onEscape={onClose} onBackdrop={onClose}>
@@ -60,7 +66,8 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
       </div>
     </> : <>
-      {need ? <TargetPicker key={need.task_id} need={need} onSaved={id => { setDraft(d => ({ ...d, target: id })); void start(id); }} onCancel={onClose}/> : <>
+      {need ? <TargetPicker key={need.task_id} need={need} saveLabel="Save"
+        onSaved={id => { const next = afterTargetSaved(draft, id); setPre(undefined); setNeed(next.need); setDraft(next.draft); }} onCancel={onClose}/> : <>
         <p className="run-dialog-target"><FolderGit2 size={15} aria-hidden="true"/>{pre === undefined ? "Checking where it runs…" : preflightLine(pre)}</p>
         <div className="run-dialog-row">
           <span id={heading + "-agent"}>Agent</span>
@@ -70,6 +77,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
               onClick={() => setDraft(d => ({ ...d, harness: h.id, model: h.models[0].id }))}>{h.label}</button>)}
           </div>
           {unavailable.length > 0 && <p className="footnote">{unavailable.join(" ")}{pre?.harness_note ? ` ${pre.harness_note}` : ""}</p>}
+          {notes.map(n => <p key={n} className="footnote run-dialog-note" role="note">{n}</p>)}
         </div>
         <label className="run-dialog-row"><span>Model</span>
           <select value={draft.model} onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}>
@@ -84,6 +92,12 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
           </div>
           {interviewHint && <p className="footnote">{interviewHint}</p>}
         </div>
+        {block.freestyle && <label className="run-dialog-freestyle"
+          title="Talk to the agent directly: no interview, no plan, turns are recorded but not verified or judged.">
+          <input type="checkbox" checked={!!draft.freestyle} onChange={e => setDraft(d => ({ ...d, freestyle: e.target.checked }))}/>
+          <span>Start in freestyle</span><small>the agent has no Eridani tools to plan with</small>
+        </label>}
+        {block.problem && !notes.includes(block.problem.message) && <p className="footnote run-dialog-note" role="note">{block.problem.message}</p>}
         <div className="settings-form-actions">
           <button className="btn btn-primary btn-sm" disabled={busy || blocked || !available(draft.harness)} onClick={() => void start()}>
             <Play size={14} aria-hidden="true"/>{busy ? "Starting…" : "Start"}</button>

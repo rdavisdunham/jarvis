@@ -53,6 +53,25 @@ cd apps/web && npm test && npm run build && cd ../..
 PYTHONPATH=apps/api JARVIS_WORKER_ENABLED=false JARVIS_EXTERNAL_SERVICES_ENABLED=false uv run --no-sync python scripts/validate_custom_planner.py
 ```
 
+`tests/test_protocol_e2e.py` (marker `e2e_protocol`) runs the real remotea server against the real
+Eridani app and checks the wire fixtures in `tests/fixtures/protocol/`. It needs node, git and a built remotea
+checkout, so in CI it **skips** (the regression suite reports it as skipped, with the reason). Run it locally
+before merging a change to either side of the link (`agent_link.py`, `run_coordinator.py`, or remotea's
+`eridani-*.ts`, `dispatch.ts`, `turn-capture.ts`):
+
+```sh
+npm --prefix ~/remotea/remotea/remote-server ci && npm --prefix ~/remotea/remotea/remote-server run build
+REMOTEA_CHECKOUT=~/remotea/remotea uv run --no-sync python -m pytest -q -s -m e2e_protocol tests/test_protocol_e2e.py
+```
+
+It is not a CI job because remotea is a private repository: a job would need a read-only deploy key or
+fine-grained token for `rdavisdunham/remotea` as a secret (this workflow has none and runs with a read-only
+token), then a second `actions/checkout` into `remotea/`, `actions/setup-node` (Node 22), `npm ci` at the
+remotea root (with `ELECTRON_SKIP_BINARY_DOWNLOAD=1`: the server build type-checks shared files against the
+app's types) and in `remote-server/`, `npm run build`, and the pytest line above with
+`REMOTEA_CHECKOUT=remotea`. Details and fixture rules:
+[Testing the protocol end to end](AGENT_CONTROL.md#testing-the-protocol-end-to-end).
+
 The migration commands in CI run only against its disposable service database;
 never substitute a production connection. Unit fixtures and the browser script
 also create and remove their own named test databases.

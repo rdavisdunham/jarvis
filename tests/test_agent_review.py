@@ -61,7 +61,7 @@ def test_an_older_host_says_nothing_about_isolation(verifying_host):  # noqa: F8
     with session_scope() as db:
         packet = control.review_packet(db, db.get(AgentRun, run_id))
         [shown] = [control.public_attempt(a) for a in [db.get(control.AgentAttempt, attempt.id)]]
-    assert shown["isolated"] is None and shown["workspace_complete"] is None and shown["workspace_reasons"] == []
+    assert shown["isolated"] is None and shown["workspace_complete"] is None and not shown["workspace_reasons"]
     assert "tests failed (exit 1) just now;" in packet["text"] and "sandbox" not in packet["text"]
     assert "no PR recorded" in packet["text"]
 

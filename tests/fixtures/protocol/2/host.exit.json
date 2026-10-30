@@ -1,0 +1,99 @@
+{
+ "direction": "host",
+ "frame": "exit",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "code": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "digest": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "exited_at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "incarnation": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "surf": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}

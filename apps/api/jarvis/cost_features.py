@@ -21,6 +21,7 @@ LABELS = {
     "semantic_search": "Semantic search",
     "session_ledger": "Agent session summaries and search",
     "agent_control": "Agent run judge",
+    "agent_summaries": "Agent run summaries",
     "unattributed": "Earlier or unclassified usage",
 }
 

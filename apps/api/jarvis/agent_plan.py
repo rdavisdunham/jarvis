@@ -378,11 +378,23 @@ def needs_evidence(criteria):
     return False
 
 
-def pick_verify(offered):
+def pick_verify(offered, ready=None):
+    """The verify id Eridani names by default. `ready` ({id: bool}, the host's hello `verify_status`) narrows the
+    choice to the ids that are ready when at least one is; ids the host did not report count as ready. When none is
+    ready the choice is today's (the preflight says why: agent_control.target_readiness)."""
+    ready = ready or {}
+    usable = {v for v in offered if ready.get(v) is not False} or set(offered)
     for name in PREFERRED_VERIFY:
-        if name in offered:
+        if name in usable:
             return name
-    return sorted(offered)[0] if offered else None
+    return sorted(usable)[0] if usable else None
+
+
+def verify_ready(db, run):
+    """{verify id: ready} for the run's execution target, as its host last advertised (empty for an older host)."""
+    from .agent_control import run_verify_readiness
+
+    return {k: v["ready"] for k, v in run_verify_readiness(db, run).items()}
 
 
 def default_verify(db, run, criteria, verify):
@@ -392,7 +404,7 @@ def default_verify(db, run, criteria, verify):
     if verify or not needs_evidence(criteria):
         return verify, None
     targets, offered = verify_ids(db, run)
-    chosen = pick_verify(offered)
+    chosen = pick_verify(offered, verify_ready(db, run))
     if not chosen:
         return None, None
     picked = {"target_id": run.execution_target_id, "verify_id": chosen, "by": "default"}

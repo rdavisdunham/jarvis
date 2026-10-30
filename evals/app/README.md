@@ -10,7 +10,8 @@ complete acceptance scenarios; component evidence is available for **224** cases
 (overlapping acceptance coverage). Remaining scenarios retain incomplete or physical
 acceptance requirements. Batch C adds 25 Quick-capture and 25 onboarding scenarios,
 with 12 exact deterministic bindings. Agent control (remotea) adds 25 scenarios, not yet
-bound; its outcome eval lives in `evals/agent_control/`. See
+bound; its outcome eval lives in `evals/agent_control/`. The backend model comparison (cheapest model per job
+type) lives in `evals/models/` and `scripts/model_eval.py` (docs/COST_TRACKING.md). See
 [automation-coverage.json](automation-coverage.json) for the per-feature backlog.
 Historical reports keep their original scenario counts and outcomes.
 

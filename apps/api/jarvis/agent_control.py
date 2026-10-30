@@ -8,7 +8,7 @@ its outbound command in one transaction (run_coordinator.py owns the transitions
 
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,6 +19,7 @@ from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
+from . import run_summaries
 from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit, encode, owned
@@ -57,6 +58,9 @@ class StartInput(Input):
     execution_target_id: str | None = Field(default=None, max_length=36)
     # None: interview when the task has no PRD. False: run on the plan the task already has (stage C's manual run).
     interview: bool | None = None
+    # Start in freestyle (no interview, no judge): the only way to start on a target whose agents have no Eridani
+    # tools (MCP_UNCONFIGURED).
+    freestyle: bool = False
 
 
 class FreestyleInput(Input):
@@ -135,15 +139,101 @@ def chain(db, owner, task):
     return [record, *parent_chain(db, owner, record.parent_id)] if record else []
 
 
+TARGET_FACTS = ("harnesses", "verify", "enabled", "launch", "verify_status", "mcp")
+
+
 def public_target(target, adverts=None):
-    """A saved target; with `adverts` (advertised() keyed by (host_id, host_target)) it also carries the harnesses
-    and verify ids its host advertised for it, when the host said."""
+    """A saved target; with `adverts` (advertised() keyed by (host_id, host_target)) it also carries what its host
+    advertised for it (harnesses, verify ids and, from caps_version 2 hosts, enabled/launch/verify_status/mcp),
+    when the host said."""
     out = {"id": target.id, "host_id": target.host_id, "host_target": target.host_target, "name": target.name,
            "repo": target.repo, "worktree_root": target.worktree_root, "record_id": target.record_id}
     advert = (adverts or {}).get((target.host_id, target.host_target))
     if advert:
-        out.update({k: advert[k] for k in ("harnesses", "verify") if advert.get(k) is not None})
+        out.update({k: advert[k] for k in TARGET_FACTS if advert.get(k) is not None})
     return encode(out)
+
+
+def clip(value, limit=300):
+    return " ".join(value.split())[:limit] if isinstance(value, str) else None
+
+
+def target_enabled(item):
+    """caps_version 2: the harnesses the target's `launch` enables (permission, installed or not); None if unsaid."""
+    value = item.get("enabled") if isinstance(item, dict) else None
+    return sorted({v for v in value if isinstance(v, str)}) if isinstance(value, list) else None
+
+
+def target_launch(item):
+    """caps_version 2: each enabled harness's launcher probe on the target, {harness: {ready, version, error?}}."""
+    value = item.get("launch") if isinstance(item, dict) else None
+    if not isinstance(value, dict):
+        return None
+    out = {}
+    for name, probe in value.items():
+        if name in HARNESSES and isinstance(probe, dict) and isinstance(probe.get("ready"), bool):
+            out[name] = {"ready": probe["ready"], "version": clip(probe.get("version"), 100),
+                         **({"error": clip(probe["error"])} if clip(probe.get("error")) else {})}
+    return out
+
+
+def target_verify_status(item):
+    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?, timeout?, isolated?,
+    isolation?, isolation_reason?}]; None when unsaid. `timeout` (seconds) is the entry's own limit when the host
+    says it (verify_timeout); the isolation facts (remotea PR #24) are verify_isolation's."""
+    value = item.get("verify_status") if isinstance(item, dict) else None
+    if not isinstance(value, list):
+        return None
+    out = []
+    for v in value[:50]:
+        if not (isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("ready"), bool)):
+            continue
+        entry = {"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {})}
+        timeout = verify_timeout(item, entry["id"])
+        if timeout:
+            entry["timeout"] = timeout
+        entry.update(verify_isolation(v))
+        out.append(entry)
+    return out
+
+
+# A host-advertised verify timeout outside (0, this] is ignored: the coordinator's default deadline applies.
+VERIFY_TIMEOUT_MAX = 4 * 3600
+
+
+def verify_timeout(item, verify_id):
+    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout` on the entry's
+    `verify_status` row, or on a `verify` list item sent as an object. None when the host did not say (remotea up
+    to PR #24 sends `verify` as plain ids and no timeout)."""
+    if not isinstance(item, dict):
+        return None
+    for key in ("verify_status", "verify"):
+        for v in item.get(key) or []:
+            if isinstance(v, dict) and v.get("id") == verify_id:
+                value = v.get("timeout")
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
+                    return int(value)
+    return None
+
+
+def verify_isolation(entry):
+    """The isolation facts of one verify_status entry, only those the host sent and in their wire shape."""
+    out = {}
+    if isinstance(entry.get("isolated"), bool):
+        out["isolated"] = entry["isolated"]
+    if entry.get("isolation") in ("bwrap", "none"):
+        out["isolation"] = entry["isolation"]
+    if clip(entry.get("isolation_reason")):
+        out["isolation_reason"] = clip(entry["isolation_reason"])
+    return out
+
+
+def target_mcp(item):
+    """Whether an agent spawned on the target gets Eridani's MCP server (remotea PR #20), {configured, reason?}."""
+    value = item.get("mcp") if isinstance(item, dict) else None
+    if not isinstance(value, dict) or not isinstance(value.get("configured"), bool):
+        return None
+    return {"configured": value["configured"], **({"reason": clip(value["reason"])} if clip(value.get("reason")) else {})}
 
 
 def target_harnesses(item):
@@ -168,7 +258,8 @@ def hello_target(host, host_target):
 
 def advertised(db, owner):
     """Targets hosts listed in hello (optional on the wire); the picker offers them. `harnesses` is the list the
-    target enables (null when the host did not say), `verify` its verify ids."""
+    target can start (null when the host did not say), `verify` its verify ids; caps_version 2 hosts add `enabled`
+    (permission), `launch` (launcher probes), `verify_status` and `mcp` (null when the host did not say)."""
     found = []
     for host in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         for item in (host.caps or {}).get("targets") or []:
@@ -178,7 +269,9 @@ def advertised(db, owner):
                               "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000],
                               "harnesses": target_harnesses(item),
                               "verify": [str(v.get("id") if isinstance(v, dict) else v)[:64]
-                                         for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50]})
+                                         for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50],
+                              "enabled": target_enabled(item), "launch": target_launch(item),
+                              "verify_status": target_verify_status(item), "mcp": target_mcp(item)})
     return found
 
 
@@ -342,17 +435,24 @@ def host_harness(host, harness, host_target=None):
 
 
 def harness_problem(host, harness, host_target=None):
-    """Why `harness` cannot start on this host/target (None when it can); the message names the target."""
+    """Why `harness` cannot start on this host/target (None when it can); the message names the target. A harness
+    the target enables but whose launcher failed its probe (caps_version 2) says so, with the host's error."""
     label = HARNESS_LABELS.get(harness, harness)
     if host is None:
         return "That execution target has no remotea server."
     if not agent_link.connected(host):
         return "The remotea server is not connected."
+    if host_harness(host, harness, host_target):
+        return None
+    item = hello_target(host, host_target) if host_target else None
+    probe = (target_launch(item) or {}).get(harness)
+    if harness in (target_enabled(item) or []) and (probe is None or not probe["ready"]):
+        why = (probe or {}).get("error") or "its launcher did not answer"
+        return f"{label} is enabled on {host_target} but not installed: {why}"
     if not host_harness(host, harness):
-        return f"This remotea server cannot start {label} yet."
-    if not host_harness(host, harness, host_target):
-        return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
-    return None
+        why = clip(((host.caps or {}).get("harnesses") or {}).get(harness, {}).get("launch_error"))
+        return f"This remotea server cannot start {label} yet" + (f": {why}" if why else ".")
+    return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
 
 
 def check_host(owner, task, host, harness, host_target=None):
@@ -381,16 +481,24 @@ def start_run(db, owner, account_id, body, *, actor):
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
     check_host(owner, task, host, body.harness, target.host_target)
+    tools = next((p for p in target_problems(task, hello_target(host, target.host_target))
+                  if p["code"] == "MCP_UNCONFIGURED"), None)
+    if tools is not None and not body.freestyle:
+        # Without Eridani's tools the agent cannot submit a plan; only a freestyle run (no plan, no judge) can start.
+        raise DomainError("MCP_UNCONFIGURED", tools["message"], 409, data={"host_target": target.host_target})
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
     planned = bool(task.success_criteria) and bool(task.verify)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
+    if body.freestyle:
+        interview = False  # Freestyle talks to the agent directly: nothing to interview for or submit.
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
                    model=body.model or HARNESSES[body.harness], turn_cap=task.turn_cap or 15,
                    worktree="", completion_policy=task.completion_policy or "code_ready", sync_state={},
+                   freestyle=bool(body.freestyle),
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
@@ -567,7 +675,7 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
 FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "verify_infra", "no_progress", "turn_cap",
-                     "awaiting_merge", "pr_unknown"}
+                     "awaiting_merge", "pr_unknown", "no_plan", "verify_incomplete"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -607,14 +715,15 @@ def public_attempt(a):
                    "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
                    # Why a verification did not pass and what to do (run_coordinator.classify_verify).
                    "category": result.get("category"), "action": result.get("action"),
-                   # remotea's verify isolation and fingerprint completeness; null when the host did not say.
-                   "isolated": result.get("isolated"), "isolation": result.get("isolation"),
-                   "isolation_reason": result.get("isolation_reason"),
-                   "workspace_complete": result.get("workspace_complete"),
-                   "workspace_reasons": result.get("workspace_reasons") or [],
                    "duration_ms": result.get("duration_ms"),
                    "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
                    "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
+                   # Verify only (remotea PR #24; null from older hosts): sandboxed or not, separate from the exit
+                   # code, and whether the fingerprint covered the whole workspace. `deadline_at` follows the
+                   # entry's advertised `timeout_s` (run_coordinator.verify_deadline).
+                   **(({k: result.get(k) for k in ("isolated", "isolation", "isolation_reason", "workspace_complete",
+                                                   "workspace_reasons", "timeout_s", "stale_workspace")}
+                       | {"deadline_at": a.deadline_at}) if a.kind == "verify" else {}),
                    "created_at": a.created_at, "updated_at": a.updated_at})
 
 
@@ -641,6 +750,100 @@ def page(db, query, column, limit, offset):
         total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
         remaining = max(0, total - offset - limit)
     return list(reversed(rows[:limit])), more, remaining
+
+
+def verification_fact(db, run):
+    """The run's latest verification as a decision fact: {verify_id, status, at, evidence, isolated, isolation_reason,
+    workspace_reasons}. `evidence` says how far it proves the current turn: `fresh` (this generation, turn and plan
+    revision, an unchanged and completely fingerprinted workspace), `stale` (an older turn or plan, or the checkout
+    changed around it), `incomplete` (remotea's `workspace_complete: false`) or `pending` (still running). None
+    before the first one. A host attempt Eridani did not match (`unmatched`) is not counted."""
+    rows = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify")
+                      .order_by(AgentAttempt.updated_at.desc()).limit(5))
+    attempt = next((a for a in rows if not (a.result or {}).get("unmatched")), None)
+    if attempt is None:
+        return None
+    result = attempt.result or {}
+    current = (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
+        (run.generation, run.turn_seq, run.plan_revision)
+    if attempt.status == "running":
+        evidence = "pending"
+    elif not current or result.get("stale_workspace") or attempt.status == "stale":
+        evidence = "stale"
+    elif result.get("workspace_complete") is False:
+        evidence = "incomplete"
+    else:
+        evidence = "fresh"
+    return {"verify_id": attempt.verify_id, "status": attempt.status, "at": attempt.updated_at, "evidence": evidence,
+            "turn_seq": attempt.turn_seq, "isolated": result.get("isolated"),
+            "isolation_reason": result.get("isolation_reason"), "workspace_complete": result.get("workspace_complete"),
+            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at}
+
+
+def pending_controls(db, run):
+    """Commands to the host whose effect is not known yet: `pending` (queued or sent, the host has not taken them)
+    and `uncertain` (the host could not tell whether they took effect) since the run entered its current state.
+    Newest first, at most five: [{kind, status, mode?, at}]."""
+    rows = db.scalars(select(AgentCommand).where(
+        AgentCommand.run_id == run.id, AgentCommand.status.in_(("queued", "sent", "uncertain")),
+        *([AgentCommand.created_at >= run.state_since] if run.state_since else []))
+        .order_by(AgentCommand.created_at.desc()).limit(5))
+    return [{"kind": c.kind, "status": "uncertain" if c.status == "uncertain" else "pending",
+             **({"mode": (c.payload or {}).get("mode")} if c.kind == "input" else {}), "at": c.created_at}
+            for c in rows]
+
+
+def freshness_text(item, clock=None):
+    """The run's freshness facts as one line for Eri (control_status), e.g. "verify tests passed 3 min ago on a
+    complete workspace; host seen 5 s ago; last turn 2 min ago; in needs you for 4 min"."""
+    clock = clock or now()
+
+    def ago(value):
+        if not value:
+            return None
+        at = datetime.fromisoformat(value) if isinstance(value, str) else value
+        seconds = max(0, int((clock - at).total_seconds()))
+        if seconds < 60:
+            return f"{seconds} s"
+        if seconds < 3600:
+            return f"{seconds // 60} min"
+        if seconds < 172800:
+            return f"{seconds // 3600} h"
+        return f"{seconds // 86400} d"
+
+    parts = []
+    verify = item.get("verification")
+    if verify:
+        when = ago(verify["at"])
+        if verify["evidence"] == "pending":
+            parts.append(f"verify {verify['verify_id']} running for {when}")
+        else:
+            where = {"fresh": "for the current turn"
+                              + (" on a complete workspace" if verify.get("workspace_complete") else ""),
+                     "stale": "but it is stale (an older turn, or the checkout changed around it)",
+                     "incomplete": "but the workspace fingerprint was incomplete ("
+                                   + ("; ".join(verify["workspace_reasons"]) or "the host did not say what it missed")
+                                   + ")"}[verify["evidence"]]
+            sandbox = "" if verify["isolated"] is None else (
+                "; sandboxed" if verify["isolated"] else
+                f"; not sandboxed ({verify['isolation_reason'] or 'the host did not say why'})")
+            parts.append(f"verify {verify['verify_id']} {verify['status']} {when} ago {where}{sandbox}")
+    host = item.get("host")
+    if host:
+        seen = ago(host.get("last_seen_at"))
+        parts.append(f"host seen {seen} ago" if host.get("connected") else
+                     f"host silent for {seen}" if seen else "host never seen")
+    last = ago(item.get("last_turn_at"))
+    if last:
+        parts.append(f"last turn {last} ago")
+    since = ago(item.get("state_since"))
+    if since:
+        parts.append(f"in {item['state'].replace('_', ' ')} for {since}")
+    for control in item.get("pending_controls") or []:
+        what = control["mode"] if control.get("mode") else control["kind"]
+        parts.append(f"{what} sent {ago(control['at'])} ago, "
+                     + ("delivery uncertain" if control["status"] == "uncertain" else "not yet taken by the host"))
+    return "; ".join(parts)
 
 
 def run_turns(run):
@@ -732,10 +935,22 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
-        "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host)} if host else None,
+        "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host),
+                 "degraded_reason": agent_link.build_identity(host)["degraded_reason"],
+                 # The host's lease: renewed every 30 s while connected, so its age is "host seen N s ago".
+                 "last_seen_at": host.last_seen_at} if host else None,
+        # Whether the agent was spawned with Eridani's MCP tools (spawn outcome, remotea PR #20); null when unsaid.
+        "mcp": (run.sync_state or {}).get("mcp"),
+        # Freshness facts kept apart (E-S6): the transcript's age, the latest verification and how far it proves the
+        # current turn, and controls sent but not yet taken by the host or whose delivery is uncertain.
+        "last_turn_at": db.scalar(run_turns(run).with_only_columns(func.max(AgentTurn.created_at))),
+        "verification": verification_fact(db, run),
+        "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
         "created_at": run.created_at,
+        # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
+        **run_summaries.public(run),
     }
     if detail:
         plan = coordinator.frozen(db, run)
@@ -750,7 +965,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                   "proposals": plan.proposals}
             if plan else None,
             attempts=[public_attempt(a) for a in db.scalars(
-                select(AgentAttempt).where(AgentAttempt.run_id == run.id).order_by(AgentAttempt.created_at.desc()).limit(40))],
+                select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind != "summary")
+                .order_by(AgentAttempt.created_at.desc()).limit(40))],
             interviews=[agent_plan_public(i) for i in db.scalars(
                 select(AgentInterview).where(AgentInterview.run_id == run.id).order_by(AgentInterview.created_at))],
             history=run.history or [],
@@ -763,6 +979,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),
             changes=changes_info(db, run, host, session),
+            # {verify id: {ready, reason?}} from the host's hello (caps_version 2); empty for an older host.
+            verify_readiness=run_verify_readiness(db, run),
             more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit,
                   "remaining": {"turns": older_turns, "commands": older_commands}},
             # A settled run's turns and commands are deleted RUN_DATA after it ended (agent_retention.py).
@@ -771,6 +989,13 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
     return encode(result)
+
+
+def run_verify_readiness(db, run):
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    host = db.get(AgentHost, target.host_id) if target is not None and target.host_id else None
+    status = target_verify_status(hello_target(host, target.host_target)) if host is not None else None
+    return {s["id"]: {"ready": s["ready"], **({"reason": s["reason"]} if s.get("reason") else {})} for s in status or []}
 
 
 def agent_plan_verify_ids(db, run):
@@ -993,13 +1218,46 @@ def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
             raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
         target = resolve_target(db, owner, task, execution_target_id)
         out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
-        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None, harness,
-                   target.host_target)
+        host = db.get(AgentHost, target.host_id) if target.host_id else None
+        check_host(owner, task, host, harness, target.host_target)
     except DomainError as error:
         if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
             return {**out, "needs_target": True, "need": error.data}
-        out["problems"].append({"code": error.code, "message": error.message})
+        out["problems"].append({"code": error.code, "message": error.message, "blocking": True})
+        return out
+    out["problems"] += target_problems(task, hello_target(host, target.host_target) if host is not None else None)
     return out
+
+
+def target_problems(task, item):
+    """What the target's hello says will go wrong (caps_version 2 / remotea PR #20), as readiness problems:
+    MCP_UNCONFIGURED (agents get no Eridani tools, so they cannot submit a plan: blocks a start unless it is a
+    freestyle run, `freestyle_ok`) and VERIFY_NOT_READY (the task's verify command, or every one the target offers,
+    is not ready on the host: a warning, `blocking: false`, since the run still starts and records the failure)."""
+    problems = []
+    mcp = target_mcp(item)
+    if mcp is not None and not mcp["configured"]:
+        problems.append({"code": "MCP_UNCONFIGURED", "blocking": True, "freestyle_ok": True,
+                         "message": "Agents on this target have no Eridani tools: "
+                                    f"{mcp.get('reason') or 'the host did not say why'}."})
+    used, ready = verify_use(task, target_verify_status(item))
+    if ready is False:
+        reasons = "; ".join(f"{s['id']}: {s.get('reason') or 'not ready'}" for s in used if not s["ready"])
+        problems.append({"code": "VERIFY_NOT_READY", "blocking": False,
+                         "message": f"This target's verify command is not ready ({reasons})."})
+    return problems
+
+
+def verify_use(task, status):
+    """(the verify_status rows a run would use, whether that is ready): the task's verify id when it names one, else
+    any id the target offers (agent_plan.pick_verify prefers a ready one). (rows, None) when the host did not say."""
+    if not status:
+        return [], None
+    wanted = (task.verify or {}).get("verify_id") if task is not None and isinstance(task.verify, dict) else None
+    used = [s for s in status if s["id"] == wanted] if wanted else status
+    if not used:
+        return [], None
+    return used, (used[0]["ready"] if wanted else any(s["ready"] for s in used))
 
 
 def readiness(db, owner, row):
@@ -1034,10 +1292,33 @@ def target_capabilities(db, owner, task, execution_target_id=None):
             {name: reason for name, reason in reasons.items() if reason}, None)
 
 
+def target_readiness(db, owner, task, execution_target_id=None):
+    """The resolved target's verify and MCP readiness as its host last advertised it (caps_version 2 / PR #20):
+    `verify_status` (all its ids), `verify_ready` for the ids a run would use (verify_use: the task's verify id, else
+    whether any id the target offers is ready, since the default pick prefers a ready one; null when the host did
+    not say or there are none), `verify_reasons` {id: reason} for those not ready, and `mcp` {configured, reason?}
+    (null when unsaid). Nothing while no target resolves."""
+    empty = {"verify_status": None, "verify_ready": None, "verify_reasons": {}, "mcp": None}
+    try:
+        target = resolve_target(db, owner, task, execution_target_id)
+    except DomainError:
+        return empty
+    host = db.get(AgentHost, target.host_id) if target.host_id else None
+    item = hello_target(host, target.host_target) if host is not None and host.owner_id == owner else None
+    status = target_verify_status(item)
+    if status is None:
+        return {**empty, "mcp": target_mcp(item)}
+    used, ready = verify_use(task, status)
+    return {"verify_status": status, "verify_ready": ready,
+            "verify_reasons": {s["id"]: s.get("reason") or "not ready" for s in used if not s["ready"]},
+            "mcp": target_mcp(item)}
+
+
 def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
     """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
     the interview would run (start_run's rule), which harnesses the task's target can spawn (`harness_reasons` says
-    why not; `harness_note` is set while no target resolves), and the task's title."""
+    why not; `harness_note` is set while no target resolves), the target's verify and MCP readiness
+    (target_readiness), and the task's title."""
     task = owned(db, Task, task_id, owner)
     out = readiness_for(db, owner, task, harness, execution_target_id)
     active = coordinator_active(db, task.id)
@@ -1046,7 +1327,227 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
     return {**out, "task": {"id": task.id, "title": task.title},
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
             "interview": not task.prd_note_id and not planned,
-            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note}
+            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note,
+            **target_readiness(db, owner, task, execution_target_id)}
+
+
+# ---------------------------------------------------------------- setup readiness (E-Q1)
+
+CONFIG_FILE = "~/.config/remotea/eridani.json"
+RELOAD = "Save eridani.json; remotea reconnects within 30 seconds and its next hello carries the change."
+TOO_OLD = "unknown (host too old)"
+SETUP_HINT = "Settings → Connections → remotea lists every problem with its fix."
+SETUP_FIX =("run `remotea eridani setup` in WSL and paste a setup code from Settings → Connections → remotea "
+             "(New setup code) when asked")
+
+
+def problem(code, message, fix, blocks=True):
+    """One setup problem as the page, the probe, control_status and Eri all say it. `blocks`: a run cannot start
+    (or cannot finish its planning turn) until it is fixed; otherwise it starts but works worse."""
+    return {"code": code, "message": message, "fix": fix, "blocks": blocks}
+
+
+def verify_fix(reason):
+    """The plain-language fix for a verify entry the host says is not ready (reason text from remotea's hello)."""
+    text = (reason or "").lower()
+    if "bwrap" in text or "bubblewrap" in text:
+        return ('The entry demands isolation "bwrap" and the sandbox does not work on this host: install bubblewrap '
+                '(sudo apt install bubblewrap) or set isolation "none" on the entry. ' + RELOAD)
+    if "path" in text:
+        return ("Its program is not on the service PATH (systemd's minimal PATH; uv in ~/.local/bin is the usual "
+                "case): use scripts/verify.sh or an absolute program, or set env.PATH on the entry in "
+                f"{CONFIG_FILE}. {RELOAD}")
+    if "cwd" in text:
+        return f"Its cwd does not exist in the repository: fix cwd on the entry in {CONFIG_FILE}. {RELOAD}"
+    return f"Fix the verify entry in {CONFIG_FILE} (program, cwd, env). {RELOAD}"
+
+
+def host_setup(host):
+    """Step 1 of the setup page: is the host connected and healthy? Its build line and its problems."""
+    build = agent_link.build_identity(host)
+    name = host.name or host.machine or "remotea"
+    out = {"id": host.id, "name": name, "connected": agent_link.connected(host), "last_seen_at": host.last_seen_at,
+           "hello_at": (host.caps or {}).get("hello_at"), "version": host.version, "build": build["build"],
+           "build_dirty": build["build_dirty"], "caps_version": build["caps_version"],
+           "degraded_reason": build["degraded_reason"], "problems": []}
+    if not out["connected"]:
+        out["problems"].append(problem(
+            "HOST_OFFLINE", f"The remotea server {name} is not connected.",
+            "In WSL, check it with `systemctl --user status remotea` and start it with "
+            f"`systemctl --user start remotea`; if it was never linked, {SETUP_FIX}."))
+    if build["degraded_reason"]:
+        out["problems"].append(problem(
+            "HOST_DEGRADED", f"Host journal degraded: {build['degraded_reason']}",
+            "remotea refuses starts, messages and stops until its journal can write again: free disk space (or fix "
+            "the journal folder's permissions) on the host, then `systemctl --user restart remotea`."))
+    return encode(out)
+
+
+def target_setup(db, owner, host, host_target, saved=None):
+    """Steps 2 and 3 of the setup page for one target (a host's `host_target`, saved or only advertised): what the
+    host's last hello said about it and what stands in a run's way, each problem with its fix. The harness checks
+    are harness_problem's (the refusals start_run and the Run dialog give); facts an older host did not send are
+    null and read "unknown (host too old)"."""
+    label = (saved.name if saved is not None and saved.name else None) or host_target
+    host = host if host is not None and host.owner_id == owner else None
+    item = hello_target(host, host_target) if host is not None else None
+    live = host is not None and agent_link.connected(host)
+    out = {"host_id": host.id if host is not None else None, "host_name": (host.name or "remotea") if host else None,
+           "host_target": host_target, "name": label,
+           "repo": str((item or {}).get("repo") or (saved.repo if saved is not None else ""))[:1000],
+           "execution_target_id": saved.id if saved is not None else None,
+           "key": saved.id if saved is not None else f"host:{host.id if host else ''}:{host_target}",
+           "advertised": item is not None, "harnesses": {}, "verify": None, "mcp": None, "problems": [], "notes": []}
+    if host is None:
+        out["problems"].append(problem("HOST_MISSING", f"{label} has no remotea server.",
+                                       f"{SETUP_FIX[0].upper()}{SETUP_FIX[1:]}, then pick this repository again."))
+        return finish_target(out)
+    if not live:
+        out["problems"].append(problem("HOST_OFFLINE", f"The remotea server {out['host_name']} is not connected.",
+                                       "Start remotea in WSL: `systemctl --user start remotea`."))
+    if item is None:
+        out["problems"].append(problem(
+            "TARGET_NOT_ADVERTISED", f"{out['host_name']} does not list the {host_target} target.",
+            f'Add a target with id "{host_target}" to targets[] in {CONFIG_FILE} (`remotea eridani setup '
+            f"--add-repo {host_target}=<path>` does it). {RELOAD}"))
+        return finish_target(out)
+    enabled, launch = target_enabled(item), target_launch(item)
+    for name in HARNESSES:
+        why = harness_problem(host, name, host_target)
+        probe = (launch or {}).get(name)
+        label_h = HARNESS_LABELS.get(name, name)
+        out["harnesses"][name] = {
+            "label": label_h, "ready": why is None, "enabled": (name in enabled) if enabled is not None else None,
+            "version": (probe or {}).get("version"), "error": (probe or {}).get("error"),
+            "launch": "probed" if probe is not None else TOO_OLD if launch is None
+            else "not probed" if name in (enabled or []) else "not enabled",
+            "reason": why}
+        if live and enabled is not None and name in enabled and why is not None:
+            out["problems"].append(problem(
+                "HARNESS_NOT_INSTALLED", f"{label_h} is enabled but not installed: {why}",
+                f"Install {label_h} where the service finds it (its login shell's PATH), or remove {name} from the "
+                f"target's launch in {CONFIG_FILE}. {RELOAD}", blocks=False))
+    if live and not any(h["ready"] for h in out["harnesses"].values()):
+        out["problems"].append(problem(
+            "NO_HARNESS", f"No coding agent can start on {label}.",
+            f"Add launch.claude (or launch.codex) to the {host_target} target in {CONFIG_FILE} and install that "
+            f"agent on the host. {RELOAD}"))
+    status = target_verify_status(item)
+    out["verify"] = status
+    if status is None:
+        out["notes"].append(f"Verify readiness: {TOO_OLD}.")
+    elif not status:
+        out["problems"].append(problem(
+            "NO_VERIFY", f"{label} has no verify command, so a run cannot check its work with tests.",
+            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, scripts/verify.sh with an isolated "
+            f"test database). {RELOAD}", blocks=False))
+    for entry in status or []:
+        if not entry["ready"]:
+            out["problems"].append(problem(
+                "VERIFY_NOT_READY",
+                f"Verify {entry['id']} is not ready: {entry.get('reason') or 'the host did not say why'}",
+                verify_fix(entry.get("reason")), blocks=False))
+        elif entry.get("isolated") is False and entry.get("isolation") != "none":
+            # Not chosen: the sandbox is unavailable on this host (an entry that sets "none" chose it).
+            out["notes"].append(f"Verify {entry['id']} runs without a sandbox: "
+                                f"{entry.get('isolation_reason') or 'the host did not say why'}.")
+    out["mcp"] = target_mcp(item)
+    if out["mcp"] is None:
+        out["notes"].append(f"Eridani tools for agents (MCP): {TOO_OLD}.")
+    elif not out["mcp"]["configured"]:
+        out["problems"].append(problem(
+            "MCP_NOT_CONFIGURED",
+            f"Agents on {label} get no Eridani tools: {out['mcp'].get('reason') or 'the host did not say why'}",
+            f"{SETUP_FIX[0].upper()}{SETUP_FIX[1:]}: it saves the MCP key to ~/.config/remotea/eridani-mcp-token. "
+            "Without it the agent cannot submit its plan."))
+    return finish_target(out)
+
+
+def finish_target(out):
+    out["ready"] = not any(p["blocks"] for p in out["problems"])
+    out["line"] = setup_line(out["name"], out.get("host_name"), out["problems"]) if not out["ready"] else None
+    return encode(out)
+
+
+def setup_line(name, host_name, problems):
+    """One spoken line for an unready host or target (control_status, Eri): its blocking problems, then the first
+    fix."""
+    blocking = [p for p in problems if p["blocks"]]
+    if not blocking:
+        return None
+    where = name + (f" on {host_name}" if host_name else "")
+    return f"{where}: " + "; ".join(p["message"].rstrip(".") for p in blocking) + f". Fix: {blocking[0]['fix']}"
+
+
+def setup_report(db, owner):
+    """The guided setup page (GET /remotea/setup): each host (connected? build? degraded?), then each target its hosts
+    advertise or the owner saved (one entry per host and host_target), with its readiness and fixes. `lines` holds
+    one line per unready host or target, the way control_status says them; `ready` is true when a connected,
+    healthy host has at least one ready target."""
+    hosts = list(db.scalars(select(AgentHost).where(AgentHost.owner_id == owner).order_by(AgentHost.created_at)))
+    by_id = {h.id: h for h in hosts}
+    saved = {}
+    for row in db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner)
+                          .order_by(ExecutionTarget.created_at)):
+        saved.setdefault((row.host_id, row.host_target), row)
+    pairs = []
+    for h in hosts:
+        for item in (h.caps or {}).get("targets") or []:
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and (h.id, item["id"]) not in pairs:
+                pairs.append((h.id, item["id"]))
+    pairs += [pair for pair in saved if pair not in pairs]
+    targets = [target_setup(db, owner, by_id.get(hid), ht, saved.get((hid, ht))) for hid, ht in pairs]
+    host_rows = [host_setup(h) for h in hosts]
+    lines = []
+    if not hosts:
+        lines.append(f"No remotea server has connected yet. Fix: {SETUP_FIX}.")
+    lines += [setup_line(h["name"], None, h["problems"]) for h in host_rows if h["problems"]]
+    offline = {h["id"] for h in host_rows if not h["connected"]}
+    # An offline host's targets would only repeat the host's own line.
+    lines += [t["line"] for t in targets if t["line"] and not (
+        t["host_id"] in offline and {p["code"] for p in t["problems"] if p["blocks"]} == {"HOST_OFFLINE"})]
+    if hosts and not targets:
+        lines.append("No execution target is configured. Fix: run `remotea eridani setup --scan <folder>` in WSL to "
+                     f"add your repositories, or add targets[] to {CONFIG_FILE}.")
+    ready = any(h["connected"] and not h["problems"] for h in host_rows) and any(t["ready"] for t in targets)
+    return {"ready": ready, "hosts": host_rows, "targets": targets, "lines": lines}
+
+
+def proposal_setup(db, owner, row):
+    """The setup line for a pending start's resolved target when something there would stall the run (no Eridani
+    tools, say) although check_host lets it start; None when the target is ready."""
+    try:
+        target = resolve_target(db, owner, db.get(Task, (row.arguments or {}).get("task_id")),
+                                (row.arguments or {}).get("execution_target_id"))
+    except DomainError:
+        return None
+    host = db.get(AgentHost, target.host_id) if target.host_id else None
+    return target_setup(db, owner, host, target.host_target, target)["line"]
+
+
+def target_probe(db, owner, key):
+    """POST /remotea/targets/{key}/probe: one target's readiness. remotea has no probe command yet, so this reads the
+    facts from the host's last hello and says so (`source: "hello"`, `hello_at`, `note`). `key` is a saved
+    execution target id or an advertised target's `host:<host_id>:<host_target>`."""
+    if key.startswith("host:"):
+        _, host_id, host_target = (key.split(":", 2) + ["", ""])[:3]
+        host, saved = db.get(AgentHost, host_id), None
+        if host is None or host.owner_id != owner or hello_target(host, host_target) is None:
+            raise DomainError("NOT_FOUND", "That remotea target is no longer advertised.", 404)
+    else:
+        try:
+            UUID(key)
+        except ValueError:
+            raise DomainError("NOT_FOUND", "That execution target is not available.", 404) from None
+        saved = owned(db, ExecutionTarget, key, owner)
+        host, host_target = (db.get(AgentHost, saved.host_id) if saved.host_id else None), saved.host_target
+    offline = host is not None and not agent_link.connected(host)
+    note = ("This remotea server has no readiness probe yet, so these are the facts from its last hello"
+            + (" (it is offline)" if offline else "") + ". Saving eridani.json makes remotea reconnect with fresh "
+            "facts within 30 seconds; `remotea eridani status --probe` in WSL checks now.")
+    return {"source": "hello", "hello_at": (host.caps or {}).get("hello_at") if host is not None else None,
+            "note": note, "host": host_setup(host) if host is not None and host.owner_id == owner else None,
+            "target": target_setup(db, owner, host, host_target, saved)}
 
 
 def proposal(db, owner, result):
@@ -1068,8 +1569,18 @@ def proposal(db, owner, result):
                     "project first. They can also pick it on the card in chat or on the remotea page. A bare yes "
                     "cannot start it until a place is chosen.")
     for problem in ready["problems"]:
-        told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
-                    "fixed; the proposal stays open until it expires.")
+        if problem.get("blocking", True):
+            told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
+                        "fixed; the proposal stays open until it expires.")
+        else:
+            told.append(f"Tell the owner: {problem['message']} ({problem['code']}) The run can still start, but its "
+                        "verification will not pass until that is fixed on the host.")
+    # The setup line carries the fix; it is skipped while a problem that makes confirming fail anyway stands (a
+    # freestyle-lifted MCP_UNCONFIGURED or a warning does not count, so the owner still hears how to fix them).
+    stuck = any(p.get("blocking", True) and not p.get("freestyle_ok") for p in ready["problems"])
+    setup = proposal_setup(db, owner, row) if ready["target"] and not stuck else None
+    if setup:
+        told.append(f"Also tell the owner before they confirm: {setup}")
     return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
             "target": ready["target"], "problems": ready["problems"], **extra,
             **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
@@ -1504,6 +2015,8 @@ def spoken_run(db, run):
     interview = coordinator.open_interview(db, run)
     linear = (run.sync_state or {}).get("linear") or {}
     spoken = {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
+              # What the agent is doing now in one line, as of summary_at; say it as "the agent is …".
+              "doing": run.summary or None, "doing_as_of": run.summary_at if run.summary else None,
               "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
               "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
               "questions": questions,
@@ -1532,6 +2045,8 @@ def spoken_run(db, run):
                                                "instead."}
     elif run.state == "needs_you" and run.state_reason != "plan_review":
         spoken["review_packet"] = review_packet(db, run)
+    # How old each fact is (E-S6): say it before a decision ("verify passed 3 min ago …; host seen 5 s ago").
+    spoken["freshness"] = freshness_text(item)
     return spoken
 
 
@@ -1647,9 +2162,16 @@ def status(db, owner, args):
     recent = list(db.scalars(select(AgentRun).where(
         AgentRun.owner_id == owner, AgentRun.state.in_(TERMINAL_RUN_STATES),
         AgentRun.finished_at >= now() - timedelta(hours=24)).order_by(AgentRun.finished_at.desc()).limit(5)))
-    hosts = [{"name": h.name, "connected": agent_link.connected(h)}
-             for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner))]
+    hosts = []
+    for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
+        degraded = agent_link.build_identity(h)["degraded_reason"]
+        # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
+        hosts.append({"name": h.name, "connected": agent_link.connected(h), "last_seen_at": h.last_seen_at,
+                      **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {})})
+    # One line per unready host or target with its first fix (the setup page's wording): why a run cannot start.
+    setup = setup_report(db, owner)["lines"]
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
+                   **({"setup": setup, "setup_hint": SETUP_HINT} if setup else {}),
                    "pending": spoken_pending(db, owner),
                    "recently_finished": [{"run_id": r.id, "task": (db.get(Task, r.task_id).title if r.task_id else ""),
                                           "state": r.state, "finished_at": r.finished_at} for r in recent
