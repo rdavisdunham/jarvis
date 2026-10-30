@@ -374,8 +374,14 @@ def record_titles(db, owner, ids):
     return {r.id: r.title for r in rows}
 
 
+def stamp(value):
+    """A timestamp as the wire already carries it (ISO 8601). The result of public() is also a tool result that
+    Eri's runners json.dumps as is; a datetime there failed the whole chat turn (2026-10-29)."""
+    return value.isoformat() if value else None
+
+
 def public(db, row, *, titles=None, reveal=True, score=None):
-    """reveal=False hides the filed record's title from keys that cannot read records."""
+    """reveal=False hides the filed record's title from keys that cannot read records. Plain JSON only."""
     titles = titles if titles is not None else record_titles(db, row.owner_id, {row.record_id})
     result = {
         "id": row.id,
@@ -392,15 +398,15 @@ def public(db, row, *, titles=None, reveal=True, score=None):
         "repo": row.repo,
         "branch": row.branch,
         "turn_count": row.turn_count,
-        "started_at": row.started_at,
-        "last_active_at": row.last_active_at,
+        "started_at": stamp(row.started_at),
+        "last_active_at": stamp(row.last_active_at),
         "pr_urls": row.pr_urls,
         "issue_refs": row.issue_refs,
         "resume": row.resume,
         # Reported over the agent link by the remotea server, with the host's own timestamp.
         "live_state": {
             "state": row.state,
-            "since": row.state_since,
+            "since": stamp(row.state_since),
             "host_id": row.host_id,
             "reason": (row.state_detail or {}).get("reason", ""),
         } if row.state else None,
