@@ -11,7 +11,7 @@ import { NoticeSnooze } from "./NoticeSnooze";
 import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
-import { SETUP_REQUEST } from "./setup-model";
+import { SETUP_REQUEST, typesFieldsRequest } from "./setup-model";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -1664,7 +1664,7 @@ export default function App() {
     if (voice.current || (voiceState && !voiceState.closed))
       throw Error("Voice is already active. Ask Eri to help with setup, or end voice and try again.");
     if (!boot?.capabilities.chat)
-      throw Error("Chat needs a configured task agent. You can still use the setup form.");
+      throw Error("Chat needs a configured task agent. You can still make these changes with the form.");
     if (thinking || chatSubmitLock.current)
       throw Error("Your previous message is still being sent. Try setup again when it finishes.");
     focusChat();
@@ -2467,7 +2467,7 @@ export default function App() {
               title="Eri activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
-            {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending); return (
+            {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending, remotea.status?.hosts ?? []); return (
               <button className={"btn btn-ghost activity-toggle " + (badge.attention ? "needs-attention" : "")} aria-label={badge.aria}
                 title="Agent runs: active runs and the ones waiting for you" onClick={() => setRunsOpen(true)}>
                 <SquareTerminal size={18}/><span>Runs</span>{badge.count > 0 && <b>{badge.count}</b>}
@@ -2732,7 +2732,7 @@ export default function App() {
                 }}
               />
             )}
-            {view === "organize" && !organizationEditor && <StructureWorkspace today={today} searchLabel="Search organization" onVisible={setOrganizationVisible} onContext={setCollectionContext} onQuery={setQuery} control={recordControl} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()}/>}
+            {view === "organize" && !organizationEditor && <StructureWorkspace today={today} searchLabel="Search organization" onVisible={setOrganizationVisible} onContext={setCollectionContext} onQuery={setQuery} control={recordControl} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} onTalkStructure={boot.workspace?.id?undefined:name=>startGuidedConversation(typesFieldsRequest(name))} refresh={noteRevision} onChanged={()=>void load()}/>}
 
             {view === "notes" && (
               <NotesPage

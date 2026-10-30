@@ -4,10 +4,13 @@ Enable, disable and status work in either state; every other /api/v1/remotea rou
 403 REMOTEA_DISABLED until the owner turns remotea on.
 """
 
+import base64
+import json
+import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
@@ -25,17 +28,34 @@ from .domain import DomainError, advisory, emit, encode, owned
 from .models import BotCredential, OwnerSettings, now
 from .session_models import AgentHost, AgentSession, AgentTurn
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/remotea")
 User = Annotated[Identity, Depends(authenticate)]
 KEY_NAME = "remotea"
 KEY_SCOPES = ["agents:control", "agents:session", "sessions:read", "sessions:write", "tasks:read", "records:read"]
 KEY_DAYS = 365
+# The bot key a setup code carries for the coding agents a run spawns (remotea saves it as eridani-mcp-token and
+# hands it to each spawn). Its name marks it: a new setup code revokes every active key with this name. Exactly
+# what remotea's eridani-mcp.ts tools need: task_plan, task_step, task_interview and submit_plan (agents:session;
+# task_step and submit_plan edit the task and its PRD note: tasks:write, notes:write) and session_link
+# (sessions:write). bot_access.normalize adds the matching :read scopes. Never agents:control: it cannot open the
+# link, and the link key never gets tasks:write.
+MCP_KEY_NAME = "remotea MCP"
+MCP_KEY_SCOPES = ["agents:session", "tasks:write", "notes:write", "sessions:write"]
+SETUP_CODE_PREFIX = "eridani-setup:1:"
+SETUP_COMMAND = "remotea eridani setup"
 RECENT_EXIT_HOURS = 24
 
 
 class EnableInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rotate: bool = False
+
+
+class SetupCodeInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    # Optional: the machine name remotea reports as (the wizard asks for it otherwise).
+    machine: str | None = Field(default=None, max_length=100, pattern=r"^[^\x00-\x1f]*$")
 
 
 class AutoCompleteInput(BaseModel):
@@ -48,14 +68,53 @@ def link_url():
     return origin.replace("https://", "wss://", 1).replace("http://", "ws://", 1) + agent_link.PATH
 
 
-def active_key(db, user):
-    return db.scalar(
+def active_keys(db, user, name=KEY_NAME):
+    return list(db.scalars(
         select(BotCredential)
         .where(BotCredential.owner_id == user.owner_id, BotCredential.account_id == user.account_id,
-               BotCredential.name == KEY_NAME, BotCredential.revoked_at.is_(None), BotCredential.expires_at > now())
+               BotCredential.name == name, BotCredential.revoked_at.is_(None), BotCredential.expires_at > now())
         .order_by(BotCredential.created_at.desc())
-        .limit(1)
-    )
+    ))
+
+
+def active_key(db, user, name=KEY_NAME):
+    keys = active_keys(db, user, name)
+    return keys[0] if keys else None
+
+
+def revoke(db, rows):
+    for row in rows:
+        advisory(db, "bot:" + row.id)
+        row.revoked_at = row.revoked_at or now()
+    return [row.id for row in rows]
+
+
+def setup_code(link_key, mcp_key=None, machine=None):
+    """`eridani-setup:1:` + unpadded base64url(JSON {url, link_key, mcp_key?, machine?}), what remotea's
+    `remotea eridani setup` accepts (remotea eridani-setup.ts parseSetupCode). `url` is Eridani's public origin,
+    which the wizard turns into the link URL and the MCP URL. A code without mcp_key keeps the host's current one."""
+    payload = {"url": get_settings().origin.rstrip("/"), "link_key": link_key,
+               **({"mcp_key": mcp_key} if mcp_key else {}), **({"machine": machine} if machine else {})}
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    return SETUP_CODE_PREFIX + base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def mint(db, user, *, mcp=True, machine=None):
+    """Mint a new link key and, with `mcp`, a new MCP key, revoking the ones they replace; return the link token
+    (`token`, as before) and the setup code carrying both. Both appear in this response only: bot_credentials
+    keeps their hash, and the log line names credential ids, never a token or a code."""
+    tokens, revoked = {}, []
+    for kind, name, scopes in (("link", KEY_NAME, KEY_SCOPES), ("mcp", MCP_KEY_NAME, MCP_KEY_SCOPES)):
+        if kind == "mcp" and not mcp:
+            continue
+        old = active_keys(db, user, name)
+        tokens[kind] = bot_access.create(db, user.owner_id, user.account_id, name, scopes, KEY_DAYS)
+        revoked += revoke(db, old)
+    logger.info("remotea keys minted for owner %s: %s; revoked: %s", user.owner_id,
+                ", ".join(f"{kind} {row['credential']['id']}" for kind, row in tokens.items()),
+                ", ".join(revoked) or "none")
+    return {"token": tokens["link"]["token"],
+            "setup_code": setup_code(tokens["link"]["token"], tokens["mcp"]["token"] if mcp else None, machine)}
 
 
 def state(db, user):
@@ -67,6 +126,9 @@ def state(db, user):
         "quiet_bypass": coordinator.quiet_bypass(db, user.owner_id),
         "retention_days": retention.window(db, user.owner_id).days,
         "key": bot_access.public(key) if key else None,
+        # The MCP key the last setup code carried (its prefix and expiry; never the token).
+        "mcp_key": bot_access.public(mcp) if (mcp := active_key(db, user, MCP_KEY_NAME)) else None,
+        "setup_command": SETUP_COMMAND,
         "hosts": [agent_link.public_host(h) for h in hosts],
         "link_url": link_url(),
         "connect_command": "remotea eridani connect --url " + link_url(),
@@ -93,18 +155,42 @@ def status(user: User):
 
 @router.post("/enable")
 def enable(body: EnableInput, user: User):
-    """Turn remotea on and mint the link key. The token appears in this response only."""
+    """Turn remotea on. The first time (no active link key) it mints the link key and the MCP key and returns both
+    in a setup code; `rotate` (New link key) replaces only the link key, and its code carries no MCP key, so the
+    host keeps the one it has. Enabling again with a live key mints nothing. Tokens and the code appear in this
+    response only."""
     with session_scope() as db:
         owner_only(db, user)
-        key = active_key(db, user)
-        minted = None
-        if key is None or body.rotate:
-            minted = bot_access.create(db, user.owner_id, user.account_id, KEY_NAME, KEY_SCOPES, KEY_DAYS)
-            if key is not None:
-                advisory(db, "bot:" + key.id)
-                key.revoked_at = now()
+        fresh = active_key(db, user) is None
+        minted = mint(db, user, mcp=fresh) if fresh or body.rotate else {"token": None, "setup_code": None}
         set_enabled(db, user.owner_id, True)
-        return {**state(db, user), "token": minted["token"] if minted else None}
+        return {**state(db, user), **minted}
+
+
+@router.post("/setup-code")
+def new_setup_code(user: User, body: SetupCodeInput | None = None):
+    """New setup code: replace the link key and the MCP key (revoking the earlier ones) and return the one-time code
+    for `remotea eridani setup`."""
+    with session_scope() as db:
+        gated(db, user)
+        return {**state(db, user), **mint(db, user, machine=(body.machine if body else None) or None)}
+
+
+@router.get("/setup")
+def setup(user: User):
+    """The guided setup page: hosts, then targets with their readiness and fixes (agent_control.setup_report)."""
+    with session_scope() as db:
+        gated(db, user)
+        return encode(control.setup_report(db, user.owner_id))
+
+
+@router.post("/targets/{key}/probe")
+def probe_target(user: User, key: Annotated[str, Path(min_length=1, max_length=200)]):
+    """One target's readiness facts and fixes; read from the host's last hello while remotea has no probe command
+    (the response says so). `key` is a saved target id or an advertised `host:<host_id>:<host_target>`."""
+    with session_scope() as db:
+        gated(db, user)
+        return encode(control.target_probe(db, user.owner_id, key))
 
 
 @router.post("/disable")
@@ -113,11 +199,11 @@ def disable(user: User):
     with session_scope() as db:
         owner_only(db, user)
         set_enabled(db, user.owner_id, False)
-        # The link key dies with the switch (stage F, L1): turning remotea on again mints a new one.
-        key = active_key(db, user)
-        if key is not None:
-            advisory(db, "bot:" + key.id)
-            key.revoked_at = now()
+        # The link key dies with the switch (stage F, L1), and so does the MCP key a setup code carried: turning
+        # remotea on again mints both in a new setup code.
+        revoked = revoke(db, [*active_keys(db, user), *active_keys(db, user, MCP_KEY_NAME)])
+        if revoked:
+            logger.info("remotea keys revoked for owner %s: %s", user.owner_id, ", ".join(revoked))
         return state(db, user)
 
 
@@ -317,6 +403,35 @@ def stop(identity: UUID, body: control.StopInput, user: User):
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
+@router.post("/runs/{identity}/focus")
+def focus(identity: UUID, user: User):
+    """Open the run's terminal in remotea: ask the host's desktop app(s) to bring the run's tab to the front
+    (`terminal.focus`). Waits a few seconds for the host's answer. `{sent: true}` when an app was told, otherwise
+    `{sent: false, reason}`: `no_desktop` (no desktop app connected to the host), `host_offline`, `no_surface` (the
+    run has no terminal, or it is gone), `host_too_old` (the host does not offer it), `no_answer` (the host did
+    not answer in time) or `failed`. The page then shows where the terminal is. Changes nothing on the run and
+    stores no receipt: a repeat only raises the tab again."""
+    import time
+
+    with session_scope() as db:
+        writable(db, user)
+        op_id, reason = control.focus_terminal(db, user.owner_id, str(identity))
+    if op_id is None:
+        return {"sent": False, "reason": reason}
+    deadline = time.monotonic() + control.FOCUS_WAIT_SECONDS
+    while True:
+        with session_scope() as db:
+            result = control.focus_result(db, user.owner_id, op_id)
+        if result is not None:
+            return result
+        if time.monotonic() >= deadline:
+            with session_scope() as db:
+                control.give_up_focus(db, user.owner_id, op_id)
+                result = control.focus_result(db, user.owner_id, op_id)
+            return result if result is not None and result.get("sent") else {"sent": False, "reason": "no_answer"}
+        time.sleep(control.FOCUS_POLL_SECONDS)
+
+
 @router.post("/runs/{identity}/approve")
 def approve(identity: UUID, body: control.ApproveInput, user: User):
     with session_scope() as db:
@@ -346,6 +461,24 @@ def verify_config(identity: UUID, body: agent_plan.SetVerifyInput, user: User):
     with session_scope() as db:
         writable(db, user)
         return receipts.once(db, user.owner_id, str(identity), "verify_config", body, lambda: agent_plan.set_verify(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/criteria")
+def criteria(identity: UUID, body: agent_plan.SetCriteriaInput, user: User):
+    """Edit criteria on a parked run (needs_you, awaiting_approval): a human edit frozen as the next plan revision."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "criteria", body, lambda: agent_plan.set_criteria(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/judge")
+def judge_again(identity: UUID, body: control.JudgeAgainInput, user: User):
+    """Judge again: verify and judge the last turn against the plan as frozen now."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "judge", body, lambda: control.judge_again(
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
@@ -445,6 +578,23 @@ def unmerged(user: User):
     with session_scope() as db:
         gated(db, user)
         return control.unmerged(db, user.owner_id)
+
+
+@router.get("/worktrees")
+def worktrees(user: User):
+    """Worktree maintenance: every managed worktree per host, its bound run, and cleanup commands for the rows that
+    lose nothing (agent_control.worktree_maintenance). Read-only: Eridani never removes a worktree."""
+    with session_scope() as db:
+        gated(db, user)
+        return control.worktree_maintenance(db, user.owner_id)
+
+
+@router.post("/hosts/{identity}/rescan")
+def rescan(identity: UUID, user: User):
+    """Ask one host for a fresh worktrees.report now (the `worktrees.scan` command, run-less)."""
+    with session_scope() as db:
+        writable(db, user)
+        return control.rescan_worktrees(db, user.owner_id, str(identity))
 
 
 # ---------------------------------------------------------------- Eri's pending control (stage F, M5)

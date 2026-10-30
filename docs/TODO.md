@@ -13,7 +13,8 @@ headings do not set today's priority.
 
 Finish line: a dependable invite-only web planner on desktop and Pixel Fold,
 with clear organization, fast capture, reliable Eri actions and guided setup.
-Android follows the release checks and seven-day/50-interaction pilot.
+Android follows the release checks and seven-day/50-interaction pilot;
+see the [Android plan](ANDROID_PLAN.md).
 
 ## Current finishing pass — October 27
 
@@ -179,10 +180,16 @@ Release verification is in progress. Mission-control planning follows this batch
 - [ ] Physical phone/Live check: start setup, answer its questions, confirm a
   proposal; Quick Sort several tasks, use an ambiguous Home, skip/pause/resume,
   then Revert. The owner deferred interactive/device checks for now.
-- [ ] Extend the same interview entry point to Types & fields if useful; no second
-  interview runtime. Broader container sorting and bulk/correction conversation
-  shortcuts can follow after real use. Current corrections use the existing
-  Edit/Revert tools; a new Quick Sort selection can record a fresh human choice.
+- [x] Extend the same interview entry point to Types & fields; no second interview
+  runtime. Personal Organization › Types & fields has Refine with Eri: it sends the
+  same durable guided request (`startGuidedConversation`), narrowed to types,
+  fields, field options and which types use a field, naming a type only when the
+  owner opened one. Unsaved editor edits must be previewed or discarded first; the
+  proposal reopens in the same Types & fields review. Shared workspaces keep the
+  manual editor (setup state is Personal-only).
+- [ ] Broader container sorting and bulk/correction conversation shortcuts can
+  follow after real use. Current corrections use the existing Edit/Revert tools;
+  a new Quick Sort selection can record a fresh human choice.
 
 ## Completed planning and implementation reconciliation
 
@@ -557,7 +564,8 @@ A checked implementation task never replaces connected-provider or physical-devi
 - Broader Linear project/label/cycle controls, an Eri agent inside Linear, native
   recurring appointments, MCP OAuth and signed webhooks.
 - Public self-service, broader tenancy/RLS/encryption and sharing permissions;
-  Android, background wake-word service and offline-first sync.
+  Android, background wake-word service and offline-first sync
+  ([Android plan](ANDROID_PLAN.md): TWA plus a native voice companion).
 - Ambient conversational clarification beyond setup/review; Home Assistant,
   finance and general research/execution agents; further backend-model comparisons.
 - remotea for Brainforge members: multi-user design (per-member hosts and keys, owner-only control of a

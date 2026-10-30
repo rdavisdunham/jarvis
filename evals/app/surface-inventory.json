@@ -1363,6 +1363,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/hosts/{identity}/rescan",
+      "handler": "rescan",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/interviews/{identity}/answers",
       "handler": "interview_answers",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -1468,8 +1475,29 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/criteria",
+      "handler": "criteria",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/focus",
+      "handler": "focus",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/freestyle",
       "handler": "freestyle",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/judge",
+      "handler": "judge_again",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -1545,6 +1573,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/setup",
+      "handler": "setup",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/setup-code",
+      "handler": "new_setup_code",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/status",
       "handler": "status",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -1565,9 +1607,23 @@
       "feature": "agent_control"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/remotea/targets/{key}/probe",
+      "handler": "probe_target",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/remotea/unmerged",
       "handler": "unmerged",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/worktrees",
+      "handler": "worktrees",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },

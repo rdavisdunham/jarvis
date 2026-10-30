@@ -378,11 +378,23 @@ def needs_evidence(criteria):
     return False
 
 
-def pick_verify(offered):
+def pick_verify(offered, ready=None):
+    """The verify id Eridani names by default. `ready` ({id: bool}, the host's hello `verify_status`) narrows the
+    choice to the ids that are ready when at least one is; ids the host did not report count as ready. When none is
+    ready the choice is today's (the preflight says why: agent_control.target_readiness)."""
+    ready = ready or {}
+    usable = {v for v in offered if ready.get(v) is not False} or set(offered)
     for name in PREFERRED_VERIFY:
-        if name in offered:
+        if name in usable:
             return name
-    return sorted(offered)[0] if offered else None
+    return sorted(usable)[0] if usable else None
+
+
+def verify_ready(db, run):
+    """{verify id: ready} for the run's execution target, as its host last advertised (empty for an older host)."""
+    from .agent_control import run_verify_readiness
+
+    return {k: v["ready"] for k, v in run_verify_readiness(db, run).items()}
 
 
 def default_verify(db, run, criteria, verify):
@@ -392,7 +404,7 @@ def default_verify(db, run, criteria, verify):
     if verify or not needs_evidence(criteria):
         return verify, None
     targets, offered = verify_ids(db, run)
-    chosen = pick_verify(offered)
+    chosen = pick_verify(offered, verify_ready(db, run))
     if not chosen:
         return None, None
     picked = {"target_id": run.execution_target_id, "verify_id": chosen, "by": "default"}
@@ -627,5 +639,77 @@ def set_verify(db, owner, run_id, body, *, actor):
     if run.state == "needs_you" and run.surf:
         coordinator.transition(db, run, "executing", actor=actor, reason="verify_set")
         coordinator.say(db, run, prompts.verify_set(body.verify_id), "verify_set", actor=actor)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return public_run(db, run, detail=True)
+
+
+class EditedCriterion(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    id: str | None = Field(default=None, pattern=PLAN_ID)  # Omitted for a new criterion (task.update assigns one).
+    text: str = Field(min_length=1, max_length=1000)
+    kind: Literal["text", "verify"] = "text"
+
+
+class SetCriteriaInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    criteria: list[EditedCriterion] = Field(min_length=1, max_length=50)
+    # Also choose the verify command in the same revision (set_verify would resume a needs_you run at once).
+    verify_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    # Required, like approve: the edit changes what the run is judged against, so it must be the state you reviewed.
+    expected_revision: int = Field(ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
+
+
+CRITERIA_EDITABLE = {"needs_you", "awaiting_approval"}
+
+
+def set_criteria(db, owner, run_id, body, *, actor):
+    """The operator edits the success criteria (and optionally the verify command) of a run that is parked for them
+    (needs_you or awaiting_approval): a human edit of the task's gate fields, frozen as the next plan revision with
+    nothing else changed. The run does not move; Judge again (agent_control.judge_again) checks the last turn
+    against the new revision. An unchanged agent criterion stays the agent's; an edited or new one is the human's."""
+    from .agent_control import public_run
+
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    plan = coordinator.frozen(db, run)
+    if run.state not in CRITERIA_EDITABLE or plan is None or run.state_reason == "plan_review":
+        raise DomainError("RUN_NOT_PARKED", f"Criteria can be edited here while the run needs you or awaits approval "
+                          f"(not during a plan review); this run is {run.state}.", 409, data={"state": run.state})
+    verify = plan.verify
+    if body.verify_id and body.verify_id != (plan.verify or {}).get("verify_id"):
+        if body.verify_id not in verify_ids(db, run)[1]:
+            raise DomainError("VERIFY_UNKNOWN", "Name a verify id this run's execution target offers.", 400,
+                              data={"verify_ids": sorted(verify_ids(db, run)[1])})
+        verify = {"target_id": run.execution_target_id, "verify_id": body.verify_id, "by": "human"}
+    verify_id = (verify or {}).get("verify_id")
+    previous = {c.get("id"): c for c in plan.criteria or []}
+    criteria = []
+    for edited in body.criteria:
+        item = edited.model_dump(exclude_none=True)
+        if item["kind"] == "verify":
+            if not verify_id:
+                raise DomainError("INVALID_ARGUMENT", "A test criterion needs a verify command on this run; choose one.")
+            item["verify_id"] = verify_id  # A verify criterion is met by a fresh pass of the plan's verify command.
+        old = previous.get(edited.id) if edited.id else None
+        if old and old.get("by") == "agent" and all(old.get(k) == item.get(k) for k in ("text", "kind", "verify_id")):
+            item["by"] = "agent"
+        criteria.append(item)
+    changes = {"success_criteria": criteria, **({"verify": verify} if verify is not plan.verify else {})}
+    task = owned(db, Task, run.task_id, run.owner_id, lock=True)
+    with acting(Actor("human", credential_id=actor.credential_id, reason="criteria_set")):
+        execute(db, owner, f"set-criteria:{run.id}:{plan.revision}", "task.update",
+                {"task_id": task.id, "expected_revision": task.revision, **changes})
+    db.refresh(task)
+    revision = plan.revision + 1
+    db.add(AgentRunPlan(owner_id=run.owner_id, run_id=run.id, revision=revision, task_plan_revision=task.plan_revision or 0,
+                        title=plan.title, prd_text=plan.prd_text, steps=list(task.steps or []),
+                        criteria=list(task.success_criteria or []), verify=verify,
+                        completion_policy=plan.completion_policy, required_children=plan.required_children,
+                        proposals=None, migration=plan.migration))
+    # The state did not change, but what an approver reviewed did: an Approve sent against the old criteria conflicts.
+    run.plan_revision, run.state_revision = revision, run.state_revision + 1
+    coordinator.note(run, "criteria_set", plan_revision=revision, criteria=[c.get("id") for c in task.success_criteria or []],
+                     verify_id=verify_id, actor=actor.record())
     emit(db, run.owner_id, "agent.changed", run.id)
     return public_run(db, run, detail=True)
