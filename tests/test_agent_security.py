@@ -14,6 +14,7 @@ from jarvis.models import BotCredential, Task, now
 from jarvis.session_models import AgentCommand, AgentHost, AgentQuestion, AgentRun, AgentSession
 from sqlalchemy import func, select
 from test_agent_link import bearer, connect, enable, hello, refused, send
+from test_agent_link import frame as link_frame
 from test_agent_runs import (
     CAPS,
     HARNESSES,
@@ -540,6 +541,10 @@ def test_a_digest_capable_host_must_stamp_op_id_frames(client, host):  # noqa: F
         hello(ws, caps=[*CAPS, "digest"])
         reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-1")
         assert not reply["ok"] and reply["error"]["code"] == "DIGEST_REQUIRED"
+        # An ack echoes its command's op_id without a digest of its own: it is taken, never answered.
+        ws.send_json(link_frame("ack", acked_id="cmd-envelope", op_id="op-unknown", ok=True, outcome={"state": "accepted"}))
+        reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-3")
+        assert reply["error"]["code"] == "DIGEST_REQUIRED"  # The next reply answers this frame, not the ack.
     with connect(bearer(host.token)) as ws:  # An older host without the cap still works.
         hello(ws, caps=CAPS)
         reply = send(ws, "status", surf="s", state="idle", since=int(now().timestamp() * 1000), op_id="op-2")

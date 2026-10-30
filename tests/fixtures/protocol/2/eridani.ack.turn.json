@@ -1,0 +1,117 @@
+{
+ "direction": "eridani",
+ "frame": "ack.turn",
+ "shape": {
+  "keys": {
+   "acked_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "ok": {
+    "required": true,
+    "shape": {
+     "types": [
+      "boolean"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "outcome": {
+    "required": true,
+    "shape": {
+     "keys": {
+      "duplicate": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "missing": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "truncated": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "turn_id": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}
