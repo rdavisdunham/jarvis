@@ -146,6 +146,9 @@ export type Run = {
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
   base?: RunBase | null;
   linear?: Partial<Record<"in_progress" | "done" | "comment", LinearOutcome>>;
+  /** One plain-language line on what the agent is doing now, written by a small model (run_summaries.py); "" until
+   * the first one. summary_stale: something newer landed (a turn, a question, a verdict) and a fresh line is due. */
+  summary?: string; summary_at?: string | null; summary_stale?: boolean;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
 export type MigrationTarget = {
