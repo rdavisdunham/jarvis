@@ -1,0 +1,54 @@
+/* Swarm mode: the plan view (remotea page "Swarms" section and the Play-on-a-project dialog). Tokens only (theme.css).
+   Breakpoints mirror ux.tsx: PHONE ≤700. */
+.remotea-swarms { display: grid; gap: 8px; }
+.remotea-swarms h2 { margin: 0; font-size: 0.95rem; color: var(--ink-2); }
+.modal-backdrop > .swarm-dialog { width: min(760px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: grid; gap: 12px; }
+.swarm-dialog h2 { margin: 0; font-size: 1.05rem; }
+
+.swarm-plan { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.swarm-head h3 { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 1rem; overflow-wrap: anywhere; }
+.swarm-head .footnote { margin: 2px 0 0; }
+.swarm-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 0.9rem; }
+.swarm-settings label { display: flex; align-items: center; gap: 6px; }
+.swarm-settings .segmented button { font: inherit; font-size: 0.85rem; }
+.swarm-auto { flex-wrap: wrap; cursor: pointer; }
+.swarm-auto small { color: var(--ink-3); flex-basis: 100%; }
+.swarm-warnings { margin: 0; padding: 8px 12px 8px 28px; border-radius: var(--r-sm); background: var(--due-today-soft); color: var(--ink); font-size: 0.85rem; display: grid; gap: 2px; }
+
+.swarm-batches { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.swarm-batch { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper); min-width: 0; }
+.swarm-batch.batch-running { border-color: var(--violet); }
+.swarm-batch.batch-settled { opacity: 0.85; }
+.swarm-batch-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.swarm-batch-head strong { flex: 1; min-width: 0; font-size: 0.9rem; }
+.swarm-reason { margin: 0; color: var(--ink-2); font-size: 0.85rem; overflow-wrap: anywhere; }
+.swarm-cost { margin: 0; }
+
+.swarm-items { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.swarm-item { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: flex-start; padding: 6px 8px; border-left: 3px solid var(--line-strong); background: var(--surface); border-radius: var(--r-sm); min-width: 0; }
+.swarm-item.tone-working { border-left-color: var(--done); }
+.swarm-item.tone-attention { border-left-color: var(--violet); }
+.swarm-item.tone-bad { border-left-color: var(--danger); }
+.swarm-item.tone-done { border-left-color: var(--done); opacity: 0.8; }
+.swarm-item-main { flex: 1 1 240px; min-width: 0; display: grid; gap: 2px; }
+.swarm-item-title { font-weight: 600; overflow-wrap: anywhere; }
+.swarm-item-state { font-size: 0.8rem; color: var(--ink-2); }
+.swarm-item-main small { color: var(--ink-3); overflow-wrap: anywhere; }
+.swarm-item-main small a { margin-right: 8px; }
+.swarm-item-error { color: var(--danger) !important; }
+.swarm-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.swarm-item-actions select { font: inherit; font-size: 0.85rem; max-width: 180px; }
+
+.swarm-integrate { padding: 8px 10px; border-radius: var(--r-sm); background: var(--sunken); font-size: 0.85rem; }
+.swarm-integrate.blocking { background: var(--danger-soft); }
+.swarm-integrate ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 2px; overflow-wrap: anywhere; }
+.swarm-excluded summary { cursor: pointer; font-size: 0.9rem; }
+.swarm-excluded ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; }
+.swarm-excluded small { color: var(--ink-3); }
+.swarm-actions { flex-wrap: wrap; align-items: center; }
+.swarm-actions .footnote { margin: 0; flex-basis: 100%; }
+
+@media (max-width: 700px) {
+  .swarm-plan { padding: 10px; }
+  .swarm-item-actions select { max-width: 100%; }
+}

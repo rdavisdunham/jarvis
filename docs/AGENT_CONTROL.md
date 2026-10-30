@@ -1503,6 +1503,93 @@ summary job"), written by a small model (`run_summaries.py`).
 
 Tests: `tests/test_run_summaries.py`; web `apps/web/src/run-anywhere.test.tsx` (`RunRow`, `RunButton`).
 
+## Swarm mode (migration 0039)
+
+Roadmap task 71f97d98 (Astra's E-Q4). **Play on a project opens a swarm plan, not a run.** In the organization
+views a project row's Play (`RunButton` with `project`) opens the swarm dialog (`Swarm.tsx` `SwarmDialog`); the remotea
+page lists every open plan under **Swarms** (`SwarmList`). Nothing spawns until Davin presses Start.
+
+**Planning** (`swarm.py`, `POST /remotea/swarms {record_id | task_id, harness?, cap?, fresh?}`). The project's open
+work is every descendant record that carries an open task, without descending into a task (its sub-tasks belong to its
+own run, F02), at most 40; a task that already has a working run is listed under `excluded`. For each task the planner
+gets its title, PRD note (or notes) and step titles (each cut to 1,200 characters, fenced as data), where it would run
+(`readiness_for`, read-only: target, repository) and its declared Blocks links. The planning model is the `swarm_plan`
+job in `model_map.py` (cost feature `agent_control`, through `memory_learning.profile_request`, so today Luna; the task
+names Fable, which needs a priced Anthropic route first). It answers batches of task refs with a one-line reason each,
+and up to six files or areas per task it expects to change. The answer is refused, and the **deterministic fallback**
+plans instead, when it loses, repeats or invents a task or puts a task in the same batch as (or before) a task that
+blocks it; the fallback also runs when no model key is configured or the call fails (`planner {source: "fallback",
+note}`). The fallback: a task goes after every task that blocks it and never beside another task on the same
+repository (host, target and repo; tasks with no target yet count as one repository), otherwise as early as possible.
+A project with an open plan gets that plan back unless `fresh` (which cancels it while nothing of it has started).
+`409 NO_TASKS` for a project with no open tasks (the dialog offers **Run the project itself**).
+
+**Editing** (`POST /remotea/swarms/{id}/edit {expected_revision, ops[]}`, all ops in one transaction, `REVISION_CONFLICT`
+on a stale revision). Ops: `exclude {task_id}` / `include {task_id, batch_id?}` (leave a task out, bring back one you
+left out), `move {task_id, batch_id | "new"}`, `split {batch_id, task_ids}` (a new batch right after it), `merge
+{batch_id, into}`, `order {batch_id, index}`, `cap {value 1–10}` (working runs per remotea host at once), `harness
+{claude | codex}`, `auto_continue {bool}`, and `retry {task_id}` (a task of the running batch that could not start).
+Only batches that have not started change (`409 BATCH_STARTED`); empty batches are dropped. Blocks links are advisory
+(as in the organization model), so a move that breaks one is allowed and shown as a warning. `warnings[]`: `ORDER`
+(a task not after its blocker), `BLOCKED_OUTSIDE` (an unfinished blocker outside the plan), `SAME_REPO` (two tasks on
+one repository in one batch whose predicted areas overlap or are unknown), `NEEDS_TARGET` (choose where it runs first).
+
+**Start** (`POST /remotea/swarms/{id}/start {expected_revision, batch_id?, all?}`, gated like `POST /runs`). Batches run
+in order: only the next batch starts (`409 BATCH_ORDER` names it), and not while another is running (`409 SWARM_BUSY`).
+`all: true` also turns on continue automatically. Every task goes through `agent_control.start_run`, the normal start
+path, inside a savepoint: the same refusals (`NEEDS_TARGET`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE`,
+`MCP_UNCONFIGURED`, …) are kept on the item (`error {code, message}`, shown as **Could not start** with Retry) and do
+not stop the others; a task that already has a run adopts it. Each run is a normal run: one worktree and branch per
+task, its own interview/plan/verify/judge loop and the same approval gate. Its spawn prompt ends with a **swarm
+brief** (`swarm.brief`, passed to `start_run` as `brief`, never from a request body): the batch and the planner's
+reason, the tasks running beside it on the same repository ("stay inside your task"), the areas it is expected to
+change, and that a migration number comes only from Eridani's reservation (`submit_plan` with `migration: true`,
+[Run freshness](#run-freshness-migration-0033)), never from the agent's own count. Parallel runs on one repository are
+allowed when the plan put them together; each still gets its own branch (S-S4's one writer per branch holds).
+
+**The per-host cap.** A batch starts at most `cap` working runs per remotea host (counting every unsettled run of the
+owner on that host that is not waiting for review or a merge); the rest wait as **Waiting for a free slot**. remotea's
+own `limits.maxRuns` still applies per target: a spawn it refuses as `target_busy` fails that run with
+`spawn_rejected`, and the swarm queues the task again (at most 3 times).
+
+**Sequencing** (`swarm.advance_one`, run by the worker's sweep next to `run_coordinator.sweep`, and right after a
+start or an edit). It fills free slots, then settles the running batch once every task is settled: its run is terminal,
+or waits for a human or a merge (`awaiting_approval`, `awaiting_integration`, `needs_you(awaiting_merge)`), or it could
+not start. Then the next batch starts only by Davin's Start, or by itself when continue automatically is on and the
+integrate step found no overlap. The last batch settling makes the plan `done`. `POST /remotea/swarms/{id}/cancel
+{expected_revision}` (works while remotea is off) keeps later batches from starting; started runs keep going and are
+stopped from their own drawers.
+
+**Integrate.** For a batch that has started, every repository with two or more of its runs on a branch gets
+`integrate.repos[]`: each run's branch, pull requests (the session's `pr_urls`), merged / ahead from the host's
+`worktrees.report`, changed `files` when the report lists them (remotea does not yet; null), a `merge_order` (merged
+first, then those with a PR, then the fewest commits ahead) and `conflicts` (shared paths, by files when both runs have
+them, else by the planner's predicted areas, `basis`). `blocking` (an overlap among unmerged work) holds continue
+automatically for Davin's Start.
+
+**Cost before Start.** Each batch carries `cost`: the average Eridani spend per finished run (`agent_attempts.cost`:
+judge and summary calls) over the owner's last 30 settled runs times the batch's size, with the average turns and
+minutes, or "no finished runs yet". The coding agent's own usage is billed by its harness and not recorded by Eridani.
+
+**Storage.** `agent_swarms` (owner, account, project record, title, `state` draft | running | done | canceled,
+`revision`, `cap`, `auto_continue`, `harness`, `batches` JSONB `[{id, reason, state: pending | running | settled,
+started_at, settled_at, items: [{task_id, run_id, error, retries}]}]`, `tasks` (the planner's facts per task), `excluded`
+and `planner`). Every change emits `agent.changed` with the swarm id.
+
+**Not yet.** Eri has no swarm tool (a start would need the two-phase confirmation of `control_start` for a whole batch);
+the planner cannot merge two tasks into one run (it can only put them in series); changed-file overlap uses the
+planner's predicted areas until remotea's `worktrees.report` lists changed files; the cost estimate does not cover the
+harness's own tokens.
+
+| Route | Gated | |
+|---|---|---|
+| `GET /swarms?active=&limit=` | no (owner only) | plans, newest first, each in the detail shape |
+| `POST /swarms` | yes | plan a project (above); starts nothing |
+| `GET /swarms/{id}` | no (owner only) | `{id, record_id, title, state, revision, cap, auto_continue, harness, planner, excluded, warnings, next_batch, batches: [{id, number, reason, state, items: [{task_id, title, repo, target, blocked_by, areas, why, status, error, retries, run}], cost, integrate}]}` |
+| `POST /swarms/{id}/edit` | yes | edit ops (above) |
+| `POST /swarms/{id}/start` | yes | start the next batch (`all`: and each next one) |
+| `POST /swarms/{id}/cancel` | no (owner only) | no later batch starts |
+
 ## Security model (stage F, migration 0031)
 
 Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
@@ -1670,14 +1757,15 @@ the same rows, so after either redaction they show the marker and never the text
 | `notifications` `body` (`target.run_id`) | task title plus a question's text or a reason | marker at the window; the row follows the notification lifecycle |
 | `agent_sessions` title, prompts, excerpt, `summary` | the collector's session ledger (redacted on ingestion) | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns |
 | `agent_session_rules`, `agent_hosts`, `execution_targets`, `autolink_rejections`, `migration_counters`, `migration_reservations` | configuration: folder rules, host caps and worktree reports, repo paths and verify commands, numbers | kept until changed or removed; no run text |
+| `agent_swarms` `tasks`, `planner`, `batches` | a swarm plan: task titles, the planner's one-line reasons and predicted areas, run ids, start refusals | kept, finished and canceled plans too (no agent output: titles and the planner's text only); exported |
 | `agent_parity`, `agent_parity_days`, `agent_ingest_days` | collector-vs-link diffs, daily counts | 30 days |
 | Bot `agents:read` output | `public_run` of the rows above | live view: the marker after redaction, nothing after deletion |
 | Action journal (`action_changes`) | an encrypted `control.*` entry: title (proposal summary or task title) and status | follows the action journal's retention |
 | Linear comment (`agent_sync.comment_body`) | criteria ids and status, verify id and status, PR links: no free text | lives in Linear |
 
 **Account export.** `GET /api/v1/export` includes `agent_runs` (without `run_token_hash` / `run_token_salt`),
-`agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews` and `agent_sessions` (without the
-embedding and fingerprints) as they are now: redacted rows export the marker, deleted rows are absent
+`agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews`, `agent_sessions` (without the
+embedding and fingerprints) and `agent_swarms` as they are now: redacted rows export the marker, deleted rows are absent
 (`agent_retention.export_tables`). It leaves out `agent_turns` (up to 64 MiB a day per owner, and the export
 is built in memory; the host keeps the transcript and `GET /remotea/runs/{id}` pages them), `agent_commands`
 (the host-facing journal: its input texts are the `sent` history entries, and a spawn payload carried a run

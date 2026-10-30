@@ -159,6 +159,7 @@ const NotificationPreferences = lazy(() => viewChunks.preferences().then((m) => 
 const ThemeSetting = lazy(() => viewChunks.preferences().then((m) => ({ default: m.ThemeSetting })));
 const Remotea = lazy(() => viewChunks.remotea().then((m) => ({ default: m.Remotea })));
 const RunTaskDialog = lazy(() => import("./RunTaskDialog").then((m) => ({ default: m.RunTaskDialog })));
+const SwarmDialog = lazy(() => import("./Swarm").then((m) => ({ default: m.SwarmDialog })));
 const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
@@ -3204,6 +3205,8 @@ export default function App() {
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
       {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}/></Suspense>}
+      {remotea.swarm && <Suspense fallback={null}><SwarmDialog taskId={remotea.swarm} onClose={remoteaActions.closeSwarm}
+        onOpenRun={remoteaActions.openRun} onRunProject={() => { const id = remotea.swarm!; remoteaActions.closeSwarm(); remoteaActions.openStart(id); }}/></Suspense>}
       <div className="tabbar" role="navigation" aria-label="Phone navigation">
         {nav.filter(item => item.tab).map(item => {
           const current = item.id === "today" ? dashboard : item.id === "all" ? isTaskTab(view) && !dashboard : view === item.id;

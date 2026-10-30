@@ -65,12 +65,14 @@ job, and the Settings task agent (Luna at the Fast tier by default) for Eri chat
 | run_summary | agent_summaries once run_summaries lands (agent_control until then) | run_summaries.ask | luna |
 | memory_extraction | memory_learning | memory_learning.process | luna |
 | note_tasks | note_tasks | notes.suggest_tasks | luna |
+| swarm_plan | agent_control | swarm.ask (Play on a project: which tasks run in parallel) | luna |
 | eri_chat | assistant | conversation (tool loop) | Settings choice |
 
 `route(job, prompt_tokens)` is the router hook: `RULES` (empty) are checked in
 order by job type and prompt length, first match wins, else `MODEL_MAP`. Production
 reaches it through `memory_learning.profile_request(owner, job, payload, ...)` and
-`model_map.agent_model(job, prefs)`; no call site uses them yet. Both refuse any
+`model_map.agent_model(job, prefs)`; `swarm.ask` is the first call site (the task notes name Fable as
+the intended planner; it needs an Anthropic route the budget ledger prices before the map can point there). Both refuse any
 route that is not today's model, exactly as `extraction_request`'s allowlist does.
 `model_map.attributed(job)` records usage under the job's cost feature.
 

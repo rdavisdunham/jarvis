@@ -433,6 +433,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .agent_autolink import queue_autolink
     from .run_coordinator import sweep as sweep_runs
     from .run_summaries import queue_due as queue_due_summaries
+    from .swarm import sweep as sweep_swarms
     from .search_index import backfill as search_backfill
     from .work_intake import flush_voice
 
@@ -443,7 +444,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
         ("memory_reviews", queue_due_reviews), ("routing", queue_due),
-        ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs),
+        ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs), ("agent_swarms", sweep_swarms),
         ("agent_autolink", queue_autolink), ("agent_summaries", queue_due_summaries),
     ):
         isolated(name, in_session, scan_fn)

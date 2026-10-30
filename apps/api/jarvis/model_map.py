@@ -100,6 +100,8 @@ JOBS = {
         Job("memory_extraction", "memory_learning", "memory_learning.process", "extraction",
             "Memory fact extraction"),
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),
+        Job("swarm_plan", "agent_control", "swarm.ask", "extraction",
+            "Swarm plans: which of a project's tasks run in parallel"),
         Job("eri_chat", "assistant", "conversation", "agent", "Eri chat turns (tool selection)"),
     )
 }

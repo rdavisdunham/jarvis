@@ -21,6 +21,8 @@ export type RemoteaData = {
   panel: PanelState;
   /** The task whose Run dialog is open. */
   start: string | null;
+  /** The project task whose swarm plan dialog is open (Play on a project). */
+  swarm?: string | null;
 };
 export type RemoteaActions = {
   refresh: () => void;
@@ -31,6 +33,8 @@ export type RemoteaActions = {
   setCollapsed: (collapsed: boolean) => void;
   openStart: (taskId: string) => void;
   closeStart: () => void;
+  openSwarm: (projectTaskId: string) => void;
+  closeSwarm: () => void;
   /** Confirm or decline one of Eri's proposals; a confirmed start returns its run. */
   decide: (id: string, decision: "confirm" | "decline", target?: string) => Promise<Run | null>;
   cancelPicker: (id: string) => void;
@@ -40,7 +44,7 @@ const OFF: RemoteaData = { enabled: false, status: null, activeRuns: [], runsByT
   panel: { run: null, collapsed: false }, start: null };
 const noop = () => {};
 const NO_ACTIONS: RemoteaActions = { refresh: noop, setEnabled: noop, openRun: noop, closePanel: noop, setCollapsed: noop, openStart: noop, closeStart: noop,
-  decide: async () => null, cancelPicker: noop };
+  openSwarm: noop, closeSwarm: noop, decide: async () => null, cancelPicker: noop };
 
 export const RemoteaDataContext = createContext<RemoteaData>(OFF);
 export const RemoteaActionsContext = createContext<RemoteaActions>(NO_ACTIONS);
@@ -66,6 +70,7 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<PanelState>(() => restorePanel(location.search, readStored()));
   const [start, setStart] = useState<string | null>(null);
+  const [swarm, setSwarm] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (!enabled) return;
@@ -97,6 +102,8 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
     setCollapsed: collapsed => setPanel(p => { const next = { ...p, collapsed }; writeStored(storedPanel(next)); return next; }),
     openStart: taskId => setStart(taskId),
     closeStart: () => setStart(null),
+    openSwarm: taskId => setSwarm(taskId),
+    closeSwarm: () => setSwarm(null),
     cancelPicker: id => setCards(c => ({ ...c, [id]: { busy: false, error: "", need: null } })),
     decide: async (id, decision, target) => {
       setCards(c => ({ ...c, [id]: { busy: true, error: "", need: c[id]?.need } }));
@@ -111,7 +118,7 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
       } finally { refresh(); }
     },
   }), [refresh]);
-  const data = useMemo<RemoteaData>(() => ({ enabled, status, activeRuns, runsByTask: byTask, pending, cards, error, panel, start }),
-    [enabled, status, activeRuns, byTask, pending, cards, error, panel, start]);
+  const data = useMemo<RemoteaData>(() => ({ enabled, status, activeRuns, runsByTask: byTask, pending, cards, error, panel, start, swarm }),
+    [enabled, status, activeRuns, byTask, pending, cards, error, panel, start, swarm]);
   return <RemoteaActionsContext.Provider value={actions}><RemoteaDataContext.Provider value={data}>{children}</RemoteaDataContext.Provider></RemoteaActionsContext.Provider>;
 }
