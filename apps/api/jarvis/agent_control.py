@@ -19,6 +19,7 @@ from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
+from . import run_summaries
 from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit, encode, owned
@@ -892,6 +893,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
         "created_at": run.created_at,
+        # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
+        **run_summaries.public(run),
     }
     if detail:
         plan = coordinator.frozen(db, run)
@@ -906,7 +909,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                   "proposals": plan.proposals}
             if plan else None,
             attempts=[public_attempt(a) for a in db.scalars(
-                select(AgentAttempt).where(AgentAttempt.run_id == run.id).order_by(AgentAttempt.created_at.desc()).limit(40))],
+                select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind != "summary")
+                .order_by(AgentAttempt.created_at.desc()).limit(40))],
             interviews=[agent_plan_public(i) for i in db.scalars(
                 select(AgentInterview).where(AgentInterview.run_id == run.id).order_by(AgentInterview.created_at))],
             history=run.history or [],
@@ -1596,6 +1600,8 @@ def spoken_run(db, run):
     interview = coordinator.open_interview(db, run)
     linear = (run.sync_state or {}).get("linear") or {}
     spoken = {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
+              # What the agent is doing now in one line, as of summary_at; say it as "the agent is …".
+              "doing": run.summary or None, "doing_as_of": run.summary_at if run.summary else None,
               "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
               "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
               "questions": questions,

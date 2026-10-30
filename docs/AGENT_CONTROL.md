@@ -350,6 +350,72 @@ kind the host advertised and whose `expires_at` has not passed. Commands carry a
 payload `digest`, separate from the envelope id: a resend keeps both and gets a new envelope (F06). See
 **Runs** below.
 
+## Testing the protocol end to end
+
+`tests/test_agent_link.py` drives Eridani with a fake host and remotea's `remote-server/tests` drive remotea
+with a fake Eridani, so each side can drift from the other while both suites stay green.
+`tests/test_protocol_e2e.py` (marker `e2e_protocol`, helpers in `tests/protocol_harness.py`) runs the real two:
+
+```
+remotea-server (node, the checkout's remote-server/dist) --ws--> LinkProxy --ws--> uvicorn jarvis.api:app --> test database
+```
+
+- **Eridani** is uvicorn on an ephemeral port with `JARVIS_ENV_FILE=""`, against the database `conftest.py`
+  made for the session, with production's websocket limits. The worker does not run: the test process plays it
+  and runs the judge job with a stubbed model (`agent_judge.process(job, model=…)`); its commands reach the
+  link through `pg_notify`, as the worker's do.
+- **remotea** runs from `$REMOTEA_CHECKOUT` (default `~/remotea/remotea`, or a `remotea` folder beside this
+  repository) with a throwaway config dir, `HOME`, repository (with a bare origin) and worktree root, on
+  ephemeral ports. It never reads `~/.config/remotea` or `~/.claude` and never touches `remotea.service`. Its
+  one target launches `claude` as a stub script that drives the real hook helper
+  (`resources/cli/wmux-hook.js`): SessionStart, then UserPromptSubmit + Stop for the spawn prompt and for each
+  input typed into it (bracketed paste, then Enter); Ctrl-C ends it. Verify is a fake command that prints
+  `3 passed`. The stub answers `--version`, so the launcher probe passes and the hello advertises `spawn`.
+- **LinkProxy** relays the link and records every frame both ways before any rewrite. It can drop acks, cut
+  the connection, re-send a frame, and make either side look older.
+
+One run, every step bounded by 30 s (about 10 s in all): connect → hello/welcome/snapshot → the run started
+over the browser routes (`POST /remotea/targets`, `POST /remotea/runs`) → `spawn` (accepted ack, executed
+outcome) → `context.request`/`context.response` → `prompt` → `turn` → `verify` (Eridani's command adopts the
+host's attempt; one run) → judging. Then a **reconnect with duplicates**: the proxy has kept Eridani's acks for
+the first `prompt` and `turn` from the host, cuts the link, and the host resends both on the new epoch;
+Eridani answers `{duplicate: true}` and stores neither again. The proxy then resends the `spawn` (same op_id and
+digest, new envelope, new epoch, as Eridani's drain does): the host acks the outcome it journaled and starts
+nothing. The new connection is also an **older peer** both ways: the hello Eridani sees lacks `caps_version`,
+build identity and the `prompt`, `worktrees.scan`, `digest`, `context.scope` and `verify.auto` caps; the
+welcome the host sees lacks `prompt` and `context.scope`. Then the judge says `not_met` → the gap is typed into
+the agent → turn 2 comes **without** a `prompt` frame and carries the typed text on the turn, which Eridani
+keeps on the assistant turn → verify → judge `met` → `awaiting_approval` → Approve → `stop` → exit → run
+`completed`, task completed. Finally: no `ok:false` ack in either direction, each prompt reached the agent once,
+one verify run per turn.
+
+**Wire fixtures.** `tests/fixtures/protocol/<caps_version>/` (the host hello's `caps_version`) holds one file
+per frame kind and direction: `host.turn.json`, `eridani.spawn.json`, acks keyed by what they acknowledge
+(`host.ack.spawn.json`, `eridani.ack.turn.json`). Each is the **shape** of what that side actually sent in the
+run, never values: keys, whether each was always present, and the JSON types, merged over every frame of that
+kind. A later run fails when a key recorded as always present is missing (a rename shows as that plus a new
+key), when a key appears that was never recorded, or when a value has a new type (`null` matches anything).
+Optional keys that depend on the machine rather than the protocol (`launch_error`, `error`, `reason`,
+`degraded_reason`, `build_dirty`, `migrations`) are never reported as new. A frame kind with no file yet is
+recorded on that run. After an intended protocol change on either side, re-record with `UPDATE_FIXTURES=1` and
+review the diff like code: it is the contract change.
+
+Run it locally (Postgres as in `docs/ADDING_FEATURES.md`). Build the checkout first: a stale `dist/` is an
+older host, and its fixtures land under another `caps_version`.
+
+```sh
+npm --prefix ~/remotea/remotea/remote-server ci          # once
+npm --prefix ~/remotea/remotea/remote-server run build   # after every remotea change
+export JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:54432/jarvis
+REMOTEA_CHECKOUT=~/remotea/remotea uv run --no-sync python -m pytest -q -s -m e2e_protocol tests/test_protocol_e2e.py
+UPDATE_FIXTURES=1 REMOTEA_CHECKOUT=… uv run --no-sync python -m pytest -q -s tests/test_protocol_e2e.py   # re-record
+PROTOCOL_E2E_FRAMES=/tmp/frames.json …   # also write every frame both ways (test tokens only) for review
+```
+
+With `-s` it prints the remotea build it ran against, the frame count and the time. It skips, with the reason,
+when `node` or `git` is not on PATH, the checkout is missing, or its `remote-server/dist` or `node_modules` is.
+CI has no remotea checkout (the repository is private), so CI skips it; see `docs/CI.md`.
+
 ## Collector parity
 
 The TypeScript collector inside remotea must match the Python collector
@@ -1108,6 +1174,57 @@ which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cut
   background thread at most every 6 h (15 min after a failure); a 404 (no release yet) or a failure
   shows no note.
 
+## Run summaries (migration 0036)
+
+Each run card carries one plain-language line on what the agent is doing right now ("Adding the parity test for the
+summary job"), written by a small model (`run_summaries.py`).
+
+- **Columns** on `agent_runs`: `summary` (≤ 140 characters, `""` until the first one), `summary_at` (when it was
+  written), `activity_seq` (bumped by `run_summaries.touch` whenever something the line reflects lands: every root
+  turn of the run's generation in `record_turn`, a question opened or resolved, and every `transition`, which covers
+  verdicts and judge failures) and `summary_seq` (the `activity_seq` the last summary job handled).
+  `summary_seq < activity_seq` means a newer line is due.
+- **Debounce.** `touch` queues one `agent_summary` job (queue `jarvis-memory`, like the judge) unless one for the run
+  is pending (queued/dispatched/running/retrying, younger than 10 minutes) or one was queued in the last 30 s. An event
+  inside the window only counts; the worker's maintenance scan (`run_summaries.queue_due`, every cycle) queues the
+  follow-up once the window has passed. So a run gets at most one summary per ~30 s, and only after something
+  happened: never on page load and never per change-feed tick. Nothing is queued while no OpenAI key is configured
+  (`activity_seq` still counts, so turning it on catches up).
+- **Terminal runs.** The transition into a terminal state counts, so a run gets one closing line ("Stopped after …").
+  Once `summary_seq` has caught up the run is skipped, and a run that ended more than an hour ago is never summarized
+  again.
+- **Evidence** (`build_evidence`, pure and bounded): the task title (200 characters), the run state and its
+  `REASONS` text, the frozen plan's current step (the first `doing`, else the first not done; 300 characters) with
+  "N of M steps done", the last two root (`assistant`) turns of the run or its session cut to 1,500 characters each
+  (head and tail), the latest verify or judge attempt (status, verdict, exit code, gap cut to 400) and the newest open
+  question (400). The user message is capped at 6,000 characters.
+- **Model.** Luna through `memory_learning.extraction_request` (the only model path the judge accepts), strict schema
+  `{summary: string}`, no tools, `max_completion_tokens` 200, prompt version `summary-v1`. The answer is cut to one line
+  of at most 140 characters at a word.
+- **Prompt injection.** Every free text (task title, step, gap, question, turns) sits inside an `agent_prompts.fence`
+  nonce fence with `<<<`/`>>>` runs broken up, so turn text cannot close its fence; the system prompt is fixed and says
+  the fenced blocks are untrusted data to describe, never instructions, and that the line must not claim the work is
+  done, verified or approved unless the run state says so. The model can only fill one short string, which is shown
+  as text and never acted on.
+- **Result.** On success the job stores `summary`, `summary_at`, `summary_seq` and emits `agent.changed`, so cards
+  update live over the change feed. A non-summary (refusal, invalid or empty output, timeout, budget, provider
+  unavailable) keeps the old line but still marks that activity handled, so a broken provider costs at most one call
+  per event window instead of a retry loop. A job that finds nothing new (`summary_seq ≥ activity_seq`) is cancelled
+  without a call.
+- **Cost.** Cost feature `agent_summaries` ("Agent run summaries"): its own line in the usage report (Settings → System) next to the judge's
+  `agent_control`. Each call also writes an `agent_attempts` row with `kind: "summary"` (status `done`/`failed`, model,
+  `prompt_version`, cost, latency, the run tuple, and `result {seq, summary | non_verdict, detail}`) the way judge
+  attempts do. Summary attempts are written settled (never queued or running, no deadline), so the attempt sweep,
+  supersede and judge queries never see them; `GET /runs/{id}` leaves them out of `attempts`; retention deletes them
+  with the run's other attempts.
+- **Surfaces.** `public_run` carries `summary`, `summary_at` and `summary_stale` (a line exists and a newer one is due).
+  The run row (`RunsPanel.tsx` `RunRow`, on the remotea page and in the topbar Runs panel) shows the line under the
+  state chip with a quiet "updating…" while `summary_stale`; the task-row chip (`RunButton.tsx`) uses it as its
+  tooltip. `control_status` gives each run `doing` and `doing_as_of`, so Eri can say "the agent is adding the parity
+  test". `agent_question` and `agent_stuck` pushes append "Latest: <summary>" to the body when there is one.
+
+Tests: `tests/test_run_summaries.py`; web `apps/web/src/run-anywhere.test.tsx` (`RunRow`, `RunButton`).
+
 ## Security model (stage F, migration 0031)
 
 Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
@@ -1130,7 +1247,11 @@ already exists there. Turning remotea off revokes the link key; a live host stil
   (`agent_link.host_session`) and never moves that run.
 - A `server_id` stays bound to its first credential unless the new key is a rotation of it (same owner,
   account and name); otherwise `bye{host_bound}`. One key registers at most 3 hosts (`bye{host_limit}`).
-- A host that advertises the `digest` cap must stamp every frame carrying an `op_id`.
+- A host that advertises the `digest` cap must stamp every frame carrying an `op_id` (`DIGEST_REQUIRED`
+  otherwise). `ack` is exempt: it only echoes the op_id of the command it acknowledges. Until 2026-10-30
+  Eridani refused those acks too, so a current host's command acks were answered with an error ack and never
+  recorded (a spawn's `surf`/`incarnation` came only from the later outcome, and a command whose outcome took
+  over 60 s was resent); the end-to-end protocol test found it on its first run.
 - Snapshot parts are numbered `1..n` (as remotea sends them; the brief said `i < n`, which would refuse
   every real final part), bounded in bytes, and partial snapshots and chunks expire after 60 s.
 - `context.request` answers `scope: "run"` (plan and run token) only for a run bound to this host;

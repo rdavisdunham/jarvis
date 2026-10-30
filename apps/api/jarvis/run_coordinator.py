@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import event, func, select, update
 
 from . import agent_sessions as sessions
+from . import run_summaries as summaries
 from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit
@@ -169,6 +170,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
+    summaries.touch(db, run)
     if to in TERMINAL:
         from .migration_numbers import on_run_end
 
@@ -239,6 +241,8 @@ def notify(db, run, category, title, body, *, key):
         return
     task = db.get(Task, run.task_id)
     urgent = category == "agent_question" and quiet_bypass(db, run.owner_id)
+    if run.summary and category in ("agent_question", "agent_stuck"):
+        body = f"{body[:1300]}\nLatest: {run.summary}"  # What the agent was doing (run_summaries.py).
     db.add(Notification(owner_id=run.owner_id, dedup_key=dedup, category=category,
                         title=title, body=(f"{task.title}: " if task else "") + body[:1500],
                         importance="urgent" if urgent else "normal",
@@ -511,6 +515,7 @@ def record_turn(db, run, frame):
     if frame.generation != run.generation:
         return  # A late turn from before a steer or stop (F07).
     run.last_progress_at = now()
+    summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
     if run.state == "waiting_answer":
         transition(db, run, resume_phase(run), reason="turn")
     if run.state in PLANNING:
@@ -595,6 +600,7 @@ def record_question(db, owner, host_id, frame):
     db.add(question)
     db.flush()
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)
         if run.state == "executing" and frame.generation == run.generation:
             transition(db, run, "waiting_answer", reason="question")
         notify(db, run, "agent_question", "An agent asked you something", question_text(question),
@@ -677,6 +683,7 @@ def question_resolved(db, host_id, frame):
             question.answered_via = question.answered_via if frame.outcome == "accepted" else "terminal"
     run = db.get(AgentRun, question.run_id, with_for_update=True) if question.run_id else None
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)  # The open question is part of the summary's evidence.
         waiting = run.state == "waiting_answer" or (run.state == "needs_you" and run.state_reason == "question_timed_out")
         if question.status in {"accepted", "answered_locally", "canceled"} and waiting \
                 and not [q for q in open_questions(db, run) if q.id != question.id]:

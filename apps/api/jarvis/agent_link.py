@@ -1226,8 +1226,11 @@ class Link:
                 if not isinstance(frame, dict) or frame.get("t") == "chunk" or not isinstance(frame.get("id"), str):
                     raise DomainError("INVALID_ARGUMENT", "Malformed chunked frame.")
                 identity = frame["id"][:100]
-            if isinstance(frame.get("op_id"), str) and not isinstance(frame.get("digest"), str) and "digest" in self.caps:
-                # A host that advertises `digest` stamps every op_id frame; a bare one is refused (stage F).
+            if isinstance(frame.get("op_id"), str) and not isinstance(frame.get("digest"), str) and "digest" in self.caps \
+                    and frame.get("t") != "ack":
+                # A host that advertises `digest` stamps every op_id frame; a bare one is refused (stage F). An ack
+                # only echoes the op_id of the command it acknowledges (the digest is the command's), so it is exempt:
+                # refusing it dropped every command ack from a current host (found by tests/test_protocol_e2e.py).
                 return {"acked_id": identity, **echo, "ok": False,
                         "error": {"code": "DIGEST_REQUIRED", "message": "Frames with an op_id carry its digest."}}
             if isinstance(frame.get("digest"), str) and isinstance(frame.get("op_id"), str) \
