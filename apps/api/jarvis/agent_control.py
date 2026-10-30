@@ -79,11 +79,18 @@ class MessageInput(Input):
 
 class StopInput(Input):
     mode: str = Field(default="interrupt", pattern=r"^(interrupt|kill)$")
+    # Optional on purpose: Stop is the emergency path and must work from a stale view.
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
 
 class ApproveInput(Input):
+    # Required: approving completes the task, so it must be the state the approver reviewed (REVISION_CONFLICT if not).
+    expected_revision: int = Field(ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
+
+
+class VerifyNowInput(Input):
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
@@ -468,9 +475,10 @@ def replan(db, owner, run_id, body, *, actor):
     return public_run(db, run)
 
 
-def verify_now(db, owner, run_id, *, actor):
+def verify_now(db, owner, run_id, body=None, *, actor):
     """On-demand verification: the same attempt machinery, bound to the current tuple; it never moves the run."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision if body else None)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
     plan = coordinator.frozen(db, run)

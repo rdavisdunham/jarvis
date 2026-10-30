@@ -93,7 +93,7 @@ def approved_run(host, fake):  # noqa: F811
     run_id = start(host, tid)["id"]
     attached(host, run_id)
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert state(run_id)[0] == "completed"
     return tid, run_id
@@ -152,7 +152,7 @@ def test_a_task_without_a_linear_issue_gets_no_comment(host):  # noqa: F811
     run_id = start(host, task()["id"])["id"]
     attached(host, run_id)
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert state(run_id)[0] == "completed" and "comment" not in sync_state(run_id)
     assert linear_jobs("linear_comment") == []
@@ -185,7 +185,7 @@ def test_a_start_write_in_flight_cannot_reopen_a_completed_task(host, fake):  # 
         job = db.get(Job, start_id)
         job.status, job.result = "running", {"attempts": 1, "attempted": True}
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     settle_stop(run_id)
     assert sync_state(run_id)["done"]["status"] == "deferred" and sync_state(run_id)["done"]["after"] == start_id
     assert [j for j in linear_jobs() if j[2] == "done"] == []
@@ -213,7 +213,7 @@ def test_a_refused_linear_finish_never_fails_the_approval(host, fake):  # noqa: 
         link = db.scalar(select(LinearIssue))
         link.sync_state, link.pending_job_id = "conflict", None
     with session_scope() as db:
-        control.approve(db, OWNER, run_id, control.ApproveInput(), actor=HUMAN)
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
     done = sync_state(run_id)["done"]
     assert done["status"] == "blocked" and done["code"] == "LINEAR_CONFLICT"
     with session_scope() as db:

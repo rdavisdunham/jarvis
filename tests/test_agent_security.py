@@ -710,6 +710,45 @@ def test_run_detail_pages_turns_and_commands(client, host):  # noqa: F811
     assert client.get(f"/api/v1/remotea/runs/{run_id}?limit=500").status_code == 422
 
 
+# ---------------------------------------------------------------- E-N3: browser controls carry the reviewed revision
+
+
+def test_approve_and_plan_review_need_the_reviewed_revision_and_stop_does_not(client, host):  # noqa: F811
+    """A stale tab cannot approve, review a plan or verify after another actor moved the run; Stop (the emergency
+    path) needs no revision."""
+    from jarvis import agent_control as control
+    from jarvis import agent_plan
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        control.ApproveInput()
+    with pytest.raises(ValidationError):
+        agent_plan.PlanReviewInput()
+    run_id = start(host, task("Reviewed")["id"])["id"]
+    base = f"/api/v1/remotea/runs/{run_id}"
+    seen = client.get(base).json()["state_revision"]  # The tab loaded the run while it was spawning.
+    attached(host, run_id)  # Then the agent started: the run moved on.
+    current = client.get(base).json()["state_revision"]
+    assert current > seen
+    for path in ("approve", "plan-review"):
+        missing = client.post(f"{base}/{path}", json={})
+        assert missing.status_code == 422, (path, missing.text)
+    for path, body in (("approve", {}), ("plan-review", {"decisions": []}), ("verify", {})):
+        stale = client.post(f"{base}/{path}", json={**body, "expected_revision": seen})
+        assert stale.status_code == 409 and stale.json()["error"]["code"] == "REVISION_CONFLICT", (path, stale.text)
+        assert stale.json()["error"]["data"]["state_revision"] == current
+    with session_scope() as db:
+        assert db.get(Task, db.get(AgentRun, run_id).task_id).status != "completed"
+    approved = client.post(f"{base}/approve", json={"expected_revision": current})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["task"]["status"] == "completed" and approved.json()["state"] == "stopping"
+
+    other = start(host, task("Emergency")["id"])["id"]
+    attached(host, other, session_id="sess-2")
+    stopped = client.post(f"/api/v1/remotea/runs/{other}/stop", json={"mode": "interrupt"})
+    assert stopped.status_code == 200 and stopped.json()["state"] == "stopping", stopped.text
+
+
 # ---------------------------------------------------------------- L8: agent pushes respect quiet hours
 
 

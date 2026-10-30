@@ -37,7 +37,9 @@ export function RunPanel({ phone }: { phone: boolean }) {
     {(open || !phone) && <div className="run-panel-body" hidden={!open}>
       {phone && open && <SheetFocus onEscape={() => setCollapsed(true)}/>}
       <Suspense fallback={<p role="status" className="run-panel-loading">Loading run…</p>}>
-        <RunDrawer id={panel.run} onClose={closePanel} onCollapse={() => setCollapsed(true)}/>
+        {/* Keyed by run: switching runs remounts the drawer, so draft text, busy state, scroll and in-flight
+            requests never carry over from the previous run. */}
+        <RunDrawer key={panel.run} id={panel.run} onClose={closePanel} onCollapse={() => setCollapsed(true)}/>
       </Suspense>
     </div>}
   </aside>;
