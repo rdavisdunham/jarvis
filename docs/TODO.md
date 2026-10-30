@@ -1,6 +1,6 @@
 # Eridani — active roadmap
 
-Updated October 27, 2026. This is the single active work checklist.
+Updated October 30, 2026. This is the single active work checklist.
 The [web v1 PRD](ERIDANI_WEB_V1_PRD.md) defines scope and acceptance;
 the [latency plan](ERI_LATENCY_PLAN.md) defines the response-speed work.
 Start with the [documentation index](README.md) for implementation and operations guides.
@@ -65,19 +65,25 @@ next, not authorization to start runners.
 - [ ] Restore Railway access for individual API/worker/config and SQL readback. CLI reports
   unauthorized; connector authentication did not complete and web access needs
   GitHub sign-in. Public health and signed-in app work. No credentials changed.
-- [ ] Follow up learning quality: semantic paraphrase duplication and apparent
+- [x] Follow up learning quality: semantic paraphrase duplication and apparent
   profile/fact disagreements are outside the current exact/spelling/keyed review.
   Queue proposals with provenance; never silently choose a personal fact or learn
   from the agent's own filing. The no-training message can also mean eligible
   examples landed entirely in the held-out split; expose counts before diagnosing
   missing capture.
-- [ ] Reconcile historic unconfirmed usage separately from recorded charges and
+  Done 2026-10-30 (jarvis #118): the weekly review queues semantic paraphrases and
+  profile/fact disagreements as questions with provenance, own filing is attributed
+  as `agent_capture`, and the no-training message shows held-out split counts.
+- [x] Reconcile historic unconfirmed usage separately from recorded charges and
   active reservations; never clear it as zero without provider evidence.
   Production has no active reservation but historic unsettled sessions remain.
+  Done 2026-10-30 (jarvis #118): recorded / reserved / unconfirmed (including
+  historic) usage buckets; reconcile only from provider evidence, never cleared as
+  zero (`reconcile_budget.py --evidence-file`).
 
 ## Requested follow-ups — connected-source onboarding and durable Google access
 
-- [ ] **Optional Linear structure onboarding.** On connection (and later from
+- [x] **Optional Linear structure onboarding.** On connection (and later from
   integration settings), offer a reviewable mapping of Linear teams/projects into
   Eridani types and real Home records. Let the owner reuse existing types/Homes,
   create selected missing ones, choose different destinations, or skip structure
@@ -91,6 +97,11 @@ next, not authorization to start runners.
   project; source-field edits continue through the existing write-back policy.
   Include partial failures/retries, reconnect, renamed/archived source projects,
   imported existing issues and user corrections in acceptance tests.
+  Done 2026-10-30 (jarvis #120): reviewable team/project → type/Home mapping with
+  a Settings → Linear review step; preview and apply share one code path, meaning is
+  never assumed, applying is idempotent and stale previews are refused; later syncs
+  handle inheritance, exceptions, renames and archives; filing never moves an
+  issue's Linear project. Real-Linear acceptance stays with the acceptance tasks.
 - [ ] **Stop weekly Google Calendar reauthorization.** Inspect the OAuth consent
   app publishing status, current scopes and refresh-token lifecycle. External
   Google OAuth apps in Testing commonly receive seven-day refresh tokens for
@@ -102,28 +113,42 @@ next, not authorization to start runners.
   never to reauthorize: user revocation and provider security changes still apply.
   Production consent configuration and any verification submission remain a
   separate follow-up; adding this TODO does not alter Google credentials/scopes.
+  Code half merged 2026-10-30 (jarvis #117): one refresh at a time per owner,
+  the rotated refresh token saved first, invalid_grant → needs_reconnect once,
+  reconnect keeps the stored refresh token, and grant health (age, last refresh,
+  inferred Testing mode) in Settings with a Reconnect callout. Remaining (manual,
+  Davin): publish the OAuth consent app / verification in Google Cloud Console per
+  [Google setup](GOOGLE_SETUP.md), reconnect once, then check Connection health
+  after eight days.
 
-## Next discussion — runner mission control
+## Runner mission control (remotea) — built
 
-The owner wants task success criteria to drive a Play/start action, with Eri
-starting and conversing with local Claude Code/Codex runners, tracking work in
-Eridani and reflecting selected progress/results to linked Linear issues.
-Implementation waits for the design conversation.
+Built October 28–30 after the design discussion this section used to hold. Task
+success criteria drive a Run: Eri starts and converses with local Claude Code
+and Codex runners on a remotea host, tracks Task → Run → Attempt in
+Eridani (durable command IDs, ordered events, host leases, restart reconciliation)
+and reflects selected results to linked Linear issues. Starts are explicit,
+authority is per execution target, agent-reported completion is separate from the
+judged success criteria and accepted completion, and local credentials stay local.
 
-- Reuse the session ledger for context, linked sessions, summaries and artifacts.
-  It observes work and offers resume commands; it is not a runner API.
-- Discuss Task/record → Run → Attempt, durable command IDs, ordered events,
-  host heartbeats/leases and restart reconciliation.
-- Discuss explicit-start first, per-run repository/tool/time/cost authority,
-  isolated working directories and approval policies for merge/deploy.
-- Separate agent-reported completion from checked success criteria and accepted
-  completion. Preserve edits, receipts and a recoverable event history.
-- Keep local credentials local; define what may be shared with a workspace or
-  Linear. Never execute arbitrary saved resume-command strings.
-- Record the owner's intended UI and flow before building a controller or
-  autonomous schedules. Ledger hardening can proceed independently.
+- [Agent control](AGENT_CONTROL.md): setup code and keys, execution targets and
+  `scripts/verify.sh`, link frames, runs and commands, interview/plan/verify/judge
+  loop, freestyle, review packet, run freshness and summaries, the messages Eridani
+  sends to an agent, security model, retention and redaction.
+- [Mission control reliability PRD](PRD_MISSION_CONTROL_RELIABILITY.md): Astra's
+  review as 40 roadmap tasks (tag `astra-review`); 39 closed 2026-10-30 across
+  jarvis #90–#111 and remotea #13–#34. The open one is `3a58cf14` below.
+- remotea's [Eridani link protocol](https://github.com/rdavisdunham/remotea/blob/main/docs/remotea/eridani-link.md) (`docs/remotea/eridani-link.md` in
+  rdavisdunham/remotea), including [target templates (S-Q3)](https://github.com/rdavisdunham/remotea/blob/main/docs/remotea/eridani-link.md#target-templates-s-q3)
+  and [draining for a restart](https://github.com/rdavisdunham/remotea/blob/main/docs/remotea/eridani-link.md#draining-for-a-restart).
+- Target templates: remotea #34 validates a whole target (repo, base, worktree root,
+  harness launch, prepare steps, disk and run limits) before advertising it and
+  prepares worktrees before spawn; Eridani shows template readiness in the Run
+  dialog and setup page and refuses with `TARGET_NOT_READY` (jarvis #119).
+- Swarm mode: designed below (task `71f97d98`); in review as jarvis #121, not merged
+  as of this update.
 
-- [ ] **Wmux one-click connection and harness tools (future).** Sign into Eridani
+- [x] **Wmux one-click connection and harness tools (future).** Sign into Eridani
   from the Wmux terminal multiplexer through an SSO-style connection flow. That
   connection should let Wmux report sessions/context directly to Eridani and let
   Eridani control authorized Wmux runners through the mission-control Run model.
@@ -133,6 +158,99 @@ Implementation waits for the design conversation.
   and harness-specific tool adapters; avoid copying account credentials into model
   prompts. This is a future product requirement, not an implemented authentication
   or execution capability.
+  Done 2026-10-30 (remotea #26 + jarvis #111, which carried #108; tasks
+  `dbaced98`, `bbdb6440`): `remotea eridani setup` wizard, a setup code carrying the
+  link and MCP keys, user-level MCP install for Claude Code/Codex/OpenCode and a
+  guided readiness page.
+- [x] Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
+  `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
+  `claude mcp add` on 2026-10-29. (In progress: jarvis PR #81, written by the first agent run from a task.)
+  Done 2026-10-29 (jarvis #81, task `b5eda2de`).
+- [x] **Run freshness and versioning** (Eridani task, 2026-10-29). A run's worktree is based on the target
+  repo's *local* main and nothing fetches, so freshness is whoever last pulled; a reused worktree is never
+  rebased. Planned: fetch before basing (`origin/<base>`); a behind-count in the spawn prompt with "merge
+  the base first" (and re-point `down_revision` when the plan has a migration); "based on main @ sha ·
+  N behind" on the run header; Eridani-reserved migration numbers per repo for concurrent runs (a
+  reservation cannot see later merges; the release-migrations test covers that); host/server version
+  pairing in Settings. Also: the worktrees report's `merged` flag is trivially true for a fresh branch
+  with no commits of its own.
+  Done 2026-10-30 (jarvis #83 + remotea #9, task `2972d462`).
+- [x] **Run from anywhere** (four Eridani tasks, 2026-10-29; decisions in the plan of that day).
+  (1) jarvis PR #84: a persistent, collapsible right-side run panel in the app shell (column
+  on wide screens, sheet with an edge pill on phones), a Run button on every task row (Today,
+  Tasks/Organize lists and boards, Calendar/Reminders) with Running / Needs you / Approve
+  chips, a compact Run dialog (repo, Claude Code/Codex + model, interview Auto/Skip) backed
+  by `GET /remotea/runs/preflight`, Eri's confirm cards in the chat drawer, the topbar
+  Sessions button becomes Runs (ledger moves onto the remotea page), composer keys Enter =
+  queue, Ctrl/Cmd+Enter = steer, Shift+Enter = newline. (2) Eri runs the whole thing from
+  chat and voice: looser yes, control tools preloaded while a proposal is open, repo choice
+  from chat, `control_approve` and `control_plan_review`, Live instructions, open-run device
+  context. (3) remotea PR #11 + (4) jarvis PR #85: the host sends a `prompt` frame on
+  UserPromptSubmit and Eridani stores it as a user turn, so messages typed in the terminal
+  show live as "You, in the terminal". Later discussion: which tasks get a Run button at
+  all ("feed Hayes" should not).
+  Done 2026-10-29/30: jarvis #84 (`2d0862e4`), jarvis #86 (`bb1fc1a3`),
+  remotea #11 + jarvis #85 (`3d229cf1`, `6d7f0471`). "Which tasks get a Run button"
+  is still a discussion with no roadmap task.
+- [x] **Explore: Eridani's own messages to a running agent** (Eridani task, 2026-10-29). While Davin
+  was messaging an agent, Eridani sent it two messages telling it to finish up and note any
+  blockers. They read well; the open question is what triggers them (turn cap approaching,
+  no-progress or wall-clock limit, judge gap, replan), how the wording is chosen, and where it
+  lives. Document the rules in `docs/AGENT_CONTROL.md` and name the trigger on the timeline bubble.
+  Done 2026-10-30 (jarvis #99, task `a4d7d060`): the rules are in
+  [Agent control](AGENT_CONTROL.md#messages-eridani-sends-to-the-agent) and every text
+  Eridani sends names its trigger.
+- [x] verify sandboxing on the host (bubblewrap / codex sandbox, no network).
+  Done 2026-10-30 as verify isolation (remotea #24, S-N4, task `bee876d3`).
+- [x] **Mission control reliability PRD** (2026-10-30, `docs/PRD_MISSION_CONTROL_RELIABILITY.md`). Forty
+  Eridani roadmap tasks (tag `astra-review`) from Astra's three-app integration review plus the open
+  remotea items: run-panel control correctness and revision-bound decisions, browser action idempotency,
+  per-target capabilities, timeline paging; host verification readiness; server stop-wins-over-steer,
+  journal containment, token revocation, Node alignment, build identity; desktop durable intents and
+  hide-vs-end; readiness and failure categories; feature expansion. Run batches and order are in the PRD.
+  39 of the 40 closed 2026-10-30; see the open items below.
+- [x] Other run work closed 2026-10-29/30: resume parity ignores time-varying parts
+  (`dbe99aa4`, jarvis #73); bot/MCP read access to run timelines (`ed37256f`, #74);
+  free-text answers with the recommended option first, chat-style run drawer and
+  one operator message per send (`042eda0a`, `3ce11043`, `3b7170a5`; #75, #80, #84);
+  Run where tasks are opened (`870527c1`, #84); verify by default and mid-run, and
+  freestyle runs (`315e4666`, `c0c5108d`; #87); judge evidence (`6e753e0f`; #94,
+  #87); PRD note read-only during a live run (`5a4e1290`, #96); one-line run
+  summaries (`ec4d8a54`, #102); spawned agents get the Eridani MCP tools and
+  `no_plan` names missing tools (`3bc2803c`; remotea #20, jarvis #103); question
+  answering and run control for Codex and OpenCode (`7f9da9f3`, remotea #22); plan
+  floor vs interview conflicts with Edit criteria + Judge again (`ba56714a`, #111);
+  multi-user design (`0ab99d68`, #98; see Explicitly deferred).
+
+Open mission-control items:
+
+- [ ] **Swarm mode (project play button, advanced, later).** Play on a project opens an
+  editable swarm plan: a planning model (Fable) groups the project's open tasks into
+  batches so code will not overlap (series when they touch the same files, parallel
+  when independent, one-line reason per grouping). Select/deselect tasks, move them
+  between batches, split or merge batches, set a per-host concurrency cap; nothing
+  spawns until Start. Start spawns one terminal per task in the batch (one worktree
+  each), each a normal run with its own gates; batches run in sequence; an integrate
+  step surfaces merge order and conflicts before the next batch. Needs fetch-before-
+  basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
+  expanded 2026-10-29.
+  Roadmap task `71f97d98` (backlog, later); implementation in review as jarvis #121.
+- [ ] **Eridani: recognise a remotea host draining for an upgrade** (`ac6a97fe`).
+  Eridani half of remotea #32: advertise `draining` in the welcome caps, read it from
+  hello and the `host.state` frame, show the host as restarting rather than offline,
+  hold new dispatch until it reconnects and do not alarm on the reconnect. Triaged
+  and deferred by Davin on 2026-10-30; until then `remotea upgrade` looks like a short
+  disconnect, so make sure no agent run is active while upgrading.
+- [ ] **Host: make the configured verification command runnable under the remotea
+  service identity** (`3a58cf14`, PRD S-N3). Code half merged 2026-10-30 (jarvis
+  #113): `scripts/verify.sh` (service-safe PATH, `JARVIS_ENV_FILE=""`, given or
+  throwaway Postgres, uv sync + pytest + web tsc/vitest). Remaining (manual, Davin):
+  start the standing verify Postgres, add the verify entry (and `prepare` now that
+  remotea #34 has merged) to the host's remotea Eridani config as in
+  [Agent control § jarvis: `scripts/verify.sh`](AGENT_CONTROL.md#jarvis-scriptsverifysh),
+  restart remotea.service and run one live verify.
+- Not mission control: pgvector memory search (`6f3b9693`) stays under Explicitly
+  deferred; the PRD lists it as out of scope.
 
 ## Current batch — guided structure setup and Quick Sort
 
@@ -177,6 +295,8 @@ Release verification is in progress. Mission-control planning follows this batch
   Fresh migration upgrade/model agreement passed. Browser guided launch,
   dirty-save, stable retry and phone/fold layouts passed in the isolated fixture.
 - [ ] Required PR CI on the final revision, merge and production verification.
+  The batch merged as jarvis #62 (593b703); production verification is not recorded
+  and the roadmap task (`57af2ea3`) stays open.
 - [ ] Physical phone/Live check: start setup, answer its questions, confirm a
   proposal; Quick Sort several tasks, use an ambiguous Home, skip/pause/resume,
   then Revert. The owner deferred interactive/device checks for now.
@@ -187,6 +307,7 @@ Release verification is in progress. Mission-control planning follows this batch
   owner opened one. Unsaved editor edits must be previewed or discarded first; the
   proposal reopens in the same Types & fields review. Shared workspaces keep the
   manual editor (setup state is Personal-only).
+  Done 2026-10-30 (jarvis #115).
 - [ ] Broader container sorting and bulk/correction conversation shortcuts can
   follow after real use. Current corrections use the existing Edit/Revert tools;
   a new Quick Sort selection can record a fresh human choice.
@@ -212,6 +333,19 @@ Release verification is in progress. Mission-control planning follows this batch
   learning stays Standard. Production/device acceptance remains pending.
   See [validation and smoke comparison](SPEED_1_2_VALIDATION.md).
 - [x] Separate current documentation from historical plans, audits and release reports.
+- [x] Roadmap product tasks closed 2026-10-30 that had no entry here:
+  smart notifications (`16423a48`, jarvis #116: snoozes in words, priorities,
+  bundles/digests, distinct notice states; real-phone delivery stays with acceptance);
+  retrieved memories fed into GPT-Live (`e85464ea`, #112; `live_memory_updates`
+  preference, off in shared workspaces); the [Android plan](ANDROID_PLAN.md)
+  (`7a108176`, #114; open questions for Davin); backend model battle royale
+  (`f9040e0a`, #105: model map, router hook, stub-able eval; the real comparison run
+  with API keys is Davin's, see [cost tracking](COST_TRACKING.md)); context-aware
+  task editing (`8e5a4b16`, already built 2026-09-11 in 9a1627a; real-use acceptance
+  with the acceptance tasks); search speed, substring matches and main-home filters
+  (`b14920b4`, `ce2e0e8d`, `b8d2e28e`, #95); one task card (`fe21bb75`, #97: shared
+  sections, parity guard and [inventory](TASK_CARDS.md); the routing decision is
+  still Davin's).
 
 ## Next — Organization browsing, visual customization and review delivery
 
@@ -400,7 +534,7 @@ This batch does not change the backend model default or bypass CI.
   and Revert obey source semantics; local archive is not remote deletion.
   Show pending/confirmed/error/conflict states and provider-specific fields.
   Clearly distinguish unsupported/read-only and local-only fields.
-- [ ] **Expanded Google Calendar controls: attendance (RSVP).** Requested October 6.
+- [x] **Expanded Google Calendar controls: attendance (RSVP).** Requested October 6.
   On events where the owner is a guest, offer Yes / No / Maybe in the event details,
   the Calendar view and through Eri ("I'm not going to the 3pm"). Write only the
   owner's own `attendees[self].responseStatus` with a targeted patch (existing
@@ -411,7 +545,11 @@ This batch does not change the backend model default or bypass CI.
   (declined events are already detected in `api/google_calendar.py`) and whether to
   notify the organizer (`sendUpdates`). Later candidates: a response note,
   "propose new time", and guest list/visibility details.
-- [ ] **Don't fight the wording: open the one obvious match.** Requested October 6.
+  Done 2026-10-30 (jarvis #117): Yes/Maybe/No on calendar rows, the event dialog and
+  through Eri; declined events are dimmed (not hidden, not busy); `sendUpdates=all`
+  by default with a quiet option; Revert. Real-Google readback stays with the
+  Batch D Google/Linear item.
+- [x] **Don't fight the wording: open the one obvious match.** Requested October 6.
   "Show me the weekly check in task", with no such task but exactly one matching
   calendar event today, got "I couldn't find a task named…" plus the Calendar page.
   Treat the record kind in a request (task, event, meeting, note, client) as a hint,
@@ -422,10 +560,14 @@ This batch does not change the backend model default or bypass CI.
   event; want me to make a task for it?"). Still ask when several plausible matches
   exist; never act on a fuzzy match for edits. Cover typed chat and GPT-Live, and add
   an eval case for kind-mismatch navigation.
-- [ ] **New conversation focuses the chat box.** Requested October 6. Clicking
+  Done 2026-10-30 (jarvis #112): the named kind is a hint, `task_resolve` falls back
+  to other kinds and the opener is callable in the same turn; eval `site_controls.26`.
+- [x] **New conversation focuses the chat box.** Requested October 6. Clicking
   New conversation puts the cursor in the message box so typing can start at once
   (desktop and phone, opening the keyboard on mobile where the browser allows it);
   keep the same focus after the chat panel opens from the Eri launcher.
+  Done 2026-10-30 (jarvis #112): the composer is focused inside the click and again
+  after the async reset; covered by a jsdom render test, not checked on a phone.
 - [x] Add collapsible **Eridani-only notes**, stored separately from synced
   descriptions. Never send them to any provider; sync/source Revert preserves them.
   “Private” means not externally synced, with existing workspace visibility.
@@ -558,6 +700,9 @@ A checked implementation task never replaces connected-provider or physical-devi
   [Prepared backup guide](R2_BACKUPS.md).
 - pgvector/index scaling after measured need; advanced memory/entity/alias
   reconciliation, linked-fact correction and retrieval/context feedback.
+  Roadmap task `6f3b9693` (open): after daily-use recovery, device checks and the
+  cost pilot, move the 512-dimensional embeddings to pgvector with a cosine HNSW
+  index, keeping owner/source/deletion filters and lexical fallback.
 - Metric history when warranted; Quick-list templates; richer note-source lifecycle
   and opt-in note-to-memory review. Directed Blocks/Blocked by relationships move
   into the current organization plan; automatic dependency rescheduling stays deferred.
@@ -573,59 +718,10 @@ A checked implementation task never replaces connected-provider or physical-devi
   Stage F (2026-10-28 audit) made remotea personal-workspace only; see
   [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
   Design (task `0ab99d68`): [REMOTEA_MULTI_USER.md](REMOTEA_MULTI_USER.md).
-- verify sandboxing on the host (bubblewrap / codex sandbox, no network).
-- Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
-  `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
-  `claude mcp add` on 2026-10-29. (In progress: jarvis PR #81, written by the first agent run from a task.)
-- **Run freshness and versioning** (Eridani task, 2026-10-29). A run's worktree is based on the target
-  repo's *local* main and nothing fetches, so freshness is whoever last pulled; a reused worktree is never
-  rebased. Planned: fetch before basing (`origin/<base>`); a behind-count in the spawn prompt with "merge
-  the base first" (and re-point `down_revision` when the plan has a migration); "based on main @ sha ·
-  N behind" on the run header; Eridani-reserved migration numbers per repo for concurrent runs (a
-  reservation cannot see later merges; the release-migrations test covers that); host/server version
-  pairing in Settings. Also: the worktrees report's `merged` flag is trivially true for a fresh branch
-  with no commits of its own.
-- **Swarm mode (project play button, advanced, later).** Play on a project opens an
-  editable swarm plan: a planning model (Fable) groups the project's open tasks into
-  batches so code will not overlap (series when they touch the same files, parallel
-  when independent, one-line reason per grouping). Select/deselect tasks, move them
-  between batches, split or merge batches, set a per-host concurrency cap; nothing
-  spawns until Start. Start spawns one terminal per task in the batch (one worktree
-  each), each a normal run with its own gates; batches run in sequence; an integrate
-  step surfaces merge order and conflicts before the next batch. Needs fetch-before-
-  basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
-  expanded 2026-10-29.
+  Design merged 2026-10-30 (jarvis #98); its build phases have no roadmap tasks yet.
 - Wholesale legacy-table/directory removal or whole-App refactors.
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.
-
-- **Run from anywhere** (four Eridani tasks, 2026-10-29; decisions in the plan of that day).
-  (1) jarvis PR #84: a persistent, collapsible right-side run panel in the app shell (column
-  on wide screens, sheet with an edge pill on phones), a Run button on every task row (Today,
-  Tasks/Organize lists and boards, Calendar/Reminders) with Running / Needs you / Approve
-  chips, a compact Run dialog (repo, Claude Code/Codex + model, interview Auto/Skip) backed
-  by `GET /remotea/runs/preflight`, Eri's confirm cards in the chat drawer, the topbar
-  Sessions button becomes Runs (ledger moves onto the remotea page), composer keys Enter =
-  queue, Ctrl/Cmd+Enter = steer, Shift+Enter = newline. (2) Eri runs the whole thing from
-  chat and voice: looser yes, control tools preloaded while a proposal is open, repo choice
-  from chat, `control_approve` and `control_plan_review`, Live instructions, open-run device
-  context. (3) remotea PR #11 + (4) jarvis PR #85: the host sends a `prompt` frame on
-  UserPromptSubmit and Eridani stores it as a user turn, so messages typed in the terminal
-  show live as "You, in the terminal". Later discussion: which tasks get a Run button at
-  all ("feed Hayes" should not).
-
-- **Explore: Eridani's own messages to a running agent** (Eridani task, 2026-10-29). While Davin
-  was messaging an agent, Eridani sent it two messages telling it to finish up and note any
-  blockers. They read well; the open question is what triggers them (turn cap approaching,
-  no-progress or wall-clock limit, judge gap, replan), how the wording is chosen, and where it
-  lives. Document the rules in `docs/AGENT_CONTROL.md` and name the trigger on the timeline bubble.
-
-- **Mission control reliability PRD** (2026-10-30, `docs/PRD_MISSION_CONTROL_RELIABILITY.md`). Forty
-  Eridani roadmap tasks (tag `astra-review`) from Astra's three-app integration review plus the open
-  remotea items: run-panel control correctness and revision-bound decisions, browser action idempotency,
-  per-target capabilities, timeline paging; host verification readiness; server stop-wins-over-steer,
-  journal containment, token revocation, Node alignment, build identity; desktop durable intents and
-  hide-vs-end; readiness and failure categories; feature expansion. Run batches and order are in the PRD.
 
 ## Maintenance
 
@@ -633,8 +729,8 @@ The unchecked items above were synced to the Eridani app on 2026-10-28 (project 
 roadmap", tag `todo-sync`) so runs can be started from them; keep both in step when closing items.
 
 From 2026-10-29 the Eridani task list (project "Eridani roadmap") is the source of truth for
-open work; this file mirrors it for readers of the repo. Add new requests there first, then to the
-matching active batch or deferred list here. Keep one delivery
+open work; this file mirrors it for readers of the repo (last mirrored 2026-10-30).
+Add new requests there first, then to the matching active batch or deferred list here. Keep one delivery
 order. Record dates/commit/evidence when closing items; archive finished release
 narratives instead of appending another competing roadmap. The
 [full historical ledger](archive/2026-10-02/TODO_HISTORY.md) preserves detailed user
