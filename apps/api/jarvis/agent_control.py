@@ -462,7 +462,8 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
-FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge"}
+FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge",
+                     "pr_unknown"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -524,7 +525,7 @@ def page(db, query, column, limit, offset):
 def reason_detail(db, run):
     """The full text behind the current state, when there is one: the judge's notes for a judge-caused needs_you,
     otherwise the detail recorded with the transition (REASON_TEXT is the one-line version)."""
-    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge"):
+    if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown"):
         verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                        AgentAttempt.status == "done")
                             .order_by(AgentAttempt.created_at.desc()).limit(1))

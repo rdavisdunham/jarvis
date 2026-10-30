@@ -13,7 +13,7 @@ import re
 import hmac
 import secrets
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import event, func, select, update
 
@@ -66,7 +66,7 @@ SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "verify": timedelta(minutes=10)}
+       "stop": timedelta(hours=24), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2)}
 # One verification deadline: the host's 10 minutes plus a minute of grace, then timed_out (a non-pass).
 VERIFY_DEADLINE = timedelta(minutes=11)
 JUDGE_DEADLINE = timedelta(minutes=15)
@@ -99,6 +99,7 @@ REASONS = {
     "awaiting_integration": "Merge the sub-task pull requests into this branch.",
     "integrated": "Sub-task work was merged; checking the combined code.",
     "awaiting_merge": "The criteria are met; merge the pull request to finish.",
+    "pr_unknown": "The criteria are met, but Eridani has no current record of the pull request: check it, then approve or message the agent.",
     "merged": "The pull request merged; confirming the result.",
     # Working states: what just happened, so the page never shows a raw reason token.
     "start": "Starting the agent.",
@@ -309,6 +310,8 @@ def on_outcome(db, row, state, detail="", result=None):
                 settle_verify(db, run, attempt, "uncertain" if state == "uncertain" else "refused",
                               {"detail": detail[:300]})
         return
+    if row.kind == "worktrees.scan":
+        return  # Only a request for fresh evidence: the held judge's wait bounds it, whatever the host did.
     if state == "uncertain" and run.state not in TERMINAL and run.state != "stopping":
         transition(db, run, "needs_you", reason="delivery_uncertain", detail=detail)
         return
@@ -865,13 +868,7 @@ def on_verdict(db, attempt, final):
     verdict = final["verdict"]
     note(run, "verdict", verdict=verdict, attempt_id=attempt.id)
     if verdict == "met":
-        pending = integration_pending(db, run, plan)
-        if pending:
-            run.sync_state = {**(run.sync_state or {}), "integration": pending}
-            return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
-        if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
-            return complete_by_judge(db, run, actor)
-        return transition(db, run, "awaiting_approval", actor=actor, reason="judge_met")
+        return judged_met(db, run, plan, actor)
     if verdict == "not_met":
         if run.turn_count >= run.turn_cap:
             return transition(db, run, "capped", actor=actor, reason="turn_cap")  # The last turn was judged first.
@@ -885,8 +882,23 @@ def on_verdict(db, attempt, final):
                 source="eridani")
         return run
     rules = final.get("rules") or []
+    if "pr_unknown" in rules:
+        # The PR record still predated the turn after the wait: unknown, Davin checks (check_integrations and
+        # session_reported move it on if the record arrives).
+        return transition(db, run, "needs_you", actor=actor, reason="pr_unknown", detail=final.get("gap", ""))
     reason = "awaiting_merge" if "pr_not_merged" in rules else "verify_missing" if "verify_missing" in rules else "judge_needs_you"
     return transition(db, run, "needs_you", actor=actor, reason=reason, detail=final.get("gap", ""))
+
+
+def judged_met(db, run, plan, actor):
+    """The criteria and the completion policy are met: integration first, then auto_complete or approval."""
+    pending = integration_pending(db, run, plan)
+    if pending:
+        run.sync_state = {**(run.sync_state or {}), "integration": pending}
+        return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
+    if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
+        return complete_by_judge(db, run, actor)
+    return transition(db, run, "awaiting_approval", actor=actor, reason="judge_met")
 
 
 def judge_failed(db, attempt, kind, detail=""):
@@ -988,25 +1000,101 @@ def integration_pending(db, run, plan):
 
 
 def branch_merged(db, run):
-    """The host's worktrees report says the run's branch merged into its base (completion policy pr_merged)."""
+    """The host's worktrees report says the run's branch merged into its base (completion policy pr_merged).
+    Only `merged: true` counts: null ("no commits of its own yet") and a missing row are never merged."""
     host = db.get(AgentHost, run.host_id)
     report = ((host.caps or {}).get("worktrees") or {}).get("worktrees") or [] if host else []
     return any(isinstance(w, dict) and w.get("branch") == run.branch and w.get("merged") is True for w in report) \
         if run.branch else False
 
 
+# ---------------------------------------------------------------- PR evidence freshness (pr_open / pr_merged)
+
+
+def request_scan(db, attempt):
+    """Ask the host for a fresh worktrees.report and session.report now (`worktrees.scan`), when it advertises the
+    capability; returns the command's op_id, or None for an older host (the judge then waits for its own tick)."""
+    run = db.get(AgentRun, attempt.run_id)
+    host = db.get(AgentHost, run.host_id) if run else None
+    if host is None or "worktrees.scan" not in ((host.caps or {}).get("caps") or []):
+        return None
+    session = db.get(AgentSession, run.session_pk) if run.session_pk else None
+    body = {"branch": run.branch, "turn_seq": attempt.turn_seq,
+            **({"tool": session.tool, "session_id": session.session_id} if session else {})}
+    return command(db, run, "worktrees.scan", body, source="eridani").op_id
+
+
+def held_judges(db, run_ids):
+    """Judge attempts parked waiting for a fresh PR record (agent_judge.process, `held`)."""
+    if not run_ids:
+        return []
+    return [a for a in db.scalars(select(AgentAttempt).where(
+        AgentAttempt.run_id.in_(run_ids), AgentAttempt.kind == "judge", AgentAttempt.status == "queued")
+        .with_for_update(skip_locked=True)) if (a.result or {}).get("held")]
+
+
+def release_held(db, attempts, *, expired=False):
+    """Queue the judge job again for each held attempt (once until it runs): it re-reads the record and either
+    commits or holds again until its wait is over. `expired` (the sweep) settles on what is on record."""
+    from .domain import enqueue_job
+
+    for attempt in attempts:
+        held = attempt.result["held"]
+        if held.get("queued"):
+            continue
+        attempt.result = {**attempt.result, "held": {**held, "queued": True, **({"expired": True} if expired else {})}}
+        enqueue_job(db, attempt.owner_id, "agent_judge", {"attempt": attempt.id, "release": True})
+
+
+def recheck_pr(db, run):
+    """needs_you(pr_unknown) after a new report: a PR on record (pr_open) or the branch merged (pr_merged) moves the
+    run on as the held verdict would have; anything else stays with Davin."""
+    from . import agent_prompts as prompts
+    from .agent_judge import completion_evidence
+
+    plan = frozen(db, run)
+    completion = completion_evidence(db, run, plan)
+    if completion["policy"] == "pr_open" and completion["pr_urls"] and not integration_pending(db, run, plan):
+        return judged_met(db, run, plan, judge_actor(run))
+    if completion["policy"] == "pr_merged" and completion["merged"] is True and run.surf:
+        transition(db, run, "executing", reason="merged")
+        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
+                                   "text": prompts.merged(run.branch)}, source="eridani")
+    return run
+
+
+def session_reported(db, row):
+    """A collector report for a run's session (agent_sessions.upsert): its pr_urls are current as of now."""
+    run = run_for_session(db, row)
+    if run is None or run.state in TERMINAL or run.session_pk != row.id:
+        return
+    run.sync_state = {**(run.sync_state or {}), "session_report_at": now().isoformat()}
+    if run.state == "judging":
+        release_held(db, held_judges(db, [run.id]))
+    elif run.state == "needs_you" and run.state_reason == "pr_unknown":
+        recheck_pr(db, run)
+
+
 def check_integrations(db, owner, host_id):
     """After a worktrees.report: a parent whose children are now merged goes back to work on the combined code,
-    and a run waiting for its own pull request to merge (pr_merged) is checked once more."""
+    a run waiting for its own pull request to merge (pr_merged) or for a current PR record is checked once more,
+    and a judge waiting for that record runs again."""
     from . import agent_prompts as prompts
 
     for run in db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
-                                                 AgentRun.state == "needs_you", AgentRun.state_reason == "awaiting_merge")
+                                                 AgentRun.state == "needs_you",
+                                                 AgentRun.state_reason.in_(("awaiting_merge", "pr_unknown")))
                           .with_for_update()):
-        if branch_merged(db, run) and run.surf:
+        if run.state_reason == "pr_unknown":
+            recheck_pr(db, run)
+        elif branch_merged(db, run) and run.surf:
             transition(db, run, "executing", reason="merged")
             command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
                                        "text": prompts.merged(run.branch)}, source="eridani")
+
+    judging = db.scalars(select(AgentRun.id).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
+                                                   AgentRun.state == "judging")).all()
+    release_held(db, held_judges(db, list(judging)))
 
     for run in db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
                                                  AgentRun.state == "awaiting_integration").with_for_update()):
@@ -1323,6 +1411,11 @@ def sweep(db, clock=None):
             attempt.status, attempt.updated_at = "failed", clock
             attempt.result = {**(attempt.result or {}), "non_verdict": "timeout"}
             judge_failed(db, attempt, "timeout", "the judge did not finish in time")
+    # A judge holding for a fresh PR record past its wait runs once more and settles on what is on record.
+    release_held(db, [a for a in db.scalars(select(AgentAttempt).where(
+        AgentAttempt.kind == "judge", AgentAttempt.status == "queued").with_for_update(skip_locked=True))
+        if (held := (a.result or {}).get("held")) and not held.get("queued")
+        and (until := held.get("until")) and datetime.fromisoformat(until) <= clock], expired=True)
     hosts = {h.id: h for h in db.scalars(select(AgentHost))}
     active = ("executing", "waiting_answer", "interviewing", "planning", "verifying", "judging")
     for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(active)).with_for_update(skip_locked=True)):

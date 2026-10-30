@@ -14,7 +14,7 @@ from jarvis import linear_sync as sync
 from jarvis import run_coordinator as coordinator
 from jarvis.db import session_scope
 from jarvis.linear_client import LinearFailure
-from jarvis.models import Job, LinearIssue, Task
+from jarvis.models import Job, LinearIssue, Task, now
 from jarvis.session_models import AgentAttempt, AgentCommand, AgentHost, AgentRun, AgentSession
 from sqlalchemy import select
 from test_agent_judge import criteria_run, judged, stub, verdict
@@ -270,12 +270,21 @@ def test_the_plan_freezes_the_policy_and_pr_merged_waits_for_the_host_merge_repo
         db.get(AgentSession, run.session_pk).pr_urls = [PR]
         branch = run.branch
     turn(run_id, 1)
+    with session_scope() as db:
+        # Both records arrive after the turn: the collector's session report and the host's worktrees report.
+        run = db.get(AgentRun, run_id)
+        coordinator.session_reported(db, db.get(AgentSession, run.session_pk))
+        host_row = db.get(AgentHost, run.host_id)
+        host_row.caps = {**host_row.caps, "worktrees": {"at": now().isoformat(), "worktrees": [
+            {"branch": branch, "base": "main", "merged": False}]}}
     assert judged(run_id, stub(verdict())) == ("needs_you", "awaiting_merge")
     with session_scope() as db:
         run = db.get(AgentRun, run_id)
         attempt = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run_id, AgentAttempt.kind == "judge")).first()
         evidence = judge.evidence_for(db, attempt)
-        assert evidence["completion"] == {"policy": "pr_merged", "branch": branch, "pr_urls": [PR], "merged": False}
+        assert {k: evidence["completion"][k] for k in ("policy", "branch", "pr_urls", "merged", "pr_fresh", "merged_fresh")} \
+            == {"policy": "pr_merged", "branch": branch, "pr_urls": [PR], "merged": False, "pr_fresh": True,
+                "merged_fresh": True}
         host_row = db.get(AgentHost, run.host_id)
         host_row.caps = {**host_row.caps, "worktrees": {"worktrees": [{"branch": branch, "base": "main", "merged": True}]}}
         db.flush()
