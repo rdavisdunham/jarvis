@@ -12,6 +12,7 @@ a verdict (run_coordinator.on_verdict), under compare-and-set on the attempt tup
 `decide(evidence, model)` is pure so the outcome eval (evals/agent_control) can run it with a stub.
 """
 
+import re
 import json
 import time
 from typing import Literal
@@ -90,6 +91,10 @@ def verify_evidence(attempt, judge):
             "timed_out": bool(result.get("timed_out")), "detail": result.get("detail", "")}
 
 
+# A not_met gap that is really "no recorded verification": the judge's own words for it.
+VERIFY_GAP = re.compile(r"\b(verif\w*|independently|recorded (?:result|verification)|verification result)\b", re.IGNORECASE)
+
+
 def decide(evidence, model):
     """Hard rules, then the model (a callable returning a Verdict or raising NonVerdict), then the rules again."""
     plan = evidence["plan"]
@@ -126,6 +131,14 @@ def decide(evidence, model):
             # Missing, refused, timed out, stale or uncertain: the agent cannot fix that by trying again.
             state = "missing" if verify is None else ("stale" if not verify["fresh"] else verify["status"])
             verdict, gap = "needs_you", f"Verification {required} could not establish the result ({state})."
+    if verdict == "not_met" and not required and VERIFY_GAP.search(gap or ""):
+        # The gap asks for a recorded verification on a plan that has no verify command: nothing the agent does in
+        # this worktree can produce one (run 75661a23 looped six turns on it). Only the operator can set one.
+        rules.append("verify_missing")
+        verdict = "needs_you"
+        gap = ("No verify command is set for this plan, so test results cannot be recorded; the judge treats test "
+               "output quoted by the agent as a claim. Set a verify command on this run, or approve on the evidence "
+               "shown.\n\nThe judge's gap: " + gap.strip())
     if verdict == "met" and any(c["status"] != "met" for c in record):
         rules.append("criteria_incomplete")
         verdict = "not_met"

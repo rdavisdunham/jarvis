@@ -90,27 +90,38 @@
 .remotea-reason-box p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 0.85rem; max-height: 30vh; overflow: auto; }
 .remotea-chat-facts { display: grid; gap: 4px; font-size: 0.9rem; }
 .remotea-chat-facts > p { margin: 0; }
-.remotea-chat-log { flex: 1; min-height: 0; overflow: auto; padding: 12px 16px; display: grid; gap: 10px; align-content: start; background: var(--sunken); }
-.remotea-chat-log .remotea-timeline { gap: 10px; }
-.remotea-chat-end { margin: 0; text-align: center; color: var(--ink-3); font-size: 0.85rem; }
-.remotea-timeline li.remotea-bubble { list-style: none; padding: 8px 12px; border-radius: var(--r-md); background: var(--surface); max-width: 92%; min-width: 0; justify-self: start; display: grid; gap: 4px; box-shadow: 0 1px 0 rgba(0,0,0,.04); border-left: 3px solid var(--line); }
-.remotea-timeline li.remotea-bubble.who-you { justify-self: end; background: var(--violet-soft); border-left-color: var(--violet); }
-.remotea-timeline li.remotea-bubble.who-eridani { justify-self: center; max-width: 100%; width: 100%; background: transparent; box-shadow: none; border-left-color: transparent; padding: 2px 12px; }
-.remotea-timeline li.remotea-bubble.who-eridani.kind-attempt, .remotea-timeline li.remotea-bubble.who-eridani.kind-command:not(.system) { background: var(--surface); box-shadow: 0 1px 0 rgba(0,0,0,.04); padding: 8px 12px; border-left-color: var(--line); }
-.remotea-bubble.system .remotea-bubble-head { justify-content: center; color: var(--ink-3); font-weight: 500; }
-.remotea-bubble.system .remotea-bubble-head strong { font-weight: 500; }
-.remotea-bubble.tone-good { border-left-color: var(--done) !important; }
-.remotea-bubble.tone-warn { border-left-color: var(--danger) !important; }
-.remotea-bubble.tone-attention { border-left-color: var(--violet) !important; }
-.remotea-bubble-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 0.85rem; color: var(--ink-2); }
-.remotea-bubble-head small { color: var(--ink-3); white-space: nowrap; }
-.remotea-bubble p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 0.9rem; max-height: none; overflow: visible; }
-.remotea-bubble .btn-ghost { justify-self: start; }
+/* Terminal look: a flat monospace log, one glyph per line in the gutter (❯ you, ⏺ agent, ※ Eridani), no bubbles. */
+.remotea-chat-log { flex: 1; min-height: 0; overflow: auto; padding: 8px 14px 12px; display: grid; gap: 0; align-content: start; background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 20px; }
+.remotea-chat-log .remotea-timeline { gap: 0; }
+.remotea-timeline li.remotea-bubble { list-style: none; display: grid; grid-template-columns: 16px 1fr; column-gap: 10px; row-gap: 2px; padding: 7px 0; margin: 0; max-width: 100%; width: 100%; min-width: 0; justify-self: stretch; background: none; box-shadow: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+.remotea-timeline li.remotea-bubble:first-child { border-top: 0; }
+.remotea-bubble::before { content: "⏺"; grid-row: 1 / span 3; color: var(--ink-3); font-size: 12px; line-height: 20px; text-align: center; }
+.remotea-bubble.who-you::before { content: "❯"; color: var(--violet); font-weight: 700; }
+.remotea-bubble.who-eridani::before { content: "※"; }
+.remotea-bubble.tone-good::before { color: var(--done); }
+.remotea-bubble.tone-warn::before { color: var(--danger); }
+.remotea-bubble.tone-attention::before { color: var(--violet); }
+.remotea-bubble.system { padding: 3px 0; border-top: 0; }
+.remotea-bubble.system .remotea-bubble-head { color: var(--ink-3); font-weight: 400; }
+.remotea-bubble.system .remotea-bubble-head strong { font-weight: 400; }
+.remotea-bubble-head { grid-column: 2; display: flex; align-items: baseline; justify-content: flex-start; gap: 10px; font-size: 12px; color: var(--ink-3); }
+.remotea-bubble-head strong { font-weight: 600; color: var(--ink-2); }
+.remotea-bubble-head small { color: var(--ink-3); white-space: nowrap; margin-left: auto; }
+.remotea-bubble p { grid-column: 2; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 13px; line-height: 20px; max-height: none; overflow: visible; }
+.remotea-bubble.who-you p { color: var(--ink); }
+.remotea-bubble .btn-ghost { grid-column: 2; justify-self: start; font-family: inherit; font-size: 12px; }
 .remotea-composer { flex: none; display: grid; gap: 6px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
-.remotea-composer textarea { width: 100%; resize: vertical; }
+.remotea-composer textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 20px; }
+.remotea-chat-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 0.85rem; color: var(--ink-2); }
+.remotea-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.remotea-toggle small { color: var(--ink-3); }
+.remotea-verify-line { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink-3); }
+.remotea-verify-line.attention { color: var(--violet); }
+.remotea-verify-line select { max-width: 12rem; }
 .remotea-control-gap { flex: 1; }
 .remotea-card-kicker { margin: 0; font-size: 0.75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--violet); }
-.remotea-chat-log .remotea-question { background: var(--surface); }
+.remotea-chat-log .remotea-question, .remotea-chat-log .remotea-pending-card { background: var(--sunken); font-family: var(--font, inherit); }
 .btn.btn-recommended { background: var(--done-soft); color: var(--done); border-color: var(--done); }
 .remotea-proposal { padding: 8px 10px !important; border-radius: var(--r-md); background: var(--sunken); }
 .remotea-proposal legend { font-weight: 600; margin-bottom: 4px; }

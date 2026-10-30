@@ -119,6 +119,8 @@ export type Run = {
   stop_requested_at: string | null; stop_mode: string; surf: string;
   host: { id: string; name: string; connected: boolean } | null; structured_answers: boolean;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
+  /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
+  freestyle?: boolean;
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
@@ -231,7 +233,9 @@ export type Attempt = {
 /** What the agent proposes to change about what you set (agent_plan.plan_proposals); you accept or keep each. */
 export type Proposals = {
   criteria?: { id: string; change: "reword" | "remove"; text: string; proposed?: string; because: string }[];
-  verify?: { current: { target_id: string; verify_id: string }; proposed: { target_id: string; verify_id: string } };
+  /** `current` is null when Eridani itself picked a verify command because a criterion asks for test evidence. */
+  verify?: { current: { target_id: string; verify_id: string } | null; proposed: { target_id: string; verify_id: string };
+    options?: string[]; because?: string };
   completion_policy?: { current: string; proposed: string };
 };
 export type RunDetail = Run & {
@@ -244,7 +248,19 @@ export type RunDetail = Run & {
   turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string;
     role?: "assistant" | "user" }[];
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
+  /** Verify ids the run's execution target offers (Set verify). */
+  verify_options?: string[];
 };
+
+/** The header's verify control: which command runs after each turn, or that none does and what could. */
+export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options">) {
+  const current = run.plan?.verify?.verify_id ?? null;
+  const options = run.verify_options ?? [];
+  if (current) return { current, options, text: `Verified by ${current} after each turn`, canSet: options.length > 1 };
+  if (!run.plan?.criteria?.length) return { current, options, text: "", canSet: false };
+  return { current, options, text: options.length ? "No verify command: test results cannot be recorded" : "This target offers no verify command",
+    canSet: options.length > 0 };
+}
 export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
   tone: "plain" | "good" | "warn" | "attention"; who: "agent" | "you" | "eridani" };
 

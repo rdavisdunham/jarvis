@@ -92,6 +92,7 @@ REASONS = {
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "no_progress_gap": "The judge found the same gap several turns in a row.",
+    "verify_missing": "No verify command is set, so test results cannot be recorded: set one on this run, or approve on the evidence shown.",
     "judge_needs_you": "The judge says this needs you.",
     "judge_unavailable": "The judge could not reach a verdict.",
     "judge_met": "The success criteria are met.",
@@ -116,6 +117,9 @@ REASONS = {
     "surface_restored": "The agent's terminal is back.",
     "approve": "Approved.",
     "stopped": "Stopped.",
+    "verify_set": "You set the verify command; the agent's next turn is verified.",
+    "freestyle": "Freestyle: you are talking to the agent directly; Eridani records turns but does not judge them.",
+    "freestyle_off": "Freestyle is off; the next turn is checked against the success criteria.",
 }
 
 
@@ -486,8 +490,12 @@ def record_turn(db, run, frame):
         return settle_planning(db, run)
     if run.state != "executing":
         return
-    run.turn_count += 1
     run.turn_seq = getattr(frame, "seq", 0) or run.turn_seq + 1  # The host's own counter, so its attempts carry the same tuple.
+    if run.freestyle:
+        note(run, "turn", seq=run.turn_seq, freestyle=True)  # Recorded, never verified, judged or counted toward the cap.
+        emit(db, run.owner_id, "agent.changed", run.id)
+        return
+    run.turn_count += 1
     after_turn(db, run)
 
 
@@ -867,6 +875,8 @@ def on_verdict(db, attempt, final):
     if verdict == "not_met":
         if run.turn_count >= run.turn_cap:
             return transition(db, run, "capped", actor=actor, reason="turn_cap")  # The last turn was judged first.
+        if "verify_missing" in (final.get("rules") or []):
+            return transition(db, run, "needs_you", actor=actor, reason="verify_missing", detail=final.get("gap", ""))
         if no_progress(db, run, final.get("gap", "")):
             return transition(db, run, "needs_you", actor=actor, reason="no_progress_gap", detail=final.get("gap", ""))
         transition(db, run, "executing", actor=actor, reason="not_met")
@@ -874,7 +884,8 @@ def on_verdict(db, attempt, final):
                                    "text": prompts.gap(final.get("gap", ""), final.get("criteria") or [])},
                 source="eridani")
         return run
-    reason = "awaiting_merge" if "pr_not_merged" in (final.get("rules") or []) else "judge_needs_you"
+    rules = final.get("rules") or []
+    reason = "awaiting_merge" if "pr_not_merged" in rules else "verify_missing" if "verify_missing" in rules else "judge_needs_you"
     return transition(db, run, "needs_you", actor=actor, reason=reason, detail=final.get("gap", ""))
 
 
@@ -908,11 +919,14 @@ def gap_key(text):
 
 
 def stalled(verdicts):
-    """The last NO_PROGRESS_VERDICTS verdicts (newest first) are all not_met with the same non-empty gap."""
+    """The last NO_PROGRESS_VERDICTS verdicts (newest first) are all not_met with the same non-empty gap, or all
+    fired the same hard rules (the judge rewords a gap it cannot close; the rule names what it is)."""
     recent = verdicts[:NO_PROGRESS_VERDICTS]
+    if len(recent) < NO_PROGRESS_VERDICTS or not all(v.get("verdict") == "not_met" for v in recent):
+        return False
     keys = {gap_key(v.get("gap")) for v in recent}
-    return len(recent) >= NO_PROGRESS_VERDICTS and len(keys) == 1 and "" not in keys \
-        and all(v.get("verdict") == "not_met" for v in recent)
+    rules = {tuple(sorted(v.get("rules") or [])) for v in recent}
+    return (len(keys) == 1 and "" not in keys) or (len(rules) == 1 and () not in rules)
 
 
 def no_progress(db, run, gap):
@@ -1317,7 +1331,7 @@ def sweep(db, clock=None):
             transition(db, run, "needs_you", reason="wall_clock")
         elif run.state not in ("executing", "waiting_answer"):
             continue
-        elif run.state == "executing" and run.last_progress_at \
+        elif run.state == "executing" and not run.freestyle and run.last_progress_at \
                 and run.last_progress_at + timedelta(seconds=run.no_progress_limit) <= clock:
             transition(db, run, "needs_you", reason="no_progress")
         elif host is not None and not (host.lease_until and host.lease_until > clock - timedelta(minutes=5)):

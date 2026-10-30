@@ -10,7 +10,7 @@ import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
   ago, ATTENTION_STATES, baseLine, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
-  defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
+  defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
@@ -356,8 +356,10 @@ export function PlanReview({ run, onDone }: { run: RunDetail; onDone: () => void
     })}
     {proposals.verify && <fieldset disabled={busy} className="remotea-proposal">
       <legend>Verification</legend>
-      <p className="remotea-proposal-was"><span>Yours</span>{proposals.verify.current.verify_id}</p>
-      <p className="remotea-proposal-new"><span>Agent proposes</span>{proposals.verify.proposed.verify_id}</p>
+      <p className="remotea-proposal-was"><span>{proposals.verify.current ? "Yours" : "Plan had"}</span>{proposals.verify.current?.verify_id ?? "no verify command"}</p>
+      <p className="remotea-proposal-new"><span>{proposals.verify.current ? "Agent proposes" : "Eridani picked"}</span>{proposals.verify.proposed.verify_id}
+        {proposals.verify.options && proposals.verify.options.length > 1 && <small> · also offered: {proposals.verify.options.filter(o => o !== proposals.verify!.proposed.verify_id).join(", ")}</small>}</p>
+      {proposals.verify.because && <p className="remotea-proposal-why">{proposals.verify.because}</p>}
       <div className="remotea-choices">{choice(verify === "accept", "Accept", true, () => setVerify("accept"))}{choice(verify === "keep", "Keep mine", false, () => setVerify("keep"))}</div>
     </fieldset>}
     {proposals.completion_policy && <fieldset disabled={busy} className="remotea-proposal">
@@ -424,6 +426,8 @@ export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: ()
   const controls = run ? runControls(run) : null;
   const attention = run ? ATTENTION_STATES.includes(run.state) : false;
   const entries = run ? timeline(run) : [];
+  const verify = run ? verifyLine(run) : null;
+  const [verifyPick, setVerifyPick] = useState("");
   return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
@@ -442,6 +446,24 @@ export function RunDrawer({ id, onClose, onCollapse }: { id: string; onClose: ()
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>
         {run.reason_detail && run.reason_detail !== run.reason_text && <p>{run.reason_detail}</p>}
+      </div>}
+      {run && !isSettled(run) && <div className="remotea-chat-modes">
+        <label className="remotea-toggle" title="Talk to the agent directly: turns are recorded but not verified, judged or counted toward the cap.">
+          <input type="checkbox" checked={!!run.freestyle} disabled={!!busy || run.state === "stopping"}
+            onChange={e => void act("freestyle", "freestyle", { enabled: e.target.checked, expected_revision: run.state_revision })}/>
+          <span>Freestyle</span><small>{run.freestyle ? "judge and prompts off" : "judge on"}</small>
+        </label>
+        {verify?.text && !run.freestyle && <span className={"remotea-verify-line" + (verify.current ? "" : " attention")}>
+          {verify.text}
+          {verify.canSet && <>
+            <select aria-label="Verify command" value={verifyPick || verify.current || verify.options[0]} onChange={e => setVerifyPick(e.target.value)}>
+              {verify.options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <button className="btn btn-sm" disabled={!!busy} onClick={() => void act("verify-config", "verify-config",
+              { verify_id: verifyPick || verify.current || verify.options[0], expected_revision: run.state_revision })}>
+              {busy === "verify-config" ? "Setting…" : verify.current ? "Change" : "Set verify"}</button>
+          </>}
+        </span>}
       </div>}
       {run && <div className="remotea-chat-facts">
         <Criteria run={run}/>
