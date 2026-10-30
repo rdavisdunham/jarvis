@@ -129,6 +129,7 @@ def snapshot(db, owner):
                 archived=task.archived,
                 task_revision=task.revision,
                 status_meaning=task.status,
+                project_id=task.project_id,
             )
             current_status = next(
                 (s for s in t["statuses"] if s["id"] == row.status_id and s["meaning"] == task.status), None

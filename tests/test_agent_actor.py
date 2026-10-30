@@ -181,3 +181,116 @@ def test_run_sessions_complete_through_a_run_never(host):  # noqa: F811
         complete_update(record)
     with session_scope() as db:
         assert db.scalar(select(AgentRun.state).where(AgentRun.id == run_id)) == "executing"
+
+
+# ---------------------------------------------------------------- the PRD note (agent_actor.note_gate)
+
+
+def note_row(note_id):
+    from jarvis.models import Note
+
+    with session_scope() as db:
+        row = db.get(Note, note_id)
+        db.expunge(row)
+        return row
+
+
+def prd_running(host, title="PRD task"):  # noqa: F811
+    """A task whose PRD note is frozen with a live run: (note_id, run_id)."""
+    note = run("note.create", title="PRD: " + title, content="Plan v1", tags=["prd"])
+    record = create("task", title)
+    task = current(record)
+    run("task.update", task_id=task.id, expected_revision=task.revision, prd_note_id=note["id"])
+    run_id = start(host, record["task_id"])["id"]
+    attached(host, run_id, "sess-prd-" + title.replace(" ", "-"))
+    return note["id"], run_id
+
+
+def edit_update(note):
+    return run("note.update", note_id=note.id, expected_revision=note.revision, content="Rewritten plan")
+
+
+def edit_append(note):
+    return run("note.append", note_id=note.id, expected_revision=note.revision, text="\nAnother step")
+
+
+def edit_replace(note):
+    return run("note.replace", note_id=note.id, expected_revision=note.revision, old_text="v1", new_text="v2")
+
+
+def edit_archive(note):
+    return run("note.update", note_id=note.id, expected_revision=note.revision, archived=True)
+
+
+def edit_organize(note):
+    return run("note.organize", note_id=note.id, expected_revision=note.revision)
+
+
+NOTE_EDITS = {"note.update": edit_update, "note.append": edit_append, "note.replace": edit_replace,
+              "archive": edit_archive, "note.organize": edit_organize}
+
+
+@pytest.mark.parametrize("edit", NOTE_EDITS)
+@pytest.mark.parametrize("kind", REFUSED + ["run_judge", "source_sync"])
+def test_a_live_prd_note_is_read_only_to_agents(host, kind, edit):  # noqa: F811
+    note_id, run_id = prd_running(host)
+    before = note_row(note_id)
+    with acting(Actor(kind)), pytest.raises(DomainError) as refused:
+        NOTE_EDITS[edit](before)
+    assert (refused.value.code, refused.value.status) == ("RUN_OWNS_PRD", 409)
+    assert refused.value.data["run_id"] == run_id and run_id in refused.value.message
+    after = note_row(note_id)
+    assert (after.content, after.revision, after.archived) == ("Plan v1", before.revision, False)
+
+
+def test_a_human_may_edit_a_live_prd_and_is_told_the_plan_is_frozen(host):  # noqa: F811
+    from jarvis.models import Note
+    from jarvis.notes import note_data
+    from jarvis.session_models import AgentRunPlan
+
+    note_id, run_id = prd_running(host)
+    with acting(Actor("human")):
+        edited = edit_append(note_row(note_id))
+    assert edited["content"] == "Plan v1\nAnother step"
+    assert run_id in edited["warning"] and "not the plan" in edited["warning"]
+    assert edited["frozen_run_id"] == run_id
+    assert run_row(run_id).state == "executing"  # A human PRD edit does not touch the run.
+    with session_scope() as db:
+        assert note_data(db, db.get(Note, note_id))["frozen_run_id"] == run_id
+        assert db.scalar(select(AgentRunPlan.prd_text).where(AgentRunPlan.run_id == run_id)) == "Plan v1"
+
+
+def test_a_settled_run_releases_its_prd(host):  # noqa: F811
+    note_id, run_id = prd_running(host)
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "stopped"
+    with acting(Actor("bot")):
+        edited = edit_update(note_row(note_id))
+    assert edited["content"] == "Rewritten plan" and edited["frozen_run_id"] is None and "warning" not in edited
+
+
+def test_notes_that_are_not_a_live_prd_stay_open_to_agents(host):  # noqa: F811
+    prd_running(host)
+    other = run("note.create", title="Scratch", content="Plan v1")
+    with acting(Actor("bot")):
+        edited = edit_replace(note_row(other["id"]))
+    assert edited["content"] == "Plan v2" and edited["frozen_run_id"] is None and "warning" not in edited
+
+
+def test_only_its_own_runs_plan_write_may_rewrite_the_prd(host):  # noqa: F811
+    note_id, run_id = prd_running(host)
+    with acting(Actor("run_session", run_id="another-run", capability="plan_write")), \
+            pytest.raises(DomainError) as other:
+        edit_update(note_row(note_id))
+    assert other.value.code == "RUN_OWNS_PRD"
+    with acting(Actor("run_session", run_id=run_id, capability="plan_write")):  # submit_plan's writer
+        assert edit_update(note_row(note_id))["content"] == "Rewritten plan"
+
+
+def test_note_tasks_still_links_to_dos_from_a_live_prd(host):  # noqa: F811
+    note_id, _ = prd_running(host)
+    note = note_row(note_id)
+    with acting(Actor("bot")):
+        linked = run("note.tasks", note_id=note.id, expected_revision=note.revision,
+                     items=[{"title": "Do v1", "evidence": "Plan v1"}])
+    assert linked["created_count"] == 1 and note_row(note_id).content == "Plan v1"

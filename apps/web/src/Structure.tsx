@@ -21,6 +21,7 @@ import { templatesFor } from "./template-model";
 import type { Schema, CustomRecord, Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
+import { inHome, inTab, matchesQuery, rankOrder } from "./record-filters";
 import { meanings, describe, openTarget } from "./structure-types";
 import { Popover, priorityLabels, useMaxWidth } from "./ux";
 import { clockLabel, dueBucket, dueBuckets, monthDay, shortDate } from "./work-views";
@@ -61,12 +62,20 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const [timelineClosed,setTimelineClosed]=useState<Set<string>>(new Set());
   const captureInput=useRef<HTMLInputElement>(null);
   const {run,error,busy,setError}=useStructureActions();
+  // Lists need every row; Browse and the Atlas fetch their own until a search needs rows. Typing a
+  // search in a list no longer refetches the whole collection.
+  const needsRows=(layout!=="browse"&&layout!=="atlas")||!!query;
+  const loads=useRef(0);const shown=useRef(false);
   const load=useCallback(async()=>{
+    const version=++loads.current;
     const s=await api<Schema>("/structure");const all:CustomRecord[]=[];let offset:number|null=0;
-    while(offset!==null && ((layout!=="browse"&&layout!=="atlas")||!!query)){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;}
-    setSchema(s);setItems(all);
+    while(offset!==null && needsRows){const page: {items:CustomRecord[];next_offset:number|null}=await api("/structure/records?limit=200&offset="+offset+"&archived="+archived);all.push(...page.items);offset=page.next_offset;
+      // The first load shows each page as it arrives; a refresh swaps the rows in once complete.
+      if(!shown.current&&offset!==null&&version===loads.current){setSchema(s);setItems([...all]);}}
+    if(version!==loads.current)return;
+    shown.current=true;setSchema(s);setItems(all);
     const views=await api<{items:SavedEntry[]}>("/task-views");setSaved(views.items.filter(v=>v.state.collection_view||onApplyTaskView));
-  },[archived,!!onApplyTaskView,layout,!!query]);
+  },[archived,!!onApplyTaskView,needsRows]);
   useEffect(()=>{let live=true;load().catch(e=>{if(live)setError(String(e.message??e));});return()=>{live=false;};},[load,refresh,setError]);
   useEffect(()=>{const handler=(event:Event)=>{const id=(event as CustomEvent).detail?.id;if(id)api<CustomRecord>("/structure/records/"+id).then(setSelected).catch(e=>setError(e.message));};window.addEventListener("eri-open-record",handler);return()=>window.removeEventListener("eri-open-record",handler);},[setError]);
   useEffect(()=>{if(!control)return;if(control.record_ids!==undefined){setResultIds(control.record_ids.length?control.record_ids:null);setResultSearch(control.search_id??null);}else if(control.type_id!==undefined||control.parent_id!==undefined||control.field!==undefined){setResultIds(null);setResultSearch(null);}if(control.section!==undefined)setBrowseSection(control.section);else if(control.parent_id!==undefined)setBrowseSection(control.parent_id?"all":"groups");if(!control.layout&&!capability){if(control.type_id||control.field||control.record_ids?.length)setLayout("list");else if(control.parent_id!==undefined)setLayout("browse");}if(control.design!==undefined)setDesign(control.design);if(control.status!==undefined)setStatus(control.status);if(control.archived!==undefined)setArchived(control.archived);if(control.type_id!==undefined)setTypeId(control.type_id);if(control.parent_id!==undefined)setParent(control.parent_id);if(control.layout)setLayout(control.layout);if(control.group)setGroup(control.group);if(control.field!==undefined)setFilterField(control.field);if(control.value!==undefined)setFilterValue(control.value);if(control.record_id&&control.layout==="atlas")setAtlasTarget({nonce:control.nonce,record_id:control.record_id});else if(control.record_id)void api<CustomRecord>("/structure/records/"+control.record_id).then(setSelected).catch(e=>setError(e.message));if(control.proposal_id)void api<Proposal>("/structure/proposals/"+control.proposal_id).then(p=>{setProposal(p);setDesign(true);}).catch(e=>setError(e.message));},[control,setError]);
@@ -88,28 +97,34 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const typeOf=(r:CustomRecord)=>schema?.types.find(t=>t.id===r.type_id);
   const bound=(r:CustomRecord,binding:string)=>{const id=typeOf(r)?.fields.find(f=>f.binding===binding)?.id;const value=id?r.values[id]:undefined;return value===undefined||value===null?"":String(value);};
   const effectiveDate=(r:CustomRecord)=>sort==="planned"?bound(r,"planned_date"):bound(r,"due_date")||bound(r,"planned_date");
-  const visible=items.filter(r=>{
+  // A search covers every task, not only the open tab (Today hid an undated match). Status and
+  // the tab still narrow a home filter; the notice below offers the rows they hide.
+  const searching=!!query.trim();
+  const matches=(r:CustomRecord,scoped:boolean)=>{
     if(!schema)return false;
     if(r.quick_list_parent_id&&!query&&!resultIds)return false;
     if(resultIds&&!resultIds.includes(r.id))return false;
     if(capability&&!r.capabilities.includes(capability))return false;
     if(typeId&&r.type_id!==typeId)return false;
-    if(parent&&r.parent_id!==parent&&!r.home.some(p=>p.id===parent))return false;
-    if(query&&(ranked?!ranked.has(r.id):![r.title,r.body,r.type_name,JSON.stringify(r.values)].join(" ").toLowerCase().includes(query.toLowerCase())))return false;
+    if(!inHome(r,parent))return false;
+    if(!matchesQuery(r,query,ranked))return false;
+    if(filterField&&filterValue&&!String(r.values[filterField]??"").toLowerCase().includes(filterValue.toLowerCase()))return false;
+    if(!scoped)return true;
     if(status==="active"&&["completed","cancelled"].includes(r.status_meaning??""))return false;
     if(status!=="active"&&status!=="all"&&r.status_meaning!==status)return false;
-    if(filterField&&filterValue&&!String(r.values[filterField]??"").toLowerCase().includes(filterValue.toLowerCase()))return false;
     const rt=schema.types.find(t=>t.id===r.type_id)!;const dateFor=(binding:string)=>String(r.values[rt.fields.find(f=>f.binding===binding)?.id??""]??"");
-    if(tab==="inbox"&&r.parent_id)return false;
-    if(tab==="today"||tab==="week"){const dates=[dateFor("planned_date"),dateFor("due_date")].filter(Boolean);if(!dates.some(d=>d<=(tab==="today"?today:end)))return false;}
+    if(!searching&&!inTab(r,tab,[dateFor("planned_date"),dateFor("due_date")],today,end))return false;
     return true;
-  }).sort((a,b)=>{
-    if(ranked)return (ranked.get(a.id)??0)-(ranked.get(b.id)??0);
+  };
+  const visible=items.filter(r=>matches(r,true)).sort((a,b)=>{
+    if(ranked)return rankOrder(ranked)(a,b);
     if(sort==="title")return a.title.localeCompare(b.title);
     if(sort==="priority")return Number(bound(b,"priority")||0)-Number(bound(a,"priority")||0)||(bound(a,"due_date")||"9999").localeCompare(bound(b,"due_date")||"9999");
     if(sort==="due"||sort==="planned")return (effectiveDate(a)||"9999").localeCompare(effectiveDate(b)||"9999")||(bound(a,"due_time")||"99:99").localeCompare(bound(b,"due_time")||"99:99")||Number(bound(b,"priority")||0)-Number(bound(a,"priority")||0);
     return 0;
   });
+  // Rows a search or Main home matches but the status filter or the open tab hides.
+  const outside=(searching||!!parent)&&!archived?items.filter(r=>matches(r,false)).length-visible.length:0;
   const visibleIds = JSON.stringify(visible.map(r=>r.task_id??r.id));
   const visibleSearchIds=JSON.stringify(visible.map(r=>r.id));
   useEffect(()=>{
@@ -332,6 +347,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     {resultIds&&<div className="work-notice">{resultIds.length} search results <button type="button" className="text-button" onClick={()=>{setResultIds(null);setResultSearch(null);}}>Show all records</button></div>}
     {query&&semantic.pending&&<p role="status" className="work-notice">Searching…</p>}
     {query&&(semantic.error||semantic.result?.incomplete)&&<p className="work-notice">Showing available matches. Semantic search is still catching up.</p>}
+    {outside>0&&<p className="work-notice">{outside} more matching {outside===1?"record is":"records are"} closed or outside this tab. <button type="button" className="text-button" onClick={()=>{setStatus("all");if(tab!=="all")onTab?.("all");}}>Show all</button></p>}
     {layout!=="browse"&&!atlas&&!(layout==="atlas"&&narrow)&&<div className="work-listbar">
       {selecting?<div className="work-bulk" role="group" aria-label="Selection">
         <label className="check-label"><input type="checkbox" aria-label="Select visible tasks" checked={visibleTasks.length>0&&visibleTasks.every(r=>selectedIds.includes(r.task_id!))} onChange={e=>onSelection?.(e.target.checked?visibleTasks.map(r=>r.task_id!):[])}/>Select visible</label>

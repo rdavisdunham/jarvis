@@ -28,5 +28,12 @@ try{
  for(const width of [390,820,1440]){await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();}
  mkdirSync((process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/semantic-search"),{recursive:true});await page.screenshot({path:(process.env.ERIDANI_EVAL_ARTIFACT_DIR || "../../artifacts/semantic-search") + "/aliases.png",fullPage:true});
  await aliases.getByRole("button",{name:"Forget",exact:true}).click();await expect(aliases.getByText("No aliases learned yet.")).toBeVisible();
- expect(errors).toEqual([]);console.log("Semantic browser acceptance passed: task-scoped meaning search, selected mixed results, click acceptance, alias controls and responsive settings.");
+ // ce2e0e8d: a word or part of a word mid-title, searched from the Today tab, finds an undated task.
+ const parity=await cmd("task.create",{title:"Parity: ignore time-varying parts of a session's resume when comparing"});
+ await ui("ui_workspace",{view:"all"});await page.getByRole("tab",{name:"Today",exact:true}).click();
+ const listSearch=page.getByRole("searchbox",{name:"Search this list",exact:true});
+ for(const q of ["ignore","gnore","TIME-VAR"]){await listSearch.fill(q);await expect(page.getByRole("button",{name:parity.title,exact:true})).toBeVisible();}
+ await expect(page.getByRole("button",{name:"Ship software release",exact:true})).toHaveCount(0);
+ await listSearch.fill("");
+ expect(errors).toEqual([]);console.log("Semantic browser acceptance passed: task-scoped meaning search, selected mixed results, click acceptance, alias controls, responsive settings and mid-title substring search from Today.");
 }finally{await browser.close();}

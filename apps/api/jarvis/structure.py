@@ -432,7 +432,124 @@ def validate_values(db, owner, t, values, *, allow_archived=False):
     return clean
 
 
-def data(db, row, schema=None):
+class Prefetch:
+    """Bulk reads for one page of records, so data() issues no per-row queries.
+
+    A list of a few hundred tasks otherwise costs about seven round trips per row (task, note,
+    each ancestor, Linear link, blockers, child check, links): seconds before the Tasks page or a
+    search from the top bar can render.
+    """
+
+    def __init__(self, db, owner, rows):
+        from sqlalchemy import or_
+        from .models import LinearConnection, LinearIssue
+
+        ids = [r.id for r in rows]
+        self.records = {
+            r.id: r for r in db.scalars(select(StructureRecord).where(StructureRecord.owner_id == owner))
+        }
+        self.links = {}
+        self.incoming = {}
+        if ids:
+            for link in db.scalars(
+                select(StructureLink).where(
+                    StructureLink.owner_id == owner,
+                    or_(StructureLink.source_id.in_(ids), StructureLink.target_id.in_(ids)),
+                )
+            ):
+                self.links.setdefault(link.source_id, []).append(link)
+                if link.target_id != link.source_id:
+                    self.links.setdefault(link.target_id, []).append(link)
+                self.incoming.setdefault(link.target_id, []).append(link)
+        blockers = {
+            link.source_id for links in self.incoming.values() for link in links
+        }
+        task_ids = {r.task_id for r in rows if r.task_id} | {
+            self.records[b].task_id for b in blockers if b in self.records and self.records[b].task_id
+        }
+        self.tasks = (
+            {t.id: t for t in db.scalars(select(Task).where(Task.owner_id == owner, Task.id.in_(task_ids)))}
+            if task_ids
+            else {}
+        )
+        parent_tasks = {t.parent_task_id for t in self.tasks.values() if t.parent_task_id} - set(self.tasks)
+        if parent_tasks:
+            self.tasks.update(
+                (t.id, t)
+                for t in db.scalars(select(Task).where(Task.owner_id == owner, Task.id.in_(parent_tasks)))
+            )
+        self.quick = {}
+        quick = [t.id for t in self.tasks.values() if t.is_quick_list]
+        if quick:
+            for parent, status, n in db.execute(
+                select(Task.parent_task_id, Task.status, func.count())
+                .where(Task.owner_id == owner, Task.parent_task_id.in_(quick), Task.archived.is_(False))
+                .group_by(Task.parent_task_id, Task.status)
+            ):
+                total, done = self.quick.get(parent, (0, 0))
+                self.quick[parent] = (total + n, done + (n if status == "completed" else 0))
+        note_ids = {r.note_id for r in rows if r.note_id}
+        self.notes = (
+            {n.id: n for n in db.scalars(select(Note).where(Note.owner_id == owner, Note.id.in_(note_ids)))}
+            if note_ids
+            else {}
+        )
+        self.linear = (
+            {
+                issue.task_id: issue
+                for issue in db.scalars(
+                    select(LinearIssue).where(LinearIssue.owner_id == owner, LinearIssue.task_id.in_(task_ids))
+                )
+            }
+            if task_ids
+            else {}
+        )
+        self.linear_connection = db.get(LinearConnection, owner) if self.linear else None
+        self.parents = {r.parent_id for r in self.records.values() if r.parent_id and not r.archived}
+
+    def capture(self, db, task):
+        """The quick-list keys data() copies from serial(task), without its per-task queries."""
+        parent_id = task.parent_task_id
+        parent = (self.tasks.get(parent_id) or db.get(Task, parent_id)) if parent_id else None
+        total, done = self.quick.get(task.id, (0, 0))
+        return {
+            "is_quick_list": task.is_quick_list,
+            "quick_list_parent_id": parent.id if parent and parent.is_quick_list else None,
+            "quick_done": done if task.is_quick_list else None,
+            "quick_total": total if task.is_quick_list else None,
+        }
+
+    def chain(self, db, owner, parent_id, self_id):
+        """parent_chain() over the prefetched rows; identical errors."""
+        chain, seen = [], {self_id} if self_id else set()
+        while parent_id:
+            if parent_id in seen or len(chain) >= 100:
+                raise DomainError("HIERARCHY_CYCLE", "Choose a parent outside this record's descendants.")
+            seen.add(parent_id)
+            parent = self.records.get(parent_id) or owned(db, StructureRecord, parent_id, owner)
+            chain.append(parent)
+            parent_id = parent.parent_id
+        return chain
+
+    def blocking(self, row, schema):
+        """record_contents.blocking() over the prefetched links."""
+        ids = {
+            r["id"]
+            for r in schema.definition["relationships"]
+            if r.get("behavior") == "blocks" and not r["archived"]
+        }
+        result = []
+        for link in self.incoming.get(row.id, []):
+            blocker = self.records.get(link.source_id)
+            if link.relationship_id not in ids or not blocker or blocker.archived:
+                continue
+            task = self.tasks.get(blocker.task_id) if blocker.task_id else None
+            if task and task.status not in {"completed", "cancelled"}:
+                result.append({"id": blocker.id, "title": task.title, "status": task.status})
+        return result
+
+
+def data(db, row, schema=None, batch=None):
     schema = schema or ensure(db, row.owner_id)
     t = record_type(schema, row.type_id, archived=True)
     result = serial(row)
@@ -440,12 +557,23 @@ def data(db, row, schema=None):
     from .sources import native
     result["source"] = native(row.id)
     values = dict(row.values)
-    task = db.get(Task, row.task_id) if row.task_id else None
-    note = db.get(Note, row.note_id) if row.note_id else None
+    if batch:
+        task = batch.tasks.get(row.task_id) if row.task_id else None
+        note = batch.notes.get(row.note_id) if row.note_id else None
+    else:
+        task = db.get(Task, row.task_id) if row.task_id else None
+        note = db.get(Note, row.note_id) if row.note_id else None
     if task:
         from .sources import task_source
-        result["source"] = task_source(db, task)
-        capture=serial(task)
+        result["source"] = (
+            task_source(db, task, link=batch.linear.get(task.id), connection=batch.linear_connection)
+            if batch
+            else task_source(db, task)
+        )
+        # Legacy project assignment; a Main home filter on that project includes the task even
+        # when its record sits elsewhere in the containment tree.
+        result["project_id"] = task.project_id
+        capture = batch.capture(db, task) if batch else serial(task)
         result.update({k:capture.get(k) for k in ("is_quick_list","quick_list_parent_id","quick_done","quick_total")})
         result.update(title=task.title, body=task.notes, archived=task.archived, task_revision=task.revision)
         result["status_id"] = task_status(t, task.status, row.status_id)
@@ -457,7 +585,11 @@ def data(db, row, schema=None):
     if note:
         result.update(title=note.title, body=note.content, note_revision=note.revision)
     inherited = {}
-    chain = parent_chain(db, row.owner_id, row.parent_id, self_id=row.id)
+    chain = (
+        batch.chain(db, row.owner_id, row.parent_id, row.id)
+        if batch
+        else parent_chain(db, row.owner_id, row.parent_id, self_id=row.id)
+    )
     for f in t["fields"]:
         if f["inherit"] and f["id"] not in values:
             for parent in chain:
@@ -479,10 +611,10 @@ def data(db, row, schema=None):
                     inherited[f["id"]] = parent.id
                     break
     from .record_contents import blocking
-    result["blockers"] = blocking(db, row, schema)
+    result["blockers"] = batch.blocking(row, schema) if batch else blocking(db, row, schema)
     result["opens_as"] = opens_as(t)
     if result["opens_as"] == "item" and t.get("opens_as", "auto") == "auto":
-        result["opens_as"] = opens_as(t, db.scalar(select(StructureRecord.id).where(
+        result["opens_as"] = opens_as(t, row.id in batch.parents if batch else db.scalar(select(StructureRecord.id).where(
             StructureRecord.owner_id == row.owner_id, StructureRecord.parent_id == row.id,
             StructureRecord.archived.is_(False)).limit(1)) is not None)
     from .record_reviews import payload as review_payload
@@ -496,10 +628,14 @@ def data(db, row, schema=None):
         home=[{"id": p.id, "title": p.title, "type_id": p.type_id} for p in reversed(chain)],
         links=[
             serial(link)
-            for link in db.scalars(
-                select(StructureLink).where(
-                    StructureLink.owner_id == row.owner_id,
-                    (StructureLink.source_id == row.id) | (StructureLink.target_id == row.id),
+            for link in (
+                batch.links.get(row.id, [])
+                if batch
+                else db.scalars(
+                    select(StructureLink).where(
+                        StructureLink.owner_id == row.owner_id,
+                        (StructureLink.source_id == row.id) | (StructureLink.target_id == row.id),
+                    )
                 )
             )
         ],
@@ -507,7 +643,7 @@ def data(db, row, schema=None):
     return result
 
 
-COMPACT = ("source", "opens_as", "id", "type_id", "type_name", "title", "parent_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
+COMPACT = ("source", "opens_as", "id", "type_id", "type_name", "title", "parent_id", "project_id", "home", "status_id", "status_meaning", "task_id", "note_id", "archived", "revision")
 
 
 def records(
@@ -538,8 +674,10 @@ def records(
             q.order_by(StructureRecord.updated_at.desc(), StructureRecord.id).offset(offset).limit(limit + 1)
         )
     )
+    batch = Prefetch(db, owner, rows[:limit])
+
     def present(row):
-        item = data(db, row, schema)
+        item = data(db, row, schema, batch)
         if detail == "full":
             return item
         from .sources import compact_source

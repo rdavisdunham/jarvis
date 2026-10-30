@@ -18,6 +18,8 @@ class SearchQuery(Input):
     due_from: date | None = None
     due_through: date | None = None
     archived: bool = False
+    # Skip the embedding call: title/word/substring matches only, answered without the provider.
+    lexical_only: bool = False
     limit: int = Field(default=30, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=1000000)
 

@@ -12,6 +12,7 @@ from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.models import BotCredential, Job, Outbox, Task, now
 from sqlalchemy import func, select
+from test_agent_runs import host  # noqa: F401 - pytest fixture
 
 
 @pytest.fixture(autouse=True)
@@ -587,3 +588,42 @@ def test_custom_record_routes_scopes_receipts_and_change_feed(client):
     reversed_link=external.post("/api/v1/external/actions/"+action["id"]+"/revert",headers=headers,json={"request_id":str(uuid4())})
     assert reversed_link.status_code==200,reversed_link.text
     assert reversed_link.json()["data"]["links"]==[]
+
+
+def test_a_prd_frozen_with_a_live_run_is_read_only_over_http_and_mcp(client, host):  # noqa: F811
+    """agent_actor.note_gate: a notes:write key cannot make the live PRD drift from the run's frozen plan."""
+    from jarvis.models import Note
+    from jarvis.session_models import AgentRun
+    from test_agent_runs import attached, start
+    from test_agent_runs import task as make_task
+    from test_linear import run
+
+    _, headers = key(client, ["tasks:write", "notes:write"])
+    note = call(headers, "note.create", {"title": "PRD", "content": "Plan v1"}).json()["data"]
+    drafted = call(headers, "note.append", {"note_id": note["id"], "expected_revision": 1, "text": " draft"})
+    assert drafted.status_code == 200, drafted.text
+    created = make_task("PRD over MCP", prd_note_id=note["id"])
+    run_id = start(host, created["id"])["id"]
+    attached(host, run_id)
+    external = TestClient(app)
+    refused = call(headers, "note.update", {"note_id": note["id"], "expected_revision": 2, "content": "Drifted"})
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["error"]["code"] == "RUN_OWNS_PRD" and refused.json()["error"]["data"]["run_id"] == run_id
+    replaced = rpc(client, headers, "tools/call", {"name": "note_replace", "arguments": {
+        "request_id": str(uuid4()), "note_id": note["id"], "expected_revision": 2, "old_text": "v1", "new_text": "v9"}})
+    result = replaced.json()["result"]
+    assert result["isError"] and json.loads(result["content"][0]["text"])["error"]["code"] == "RUN_OWNS_PRD"
+    action = drafted.json()["activity"]["actions"][0]  # Reverting the bot's own earlier edit is an edit too.
+    reverted = external.post("/api/v1/external/actions/" + action["id"] + "/revert", headers=headers,
+                             json={"request_id": str(uuid4())})
+    assert reverted.status_code == 409 and reverted.json()["error"]["code"] == "RUN_OWNS_PRD", reverted.text
+    record = external.get(f"/api/v1/external/records/note/{note['id']}", headers=headers).json()
+    assert record["content"] == "Plan v1 draft" and record["frozen_run_id"] == run_id
+    human = run("note.update", note_id=note["id"], expected_revision=2, content="Plan v2")  # The owner still may.
+    assert run_id in human["warning"]
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "stopped"
+    settled = call(headers, "note.append", {"note_id": note["id"], "expected_revision": 3, "text": " done"})
+    assert settled.status_code == 200, settled.text
+    with session_scope() as db:
+        assert db.get(Note, note["id"]).content == "Plan v2 done"
