@@ -3,7 +3,8 @@
 The worker's housekeeping pass deletes what nobody needs any more: turns of sessions no run owns after
 30 days, a settled run's turns, commands, questions, attempts and interviews after 90 days (the run row,
 its frozen plan and its history stay), and the payload of every settled command after 7 days (the replay
-horizon: the host never asks for it again). Parity rows go after 30 days.
+horizon: the host never asks for it again). Parity rows go after 30 days; run action receipts
+(agent_receipts.py) after 7 days, long past any client retry.
 
 Each owner may ingest QUOTA_BYTES of turn text and prompts per UTC day.
 Past it the text is dropped (the turn is kept, marked truncated) and the host shows as degraded.
@@ -18,6 +19,7 @@ from sqlalchemy.dialects.postgresql import insert
 from .models import now
 from .session_models import (
     TERMINAL_RUN_STATES,
+    AgentActionReceipt,
     AgentAttempt,
     AgentCommand,
     AgentIngestDay,
@@ -35,6 +37,7 @@ UNBOUND_TURNS = timedelta(days=30)
 RUN_DATA = timedelta(days=90)
 COMMAND_PAYLOADS = timedelta(days=7)
 PARITY = timedelta(days=30)
+ACTION_RECEIPTS = timedelta(days=7)
 QUOTA_BYTES = 64 * 1_048_576
 SETTLED = ("acked", "executed", "failed", "rejected", "uncertain", "expired", "canceled")
 
@@ -58,6 +61,8 @@ def sweep(db, clock=None):
         AgentParityDay.day < (clock - PARITY).date())).rowcount
     db.execute(delete(AgentIngestDay).where(AgentIngestDay.day < (clock - PARITY).date()))
     db.execute(delete(AgentPendingControl).where(AgentPendingControl.expires_at < clock - PARITY))
+    counts["action_receipts"] = db.execute(delete(AgentActionReceipt).where(
+        AgentActionReceipt.created_at < clock - ACTION_RECEIPTS)).rowcount
     return counts
 
 
