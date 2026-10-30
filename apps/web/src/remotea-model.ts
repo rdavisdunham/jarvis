@@ -6,6 +6,11 @@ export type Host = {
   conn_epoch: number; caps: string[]; harnesses: Record<string, unknown>; proto: number; status?: "ok" | "degraded";
   /** remotea's own version from hello; `update` when it trails the latest release by more than one (older Eridani: absent). */
   version?: string | null; update?: { latest: string; url: string | null } | null;
+  /** Build identity from hello (remotea PR #18): the commit (40 hex or "unknown"), its short form, uncommitted
+   * changes, the caps shape and the hook helper's hash. Null when the host did not say. */
+  build_sha?: string | null; build?: string | null; build_dirty?: boolean | null; caps_version?: number | null; hook_version?: string | null;
+  /** Set only while the host's journal or outbox is degraded (remotea PR #15): it refuses effectful commands. */
+  degraded_reason?: string | null;
 };
 export type Turn = {
   id: string; seq: number; text: string; length: number; clipped: boolean; truncated: boolean;
@@ -61,17 +66,29 @@ export function ago(value: string | null, now = Date.now()) {
 }
 
 /** "remotea 0.1.0 · update available" for Settings; null when the host never said its version. */
-export function versionLine(host: Host): { text: string; update: { latest: string; url: string | null } | null } | null {
-  if (!host.version) return null;
-  return { text: "remotea " + host.version + (host.update ? " · update available" : ""), update: host.update ?? null };
+/** "remotea 0.1.0 · build 76c5f62" (plus the "dirty" badge when the build had uncommitted changes); null when
+ * the host said neither its version nor its build. */
+export function versionLine(host: Host): { text: string; update: { latest: string; url: string | null } | null; dirty: boolean } | null {
+  const build = host.build ?? (host.build_sha && host.build_sha !== "unknown" ? host.build_sha.slice(0, 7) : host.build_sha) ?? null;
+  if (!host.version && !build) return null;
+  const parts = [host.version ? "remotea " + host.version : "remotea", build ? "build " + build : "", host.update ? "update available" : ""];
+  return { text: parts.filter(Boolean).join(" · "), update: host.update ?? null, dirty: !!host.build_dirty };
 }
 
-export function hostSummary(hosts: Host[], now = Date.now()) {
+/** The warning a degraded host shows: its journal or outbox cannot persist, so it refuses starts and messages. */
+export function hostWarning(host: Pick<Host, "degraded_reason">) {
+  return host.degraded_reason ? "Host journal degraded: " + host.degraded_reason : null;
+}
+
+/** The page header's host line. `warning` is set while a host's journal is degraded (one line per host). */
+export function hostSummary(hosts: Host[], now = Date.now()): { tone: "never" | "connected" | "offline"; text: string; warning?: string } {
   if (!hosts.length) return { tone: "never" as const, text: "No remotea server has connected yet." };
+  const warnings = hosts.map(h => hostWarning(h) && (hosts.length > 1 ? `${h.name || h.machine || "remotea"}: ` : "") + hostWarning(h)).filter(Boolean);
+  const warning = warnings.length ? { warning: warnings.join(" ") } : {};
   const online = hosts.filter(h => h.connected);
-  if (online.length) return { tone: "connected" as const, text: online.map(h => h.name || h.machine || "remotea").join(", ") + " connected" };
+  if (online.length) return { tone: "connected" as const, text: online.map(h => h.name || h.machine || "remotea").join(", ") + " connected", ...warning };
   const last = hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null;
-  return { tone: "offline" as const, text: "Disconnected · last seen " + ago(last, now) };
+  return { tone: "offline" as const, text: "Disconnected · last seen " + ago(last, now), ...warning };
 }
 
 /** Needs-you first, then working, idle, restoring and ended; newest state first within each. */
@@ -117,7 +134,9 @@ export type Run = {
   tool: string; model: string; branch: string; base_branch: string; worktree: string; effective_permission_mode: string;
   turn_count: number; turn_cap: number; started_at: string | null; finished_at: string | null;
   stop_requested_at: string | null; stop_mode: string; surf: string;
-  host: { id: string; name: string; connected: boolean } | null; structured_answers: boolean;
+  host: { id: string; name: string; connected: boolean; degraded_reason?: string | null } | null; structured_answers: boolean;
+  /** Whether the agent was spawned with Eridani's MCP tools (spawn outcome; null when the host did not say). */
+  mcp?: TargetMcp | null;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
@@ -250,16 +269,24 @@ export type RunDetail = Run & {
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
   /** Verify ids the run's execution target offers (Set verify). */
   verify_options?: string[];
+  /** Each verify id's readiness on the host (caps_version 2); empty or absent for an older host. */
+  verify_readiness?: Record<string, { ready: boolean; reason?: string }>;
 };
 
-/** The header's verify control: which command runs after each turn, or that none does and what could. */
-export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options">) {
+/** The header's verify control: which command runs after each turn, or that none does and what could. A command
+ * the host reports not ready says so (the run would record a failed verification, not a test result). */
+export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options" | "verify_readiness">) {
   const current = run.plan?.verify?.verify_id ?? null;
   const options = run.verify_options ?? [];
-  if (current) return { current, options, text: `Verified by ${current} after each turn`, canSet: options.length > 1 };
+  const notReady = (id: string) => run.verify_readiness?.[id]?.ready === false;
+  const why = (id: string) => `${id} is not ready on the host: ${run.verify_readiness?.[id]?.reason || "it cannot run"}`;
+  if (current) return { current, options, canSet: options.length > 1,
+    text: `Verified by ${current} after each turn` + (notReady(current) ? ` (${why(current)})` : "") };
   if (!run.plan?.criteria?.length) return { current, options, text: "", canSet: false };
-  return { current, options, text: options.length ? "No verify command: test results cannot be recorded" : "This target offers no verify command",
-    canSet: options.length > 0 };
+  const unready = options.filter(notReady);
+  return { current, options, canSet: options.length > 0,
+    text: (options.length ? "No verify command: test results cannot be recorded" : "This target offers no verify command")
+      + (unready.length ? `; ${unready.map(why).join("; ")}` : "") };
 }
 export type TimelineEntry = { at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
   tone: "plain" | "good" | "warn" | "attention"; who: "agent" | "you" | "eridani" };
@@ -484,13 +511,21 @@ export function linkedRun(search: string) {
   return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-/** A saved target. `harnesses`/`verify` are what its host advertised for it in hello, present only when known. */
+/** What a caps_version 2 host says about one target (remotea PRs #18/#20); each is null/absent when unsaid.
+ * `enabled`: harnesses the target's launch permits (installed or not); `launch`: each one's launcher probe;
+ * `verify_status`: each verify id's readiness; `mcp`: whether spawned agents get Eridani's MCP tools. */
+export type TargetLaunch = { ready: boolean; version: string | null; error?: string };
+export type VerifyStatus = { id: string; ready: boolean; reason?: string };
+export type TargetMcp = { configured: boolean; reason?: string };
+type TargetFacts = { enabled?: string[] | null; launch?: Partial<Record<string, TargetLaunch>> | null;
+  verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null };
+/** A saved target. `harnesses`/`verify` (and the TargetFacts) are what its host advertised for it, present only when known. */
 export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null;
-  harnesses?: string[]; verify?: string[] };
-/** A target a host listed in hello. `harnesses` is what the target enables; null when the host did not say (older
+  harnesses?: string[]; verify?: string[] } & TargetFacts;
+/** A target a host listed in hello. `harnesses` is what the target can start; null when the host did not say (older
  * remotea: its host-wide flags decide). `verify` is its verify ids (absent from older Eridani). */
 export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string;
-  harnesses?: string[] | null; verify?: string[] };
+  harnesses?: string[] | null; verify?: string[] } & TargetFacts;
 export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
@@ -614,7 +649,35 @@ export type Preflight = {
   problems: { code: string; message: string }[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
   harness_reasons?: Record<string, string>; harness_note?: string | null;
+  /** The resolved target's readiness (caps_version 2 / remotea PR #20; null when the host did not say):
+   * `verify_ready` for the verify ids a run would use, `verify_reasons` why not, `mcp` the agents' Eridani tools. */
+  verify_status?: VerifyStatus[] | null; verify_ready?: boolean | null; verify_reasons?: Record<string, string>;
+  mcp?: TargetMcp | null;
 };
+
+/** The preflight URL; `target` is the execution target the picker just saved, so the re-read resolves to it. */
+export function preflightUrl(taskId: string, harness: string, target?: string | null) {
+  return `/remotea/runs/preflight?task_id=${encodeURIComponent(taskId)}&harness=${encodeURIComponent(harness)}`
+    + (target ? `&execution_target_id=${encodeURIComponent(target)}` : "");
+}
+
+/** After the dialog's picker saves a target: remember it in the draft and close the picker, so the preflight is
+ * read again for that target (its harnesses, verify and MCP notes) instead of starting at once. */
+export function afterTargetSaved(draft: RunDraft, target: string): { draft: RunDraft; need: null } {
+  return { draft: { ...draft, target }, need: null };
+}
+
+/** The dialog's notes under the agent choice: the target's verify command not ready, agents without Eridani tools. */
+export function preflightNotes(p: Preflight | null | undefined): string[] {
+  if (!p || p.active_run) return [];
+  const notes: string[] = [];
+  if (p.verify_ready === false) {
+    const reasons = Object.entries(p.verify_reasons ?? {}).map(([id, why]) => `${id}: ${why}`);
+    notes.push("This target's verify command is not ready" + (reasons.length ? ` (${reasons.join("; ")})` : "") + ".");
+  }
+  if (p.mcp && !p.mcp.configured) notes.push(`Agents on this target have no Eridani tools: ${p.mcp.reason || "the host did not say why"}.`);
+  return notes;
+}
 
 /** Whether the Run dialog may pick a harness, and why not. The preflight decides for the task's target; only
  * when there is no preflight (it failed, or is still loading) does any connected host count (`harnessAvailable`). */

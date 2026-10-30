@@ -33,6 +33,17 @@ hold the key.
 `GET /api/v1/remotea/status` → `{enabled, key, hosts[], link_url, connect_command}`; a host is
 `connected` while its lease is current, otherwise the page shows when it was last seen (or "never").
 
+Each host also carries what its last `hello` said about its build and health (`agent_link.build_identity`, kept in
+`agent_hosts.caps.build`, replaced by every hello; null for what an older remotea did not send): `version`,
+`build_sha` (40 hex or `"unknown"`), `build` (its first 7 characters), `build_dirty`, `caps_version`,
+`hook_version` and `degraded_reason`. `degraded_reason` is set only while the host's journal or outbox cannot
+persist (for example `journal_unavailable (write failed: ENOSPC)`): remotea refuses effectful commands until it
+clears. The page header shows the connected host's line ("remotea 0.1.0 · build 76c5f62", with a **dirty** badge
+for a build with uncommitted changes) and, while degraded, the warning "Host journal degraded: …"; Settings →
+Connections → remotea shows the same version line and warning. `status` (the host-wide `ok`/`degraded`) is a
+different thing: the owner's daily ingestion quota. Eri's `control_status` lists a degraded host with
+`degraded_reason` and the same warning text.
+
 ## Scopes
 
 | Scope | Meaning |
@@ -135,7 +146,7 @@ own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. Each target's `harnesses` lists the harnesses it may run (remotea's `launch` for that target) and `verify` its verify ids; both are kept in `caps.targets` and returned on advertised targets (see **Target capabilities**). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, build_sha?, build_dirty?, caps_version?, hook_version?, degraded_reason?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, enabled?, launch?, verify, verify_status?, mcp?}]` | must be first, within 15 s. The build fields and `degraded_reason` (only while the host's journal or outbox is degraded) are kept in `caps.build` and returned on the host (above); a malformed value is dropped, never refused. Each target's `harnesses` lists the harnesses it can run, `verify` its verify ids, and a `caps_version: 2` host adds `enabled` (what its `launch` permits), `launch {claude?, codex?: {ready, version, error?}}` (each launcher's probe), `verify_status [{id, ready, reason?}]` and `mcp {configured, reason?}` (whether spawned agents get Eridani's MCP server); all are kept in `caps.targets` and returned on advertised and saved targets (see **Target capabilities**). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
 | up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
@@ -299,11 +310,21 @@ target's `launch`). A target without `harnesses` (an older remotea) falls back t
 `check_host` passes the resolved target's `host_target`, so `start_run`, Eri's `control_start` proposal and
 confirm all refuse the same way. Advertised targets (`GET /remotea/targets` `advertised`, `NEEDS_TARGET`
 `data.advertised`) carry `harnesses` (null when the host did not say) and `verify`; a saved target carries the
-same two fields when its host advertises it. The Run dialog's preflight reports `harnesses` for the resolved
-target only, with `harness_reasons` (why each one cannot start, naming the target); while no target resolves, it
-reports the union over the picker's candidates and advertised targets and sets `harness_note`. Another host's
-capabilities never make the resolved target look ready. The dialog disables a harness the preflight rules out and
-shows the reason; only without a preflight does it fall back to "any connected host can spawn it".
+same two fields when its host advertises it. From a `caps_version: 2` host both also carry `enabled`, `launch`,
+`verify_status` and `mcp` (null on an advertised target when the host did not say, absent on a saved one). The
+Run dialog's preflight reports `harnesses` for the resolved target only, with `harness_reasons` (why each one
+cannot start, naming the target; a harness the target enables whose launcher failed its probe reads "Codex is
+enabled on jarvis but not installed: <launch.codex.error>", and a host-wide failure adds
+`harnesses.<h>.launch_error`); while no target resolves, it reports the union over the picker's candidates and
+advertised targets and sets `harness_note`. Another host's capabilities never make the resolved target look ready.
+For the resolved target the preflight also reports `verify_status` (as advertised), `verify_ready` (the task's verify
+id, else every id the target offers; null when the host did not say or there are none), `verify_reasons`
+`{id: reason}` and `mcp`. The dialog disables a harness the preflight rules out and shows the reason, notes "This
+target's verify command is not ready (…)" and "Agents on this target have no Eridani tools: <reason>"; only
+without a preflight does it fall back to "any connected host can spawn it". When the dialog's target picker saves
+a target, the dialog reads the preflight again with that `execution_target_id` and waits for **Start** instead
+of starting at once. `GET /runs/{id}` adds `verify_readiness {id: {ready, reason?}}` beside `verify_options`; the
+header's verify line says when the chosen (or an offered) command is not ready on the host.
 
 ### Commands
 
@@ -408,13 +429,13 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 |---|---|---|
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
-| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `task` |
+| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `verify_status`, `verify_ready`, `verify_reasons`, `mcp`, `task` |
 | `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
 | `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
-| `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses` and `verify` when the host sent them |
+| `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses`, `verify`, `enabled`, `launch`, `verify_status` and `mcp` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
 
 **Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`
@@ -484,7 +505,10 @@ spawning → interviewing → planning → executing → verifying → judging �
 - **Execution starts only when the planning turn has settled**: the next root turn of the run's
   generation with `plan_pending` set and no open question or interview moves `planning → executing` and
   sends the execute prompt with the frozen plan. A planning turn that ends with neither a question nor a
-  plan goes to `needs_you(no_plan)`. Interview and planning turns never count toward the cap.
+  plan goes to `needs_you(no_plan)`. The spawn outcome's `result.mcp {configured, reason?}` (remotea PR #20) is
+  kept on the run (`sync_state.mcp`, returned as `mcp` by `GET /runs/{id}`); when it says `configured: false`, the
+  `no_plan` detail reads "The agent had no Eridani tools, so it could not call submit_plan: <reason>" (the
+  one-line reason text is unchanged). Interview and planning turns never count toward the cap.
 - **Re-plan** (`POST /remotea/runs/{id}/replan {reason?}`, from executing, needs_you, awaiting_approval,
   awaiting_integration or planning) advances the generation, supersedes in-flight attempts, sends the
   re-plan prompt (`steer` while executing, else `queue`) and goes `replanning → planning`; the next

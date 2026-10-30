@@ -3,7 +3,7 @@ import { FolderGit2, Play } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { Dialog } from "./ux";
 import {
-  DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, startBody,
+  afterTargetSaved, DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl, startBody,
   type HarnessId, type NeedsTarget, type Preflight, type Run, type RunDraft,
 } from "./remotea-model";
 import { useRemotea } from "./remotea-context";
@@ -25,11 +25,13 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
   const heading = useId();
   useEffect(() => {
     let live = true;
-    api<Preflight & { task?: { id: string; title: string } }>(`/remotea/runs/preflight?task_id=${encodeURIComponent(taskId)}&harness=${draft.harness}`)
+    // Read again with the picked target once the picker saves one, so its harnesses, verify and MCP notes show
+    // before anything starts.
+    api<Preflight & { task?: { id: string; title: string } }>(preflightUrl(taskId, draft.harness, draft.target))
       .then(p => { if (!live) return; setPre(p); if (p.task) setTask(p.task); setNeed(p.needs_target && p.need ? p.need : null); })
       .catch(() => { if (live) setPre(null); });
     return () => { live = false; };
-  }, [taskId, draft.harness]);
+  }, [taskId, draft.harness, draft.target]);
   const start = async (target?: string | null) => {
     setBusy(true); setError("");
     try {
@@ -47,6 +49,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
   const choice = (id: HarnessId) => harnessChoice(pre, hosts, id);
   const available = (id: HarnessId) => choice(id).ok;
   const unavailable = HARNESSES.map(h => choice(h.id).reason).filter(Boolean);
+  const notes = preflightNotes(pre);
   const blocked = !!pre && !pre.active_run && !pre.needs_target && !pre.target;
   const interviewHint = draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
@@ -60,7 +63,8 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
       </div>
     </> : <>
-      {need ? <TargetPicker key={need.task_id} need={need} onSaved={id => { setDraft(d => ({ ...d, target: id })); void start(id); }} onCancel={onClose}/> : <>
+      {need ? <TargetPicker key={need.task_id} need={need} saveLabel="Save"
+        onSaved={id => { const next = afterTargetSaved(draft, id); setPre(undefined); setNeed(next.need); setDraft(next.draft); }} onCancel={onClose}/> : <>
         <p className="run-dialog-target"><FolderGit2 size={15} aria-hidden="true"/>{pre === undefined ? "Checking where it runs…" : preflightLine(pre)}</p>
         <div className="run-dialog-row">
           <span id={heading + "-agent"}>Agent</span>
@@ -70,6 +74,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
               onClick={() => setDraft(d => ({ ...d, harness: h.id, model: h.models[0].id }))}>{h.label}</button>)}
           </div>
           {unavailable.length > 0 && <p className="footnote">{unavailable.join(" ")}{pre?.harness_note ? ` ${pre.harness_note}` : ""}</p>}
+          {notes.map(n => <p key={n} className="footnote run-dialog-note" role="note">{n}</p>)}
         </div>
         <label className="run-dialog-row"><span>Model</span>
           <select value={draft.model} onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}>

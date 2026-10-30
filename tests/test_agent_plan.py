@@ -151,6 +151,40 @@ def test_planning_turn_with_a_pending_question_waits(host):  # noqa: F811
 def test_a_planning_turn_without_a_plan_needs_you(host):  # noqa: F811
     created, run_id = interviewing(host)
     assert turn(run_id, 1) == ("needs_you", "no_plan")
+    with session_scope() as db:
+        assert control.public_run(db, db.get(AgentRun, run_id))["reason_detail"] == ""  # No MCP facts: no claim.
+
+
+def spawned(run_id, mcp):
+    """The host's spawn outcome, carrying `result.mcp` (remotea PR #20)."""
+    with session_scope() as db:
+        row = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "spawn"))
+        coordinator.on_outcome(db, row, "executed", "started", {"surf": coordinator.surf_for(run_id, 1, 1),
+                                                                "incarnation": 1, "mcp": mcp})
+
+
+def test_no_plan_names_missing_eridani_tools(host):  # noqa: F811
+    """A spawn whose outcome says the agent got no Eridani MCP server is stored on the run, and the no_plan
+    detail says the agent had no tools and why (the REASON_TEXT line stays the same)."""
+    created, run_id = interviewing(host)
+    spawned(run_id, {"configured": False, "reason": "no MCP key file at /home/davin/.config/remotea/eridani-mcp-token"})
+    with session_scope() as db:
+        assert db.get(AgentRun, run_id).sync_state["mcp"] == {
+            "configured": False, "reason": "no MCP key file at /home/davin/.config/remotea/eridani-mcp-token"}
+    assert turn(run_id, 1) == ("needs_you", "no_plan")
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        detail = row.history[-1]["detail"]
+        assert "no Eridani tools" in detail and "no MCP key file" in detail
+        public = control.public_run(db, row)
+        assert public["reason_text"] == coordinator.REASONS["no_plan"]
+        assert public["reason_detail"] == detail and public["mcp"]["configured"] is False
+
+    configured, other = interviewing(host, "Tools present")
+    spawned(other, {"configured": True})
+    assert turn(other, 1) == ("needs_you", "no_plan")
+    with session_scope() as db:
+        assert db.get(AgentRun, other).history[-1].get("detail", "") == ""
 
 
 def test_submit_plan_is_run_scoped_and_checks_revision_and_verify(verifying_host):  # noqa: F811

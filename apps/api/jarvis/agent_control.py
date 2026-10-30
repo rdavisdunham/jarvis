@@ -128,15 +128,59 @@ def chain(db, owner, task):
     return [record, *parent_chain(db, owner, record.parent_id)] if record else []
 
 
+TARGET_FACTS = ("harnesses", "verify", "enabled", "launch", "verify_status", "mcp")
+
+
 def public_target(target, adverts=None):
-    """A saved target; with `adverts` (advertised() keyed by (host_id, host_target)) it also carries the harnesses
-    and verify ids its host advertised for it, when the host said."""
+    """A saved target; with `adverts` (advertised() keyed by (host_id, host_target)) it also carries what its host
+    advertised for it (harnesses, verify ids and, from caps_version 2 hosts, enabled/launch/verify_status/mcp),
+    when the host said."""
     out = {"id": target.id, "host_id": target.host_id, "host_target": target.host_target, "name": target.name,
            "repo": target.repo, "worktree_root": target.worktree_root, "record_id": target.record_id}
     advert = (adverts or {}).get((target.host_id, target.host_target))
     if advert:
-        out.update({k: advert[k] for k in ("harnesses", "verify") if advert.get(k) is not None})
+        out.update({k: advert[k] for k in TARGET_FACTS if advert.get(k) is not None})
     return encode(out)
+
+
+def clip(value, limit=300):
+    return " ".join(value.split())[:limit] if isinstance(value, str) else None
+
+
+def target_enabled(item):
+    """caps_version 2: the harnesses the target's `launch` enables (permission, installed or not); None if unsaid."""
+    value = item.get("enabled") if isinstance(item, dict) else None
+    return sorted({v for v in value if isinstance(v, str)}) if isinstance(value, list) else None
+
+
+def target_launch(item):
+    """caps_version 2: each enabled harness's launcher probe on the target, {harness: {ready, version, error?}}."""
+    value = item.get("launch") if isinstance(item, dict) else None
+    if not isinstance(value, dict):
+        return None
+    out = {}
+    for name, probe in value.items():
+        if name in HARNESSES and isinstance(probe, dict) and isinstance(probe.get("ready"), bool):
+            out[name] = {"ready": probe["ready"], "version": clip(probe.get("version"), 100),
+                         **({"error": clip(probe["error"])} if clip(probe.get("error")) else {})}
+    return out
+
+
+def target_verify_status(item):
+    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?}]; None when unsaid."""
+    value = item.get("verify_status") if isinstance(item, dict) else None
+    if not isinstance(value, list):
+        return None
+    return [{"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {})}
+            for v in value[:50] if isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("ready"), bool)]
+
+
+def target_mcp(item):
+    """Whether an agent spawned on the target gets Eridani's MCP server (remotea PR #20), {configured, reason?}."""
+    value = item.get("mcp") if isinstance(item, dict) else None
+    if not isinstance(value, dict) or not isinstance(value.get("configured"), bool):
+        return None
+    return {"configured": value["configured"], **({"reason": clip(value["reason"])} if clip(value.get("reason")) else {})}
 
 
 def target_harnesses(item):
@@ -161,7 +205,8 @@ def hello_target(host, host_target):
 
 def advertised(db, owner):
     """Targets hosts listed in hello (optional on the wire); the picker offers them. `harnesses` is the list the
-    target enables (null when the host did not say), `verify` its verify ids."""
+    target can start (null when the host did not say), `verify` its verify ids; caps_version 2 hosts add `enabled`
+    (permission), `launch` (launcher probes), `verify_status` and `mcp` (null when the host did not say)."""
     found = []
     for host in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         for item in (host.caps or {}).get("targets") or []:
@@ -171,7 +216,9 @@ def advertised(db, owner):
                               "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000],
                               "harnesses": target_harnesses(item),
                               "verify": [str(v.get("id") if isinstance(v, dict) else v)[:64]
-                                         for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50]})
+                                         for v in item.get("verify") or [] if isinstance(v, (str, dict))][:50],
+                              "enabled": target_enabled(item), "launch": target_launch(item),
+                              "verify_status": target_verify_status(item), "mcp": target_mcp(item)})
     return found
 
 
@@ -335,17 +382,24 @@ def host_harness(host, harness, host_target=None):
 
 
 def harness_problem(host, harness, host_target=None):
-    """Why `harness` cannot start on this host/target (None when it can); the message names the target."""
+    """Why `harness` cannot start on this host/target (None when it can); the message names the target. A harness
+    the target enables but whose launcher failed its probe (caps_version 2) says so, with the host's error."""
     label = HARNESS_LABELS.get(harness, harness)
     if host is None:
         return "That execution target has no remotea server."
     if not agent_link.connected(host):
         return "The remotea server is not connected."
+    if host_harness(host, harness, host_target):
+        return None
+    item = hello_target(host, host_target) if host_target else None
+    probe = (target_launch(item) or {}).get(harness)
+    if harness in (target_enabled(item) or []) and (probe is None or not probe["ready"]):
+        why = (probe or {}).get("error") or "its launcher did not answer"
+        return f"{label} is enabled on {host_target} but not installed: {why}"
     if not host_harness(host, harness):
-        return f"This remotea server cannot start {label} yet."
-    if not host_harness(host, harness, host_target):
-        return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
-    return None
+        why = clip(((host.caps or {}).get("harnesses") or {}).get(harness, {}).get("launch_error"))
+        return f"This remotea server cannot start {label} yet" + (f": {why}" if why else ".")
+    return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
 
 
 def check_host(owner, task, host, harness, host_target=None):
@@ -655,7 +709,10 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
-        "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host)} if host else None,
+        "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host),
+                 "degraded_reason": agent_link.build_identity(host)["degraded_reason"]} if host else None,
+        # Whether the agent was spawned with Eridani's MCP tools (spawn outcome, remotea PR #20); null when unsaid.
+        "mcp": (run.sync_state or {}).get("mcp"),
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
         "created_at": run.created_at,
@@ -685,11 +742,20 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                    for t in turns],
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),
+            # {verify id: {ready, reason?}} from the host's hello (caps_version 2); empty for an older host.
+            verify_readiness=run_verify_readiness(db, run),
             more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
             questions=[public_question(q) for q in db.scalars(
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
     return encode(result)
+
+
+def run_verify_readiness(db, run):
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    host = db.get(AgentHost, target.host_id) if target is not None and target.host_id else None
+    status = target_verify_status(hello_target(host, target.host_target)) if host is not None else None
+    return {s["id"]: {"ready": s["ready"], **({"reason": s["reason"]} if s.get("reason") else {})} for s in status or []}
 
 
 def agent_plan_verify_ids(db, run):
@@ -907,10 +973,33 @@ def target_capabilities(db, owner, task, execution_target_id=None):
             {name: reason for name, reason in reasons.items() if reason}, None)
 
 
+def target_readiness(db, owner, task, execution_target_id=None):
+    """The resolved target's verify and MCP readiness as its host last advertised it (caps_version 2 / PR #20):
+    `verify_status` (all its ids), `verify_ready` for the ids a run would use (the task's verify id, else every id
+    the target offers; null when the host did not say or there are none), `verify_reasons` {id: reason} for those
+    not ready, and `mcp` {configured, reason?} (null when unsaid). Nothing while no target resolves."""
+    empty = {"verify_status": None, "verify_ready": None, "verify_reasons": {}, "mcp": None}
+    try:
+        target = resolve_target(db, owner, task, execution_target_id)
+    except DomainError:
+        return empty
+    host = db.get(AgentHost, target.host_id) if target.host_id else None
+    item = hello_target(host, target.host_target) if host is not None and host.owner_id == owner else None
+    status = target_verify_status(item)
+    if status is None:
+        return {**empty, "mcp": target_mcp(item)}
+    wanted = (task.verify or {}).get("verify_id") if isinstance(task.verify, dict) else None
+    used = [s for s in status if s["id"] == wanted] if wanted else status
+    return {"verify_status": status, "verify_ready": all(s["ready"] for s in used) if used else None,
+            "verify_reasons": {s["id"]: s.get("reason") or "not ready" for s in used if not s["ready"]},
+            "mcp": target_mcp(item)}
+
+
 def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
     """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
     the interview would run (start_run's rule), which harnesses the task's target can spawn (`harness_reasons` says
-    why not; `harness_note` is set while no target resolves), and the task's title."""
+    why not; `harness_note` is set while no target resolves), the target's verify and MCP readiness
+    (target_readiness), and the task's title."""
     task = owned(db, Task, task_id, owner)
     out = readiness_for(db, owner, task, harness, execution_target_id)
     active = coordinator_active(db, task.id)
@@ -919,7 +1008,8 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
     return {**out, "task": {"id": task.id, "title": task.title},
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
             "interview": not task.prd_note_id and not planned,
-            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note}
+            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note,
+            **target_readiness(db, owner, task, execution_target_id)}
 
 
 def proposal(db, owner, result):
@@ -1344,8 +1434,12 @@ def status(db, owner, args):
     recent = list(db.scalars(select(AgentRun).where(
         AgentRun.owner_id == owner, AgentRun.state.in_(TERMINAL_RUN_STATES),
         AgentRun.finished_at >= now() - timedelta(hours=24)).order_by(AgentRun.finished_at.desc()).limit(5)))
-    hosts = [{"name": h.name, "connected": agent_link.connected(h)}
-             for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner))]
+    hosts = []
+    for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
+        degraded = agent_link.build_identity(h)["degraded_reason"]
+        # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
+        hosts.append({"name": h.name, "connected": agent_link.connected(h),
+                      **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {})})
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
                    "pending": spoken_pending(db, owner),
                    "recently_finished": [{"run_id": r.id, "task": (db.get(Task, r.task_id).title if r.task_id else ""),
