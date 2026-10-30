@@ -411,6 +411,7 @@ class AgentIngestDay(Base):
 class MigrationCounter(Base):
     """Migration numbers for one repository: a host's execution target id (several ExecutionTarget rows may share it).
 
+    `dir`/`pattern` are the operator's (Settings); unset, the host's config (hello targets[].migrations) applies.
     The chain head comes from the host (worktrees.report heads); `override` is the operator's, and the higher wins."""
     __tablename__ = "migration_counters"
     __table_args__ = (UniqueConstraint("owner_id", "host_id", "host_target", name="uq_migration_counter"),)
@@ -418,6 +419,8 @@ class MigrationCounter(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
     host_target: Mapped[str] = mapped_column(String(64))
+    dir: Mapped[str | None] = mapped_column(String(200))
+    pattern: Mapped[str | None] = mapped_column(String(200))
     override: Mapped[int | None] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 

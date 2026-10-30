@@ -7,7 +7,7 @@ import {
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, needsTargetData, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
-  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget,
+  type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import "./remotea.css";
 
@@ -182,37 +182,43 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
   </SettingsGroup>;
 }
 
-/** Targets whose host config names a migrations folder: the host's chain head, the operator's override, the next number. */
+/** Every advertised target: where its migrations live (Settings, else the host's eridani.json), the chain head and
+ * its override, the next number Eridani reserves when it freezes a plan that adds a migration. */
 function MigrationSettings({ readOnly }: { readOnly: boolean }) {
   const [items, setItems] = useState<MigrationTarget[] | null>(null), [error, setError] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, string>>({}), [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState("");
   useEffect(() => { void api<{ items: MigrationTarget[] }>("/remotea/migrations").then(r => setItems(r.items)).catch(e => setError(message(e))); }, []);
   if (!items?.length && !error) return null;
-  const key = (m: MigrationTarget) => m.host_id + "/" + m.host_target;
-  const save = async (m: MigrationTarget) => {
-    const raw = (drafts[key(m)] ?? "").trim();
-    if (raw && !/^\d{1,5}$/.test(raw)) { setError("The override is a migration number, such as 33."); return; }
-    setBusy(key(m)); setError("");
-    try {
-      const r = await post<{ items: MigrationTarget[] }>("/remotea/migrations", { host_id: m.host_id, host_target: m.host_target, override: raw ? Number(raw) : null });
-      setItems(r.items); setDrafts(d => ({ ...d, [key(m)]: "" }));
-    } catch (e) { setError(message(e)); } finally { setBusy(""); }
+  const save = async (m: MigrationTarget, draft: MigrationDraft) => {
+    const body = migrationBody(m, draft);
+    if (typeof body === "string") { setError(body); return; }
+    setBusy(m.host_id + "/" + m.host_target); setError("");
+    try { setItems((await post<{ items: MigrationTarget[] }>("/remotea/migrations", body)).items); }
+    catch (e) { setError(message(e)); } finally { setBusy(""); }
   };
-  const pad = (n: number | null) => n == null ? "none" : String(n).padStart(4, "0");
   return <>
     {error && <p className="error-banner" role="alert">{error}</p>}
-    {items?.map(m => <SettingRow key={key(m)} label={`Migrations · ${m.host_target}`}
-      hint={`${m.dir} · head ${pad(m.head)} on the host${m.reported_at ? " (" + ago(m.reported_at) + ")" : ""}` +
-        `${m.override != null ? ` · override ${pad(m.override)}` : ""}${m.last_reserved != null ? ` · last reserved ${pad(m.last_reserved)}` : ""}` +
-        ` · next ${pad(m.next)}. Eridani reserves a number when it freezes a plan that adds a migration.`}>
-      {!readOnly && <span className="remotea-migration-override">
-        <input aria-label={`Override chain head for ${m.host_target}`} inputMode="numeric" placeholder={m.override != null ? String(m.override) : "head"}
-          value={drafts[key(m)] ?? ""} onChange={e => setDrafts(d => ({ ...d, [key(m)]: e.target.value }))}/>
-        <button className="btn btn-ghost btn-sm" disabled={busy === key(m)} onClick={() => void save(m)}>
-          {(drafts[key(m)] ?? "").trim() || m.override == null ? "Set" : "Clear"}</button>
-      </span>}
-    </SettingRow>)}
+    {items?.map(m => <MigrationRow key={m.host_id + "/" + m.host_target + "/" + (m.dir ?? "") + "/" + (m.override ?? "")}
+      item={m} readOnly={readOnly} busy={busy === m.host_id + "/" + m.host_target} onSave={d => void save(m, d)}/>)}
   </>;
+}
+
+export function MigrationRow({ item, readOnly, busy, onSave }: {
+  item: MigrationTarget; readOnly: boolean; busy: boolean; onSave: (draft: MigrationDraft) => void;
+}) {
+  const [draft, setDraft] = useState<MigrationDraft>(() => migrationDraft(item));
+  const field = (name: keyof MigrationDraft, label: string, placeholder: string) =>
+    <label className="field"><span className="field-label-text">{label}</span>
+      <input name={name} value={draft[name]} placeholder={placeholder} disabled={readOnly || busy}
+        inputMode={name === "override" ? "numeric" : undefined} onChange={e => setDraft(d => ({ ...d, [name]: e.target.value }))}/></label>;
+  return <SettingRow label={`Migrations · ${item.host_target}`} hint={migrationSummary(item)}>
+    <span className="remotea-migration-form">
+      {field("dir", "Folder", item.host_dir ?? "migrations/versions")}
+      {field("pattern", "File pattern", "^(\\d{4})_")}
+      {field("override", "Chain head override", item.head != null ? String(item.head) : "none")}
+      {!readOnly && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onSave(draft)}>Save</button>}
+    </span>
+  </SettingRow>;
 }
 
 // ---------------------------------------------------------------- runs (stage C)

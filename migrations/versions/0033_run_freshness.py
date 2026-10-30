@@ -18,6 +18,8 @@ def upgrade():
         sa.Column("owner_id", sa.String(100), nullable=False, index=True),
         sa.Column("host_id", sa.String(36), sa.ForeignKey("agent_hosts.id"), nullable=False, index=True),
         sa.Column("host_target", sa.String(64), nullable=False),
+        sa.Column("dir", sa.String(200), nullable=True),
+        sa.Column("pattern", sa.String(200), nullable=True),
         sa.Column("override", sa.Integer(), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.UniqueConstraint("owner_id", "host_id", "host_target", name="uq_migration_counter"),

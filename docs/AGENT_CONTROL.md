@@ -646,16 +646,19 @@ which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cut
   N behind · as of …". An older host sends no `base_sha`: `base` is null and nothing is shown.
 - **Reuse.** A reused worktree behind its base gets a merge-first note at the top of the spawn prompt from
   the host, plus the re-point/renumber instruction when the spawn carries `migration {number, dir}`.
-- **Migration numbers** (`migration_numbers.py`). A target takes part only when its host config lists
-  `migrations {dir, pattern?}` (remotea `eridani.json`; the folder stays host config so nothing Eridani
-  sends becomes a path). `submit_plan` with `migration: true` reserves max(host-reported head, the
+- **Migration numbers** (`migration_numbers.py`). A target takes part only when something says where its
+  migrations live: the folder and file pattern set in Settings (stored on the counter), else the host's
+  `migrations {dir, pattern?}` in remotea `eridani.json`. The host scans and reports the chain head only for
+  its own folder (nothing Eridani sends becomes a path on the host), so a Settings folder that differs
+  counts no host head and relies on the override. `submit_plan` with `migration: true` reserves max(host-reported head, the
   operator's override, the highest held number) + 1 under the counter's row lock (`migration_counters`
   per host target; `migration_reservations`, unique while held). The number is frozen on the plan,
   shown by `task_plan` (`run.migration`, `migration_note`) and `render_plan`, and sent on later spawns
   of the task. Released when the run ends stopped/failed/capped or a later plan drops the flag, and only
   if no higher number is held on that counter; otherwise the gap stays. A completed run keeps its number,
   and a later run of the same task reuses it. Settings → Connections → remotea lists each such target (head, override,
-  last reserved, next) with an override field (`GET/POST /remotea/migrations`). A reservation cannot see
+  last reserved, next) with folder, file pattern and override fields (`GET/POST /remotea/migrations
+  {host_id, host_target, dir?, pattern?, override?}`; empty values fall back to the host / clear). A reservation cannot see
   migrations merged after it: the host's merge-first note and `tests/test_release_migrations.py` cover that.
 - **Version pairing** (`remotea_release.py`). `hello.version` is stored on the host and returned by
   `public_host` with `update: {latest, url} | null`: set when the host trails the latest GitHub release of

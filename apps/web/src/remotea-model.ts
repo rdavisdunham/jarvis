@@ -128,9 +128,44 @@ export type Run = {
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
 export type MigrationTarget = {
-  host_id: string; host_name: string; host_target: string; dir: string; head: number | null; override: number | null;
-  last_reserved: number | null; next: number; reported_at: string | null;
+  host_id: string; host_name: string; host_target: string; configured: boolean; source: "eridani" | "host" | null;
+  dir: string | null; pattern: string | null; host_dir: string | null; head: number | null; override: number | null;
+  last_reserved: number | null; next: number | null; reported_at: string | null;
 };
+export type MigrationDraft = { dir: string; pattern: string; override: string };
+
+/** The draft a Settings row starts from: Eridani's own values (blank when the host's config applies). */
+export function migrationDraft(m: MigrationTarget): MigrationDraft {
+  return { dir: m.source === "eridani" ? m.dir ?? "" : "", pattern: m.source === "eridani" ? m.pattern ?? "" : "",
+    override: m.override == null ? "" : String(m.override) };
+}
+
+/** The POST body for a row, or the reason it cannot be saved (the server checks the same and more). */
+export function migrationBody(m: MigrationTarget, d: MigrationDraft):
+  { host_id: string; host_target: string; dir: string | null; pattern: string | null; override: number | null } | string {
+  const dir = d.dir.trim(), pattern = d.pattern.trim(), override = d.override.trim();
+  if (dir && (dir.startsWith("/") || dir.startsWith("~") || dir.split("/").includes(".."))) return "The folder is relative to the repository, such as migrations/versions.";
+  if (pattern && !dir) return "Set the folder together with its file pattern.";
+  if (pattern) {
+    try { if (!/\((?!\?)/.test(pattern)) return "The file pattern needs a group around the number, such as ^(\\d{4})_."; new RegExp(pattern); }
+    catch { return "The file pattern is not a valid regular expression."; }
+  }
+  if (override && !/^\d{1,5}$/.test(override)) return "The chain head override is a migration number, such as 33.";
+  return { host_id: m.host_id, host_target: m.host_target, dir: dir || null, pattern: pattern || null, override: override ? Number(override) : null };
+}
+
+/** "migrations/versions (from the host) · head 0032 · next 0033"; for a target with no folder, how to turn it on. */
+export function migrationSummary(m: MigrationTarget, now = Date.now()): string {
+  const pad = (n: number | null) => n == null ? "none" : String(n).padStart(4, "0");
+  if (!m.configured) return "Off: set the folder to have Eridani reserve migration numbers for this repository.";
+  const parts = [`${m.dir}${m.source === "host" ? " (from the host)" : ""}`,
+    m.head != null ? `head ${pad(m.head)} on the host${m.reported_at ? " (" + ago(m.reported_at, now) + ")" : ""}`
+      : m.host_dir && m.host_dir !== m.dir ? `the host reports ${m.host_dir}, not this folder` : "no head reported"];
+  if (m.override != null) parts.push(`override ${pad(m.override)}`);
+  if (m.last_reserved != null) parts.push(`last reserved ${pad(m.last_reserved)}`);
+  parts.push(`next ${pad(m.next)}`);
+  return parts.join(" · ");
+}
 
 export type RunBase = {
   sha: string; ref: string; branch: string; fetch?: { ok: boolean; error?: string } | null;

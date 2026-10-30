@@ -129,7 +129,7 @@ def test_a_plan_with_a_migration_reserves_the_next_number_and_the_agent_is_told(
 def test_override_and_held_reservations_raise_the_next_number(host):  # noqa: F811
     configure(host.id, head=32)
     with session_scope() as db:
-        listed = numbers.set_override(db, OWNER, host.id, "jarvis", 40)["items"]
+        listed = numbers.configure(db, OWNER, host.id, "jarvis", override=40)["items"]
     assert listed[0]["next"] == 41 and listed[0]["head"] == 32
     _, first = interviewing(host, "First migration")
     assert call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, first, **PLAN, migration=True)["migration"]["number"] == 41
@@ -137,6 +137,43 @@ def test_override_and_held_reservations_raise_the_next_number(host):  # noqa: F8
     assert reservation(first) == (41, "released")
     _, second = interviewing(host, "Second migration")
     assert call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, second, **PLAN, migration=True)["migration"]["number"] == 41
+
+
+def test_settings_set_the_folder_and_pattern_without_host_config(host, client):  # noqa: F811
+    with session_scope() as db:
+        listed = numbers.listing(db, OWNER)
+    assert [(m["host_target"], m["configured"], m["dir"], m["next"]) for m in listed] == [("jarvis", False, None, None)]
+    saved = client.post("/api/v1/remotea/migrations", json={"host_id": host.id, "host_target": "jarvis",
+                                                             "dir": "/db/migrations/", "pattern": "^(\\d{3})-", "override": 7})
+    assert saved.status_code == 400  # Absolute folder refused.
+    saved = client.post("/api/v1/remotea/migrations", json={"host_id": host.id, "host_target": "jarvis",
+                                                             "dir": "db/migrations/", "pattern": "^(\\d{3})-", "override": 7})
+    assert saved.status_code == 200, saved.text
+    item = saved.json()["items"][0]
+    assert item | {"reported_at": None} == {
+        "host_id": host.id, "host_name": item["host_name"], "host_target": "jarvis", "configured": True,
+        "source": "eridani", "dir": "db/migrations", "pattern": "^(\\d{3})-", "host_dir": None, "head": None,
+        "override": 7, "last_reserved": None, "next": 8, "reported_at": None}
+    _, run_id = interviewing(host)
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN, migration=True)
+    assert plan["migration"] == {"number": 8, "dir": "db/migrations"}
+    for bad in ({"dir": "../up"}, {"dir": "x", "pattern": "("}, {"dir": "x", "pattern": "^\\d+_"}, {"pattern": "^(\\d)"}):
+        refused = client.post("/api/v1/remotea/migrations", json={"host_id": host.id, "host_target": "jarvis", **bad})
+        assert refused.status_code == 400, bad
+    assert client.get("/api/v1/remotea/migrations").json()["items"][0]["dir"] == "db/migrations"
+
+
+def test_a_settings_folder_overrides_the_host_and_ignores_its_head_for_another_folder(host):  # noqa: F811
+    configure(host.id, head=32)
+    with session_scope() as db:
+        item = numbers.listing(db, OWNER)[0]
+        assert (item["source"], item["dir"], item["head"], item["next"]) == ("host", "migrations/versions", 32, 33)
+        item = numbers.configure(db, OWNER, host.id, "jarvis", dir="alembic/versions")["items"][0]
+        # The host read its head from migrations/versions, not this folder: it does not count.
+        assert (item["source"], item["dir"], item["host_dir"], item["head"], item["next"]) == (
+            "eridani", "alembic/versions", "migrations/versions", None, 1)
+        item = numbers.configure(db, OWNER, host.id, "jarvis")["items"][0]  # Cleared: back to the host's.
+        assert (item["source"], item["head"]) == ("host", 32)
 
 
 def test_without_a_configured_folder_nothing_is_reserved(host):  # noqa: F811
