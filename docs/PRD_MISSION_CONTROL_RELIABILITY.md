@@ -2,6 +2,17 @@
 
 Written 2026-10-30 from Astra's integration review (`~/remotea-eridani-analysis-2026-10-29.md`, reviewed remotea at 76c5f62 and Eridani at the deployed main of 2026-10-29) and the open items on the Eridani roadmap project. Every work item below is also an Eridani task in the "Eridani roadmap" project; the task list is the source of truth for status, this document for the reasoning and the order. Runs are started from the tasks (Run on the row); items in one batch touch different files and may run in parallel; batches run in order.
 
+## Status as of 2026-10-30
+
+All five run batches and the "later" batch have landed: 39 of the 40 work items are done
+(jarvis #90–#111 and #119, remotea #13–#34; each item's line names its PRs). The one open
+item is S-N3 (`3a58cf14`): `scripts/verify.sh` merged in jarvis #113, and the host verify
+entry, a remotea.service restart and one live verify remain for Davin, so the live
+end-to-end run with a recorded verify result under Validation is still to do. Follow-ups
+outside the 40: the Eridani half of the S-Q5 drain (`ac6a97fe`, deferred) and swarm mode
+(`71f97d98`, in review as jarvis #121). The [roadmap mirror](TODO.md#runner-mission-control-remotea--built)
+tracks the same state.
+
 ## Goals
 
 1. A control action in Eridani always acts on the run the operator is looking at, with the state they reviewed, exactly once.
@@ -18,7 +29,7 @@ Out of scope here: the product items on the roadmap that are not about mission c
 
 #### E-N1+E-N3 — Run panel control correctness: no stale response can change which run is shown, and decisions carry the reviewed revision
 
-Repo: jarvis · Status: open · Run batch: 1 · Origin: Astra review E-N1, E-N3 · Eridani task `80852c32`
+Repo: jarvis · Status: done (jarvis #93) · Run batch: 1 · Origin: Astra review E-N1, E-N3 · Eridani task `80852c32`
 
 Astra's review (E-N1, reproduced): RunDrawer.refresh() in apps/web/src/Remotea.tsx starts a fetch for the current id and installs whatever response arrives; switching runs clears the view but does not cancel or ignore the earlier request, and RunPanel reuses the drawer without a per-run key. With out-of-order responses the title showed Task A while Stop POSTed to run B.
 
@@ -39,7 +50,7 @@ Success criteria:
 
 #### E-N2 — Browser run actions are idempotent: a retried message or steer never becomes a second prompt
 
-Repo: jarvis · Status: open · Run batch: 1 · Origin: Astra review E-N2 · Eridani task `b6a01258`
+Repo: jarvis · Status: done (jarvis #90) · Run batch: 1 · Origin: Astra review E-N2 · Eridani task `b6a01258`
 
 Astra's review (E-N2, source-confirmed): the web api helper advises retrying after a lost response, but POST /api/v1/remotea/runs/{id}/message accepts only text and mode; agent_control.send_message creates an AgentCommand whose op_id is a fresh UUID, so a retry queues a second prompt or advances a second steer generation. The generic POST /api/v1/commands already uses a client request_id with transactional dedupe; the run-action routes lack it.
 
@@ -56,7 +67,7 @@ Success criteria:
 
 #### E-N4+S-S1 — Capabilities are checked on the selected execution target, not any host
 
-Repo: jarvis · Status: open · Run batch: 1 · Origin: Astra review E-N4, S-S1 · Eridani task `8b9acbc2`
+Repo: jarvis · Status: done (jarvis #91) · Run batch: 1 · Origin: Astra review E-N4, S-S1 · Eridani task `8b9acbc2`
 
 Astra's review (E-N4, source-confirmed): remotea's hello carries per-target harnesses and verify ids, but agent_control.advertised() drops them from the picker model; host_harness() checks host-wide flags, and preflight marks a harness available when any connected host advertises it. The live host enables Claude only on the jarvis target while server-wide caps advertise both Claude and Codex, so Codex can look startable and fail at the host.
 
@@ -75,7 +86,7 @@ Success criteria:
 
 #### E-N5 — Run timeline shows older pages and full clipped turns instead of silently hiding them
 
-Repo: jarvis · Status: open · Run batch: 2 · Origin: Astra review E-N5 · Eridani task `8dc3f534`
+Repo: jarvis · Status: done (jarvis #100) · Run batch: 2 · Origin: Astra review E-N5 · Eridani task `8dc3f534`
 
 Astra's review (E-N5): GET /remotea/runs/{id} returns the newest 100 turns and commands with pagination metadata (more.turns, more.commands, offset, limit) and clips turn text at 4,000 characters with a clipped flag. The drawer fetches only the default page, offers no older-page control, and its "Show all" expands only the text already returned.
 
@@ -94,7 +105,7 @@ Success criteria:
 
 #### S-N3 — Host: make the configured verification command runnable under the remotea service identity
 
-Repo: host · Status: open · Run batch: not a run · Origin: Astra review S-N3 · Eridani task `3a58cf14`
+Repo: host · Status: open: code half done (jarvis #113, `scripts/verify.sh`); the host verify entry, restart and one live verify remain for Davin · Run batch: not a run · Origin: Astra review S-N3 · Eridani task `3a58cf14`
 
 Astra's review (S-N3, observed): the jarvis target's verify command is `uv run --no-sync python -m pytest tests -q -x`, but `uv` is not on the systemd service's PATH (verify runs argv directly with shell: false), there is no explicit isolated test database (JARVIS_DATABASE_URL) or JARVIS_ENV_FILE="" in the verify environment, the timeout is 600 s while the API suite takes 470–670 s, and managed worktrees get no dependency provisioning (uv sync / npm ci).
 
@@ -102,7 +113,7 @@ Manual, on the desktop (Davin): in ~/.config/remotea/eridani.json give the jarvi
 
 #### S-N4 — Isolate automatic verification from the host user's credentials and filesystem
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-N4 · Eridani task `bee876d3`
+Repo: remotea · Status: done (remotea #24) · Run batch: not a run · Origin: Astra review S-N4 · Eridani task `bee876d3`
 
 Astra's review (S-N4, design limitation): remote-server/src/verify-runner.ts uses fixed argv and a minimal environment but runs agent-editable code (conftest.py, package scripts) with the server user's filesystem and network access; HOME is retained. Before unattended verification of untrusted changes, run it in a constrained environment (temporary HOME, deliberate mounts, resource limits, explicit network policy), and report "tests passed" separately from "the check was isolated". Until then make automatic verification an explicit per-target trust choice in eridani.json.
 
@@ -114,7 +125,7 @@ Success criteria:
 
 #### S-S2 — Workspace evidence reports its own completeness
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-S2 · Eridani task `ec0e9b0b`
+Repo: remotea · Status: done (remotea #24) · Run batch: not a run · Origin: Astra review S-S2 · Eridani task `ec0e9b0b`
 
 Astra's review (S-S2): verify-runner.ts workspaceState() hashes status/diff stdout without requiring those git commands to succeed, caps untracked-file processing at 2,000 and uses metadata for files over 4 MiB, yet the result reads as an exact tree fingerprint. Return completeness and errors with the fingerprint, and make Eridani treat an incomplete fingerprint as not fresh for auto_complete.
 
@@ -127,7 +138,7 @@ Success criteria:
 
 #### S-N1 — Cancel and re-fence every delayed terminal write: a newer Stop or steer must win
 
-Repo: remotea · Status: open · Run batch: 3 · Origin: Astra review S-N1 · Eridani task `e45db848`
+Repo: remotea · Status: done (remotea #14) · Run batch: 3 · Origin: Astra review S-N1 · Eridani task `e45db848`
 
 Astra's review (S-N1, reproduced): in remote-server/src/dispatch.ts a steer advances the generation, sends Escape, waits 800 ms and then checks only that the surface is live before typing; the typing helper schedules Enter 150 ms later and returns without awaiting it. Generation, stop flag and incarnation can change during either delay. In a harness, a steer at generation 2 was pasted and its Enter injected after a stop was requested at generation 3, and the handler still reported executed.
 
@@ -140,7 +151,7 @@ Success criteria:
 
 #### S-N2 — Contain journal and spool persistence errors without losing the terminal host
 
-Repo: remotea · Status: open · Run batch: 3 · Origin: Astra review S-N2 · Eridani task `9d3eda83`
+Repo: remotea · Status: done (remotea #15) · Run batch: 3 · Origin: Astra review S-N2 · Eridani task `9d3eda83`
 
 Astra's review (S-N2): remote-server/src/eridani-journal.ts Journal.record() updates its in-memory record before the append and fsync; eridani-link.ts dispatches `void this.onCommand(...)` and several journal writes sit outside the handler's catch, so a disk-full, permission or sync failure can escape as an unhandled rejection in the process that owns every PTY. A synthetic fdatasyncSync failure made record() throw while get(op) already reported `accepted`.
 
@@ -153,7 +164,7 @@ Success criteria:
 
 #### S-N5 — Rotating the desktop token revokes existing connections
 
-Repo: remotea · Status: open · Run batch: 3 · Origin: Astra review S-N5 · Eridani task `5fddb759`
+Repo: remotea · Status: done (remotea #13) · Run batch: 3 · Origin: Astra review S-N5 · Eridani task `5fddb759`
 
 Astra's review (S-N5, reproduced): remote-server/src/server.ts checks the bearer token only when admitting a WebSocket; `remotea token --rotate` (cli.ts) writes a new token but existing sockets keep delivering messages. Build: tag each connection with the credential version it authenticated with; on rotation close (or force re-auth of) sockets with the old version while the PTYs stay alive; document that rotation is revocation.
 
@@ -164,7 +175,7 @@ Success criteria:
 
 #### S-N6 — One supported Node version across installer, package and collector
 
-Repo: remotea · Status: open · Run batch: 4 · Origin: Astra review S-N6 · Eridani task `d7f09459`
+Repo: remotea · Status: done (remotea #19) · Run batch: 4 · Origin: Astra review S-N6 · Eridani task `d7f09459`
 
 Astra's review (S-N6): remote-server/package.json and scripts/install.sh accept Node 20 while the Codex collector loads node:sqlite (Node 22); CI uses 22. Publish one minimum, enforce it in install.sh and at collector activation with an actionable error, and probe node:sqlite explicitly.
 
@@ -175,7 +186,7 @@ Success criteria:
 
 #### S-S1 — Advertise capabilities per target from the real launch environment
 
-Repo: remotea · Status: open · Run batch: 4 · Origin: Astra review S-S1 · Eridani task `3852620f`
+Repo: remotea · Status: done (remotea #18) · Run batch: 4 · Origin: Astra review S-S1 · Eridani task `3852620f`
 
 Astra's review (S-S1): eridani-runtime.ts stageCCaps marks both harnesses spawn-capable even when version probes return null, and target launch permissions are not reflected. Probe through the same executable and environment rules as launch; advertise per-target harnesses and verify ids in hello (the fields already exist) and distinguish protocol support, installed harness, target permission and verification readiness. Pairs with the Eridani task "Capabilities are checked on the selected execution target".
 
@@ -186,7 +197,7 @@ Success criteria:
 
 #### S-S3 — Upload storage budgets and lifecycle
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-S3 · Eridani task `f418b057`
+Repo: remotea · Status: done (remotea #23) · Run batch: not a run · Origin: Astra review S-S3 · Eridani task `f418b057`
 
 Astra's review (S-S3): uploads are capped at 200 MiB each and failed uploads are cleaned, but successful files stay in /tmp/remotea-drop-* with no expiry. Add age and total-size budgets with active-reference protection, free-space reporting and clear degraded behaviour.
 
@@ -196,7 +207,7 @@ Success criteria:
 
 #### S-S4 — Worktree writer policy: one writer per branch unless deliberately shared
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-S4 · Eridani task `0a13f16f`
+Repo: remotea · Status: done (remotea #23) · Run batch: not a run · Origin: Astra review S-S4 · Eridani task `0a13f16f`
 
 Astra's review (S-S4): worktrees.ts serializes creation and reuses an existing branch worktree, but nothing prevents two sessions from editing the same branch. Check active use before assigning another writer; require deliberate sharing or a separate branch; report the conflict to Eridani as a spawn refusal with a reason.
 
@@ -206,7 +217,7 @@ Success criteria:
 
 #### S-S5 — Build identity in diagnostics: build SHA, protocol and hook versions, target readiness
 
-Repo: remotea · Status: open · Run batch: 4 · Origin: Astra review S-S5 · Eridani task `4238bc0c`
+Repo: remotea · Status: done (remotea #18) · Run batch: 4 · Origin: Astra review S-S5 · Eridani task `4238bc0c`
 
 Astra's review (S-S5): the server reports package version 0.1.0 and a running dist directory does not prove which commit built it. Embed the build SHA at build time, report it with protocol/capability version and hook version in hello, `remotea status` and the diagnostics; Eridani shows it on the host row (Settings → Connections) next to the existing version line.
 
@@ -216,7 +227,7 @@ Success criteria:
 
 #### S-S6 — Stabilise the flaky eridani-link outcome test and add fault-oriented cases
 
-Repo: remotea · Status: open · Run batch: 4 · Origin: Astra review S-S6 · Eridani task `d0f57c69`
+Repo: remotea · Status: done (remotea #18) · Run batch: 4 · Origin: Astra review S-S6 · Eridani task `d0f57c69`
 
 Astra's review (S-S6) and two subagents today saw `eridani-link.test.ts > stage F > the digest is recomputed…` fail in the full suite and pass alone: it asserts the command.outcome before it is journaled and sent. Wait for the outcome (`await until(() => eri.of('command.outcome').length === 1)`), then add cases for storage failure, delayed input after stop, credential rotation and the service environment (PATH) as the related fixes land.
 
@@ -229,7 +240,7 @@ Success criteria:
 
 #### A-N1 — Desktop: keep registry intents until the server confirms them
 
-Repo: remotea · Status: open · Run batch: 5 · Origin: Astra review A-N1 · Eridani task `6dc98942`
+Repo: remotea · Status: done (remotea #16) · Run batch: 5 · Origin: Astra review A-N1 · Eridani task `6dc98942`
 
 Astra's review (A-N1, reproduced storage behaviour): src/main/remote-host-config.ts PendingIntents.take() deletes a host's queued actions and persists the deletion before returning them; remote-host-client.ts onReady() sends them and sendIntent() registers no acknowledgement that retries or restores. A lost connection or app exit between dequeue and application silently loses close, hide, rename, move or group changes.
 
@@ -242,7 +253,7 @@ Success criteria:
 
 #### A-N2 — Desktop: hide on this device vs end sessions on this host are distinct, and ending shows what it affects
 
-Repo: remotea · Status: open · Run batch: 5 · Origin: Astra review A-N2 · Eridani task `40f97bde`
+Repo: remotea · Status: done (remotea #17) · Run batch: 5 · Origin: Astra review A-N2 · Eridani task `40f97bde`
 
 Astra's review (A-N2): closing a workspace with remoteGroups closes the server group everywhere, including sessions hidden on this device and Eridani runs; confirmWorkspaceClose defaults to false and the optional dialog does not say other devices and unseen sessions are affected. Provide two commands (Hide on this device; End sessions on this host); for ending, show host, active and hidden session counts and associated Eridani tasks, independent of the local-close preference; say when counts are stale offline.
 
@@ -253,7 +264,7 @@ Success criteria:
 
 #### A-S1 — Desktop: bounded registry requests with timeout and reconcile
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-S1 · Eridani task `ee1c4fb5`
+Repo: remotea · Status: done (remotea #25) · Run batch: not a run · Origin: Astra review A-S1 · Eridani task `ee1c4fb5`
 
 Astra's review (A-S1): HostClient.request() resolves on ack or disconnect but has no deadline while the socket stays up, so a lost response leaves an operation pending forever. Add a timeout that yields an `uncertain` state and reconciles against the next snapshot before retrying.
 
@@ -263,25 +274,25 @@ Success criteria:
 
 #### A-S2 — Desktop: show connection, terminal and orchestration state separately
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-S2 · Eridani task `2173af2f`
+Repo: remotea · Status: done (remotea #25) · Run batch: not a run · Origin: Astra review A-S2 · Eridani task `2173af2f`
 
 Astra's review (A-S2): one green badge conflates transport connected, terminal process state and Eridani run state. Present them separately with last-known timestamps.
 
 #### A-S3 — Desktop: explain transport security when accepting a host URL
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-S3 · Eridani task `020f423a`
+Repo: remotea · Status: done (remotea #25) · Run batch: not a run · Origin: Astra review A-S3 · Eridani task `020f423a`
 
 Astra's review (A-S3): validateHostUrl() accepts any ws: or wss: URL. Add guidance (Tailscale or wss expected) and a deliberate insecure-network acknowledgement for plain ws: outside loopback/Tailscale.
 
 #### A-S4 — Desktop: a Windows release smoke matrix
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-S4 · Eridani task `7c01c592`
+Repo: remotea · Status: done (remotea #31) · Run batch: not a run · Origin: Astra review A-S4 · Eridani task `7c01c592`
 
 Astra's review (A-S4): Linux tests cannot cover OpenSSH path resolution, credential storage, ConPTY, suspend/resume or packaging. Add a short manual or scripted smoke pass per release: laptop sleep, host restart, partial upload, two-device group edits, app upgrade.
 
 #### A-S5 — Desktop: reassess main-window privileges (sandbox, webviews)
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-S5 · Eridani task `927d6c3a`
+Repo: remotea · Status: done (remotea #31) · Run batch: not a run · Origin: Astra review A-S5 · Eridani task `927d6c3a`
 
 Astra's review (A-S5): Node integration is off and context isolation on, but sandbox: false and webviews remain. Audit whether the preload still needs that and narrow privileges behind IPC where practical.
 
@@ -289,7 +300,7 @@ Astra's review (A-S5): Node integration is off and context isolation on, but san
 
 #### E-S1 — Cross-process wake for queued host commands
 
-Repo: jarvis · Status: open · Run batch: 2 · Origin: Astra review E-S1 · Eridani task `95ad853a`
+Repo: jarvis · Status: done (jarvis #92) · Run batch: 2 · Origin: Astra review E-S1 · Eridani task `95ad853a`
 
 Astra's review (E-S1): agent_link.LINKS and wake() are process-local; a command queued by the worker (judge gap prompts, interview planning prompts) waits for the 30-second fallback tick before the web process's socket sends it. Use Postgres LISTEN/NOTIFY (or the existing SSE change bus) so a queued command wakes the socket owner at once, keeping the durable DB poll as recovery.
 
@@ -300,7 +311,7 @@ Success criteria:
 
 #### E-S2 — Execution infrastructure failures are a distinct, visible category
 
-Repo: jarvis · Status: open · Run batch: 2 · Origin: Astra review E-S2 · Eridani task `3a3eaf6a`
+Repo: jarvis · Status: done (jarvis #101) · Run batch: 2 · Origin: Astra review E-S2 · Eridani task `3a3eaf6a`
 
 Astra's review (E-S2): missing executable or database, host offline, expired command, failed tests, stale workspace and an inconclusive judge all need different user actions, but reach the run as similar failures. Carry structured failure reasons from verify.result (missing binary, dependency, database, config) and command outcomes into the run view and control_status, with the action that fixes each; never prompt the agent to change code for a host setup problem. Pairs with the host readiness task.
 
@@ -311,13 +322,13 @@ Success criteria:
 
 #### E-S3 — Retention and redaction policy is explicit across every copy of run content
 
-Repo: jarvis · Status: backlog · Run batch: not a run · Origin: Astra review E-S3 · Eridani task `18e3a5f3`
+Repo: jarvis · Status: done (jarvis #104) · Run batch: not a run · Origin: Astra review E-S3 · Eridani task `18e3a5f3`
 
 Astra's review (E-S3): the retention sweep removes old child records but keeps the run, frozen plan and bounded history, and sent() copies up to 2,000 characters of message text into history. Document and implement redaction/export/deletion across all retained representations.
 
 #### E-S4 — docs/AGENT_CONTROL.md: replace the stale read-only introduction with the shipped behaviour
 
-Repo: jarvis · Status: open · Run batch: 2 · Origin: Astra review E-S4 · Eridani task `bf5ad05d`
+Repo: jarvis · Status: done (jarvis #99) · Run batch: 2 · Origin: Astra review E-S4 · Eridani task `bf5ad05d`
 
 Astra's review (E-S4): the introduction still describes a read-only stage-B link and says start, steer and stop are unimplemented, while later sections and the code implement them. Rewrite the introduction to the current architecture, label historical stages, include the exact verification setup and the two credential paths (link key vs in-session MCP key).
 
@@ -327,13 +338,13 @@ Success criteria:
 
 #### E-S5 — One real protocol path test: Eridani and the remotea server talking to each other
 
-Repo: both · Status: backlog · Run batch: not a run · Origin: Astra review E-S5 · Eridani task `c9aa8f54`
+Repo: both · Status: done (jarvis #106) · Run batch: not a run · Origin: Astra review E-S5 · Eridani task `c9aa8f54`
 
 Astra's review (E-S5): Python and TypeScript each test against fake peers. Add a disposable-database test that runs the real link implementations with a fake harness process through connect → spawn → prompt → turn → verify → judge → stop and reconnect, including duplicates and an older peer version; share versioned wire fixtures.
 
 #### E-S6 — Readiness and freshness are visible everywhere a decision is made
 
-Repo: jarvis · Status: backlog · Run batch: not a run · Origin: Astra review E-S6 · Eridani task `f8d32b61`
+Repo: jarvis · Status: done (jarvis #111, the #107–#111 stack) · Run batch: not a run · Origin: Astra review E-S6 · Eridani task `f8d32b61`
 
 Astra's review (E-S6): host lease, transcript, run state, verification and workspace freshness are different facts. Show last-known timestamps and pending/uncertain control outcomes where they affect decisions, including Eri's summaries.
 
@@ -341,83 +352,83 @@ Astra's review (E-S6): host lease, transcript, run state, verification and works
 
 #### S-Q1 — remotea doctor: one redacted readiness report
 
-Repo: both · Status: backlog · Run batch: not a run · Origin: Astra review S-Q1 · Eridani task `0a0c9ff4`
+Repo: both · Status: done (remotea #27, jarvis #111) · Run batch: not a run · Origin: Astra review S-Q1 · Eridani task `0a0c9ff4`
 
 Astra's review (S-Q1): service and build identity, listener reachability, collector mode and parity age, link backlog, hook installation, target launch readiness, verification dependencies (binary, deps, database), disk space and recovery warnings in one `remotea doctor` command, with Eridani's Settings → Connections showing the same.
 
 #### S-Q2 — Recovery inventory with meaningful choices
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-Q2 · Eridani task `2eeb1e23`
+Repo: remotea · Status: done (remotea #28) · Run batch: not a run · Origin: Astra review S-Q2 · Eridani task `2eeb1e23`
 
 Astra's review (S-Q2): list lost and resumable sessions with their task and worktree; offer reattach, resume a new process, or start again; say what cannot be recovered.
 
 #### S-Q3 — Managed target templates validated before they are advertised
 
-Repo: both · Status: backlog · Run batch: not a run · Origin: Astra review S-Q3 · Eridani task `7f5a5c5f`
+Repo: both · Status: done (remotea #34; Eridani shows template readiness, jarvis #119) · Run batch: not a run · Origin: Astra review S-Q3 · Eridani task `7f5a5c5f`
 
 Astra's review (S-Q3): define repository, harness launch, dependency preparation, verification environment, migrations and resource limits once; validate the whole template before advertising it. Folds into one-click setup.
 
 #### S-Q4 — Worktree maintenance preview
 
-Repo: both · Status: backlog · Run batch: not a run · Origin: Astra review S-Q4 · Eridani task `7be3f225`
+Repo: both · Status: done (jarvis #111) · Run batch: not a run · Origin: Astra review S-Q4 · Eridani task `7be3f225`
 
 Astra's review (S-Q4): show merged, unpushed, dirty, active and reclaimable worktrees with an explicit review step before removal; builds on the unmerged-work report.
 
 #### S-Q5 — Upgrade path that drains orchestration without dropping PTYs
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review S-Q5 · Eridani task `7a9761ad`
+Repo: remotea · Status: done (remotea #32, drain off by default); the Eridani half, `ac6a97fe`, is backlog (deferred by Davin 2026-10-30: no active runs during an upgrade) · Run batch: not a run · Origin: Astra review S-Q5 · Eridani task `7a9761ad`
 
 Astra's review (S-Q5): separate long-lived PTY ownership from the restartable link and collector so a server upgrade does not end every session. Architectural.
 
 #### A-Q1+E-Q2 — Open task/run in Eridani from a terminal, and open the terminal from a run
 
-Repo: both · Status: backlog · Run batch: not a run · Origin: Astra review A-Q1, E-Q2 · Eridani task `03ff84bf`
+Repo: both · Status: done (remotea #29, jarvis #111 which carried #110) · Run batch: not a run · Origin: Astra review A-Q1, E-Q2 · Eridani task `03ff84bf`
 
 Astra's review (A-Q1, E-Q2): the server already carries the Eridani binding; show it in the desktop with an Open in Eridani action, and add Open terminal in remotea on the run panel with a fallback when the desktop is not connected.
 
 #### A-Q2 — Group spawned agents by project or task, not one shared Eridani workspace
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-Q2 · Eridani task `0ec167e4`
+Repo: remotea · Status: done (remotea #28) · Run batch: not a run · Origin: Astra review A-Q2 · Eridani task `0ec167e4`
 
 Astra's review (A-Q2): smaller accidental-close scope and easier navigation; keep stable group identity and device-local placement.
 
 #### A-Q3+A-Q4+A-Q5 — Desktop pending-changes summary, host attention overview and unified shortcut language
 
-Repo: remotea · Status: backlog · Run batch: not a run · Origin: Astra review A-Q3, A-Q4, A-Q5 · Eridani task `1149e7e3`
+Repo: remotea · Status: done (remotea #28) · Run batch: not a run · Origin: Astra review A-Q3, A-Q4, A-Q5 · Eridani task `1149e7e3`
 
 Astra's review (A-Q3, A-Q4, A-Q5): show rename pending / hide awaiting server / session ended elsewhere / resumed after restart; a host overview of active agents, blocked questions, disconnected sessions, verification failures; consistent attach/hide/close/interrupt/kill/resume wording with the affected host and task.
 
 #### E-Q1 — Guided target setup and readiness page
 
-Repo: jarvis · Status: backlog · Run batch: not a run · Origin: Astra review E-Q1 · Eridani task `0a1274a7`
+Repo: jarvis · Status: done (jarvis #111, which carried #108) · Run batch: not a run · Origin: Astra review E-Q1 · Eridani task `0a1274a7`
 
 Astra's review (E-Q1): connect a host, pick a repository, see enabled harnesses and checks, resolve setup errors, run a safe readiness probe before starting work. Folds into one-click setup.
 
 #### E-Q3 — A review packet beside Approve
 
-Repo: jarvis · Status: backlog · Run batch: not a run · Origin: Astra review E-Q3 · Eridani task `68487629`
+Repo: jarvis · Status: done (jarvis #111, which carried #109) · Run batch: not a run · Origin: Astra review E-Q3 · Eridani task `68487629`
 
 Astra's review (E-Q3): frozen criteria, changed files or PR links, test evidence with stale/incomplete markers, remaining questions, side by side with Approve; keep human approval distinct from independently established completion.
 
 #### E-Q5+E-Q6 — Attention-first run dashboard and recipient confirmation in Eri
 
-Repo: jarvis · Status: backlog · Run batch: not a run · Origin: Astra review E-Q5, E-Q6 · Eridani task `2b45a858`
+Repo: jarvis · Status: done (jarvis #111, which carried #109) · Run batch: not a run · Origin: Astra review E-Q5, E-Q6 · Eridani task `2b45a858`
 
 Astra's review (E-Q5, E-Q6): group runs by the next human action (answer, review plan, repair host, inspect failed check, approve, resolve unmerged); when several runs are plausible, Eri names the task, host and branch it is about to affect.
 
 ## Already-open roadmap items this PRD depends on or absorbs
 
-- `6e753e0f` Judge evidence: never ask the agent for proof it cannot supply (partly done by PR #87's verify_missing rule; the PR-record part remains).
-- `ba56714a` Plan floor vs interview answers: show criterion conflicts (the plan-review mechanic exists; conflicts display remains).
-- `5a4e1290` Run hardening: PRD note read-only to agents while its task has a live run.
-- `3bc2803c` remotea runs: give spawned agents the Eridani MCP tools automatically and show why a run needs you.
-- `bbdb6440` One-click setup Eridani ↔ remotea (absorbs S-Q3, E-Q1 and the host readiness checks).
-- `ec4d8a54` Run cards: a tiny-model one-line summary of what the agent is doing.
-- `7f9da9f3` Question answering and run control for Codex and OpenCode.
-- `0ab99d68` remotea for Brainforge members: multi-user design.
-- `71f97d98` Swarm mode (Astra's E-Q4 is the same idea; build it on the batches above and the worktree writer policy S-S4).
-- `a4d7d060` Explore when Eridani sends finish-up messages to an agent (document the triggers; show them on the timeline).
-- `fe21bb75` One task card; `b14920b4`, `ce2e0e8d`, `b8d2e28e` search and filter bugs (product, scheduled alongside).
+- `6e753e0f` Judge evidence: never ask the agent for proof it cannot supply (partly done by PR #87's verify_missing rule; the PR-record part remains). Done (jarvis #94, with #87).
+- `ba56714a` Plan floor vs interview answers: show criterion conflicts (the plan-review mechanic exists; conflicts display remains). Done (jarvis #111, which carried #109: Edit criteria + Judge again).
+- `5a4e1290` Run hardening: PRD note read-only to agents while its task has a live run. Done (jarvis #96).
+- `3bc2803c` remotea runs: give spawned agents the Eridani MCP tools automatically and show why a run needs you. Done (remotea #20, jarvis #103).
+- `bbdb6440` One-click setup Eridani ↔ remotea (absorbs S-Q3, E-Q1 and the host readiness checks). Done (remotea #26, jarvis #111 which carried #108).
+- `ec4d8a54` Run cards: a tiny-model one-line summary of what the agent is doing. Done (jarvis #102).
+- `7f9da9f3` Question answering and run control for Codex and OpenCode. Done (remotea #22).
+- `0ab99d68` remotea for Brainforge members: multi-user design. Done as a design (jarvis #98, `docs/REMOTEA_MULTI_USER.md`); its build phases are not roadmap tasks yet.
+- `71f97d98` Swarm mode (Astra's E-Q4 is the same idea; build it on the batches above and the worktree writer policy S-S4). Backlog; in review as jarvis #121.
+- `a4d7d060` Explore when Eridani sends finish-up messages to an agent (document the triggers; show them on the timeline). Done (jarvis #99).
+- `fe21bb75` One task card; `b14920b4`, `ce2e0e8d`, `b8d2e28e` search and filter bugs (product, scheduled alongside). Done (jarvis #97; the routing decision is Davin's); the search and filter bugs are done (jarvis #95).
 
 ## Run order
 
