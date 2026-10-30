@@ -338,8 +338,14 @@ def test_field_clarification_gets_a_review_offer_and_answer_resolves_it(monkeypa
 def test_no_training_message_names_the_held_out_split_with_counts(monkeypatch):
     parent = create()
     held = 0
-    for i in range(12):
+    # Record ids are random and about one in five is held out, so create until at least one is
+    # (a fixed 12 left none about 7% of the time).
+    for i in range(80):
         create("task", f"ABC docs {i}", parent_id=parent["id"])
+        with session_scope() as db:
+            rows = list(db.scalars(select(RoutingObservation).where(RoutingObservation.owner_id == OWNER)))
+            if i >= 11 and any(not routing.split([e])[0] for e in rows):
+                break
     with session_scope() as db:
         # Keep only the examples the stable split holds out: capture worked, training is empty.
         for e in db.scalars(select(RoutingObservation).where(RoutingObservation.owner_id == OWNER)):

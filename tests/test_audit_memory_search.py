@@ -39,7 +39,7 @@ def test_canon_keeps_decimals_and_separate_multi_digit_numbers():
     assert canon("nineteen eighty four") == "19 84"
 
 
-def remember(content, fact_key="", created=None):
+def remember(content, fact_key="", created=None, embedding=None):
     with session_scope() as db:
         source = capture_source(db, OWNER, content, str(uuid4()), explicit=True)
         row = Memory(
@@ -49,7 +49,7 @@ def remember(content, fact_key="", created=None):
             evidence=content,
             fact_key=fact_key,
             fingerprint=fingerprint(content),
-            embedding=[1.0, 0.0],
+            embedding=embedding or [1.0, 0.0],
             embedding_model=learning.EMBEDDING_MODEL,
         )
         if created:
@@ -78,10 +78,11 @@ def test_numeric_contradiction_queues_question_and_spoken_offer_counts():
 
 
 def test_fact_key_conflict_asks_about_two_newest_and_resolution_keeps_key():
-    remember("The user lives in Boston.", "owner.home.city", now() - timedelta(days=3))
-    old = remember("The user lives in Austin.", "owner.home.city", now() - timedelta(days=2))
-    new = remember("The user lives in Denver.", "owner.home.city", now() - timedelta(days=1))
-    remember("The user likes tea.", "owner.drink")
+    # Distinct vectors: identical embeddings would also (correctly) queue paraphrase reviews.
+    remember("The user lives in Boston.", "owner.home.city", now() - timedelta(days=3), [1.0, 0.0, 0.0, 0.0])
+    old = remember("The user lives in Austin.", "owner.home.city", now() - timedelta(days=2), [0.0, 1.0, 0.0, 0.0])
+    new = remember("The user lives in Denver.", "owner.home.city", now() - timedelta(days=1), [0.0, 0.0, 1.0, 0.0])
+    remember("The user likes tea.", "owner.drink", embedding=[0.0, 0.0, 0.0, 1.0])
     dream()
     with session_scope() as db:
         rows = list(db.scalars(select(MemoryReview)))
