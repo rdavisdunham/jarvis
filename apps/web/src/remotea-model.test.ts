@@ -92,10 +92,26 @@ describe("run freshness", () => {
   });
 
   it("pairs the remotea version with the latest release", () => {
-    expect(versionLine(host({ version: "0.3.0", update: null }))).toEqual({ text: "remotea 0.3.0", update: null });
+    expect(versionLine(host({ version: "0.3.0", update: null }))).toEqual({ text: "remotea 0.3.0", update: null, dirty: false });
     expect(versionLine(host({ version: "0.1.0", update: { latest: "0.3.0", url: "https://github.com/x/releases/tag/v0.3.0" } }))?.text)
       .toBe("remotea 0.1.0 · update available");
     expect(versionLine(host({}))).toBeNull();
+  });
+
+  it("shows the build beside the version, with a dirty badge", () => {
+    const sha = "76c5f62" + "a".repeat(33);
+    expect(versionLine(host({ version: "0.1.0", build_sha: sha, build: "76c5f62", build_dirty: true }))).toEqual(
+      { text: "remotea 0.1.0 · build 76c5f62", update: null, dirty: true });
+    expect(versionLine(host({ version: "0.1.0", build_sha: sha }))?.text).toBe("remotea 0.1.0 · build 76c5f62");
+    expect(versionLine(host({ version: "0.1.0", build_sha: "unknown" }))?.text).toBe("remotea 0.1.0 · build unknown");
+  });
+
+  it("warns while a host's journal is degraded", () => {
+    const degraded = host({ connected: true, degraded_reason: "journal_unavailable (write failed: ENOSPC)" });
+    expect(hostSummary([degraded], now)).toEqual({ tone: "connected", text: "desk connected",
+      warning: "Host journal degraded: journal_unavailable (write failed: ENOSPC)" });
+    expect(hostSummary([degraded, host({ name: "laptop" })], now).warning).toBe("desk: Host journal degraded: journal_unavailable (write failed: ENOSPC)");
+    expect(hostSummary([host({ connected: true, degraded_reason: null })], now).warning).toBeUndefined();
   });
 });
 

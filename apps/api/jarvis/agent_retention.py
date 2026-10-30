@@ -235,6 +235,19 @@ def export_tables(db, owner):
             for model in EXPORTED}
 
 
+def run_data_expires(run):
+    """When a settled run's turns, commands, questions, attempts and interviews are (or were) deleted; None while
+    the run is unsettled."""
+    if run.state not in TERMINAL_RUN_STATES or run.finished_at is None:
+        return None
+    return run.finished_at + RUN_DATA
+
+
+def run_data_expired(run, clock=None):
+    expires = run_data_expires(run)
+    return expires is not None and expires <= (clock or now())
+
+
 def used(db, owner, clock=None):
     row = db.scalar(select(AgentIngestDay.bytes).where(AgentIngestDay.owner_id == owner,
                                                        AgentIngestDay.day == (clock or now()).date()))

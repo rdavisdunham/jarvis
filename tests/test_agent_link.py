@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
-from jarvis import agent_link, remotea_routes
+from jarvis import agent_control, agent_link, remotea_routes
 from jarvis.api import app
 from jarvis.db import session_scope
 from jarvis.models import BotCredential, Event, now
@@ -115,6 +115,36 @@ def test_hello_welcome_takes_a_lease_and_reports_the_host(client):
                 break
             time.sleep(0.02)
         assert hosts[0]["connected"] is False and hosts[0]["last_seen_at"]
+
+
+def test_hello_build_identity_and_degraded_reason_reach_status(client):
+    """remotea PRs #15/#18: hello's build_sha, build_dirty, caps_version, hook_version and degraded_reason are kept
+    on the host and returned by GET /remotea/status; the next hello replaces them (degraded clears when absent)."""
+    token = enable(client)["token"]
+    sha = "76c5f62aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    with connect(bearer(token)) as ws:
+        hello(ws, version="0.1.0", build_sha=sha.upper(), build_dirty=True, caps_version=2, hook_version="0123456789ab",
+              degraded_reason="journal_unavailable (write failed: ENOSPC)")
+        host = client.get("/api/v1/remotea/status").json()["hosts"][0]
+    assert host["version"] == "0.1.0" and host["build_sha"] == sha and host["build"] == "76c5f62"
+    assert host["build_dirty"] is True and host["caps_version"] == 2 and host["hook_version"] == "0123456789ab"
+    assert host["degraded_reason"] == "journal_unavailable (write failed: ENOSPC)"
+    with session_scope() as db:
+        status = agent_control.status(db, "davin", {})
+    assert status["hosts"][0]["warning"] == "Host journal degraded: journal_unavailable (write failed: ENOSPC)"
+
+    with connect(bearer(token)) as ws:  # Healthy again; a malformed sha is dropped, never refused.
+        hello(ws, version="0.1.0", build_sha="not-a-sha", caps_version="2")
+        host = client.get("/api/v1/remotea/status").json()["hosts"][0]
+    assert host["degraded_reason"] is None and host["build_sha"] is None and host["caps_version"] is None
+    assert host["build_dirty"] is None and host["hook_version"] is None
+    with session_scope() as db:
+        assert "warning" not in agent_control.status(db, "davin", {})["hosts"][0]
+
+    with connect(bearer(token)) as ws:
+        hello(ws, build_sha="unknown", hook_version=None)
+        host = client.get("/api/v1/remotea/status").json()["hosts"][0]
+    assert host["build_sha"] == "unknown" and host["build"] == "unknown"
 
 
 def test_hello_must_come_first(client):

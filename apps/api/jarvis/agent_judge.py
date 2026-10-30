@@ -36,7 +36,7 @@ from .domain import DomainError
 from .models import Job, now
 from .session_models import AgentAttempt, AgentHost, AgentRun, AgentSession, AgentTurn
 
-PROMPT_VERSION = "judge-v2"
+PROMPT_VERSION = "judge-v3"
 POLICIES = ("code_ready", "pr_open", "pr_merged")
 RETRIES = 2
 TURN_CHARS = 24_000
@@ -52,7 +52,8 @@ SYSTEM = (
     "prove nothing. Evidence is only (1) the verify attempt (`verify`: fresh, status, exit code, tail), (2) the "
     "host's worktree and pull request record (`completion`), and (3) the plan's steps as ticked. "
     "For each criterion give status met only when that evidence shows it; point to it. A criterion the evidence "
-    "cannot show either way is unclear. "
+    "cannot show either way is unclear. When `verify.infra` is true the verification could not run on the host "
+    "(`verify.category`, `verify.action`): it says nothing about the code, so never blame the code for it. "
     "verdict is met only when every criterion is met; not_met when the agent can close the gap itself; needs_you "
     "when only the operator can unblock it (a decision, access, an ambiguous requirement, or a criterion no "
     "evidence source can show). Write gap as an instruction to the agent that names only actions Eridani can "
@@ -103,9 +104,14 @@ def verify_evidence(attempt, judge):
     result = attempt.result or {}
     fresh = (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
         (judge.generation, judge.turn_seq, judge.plan_revision) and not result.get("stale_workspace")
+    category = result.get("category")
     return {"verify_id": attempt.verify_id, "status": attempt.status, "fresh": fresh,
             "exit_code": result.get("exit_code"), "tail": (result.get("tail") or "")[-TAIL_CHARS:],
-            "timed_out": bool(result.get("timed_out")), "detail": result.get("detail", "")}
+            "timed_out": bool(result.get("timed_out")), "detail": result.get("detail", ""),
+            # Why it did not pass (run_coordinator.classify_verify). infra: the check could not run on the host, so it
+            # says nothing about the code; the run goes to needs_you(verify_infra) with `action`, never a gap.
+            "category": category, "infra": bool(category and category.startswith("infra_")),
+            "action": result.get("action", "")}
 
 
 # A not_met gap that is really "no recorded verification": the judge's own words for it.
@@ -152,7 +158,8 @@ def assess(evidence, model):
     verify = evidence.get("verify")
     required = (plan.get("verify") or {}).get("verify_id")
     passing = bool(verify and verify["fresh"] and verify["status"] == "passed")
-    verify_failed = bool(verify and verify["fresh"] and verify["status"] == "failed")
+    infra = bool(verify and verify.get("infra"))
+    verify_failed = bool(verify and verify["fresh"] and verify["status"] == "failed" and not infra)
     out = model(evidence)
     known = {c["id"]: c for c in criteria}
     given = {c.id: c for c in out.criteria if c.id in known}
@@ -167,6 +174,14 @@ def assess(evidence, model):
                 rules.append("verify_criterion_needs_passing_attempt")
         record.append({"id": criterion["id"], "status": status, "evidence": proof[:1000]})
     verdict, gap = out.verdict, out.gap
+    if infra:
+        # The verification could not run (missing program, module or database, no result, refused): only the operator
+        # can fix the host's setup, so the agent is never sent a gap for it and the model's verdict cannot stand.
+        rules.append("verify_infra")
+        action = verify.get("action") or "Check the verify entry on the host (eridani.json)."
+        steps = [{"id": s.id, "status": s.status if s.status != "disputed" else "unclear"} for s in out.steps]
+        return {"verdict": "needs_you", "gap": action[:4000], "summary": out.summary[:2000], "criteria": record,
+                "steps": steps, "rules": rules, "verify_failed": False}
     if verdict == "met" and required and not passing:
         rules.append("required_verify_not_passing")
         if verify_failed:

@@ -15,6 +15,8 @@ import {
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
+import { postAction } from "./api";
+import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import "./remotea.css";
 import "./runs.css";
 
@@ -83,9 +85,13 @@ export function Remotea() {
   const cutover = cutoverSummary(parity);
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
-      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}</span>
+      <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}
+        {(status?.hosts ?? []).filter(h => h.connected).map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
+          <small key={h.id} className="remotea-host-build"> · {line!.text}{line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</small>)}
+      </span>
       <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
     </section>
+    {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
     <PendingControls/>
     <RunList onOpen={openRun}/>
@@ -136,11 +142,13 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <span className={"remotea-host-chip tone-" + hosts.tone}>{hosts.tone === "connected" ? "Connected" : hosts.tone === "never" ? "Never connected" : ago(status.hosts.map(h => h.last_seen_at).filter(Boolean).sort().at(-1) ?? null)}</span>
       </SettingRow>
       {status.hosts.some(h => h.status === "degraded") && <p className="remotea-warning" role="note">Today's agent text limit is reached: new turns are recorded without their text until tomorrow (UTC).</p>}
+      {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
       {status.hosts.map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
         <SettingRow key={h.id} label={h.name || h.machine || "remotea"}
           hint={line!.update ? `The latest release is ${line!.update.latest}; this server is more than one release behind.` : undefined}>
           <span className={"remotea-version" + (line!.update ? " outdated" : "")}>{line!.update?.url
-            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}</span>
+            ? <a href={line!.update.url} target="_blank" rel="noreferrer">{line!.text}</a> : line!.text}
+            {line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</span>
         </SettingRow>)}
       <MigrationSettings readOnly={readOnly}/>
       {token && <div className="bot-secret" role="region" aria-label="remotea link key">
@@ -396,17 +404,43 @@ export function Criteria({ run }: { run: RunDetail }) {
 
 const BUBBLE_FOLD = 700;
 
-/** One timeline entry as a chat bubble: the agent on the left, you on the right, Eridani's own events as system lines. */
-export function Bubble({ entry }: { entry: TimelineEntry }) {
-  const [open, setOpen] = useState(false);
-  const long = entry.detail.length > BUBBLE_FOLD;
-  const text = open || !long ? entry.detail : entry.detail.slice(0, BUBBLE_FOLD) + "…";
+const CLIPPED_HINT = "Cut at 4,000 characters for display. Full response loads the rest.";
+const TRUNCATED_HINT = "remotea cut this final response before sending it; the rest was never stored.";
+
+/** One timeline entry as a chat bubble: the agent on the left, you on the right, Eridani's own events as system lines.
+ * An agent response says how complete it is: Clipped (cut for display; Full response fetches the whole turn once and
+ * keeps it), Truncated by host (the rest never reached Eridani) or Expired (retention deleted it since the page loaded). */
+export function Bubble({ entry, runId }: { entry: TimelineEntry; runId?: string }) {
+  const [open, setOpen] = useState(false), [full, setFull] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false), [expired, setExpired] = useState(""), [error, setError] = useState("");
+  const turn = entry.turn;
+  const fetchable = !!turn?.clipped && full === null && !expired && !!runId;
+  const body = full ?? entry.detail;
+  const long = body.length > BUBBLE_FOLD;
+  const text = open || !long ? body : body.slice(0, BUBBLE_FOLD) + "…";
   const system = entry.who === "eridani" && (entry.kind === "state" || entry.kind === "command") && !entry.detail;
-  return <li className={`remotea-bubble who-${entry.who} kind-${entry.kind} tone-${entry.tone}${system ? " system" : ""}`}>
-    <div className="remotea-bubble-head"><strong>{entry.title}</strong> <small>{ago(entry.at)}</small></div>
+  const loadFull = async () => {
+    setLoading(true); setError("");
+    try {
+      const whole = await api<FullTurn>(`/remotea/runs/${runId}/turns/${turn!.id}`);
+      setFull(whole.text); setOpen(true);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "TURN_EXPIRED") setExpired(e.message); else setError(message(e));
+    } finally { setLoading(false); }
+  };
+  return <li data-entry={entry.id} className={`remotea-bubble who-${entry.who} kind-${entry.kind} tone-${entry.tone}${system ? " system" : ""}`}>
+    <div className="remotea-bubble-head"><strong>{entry.title}</strong>
+      {turn?.clipped && full === null && !expired && <span className="remotea-label label-clipped" title={CLIPPED_HINT}>Clipped</span>}
+      {turn?.truncated && <span className="remotea-label label-truncated" title={TRUNCATED_HINT}>Truncated by host</span>}
+      {expired && <span className="remotea-label label-expired" title={expired}>Expired</span>}
+      <small>{ago(entry.at)}</small></div>
     {entry.detail && <p>{text}</p>}
-    {long && <button className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
-      {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}{open ? "Less" : "Show all"}</button>}
+    {fetchable ? <button className="btn btn-ghost btn-sm" disabled={loading} title={CLIPPED_HINT} onClick={() => void loadFull()}>
+      <ChevronDown size={14}/>{loading ? "Loading…" : "Full response"}</button>
+      : long && <button className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}{open ? "Less" : "Show all"}</button>}
+    {expired && <p className="remotea-bubble-note">{expired}</p>}
+    {error && <p role="alert" className="work-error">{error}</p>}
   </li>;
 }
 
@@ -418,7 +452,10 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
 }) {
   const [run, setRun] = useState<RunDetail | null>(preloaded ?? null), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [text, setText] = useState(""), [busy, setBusy] = useState("");
+  // Older pages of turns and commands the reader loaded (merged); kept across polls, which reload only the newest page.
+  const [earlier, setEarlier] = useState<RunDetail | null>(null), [loadingEarlier, setLoadingEarlier] = useState(false);
   const log = useRef<HTMLDivElement>(null), stuck = useRef(true);
+  const anchor = useRef<{ id: string; offset: number } | null>(null);
   // Only the newest request for this drawer's run may install its response (out-of-order replies are dropped).
   const requests = useRef<LatestOnly | null>(null);
   requests.current ??= latestOnly();
@@ -428,11 +465,24 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       if ("run" in result) { setRun(result.run); setError(""); } else setError(message(result.error));
     });
   }, [id]);
-  useEffect(() => { stuck.current = true; refresh(); return () => requests.current?.cancel(); }, [refresh]);
+  useEffect(() => { stuck.current = true; setEarlier(null); refresh(); return () => requests.current?.cancel(); }, [refresh]);
   useAgentRefresh(refresh);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current) el.scrollTop = el.scrollHeight; }, [run]);
   const onScroll = () => { const el = log.current; if (el) stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; };
+  // Load earlier keeps the entry that was first on screen where it was (older rows land above it, or between older
+  // history rows above it), instead of letting the content jump.
+  const entryRows = (el: HTMLDivElement) => [...el.querySelectorAll<HTMLElement>("[data-entry]")].map(row => {
+    const box = row.getBoundingClientRect();
+    return { id: row.dataset.entry!, top: box.top, bottom: box.bottom };
+  });
+  useLayoutEffect(() => {
+    const el = log.current, mark = anchor.current;
+    anchor.current = null;
+    if (!el || !mark) return;
+    const row = entryRows(el).find(r => r.id === mark.id);
+    if (row) el.scrollTop = anchoredScrollTop(el.scrollTop, mark, row.top - el.getBoundingClientRect().top);
+  }, [earlier]);
   // Controls act on the run on screen, and only once it is the run the panel asked for.
   const bound = !!run && run.id === id;
   const off = !!busy || !bound;
@@ -441,13 +491,29 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     const action = runAction(run, id, what, values);
     if (!action) return;
     setBusy(what); setError(""); setNotice("");
-    try { await post(action.url, action.body); if (what === "message" || what === "steer") setText(""); refresh(); }
+    // Routes with a receipt get one action_id and a retry after a lost response; Verify now has no receipt, so no retry.
+    try { await (what === "verify" ? post(action.url, action.body) : postAction(action.url, action.body)); if (what === "message" || what === "steer") setText(""); refresh(); }
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
+  const shown = run && earlier ? mergeDetail(run, earlier) : run;
+  const loadEarlier = async () => {
+    const offset = shown && nextOffset(shown);
+    if (!shown || offset === null || !bound) return;
+    const el = log.current;
+    anchor.current = el ? scrollAnchor(entryRows(el), el.getBoundingClientRect().top) : null;
+    stuck.current = false;
+    setLoadingEarlier(true);
+    try {
+      const page = await api<RunDetail>(`/remotea/runs/${shown.id}?offset=${offset}&limit=${shown.more!.limit}`);
+      if (page.id === id) setEarlier(prev => prev ? mergeDetail(prev, page) : page);
+    } catch (e) { anchor.current = null; setError(message(e)); }
+    finally { setLoadingEarlier(false); }
+  };
   const controls = run ? runControls(run) : null;
   const attention = run ? ATTENTION_STATES.includes(run.state) : false;
-  const entries = run ? timeline(run) : [];
+  const entries = shown ? timeline(shown) : [];
+  const pagedOut = earlierLine(shown?.more);
   const verify = run ? verifyLine(run) : null;
   const [verifyPick, setVerifyPick] = useState("");
   return <section className="run-view remotea-chat" aria-label="Agent run">
@@ -505,7 +571,14 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     </header>
     <div className="remotea-chat-log" ref={log} onScroll={onScroll}>
       {!run ? !error && <p role="status">Loading run…</p> : <>
-        <ol className="remotea-timeline" aria-label="Run timeline">{entries.map((e, i) => <Bubble key={e.kind + e.at + i} entry={e}/>)}</ol>
+        {shown?.retention?.expired && <p className="remotea-log-note">
+          <span className="remotea-label label-expired">Expired</span> This run ended more than 90 days ago, so its turns and commands were deleted.</p>}
+        {pagedOut && <div className="remotea-log-note">
+          <span className="remotea-label label-paged">Paged out</span> {pagedOut}
+          <button className="btn btn-ghost btn-sm" disabled={loadingEarlier || !bound} onClick={() => void loadEarlier()}>
+            <ChevronUp size={14}/>{loadingEarlier ? "Loading…" : "Load earlier"}</button>
+        </div>}
+        <ol className="remotea-timeline" aria-label="Run timeline">{entries.map(e => <Bubble key={e.id} entry={e} runId={run.id}/>)}</ol>
         {bound && <>
           <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/>
           {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
@@ -547,7 +620,9 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   </section>;
 }
 
-export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void }) {
+export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run" }: {
+  need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void; saveLabel?: string;
+}) {
   const options = targetOptions(need);
   const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -578,7 +653,7 @@ export function TargetPicker({ need, onSaved, onCancel }: { need: NeedsTarget; o
     </>}
     <div className="remotea-control-row">
       <button className="btn btn-sm" onClick={onCancel}>Cancel</button>
-      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>Save and run</button>
+      <button className="btn btn-sm btn-primary" disabled={!options.length || busy} onClick={() => void save()}>{saveLabel}</button>
     </div>
     {error && <p role="alert" className="work-error">{error}</p>}
   </div>;
