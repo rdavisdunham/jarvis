@@ -1475,8 +1475,29 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/criteria",
+      "handler": "criteria",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/focus",
+      "handler": "focus",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/freestyle",
       "handler": "freestyle",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/judge",
+      "handler": "judge_again",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },

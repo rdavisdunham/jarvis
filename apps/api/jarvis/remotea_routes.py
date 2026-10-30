@@ -403,6 +403,35 @@ def stop(identity: UUID, body: control.StopInput, user: User):
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
+@router.post("/runs/{identity}/focus")
+def focus(identity: UUID, user: User):
+    """Open the run's terminal in remotea: ask the host's desktop app(s) to bring the run's tab to the front
+    (`terminal.focus`). Waits a few seconds for the host's answer. `{sent: true}` when an app was told, otherwise
+    `{sent: false, reason}`: `no_desktop` (no desktop app connected to the host), `host_offline`, `no_surface` (the
+    run has no terminal, or it is gone), `host_too_old` (the host does not offer it), `no_answer` (the host did
+    not answer in time) or `failed`. The page then shows where the terminal is. Changes nothing on the run and
+    stores no receipt: a repeat only raises the tab again."""
+    import time
+
+    with session_scope() as db:
+        writable(db, user)
+        op_id, reason = control.focus_terminal(db, user.owner_id, str(identity))
+    if op_id is None:
+        return {"sent": False, "reason": reason}
+    deadline = time.monotonic() + control.FOCUS_WAIT_SECONDS
+    while True:
+        with session_scope() as db:
+            result = control.focus_result(db, user.owner_id, op_id)
+        if result is not None:
+            return result
+        if time.monotonic() >= deadline:
+            with session_scope() as db:
+                control.give_up_focus(db, user.owner_id, op_id)
+                result = control.focus_result(db, user.owner_id, op_id)
+            return result if result is not None and result.get("sent") else {"sent": False, "reason": "no_answer"}
+        time.sleep(control.FOCUS_POLL_SECONDS)
+
+
 @router.post("/runs/{identity}/approve")
 def approve(identity: UUID, body: control.ApproveInput, user: User):
     with session_scope() as db:
@@ -432,6 +461,24 @@ def verify_config(identity: UUID, body: agent_plan.SetVerifyInput, user: User):
     with session_scope() as db:
         writable(db, user)
         return receipts.once(db, user.owner_id, str(identity), "verify_config", body, lambda: agent_plan.set_verify(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/criteria")
+def criteria(identity: UUID, body: agent_plan.SetCriteriaInput, user: User):
+    """Edit criteria on a parked run (needs_you, awaiting_approval): a human edit frozen as the next plan revision."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "criteria", body, lambda: agent_plan.set_criteria(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/judge")
+def judge_again(identity: UUID, body: control.JudgeAgainInput, user: User):
+    """Judge again: verify and judge the last turn against the plan as frozen now."""
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "judge", body, lambda: control.judge_again(
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 

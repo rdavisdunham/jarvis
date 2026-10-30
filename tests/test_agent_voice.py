@@ -298,3 +298,98 @@ def test_a_target_defaults_to_the_run_open_on_the_owners_screen(host, monkeypatc
             control.run_for(db, OWNER, Target())
     finally:
         execution.reset(token)
+
+
+# ---------------------------------------------------------------- E-Q6: recipient confirmation
+
+
+def two_runs(host, *titles):  # noqa: F811
+    ids = []
+    for title in titles:
+        created = task(title)
+        default_target(host, created["id"])
+        ids.append(confirm(say("control.start", task_id=created["id"]))["id"])
+        attached(host, ids[-1])
+    return ids
+
+
+def test_a_bare_command_with_several_runs_asks_instead_of_acting(host):  # noqa: F811
+    """Several active runs and no target: stop, message, approve and plan review return needs_choice naming each run
+    as task · host · branch · state, and nothing is stopped, proposed or journaled."""
+    one, two = two_runs(host, "Recipient one", "Recipient two")
+    choice = say("control.stop")
+    assert choice["status"] == "needs_choice" and choice["tool"] == "control_stop" and "Nothing was done" in choice["next"]
+    assert {c["run_id"] for c in choice["candidates"]} == {one, two}
+    with session_scope() as db:
+        labels = {c["run_id"]: c["label"] for c in choice["candidates"]}
+        run = db.get(AgentRun, one)
+        assert labels[one] == f"Recipient one · {db.get(control.AgentHost, run.host_id).name} · {run.branch} · {run.state}"
+    assert state(one)[0] != "stopping" and state(two)[0] != "stopping"
+    asked_message = say("control.message", text="Also update the docs.")
+    assert asked_message["status"] == "needs_choice" and len(asked_message["candidates"]) == 2
+    with session_scope() as db:
+        from jarvis.session_models import AgentPendingControl
+
+        assert db.scalar(select(AgentPendingControl).where(AgentPendingControl.tool == "control.message")) is None
+    # Named by task: exactly one run, and the result names task, host and branch for Eri's sentence.
+    stopped = say("control.stop", task="recipient two")
+    assert stopped["recipient"]["run_id"] == two and stopped["recipient"]["task"] == "Recipient two"
+    assert stopped["recipient"]["branch"] and stopped["recipient"]["label"] in stopped["next"]
+    assert state(two)[0] == "stopping"
+
+
+def test_approve_means_the_one_run_waiting_and_names_it(host):  # noqa: F811
+    """Approve without a target fits only runs awaiting approval: one waiting among several active runs is not
+    ambiguous; two waiting are."""
+    waiting, working = two_runs(host, "Waiting for you", "Still working")
+    judged_met(waiting)
+    done = say("control.approve")
+    assert done["status"] == "approved" and done["run_id"] == waiting
+    assert done["recipient"]["task"] == "Waiting for you" and "Waiting for you" in done["next"]
+    assert state(working)[0] != "stopping"
+    third = two_runs(host, "Also waiting")[0]
+    fourth = two_runs(host, "Waiting too")[0]
+    judged_met(third)
+    judged_met(fourth)
+    choice = say("control.approve")
+    assert choice["status"] == "needs_choice" and {c["run_id"] for c in choice["candidates"]} == {third, fourth}
+    assert all(c["state"] == "awaiting_approval" for c in choice["candidates"])
+
+
+def test_a_name_matching_several_tasks_with_runs_asks(host):  # noqa: F811
+    web, ios = two_runs(host, "Fix login on web", "Fix login on iOS")
+    choice = say("control.stop", task="fix login")
+    assert choice["status"] == "needs_choice" and {c["run_id"] for c in choice["candidates"]} == {web, ios}
+
+
+def test_an_open_run_that_is_not_the_newest_asks(host, monkeypatch):  # noqa: F811
+    from jarvis import device_bridge
+    from jarvis.access import execution
+
+    older, newer = two_runs(host, "Older open run", "Newer run")
+    monkeypatch.setattr(device_bridge, "context", lambda owner, device: {"open_run_id": older})
+    token = execution.set({"id": "work-2", "owner_id": OWNER, "account_id": host.account_id, "device_id": "laptop",
+                           "revision": 1, "credential_id": None})
+    from jarvis.agent_control_schema import Target
+
+    try:
+        with session_scope() as db, pytest.raises(DomainError) as ambiguous:
+            control.run_for(db, OWNER, Target(), "control.stop")
+        choice = control.needs_choice("control.stop", ambiguous.value)  # What control_command returns for it.
+        assert choice["status"] == "needs_choice" and choice["tool"] == "control_stop"
+        assert [c["run_id"] for c in choice["candidates"]] == [older, newer]  # The open run first.
+        monkeypatch.setattr(device_bridge, "context", lambda owner, device: {"open_run_id": newer})
+        with session_scope() as db:
+            assert control.run_for(db, OWNER, Target(), "control.stop") == newer
+    finally:
+        execution.reset(token)
+
+
+def test_an_answer_names_the_run_it_reaches(host):  # noqa: F811
+    [run_id] = two_runs(host, "Answer me")
+    question_pk, _ = asked(host, run_id)
+    status = asyncio.run(call_tool(OWNER, "turn-q", 0, "control_status", {}))
+    item = status["runs"][0]["questions"][0]["items"][0]
+    out = say("control.answer", question_id=question_pk,
+              answers=[{"item_id": item["item_id"], "choice_ids": [item["choices"][0]["id"]]}])
+    assert out["recipient"]["run_id"] == run_id and "Answer me" in out["next"]
