@@ -59,7 +59,7 @@ export function MemoryRow({memory, onCorrect, onForget}: {memory: Memory; onCorr
     <div className="memory-main">
       <p className="memory-content">{memory.content}</p>
       <div className="memory-meta">
-        <span>{memory.attribution === "owner_statement" ? "You told Eri" : "Learned from a saved source"}</span>
+        <span>{memory.attribution === "owner_statement" ? "You told Eri" : memory.attribution === "agent_capture" ? "Saved by Eri at your request" : "Learned from a saved source"}</span>
         <time className="tabular" dateTime={memory.created_at}>{new Date(memory.created_at).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"})}</time>
         {memory.tags?.map(tag => <span className="chip" key={tag}>{tag}</span>)}
       </div>

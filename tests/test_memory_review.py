@@ -265,3 +265,94 @@ def test_unasked_review_remains_available_and_private_output_records_question():
         assert rid in review.context_for_agent(db, "davin")
         review.record_question(db, "davin", "Is it Hayes or Haze?")
         assert review.context_for_agent(db, "davin") == ""
+
+
+def embedded(content, vector, fact_key="", attribution="automatic"):
+    from jarvis.memory_learning import EMBEDDING_MODEL
+
+    mid, sid = remember(content, attribution=attribution)
+    with session_scope() as db:
+        row = db.get(Memory, mid)
+        row.embedding, row.embedding_model, row.fact_key = vector, EMBEDDING_MODEL, fact_key
+    return mid, sid
+
+
+def set_profile(**values):
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "settings.update", values)
+
+
+def test_semantic_paraphrases_are_queued_with_provenance_never_merged():
+    a, sa = embedded("The user prefers tea.", [1.0, 0.10, 0.0], "owner.preferred_drink")
+    b, _ = embedded("The user likes to drink tea in the morning.", [1.0, 0.14, 0.0], "owner.drink.morning")
+    c, _ = embedded("The user has a cat named Hayes.", [0.0, 0.0, 1.0])
+    # Vectors from another (or no) embedding model are never compared.
+    remember("The user enjoys tea.")
+    jid = run()
+    with session_scope() as db:
+        assert all(not db.get(Memory, m).suppressed for m in (a, b, c))
+        reviews = list(db.scalars(select(MemoryReview)))
+        assert [r.kind for r in reviews] == ["paraphrase"]
+        assert sorted(reviews[0].memory_ids) == sorted([a, b])
+        assert reviews[0].details["similarity"] >= review.SEMANTIC
+        data = review.review_data(db, reviews[0])
+        assert "same thing" in data["question"]
+        prov = data["provenance"]
+        assert prov["method"] == "paraphrase" and prov["similarity"] == reviews[0].details["similarity"]
+        assert {s["memory_id"]: s["source_id"] for s in prov["sources"]}[a] == sa
+        assert {s["fact_key"] for s in prov["sources"]} == {"owner.preferred_drink", "owner.drink.morning"}
+        assert db.get(Job, jid).result["queued_questions"] == 1
+        from jarvis.review_questions import items
+
+        item = next(q for q in items(db, "davin") if q["kind"] == "memory")
+        assert item["review_kind"] == "paraphrase" and item["evidence"]["method"] == "paraphrase"
+    run()
+    with session_scope() as db:
+        assert len(list(db.scalars(select(MemoryReview)))) == 1
+
+
+def test_profile_disagreement_is_a_question_and_never_edits_either_side():
+    set_profile(preferred_name="Davis", timezone="America/Chicago")
+    dave, _ = embedded("The user's name is Dave.", [], "owner.name")
+    embedded("The user's full name is Davis Dunham.", [], "owner.full_name")
+    embedded("The user is on Central time.", [], "owner.time_zone")
+    berlin, _ = embedded("The user's timezone is Europe/Berlin.", [], "owner.timezone")
+    run()
+    with session_scope() as db:
+        reviews = {r.memory_ids[0]: r for r in db.scalars(select(MemoryReview).where(MemoryReview.kind == "profile"))}
+        assert set(reviews) == {dave, berlin}
+        name = reviews[dave]
+        assert name.details["profile"] == {"field": "preferred_name", "value": "Davis", "set_by": "owner"}
+        assert reviews[berlin].details["profile"]["stated"] == "Europe/Berlin"
+        data = review.review_data(db, name)
+        assert '"Davis"' in data["question"] and [c["id"] for c in data["candidates"]] == [dave]
+        assert data["provenance"]["profile"]["field"] == "preferred_name"
+        context = review.context_for_agent(db, "davin")
+        assert '"profile"' in context and "never changes the profile" in context
+        review.record_question(db, "davin", "Is your name Dave or Davis?")
+        assert db.get(MemoryReview, name.id).last_offered_at
+        rid, revision, zone_id = name.id, name.revision, reviews[berlin].id
+    with session_scope() as db:
+        result = execute(db, "davin", "profile-answer", "memory.resolve", {
+            "review_id": rid, "expected_revision": revision, "action": "merge",
+            "content": "The user's nickname is Dave; they go by Davis.",
+        })["data"]
+        assert db.get(Memory, dave).merged_into_id == result["memory_id"]
+        assert preferences(db, "davin")["preferred_name"] == "Davis"
+    # A profile change makes the remaining profile question stale rather than answerable.
+    set_profile(timezone="Europe/Berlin")
+    with session_scope() as db:
+        assert review.pending_reviews(db, "davin") == []
+        assert db.get(MemoryReview, zone_id).status == "stale"
+
+
+def test_agent_filed_memories_are_not_owner_statements():
+    with session_scope() as db:
+        agent = execute(db, "davin", "turn-1:0", "memory.capture", {"content": "The user prefers oolong."})
+        owner = execute(db, "davin", "plain", "memory.capture", {"content": "The user prefers oolong."})
+        assert db.get(Memory, agent["data"]["id"]).attribution == "agent_capture"
+        assert db.get(Memory, owner["data"]["id"]).attribution == "owner_statement"
+    run()
+    with session_scope() as db:
+        # The exact duplicate keeps the owner's own statement, whichever was saved first.
+        assert db.get(Memory, agent["data"]["id"]).merged_into_id == owner["data"]["id"]

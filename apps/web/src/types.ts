@@ -1,4 +1,10 @@
 import type { SourceInfo } from "./SourceDetails";
+/** Usage buckets from budget.summary: recorded charges, active reservations, unconfirmed holds. */
+export interface UsageBuckets {
+  recorded: { usd: number; records: number };
+  reserved: { usd: number; sessions: number };
+  unconfirmed: { usd: number; sessions: number; historic_usd: number; historic_sessions: number; oldest_at: string | null };
+}
 export interface Task {
   is_quick_list?: boolean; quick_list_parent_id?: string|null; quick_section?: string; quick_order?: number;
   source?: SourceInfo;
@@ -209,6 +215,8 @@ export interface Bootstrap {
         usage_by_model: Record<string, number>;
         budget_mode: string;
         reserved_usd: number;
+        unconfirmed_sessions?: number;
+        buckets?: UsageBuckets;
         limit_usd: number;
         remaining_usd: number;
       };
