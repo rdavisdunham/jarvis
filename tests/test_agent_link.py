@@ -147,6 +147,91 @@ def test_hello_build_identity_and_degraded_reason_reach_status(client):
     assert host["build_sha"] == "unknown" and host["build"] == "unknown"
 
 
+DOCTOR_CAPS = ["session.report", "turn", "status", "doctor"]
+
+
+def doctor(at=None, **over):
+    return {"at": ms(at or now()), "ok": 30, "warn": 1, "fail": 2, "items": [
+        {"id": "hooks.codex.trust", "level": "warn", "summary": "Codex hooks are not trusted", "fix": "Run codex once"},
+        {"id": "service.active", "level": "fail", "summary": "remotea.service is not running",
+         "fix": "systemctl --user start remotea"},
+        {"id": "target.jarvis.verify.test", "level": "fail",
+         "summary": "verify test: uv not on PATH, token=abcdef1234567890 leaked"},
+    ], **over}
+
+
+def test_hello_doctor_summary_reaches_status_setup_and_control_status(client):
+    """remotea PR #27 (S-Q1): hello's `doctor` is kept on the host, fails first and redacted again; Eridani
+    advertises `doctor` in its welcome; status, the setup page and control_status show it."""
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        welcome = hello(ws, caps=DOCTOR_CAPS, doctor=doctor())
+        assert "doctor" in welcome["caps"]
+        host = client.get("/api/v1/remotea/status").json()["hosts"][0]
+    summary = host["doctor"]
+    assert (summary["ok"], summary["warn"], summary["fail"]) == (30, 1, 2) and "truncated" not in summary
+    assert [i["level"] for i in summary["items"]] == ["fail", "fail", "warn"]
+    assert summary["items"][0] == {"id": "service.active", "level": "fail", "summary": "remotea.service is not running",
+                                   "fix": "systemctl --user start remotea"}
+    assert "abcdef1234567890" not in summary["items"][1]["summary"] and "[redacted]" in summary["items"][1]["summary"]
+    assert summary["at"].endswith("+00:00") and summary["received_at"]
+    setup = client.get("/api/v1/remotea/setup").json()
+    assert setup["hosts"][0]["doctor"]["fail"] == 2
+    with session_scope() as db:
+        line = agent_control.status(db, "davin", {})["hosts"][0]["self_check"]
+    assert line == "host desk: 2 setup problems: remotea.service is not running…"
+
+
+def test_doctor_frame_replaces_the_summary_and_drops_malformed_or_oversized_values(client):
+    token = enable(client)["token"]
+    start = now()
+    with connect(bearer(token)) as ws:
+        hello(ws, caps=DOCTOR_CAPS)  # Not computed yet: no summary.
+        assert client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"] is None
+        assert put(ws, "doctor", **doctor(start))["outcome"] == {"stored": True}
+        assert client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]["fail"] == 2
+        # Clean now: a newer summary with no items replaces it.
+        later = start + timedelta(minutes=5)
+        assert put(ws, "doctor", at=ms(later), ok=33, warn=0, fail=0, items=[])["outcome"] == {"stored": True}
+        assert client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]["items"] == []
+        # An older one (reordered on a reconnect) never replaces it.
+        assert put(ws, "doctor", **doctor(start))["outcome"] == {"stored": False, "reason": "older"}
+        # Malformed counts: acked (never refused) and dropped; the stored summary stays.
+        reply = put(ws, "doctor", **doctor(later + timedelta(minutes=1), ok="30"))
+        assert reply["ok"] and reply["outcome"] == {"stored": False, "reason": "malformed"}
+        assert client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]["ok"] == 33
+        # Oversized: more than 40 items keeps 40; an item over the text limit or with a bad level is dropped alone,
+        # a bad fix is dropped from its item; each marks the summary truncated.
+        many = [{"id": f"disk.worktrees.t{i}", "level": "warn", "summary": f"low disk {i}"} for i in range(45)]
+        put(ws, "doctor", **doctor(later + timedelta(minutes=2), warn=45, fail=0, items=many))
+        stored = client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]
+        assert len(stored["items"]) == 40 and stored["truncated"] is True
+        put(ws, "doctor", **doctor(later + timedelta(minutes=3), items=[
+            {"id": "build.running", "level": "fail", "summary": "x" * 201},
+            {"id": "build.disk", "level": "error", "summary": "unknown level"},
+            {"id": "listener.port", "level": "fail", "summary": "port 7717 refused", "fix": 42},
+            "not an item"]))
+        stored = client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]
+        assert stored["items"] == [{"id": "listener.port", "level": "fail", "summary": "port 7717 refused"}]
+        assert stored["truncated"] is True
+    with connect(bearer(token)) as ws:  # A restarted server's hello without a summary keeps the last one.
+        hello(ws, caps=DOCTOR_CAPS, doctor={"at": "yesterday", "items": "none"})  # Malformed: dropped, not refused.
+        assert client.get("/api/v1/remotea/status").json()["hosts"][0]["doctor"]["items"][0]["id"] == "listener.port"
+
+
+def test_an_older_host_has_no_doctor_summary(client):
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        hello(ws, caps=DOCTOR_CAPS, doctor=doctor())
+    with connect(bearer(token)) as ws:  # Downgraded: no `doctor` cap, so the old summary goes too.
+        hello(ws)
+        host = client.get("/api/v1/remotea/status").json()["hosts"][0]
+    assert host["doctor"] is None
+    assert client.get("/api/v1/remotea/setup").json()["hosts"][0]["doctor"] is None
+    with session_scope() as db:
+        assert "self_check" not in agent_control.status(db, "davin", {})["hosts"][0]
+
+
 def test_hello_must_come_first(client):
     token = enable(client)["token"]
     with connect(bearer(token)) as ws:

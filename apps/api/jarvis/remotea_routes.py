@@ -504,6 +504,23 @@ def unmerged(user: User):
         return control.unmerged(db, user.owner_id)
 
 
+@router.get("/worktrees")
+def worktrees(user: User):
+    """Worktree maintenance: every managed worktree per host, its bound run, and cleanup commands for the rows that
+    lose nothing (agent_control.worktree_maintenance). Read-only: Eridani never removes a worktree."""
+    with session_scope() as db:
+        gated(db, user)
+        return control.worktree_maintenance(db, user.owner_id)
+
+
+@router.post("/hosts/{identity}/rescan")
+def rescan(identity: UUID, user: User):
+    """Ask one host for a fresh worktrees.report now (the `worktrees.scan` command, run-less)."""
+    with session_scope() as db:
+        writable(db, user)
+        return control.rescan_worktrees(db, user.owner_id, str(identity))
+
+
 # ---------------------------------------------------------------- Eri's pending control (stage F, M5)
 
 
