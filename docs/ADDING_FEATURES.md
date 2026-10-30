@@ -182,6 +182,10 @@ MCP and HTTP (`external_mcp.py`, `external_routes.py`):
       tool's JSON schema.
 - [ ] HTTP twin on the `external` router in `external_routes.py` (see `agent_runs` / `agent_run` for
       `run_list` / `run_get`), then refresh the surface inventory (section 2).
+- [ ] A tool remotea's spawned agents call (remotea `eridani-mcp.ts` `ERIDANI_MCP_TOOLS`): its scope goes in
+      `remotea_routes.MCP_KEY_SCOPES`, the key a setup code carries (docs/AGENT_CONTROL.md § The setup code), and
+      the tool name in `tests/test_drift_guards.py` `REMOTEA_MCP_TOOLS`. Never give that key `agents:control`,
+      and never give the link key (`KEY_SCOPES`) `tasks:write`.
 - [ ] The MCP app is mounted at `/api/v1/external/mcp` with `streamable_http_path="/"`, so only the
       trailing-slash URL `/api/v1/external/mcp/` works; the no-slash path answers 405. Any doc or UI
       that prints the URL must use the slash (`external_routes.keys` returns `mcp_url` with it).
@@ -473,6 +477,7 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | `test_every_control_tool_is_gated_on_remotea` | registry tools named `control_*` == `tool_policy.CONTROL_TOOLS` |
 | `test_settings_can_grant_every_bot_scope_but_the_link_key` | scopes buildable in `BotSettings.tsx` == `bot_access.SCOPES` minus `agents:control` |
 | `test_external_record_kinds_and_mcp_reads_agree` | `external_service.Kind` == `KINDS`; each `CUSTOM_READS` tool appears in `external_mcp.definitions` for its `READ_SCOPES` scope |
+| `test_setup_code_mcp_key_and_command_match_remotea` | the setup code's MCP key (`remotea_routes.MCP_KEY_SCOPES`) offers every tool in `REMOTEA_MCP_TOOLS` (remotea's `ERIDANI_MCP_TOOLS`) and lacks `agents:control`; the link key lacks `tasks:write`; `remotea-setup.ts` `SETUP_COMMAND` == `remotea_routes.SETUP_COMMAND`; `AGENT_CONTROL.md` names the code prefix, the command and the probe route |
 
 Also: `tests/test_agent_retention.py::test_every_agent_table_is_in_the_retention_doc` (every `session_models.py`
 table is named in `AGENT_CONTROL.md` "Retention and redaction").

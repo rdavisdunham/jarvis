@@ -24,6 +24,9 @@ export type RemoteaSession = {
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
   hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; quiet_bypass?: boolean;
+  /** The MCP key the last setup code carried (prefix and expiry only); `setup_code` is in a minting response only. */
+  mcp_key?: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
+  setup_command?: string; setup_code?: string | null;
 };
 export type Parity = {
   total: number; matched: number; missing: number; mismatched: number; clean: boolean;
@@ -134,9 +137,14 @@ export type Run = {
   tool: string; model: string; branch: string; base_branch: string; worktree: string; effective_permission_mode: string;
   turn_count: number; turn_cap: number; started_at: string | null; finished_at: string | null;
   stop_requested_at: string | null; stop_mode: string; surf: string;
-  host: { id: string; name: string; connected: boolean; degraded_reason?: string | null } | null; structured_answers: boolean;
+  host: { id: string; name: string; connected: boolean; degraded_reason?: string | null;
+    /** The host's lease, renewed every 30 s while connected (older Eridani: absent). */
+    last_seen_at?: string | null } | null; structured_answers: boolean;
   /** Whether the agent was spawned with Eridani's MCP tools (spawn outcome; null when the host did not say). */
   mcp?: TargetMcp | null;
+  /** Freshness facts kept apart (E-S6; older Eridani: absent): when the last turn landed, the latest verification
+   * and how far it proves the current turn, and controls the host has not taken yet or whose delivery is uncertain. */
+  last_turn_at?: string | null; verification?: VerificationFact | null; pending_controls?: PendingCommand[];
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
@@ -151,6 +159,16 @@ export type Run = {
   summary?: string; summary_at?: string | null; summary_stale?: boolean;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
 };
+/** The run's latest verification as a decision fact (agent_control.verification_fact). `evidence`: `fresh` (this
+ * turn, an unchanged workspace), `stale` (an older turn, or the checkout changed around it), `incomplete` (remotea's
+ * fingerprint missed part of the workspace), `pending` (still running). */
+export type VerificationFact = {
+  verify_id: string; status: string; at: string; evidence: "fresh" | "stale" | "incomplete" | "pending"; turn_seq?: number;
+  isolated?: boolean | null; isolation_reason?: string | null; workspace_complete?: boolean | null; workspace_reasons?: string[];
+  deadline_at?: string | null;
+};
+/** A command whose effect is not known yet: `pending` (the host has not taken it) or `uncertain` (it could not tell). */
+export type PendingCommand = { kind: string; status: "pending" | "uncertain"; mode?: string | null; at: string };
 export type MigrationTarget = {
   host_id: string; host_name: string; host_target: string; configured: boolean; source: "eridani" | "host" | null;
   dir: string | null; pattern: string | null; host_dir: string | null; head: number | null; override: number | null;
@@ -251,8 +269,20 @@ export type Attempt = {
   verify_id: string; initiator: string; verdict: "met" | "not_met" | "needs_you" | null; gap: string | null; summary: string | null;
   criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
+  /** Verify only (remotea PR #24; null from older hosts): sandboxed or not, apart from the exit code; whether the
+   * fingerprint covered the whole workspace; the entry's advertised timeout and the deadline it set. */
+  isolated?: boolean | null; isolation?: "bwrap" | "none" | null; isolation_reason?: string | null;
+  workspace_complete?: boolean | null; workspace_reasons?: string[] | null; timeout_s?: number | null;
+  stale_workspace?: boolean | null; deadline_at?: string | null;
   /** Why a verification did not pass (run_coordinator.classify_verify) and the one-line fix; null when it passed. */
   category?: VerifyCategory | null; action?: string | null;
+  /** How long the verify command ran (null from older Eridani). */
+  duration_ms?: number | null;
+};
+/** What the run changed (GET /runs/{id} `changes`): the session's reported PRs and the host's worktree row. */
+export type RunChanges = {
+  branch: string; worktree: string; pr_urls: string[]; pr_as_of: string | null; ahead?: number | null; behind?: number | null;
+  unpushed?: number | null; uncommitted?: number | null; untracked?: number | null; merged?: boolean | null; reported_at: string | null;
 };
 export type VerifyCategory = "tests_failed" | "infra_missing_binary" | "infra_missing_dependency" | "infra_database"
   | "infra_timeout" | "infra_refused" | "infra_uncertain";
@@ -287,6 +317,7 @@ export type RunDetail = Run & {
   more?: DetailPage;
   /** A settled run's turns and commands are deleted 90 days after it ended; `expires_at` is null while it runs. */
   retention?: { expires_at: string | null; expired: boolean };
+  changes?: RunChanges;
 };
 export type DetailPage = { turns: boolean; commands: boolean; offset: number; limit: number; remaining?: { turns: number; commands: number } };
 /** One turn's whole text (`GET /remotea/runs/{id}/turns/{turn_id}`), for a `clipped` turn's "Full response". */
@@ -312,7 +343,11 @@ export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options" | "ver
 export type TimelineEntry = { id: string; at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
   /** `setup`: a host setup problem (a verification that could not run), distinct from `warn` (failing tests, refusals). */
   tone: "plain" | "good" | "warn" | "setup" | "attention"; who: "agent" | "you" | "eridani";
-  turn?: { id: string; clipped: boolean; truncated: boolean } };
+  turn?: { id: string; clipped: boolean; truncated: boolean };
+  /** Separate facts shown as labels on the card (a verification's exit code, sandbox and workspace coverage). */
+  facts?: Fact[] };
+/** One labelled fact with its tone: `ok` reassures, `warn` weakens a decision, `plain` is context. */
+export type Fact = { key: string; label: string; tone: "ok" | "warn" | "plain"; title?: string };
 
 export const TERMINAL_RUN_STATES: RunState[] = ["completed", "stopped", "capped", "failed"];
 const RUN_LABELS: Partial<Record<RunState, string>> = {
@@ -429,6 +464,119 @@ export function criteriaEvidence(run: Pick<RunDetail, "plan" | "attempts">) {
   });
 }
 
+// ---------------------------------------------------------------- the review packet beside Approve (E-Q3)
+
+export type PacketCriterion = { id: string; text: string; status: "met" | "not met" | "unknown"; evidence: string };
+export type PacketTests = { verifyId: string; status: string; exitCode: number | null; age: string; isolated: boolean | null;
+  /** Stale or incomplete evidence, in words: "stale: the code changed during the run", "workspace incomplete: …". */
+  markers: string[]; line: string };
+export type ReviewPacket = {
+  criteria: PacketCriterion[]; met: number; total: number;
+  /** The latest verdict was reached against an earlier plan revision (criteria edited since): Judge again. */
+  judgedEarlierPlan: boolean;
+  tests: PacketTests | null; testsLine: string;
+  prs: { url: string; label: string }[]; prState: "open" | "merged" | null; changesLine: string; branch: string; worktree: string;
+  questions: string[]; reason: string;
+  /** Approval is a human decision; "verified" is completion the judge established on its own (auto_complete). */
+  decision: { kind: "approval" | "approved" | "verified"; text: string } | null;
+  /** Only an awaiting_approval run is decided here; needs_you and settled runs show the packet read-only. */
+  readOnly: boolean;
+  text: string;
+};
+
+const PR_NUMBER = /\/(?:pull|merge_requests)\/(\d+)/;
+/** "PR #12" for a GitHub/GitLab link, else the link's path. */
+export function prLabel(url: string) {
+  const number = PR_NUMBER.exec(url)?.[1];
+  return number ? "PR #" + number : url.replace(/^https?:\/\//, "");
+}
+/** "just now", "4 min ago", "2 h ago": how old the evidence is, spoken the way control_status says it. */
+export function evidenceAge(value: string | null | undefined, now = Date.now()) {
+  if (!value) return "";
+  const seconds = Math.max(0, (now - new Date(value).getTime()) / 1000);
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 36 ? `${hours} h ago` : `${Math.round(hours / 24)} days ago`;
+}
+const PACKET_TESTS: Record<string, string> = { passed: "tests passed", stale: "tests stale (the code changed during the run)",
+  timed_out: "tests timed out", running: "tests running" };
+const OPEN_QUESTION = new Set(["open", "submitted", "timed_out"]);
+
+/** What a reviewer needs beside Approve: the frozen criteria with the latest verdict per criterion, the changes (PR
+ * links, branch state), the latest verification with stale/incomplete markers and its age, open questions, and the
+ * judge's full reason. Null while the run is working (nothing to review) or in a plan review (PlanReview shows it).
+ * agent_control.review_packet builds the same sentence for control_status. */
+export function reviewPacket(run: RunDetail, now = Date.now()): ReviewPacket | null {
+  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review");
+  if (!parked && !isSettled(run) && run.state !== "stopping") return null;
+  const word = { met: "met", not_met: "not met", unclear: "unknown", pending: "unknown" } as const;
+  const criteria = criteriaEvidence(run).map(c => ({ id: c.id, text: c.text, status: word[c.status as keyof typeof word] ?? "unknown",
+    evidence: c.evidence }));
+  const met = criteria.filter(c => c.status === "met").length;
+  const judge = (run.attempts ?? []).find(a => a.kind === "judge" && a.status === "done") ?? null;
+  const judgedEarlierPlan = !!judge && judge.plan_revision !== run.plan_revision;
+  const verify = (run.attempts ?? []).find(a => a.kind === "verify" && a.initiator !== "host") ?? null;
+  let tests: PacketTests | null = null, testsLine: string;
+  if (!verify) testsLine = run.plan?.verify?.verify_id ? "tests not run yet" : "no verify command, so no test result is recorded";
+  else {
+    // A verification that could not run (an infra category) says nothing about the code: name the host fix instead.
+    const status = infraAttempt(verify) ? `verification could not run (${verify.action || verify.status.replace("_", " ")})`
+      : verify.status === "failed" ? "tests failed" + (verify.exit_code != null ? ` (exit ${verify.exit_code})` : "")
+      : PACKET_TESTS[verify.status] ?? "tests " + verify.status.replace("_", " ");
+    const age = evidenceAge(verify.updated_at || verify.created_at, now);
+    const isolated = verify.isolated ?? null;
+    const markers = [
+      verify.status === "stale" ? "stale: the code changed during the run" : "",
+      verify.workspace_complete === false ? "workspace incomplete: " + ((verify.workspace_reasons ?? []).join("; ") || "not fully read") : "",
+      isolated === false ? "not sandboxed" + (verify.isolation_reason ? ` (${verify.isolation_reason})` : "") : "",
+      verify.turn_seq !== run.turn_seq || verify.plan_revision !== run.plan_revision ? "for an earlier turn or plan" : "",
+    ].filter(Boolean);
+    const sandbox = isolated === true ? " in a sandbox" : isolated === false ? " outside a sandbox" : "";
+    testsLine = `${status}${age ? " " + age : ""}${sandbox}` + (verify.workspace_complete === false ? ` (${markers.find(m => m.startsWith("workspace"))})` : "")
+      + (markers.includes("for an earlier turn or plan") ? " (for an earlier turn or plan)" : "");
+    tests = { verifyId: verify.verify_id, status: verify.status, exitCode: verify.exit_code, age, isolated, markers, line: testsLine };
+  }
+  const changes = run.changes;
+  const prs = (changes?.pr_urls ?? []).map(url => ({ url, label: prLabel(url) }));
+  let changesLine: string;
+  if (prs.length) changesLine = `${prs.map(p => p.label).join(", ")} ${changes?.merged ? "merged" : "open"}`;
+  else {
+    const pending = (["unpushed", "uncommitted"] as const).filter(k => changes?.[k]).map(k => `${changes![k]} ${k}`);
+    changesLine = "no PR recorded" + (pending.length ? ` (${pending.join(", ")} on ${run.branch})` : "");
+  }
+  const questions = [
+    ...run.questions.filter(q => OPEN_QUESTION.has(q.status)).flatMap(q => q.items.map(i => i.text)),
+    ...(run.interviews ?? []).filter(i => i.status === "open").flatMap(i => i.questions.map(q => q.question)),
+  ];
+  const reason = [judge?.summary, judge?.gap].filter(Boolean).join("\n\n") || run.reason_detail || "";
+  const done = run.state === "completed" || run.state === "stopping";
+  const decision = run.state === "awaiting_approval"
+    ? { kind: "approval" as const, text: "Approving is your decision: it completes the task as you. It is not completion established by verification." }
+    : done && run.state_reason === "approved" ? { kind: "approved" as const, text: "Approved by you: a human decision, not established by verification." }
+    : done && run.state_reason === "judge_met" ? { kind: "verified" as const, text: "Completed by verification: the judge found every criterion met; no one approved it." }
+    : null;
+  const parts = [
+    criteria.length ? `${met} of ${criteria.length} criteria met` + (judgedEarlierPlan ? " (judged against an earlier plan)" : "") : "no success criteria",
+    testsLine, changesLine,
+    questions.length ? `${questions.length} open question${questions.length === 1 ? "" : "s"}` : "no open questions",
+  ];
+  return { criteria, met, total: criteria.length, judgedEarlierPlan, tests, testsLine, prs,
+    prState: prs.length ? (changes?.merged ? "merged" : "open") : null, changesLine, branch: run.branch,
+    worktree: changes?.worktree || run.worktree, questions, reason, decision, readOnly: run.state !== "awaiting_approval",
+    text: parts.join("; ") };
+}
+
+/** Edit criteria's body: the rows as edited (blank ones dropped), the verify choice when it changed, and the
+ * revision the editor saw (POST /runs/{id}/criteria refuses a stale one). Null when nothing is left to save. */
+export function criteriaBody(rows: { id?: string; text: string; kind?: "text" | "verify" }[], verifyId: string | null,
+  current: string | null) {
+  const criteria = rows.map(r => ({ ...(r.id ? { id: r.id } : {}), text: r.text.trim(), kind: r.kind ?? "text" })).filter(r => r.text);
+  if (!criteria.length) return null;
+  return { criteria, ...(verifyId && verifyId !== current ? { verify_id: verifyId } : {}) };
+}
+
 const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passed", failed: "failed", timed_out: "timed out",
   refused: "not run (refused)", uncertain: "result uncertain", stale: "stale: code changed during the run", canceled: "canceled",
   error: "error", superseded: "superseded" };
@@ -465,6 +613,80 @@ const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
   answered_locally: "answered in the terminal", expired: "expired",
 };
 
+/** A settled verification's facts, each on its own: the exit code, whether it ran sandboxed (remotea PR #24) and
+ * whether its fingerprint covered the whole workspace. "Tests passed" and "the check was isolated" are different
+ * facts; an older host says nothing about the last two, so nothing is shown for them. */
+export function attemptFacts(a: Attempt): Fact[] {
+  if (a.kind !== "verify" || a.status === "running") return [];
+  const facts: Fact[] = [];
+  if (a.exit_code != null) facts.push({ key: "exit", label: `exit ${a.exit_code}`, tone: a.exit_code === 0 ? "ok" : "warn" });
+  if (a.isolated === true) facts.push({ key: "sandbox", label: "isolated", tone: "ok" });
+  else if (a.isolated === false) facts.push({ key: "sandbox", label: `not sandboxed (${a.isolation_reason || "the host did not say why"})`, tone: "warn" });
+  if (a.workspace_complete === false) facts.push({ key: "workspace", tone: "warn",
+    label: `workspace incomplete (${(a.workspace_reasons ?? []).join("; ") || "the host did not say what it missed"})` });
+  else if (a.workspace_complete === true) facts.push({ key: "workspace", label: "complete workspace", tone: "ok" });
+  return facts;
+}
+
+/** How long since `value`, compactly ("12s", "4m", "3h", "2d"). */
+export function elapsed(value: string, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return seconds + "s";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + "m";
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? hours + "h" : Math.floor(hours / 24) + "d";
+}
+
+const EVIDENCE_TEXT: Record<VerificationFact["evidence"], string> = {
+  fresh: "fresh", stale: "stale: an older turn, or the checkout changed", incomplete: "incomplete workspace", pending: "running",
+};
+// Past this, a command the host has not taken is worth a warning (the link drains commands at least every 30 s).
+const SLOW_COMMAND_MS = 60_000;
+
+/** The facts a decision rests on, each with its own age (E-S6): when the host was last seen (its lease), when the
+ * last turn landed, how long the run has been in its state, the latest verification and how far it proves the
+ * current turn, its workspace fingerprint and sandbox, and controls sent but not yet taken by the host or whose
+ * delivery is uncertain. `host` is the full host row when the page has it (else the run's own `host`). Facts the
+ * server did not send are left out. Pure: the drawer re-renders it on a clock. */
+export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_seen_at"> | null, now = Date.now()): Fact[] {
+  const facts: Fact[] = [];
+  const h = host ?? run.host;
+  if (h) {
+    const seen = h.last_seen_at;
+    if (h.connected) facts.push({ key: "host", label: seen ? `host seen ${ago(seen, now)}` : "host connected",
+      tone: seen && now - new Date(seen).getTime() > 90_000 ? "warn" : "ok" });
+    else facts.push({ key: "host", label: seen ? `host silent for ${elapsed(seen, now)}` : "host never seen", tone: "warn" });
+  }
+  if (run.last_turn_at) facts.push({ key: "turn", label: `last turn ${ago(run.last_turn_at, now)}`, tone: "plain" });
+  else if (run.last_turn_at === null && run.started_at) facts.push({ key: "turn", label: "no turn yet", tone: "plain" });
+  if (run.state_since) facts.push({ key: "state", label: `${runLabel(run.state).toLowerCase()} for ${elapsed(run.state_since, now)}`, tone: "plain" });
+  const v = run.verification;
+  if (v) {
+    if (v.evidence === "pending") {
+      const late = !!v.deadline_at && new Date(v.deadline_at).getTime() < now;
+      facts.push({ key: "verify", label: `verify ${v.verify_id} running for ${elapsed(v.at, now)}${late ? " (past its deadline)" : ""}`, tone: late ? "warn" : "plain" });
+    } else {
+      facts.push({ key: "verify", label: `verify ${v.verify_id} ${VERIFY_TEXT[v.status] ?? v.status} ${ago(v.at, now)} · ${EVIDENCE_TEXT[v.evidence]}`,
+        tone: v.evidence === "fresh" && v.status === "passed" ? "ok" : "warn" });
+      if (v.workspace_complete != null) facts.push({ key: "workspace", tone: v.workspace_complete ? "plain" : "warn",
+        label: `workspace fingerprint ${ago(v.at, now)}` + (v.workspace_complete ? "" : ` · incomplete (${(v.workspace_reasons ?? []).join("; ") || "the host did not say what it missed"})`) });
+      if (v.isolated === false) facts.push({ key: "sandbox", label: `not sandboxed (${v.isolation_reason || "the host did not say why"})`, tone: "warn" });
+      else if (v.isolated === true) facts.push({ key: "sandbox", label: "sandboxed", tone: "ok" });
+    }
+  }
+  for (const [n, c] of (run.pending_controls ?? []).entries()) {
+    const what = c.kind === "input" ? (c.mode === "steer" ? "steer" : "message") : c.kind;
+    facts.push(c.status === "uncertain"
+      ? { key: "control:" + n, label: `${what} ${ago(c.at, now)}: delivery uncertain`, tone: "warn" }
+      : { key: "control:" + n, label: `${what} sent ${ago(c.at, now)}, not taken by remotea yet`,
+        tone: now - new Date(c.at).getTime() > SLOW_COMMAND_MS ? "warn" : "plain" });
+  }
+  return facts;
+}
+/** The facts an approval rests on: the verification, its workspace and sandbox, the host, and anything uncertain. */
+export const APPROVAL_FACTS = (f: Fact) => ["verify", "workspace", "sandbox", "host"].includes(f.key) || f.key.startsWith("control:");
+
 /** Why Eridani sent a text it wrote itself: the `kind` on a "sent" history entry (docs/AGENT_CONTROL.md, "Messages
  * Eridani sends to the agent"). Kinds not listed here (an answer to the agent's question) keep the plain title. */
 export const SENT_REASON: Record<string, string> = {
@@ -475,18 +697,33 @@ export const SENT_REASON: Record<string, string> = {
 /** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
 export const TYPED_TITLE = "You, in the terminal";
 
+// A clipped copy counts as the same text only once this many characters agree (short texts must match whole).
+const PREFIX_MATCH = 200;
+const normal = (text: string) => text.replace(/[…�]+\s*$/u, "").replace(/\s+/gu, " ").trim();
+/** Whether two copies of a text sent to the agent are the same message: equal after whitespace normalisation, or one
+ * a long prefix of the other. Each side clips on its own (the host's prompt at 4,000 bytes, the "sent" entry at
+ * 2,000 characters, a turn's `prompt` at 500), so a long Eridani text never matched exactly and showed twice. */
+export function sameText(a: string, b: string) {
+  const x = normal(a), y = normal(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.length >= PREFIX_MATCH && long.startsWith(short);
+}
+
 /** One time-ordered timeline: final responses per turn, commands with their outcomes, questions and state changes. */
 export function timeline(run: RunDetail): TimelineEntry[] {
   const entries: TimelineEntry[] = [];
   // A text that left for the agent appears once: the "sent" history entry says who sent it, so the matching
   // input command (same text) is skipped unless it failed, where its outcome is the news.
-  const sent = new Set(run.history.filter(h => h.event === "sent" && h.text).map(h => h.text as string));
+  const sentTexts = run.history.filter(h => h.event === "sent" && h.text).map(h => h.text as string);
+  const sent = { has: (text: string) => sentTexts.some(s => sameText(s, text)) };
   for (const t of run.turns) {
     // The message typed in the terminal: its own row when the host sent it as the turn started, otherwise the
     // assistant turn's `prompt` (older hosts, so only once the turn ended). A text Eridani itself sent is already
-    // a "Sent by" entry and is not repeated.
+    // a "Sent by" entry and is not repeated, even when either copy was clipped (sameText).
     if (t.role === "user") {
-      entries.push({ id: "turn:" + t.id, at: t.at, kind: "command", title: TYPED_TITLE, detail: t.text, tone: "plain", who: "you" });
+      if (!sent.has(t.text)) entries.push({ id: "turn:" + t.id, at: t.at, kind: "command", title: TYPED_TITLE, detail: t.text, tone: "plain", who: "you" });
       continue;
     }
     if (t.prompt && !sent.has(t.prompt)) entries.push({ id: "prompt:" + t.id, at: t.at, kind: "command", title: TYPED_TITLE, detail: t.prompt, tone: "plain", who: "you" });
@@ -502,7 +739,8 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const q of run.questions) entries.push({ id: "question:" + q.id, at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
     detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain", who: "agent" });
   for (const a of run.attempts ?? []) entries.push({ id: "attempt:" + a.id, at: a.updated_at, kind: "attempt", title: attemptTitle(a),
-    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani" });
+    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani",
+    ...(attemptFacts(a).length ? { facts: attemptFacts(a) } : {}) });
   for (const i of run.interviews ?? []) entries.push({ id: "interview:" + i.id, at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
   // History is never paged (and only grows), so its index is a stable id.
@@ -607,7 +845,8 @@ export function linkedRun(search: string) {
  * `enabled`: harnesses the target's launch permits (installed or not); `launch`: each one's launcher probe;
  * `verify_status`: each verify id's readiness; `mcp`: whether spawned agents get Eridani's MCP tools. */
 export type TargetLaunch = { ready: boolean; version: string | null; error?: string };
-export type VerifyStatus = { id: string; ready: boolean; reason?: string };
+export type VerifyStatus = { id: string; ready: boolean; reason?: string; timeout?: number;
+  isolated?: boolean; isolation?: "bwrap" | "none"; isolation_reason?: string };
 export type TargetMcp = { configured: boolean; reason?: string };
 type TargetFacts = { enabled?: string[] | null; launch?: Partial<Record<string, TargetLaunch>> | null;
   verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null };
@@ -702,13 +941,74 @@ export function runChip(run: Run | undefined, hosts: Host[]):
   return { kind: "start", label: "Run", disabled: button.disabled, reason: button.reason };
 }
 
-/** The topbar Runs button: how many runs and proposals wait, and whether one needs the owner. */
-export function runsBadge(runs: Run[], pending: PendingControl[]) {
+// ---------------------------------------------------------------- attention-first grouping (E-Q5)
+
+export type AttentionKey = "confirm" | "answer" | "review_plan" | "repair" | "inspect" | "approve" | "unmerged" | "working" | "done";
+/** Groups in the order a human acts on them; `action` groups count toward the Runs badge. */
+export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolean }[] = [
+  { key: "confirm", verb: "Confirm Eri's proposal", action: true },
+  { key: "answer", verb: "Answer a question", action: true },
+  { key: "review_plan", verb: "Review the plan", action: true },
+  { key: "repair", verb: "Repair the host or setup", action: true },
+  { key: "inspect", verb: "Inspect the failed check", action: true },
+  { key: "approve", verb: "Approve", action: true },
+  { key: "unmerged", verb: "Resolve unmerged work", action: true },
+  { key: "working", verb: "Working", action: false },
+  { key: "done", verb: "Done", action: false },
+];
+// needs_you reasons the host or its setup must fix (verify_infra: a verification that could not run).
+const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra"]);
+const ANSWER_REASONS = new Set(["question_timed_out"]);
+const UNMERGED_REASONS = new Set(["awaiting_merge"]);
+
+function hostOffline(run: Run, hosts: Host[]) {
+  if (!run.host) return false;
+  const known = hosts.find(h => h.id === run.host!.id);
+  return known ? !known.connected : !run.host.connected;
+}
+function unmergedFor(run: Run, unmerged: UnmergedWork[]) {
+  return !!run.branch && unmerged.some(w => w.branch === run.branch && w.host_id === run.host?.id && !w.active);
+}
+
+/** The next human action a run waits for. A run whose host is offline (or whose setup broke) needs a repair before
+ * anything the agent could do; settled runs with unmerged work on their branch still need resolving. */
+export function attentionKey(run: Run, hosts: Host[] = [], unmerged: UnmergedWork[] = []): AttentionKey {
+  if (isSettled(run)) return unmergedFor(run, unmerged) ? "unmerged" : "done";
+  if (run.state === "stopping") return "working";
+  if (run.state === "waiting_answer" || run.state === "interviewing") return "answer";
+  if (run.state === "awaiting_approval") return "approve";
+  if (run.state === "awaiting_integration") return "unmerged";
+  if (run.state === "needs_you") {
+    if (run.state_reason === "plan_review") return "review_plan";
+    if (REPAIR_REASONS.has(run.state_reason) || hostOffline(run, hosts)) return "repair";
+    if (ANSWER_REASONS.has(run.state_reason)) return "answer";
+    if (UNMERGED_REASONS.has(run.state_reason)) return "unmerged";
+    return "inspect";
+  }
+  return hostOffline(run, hosts) ? "repair" : "working";
+}
+
+export type AttentionGroup = { key: AttentionKey; verb: string; action: boolean; count: number; runs: Run[]; pending: PendingControl[] };
+/** Runs (and Eri's proposals) grouped by the next human action, in the order to act on them; empty groups left out.
+ * Within a group the run that changed most recently comes first. */
+export function attentionGroups(runs: Run[], pending: PendingControl[], hosts: Host[] = [], unmerged: UnmergedWork[] = []): AttentionGroup[] {
+  const sorted = [...runs].sort((a, b) => new Date(b.state_since).getTime() - new Date(a.state_since).getTime());
+  return ATTENTION_GROUPS.map(g => {
+    const inGroup = sorted.filter(r => attentionKey(r, hosts, unmerged) === g.key);
+    const waiting = g.key === "confirm" ? pending : [];
+    return { ...g, runs: inGroup, pending: waiting, count: inGroup.length + waiting.length };
+  }).filter(g => g.count > 0);
+}
+
+/** The topbar Runs button: the badge counts what needs an action from you (proposals to confirm, questions, plan
+ * reviews, repairs, failed checks, approvals, unmerged work), not runs that are just working. */
+export function runsBadge(runs: Run[], pending: PendingControl[], hosts: Host[] = []) {
   const active = runs.filter(r => !isSettled(r));
-  const attention = pending.length > 0 || active.some(r => ATTENTION_STATES.includes(r.state));
-  const count = active.length + pending.length;
-  const parts = [active.length ? `${active.length} active` : "", pending.length ? `${pending.length} waiting for your confirmation` : ""].filter(Boolean);
-  return { count, attention, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
+  const groups = attentionGroups(active, pending, hosts);
+  const count = groups.filter(g => g.action).reduce((n, g) => n + g.count, 0);
+  const working = active.length - groups.filter(g => g.action).reduce((n, g) => n + g.runs.length, 0);
+  const parts = [count ? `${count} need${count === 1 ? "s" : ""} you` : "", working ? `${working} working` : ""].filter(Boolean);
+  return { count, attention: count > 0, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
 }
 
 // The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model); a drift guard reads both.
@@ -717,7 +1017,9 @@ export const HARNESSES = [
   { id: "codex", label: "Codex", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }] },
 ] as const;
 export type HarnessId = typeof HARNESSES[number]["id"];
-export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | "skip"; target: string | null };
+export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | "skip"; target: string | null;
+  /** Start in freestyle: no interview, no judge; the only way to start where agents have no Eridani tools. */
+  freestyle?: boolean };
 export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "opus", interview: "auto", target: null };
 
 /** Can any connected host start this harness? (`caps.harnesses.<id>.spawn` from hello.) */
@@ -730,7 +1032,8 @@ export function startBody(taskId: string, draft: RunDraft) {
   const harness = HARNESSES.find(h => h.id === draft.harness) ?? HARNESSES[0];
   const model = draft.model && draft.model !== harness.models[0].id ? draft.model : undefined;
   return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}),
-    ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}) };
+    ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}),
+    ...(draft.freestyle ? { freestyle: true } : {}) };
 }
 
 /** GET /remotea/runs/preflight: what a start would do, checked without acting. `harnesses` is what the task's
@@ -738,7 +1041,7 @@ export function startBody(taskId: string, draft: RunDraft) {
  * `harness_reasons` says why one cannot. */
 export type Preflight = {
   target: { id: string; name: string; repo: string } | null; needs_target: boolean; need: NeedsTarget | null;
-  problems: { code: string; message: string }[]; active_run: { id: string; state: RunState } | null;
+  problems: PreflightProblem[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
   harness_reasons?: Record<string, string>; harness_note?: string | null;
   /** The resolved target's readiness (caps_version 2 / remotea PR #20; null when the host did not say):
@@ -746,6 +1049,19 @@ export type Preflight = {
   verify_status?: VerifyStatus[] | null; verify_ready?: boolean | null; verify_reasons?: Record<string, string>;
   mcp?: TargetMcp | null;
 };
+/** What stands in a start's way. `blocking` false is a warning (VERIFY_NOT_READY: the run starts and records the
+ * failure); `freestyle_ok` lifts a block for a freestyle start (MCP_UNCONFIGURED). Older servers send neither:
+ * every problem then blocks, as start_run refuses it. */
+export type PreflightProblem = { code: string; message: string; blocking?: boolean; freestyle_ok?: boolean };
+
+/** The problem that keeps the dialog's Start disabled for this draft, if any; whether a freestyle start lifts it
+ * (`freestyle`: offer the toggle). */
+export function startBlock(p: Preflight | null | undefined, draft: Pick<RunDraft, "freestyle">):
+  { problem: PreflightProblem | null; freestyle: boolean } {
+  const blocking = (p?.active_run ? [] : p?.problems ?? []).filter(x => x.blocking !== false);
+  const problem = blocking.find(x => !(x.freestyle_ok && draft.freestyle)) ?? null;
+  return { problem, freestyle: blocking.length > 0 && blocking.every(x => x.freestyle_ok) };
+}
 
 /** The preflight URL; `target` is the execution target the picker just saved, so the re-read resolves to it. */
 export function preflightUrl(taskId: string, harness: string, target?: string | null) {
@@ -828,10 +1144,11 @@ export async function latestRun<T extends { id: string }>(guard: LatestOnly, id:
   }
 }
 
-export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop";
+export type RunAction = "message" | "steer" | "replan" | "verify" | "verify-config" | "freestyle" | "approve" | "stop"
+  | "criteria" | "judge";
 const ACTION_PATHS: Record<RunAction, string> = {
   message: "message", steer: "message", replan: "replan", verify: "verify", "verify-config": "verify-config",
-  freestyle: "freestyle", approve: "approve", stop: "stop",
+  freestyle: "freestyle", approve: "approve", stop: "stop", criteria: "criteria", judge: "judge",
 };
 
 /** The URL and body of a drawer control, bound to the run on screen (never the panel's id prop) and carrying the
@@ -848,4 +1165,46 @@ export function runAction(run: Pick<Run, "id" | "state_revision"> | null, id: st
 export const RUN_CHANGED = "This run changed; reloaded";
 export function isRevisionConflict(error: unknown) {
   return (error as { code?: unknown } | null)?.code === "REVISION_CONFLICT";
+}
+
+/** POST /remotea/runs/{id}/focus: whether a desktop app was told to bring the run's terminal tab forward. */
+export type FocusResult = { sent: true; desktops?: number | null } | { sent: false; reason: string; detail?: string };
+
+/** Why the tab could not be brought forward, in words (the reasons the route returns). */
+export const FOCUS_TEXT: Record<string, string> = {
+  no_desktop: "No remotea desktop app is connected to this host right now.",
+  host_offline: "The remotea server is offline.",
+  no_surface: "This run has no terminal open on the host.",
+  host_too_old: "This host's remotea server is too old to open terminals from here; update it.",
+  no_answer: "The remotea server did not answer in time.",
+  failed: "The remotea server could not open the terminal.",
+};
+
+/** A path as one POSIX shell word: single-quoted unless it is plainly safe. */
+export function shellWord(value: string) {
+  return /^[A-Za-z0-9_./~:@%+=,-]+$/.test(value) ? value : "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+/** Where to find the terminal by hand when the tab could not be brought forward: the host, the worktree and branch,
+ * and commands to copy (remotea has no interactive attach: `cd` into the worktree, `remotea screen` to look). */
+export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf">, result: FocusResult | null) {
+  const reason = result && !result.sent ? result.reason : null;
+  const commands: { label: string; command: string }[] = [];
+  if (run.worktree) commands.push({ label: "Open a shell in the worktree", command: "cd " + shellWord(run.worktree) });
+  if (run.surf && /^surf-[A-Za-z0-9_-]+$/.test(run.surf))
+    commands.push({ label: "See the terminal's screen", command: "remotea screen " + run.surf });
+  return {
+    message: reason ? (FOCUS_TEXT[reason] ?? FOCUS_TEXT.failed) + (result && !result.sent && result.detail ? " (" + result.detail + ")" : "") : "",
+    host: run.host?.name || "the remotea host",
+    worktree: run.worktree || null,
+    branch: run.branch || null,
+    commands,
+  };
+}
+
+/** The status line after a successful focus. */
+export function focusSentText(run: Pick<Run, "host">, result: FocusResult) {
+  if (!result.sent) return "";
+  const where = run.host?.name ? " on " + run.host.name : "";
+  return "Brought the terminal forward in remotea" + where + ".";
 }
