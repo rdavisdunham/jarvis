@@ -552,6 +552,12 @@
   font-size: 13px;
   line-height: 18px;
 }
+.note-frozen {
+  margin: 0 0 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
 .note-doc > .note-filing,
 .note-doc > .note-backlinks,
 .note-doc > .note-linked-records,

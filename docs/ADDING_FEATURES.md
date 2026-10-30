@@ -264,6 +264,9 @@ Verify: `pytest -q tests/test_tool_refinement.py tests/test_drift_guards.py` and
       (mapped fields `title`, `notes`, `due_date`, `priority`, `status`, `assignee`, `project_id`
       queue a Linear write; a linked task Linear refuses raises). Do not write `Task` columns directly
       from a new command and skip these.
+- [ ] Note changes go through `notes.mutate_note` (or call `agent_actor.note_gate` on the locked note
+      first, as `note.file`/`note.organize` do): a task's PRD note is read-only to everyone but a
+      human while the task has an unsettled run (`RUN_OWNS_PRD`).
 - [ ] Events: `domain.emit(db, owner, "<kind>", entity_id, revision)` (section 7). `emit` also queues
       search indexing for the kinds listed in its set.
 - [ ] Receipts and revert: `execute` wraps the mutation in `action_history.journal`, which records an

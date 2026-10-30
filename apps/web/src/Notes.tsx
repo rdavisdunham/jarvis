@@ -39,6 +39,8 @@ export type NoteRecord = {
   revision: number;
   index_state: string;
   updated_at: string;
+  /** The PRD of a task with a live run: agents may not edit it until the run settles (agent_actor.note_gate). */
+  frozen_run_id?: string | null;
   tasks: {
     id: string;
     title: string;
@@ -416,6 +418,16 @@ function FilterMenu({ count, children }: { count: number; children: ReactNode })
   );
 }
 
+/** A task's PRD while its run is live: agents cannot change it, and a human edit does not change the frozen plan. */
+export function FrozenPrdNotice({ runId }: { runId: string }) {
+  return (
+    <p className="note-frozen" role="note" title={"Run " + runId}>
+      Frozen with run {runId.slice(0, 8)}. Agents cannot edit this PRD until the run settles; your edits
+      here do not change the plan the run is working from.
+    </p>
+  );
+}
+
 export function NoteEditor({
   readOnly = false,
   organization = emptyOrganization,
@@ -710,6 +722,7 @@ export function NoteEditor({
             {error || localError}
           </p>
         )}
+        {note.frozen_run_id && <FrozenPrdNotice runId={note.frozen_run_id} />}
         {discarding && <div role="alert" className="draft-warning"><p>Your note has unsaved changes.</p><button type="button" className="btn btn-sm" onClick={() => setDiscarding(false)}>Keep writing</button><button type="button" className="btn btn-danger btn-sm" onClick={onClose}>Discard draft</button></div>}
         <div className="note-doc">
         {writing ? <div className="note-writing">

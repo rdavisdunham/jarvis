@@ -41,10 +41,16 @@ def note_data(db, row, *, preview=False):
     data["excerpt"] = row.content[:240]
     if preview:
         data.pop("content")
+    else:
+        from .agent_actor import prd_run
+
+        run = prd_run(db, row.id)
+        data["frozen_run_id"] = run.id if run else None  # The PRD of a task with a live run (agent_actor.note_gate).
     return data
 
 
 def mutate_note(db, owner, tool, args):
+    from .agent_actor import FROZEN_WARNING, note_gate
     from .domain import DomainError, TaskCreate, check_revision, emit, enqueue_job, mutate, owned
     from .productivity import home_changes, save_note_links
     from .record_references import reference
@@ -53,6 +59,7 @@ def mutate_note(db, owner, tool, args):
         from .note_schema import NoteUpdate
         row = owned(db, Note, args.note_id, owner, lock=True)
         check_revision(row, args.expected_revision)
+        note_gate(db, row)
         if tool == "note.append":
             content = row.content + args.text
         else:
@@ -69,6 +76,7 @@ def mutate_note(db, owner, tool, args):
     link_values = args.model_dump(exclude_unset=True, include=link_keys)
     previous_project = None
     tags_changed = False
+    frozen = None
     if tool == "note.create":
         values = args.model_dump(exclude={"task_ids"} | link_keys)
         row = Note(owner_id=owner, **values)
@@ -78,6 +86,8 @@ def mutate_note(db, owner, tool, args):
         row = owned(db, Note, args.note_id, owner, lock=True)
         previous_project = row.project_id
         check_revision(row, args.expected_revision)
+        # note.tasks only links to-dos quoted from the note; it never changes the note itself.
+        frozen = note_gate(db, row) if tool != "note.tasks" else None
         if tool == "note.tasks":
             if row.archived:
                 raise DomainError("INVALID_ARGUMENT", "Restore the note before creating tasks.")
@@ -194,7 +204,10 @@ def mutate_note(db, owner, tool, args):
     note_changed(db, row, tags_changed=tags_changed)
     if tags_changed and not db.info.get("note_organization"):
         db.info.setdefault("note_tag_changes", set()).add(row.id)
-    return note_data(db, row)
+    data = note_data(db, row)
+    if tool != "note.create" and frozen is not None:
+        data["warning"] = FROZEN_WARNING.format(run_id=frozen.id)
+    return data
 
 
 def chunks(title, content, tags):
