@@ -45,6 +45,8 @@ MCP exposes `records_list`, `records_get`, `changes_list`, `request_get`, the pe
 
 For an edit, read the record first and include `expected_revision`. Omit unchanged fields. An explicit null clears only fields whose contract allows it. Replacement link lists must preserve links you still want. HTTP 409 means the revision or idempotency request conflicts; fetch the current record and decide the next action instead of retrying with a guessed revision.
 
+Two 409s are not revision conflicts and must not be retried while the run lasts: `RUN_OWNS_COMPLETION` (completing, or editing success criteria, verify or turn cap of, a task with an unsettled agent run) and `RUN_OWNS_PRD` (note update/append/replace, archiving, or reverting a change to a note that is the PRD of a task with an unsettled run). Both carry `data.run_id`; only the owner can make those changes until the run settles. A note record's `frozen_run_id` names the run that froze it, `null` otherwise. See `docs/AGENT_CONTROL.md`, "Actors and the completion gate".
+
 ## Retry and outcome rules
 
 Generate one request UUID per intended operation and persist it with the exact arguments. Reuse it unchanged after a timeout or disconnect. The server namespaces it to the bot key; REST and MCP retries share the same receipt. Reusing it for different instructions returns 409. A rejected command saves no partial changes or misleading success card.

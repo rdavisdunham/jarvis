@@ -357,6 +357,17 @@ completion and edits of `success_criteria`, `verify` and `turn_cap` from `eri_wo
 once and asks the run to stop (`stop_reason: task_completed_externally`); a human approve ends it
 `completed`.
 
+The same unsettled run makes its task's PRD note (`tasks.prd_note_id`) read-only to agents
+(`agent_actor.note_gate`). `note.update` (including `archived`), `note.append`, `note.replace`,
+`note.file`, `note.organize` and a revert of a note change refuse every actor but `human` (so `bot`,
+`eri_work`, `run_session`, `run_judge` and `source_sync`) with `409 RUN_OWNS_PRD {run_id, state,
+task_id}`. The one exception is `submit_plan` rewriting its own run's PRD (`run_session` with `plan_write`
+and that run's id). `note.tasks` stays open: it links to-dos quoted from the note and never changes it. A
+human may still edit; the result carries `warning` saying the edit changes the note, not the frozen
+plan the run executes and is judged against (`agent_run_plans.prd_text`). `GET /notes/{id}` and the
+external note record carry `frozen_run_id`, and the note editor shows "Frozen with run <id>". The
+gate is lifted as soon as the run is terminal.
+
 ### Reading runs (`agents:read`)
 
 A bot key with `agents:read` (Settings → Connections → Connected agents → "Read runs started from tasks") reads what the
@@ -811,6 +822,9 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 - `reason_detail` on a run: the full text behind the current state (the judge's notes for a judge-caused
   `needs_you`, the proposal summary for `plan_review`, else the transition's detail); `reason_text` stays
   the one-line version.
+- The task's PRD note is read-only to every actor but `human` while the run is unsettled
+  (`agent_actor.note_gate`, `409 RUN_OWNS_PRD`; see "Actors and the completion gate"), so the live note
+  a human opens matches the frozen plan unless the human changed it.
 - Every path that completes a task (`task.update`, `task.complete`, `schedule.complete`,
   `notification.complete`, Linear sync, `auto_complete`) passes `agent_actor.gate`; `finish_task` runs it
   again as a backstop. `auto_complete` never completes a task whose plan has human criteria
