@@ -467,9 +467,7 @@ def replan(db, owner, run_id, body, *, actor):
         attempt.status, attempt.updated_at = "superseded", now()
     if run.state != "planning":
         coordinator.transition(db, run, "replanning", actor=actor, reason="replan")
-    coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
-                                           "text": prompts.replan(body.reason), "mode": "steer" if busy else "queue"},
-                        source="eridani")
+    coordinator.say(db, run, prompts.replan(body.reason), "replan", mode="steer" if busy else "queue", actor=actor)
     if run.state == "replanning":
         coordinator.transition(db, run, "planning", actor=actor, reason="replan")
     return public_run(db, run)

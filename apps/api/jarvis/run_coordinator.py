@@ -283,6 +283,15 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     return row
 
 
+def say(db, run, text, kind, *, mode="queue", actor=None):
+    """An input Eridani itself wrote: the command, plus a "sent" timeline entry whose `kind` names why it was sent
+    (execute, gap, replan, verify_set, interview_answers, merged, integrated; docs/AGENT_CONTROL.md lists them)."""
+    row = command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": mode, "text": text},
+                  source="eridani")
+    note(run, "sent", actor=actor.record() if actor else {"kind": "eridani"}, text=text[:2000], kind=kind)
+    return row
+
+
 def settle_command(db, row, state, detail="", result=None):
     if row.status in {"executed", "failed", "rejected", "uncertain", "expired", "canceled"} and row.status == state:
         return False
@@ -712,8 +721,7 @@ def begin_execution(db, run, reason="plan_frozen", preface="", actor=None):
     if run.state != "planning":
         transition(db, run, "planning", actor=actor, reason="plan_frozen")
     transition(db, run, "executing", actor=actor, reason=reason)
-    command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
-                               "text": prompts.execute(render_plan(db, run, plan), preface), "mode": "queue"}, source="eridani")
+    say(db, run, prompts.execute(render_plan(db, run, plan), preface), "execute", actor=actor)
 
 
 def after_turn(db, run):
@@ -881,9 +889,7 @@ def on_verdict(db, attempt, final):
         if no_progress(db, run, final.get("gap", "")):
             return transition(db, run, "needs_you", actor=actor, reason="no_progress_gap", detail=final.get("gap", ""))
         transition(db, run, "executing", actor=actor, reason="not_met")
-        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                   "text": prompts.gap(final.get("gap", ""), final.get("criteria") or [])},
-                source="eridani")
+        say(db, run, prompts.gap(final.get("gap", ""), final.get("criteria") or []), "gap", actor=actor)
         return run
     rules = final.get("rules") or []
     if "pr_unknown" in rules:
@@ -1062,8 +1068,7 @@ def recheck_pr(db, run):
         return judged_met(db, run, plan, judge_actor(run))
     if completion["policy"] == "pr_merged" and completion["merged"] is True and run.surf:
         transition(db, run, "executing", reason="merged")
-        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                   "text": prompts.merged(run.branch)}, source="eridani")
+        say(db, run, prompts.merged(run.branch), "merged")
     return run
 
 
@@ -1093,8 +1098,7 @@ def check_integrations(db, owner, host_id):
             recheck_pr(db, run)
         elif branch_merged(db, run) and run.surf:
             transition(db, run, "executing", reason="merged")
-            command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                       "text": prompts.merged(run.branch)}, source="eridani")
+            say(db, run, prompts.merged(run.branch), "merged")
 
     judging = db.scalars(select(AgentRun.id).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
                                                    AgentRun.state == "judging")).all()
@@ -1106,8 +1110,7 @@ def check_integrations(db, owner, host_id):
             continue
         run.sync_state = {**(run.sync_state or {}), "integration": []}
         transition(db, run, "executing", reason="integrated")
-        command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "mode": "queue",
-                                   "text": prompts.integrated(run.branch)}, source="eridani")
+        say(db, run, prompts.integrated(run.branch), "integrated")
 
 
 # ---------------------------------------------------------------- run tokens

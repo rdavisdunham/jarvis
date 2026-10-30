@@ -139,4 +139,17 @@ describe("typed prompts in the timeline", () => {
     const entries = timeline(detail([turn({ text: "Switched to pg.", prompt: "Use pg" })], history));
     expect(entries.map(e => e.title)).toEqual(["Sent by you", "Turn 1"]);
   });
+
+  it("names why Eridani sent a text it wrote itself, whoever caused it", () => {
+    const history = [
+      { at: "2026-10-28T10:00:10Z", event: "sent", text: "Your plan is frozen.", kind: "execute", actor: { kind: "eridani" } },
+      { at: "2026-10-28T10:00:20Z", event: "sent", text: "Not met yet.", kind: "gap", actor: { kind: "run_judge" } },
+      { at: "2026-10-28T10:00:30Z", event: "sent", text: "New plan.", kind: "replan", actor: { kind: "human" } },
+      { at: "2026-10-28T10:00:40Z", event: "sent", text: "{\"q1\":\"yes\"}", kind: "answer", actor: { kind: "human" } },
+      { at: "2026-10-28T10:00:50Z", event: "sent", text: "Older entry.", actor: { kind: "run_judge" } },
+    ];
+    expect(timeline(detail([], history)).map(e => [e.title, e.who])).toEqual([
+      ["Sent by Eridani · plan frozen, start work", "eridani"], ["Sent by Eridani · judge gap", "eridani"],
+      ["Sent by Eridani · re-plan", "eridani"], ["Sent by you", "you"], ["Sent by Eridani", "eridani"]]);
+  });
 });

@@ -412,6 +412,13 @@ const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
   answered_locally: "answered in the terminal", expired: "expired",
 };
 
+/** Why Eridani sent a text it wrote itself: the `kind` on a "sent" history entry (docs/AGENT_CONTROL.md, "Messages
+ * Eridani sends to the agent"). Kinds not listed here (an answer to the agent's question) keep the plain title. */
+export const SENT_REASON: Record<string, string> = {
+  execute: "plan frozen, start work", gap: "judge gap", replan: "re-plan", verify_set: "verify command set",
+  interview_answers: "your interview answers", merged: "pull request merged", integrated: "sub-task pull requests merged",
+};
+
 /** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
 export const TYPED_TITLE = "You, in the terminal";
 
@@ -448,9 +455,15 @@ export function timeline(run: RunDetail): TimelineEntry[] {
     if (h.event === "sent" && h.text) {
       // Every text sent to the agent, with who sent it (stage F): you on this page, Eri after your confirmation,
       // or Eridani itself (interview answers as the planning prompt, the judge's gap).
+      // A text Eridani wrote carries the `kind` that triggered it (run_coordinator.say), even when your action caused it.
+      const reason = h.kind ? SENT_REASON[h.kind] : undefined;
+      if (reason) {
+        entries.push({ at: h.at, kind: "command", title: "Sent by Eridani · " + reason, detail: h.text, tone: "plain", who: "eridani" });
+        continue;
+      }
       const confirmed = !!h.actor?.reason?.startsWith("confirmed:");
       const human = h.actor?.kind === "human";
-      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : h.actor?.kind === "run_judge" ? "Eridani" : h.actor?.kind ?? "";
+      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : ["run_judge", "eridani"].includes(h.actor?.kind ?? "") ? "Eridani" : h.actor?.kind ?? "";
       entries.push({ at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain", who: human && !confirmed ? "you" : "eridani" });
       continue;
     }
