@@ -1,21 +1,19 @@
 import {QuickListDetail} from "./QuickLists";
 import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { RecordTools } from "./record-links";
-import { humanLabel, SchedulingHelp, Dialog } from "./ux";
+import { humanLabel, Dialog } from "./ux";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Check, X, ChevronRight, ListTodo, Bell, FileText, CornerLeftUp, ExternalLink, Plus } from "lucide-react";
+import { Check, X, ListTodo, ExternalLink } from "lucide-react";
 import { Prop, PriorityControl } from "./RecordCard";
 import { ReviewProps } from "./Reviews";
 import type { CustomRecord } from "./structure-types";
 import "./details.css";
 import { z } from "zod";
 import { api } from "./api";
-import { timeLabel, recurrenceLabel } from "./components";
+import { AddSubtask, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule } from "./TaskCardSections";
 import { useEditor, choice, nullableId, tagsField } from "./editor-control";
 import type { Task, Schedule } from "./types";
 import type { Organization } from "./productivity";
-import type { NoteRecord } from "./Notes";
-const RunTask = lazy(() => import("./Remotea").then((m) => ({ default: m.RunTask })));
 const LinearTask = lazy(() => import("./Linear").then((m) => ({ default: m.LinearTask })));
 type Props = {
   id: string;
@@ -45,15 +43,15 @@ function StandardTaskDetails(p: Props) {
   const [customHome,setCustomHome]=useState<CustomRecord|null>(null);
   useEffect(()=>{void api<CustomRecord>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
   const annotation=useInlineGuard();
-  const [task, setTask] = useState<Task | null>(null),
-    [notes, setNotes] = useState<NoteRecord[]>([]);
-  const current = useRef<Task | null>(null),
+  // Start from the loaded list so the card renders at once; the fetch below replaces it.
+  const [task, setTask] = useState<Task | null>(() => p.tasks.find((t) => t.id === p.id) ?? null);
+  const current = useRef<Task | null>(task),
     flight = useRef<Promise<unknown> | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [editing, setEditing] = useState<string | null>(null),
     [draft, setDraft] = useState("");
-  const [notesError, setNotesError] = useState("");
+  const [notice, setNotice] = useState("");
   const [savedFields, setSavedFields] = useState<string[]>([]);
   const [comparison, setComparison] = useState<Task | null>(null);
   const failedPatch = useRef<Record<string, unknown> | null>(null);
@@ -80,13 +78,6 @@ function StandardTaskDetails(p: Props) {
       })
       .catch((e) => {
         if (live) setError(e.message);
-      });
-    void api<{ items: NoteRecord[] }>("/notes?task_id=" + p.id)
-      .then((r) => {
-        if (live) setNotes(r.items);
-      })
-      .catch(() => {
-        if (live) setNotesError("Linked notes could not be loaded.");
       });
     return () => {
       live = false;
@@ -201,6 +192,9 @@ function StandardTaskDetails(p: Props) {
   useEffect(() => {
     const escape = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // A dialog opened inside this card (Save as template) handles its own Escape.
+      const nested = card.current?.querySelector('[role="dialog"][aria-modal="true"]');
+      if (nested) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       if (pending.current) {
@@ -470,118 +464,16 @@ function StandardTaskDetails(p: Props) {
               {text("notes", "Description", "textarea", "body", "Add details")}
               <SourceDetails source={task.source}/><SourceNotes kind="task" id={p.id} canEdit={p.canEdit!==false} onGuard={annotation.update}/>
               <RecordTools kind="task" id={p.id}/>
-              {p.remotea && p.onOpenRun && <Suspense fallback={null}><RunTask taskId={p.id} canEdit={p.canEdit !== false} onOpenRun={p.onOpenRun}/></Suspense>}
-              {(parent || !!children.length) && (
-                <section className="detail-section" aria-label="Related tasks">
-                  <div className="detail-section-head"><h3>Related tasks</h3></div>
-                  {parent && (
-                    <button
-                      className="detail-link-row"
-                      onClick={() => void leave(() => p.onTask(parent))}
-                    >
-                      <CornerLeftUp size={15} />
-                      <span className="detail-link-title">{parent.title}</span>
-                      <span className="chip">Parent</span>
-                    </button>
-                  )}
-                  {children.map((t) => (
-                    <button
-                      key={t.id}
-                      className="detail-link-row"
-                      onClick={() => void leave(() => p.onTask(t))}
-                    >
-                      <ChevronRight size={15} />
-                      <span className="detail-link-title">{t.title}</span>
-                      <span className={"chip" + (t.status === "completed" ? " chip-done" : "")}>{humanLabel(t.status)}</span>
-                    </button>
-                  ))}
-                </section>
-              )}
-              <section className="detail-section" aria-label="Linked notes">
-                <div className="detail-section-head">
-                  <h3>Linked notes</h3>
-                  {!!notes.length && <span className="detail-count">{notes.length}</span>}
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={locked}
-                    onClick={() =>
-                      void leave(() => p.onNewNote(current.current!))
-                    }
-                  >
-                    <Plus size={15} />
-                    New linked note
-                  </button>
-                </div>
-                {notesError && <p role="alert" className="field-error">{notesError}</p>}
-                {notes.length ? (
-                  notes.map((n) => (
-                    <button
-                      className="detail-link-row"
-                      key={n.id}
-                      onClick={() => void leave(() => p.onNote(n.id))}
-                    >
-                      <FileText size={15} />
-                      <span className="detail-link-title">{n.title}</span>
-                    </button>
-                  ))
-                ) : (
-                  <p className="detail-empty">No linked notes yet.</p>
-                )}
-              </section>
-              <section className="detail-section" aria-label="Schedule">
-                <div className="detail-section-head">
-                  <h3>Reminders and time</h3>
-                  {!!reminders.length && <span className="detail-count">{reminders.length}</span>}
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={locked}
-                    onClick={() =>
-                      void leave(() => p.onReminder(null, current.current!))
-                    }
-                  >
-                    <Plus size={15} />
-                    Add reminder
-                  </button>
-                </div>
-                {reminders.length ? (
-                  reminders.map((s) => (
-                    <div className="detail-link-row" key={s.id}>
-                      <button
-                        className="detail-link-open"
-                        onClick={() =>
-                          void leave(() =>
-                            p.onReminder(s, current.current!),
-                          )
-                        }
-                      >
-                        <Bell size={15} />
-                        <span className="detail-link-title">{s.title}</span>
-                      </button>
-                      <span className="detail-meta">
-                        {s.next_run_at && <span className="chip">{timeLabel(s.next_run_at, s.timezone)}</span>}
-                        <span className="chip">{recurrenceLabel(s.recurrence)}</span>
-                        {s.status !== "active" && <span className="chip">{humanLabel(s.status)}</span>}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="detail-empty">No reminders for this task.</p>
-                )}
-                {!task.is_template && (
-                  <div className="detail-actions">
-                    <button
-                      className="btn btn-soft btn-sm"
-                      disabled={locked}
-                      onClick={() =>
-                        void leave(() => p.onBlock(current.current!))
-                      }
-                    >
-                      Reserve time for this task
-                    </button>
-                  </div>
-                )}
-                <SchedulingHelp />
-              </section>
+              {p.remotea && p.onOpenRun && <TaskRun taskId={p.id} canEdit={p.canEdit !== false} onOpenRun={p.onOpenRun}/>}
+              <RelatedTasks parent={parent} subtasks={children} onOpen={(t) => void leave(() => p.onTask(t))}/>
+              {!task.is_template && !task.archived && p.canEdit !== false && <AddSubtask disabled={locked} onAdd={async (title) => {
+                await finish();
+                const created = await p.mutate("task.create", { title, parent_task_id: p.id }, "Subtask added");
+                if (!created) throw new Error("The subtask was not added.");
+              }}/>}
+              <LinkedNotes taskId={p.id} disabled={locked} onOpen={(id) => void leave(() => p.onNote(id))} onNew={() => void leave(() => p.onNewNote(current.current!))}/>
+              <TaskSchedule reminders={reminders} isTemplate={!!task.is_template} disabled={locked}
+                onReminder={(s) => void leave(() => p.onReminder(s, current.current!))} onReserve={() => void leave(() => p.onBlock(current.current!))}/>
               <Suspense fallback={null}><LinearTask
                 task={task}
                 mutate={p.mutate}
@@ -665,6 +557,7 @@ function StandardTaskDetails(p: Props) {
                 >
                   {task.archived ? "Restore task" : "Archive task"}
                 </button>
+                {p.canEdit !== false && !task.archived && !task.is_template && <SaveTemplate row={customHome} hasContents={!!(customHome?.contents?.direct ?? children.length)} disabled={locked} beforeOpen={finish} onNotice={setNotice}/>}
                 {task.external?.url && /^https?:\/\//.test(task.external.url) && (
                   <a className="btn btn-ghost btn-sm" href={task.external.url} target="_blank" rel="noreferrer">
                     <ExternalLink size={14} />
@@ -672,6 +565,7 @@ function StandardTaskDetails(p: Props) {
                   </a>
                 )}
               </div>
+              {notice && <p className="detail-notice" role="status">{notice}</p>}
             </aside>
           </div>
         )}

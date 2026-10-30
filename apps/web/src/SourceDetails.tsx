@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { api } from "./api";
 import { useStructureActions } from "./structure-actions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
+import { TASK_CARD_SECTIONS } from "./task-card-sections";
 
 export type SourceInfo={provider:string;label:string;context?:string;url?:string|null;sync_state?:string;identifier?:string;read_only_reason?:string;editable_fields?:string[];read_only_fields?:string[];local_only_fields?:string[];details?:Record<string,unknown>};
 const defaults:Record<string,string>={eridani:"#9edac8",linear:"#e4a261",google:"#e995bd"};
@@ -27,7 +28,7 @@ function providerValue(value:unknown):string {
 export function SourceDetails({source}:{source?:SourceInfo}){
  if(!source)return null;
  const names=(values?:string[])=>values?.map(v=>v.replaceAll("_"," ")).join(", ");
- return <section className="detail-section source-details" aria-label="Source"><div className="detail-section-head"><SourceBadge source={source}/>{source.identifier&&<strong>{source.identifier}</strong>}
+ return <section className="detail-section source-details" aria-label={TASK_CARD_SECTIONS.source}><div className="detail-section-head"><SourceBadge source={source}/>{source.identifier&&<strong>{source.identifier}</strong>}
  {source.url&&/^https?:\/\//i.test(source.url)&&<a href={source.url} target="_blank" rel="noreferrer">Open original <ExternalLink size={13}/></a>}</div>
  {source.context&&<p className="footnote">{source.context}</p>}{source.sync_state&&source.sync_state!=="local"&&<p role="status">Sync: {source.sync_state.replaceAll("_"," ")}</p>}
  {source.read_only_reason&&<p>{source.read_only_reason}</p>}
@@ -66,7 +67,7 @@ export function SourceNotes({kind,id,canEdit=true,onGuard}:{onGuard?:(guard:Guar
  };
  useEffect(()=>{onGuard?.({dirty:draft!==saved,busy:busy||saving,flush:async()=>{if(flight.current)await flight.current;if(latest.current.draft===latest.current.saved)return;if(error)throw new Error(error);await save();}});},[draft,saved,busy,saving,error,data,onGuard]);
  useEffect(()=>()=>onGuard?.(null),[onGuard]);
- return <details className="detail-section"><summary>Eridani-only notes{draft!==saved?" · Unsaved":""}</summary><p className="footnote">Visible in this workspace; never sent to the source.{kind==="google"?" Notes on a recurring event belong to the cached event or series, not each projected occurrence.":""}</p>
+ return <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes{draft!==saved?" · Unsaved":""}</summary><p className="footnote">Visible in this workspace; never sent to the source.{kind==="google"?" Notes on a recurring event belong to the cached event or series, not each projected occurrence.":""}</p>
  {error&&<div role="alert"><p>{error} Your draft is kept.</p><button className="btn btn-sm" onClick={()=>void fetch().then(setComparison).catch(e=>setError(e.message))}>Compare saved notes</button>{comparison&&<><p>{String(comparison.local_notes??"Empty")}</p><button className="btn btn-sm" disabled={busy||!canEdit} onClick={()=>void save(comparison).catch(()=>{})}>Reapply my notes</button><button className="btn btn-sm" onClick={()=>{setData(comparison);setDraft(String(comparison.local_notes??""));setSaved(String(comparison.local_notes??""));setComparison(null);setError("");}}>Use saved notes</button></>}</div>}
  <textarea rows={3} aria-label="Eridani-only notes" maxLength={30000} value={draft} disabled={!canEdit||busy||saving||!data} onChange={e=>setDraft(e.target.value)} onBlur={()=>{if(draft!==saved)void save().catch(()=>{});}}/>
  </details>;

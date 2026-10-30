@@ -9,13 +9,18 @@ def native(identity=None):
             "sync_state":"local", "context":"This workspace", "url":None,
             "editable_fields":[], "read_only_fields":[], "local_only_fields":["local_notes", "main_home", "custom_fields"]}
 
-def task_source(db, task):
+_UNSET = object()
+
+
+def task_source(db, task, *, link=_UNSET, connection=_UNSET):
+    """link/connection: prefetched rows (structure.Prefetch); looked up when not given."""
     from .linear_sync import link_for_task
     from .models import LinearConnection
-    link = link_for_task(db, task.owner_id, task.id)
+    if link is _UNSET:
+        link = link_for_task(db, task.owner_id, task.id)
     if not link:
         return native(task.id)
-    conn = db.get(LinearConnection, task.owner_id)
+    conn = db.get(LinearConnection, task.owner_id) if connection is _UNSET else connection
     snap = link.snapshot or {}
     state = link.sync_state if conn and conn.enabled else "disconnected"
     reason = ("This issue is unlinked; edits stay in Eridani." if state == "unlinked" else

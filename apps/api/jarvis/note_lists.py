@@ -410,6 +410,8 @@ def mutate(db, owner, tool, args, command_id):
     check_revision(note, args.expected_revision)
     if note.archived:
         raise DomainError("ARCHIVED_RECORD", "Restore this note first.")
+    from .agent_actor import note_gate
+    note_gate(db, note)
     if tool == "note.organize":
         job = queue_note(db, note, force=True)
         return {"note_id": note.id, "queued": bool(job), "job_id": job.id if job else None}

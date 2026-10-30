@@ -14,6 +14,7 @@ import {Onboarding} from "./Onboarding";
 import { SETUP_REQUEST } from "./setup-model";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
+import { TaskCardHostContext } from "./TaskCardSections";
 import { MemoryRow, MemoryStatus } from "./MemoryActions";
 import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth, matchesMaxWidth, COMPACT_MAX_WIDTH, PHONE_MAX_WIDTH, NARROW_MAX_WIDTH } from "./ux";
 import { PublicFooter } from "./PublicPages";
@@ -269,6 +270,23 @@ export default function App() {
   function openCalendarEntry(entry: CalendarEntry) {
     if (entry.kind === "google") setGoogleEvent(entry);
     else setCalendarDetail(entry);
+  }
+  /** Reserve time for a task: a new calendar work block linked to it. */
+  function reserveTime(task: Task) {
+    setGoogleEvent({
+      id: "new",
+      entity_id: "new",
+      kind: "block",
+      title: "Work block",
+      date: task.due_date ?? today,
+      at: null,
+      status: "active",
+      project_id: task.project_id,
+      task_id: task.id,
+      revision: 1,
+      projected: false,
+      notification_id: null,
+    });
   }
   const [tasks, setTasks] = useState<Task[]>([]),
     [schedules, setSchedules] = useState<Schedule[]>([]),
@@ -2319,7 +2337,13 @@ export default function App() {
     </>
   );
   return (
-    <RecordNavigator workspace={boot.workspace?.id ?? "personal"} view={view} onOpen={openLinkedRecord}><div
+    <RecordNavigator workspace={boot.workspace?.id ?? "personal"} view={view} onOpen={openLinkedRecord}><TaskCardHostContext.Provider value={{
+      tasks, schedules,
+      openNote: (id) => void openNote(id),
+      newNote: (task) => { setNoteEditor(blankNote(task)); setError(""); },
+      reminder: (schedule, task) => setScheduleEditor({ schedule, task }),
+      reserveTime,
+    }}><div
       className={
         "app-shell density-" +
         density +
@@ -3371,20 +3395,7 @@ export default function App() {
             setCalendarDetail(null);
           }}
           onBlock={(task) => {
-            setGoogleEvent({
-              id: "new",
-              entity_id: "new",
-              kind: "block",
-              title: "Work block",
-              date: task.due_date ?? today,
-              at: null,
-              status: "active",
-              project_id: task.project_id,
-              task_id: task.id,
-              revision: 1,
-              projected: false,
-              notification_id: null,
-            });
+            reserveTime(task);
             setCalendarDetail(null);
           }}
           organization={organization}
@@ -3569,7 +3580,7 @@ export default function App() {
           }}
         />
       )}
-    </div></RecordNavigator>
+    </div></TaskCardHostContext.Provider></RecordNavigator>
   );
 }
 

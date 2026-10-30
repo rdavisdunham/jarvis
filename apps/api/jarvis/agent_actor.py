@@ -7,6 +7,9 @@ key without a run binding is `bot`, and a signed-in browser is `human`.
 While a task has an unsettled run, only a human, source sync or the run judge (the coordinator)
 may complete it or edit its gate fields. A human or source completion records the override and
 moves the run to `stopping(task_completed_externally)`; it never asserts that the run stopped.
+
+The same run makes its task's PRD note (`tasks.prd_note_id`) read-only to every actor but a human
+(`note_gate`): the judge reads the frozen plan, so the live note must not drift from it under an agent.
 """
 
 from contextlib import contextmanager
@@ -100,3 +103,37 @@ def gate(db, owner, task, changes):
         from .run_coordinator import external_completion
 
         external_completion(db, run, actor)
+
+
+def prd_run(db, note_id):
+    """The unsettled run whose task uses this note as its PRD, or None. Not locked: the note row is."""
+    from sqlalchemy import select
+
+    from .models import Task
+    from .session_models import TERMINAL_RUN_STATES, AgentRun
+
+    return db.scalars(select(AgentRun).join(Task, Task.id == AgentRun.task_id)
+                      .where(Task.prd_note_id == note_id, Task.owner_id == AgentRun.owner_id,
+                             AgentRun.state.not_in(TERMINAL_RUN_STATES))
+                      .order_by(AgentRun.created_at)).first()
+
+
+def note_gate(db, note):
+    """Called from every note mutation (note.update/append/replace, note.file, note.organize, revert) before
+    it applies. While the note is the PRD of a task with an unsettled run only a human may change it, and
+    submit_plan may rewrite its own run's PRD. Returns the run for a human edit (to warn), else None."""
+    run = prd_run(db, note.id)
+    if run is None:
+        return None
+    actor = current()
+    if (actor.kind == "run_session" and actor.capability == "plan_write" and actor.verified
+            and actor.run_id == run.id):
+        return None
+    if actor.kind != "human":
+        raise DomainError("RUN_OWNS_PRD", f"Run {run.id} froze this note as its task's PRD; only you can change it "
+                          "until the run settles.", 409, data={"run_id": run.id, "state": run.state, "task_id": run.task_id})
+    return run
+
+
+FROZEN_WARNING = ("This note is the PRD frozen with run {run_id}. Your edit changes the note, not the plan the run "
+                  "is executing and judged against.")
