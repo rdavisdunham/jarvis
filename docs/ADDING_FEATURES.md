@@ -305,7 +305,11 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
 - [ ] Scoping: `owner_id: String(100), index=True` is the workspace namespace (personal account or
       shared workspace); `account_id` is the person. Read through `domain.owned(db, Model, id, owner)`.
 - [ ] Privacy and lifecycle: `api.py` `export` is a hand-written model list; decide whether the new
-      table belongs in the account export. Agent tables have retention in `agent_retention.py`.
+      table belongs in the account export. Agent tables have retention in `agent_retention.py`, and a
+      new `session_models.py` table must be named in `docs/AGENT_CONTROL.md` "Retention and redaction"
+      with what it holds, how long, and whether it is exported (`agent_retention.export_tables`); guard:
+      `tests/test_agent_retention.py::test_every_agent_table_is_in_the_retention_doc`. A new column that
+      copies run text (a history key, a result field) belongs in `agent_retention.redact` too.
 - [ ] `tests/test_release_migrations.py` holds per-migration upgrade/downgrade tests with real rows;
       add one when the migration transforms data.
 
@@ -358,9 +362,10 @@ Two patterns exist; pick deliberately.
   reads `boot.preferences` (`types.ts` `Preferences`) and edits through the `settings.update` command
   (for example `PlannerPreferences.tsx` `NotificationPreferences`).
 - Owner-only gate Eri must not flip (remotea): a dedicated route writes `OwnerSettings.values`
-  (`remotea_routes.set_enabled` for `remotea_enabled`, `remotea_auto_complete`, `agent_quiet_bypass`),
-  **not** `SettingsUpdate`. Readers: `agent_link.enabled` / `gate`, `run_coordinator.auto_complete` /
-  `quiet_bypass`. `remotea_enabled` also has a default in `preferences()` so the web sees it in
+  (`remotea_routes.set_enabled` for `remotea_enabled`, `remotea_auto_complete`, `agent_quiet_bypass`,
+  and `agent_retention_days` via `POST /remotea/retention`), **not** `SettingsUpdate`. Readers:
+  `agent_link.enabled` / `gate`, `run_coordinator.auto_complete` / `quiet_bypass`,
+  `agent_retention.window`. `remotea_enabled` also has a default in `preferences()` so the web sees it in
   `boot.preferences`; the other two are read only through their helpers.
 
 Checklist:
@@ -469,6 +474,9 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | `test_settings_can_grant_every_bot_scope_but_the_link_key` | scopes buildable in `BotSettings.tsx` == `bot_access.SCOPES` minus `agents:control` |
 | `test_external_record_kinds_and_mcp_reads_agree` | `external_service.Kind` == `KINDS`; each `CUSTOM_READS` tool appears in `external_mcp.definitions` for its `READ_SCOPES` scope |
 
+Also: `tests/test_agent_retention.py::test_every_agent_table_is_in_the_retention_doc` (every `session_models.py`
+table is named in `AGENT_CONTROL.md` "Retention and redaction").
+
 Worth adding (lists in two places with no test yet):
 
 - `action_history.MODELS` keys vs `Activity.tsx` `editable`.
@@ -488,7 +496,8 @@ Worth adding (lists in two places with no test yet):
   `target.view == "remotea"`; the remotea link websocket was invisible to the surface inventory;
   `agent_control` had no entry in `evals/app/features.json` (it now has 25 unbound scenarios; the
   outcome eval stays in `evals/agent_control/`); `EXTERNAL_AGENTS.md` said "Settings → Integrations".
-- `api.py` `export` omits structure records, record templates and agent session/run tables. I could not
-  tell whether that is intentional.
+- `api.py` `export` omits structure records and record templates. I could not tell whether that is
+  intentional. (Agent tables: exported or excluded by name with a reason, `docs/AGENT_CONTROL.md`
+  "Retention and redaction".)
 - `bot_access.SCOPES` is served to the web (`GET /api/v1/bot-keys` → `scopes`) but `BotSettings.tsx`
   ignores it and hard-codes the groups; rendering from the server list would remove a mirror.

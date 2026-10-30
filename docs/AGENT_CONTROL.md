@@ -649,6 +649,8 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
+| `POST /runs/{id}/redact` | no (owner only) | delete a settled run's content now; the skeleton stays (`409 RUN_ACTIVE` before it settles; see "Retention and redaction") |
+| `POST /retention {days}` | no (owner only) | the run retention window, `agent_retention_days` (1–3650, default 90) |
 | `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses`, `verify`, `enabled`, `launch`, `verify_status` and `mcp` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
 
@@ -1250,22 +1252,74 @@ same file). Host free text is redacted on ingestion: turn text and prompt, statu
 question text and choices, `question.resolved` details, verify tails and errors, outcome details, and
 the session ledger's title, prompts and excerpt.
 
-### Retention and quotas (`agent_retention.py`)
+### Retention and redaction (`agent_retention.py`)
 
-The worker's housekeeping pass (every 12th supervisor cycle) deletes:
+`redaction.py` (above) removes secrets from what is stored. This section is about how long run content is
+stored at all, and every place a copy of it lives.
 
-| Data | Kept for |
-|---|---|
-| Turns of sessions no run owns | 30 days |
-| A settled run's turns, questions, attempts, interviews and commands (the run, plans and history stay) | 90 days after it finished |
-| The payload of a settled command | 7 days |
-| `agent_parity`, `agent_parity_days`, `agent_ingest_days`, expired pending controls | 30 days |
-| Run action receipts (`agent_action_receipts`) | 7 days |
+**The window.** A settled run's content is kept for the owner's run retention window: `agent_retention_days`
+in `OwnerSettings` (default **90**, 1–3650), set with `POST /api/v1/remotea/retention {days}` (owner-only;
+works while remotea is off) and returned as `retention_days` by `GET /remotea/status`. There is no Settings
+control for it yet; the route is the way to change it. The window starts at the run's `finished_at`; an
+unsettled run is never swept.
 
-Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it the turn
-is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the next
-day. `GET /remotea/runs/{id}` pages turns and commands: the newest `limit` (default 100, ≤ 200), `offset`
-for older, `more.turns` / `more.commands` when there are more.
+**At the window** the worker's housekeeping pass (every 12th supervisor cycle, `sweep`) deletes the run's
+child records and then **redacts** the skeleton that outlives them (`redact`, at most 200 runs per pass; a
+run is redacted once, marked by a `redacted` history entry with reason `retention`):
+
+- every `history[]` entry's `text` and `detail` become `[redacted after retention]`; `at`, `from`, `to`,
+  `event`, `reason`, `revision`, `actor`, `kind`, `mode`, `verdict`, ids and counts stay;
+- every frozen plan's `prd_text` becomes the marker and `proposals` (the agent's proposed criterion texts
+  and reasons) becomes null; `title`, `steps`, `criteria` (the ids and texts the judge used), `verify`,
+  `required_children` and `completion_policy` stay, so the run still says what it was judged against;
+- the run's notification bodies and pending-control summaries become the marker (a pending control also
+  loses `arguments.text`); the run's action receipts are deleted.
+
+**Deleting one run now.** `POST /api/v1/remotea/runs/{id}/redact` (owner-only, CSRF, works while remotea is
+off; `409 RUN_ACTIVE` until the run has settled; another workspace's run is `404`) deletes the run's turns,
+questions, interviews and commands, scrubs the copies as above (history reason `owner`), and keeps the
+attempts with their verdict, rules, exit code and each criterion's id and status while their `tail`,
+`error`, `gap`, `summary`, `detail` and per-criterion `evidence` become the marker. It returns
+`{redacted: {counts}, run: <detail>}`. Bot `agents:read` reads (`run_list`, `run_get`) and the page read
+the same rows, so after either redaction they show the marker and never the text.
+
+**Every place run content lives.** Each `agent_*` table and the other copies, with what is kept:
+
+| Where | Content | Kept |
+|---|---|---|
+| `agent_turns` `text`, `prompt` | the agent's final responses and the typed prompts (bounded bytes) | a run's (and the unattributed turns of the session it owns): deleted at the window; a session no run owns: 30 days |
+| `agent_commands` `payload`, `outcome` | spawn prompt and run token (`[redacted]` once acked), input `text`, outcome details | payload emptied 7 days after the command settles; the row is deleted at the window |
+| `agent_run_plans` `prd_text`, `proposals` | the frozen PRD, the agent's proposals | marker / null at the window; title, steps, criteria, verify, policy kept with the run |
+| `agent_runs` `history[]` | `sent` (≤ 2,000 chars of each message to the agent), transition and outcome `detail` (≤ 300 chars) | bounded to 200 entries; `text`/`detail` become the marker at the window, the rest stays |
+| `agent_runs` other columns | state, reason codes, branch, worktree path, base facts, Linear outcome codes (`sync_state`) | kept with the run (no free agent text) |
+| `agent_attempts` `result` | verify tail (≤ 8,000) and error, the judge's gap, summary and per-criterion evidence | deleted at the window; the redact route keeps the row and scrubs the text |
+| `agent_questions` `items`, `answers`, `detail` | the agent's questions, choices and the answers | a run's: deleted at the window; a session no run owns: 30 days once no longer open |
+| `agent_interviews` `questions`, `answers` | the interview form and answers | deleted at the window |
+| `agent_pending_controls` `summary`, `arguments` | Eri's proposed start or message | marker at the window; the row is deleted 30 days after it expires (10-minute expiry) |
+| `agent_action_receipts` `result` | a whole run response (history included) | 7 days; deleted at the window and by the redact route |
+| `notifications` `body` (`target.run_id`) | task title plus a question's text or a reason | marker at the window; the row follows the notification lifecycle |
+| `agent_sessions` title, prompts, excerpt, `summary` | the collector's session ledger (redacted on ingestion) | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns |
+| `agent_session_rules`, `agent_hosts`, `execution_targets`, `autolink_rejections`, `migration_counters`, `migration_reservations` | configuration: folder rules, host caps and worktree reports, repo paths and verify commands, numbers | kept until changed or removed; no run text |
+| `agent_parity`, `agent_parity_days`, `agent_ingest_days` | collector-vs-link diffs, daily counts | 30 days |
+| Bot `agents:read` output | `public_run` of the rows above | live view: the marker after redaction, nothing after deletion |
+| Action journal (`action_changes`) | an encrypted `control.*` entry: title (proposal summary or task title) and status | follows the action journal's retention |
+| Linear comment (`agent_sync.comment_body`) | criteria ids and status, verify id and status, PR links: no free text | lives in Linear |
+
+**Account export.** `GET /api/v1/export` includes `agent_runs` (without `run_token_hash` / `run_token_salt`),
+`agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews` and `agent_sessions` (without the
+embedding and fingerprints) as they are now: redacted rows export the marker, deleted rows are absent
+(`agent_retention.export_tables`). It leaves out `agent_turns` (up to 64 MiB a day per owner, and the export
+is built in memory; the host keeps the transcript and `GET /remotea/runs/{id}` pages them), `agent_commands`
+(the host-facing journal: its input texts are the `sent` history entries, and a spawn payload carried a run
+token until acked) and the configuration and counter tables in the last rows above.
+
+**Quotas.** Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it
+the turn is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the
+next day. `GET /remotea/runs/{id}` pages turns and commands: the newest `limit` (default 100, ≤ 200),
+`offset` for older, `more.turns` / `more.commands` when there are more.
+
+Other retention: the payload of a settled command, 7 days; run action receipts, 7 days; `agent_parity`,
+`agent_parity_days`, `agent_ingest_days` and expired pending controls, 30 days.
 
 ### Notifications and transport
 
