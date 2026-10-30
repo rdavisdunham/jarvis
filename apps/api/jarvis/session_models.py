@@ -272,6 +272,8 @@ class AgentRun(Base):
     turn_seq: Mapped[int] = mapped_column(Integer, default=0)
     # submit_plan froze a revision; executing starts once the planning turn settles.
     plan_pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Freestyle (0034): the operator talks to the agent directly; turns are recorded but not verified, judged or capped.
+    freestyle: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
     no_progress_limit: Mapped[int] = mapped_column(Integer, default=45 * 60)  # seconds
     last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

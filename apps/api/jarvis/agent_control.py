@@ -57,6 +57,11 @@ class StartInput(Input):
     interview: bool | None = None
 
 
+class FreestyleInput(Input):
+    enabled: bool
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class ReplanInput(Input):
     reason: str = Field(default="", max_length=2000)
     expected_revision: int | None = Field(default=None, ge=1)
@@ -245,9 +250,12 @@ def freeze(db, owner, run, task):
     if task.prd_note_id:
         note = db.get(Note, task.prd_note_id)
         prd = note.content if note and note.owner_id == owner and not note.archived else ""
+    from .agent_plan import default_verify
+
+    verify, _ = default_verify(db, run, task.success_criteria or [], task.verify)
     plan = AgentRunPlan(owner_id=owner, run_id=run.id, revision=1, task_plan_revision=task.plan_revision or 0,
                         title=task.title, prd_text=prd or task.notes or "", steps=list(task.steps or []),
-                        criteria=list(task.success_criteria or []), verify=task.verify,
+                        criteria=list(task.success_criteria or []), verify=verify,
                         completion_policy=task.completion_policy or "code_ready",
                         required_children=[c.id for c in coordinator.children(db, task)
                                            if any(s.get("task_id") == c.id for s in task.steps or [])],
@@ -436,6 +444,27 @@ def approve(db, owner, run_id, body, *, actor):
     return public_run(db, run)
 
 
+def set_freestyle(db, owner, run_id, body, *, actor):
+    """Freestyle: the operator talks to the agent directly. Turns are recorded but not verified, judged or counted
+    toward the cap, and no gap prompts are sent. A run the judge parked goes back to executing so the conversation
+    can continue; turning freestyle off makes the next turn judged again."""
+    run = coordinator.load(db, owner, run_id)
+    coordinator.check_revision(run, body.expected_revision)
+    if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
+        raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    if bool(run.freestyle) != body.enabled:
+        run.freestyle = body.enabled
+        coordinator.note(run, "freestyle", enabled=body.enabled, actor=actor.record())
+        if body.enabled and run.state == "needs_you" and run.state_reason in FREESTYLE_RESUMES and run.surf:
+            coordinator.transition(db, run, "executing", actor=actor, reason="freestyle")
+        emit(db, owner, "agent.changed", run.id)
+    return public_run(db, run)
+
+
+# needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
+FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge"}
+
+
 def answer_question(db, owner, question_id, body, *, actor):
     question = db.scalar(select(AgentQuestion).where(AgentQuestion.id == question_id, AgentQuestion.owner_id == owner)
                          .with_for_update())
@@ -542,7 +571,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
         "turn_cap": run.turn_cap, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
-        "turn_seq": run.turn_seq, "plan_pending": run.plan_pending,
+        "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
         "base": base_info(db, run, host),
@@ -579,11 +608,18 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                     "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]}
                    for t in turns],
             commands=[public_command(c) for c in commands],
+            verify_options=sorted(agent_plan_verify_ids(db, run)),
             more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
             questions=[public_question(q) for q in db.scalars(
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
     return encode(result)
+
+
+def agent_plan_verify_ids(db, run):
+    from .agent_plan import verify_ids
+
+    return verify_ids(db, run)[1]
 
 
 def agent_plan_public(row):

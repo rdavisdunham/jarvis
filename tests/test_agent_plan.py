@@ -358,3 +358,78 @@ def test_a_plan_that_only_adds_or_omits_human_criteria_never_pauses(host):  # no
                 **{**PLAN, "expected_plan_revision": plan_revision})  # Does not even list c1.
     assert plan["proposals"] is None and [c["text"] for c in plan["success_criteria"]] == ["Tests pass", "p95 under 50 ms"]
     assert turn(run_id, 1) == ("executing", "plan_frozen")
+
+
+# ---------------------------------------------------------------- verify by default, and set mid-run (run 75661a23)
+
+
+def test_criteria_that_ask_for_tests_get_the_targets_verify_by_default(verifying_host):  # noqa: F811
+    assert agent_plan.needs_evidence([{"text": "The full test suite passes"}])
+    assert agent_plan.needs_evidence([{"text": "CI is green"}]) and agent_plan.needs_evidence([{"text": "x", "kind": "verify"}])
+    assert not agent_plan.needs_evidence([{"text": "The drawer shows the base branch"}])
+    assert agent_plan.pick_verify({"lint", "tests", "web"}) == "tests" and agent_plan.pick_verify({"b", "a"}) == "a"
+    # A manual start (no interview) on a task whose criteria mention tests but set no verify.
+    created = task("Planned without verify", success_criteria=[{"id": "c1", "text": "pytest passes"}], notes="Do it.")
+    result = start(verifying_host, created["id"], interview=False)
+    attached(verifying_host, result["id"])
+    with session_scope() as db:
+        plan = coordinator.frozen(db, db.get(AgentRun, result["id"]))
+        assert plan.verify == {"target_id": verifying_host.target_id, "verify_id": "tests", "by": "default"}
+        spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == result["id"], AgentCommand.kind == "spawn"))
+        assert spawn.payload["verify"] == {"verify_id": "tests", "plan_revision": 1}
+    # The interview path: submit_plan without verify, criteria about tests → the default is frozen (one id offered: no proposal).
+    _, run_id = interviewing(verifying_host)
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+                **{**PLAN, "success_criteria": [{"text": "vitest and pytest pass"}]})
+    assert plan["verify"] == {"target_id": verifying_host.target_id, "verify_id": "tests", "by": "default"} and not plan.get("proposals")
+    # A later human-free plan may replace a default verify (it is not a floor).
+    with session_scope() as db:
+        assert agent_plan.human_verify(db.get(Task, created["id"])) is None
+
+
+def test_a_default_verify_among_several_is_proposed_for_review(verifying_host):  # noqa: F811
+    with session_scope() as db:
+        row = db.get(AgentHost, verifying_host.id)
+        row.caps = {**row.caps, "targets": [{**row.caps["targets"][0], "verify": ["lint", "tests"]}]}
+    _, run_id = interviewing(verifying_host)
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+                **{**PLAN, "success_criteria": [{"text": "the test suite passes"}]})
+    proposal = plan["proposals"]["verify"]
+    assert proposal["current"] is None and proposal["proposed"]["verify_id"] == "tests" and proposal["options"] == ["lint", "tests"]
+    assert state(run_id)[0] == "planning"
+
+
+def test_the_operator_sets_a_verify_command_mid_run(verifying_host, client):  # noqa: F811
+    created = task("No verify", success_criteria=[{"id": "c1", "text": "the drawer shows the base"}], notes="Do it.")
+    result = start(verifying_host, created["id"], interview=False)
+    attached(verifying_host, result["id"])
+    run_id = result["id"]
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert coordinator.frozen(db, row).verify is None
+        revision = row.state_revision
+    detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
+    assert detail["verify_options"] == ["tests"] and detail["plan"]["verify"] is None
+    bad = client.post(f"/api/v1/remotea/runs/{run_id}/verify-config", json={"verify_id": "nope", "expected_revision": revision})
+    assert bad.status_code == 400 and bad.json()["error"]["code"] == "VERIFY_UNKNOWN"
+    r = client.post(f"/api/v1/remotea/runs/{run_id}/verify-config", json={"verify_id": "tests", "expected_revision": revision})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["plan_revision"] == 2 and body["plan"]["verify"]["verify_id"] == "tests" and body["plan"]["verify"]["by"] == "human"
+    assert [h for h in body["history"] if h.get("event") == "verify_set"]
+    assert turn(run_id, 1) == ("verifying", "turn")  # The next turn is verified.
+
+
+def test_setting_verify_on_a_parked_run_resumes_it(verifying_host, client):  # noqa: F811
+    created = task("Parked", success_criteria=[{"id": "c1", "text": "the drawer shows the base"}], notes="Do it.")
+    result = start(verifying_host, created["id"], interview=False)
+    attached(verifying_host, result["id"])
+    run_id = result["id"]
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id, with_for_update=True)
+        coordinator.transition(db, row, "judging", reason="turn")
+        coordinator.transition(db, row, "needs_you", reason="verify_missing")
+    r = client.post(f"/api/v1/remotea/runs/{run_id}/verify-config", json={"verify_id": "tests"})
+    assert r.status_code == 200, r.text
+    assert state(run_id) == ("executing", "verify_set")
+    assert any("verify command" in text for text in inputs(run_id))

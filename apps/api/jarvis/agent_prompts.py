@@ -65,7 +65,7 @@ def interview(task, children, notes=""):
     ])
 
 
-def planning(interview_row):
+def planning(interview_row, verify_ids=()):
     """Sent as the next input once the operator answered the interview form."""
     answered = []
     for question in interview_row.questions:
@@ -79,8 +79,27 @@ def planning(interview_row):
         "Now write the PRD with success criteria and call submit_plan (prd, steps with ids, success_criteria with "
         "kind text or verify, verify config if the execution target offers one, migration: true if the plan adds a "
         "database migration, expected_plan_revision from task_plan), then stop. Keep the linked sub-task steps. Do not start the work yet.",
+        verify_guidance(verify_ids),
         FLOOR,
     ])
+
+
+def verify_guidance(verify_ids):
+    """Any criterion about tests, a suite, CI, lint or a build needs a verify command, or the judge can only see claims."""
+    offered = ", ".join(sorted(verify_ids))
+    if not offered:
+        return ("This execution target offers no verify command, so the judge cannot record test results: write "
+                "criteria the final response can show on its own, or say plainly that tests run only in CI.")
+    return (f"Verify commands this execution target offers: {offered}. Eridani runs the plan's verify command after "
+            "every turn and records the result; the judge trusts only that record, never test output quoted in a "
+            "response. Any criterion about tests, a suite, CI, lint or a build must therefore name one of these in "
+            "`verify` (and `kind: verify` criteria must name the same id). If none fits, say so in the PRD instead of "
+            "writing a criterion that cannot be checked.")
+
+
+def verify_set(verify_id):
+    return (f"The operator set `{verify_id}` as this plan's verify command. Eridani now runs it after every turn and "
+            "records the result, which is what the judge reads. Make sure the work passes it, then end your turn.")
 
 
 FLOOR = ("The operator's own success criteria (those without by: agent in task_plan) are the floor: repeat each one by id "

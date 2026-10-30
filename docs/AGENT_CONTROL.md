@@ -487,15 +487,43 @@ transition records `actor: run_judge`.
   `stopping(judge_met, final completed)` (push `agent_done`); else `awaiting_approval` (push
   `agent_done`). **Approve** (a human) completes it.
 - `not_met` → if `turn_count ≥ turn_cap`: `capped` (the last allowed turn was judged first; push
-  `agent_stuck`). If the last three verdicts were `not_met` with the same gap (case and spacing ignored):
-  `needs_you(no_progress_gap)`. Else back to `executing` with the gap prompt as the next `input`
-  (recorded with `source: eridani`).
+  `agent_stuck`). If the last three verdicts were `not_met` with the same gap (case and spacing ignored)
+  **or fired the same hard rules** (the judge rewords a gap it cannot close): `needs_you(no_progress_gap)`.
+  Else back to `executing` with the gap prompt as the next `input` (recorded with `source: eridani`).
+- **`verify_missing`** (rule): a `not_met` gap that asks for a recorded or independent verification on a plan
+  that has **no** verify command becomes `needs_you(verify_missing)` at once. Nothing the agent does in its
+  worktree can record a verification (run 75661a23 looped six turns on this); only the operator can set one
+  (`POST /runs/{id}/verify-config`, the run header's **Set verify**) or approve on the evidence shown.
 - `needs_you` → `needs_you(judge_needs_you)` with the gap; push `agent_stuck`.
 - **Steps**: the judge may mark `todo`/`doing` steps `done` (`by: judge:<run>`), may mark an agent's
   `done` step `disputed` when the verification contradicts it, and never moves a `done` step back.
 
 Limits: the wall clock (6 h) now also covers interviewing, planning, verifying and judging; the 45-minute
 no-progress timer still applies to executing.
+
+### Verify by default, and set mid-run
+
+A criterion that asks for test evidence (`kind: verify`, or text naming tests, a suite, pytest, vitest, CI, lint,
+typecheck, compile or build: `agent_plan.EVIDENCE`) can only be judged from a recorded verification. When a plan is
+frozen without a verify command and such a criterion exists, Eridani names the execution target's verify command
+itself (`agent_plan.default_verify`: `all`/`full`/`tests`/`test`/`check`/`ci` if offered, else the first id;
+stored with `by: default`, which is not a human floor and may be replaced). When the target offers several ids
+the pick is a plan-review proposal (`proposals.verify` with `current: null` and `options`); declining it leaves the
+plan without verification. The planning prompt lists the offered ids and says a test criterion must name one.
+
+`POST /remotea/runs/{id}/verify-config {verify_id, expected_revision?}` (`agent_plan.set_verify`): the operator
+adds or swaps the verify command mid-run. The task's verify is set as a human edit, the plan is frozen again as
+revision N+1 with nothing else changed (history `verify_set`), and a run parked in `needs_you` goes back to
+`executing(verify_set)` with a short prompt so its next turn is verified. `GET /runs/{id}` lists `verify_options`.
+
+### Freestyle
+
+`POST /remotea/runs/{id}/freestyle {enabled, expected_revision?}` (`agent_runs.freestyle`, migration 0034): the
+operator talks to the agent directly. While on, a root turn is recorded (history `turn` with `freestyle: true`)
+but not verified, judged or counted toward the turn cap, no gap prompt is sent, and the 45-minute no-progress
+timer is skipped (the wall clock still applies). Turning it on from `needs_you(judge_needs_you | no_progress_gap |
+verify_missing | no_progress | turn_cap | awaiting_merge)` resumes `executing(freestyle)`; turning it off makes
+the next turn judged again. Approve and Stop work as usual. The run header shows the toggle.
 
 ### auto_complete
 
@@ -528,6 +556,8 @@ completion.
 | `POST /interviews/{id}/answers` | yes | interview form |
 | `POST /runs/{id}/replan {reason?}` | yes | |
 | `POST /runs/{id}/verify` | yes | on-demand verification |
+| `POST /runs/{id}/verify-config {verify_id}` | yes | set the plan's verify command mid-run (new revision) |
+| `POST /runs/{id}/freestyle {enabled}` | yes | judge, verify, cap and gap prompts off while on |
 | `POST /auto-complete {enabled}` | yes | rollout flag |
 
 The run drawer adds the interview form (one form for all questions), success criteria with the latest

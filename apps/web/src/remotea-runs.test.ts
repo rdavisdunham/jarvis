@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnswers, defaultScope, linkedRun, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedSummary, type Host, type NeedsTarget, type Run, type RunDetail, type RunQuestion,
+  unmergedSummary, verifyLine, type Host, type NeedsTarget, type Run, type RunDetail, type RunQuestion,
 } from "./remotea-model";
 
 const host = (connected: boolean): Host => ({
@@ -124,5 +124,21 @@ describe("execution target picker", () => {
     expect(needsTargetData({ task_id: "t1", candidates: [], advertised: [], records: [] })).not.toBeNull();
     expect(needsTargetData({ task_id: "t1" })).toBeNull();  // A target without a server: shown as an error instead.
     expect(needsTargetData(null)).toBeNull();
+  });
+});
+
+describe("verifyLine", () => {
+  const plan = { revision: 1, title: "t", prd_text: "", steps: [], criteria: [{ id: "c1", text: "tests pass" }], verify: null };
+  it("names the command that runs after each turn", () => {
+    expect(verifyLine({ plan: { ...plan, verify: { target_id: "x", verify_id: "tests" } }, verify_options: ["tests"] }))
+      .toEqual({ current: "tests", options: ["tests"], text: "Verified by tests after each turn", canSet: false });
+  });
+  it("flags a plan with criteria but no verify, offering the target's ids", () => {
+    const line = verifyLine({ plan, verify_options: ["lint", "tests"] });
+    expect(line.current).toBeNull();
+    expect(line.text).toMatch(/No verify command/);
+    expect(line.canSet).toBe(true);
+    expect(verifyLine({ plan, verify_options: [] }).canSet).toBe(false);
+    expect(verifyLine({ plan: { ...plan, criteria: [] }, verify_options: ["tests"] }).text).toBe("");
   });
 });

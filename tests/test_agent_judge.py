@@ -323,3 +323,70 @@ def test_wall_clock_covers_planning_and_a_stuck_judge_needs_you(host):  # noqa: 
     with session_scope() as db:
         coordinator.sweep(db, now() + timedelta(minutes=16))
     assert state(run_id) == ("needs_you", "judge_unavailable") and last_judge(run_id).result["non_verdict"] == "timeout"
+
+
+# ---------------------------------------------------------------- verify_missing: an operator-only gap (run 75661a23)
+
+
+def test_a_gap_asking_for_a_recorded_verification_on_a_plan_without_verify_needs_you():
+    """The judge wrote not_met six times for 'provide an independently recorded verification result' on a plan with
+    no verify command. Nothing the agent does can record one, so the rule turns it into needs_you once."""
+    evidence = {**EVIDENCE, "plan": {"criteria": [{"id": "c1", "text": "the full suite passes", "kind": "text"}], "verify": None}}
+    model = stub(verdict("not_met", "Provide an independently recorded verification result for the compatibility suite.",
+                         criteria=(("c1", "not_met"),)))
+    final = judge.decide(evidence, model)
+    assert final["verdict"] == "needs_you" and "verify_missing" in final["rules"]
+    assert final["gap"].startswith("No verify command is set") and "independently recorded" in final["gap"]
+    # A gap the agent can close stays not_met, and a plan with a verify command is judged by the existing rules.
+    plain = judge.decide(evidence, stub(verdict("not_met", "The login page still 500s; fix the handler.", criteria=(("c1", "not_met"),))))
+    assert plain["verdict"] == "not_met" and "verify_missing" not in plain["rules"]
+    with_verify = judge.decide({**EVIDENCE, "verify": None}, stub(verdict("not_met", "Verification has not run yet.", criteria=(("c1", "not_met"),))))
+    assert "verify_missing" not in with_verify["rules"]
+
+
+def test_repeated_rule_gaps_count_as_no_progress_even_when_reworded():
+    same_rule = [{"verdict": "not_met", "gap": f"wording {i}", "rules": ["criteria_incomplete"]} for i in range(3)]
+    assert coordinator.stalled(same_rule)
+    assert not coordinator.stalled([{"verdict": "not_met", "gap": f"wording {i}", "rules": []} for i in range(3)])
+    assert not coordinator.stalled([*same_rule[:2], {"verdict": "met", "gap": "", "rules": ["criteria_incomplete"]}])
+
+
+def test_verify_missing_parks_the_run_once_instead_of_looping(host):  # noqa: F811
+    run_id = criteria_run(host)  # The plain host offers no verify id, so the plan has none.
+    turn(run_id, 1)
+    assert judged(run_id, stub(verdict("not_met", "Run and record the verification for the test suite independently.",
+                                      criteria=(("c1", "not_met"),)))) == ("needs_you", "verify_missing")
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert row.turn_count == 1
+        assert not db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "input",
+                                                        AgentCommand.payload["text"].astext.like("%ERIDANI_GAP%")))
+
+
+# ---------------------------------------------------------------- freestyle: talk to the agent, Eridani stays out
+
+
+def test_freestyle_records_turns_without_verifying_judging_or_capping(host, client):  # noqa: F811
+    run_id = criteria_run(host)
+    with session_scope() as db:
+        revision = db.get(AgentRun, run_id).state_revision
+    r = client.post(f"/api/v1/remotea/runs/{run_id}/freestyle", json={"enabled": True, "expected_revision": revision})
+    assert r.status_code == 200 and r.json()["freestyle"] is True, r.text
+    assert turn(run_id, 1) == ("executing", "started")
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert row.turn_count == 0 and row.turn_seq == 1
+        assert [h for h in row.history if h.get("event") == "turn" and h.get("freestyle")]
+        assert db.scalar(select(Job).where(Job.kind == "agent_judge")) is None
+    off = client.post(f"/api/v1/remotea/runs/{run_id}/freestyle", json={"enabled": False})
+    assert off.status_code == 200 and off.json()["freestyle"] is False
+    assert turn(run_id, 2) == ("judging", "turn")
+
+
+def test_freestyle_resumes_a_run_the_judge_parked(host, client):  # noqa: F811
+    run_id = criteria_run(host)
+    turn(run_id, 1)
+    assert judged(run_id, stub(verdict("needs_you", "Only you can decide.", criteria=(("c1", "not_met"),)))) == ("needs_you", "judge_needs_you")
+    r = client.post(f"/api/v1/remotea/runs/{run_id}/freestyle", json={"enabled": True})
+    assert r.status_code == 200, r.text
+    assert state(run_id) == ("executing", "freestyle")
