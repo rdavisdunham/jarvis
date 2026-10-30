@@ -406,6 +406,39 @@ def test_an_infra_verification_parks_the_run_without_a_gap_prompt(verifying_host
     assert "verify_infra" in last_judge(run_id).result["rules"]
 
 
+def test_a_pass_on_an_incomplete_workspace_is_never_a_clean_pass():
+    met = verdict(criteria=(("c1", "met"), ("c2", "met")))
+    partial = fresh(workspace_complete=False, workspace_reasons=["untracked files capped at 2000 (2400 found)"])
+    model = stub(met)
+    final = judge.decide({**EVIDENCE, "verify": partial}, model)
+    assert model.calls[0]["verify"]["workspace_complete"] is False  # The model sees it.
+    assert final["verdict"] == "met" and "verify_workspace_incomplete" in final["rules"]
+    note = "Verification ran on an incomplete workspace (untracked files capped at 2000 (2400 found))."
+    assert final["summary"].startswith(note)
+    assert note in final["criteria"][0]["evidence"] and note not in final["criteria"][1]["evidence"]  # c2 is text.
+    unsaid = judge.decide({**EVIDENCE, "verify": fresh(workspace_complete=False)}, stub(met))
+    assert "the host did not say what it missed" in unsaid["summary"]
+    for clean in (fresh(workspace_complete=True), fresh(workspace_complete=None), fresh()):
+        final = judge.decide({**EVIDENCE, "verify": clean}, stub(met))
+        assert "verify_workspace_incomplete" not in final["rules"] and final["summary"] == "s"
+    failed = judge.decide({**EVIDENCE, "verify": fresh("failed", workspace_complete=False)}, stub(met))
+    assert failed["verdict"] == "not_met" and "verify_workspace_incomplete" not in failed["rules"]
+
+
+def test_the_judge_evidence_carries_the_verify_workspace_completeness(verifying_host):  # noqa: F811
+    run_id = planned(verifying_host)
+    turn(run_id, 3)
+    result(verifying_host, run_id, attempts(run_id)[0].id, workspace_complete=False,
+           workspace_reasons=["submodule not read"])
+    model = stub(verdict(criteria=(("c1", "met"),)))
+    assert judged(run_id, model) == ("awaiting_approval", "judge_met")
+    assert model.calls[0]["verify"]["workspace_complete"] is False
+    assert model.calls[0]["verify"]["workspace_reasons"] == ["submodule not read"]
+    record = last_judge(run_id).result
+    assert "verify_workspace_incomplete" in record["rules"] and "submodule not read" in record["summary"]
+    assert record["evidence"]["verify"]["workspace_reasons"] == ["submodule not read"]
+
+
 def test_failing_tests_still_send_the_gap_prompt(verifying_host):  # noqa: F811
     run_id = planned(verifying_host)
     turn(run_id, 3)

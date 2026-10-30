@@ -48,7 +48,9 @@ def test_the_review_packet_reads_criteria_tests_pr_and_questions(verifying_host,
     assert packet["text"] == ("1 of 1 criteria met; tests passed just now in a sandbox (workspace incomplete: untracked "
                               "files capped at 2000 (2400 found)); PR #12 open; no open questions")
     assert packet["criteria"] == [{"id": "c1", "text": "tests pass", "status": "met"}]
-    assert packet["tests"]["exit_code"] == 0 and packet["reason"] == "s"
+    # The judge's summary names the incomplete workspace (rule verify_workspace_incomplete).
+    assert packet["tests"]["exit_code"] == 0 and packet["reason"] == (
+        "Verification ran on an incomplete workspace (untracked files capped at 2000 (2400 found)). s")
     next_text = spoken["awaiting_approval"]["next"]
     assert "Review me" in next_text and "owner's decision" in next_text
 

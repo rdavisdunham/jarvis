@@ -1090,7 +1090,9 @@ Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root
 stale), the previous verdict's per-criterion record, and the completion policy with the PR record
 (`pr_urls`, `merged`, and `pr_fresh` / `merged_fresh` with `as_of` times: whether the session's collector
 report and the host's worktrees report arrived after the turn). The verify evidence carries `category`, `action`
-and `infra` (true for an `infra_*` category). The prompt (`judge-v3`) says all of it is
+and `infra` (true for an `infra_*` category), and remotea's `workspace_complete` / `workspace_reasons` (whether the
+host's fingerprint covered the whole workspace; `null` / `[]` when the host did not say). The prompt (`judge-v4`)
+tells the model to say so when a verification ran on an incomplete workspace, and says all of it is
 untrusted data and that **the agent's text is a claim**: evidence is the verify attempt, the host's worktree and
 PR record and the ticked steps. A gap may only ask for what the loop can check (make the verify command pass,
 commit/push and open or update the PR, tick steps), never for pasted test output, logs or diffs. The gap prompt
@@ -1108,12 +1110,15 @@ commit/push and open or update the PR, tick steps), never for pasted test output
    with the failure tail when it ran and failed, else `needs_you` (missing, stale or canceled: the agent cannot fix that;
    refused, timed out and uncertain are infra categories and stopped at `verify_infra`). A `verify`-kind criterion is met only with a fresh passing
    attempt of its verify id. `met` with any criterion not met → `not_met`. Unknown criterion ids are
-   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. Each
-   rule that fired is recorded in `rules`.
+   dropped; a missing one is `not_met`. `disputed` steps count only when the verification failed. A `met` verdict
+   whose bound verification has `workspace_complete: false` stays `met` but fires **`verify_workspace_incomplete`**:
+   the summary and every met `verify`-kind criterion's evidence are prefixed/suffixed with "Verification ran on an
+   incomplete workspace (reasons)", so the pass never reads as clean (with `auto_complete` on, the coordinator still
+   parks it as `needs_you(verify_incomplete)`). Each rule that fired is recorded in `rules`.
 4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
    (refusal and budget are not retried), then the attempt is `failed` and the run goes to
    `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
-5. The attempt keeps model, `prompt_version` (`judge-v3`), cost, latency, retries, the final verdict and the
+5. The attempt keeps model, `prompt_version` (`judge-v4`), cost, latency, retries, the final verdict and the
    completion evidence it used (`evidence.completion`).
 
 **Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
