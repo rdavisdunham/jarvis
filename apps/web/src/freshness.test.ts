@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  APPROVAL_FACTS, attemptFacts, DEFAULT_DRAFT, freshnessFacts, sameText, startBlock, startBody, timeline, TYPED_TITLE,
+  APPROVAL_FACTS, attemptFacts, DEFAULT_DRAFT, freshnessFacts, rowFreshness, sameText, startBlock, startBody, timeline, TYPED_TITLE,
   type Attempt, type Preflight, type Run, type RunDetail,
 } from "./remotea-model";
 
@@ -60,6 +60,32 @@ describe("freshness facts (E-S6)", () => {
     const late = freshnessFacts(run({ verification: { verify_id: "tests", status: "running", at: at(900), evidence: "pending",
       deadline_at: at(60) } }), null, NOW);
     expect(late.find(f => f.key === "verify")).toMatchObject({ tone: "warn", label: "verify tests running for 15m (past its deadline)" });
+  });
+
+  it("gives a run row only the host's lease and the warnings that change what the row means", () => {
+    const quiet = run({ state: "executing", last_turn_at: at(120),
+      verification: { verify_id: "tests", status: "passed", at: at(180), evidence: "fresh", workspace_complete: true },
+      pending_controls: [{ kind: "verify", status: "pending", at: at(10) }] });
+    expect(rowFreshness(quiet, null, NOW).map(f => [f.key, f.label, f.tone])).toEqual([["host", "host seen just now", "ok"]]);
+    const lagging = rowFreshness(run({ state: "executing", host: { id: "h", name: "desk", connected: true, last_seen_at: at(150) } }), null, NOW);
+    expect(lagging).toEqual([{ key: "host", label: "host seen 3m ago", tone: "warn" }]);
+    const silent = rowFreshness(run({ state: "needs_you", host: { id: "h", name: "desk", connected: false, last_seen_at: at(600) },
+      verification: { verify_id: "tests", status: "passed", at: at(60), evidence: "stale" },
+      pending_controls: [{ kind: "input", mode: "steer", status: "uncertain", at: at(40) }] }), null, NOW);
+    expect(silent.map(f => [f.key, f.label, f.tone])).toEqual([
+      ["host", "host silent for 10m", "warn"], ["verify", "stale", "warn"], ["control", "delivery uncertain", "warn"]]);
+    expect(silent[1].title).toBe("verify tests passed 1m ago · stale: an older turn, or the checkout changed");
+    expect(silent[2].title).toBe("steer 40s ago: delivery uncertain");
+    const incomplete = rowFreshness(run({ state: "judging", verification: { verify_id: "tests", status: "passed", at: at(60),
+      evidence: "incomplete", workspace_complete: false } }), null, NOW);
+    expect(incomplete.map(f => f.label)).toEqual(["host seen just now", "workspace incomplete"]);
+    const late = rowFreshness(run({ state: "verifying", verification: { verify_id: "tests", status: "running", at: at(900),
+      evidence: "pending", deadline_at: at(60) } }), null, NOW);
+    expect(late.map(f => f.label)).toEqual(["host seen just now", "verify late"]);
+    expect(rowFreshness(run({ state: "verifying", verification: { verify_id: "tests", status: "running", at: at(30), evidence: "pending" } }),
+      null, NOW).map(f => f.key)).toEqual(["host"]);
+    expect(rowFreshness(run({ state: "completed" }), null, NOW)).toEqual([]);  // Settled: nothing to trust or doubt.
+    expect(rowFreshness(run({ host: null }), null, NOW)).toEqual([]);
   });
 
   it("leaves out what an older server did not send", () => {

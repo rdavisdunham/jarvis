@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { HostSelfCheck, SetupCodeBox, TargetCard } from "./RemoteaSetup";
-import { harnessText, hostLine, mcpText, selfCheck, setupSteps, TOO_OLD, verifyText, withProbe, type SetupHost, type SetupReport, type SetupTarget } from "./remotea-setup";
+import { harnessText, hostLine, mcpText, selfCheck, setupSteps, templateText, TOO_OLD, verifyText, withProbe, type SetupHost, type SetupReport, type SetupTarget } from "./remotea-setup";
+import { targetOptions, templateNote, type NeedsTarget } from "./remotea-model";
 
 const host: SetupHost = {
   id: "h1", name: "desk", connected: true, last_seen_at: "2026-10-30T10:00:00Z", hello_at: "2026-10-30T09:59:00Z",
@@ -126,5 +127,43 @@ describe("host self-check (remotea doctor)", () => {
     const old = renderToStaticMarkup(<HostSelfCheck host={host}/>);
     expect(old).toContain(`<span>${TOO_OLD}</span>`);
     expect(old).not.toContain("<ul");
+  });
+});
+
+describe("target templates (remotea S-Q3)", () => {
+  const template = { ready: false, problems: [
+    { check: "repo", level: "fail" as const, reason: "/home/davin/jarvis is not a git checkout" },
+    { check: "prepare.web", level: "fail" as const, reason: "npm is not on the service PATH" },
+    { check: "migrations", level: "warn" as const, reason: "not a folder" }] };
+
+  it("says how the template check went, with the preparation steps", () => {
+    expect(templateText(target({ template, prepare: ["api", "web"] }))).toBe("Template: not ready (2 failing checks) · prepares api, web");
+    expect(templateText(target({ template: { ready: false, problems: [template.problems[0]] } }))).toBe("Template: not ready (1 failing check)");
+    expect(templateText(target({ template: { ready: true }, prepare: [] }))).toBe("Template: ready");
+    expect(templateText(target({ template: null }))).toBeNull();
+    expect(templateText(target())).toBeNull();  // An older Eridani sends no template.
+  });
+
+  it("shows the template line on the target card beside the problem that explains it", () => {
+    const why = "The jarvis target is not ready: repo: /home/davin/jarvis is not a git checkout; prepare.web: npm is not on the service PATH.";
+    const html = renderToStaticMarkup(<TargetCard onProbed={() => {}} target={target({ template, prepare: ["api"], ready: false,
+      problems: [{ code: "TARGET_NOT_READY", message: why, fix: "Fix what the template check names.", blocks: true }] })}/>);
+    expect(html).toContain("Template: not ready (2 failing checks) · prepares api");
+    expect(html).toContain(why);
+    expect(html).toContain("Not ready");
+  });
+
+  it("marks a target that is not ready in the picker, with its failed checks", () => {
+    expect(templateNote({ template })).toBe("not ready: repo: /home/davin/jarvis is not a git checkout; prepare.web: npm is not on the service PATH");
+    expect(templateNote({ template: { ready: false } })).toBe("not ready: the host did not say why");
+    expect(templateNote({ template: { ready: true, problems: [template.problems[2]] } })).toBe("");
+    expect(templateNote({})).toBe("");
+    const need: NeedsTarget = { task_id: "t", records: [], candidates: [
+      { id: "s1", host_id: "h1", host_target: "jarvis", name: "jarvis", repo: "/home/davin/jarvis", worktree_root: "/wt", record_id: null, template }],
+      advertised: [{ host_id: "h1", host_name: "desk", host_target: "remotea", repo: "/home/davin/remotea", worktree_root: "/wt",
+        template: { ready: true } }] };
+    expect(targetOptions(need).map(o => o.detail)).toEqual([
+      "/home/davin/jarvis · not ready: repo: /home/davin/jarvis is not a git checkout; prepare.web: npm is not on the service PATH",
+      "/home/davin/remotea"]);
   });
 });

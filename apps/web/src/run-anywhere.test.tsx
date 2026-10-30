@@ -172,6 +172,17 @@ describe("RunRow", () => {
     expect(html).toContain('class="run-summary-updating"');
     expect(html).toContain("updating…");
   });
+  it("shows compact freshness chips, inline inside the row button", () => {
+    const now = Date.parse("2026-10-29T10:05:00Z");
+    const html = renderToStaticMarkup(<RunRow now={now} onOpen={() => {}} run={run({
+      host: { id: "h", name: "desk", connected: true, last_seen_at: "2026-10-29T10:03:00Z" },
+      verification: { verify_id: "tests", status: "passed", at: "2026-10-29T10:01:00Z", evidence: "stale" } })}/>);
+    expect(html).toContain('class="remotea-fresh run-row-fresh"');
+    expect(html).toContain('<span role="listitem" class="tone-warn">host seen 2m ago</span>');
+    expect(html).toMatch(/class="tone-warn" title="verify tests passed 4m ago · stale[^"]*">stale</);
+    expect(html).not.toContain("<ul");  // No block list inside a button.
+    expect(renderToStaticMarkup(<RunRow onOpen={() => {}} run={run({ state: "completed" })}/>)).not.toContain("remotea-fresh");
+  });
   it("renders no summary line before the first one", () => {
     expect(row({})).not.toContain("run-summary");
     expect(row({ summary: "", summary_stale: true })).not.toContain("run-summary");

@@ -690,6 +690,23 @@ export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_s
   }
   return facts;
 }
+/** The few freshness facts that fit a run row (RunsPanel RunRow), as compact chips: the host's lease ("host seen 2m
+ * ago", "host silent for 5m"), then only what changes how far the row can be trusted: a verification that is stale,
+ * ran on an incomplete workspace or is past its deadline, and controls whose delivery is uncertain. Each chip's title
+ * carries the full fact. Settled runs get none. */
+export function rowFreshness(run: Run, host?: Pick<Host, "connected" | "last_seen_at"> | null, now = Date.now()): Fact[] {
+  if (isSettled(run)) return [];
+  const facts = freshnessFacts(run, host, now);
+  const out = facts.filter(f => f.key === "host");
+  const v = run.verification, verify = facts.find(f => f.key === "verify");
+  const short = v?.evidence === "stale" ? "stale" : v?.evidence === "incomplete" ? "workspace incomplete"
+    : v?.evidence === "pending" && verify?.tone === "warn" ? "verify late" : "";
+  if (verify && short) out.push({ key: "verify", label: short, tone: "warn", title: verify.label });
+  const uncertain = facts.filter(f => f.key.startsWith("control:") && f.label.endsWith("delivery uncertain"));
+  if (uncertain.length) out.push({ key: "control", label: "delivery uncertain", tone: "warn", title: uncertain.map(f => f.label).join("; ") });
+  return out;
+}
+
 /** The facts an approval rests on: the verification, its workspace and sandbox, the host, and anything uncertain. */
 export const APPROVAL_FACTS = (f: Fact) => ["verify", "workspace", "sandbox", "host"].includes(f.key) || f.key.startsWith("control:");
 
@@ -854,8 +871,22 @@ export type TargetLaunch = { ready: boolean; version: string | null; error?: str
 export type VerifyStatus = { id: string; ready: boolean; reason?: string; timeout?: number;
   isolated?: boolean; isolation?: "bwrap" | "none"; isolation_reason?: string };
 export type TargetMcp = { configured: boolean; reason?: string };
+/** remotea S-Q3: the target's template check (repository, worktree root, base, launch, prepare steps, disk), fails
+ * first. A target that is not ready is advertised with no harnesses and its spawns are rejected `target_not_ready`. */
+export type TemplateProblem = { check: string; level: "fail" | "warn"; reason: string };
+export type TargetTemplate = { ready: boolean; problems?: TemplateProblem[] };
 type TargetFacts = { enabled?: string[] | null; launch?: Partial<Record<string, TargetLaunch>> | null;
-  verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null };
+  verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null;
+  /** S-Q3 (absent from an older host or Eridani): the template check and the preparation step ids. */
+  template?: TargetTemplate | null; prepare?: string[] | null };
+
+/** Why a target's template keeps agents from starting there ("not ready: repo: …; base: …"), or "" when it is ready
+ * or the host did not say. */
+export function templateNote(t: { template?: TargetTemplate | null }): string {
+  if (!t.template || t.template.ready) return "";
+  const fails = (t.template.problems ?? []).filter(p => p.level === "fail").map(p => `${p.check}: ${p.reason}`);
+  return "not ready: " + (fails.join("; ") || "the host did not say why");
+}
 /** A saved target. `harnesses`/`verify` (and the TargetFacts) are what its host advertised for it, present only when known. */
 export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null;
   harnesses?: string[]; verify?: string[] } & TargetFacts;
@@ -871,10 +902,11 @@ export type UnmergedWork = { host_id: string; host_name: string; target: string 
 
 /** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. */
 export function targetOptions(need: NeedsTarget) {
-  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: t.repo, saved: t }));
+  const detail = (base: string, t: { template?: TargetTemplate | null }) => [base, templateNote(t)].filter(Boolean).join(" · ");
+  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: detail(t.repo, t), saved: t }));
   const known = new Set(need.candidates.map(t => `${t.host_id}:${t.host_target}`));
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
-    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: t.repo || t.host_name, advertised: t }));
+    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: detail(t.repo || t.host_name, t), advertised: t }));
   return [...saved, ...offered];
 }
 
@@ -1143,6 +1175,9 @@ export type Preflight = {
    * `verify_ready` for the verify ids a run would use, `verify_reasons` why not, `mcp` the agents' Eridani tools. */
   verify_status?: VerifyStatus[] | null; verify_ready?: boolean | null; verify_reasons?: Record<string, string>;
   mcp?: TargetMcp | null;
+  /** The resolved target's template check (remotea S-Q3; null when the host did not say). Not ready: a blocking
+   * TARGET_NOT_READY problem names the failed checks. */
+  template?: TargetTemplate | null;
 };
 /** What stands in a start's way. `blocking` false is a warning (VERIFY_NOT_READY: the run starts and records the
  * failure); `freestyle_ok` lifts a block for a freestyle start (MCP_UNCONFIGURED). Older servers send neither:
@@ -1180,6 +1215,23 @@ export function preflightNotes(p: Preflight | null | undefined): string[] {
   }
   if (p.mcp && !p.mcp.configured) notes.push(`Agents on this target have no Eridani tools: ${p.mcp.reason || "the host did not say why"}.`);
   return notes;
+}
+
+/** Preflight problem codes that the guided setup view (Settings → Connections → remotea, `RemoteaReadiness`) explains
+ * with a fix: no server, the server offline, a target the host does not advertise or whose template is not ready,
+ * agents without Eridani tools, a harness that cannot start, a verify command that is not ready. */
+export const SETUP_PROBLEMS = new Set(["NEEDS_TARGET", "HOST_MISSING", "HOST_OFFLINE", "HOST_DEGRADED", "TARGET_NOT_ADVERTISED",
+  "TARGET_NOT_READY", "HARNESS_UNAVAILABLE", "NO_HARNESS", "MCP_UNCONFIGURED", "MCP_NOT_CONFIGURED", "VERIFY_NOT_READY"]);
+
+/** Why the Run dialog links to the guided setup view, or "" when nothing the setup view fixes stands in the way:
+ * a target to choose, a setup problem from the preflight, or the picked agent unable to start on the target. */
+export function setupReason(p: Preflight | null | undefined, harness: HarnessId): string {
+  if (!p || p.active_run) return "";
+  if (p.needs_target) return "No repository is set up for this task yet.";
+  const found = p.problems.find(x => SETUP_PROBLEMS.has(x.code));
+  if (found) return found.message;
+  if (p.harnesses?.[harness] === false) return p.harness_reasons?.[harness] || "This agent cannot start on this task's target.";
+  return "";
 }
 
 /** Whether the Run dialog may pick a harness, and why not. The preflight decides for the task's target; only

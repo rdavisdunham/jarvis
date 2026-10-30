@@ -1,6 +1,6 @@
 // The guided remotea setup page (Settings → Connections → remotea, and the remotea page while nothing is ready):
 // `GET /remotea/setup` and `POST /remotea/targets/{key}/probe` (agent_control.setup_report / target_probe).
-import { ago, type DoctorSummary } from "./remotea-model";
+import { ago, type DoctorSummary, type TargetTemplate } from "./remotea-model";
 
 export type SetupProblem = { code: string; message: string; fix: string; blocks: boolean };
 export type SetupHost = {
@@ -21,6 +21,8 @@ export type SetupTarget = {
   key: string; host_id: string | null; host_name: string | null; host_target: string; name: string; repo: string;
   execution_target_id: string | null; advertised: boolean; harnesses: Record<string, SetupHarness>;
   verify: SetupVerify[] | null; mcp: { configured: boolean; reason?: string } | null;
+  /** remotea S-Q3 (absent from an older Eridani, null from an older host): the template check and prepare step ids. */
+  template?: TargetTemplate | null; prepare?: string[] | null;
   problems: SetupProblem[]; notes: string[]; ready: boolean; line: string | null;
 };
 export type SetupReport = { ready: boolean; hosts: SetupHost[]; targets: SetupTarget[]; lines: string[] };
@@ -83,6 +85,16 @@ export function verifyText(v: SetupVerify) {
   return `${v.id}: ${v.ready ? "ready" : "not ready" + (v.reason ? ": " + v.reason : "")}${sandbox}`;
 }
 
+/** The target's template check in one line: ready (with its preparation steps), or how many checks failed (the
+ * TARGET_NOT_READY problem lists them with the fix). Null when the host did not say. */
+export function templateText(t: Pick<SetupTarget, "template" | "prepare">): string | null {
+  if (!t.template) return null;
+  const prepare = t.prepare?.length ? ` · prepares ${t.prepare.join(", ")}` : "";
+  if (t.template.ready) return `Template: ready${prepare}`;
+  const fails = (t.template.problems ?? []).filter(p => p.level === "fail").length;
+  return `Template: not ready (${fails === 1 ? "1 failing check" : `${fails} failing checks`})${prepare}`;
+}
+
 export function mcpText(mcp: SetupTarget["mcp"]) {
   if (!mcp) return `Eridani tools for agents: ${TOO_OLD}`;
   return mcp.configured ? "Eridani tools for agents: configured" : `Eridani tools for agents: missing${mcp.reason ? " (" + mcp.reason + ")" : ""}`;
@@ -110,4 +122,12 @@ export function selfCheck(host: Pick<SetupHost, "doctor" | "doctor_supported">, 
 /** Replace one target in the report with a probe's fresh copy (matched by its key). */
 export function withProbe(report: SetupReport, probe: ProbeResult): SetupReport {
   return { ...report, targets: report.targets.map(t => (t.key === probe.target.key ? probe.target : t)) };
+}
+
+/** After opening Settings → Connections, scroll the guided setup view (RemoteaReadiness) into sight once the lazy
+ * settings chunk has rendered it; gives up quietly after about two seconds. */
+export function revealSetup(tries = 20) {
+  const view = document.querySelector('section[aria-label="remotea setup"]');
+  if (view) view.scrollIntoView({ block: "start" });
+  else if (tries > 0) window.setTimeout(() => revealSetup(tries - 1), 100);
 }
