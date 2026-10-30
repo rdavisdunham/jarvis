@@ -807,6 +807,57 @@ which mirrors remotea's `docs/remotea/eridani-link.md` § Stage E: collector cut
   background thread at most every 6 h (15 min after a failure); a 404 (no release yet) or a failure
   shows no note.
 
+## Run summaries (migration 0036)
+
+Each run card carries one plain-language line on what the agent is doing right now ("Adding the parity test for the
+summary job"), written by a small model (`run_summaries.py`).
+
+- **Columns** on `agent_runs`: `summary` (≤ 140 characters, `""` until the first one), `summary_at` (when it was
+  written), `activity_seq` (bumped by `run_summaries.touch` whenever something the line reflects lands: every root
+  turn of the run's generation in `record_turn`, a question opened or resolved, and every `transition`, which covers
+  verdicts and judge failures) and `summary_seq` (the `activity_seq` the last summary job handled).
+  `summary_seq < activity_seq` means a newer line is due.
+- **Debounce.** `touch` queues one `agent_summary` job (queue `jarvis-memory`, like the judge) unless one for the run
+  is pending (queued/dispatched/running/retrying, younger than 10 minutes) or one was queued in the last 30 s. An event
+  inside the window only counts; the worker's maintenance scan (`run_summaries.queue_due`, every cycle) queues the
+  follow-up once the window has passed. So a run gets at most one summary per ~30 s, and only after something
+  happened: never on page load and never per change-feed tick. Nothing is queued while no OpenAI key is configured
+  (`activity_seq` still counts, so turning it on catches up).
+- **Terminal runs.** The transition into a terminal state counts, so a run gets one closing line ("Stopped after …").
+  Once `summary_seq` has caught up the run is skipped, and a run that ended more than an hour ago is never summarized
+  again.
+- **Evidence** (`build_evidence`, pure and bounded): the task title (200 characters), the run state and its
+  `REASONS` text, the frozen plan's current step (the first `doing`, else the first not done; 300 characters) with
+  "N of M steps done", the last two root (`assistant`) turns of the run or its session cut to 1,500 characters each
+  (head and tail), the latest verify or judge attempt (status, verdict, exit code, gap cut to 400) and the newest open
+  question (400). The user message is capped at 6,000 characters.
+- **Model.** Luna through `memory_learning.extraction_request` (the only model path the judge accepts), strict schema
+  `{summary: string}`, no tools, `max_completion_tokens` 200, prompt version `summary-v1`. The answer is cut to one line
+  of at most 140 characters at a word.
+- **Prompt injection.** Every free text (task title, step, gap, question, turns) sits inside an `agent_prompts.fence`
+  nonce fence with `<<<`/`>>>` runs broken up, so turn text cannot close its fence; the system prompt is fixed and says
+  the fenced blocks are untrusted data to describe, never instructions, and that the line must not claim the work is
+  done, verified or approved unless the run state says so. The model can only fill one short string, which is shown
+  as text and never acted on.
+- **Result.** On success the job stores `summary`, `summary_at`, `summary_seq` and emits `agent.changed`, so cards
+  update live over the change feed. A non-summary (refusal, invalid or empty output, timeout, budget, provider
+  unavailable) keeps the old line but still marks that activity handled, so a broken provider costs at most one call
+  per event window instead of a retry loop. A job that finds nothing new (`summary_seq ≥ activity_seq`) is cancelled
+  without a call.
+- **Cost.** Cost feature `agent_summaries` ("Agent run summaries"): its own line in the usage report (Settings → System) next to the judge's
+  `agent_control`. Each call also writes an `agent_attempts` row with `kind: "summary"` (status `done`/`failed`, model,
+  `prompt_version`, cost, latency, the run tuple, and `result {seq, summary | non_verdict, detail}`) the way judge
+  attempts do. Summary attempts are written settled (never queued or running, no deadline), so the attempt sweep,
+  supersede and judge queries never see them; `GET /runs/{id}` leaves them out of `attempts`; retention deletes them
+  with the run's other attempts.
+- **Surfaces.** `public_run` carries `summary`, `summary_at` and `summary_stale` (a line exists and a newer one is due).
+  The run row (`RunsPanel.tsx` `RunRow`, on the remotea page and in the topbar Runs panel) shows the line under the
+  state chip with a quiet "updating…" while `summary_stale`; the task-row chip (`RunButton.tsx`) uses it as its
+  tooltip. `control_status` gives each run `doing` and `doing_as_of`, so Eri can say "the agent is adding the parity
+  test". `agent_question` and `agent_stuck` pushes append "Latest: <summary>" to the body when there is one.
+
+Tests: `tests/test_run_summaries.py`; web `apps/web/src/run-anywhere.test.tsx` (`RunRow`, `RunButton`).
+
 ## Security model (stage F, migration 0031)
 
 Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
