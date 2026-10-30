@@ -3,7 +3,7 @@ import { FolderGit2, Play } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { Dialog } from "./ux";
 import {
-  DEFAULT_DRAFT, HARNESSES, harnessAvailable, needsTargetData, preflightLine, startBody,
+  DEFAULT_DRAFT, HARNESSES, harnessChoice, needsTargetData, preflightLine, startBody,
   type HarnessId, type NeedsTarget, type Preflight, type Run, type RunDraft,
 } from "./remotea-model";
 import { useRemotea } from "./remotea-context";
@@ -43,7 +43,10 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
     } finally { setBusy(false); }
   };
   const harness = HARNESSES.find(h => h.id === draft.harness) ?? HARNESSES[0];
-  const available = (id: HarnessId) => pre?.harnesses?.[id] ?? harnessAvailable(hosts, id);
+  // The preflight says what the task's target can start; any connected host counts only when there is no preflight.
+  const choice = (id: HarnessId) => harnessChoice(pre, hosts, id);
+  const available = (id: HarnessId) => choice(id).ok;
+  const unavailable = HARNESSES.map(h => choice(h.id).reason).filter(Boolean);
   const blocked = !!pre && !pre.active_run && !pre.needs_target && !pre.target;
   const interviewHint = draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
@@ -63,9 +66,10 @@ export function RunTaskDialog({ taskId, onClose, onStarted }: { taskId: string; 
           <span id={heading + "-agent"}>Agent</span>
           <div className="segmented" role="group" aria-labelledby={heading + "-agent"}>
             {HARNESSES.map(h => <button key={h.id} type="button" aria-pressed={draft.harness === h.id} disabled={!available(h.id)}
-              title={available(h.id) ? undefined : `Your remotea server cannot start ${h.label} yet.`}
+              title={choice(h.id).reason}
               onClick={() => setDraft(d => ({ ...d, harness: h.id, model: h.models[0].id }))}>{h.label}</button>)}
           </div>
+          {unavailable.length > 0 && <p className="footnote">{unavailable.join(" ")}{pre?.harness_note ? ` ${pre.harness_note}` : ""}</p>}
         </div>
         <label className="run-dialog-row"><span>Model</span>
           <select value={draft.model} onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}>
