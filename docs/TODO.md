@@ -180,10 +180,16 @@ Release verification is in progress. Mission-control planning follows this batch
 - [ ] Physical phone/Live check: start setup, answer its questions, confirm a
   proposal; Quick Sort several tasks, use an ambiguous Home, skip/pause/resume,
   then Revert. The owner deferred interactive/device checks for now.
-- [ ] Extend the same interview entry point to Types & fields if useful; no second
-  interview runtime. Broader container sorting and bulk/correction conversation
-  shortcuts can follow after real use. Current corrections use the existing
-  Edit/Revert tools; a new Quick Sort selection can record a fresh human choice.
+- [x] Extend the same interview entry point to Types & fields; no second interview
+  runtime. Personal Organization › Types & fields has Refine with Eri: it sends the
+  same durable guided request (`startGuidedConversation`), narrowed to types,
+  fields, field options and which types use a field, naming a type only when the
+  owner opened one. Unsaved editor edits must be previewed or discarded first; the
+  proposal reopens in the same Types & fields review. Shared workspaces keep the
+  manual editor (setup state is Personal-only).
+- [ ] Broader container sorting and bulk/correction conversation shortcuts can
+  follow after real use. Current corrections use the existing Edit/Revert tools;
+  a new Quick Sort selection can record a fresh human choice.
 
 ## Completed planning and implementation reconciliation
 
