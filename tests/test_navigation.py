@@ -141,14 +141,14 @@ async def test_task_lookup_with_no_task_offers_the_one_other_kind_match(provider
     assert len(result["tasks"]) == 1 and "other_kinds" not in result
 
 
-def test_navigation_is_always_loaded_and_its_selected_opener_becomes_callable():
+def test_a_selected_match_makes_its_opener_callable_without_discovery():
     from jarvis.navigation import opener
     from jarvis.tool_catalog import ToolSession
     from jarvis.tools import registry
 
     for policy in ("baseline", "discovery-v1", "reads-v1", "lean-v1"):
         session = ToolSession(registry(), policy)
-        assert "navigation_find" in session.names and "ui_calendar" not in session.names
+        assert "task_resolve" in session.names and "ui_calendar" not in session.names
         found = {"selected": {"open": {"tool": "ui_calendar", "arguments": {}}}}
         assert opener(found) == "ui_calendar"
         assert session.follow(found) == "ui_calendar" and "ui_calendar" in session.names
@@ -158,15 +158,18 @@ def test_navigation_is_always_loaded_and_its_selected_opener_becomes_callable():
 
 
 def test_typed_and_live_instructions_treat_the_kind_as_a_hint():
-    from jarvis.agent_instructions import POLICY, live_instructions
+    from jarvis.agent_instructions import live_instructions
+    from jarvis.navigation import INSTRUCTION
     from jarvis.tool_catalog import DESCRIPTIONS
 
-    assert "is a hint, not a filter" in POLICY and "Never edit on a" in POLICY
+    # Typed chat: global policy stays small (tool mechanics live in the definitions), so the rule rides on
+    # the lookup tools' descriptions and on every navigation result.
+    assert "is a hint, not a filter" in INSTRUCTION and "never authorizes an edit" in INSTRUCTION
+    assert "hint, not a filter" in DESCRIPTIONS["ui_show"] and "was a hint" in DESCRIPTIONS["task_resolve"]
     live = live_instructions({"timezone": "America/Chicago", "default_reminder_hour": 9})
-    assert "a 'task' may be a calendar event" in live
-    assert "never tell the user" in live.lower()
+    assert "Delegate show/open requests as said" in live and "a 'task' may be a calendar event" in live
     assert "other_kinds" in DESCRIPTIONS["task_resolve"]
-    assert "navigation_find first" in DESCRIPTIONS["ui_show"]
+    assert "use navigation_find" in DESCRIPTIONS["ui_show"]
 
 
 def test_kind_mismatch_eval_contract_passes():

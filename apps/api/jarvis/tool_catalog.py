@@ -197,7 +197,6 @@ CORE = (
     "task_get",
     "task_resolve",
     "record_search",
-    "navigation_find",
     "task_create",
     "task_update",
     "task_complete",
@@ -427,7 +426,7 @@ DESCRIPTIONS = {
     "ui_filter": "Set exact filters while preserving every omitted field and the current search query. Work/calendar/alerts support status, project_id (preferred) or exact project name, space/area/goal, assignee ID/name, exact work_type/tag, inclusive due_from/due_through and work_kind. Empty strings clear filters. Status active excludes completed/cancelled; open means exactly open. Notes supports only project/space/area/goal; organize supports only space_id. Other pages have no record filters. Layout switches preserve these filters.",
     "ui_form": "Open a new or existing typed editor. form: task, reminder, note, goal, project, area, space, actor, event (local appointment/block), google_event, bulk or memory. Use entity_id for an existing record; bulk uses ui_select's task selection; memory requires a visible existing memory. Then ui_editor read reveals its fields/options and auto_save mode. Existing tasks and organization cards save patches immediately; notes and new forms require save. Opening does not save. Dirty editors must be saved or explicitly discarded first. Google recurrence scope/conflict choices use calendar_event_read and normal calendar tools.",
     "ui_select": "Select up to 100 current tasks for the browser bulk editor. Explicitly switches to the Work list, clears query/filters and shows all statuses. No records change. Use task_list selections with task_selection_update for identical domain edits across more than 100 records.",
-    "ui_show": "Open a page or highlight a saved record. For a named item without a known ID, call navigation_find first: it searches every record kind, and task/event/meeting/note/client wording is a hint, not a filter. Open its one selected match (a calendar event opens its details, not just the Calendar day) without correcting the owner's word; clarify multiple plausible matches. "
+    "ui_show": "Open a page or highlight a saved record. For a named item without a known ID, use navigation_find (navigation group): it searches every record kind, and task/event/meeting/note/client wording is a hint, not a filter. Open its one selected match (a calendar event opens its details, not just the Calendar day) without correcting the owner's word; clarify multiple plausible matches. "
     "Use the matching view (all for tasks, notes for notes, organize for goals/projects, reminders for schedules, memory for facts). "
     "For a request to show/open a specific record, pass its entity_id; opening only the page is incomplete. "
     "For Organization records (clients, projects, tasks...) use ui_records(record_id): it follows opens_as, so \"show me ABC\" opens its contents and a task opens its details. "

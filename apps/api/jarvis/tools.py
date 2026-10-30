@@ -271,7 +271,7 @@ from pydantic import ValidationError
 from .google_schema import CalendarRead
 
 READ_TOOLS["navigation_find"] = {
-    "description": "Use first for any request to show/open/find a named item. Finds it across tasks, notes, custom records and calendar entries. Task/event/meeting/note/client words are hints, not restrictions: one match of another kind is still the answer, so open it without correcting the wording. Returns exact detail-opening commands; only one complete match is selected. Supply start/end (exclusive) for date-specific requests; default calendar range is today through 31 days. Never use this lookup to authorize a mutation.",
+    "description": "Use for any request to show/open/find a named item. Finds it across tasks, notes, custom records and calendar entries. Task/event/meeting/note/client words are hints, not restrictions: one match of another kind is still the answer, so open it without correcting the wording. Returns exact detail-opening commands; only one complete match is selected. Supply start/end (exclusive) for date-specific requests; default calendar range is today through 31 days. Never use this lookup to authorize a mutation.",
     "parameters": {"type":"object","properties":{
         "query":{"type":"string","minLength":1,"maxLength":300},
         "start":{"type":"string","format":"date"}, "end":{"type":"string","format":"date"}},
