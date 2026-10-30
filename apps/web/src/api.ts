@@ -67,6 +67,31 @@ export async function api<T>(
 export function post<T>(url: string, data: unknown = {}) {
   return api<T>(url, { method: "POST", body: JSON.stringify(data) });
 }
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** A run action (`/remotea/runs/{id}/message`, `stop`, `approve`, `replan`, `freestyle`, `verify-config`)
+ * that is safe to retry. One call gets one `action_id`; when the response is lost (`NETWORK`), the same
+ * body with the same `action_id` is sent again, and the server returns the first result instead of acting
+ * twice (`ACTION_MISMATCH` if the body changed). Other errors are not retried. */
+export async function postAction<T>(
+  url: string,
+  data: Record<string, unknown> = {},
+  { retries = 2, delayMs = 500 }: { retries?: number; delayMs?: number } = {},
+): Promise<T> {
+  const body = { ...data, action_id: crypto.randomUUID() };
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await post<T>(url, body);
+    } catch (error) {
+      if (
+        !(error instanceof ApiError) ||
+        error.code !== "NETWORK" ||
+        attempt >= retries
+      )
+        throw error;
+      await pause(delayMs * (attempt + 1));
+    }
+  }
+}
 // Commands issued while an assistant UI action runs are tagged so the server
 // never records them as the owner's own routing evidence.
 let agentAction: string | null = null;

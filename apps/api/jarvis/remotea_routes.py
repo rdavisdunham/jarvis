@@ -14,6 +14,7 @@ from sqlalchemy.dialects.postgresql import distinct_on
 
 from . import agent_control as control
 from . import agent_link, agent_plan, bot_access
+from . import agent_receipts as receipts
 from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
 from .auth import Identity, authenticate
@@ -267,7 +268,8 @@ def run_detail(identity: UUID, user: User, limit: int = Query(control.DETAIL_PAG
 def message(identity: UUID, body: control.MessageInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return control.send_message(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "message", body, lambda: control.send_message(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/stop")
@@ -275,21 +277,24 @@ def stop(identity: UUID, body: control.StopInput, user: User):
     # Stop stays available while remotea is being turned off: recovery controls outlive admission.
     with session_scope() as db:
         owner_only(db, user)
-        return control.stop_run(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "stop", body, lambda: control.stop_run(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/approve")
 def approve(identity: UUID, body: control.ApproveInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return control.approve(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "approve", body, lambda: control.approve(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/replan")
 def replan(identity: UUID, body: control.ReplanInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return control.replan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "replan", body, lambda: control.replan(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/verify")
@@ -304,7 +309,8 @@ def verify_config(identity: UUID, body: agent_plan.SetVerifyInput, user: User):
     """Set the plan's verify command mid-run (a new plan revision; the next turn is verified)."""
     with session_scope() as db:
         writable(db, user)
-        return agent_plan.set_verify(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "verify_config", body, lambda: agent_plan.set_verify(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/freestyle")
@@ -312,7 +318,8 @@ def freestyle(identity: UUID, body: control.FreestyleInput, user: User):
     """Talk to the agent directly: turns are recorded but not verified, judged or capped while this is on."""
     with session_scope() as db:
         writable(db, user)
-        return control.set_freestyle(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "freestyle", body, lambda: control.set_freestyle(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/plan-review")
@@ -344,7 +351,9 @@ def targets(user: User):
         gated(db, user)
         rows = db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == user.owner_id)
                           .order_by(ExecutionTarget.created_at))
-        return {"items": [control.public_target(t) for t in rows], "advertised": control.advertised(db, user.owner_id)}
+        adverts = control.advertised(db, user.owner_id)
+        index = control.advert_index(adverts)
+        return {"items": [control.public_target(t, index) for t in rows], "advertised": adverts}
 
 
 @router.post("/targets")

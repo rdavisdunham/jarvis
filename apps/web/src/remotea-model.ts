@@ -484,8 +484,13 @@ export function linkedRun(search: string) {
   return id && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null };
-export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string };
+/** A saved target. `harnesses`/`verify` are what its host advertised for it in hello, present only when known. */
+export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null;
+  harnesses?: string[]; verify?: string[] };
+/** A target a host listed in hello. `harnesses` is what the target enables; null when the host did not say (older
+ * remotea: its host-wide flags decide). `verify` is its verify ids (absent from older Eridani). */
+export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string;
+  harnesses?: string[] | null; verify?: string[] };
 export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
@@ -601,12 +606,27 @@ export function startBody(taskId: string, draft: RunDraft) {
     ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}) };
 }
 
-/** GET /remotea/runs/preflight: what a start would do, checked without acting. */
+/** GET /remotea/runs/preflight: what a start would do, checked without acting. `harnesses` is what the task's
+ * target can start (the union over the offered targets while none is chosen, with `harness_note`);
+ * `harness_reasons` says why one cannot. */
 export type Preflight = {
   target: { id: string; name: string; repo: string } | null; needs_target: boolean; need: NeedsTarget | null;
   problems: { code: string; message: string }[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
+  harness_reasons?: Record<string, string>; harness_note?: string | null;
 };
+
+/** Whether the Run dialog may pick a harness, and why not. The preflight decides for the task's target; only
+ * when there is no preflight (it failed, or is still loading) does any connected host count (`harnessAvailable`). */
+export function harnessChoice(pre: Preflight | null | undefined, hosts: Host[], id: HarnessId): { ok: boolean; reason?: string } {
+  const label = HARNESSES.find(h => h.id === id)?.label ?? id;
+  const said = pre?.harnesses?.[id];
+  if (said === undefined) {
+    return harnessAvailable(hosts, id) ? { ok: true } : { ok: false, reason: `Your remotea server cannot start ${label} yet.` };
+  }
+  if (said) return { ok: true };
+  return { ok: false, reason: pre?.harness_reasons?.[id] || `This task's target cannot start ${label}.` };
+}
 
 export function preflightLine(p: Preflight | null): string {
   if (!p) return "Where it runs is chosen when the run starts.";
