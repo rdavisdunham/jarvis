@@ -148,6 +148,17 @@ def short_text(limit):
     return clean
 
 
+def text_lines(count, limit):
+    """A list of free host text lines, each one line and clipped; anything else is dropped."""
+    clean = short_text(limit)
+
+    def lines(value):
+        if not isinstance(value, list):
+            return []
+        return [line for line in (clean(v) for v in value[:count]) if line]
+    return lines
+
+
 class Hello(Frame):
     REDACT: ClassVar[tuple[str, ...]] = ("degraded_reason",)
     server_id: str = Field(pattern=r"^[A-Za-z0-9._:-]{1,100}$")
@@ -341,6 +352,20 @@ class VerifyResult(Frame):
     stale_workspace: bool = False
     initiator: str | None = Field(default=None, max_length=20)
     adopted: str | None = Field(default=None, max_length=200)
+    # S-N4 / S-S2 (remotea PR #24, additive): whether the command ran in the bubblewrap sandbox, and whether the
+    # fingerprint covered the whole workspace. Absent from older hosts (None); malformed values are dropped.
+    isolated: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    isolation: Annotated[str | None, BeforeValidator(lambda v: v if v in ("bwrap", "none") else None)] = None
+    isolation_reason: Annotated[str | None, BeforeValidator(short_text(300))] = None
+    workspace_complete: Annotated[bool | None, BeforeValidator(lambda v: v if isinstance(v, bool) else None)] = None
+    workspace_reasons: Annotated[list[str], BeforeValidator(text_lines(20, 300))] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def redacted_lines(self):
+        self.workspace_reasons = [redact(line) for line in self.workspace_reasons]
+        if self.isolation_reason:
+            self.isolation_reason = redact(self.isolation_reason)
+        return self
 
 
 class ContextRequest(Frame):

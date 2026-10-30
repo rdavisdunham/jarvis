@@ -121,6 +121,8 @@
 .run-dialog-row { display: grid; gap: 4px; }
 .run-dialog-row > span { font-size: 0.8rem; color: var(--ink-3); }
 .run-dialog select { width: 100%; }
+.run-dialog-freestyle { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; font-size: 0.9rem; }
+.run-dialog-freestyle small { color: var(--ink-3); }
 
 /* ---- Chat drawer: Eri's proposals waiting for a tap ----------------------------------------- */
 .chat-pending { display: grid; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }

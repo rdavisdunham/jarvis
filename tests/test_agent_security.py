@@ -1191,8 +1191,12 @@ def test_caps_v2_target_facts_reach_preflight_and_targets(client, host):  # noqa
     body = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}").json()
     assert body["harnesses"] == {"claude": True, "codex": False}
     assert body["harness_reasons"] == {"codex": "Codex is enabled on jarvis but not installed: codex: command not found"}
-    assert body["verify_ready"] is False
+    # No verify id on the task: `lint` is ready, and the default pick prefers a ready id (agent_plan.pick_verify).
+    assert body["verify_ready"] is True
     assert body["verify_reasons"] == {"tests": "its program is not on the service PATH (uv)"}
+    # Agents there would have no Eridani tools: a problem that blocks Start unless the run is freestyle.
+    assert body["problems"] == [{"code": "MCP_UNCONFIGURED", "blocking": True, "freestyle_ok": True,
+                                 "message": f"Agents on this target have no Eridani tools: {V2_TARGET['mcp']['reason']}."}]
     assert [s["id"] for s in body["verify_status"]] == ["tests", "lint"]
     assert body["mcp"] == {"configured": False, "reason": V2_TARGET["mcp"]["reason"]}
     with pytest.raises(DomainError) as caught:
@@ -1211,7 +1215,11 @@ def test_caps_v2_target_facts_reach_preflight_and_targets(client, host):  # noqa
     saved = next(t for t in listed["items"] if t["id"] == host.target_id)
     assert saved["launch"]["codex"]["error"] == "codex: command not found" and saved["mcp"]["configured"] is False
 
-    run = start(host, created["id"])
+    with pytest.raises(DomainError) as no_tools:
+        start(host, created["id"])
+    assert no_tools.value.code == "MCP_UNCONFIGURED" and "no Eridani tools" in no_tools.value.message
+    run = start(host, created["id"], freestyle=True)
+    assert run["freestyle"] is True
     detail = client.get(f"/api/v1/remotea/runs/{run['id']}").json()
     assert detail["verify_readiness"] == {"tests": {"ready": False, "reason": "its program is not on the service PATH (uv)"},
                                           "lint": {"ready": True}}

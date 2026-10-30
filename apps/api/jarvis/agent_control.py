@@ -8,7 +8,7 @@ its outbound command in one transaction (run_coordinator.py owns the transitions
 
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -57,6 +57,9 @@ class StartInput(Input):
     execution_target_id: str | None = Field(default=None, max_length=36)
     # None: interview when the task has no PRD. False: run on the plan the task already has (stage C's manual run).
     interview: bool | None = None
+    # Start in freestyle (no interview, no judge): the only way to start on a target whose agents have no Eridani
+    # tools (MCP_UNCONFIGURED).
+    freestyle: bool = False
 
 
 class FreestyleInput(Input):
@@ -168,12 +171,47 @@ def target_launch(item):
 
 
 def target_verify_status(item):
-    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?}]; None when unsaid."""
+    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?, timeout?, isolated?,
+    isolation?, isolation_reason?}]; None when unsaid. `timeout` (seconds) is the entry's own limit when the host
+    says it (verify_timeout); the isolation facts come from remotea PR #24."""
     value = item.get("verify_status") if isinstance(item, dict) else None
     if not isinstance(value, list):
         return None
-    return [{"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {})}
-            for v in value[:50] if isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("ready"), bool)]
+    out = []
+    for v in value[:50]:
+        if not (isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("ready"), bool)):
+            continue
+        entry = {"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {})}
+        timeout = verify_timeout(item, entry["id"])
+        if timeout:
+            entry["timeout"] = timeout
+        if isinstance(v.get("isolated"), bool):
+            entry["isolated"] = v["isolated"]
+        if v.get("isolation") in ("bwrap", "none"):
+            entry["isolation"] = v["isolation"]
+        if clip(v.get("isolation_reason")):
+            entry["isolation_reason"] = clip(v["isolation_reason"])
+        out.append(entry)
+    return out
+
+
+# A host-advertised verify timeout outside (0, this] is ignored: the coordinator's default deadline applies.
+VERIFY_TIMEOUT_MAX = 4 * 3600
+
+
+def verify_timeout(item, verify_id):
+    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout` on the entry's
+    `verify_status` row, or on a `verify` list item sent as an object. None when the host did not say (remotea up
+    to PR #24 sends `verify` as plain ids and no timeout)."""
+    if not isinstance(item, dict):
+        return None
+    for key in ("verify_status", "verify"):
+        for v in item.get(key) or []:
+            if isinstance(v, dict) and v.get("id") == verify_id:
+                value = v.get("timeout")
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
+                    return int(value)
+    return None
 
 
 def target_mcp(item):
@@ -429,16 +467,24 @@ def start_run(db, owner, account_id, body, *, actor):
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
     check_host(owner, task, host, body.harness, target.host_target)
+    tools = next((p for p in target_problems(task, hello_target(host, target.host_target))
+                  if p["code"] == "MCP_UNCONFIGURED"), None)
+    if tools is not None and not body.freestyle:
+        # Without Eridani's tools the agent cannot submit a plan; only a freestyle run (no plan, no judge) can start.
+        raise DomainError("MCP_UNCONFIGURED", tools["message"], 409, data={"host_target": target.host_target})
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
     planned = bool(task.success_criteria) and bool(task.verify)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
+    if body.freestyle:
+        interview = False  # Freestyle talks to the agent directly: nothing to interview for or submit.
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
                    model=body.model or HARNESSES[body.harness], turn_cap=task.turn_cap or 15,
                    worktree="", completion_policy=task.completion_policy or "code_ready", sync_state={},
+                   freestyle=bool(body.freestyle),
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
@@ -591,7 +637,7 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
 FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge",
-                     "pr_unknown"}
+                     "pr_unknown", "no_plan", "verify_incomplete"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -631,6 +677,12 @@ def public_attempt(a):
                    "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
                    "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
                    "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
+                   # Verify only (remotea PR #24; null from older hosts): sandboxed or not, separate from the exit
+                   # code, and whether the fingerprint covered the whole workspace. `deadline_at` follows the
+                   # entry's advertised `timeout_s` (run_coordinator.verify_deadline).
+                   **(({k: result.get(k) for k in ("isolated", "isolation", "isolation_reason", "workspace_complete",
+                                                   "workspace_reasons", "timeout_s", "stale_workspace")}
+                       | {"deadline_at": a.deadline_at}) if a.kind == "verify" else {}),
                    "created_at": a.created_at, "updated_at": a.updated_at})
 
 
@@ -657,6 +709,100 @@ def page(db, query, column, limit, offset):
         total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
         remaining = max(0, total - offset - limit)
     return list(reversed(rows[:limit])), more, remaining
+
+
+def verification_fact(db, run):
+    """The run's latest verification as a decision fact: {verify_id, status, at, evidence, isolated, isolation_reason,
+    workspace_reasons}. `evidence` says how far it proves the current turn: `fresh` (this generation, turn and plan
+    revision, an unchanged and completely fingerprinted workspace), `stale` (an older turn or plan, or the checkout
+    changed around it), `incomplete` (remotea's `workspace_complete: false`) or `pending` (still running). None
+    before the first one. A host attempt Eridani did not match (`unmatched`) is not counted."""
+    rows = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify")
+                      .order_by(AgentAttempt.updated_at.desc()).limit(5))
+    attempt = next((a for a in rows if not (a.result or {}).get("unmatched")), None)
+    if attempt is None:
+        return None
+    result = attempt.result or {}
+    current = (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
+        (run.generation, run.turn_seq, run.plan_revision)
+    if attempt.status == "running":
+        evidence = "pending"
+    elif not current or result.get("stale_workspace") or attempt.status == "stale":
+        evidence = "stale"
+    elif result.get("workspace_complete") is False:
+        evidence = "incomplete"
+    else:
+        evidence = "fresh"
+    return {"verify_id": attempt.verify_id, "status": attempt.status, "at": attempt.updated_at, "evidence": evidence,
+            "turn_seq": attempt.turn_seq, "isolated": result.get("isolated"),
+            "isolation_reason": result.get("isolation_reason"), "workspace_complete": result.get("workspace_complete"),
+            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at}
+
+
+def pending_controls(db, run):
+    """Commands to the host whose effect is not known yet: `pending` (queued or sent, the host has not taken them)
+    and `uncertain` (the host could not tell whether they took effect) since the run entered its current state.
+    Newest first, at most five: [{kind, status, mode?, at}]."""
+    rows = db.scalars(select(AgentCommand).where(
+        AgentCommand.run_id == run.id, AgentCommand.status.in_(("queued", "sent", "uncertain")),
+        *([AgentCommand.created_at >= run.state_since] if run.state_since else []))
+        .order_by(AgentCommand.created_at.desc()).limit(5))
+    return [{"kind": c.kind, "status": "uncertain" if c.status == "uncertain" else "pending",
+             **({"mode": (c.payload or {}).get("mode")} if c.kind == "input" else {}), "at": c.created_at}
+            for c in rows]
+
+
+def freshness_text(item, clock=None):
+    """The run's freshness facts as one line for Eri (control_status), e.g. "verify tests passed 3 min ago on a
+    complete workspace; host seen 5 s ago; last turn 2 min ago; in needs you for 4 min"."""
+    clock = clock or now()
+
+    def ago(value):
+        if not value:
+            return None
+        at = datetime.fromisoformat(value) if isinstance(value, str) else value
+        seconds = max(0, int((clock - at).total_seconds()))
+        if seconds < 60:
+            return f"{seconds} s"
+        if seconds < 3600:
+            return f"{seconds // 60} min"
+        if seconds < 172800:
+            return f"{seconds // 3600} h"
+        return f"{seconds // 86400} d"
+
+    parts = []
+    verify = item.get("verification")
+    if verify:
+        when = ago(verify["at"])
+        if verify["evidence"] == "pending":
+            parts.append(f"verify {verify['verify_id']} running for {when}")
+        else:
+            where = {"fresh": "for the current turn"
+                              + (" on a complete workspace" if verify.get("workspace_complete") else ""),
+                     "stale": "but it is stale (an older turn, or the checkout changed around it)",
+                     "incomplete": "but the workspace fingerprint was incomplete ("
+                                   + ("; ".join(verify["workspace_reasons"]) or "the host did not say what it missed")
+                                   + ")"}[verify["evidence"]]
+            sandbox = "" if verify["isolated"] is None else (
+                "; sandboxed" if verify["isolated"] else
+                f"; not sandboxed ({verify['isolation_reason'] or 'the host did not say why'})")
+            parts.append(f"verify {verify['verify_id']} {verify['status']} {when} ago {where}{sandbox}")
+    host = item.get("host")
+    if host:
+        seen = ago(host.get("last_seen_at"))
+        parts.append(f"host seen {seen} ago" if host.get("connected") else
+                     f"host silent for {seen}" if seen else "host never seen")
+    last = ago(item.get("last_turn_at"))
+    if last:
+        parts.append(f"last turn {last} ago")
+    since = ago(item.get("state_since"))
+    if since:
+        parts.append(f"in {item['state'].replace('_', ' ')} for {since}")
+    for control in item.get("pending_controls") or []:
+        what = control["mode"] if control.get("mode") else control["kind"]
+        parts.append(f"{what} sent {ago(control['at'])} ago, "
+                     + ("delivery uncertain" if control["status"] == "uncertain" else "not yet taken by the host"))
+    return "; ".join(parts)
 
 
 def run_turns(run):
@@ -724,9 +870,16 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
         "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host),
-                 "degraded_reason": agent_link.build_identity(host)["degraded_reason"]} if host else None,
+                 "degraded_reason": agent_link.build_identity(host)["degraded_reason"],
+                 # The host's lease: renewed every 30 s while connected, so its age is "host seen N s ago".
+                 "last_seen_at": host.last_seen_at} if host else None,
         # Whether the agent was spawned with Eridani's MCP tools (spawn outcome, remotea PR #20); null when unsaid.
         "mcp": (run.sync_state or {}).get("mcp"),
+        # Freshness facts kept apart (E-S6): the transcript's age, the latest verification and how far it proves the
+        # current turn, and controls sent but not yet taken by the host or whose delivery is uncertain.
+        "last_turn_at": db.scalar(run_turns(run).with_only_columns(func.max(AgentTurn.created_at))),
+        "verification": verification_fact(db, run),
+        "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
         "created_at": run.created_at,
@@ -949,13 +1102,46 @@ def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
             raise DomainError("NOT_FOUND", "That task is no longer available.", 404)
         target = resolve_target(db, owner, task, execution_target_id)
         out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
-        check_host(owner, task, db.get(AgentHost, target.host_id) if target.host_id else None, harness,
-                   target.host_target)
+        host = db.get(AgentHost, target.host_id) if target.host_id else None
+        check_host(owner, task, host, harness, target.host_target)
     except DomainError as error:
         if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
             return {**out, "needs_target": True, "need": error.data}
-        out["problems"].append({"code": error.code, "message": error.message})
+        out["problems"].append({"code": error.code, "message": error.message, "blocking": True})
+        return out
+    out["problems"] += target_problems(task, hello_target(host, target.host_target) if host is not None else None)
     return out
+
+
+def target_problems(task, item):
+    """What the target's hello says will go wrong (caps_version 2 / remotea PR #20), as readiness problems:
+    MCP_UNCONFIGURED (agents get no Eridani tools, so they cannot submit a plan: blocks a start unless it is a
+    freestyle run, `freestyle_ok`) and VERIFY_NOT_READY (the task's verify command, or every one the target offers,
+    is not ready on the host: a warning, `blocking: false`, since the run still starts and records the failure)."""
+    problems = []
+    mcp = target_mcp(item)
+    if mcp is not None and not mcp["configured"]:
+        problems.append({"code": "MCP_UNCONFIGURED", "blocking": True, "freestyle_ok": True,
+                         "message": "Agents on this target have no Eridani tools: "
+                                    f"{mcp.get('reason') or 'the host did not say why'}."})
+    used, ready = verify_use(task, target_verify_status(item))
+    if ready is False:
+        reasons = "; ".join(f"{s['id']}: {s.get('reason') or 'not ready'}" for s in used if not s["ready"])
+        problems.append({"code": "VERIFY_NOT_READY", "blocking": False,
+                         "message": f"This target's verify command is not ready ({reasons})."})
+    return problems
+
+
+def verify_use(task, status):
+    """(the verify_status rows a run would use, whether that is ready): the task's verify id when it names one, else
+    any id the target offers (agent_plan.pick_verify prefers a ready one). (rows, None) when the host did not say."""
+    if not status:
+        return [], None
+    wanted = (task.verify or {}).get("verify_id") if task is not None and isinstance(task.verify, dict) else None
+    used = [s for s in status if s["id"] == wanted] if wanted else status
+    if not used:
+        return [], None
+    return used, (used[0]["ready"] if wanted else any(s["ready"] for s in used))
 
 
 def readiness(db, owner, row):
@@ -992,9 +1178,10 @@ def target_capabilities(db, owner, task, execution_target_id=None):
 
 def target_readiness(db, owner, task, execution_target_id=None):
     """The resolved target's verify and MCP readiness as its host last advertised it (caps_version 2 / PR #20):
-    `verify_status` (all its ids), `verify_ready` for the ids a run would use (the task's verify id, else every id
-    the target offers; null when the host did not say or there are none), `verify_reasons` {id: reason} for those
-    not ready, and `mcp` {configured, reason?} (null when unsaid). Nothing while no target resolves."""
+    `verify_status` (all its ids), `verify_ready` for the ids a run would use (verify_use: the task's verify id, else
+    whether any id the target offers is ready, since the default pick prefers a ready one; null when the host did
+    not say or there are none), `verify_reasons` {id: reason} for those not ready, and `mcp` {configured, reason?}
+    (null when unsaid). Nothing while no target resolves."""
     empty = {"verify_status": None, "verify_ready": None, "verify_reasons": {}, "mcp": None}
     try:
         target = resolve_target(db, owner, task, execution_target_id)
@@ -1005,9 +1192,8 @@ def target_readiness(db, owner, task, execution_target_id=None):
     status = target_verify_status(item)
     if status is None:
         return {**empty, "mcp": target_mcp(item)}
-    wanted = (task.verify or {}).get("verify_id") if isinstance(task.verify, dict) else None
-    used = [s for s in status if s["id"] == wanted] if wanted else status
-    return {"verify_status": status, "verify_ready": all(s["ready"] for s in used) if used else None,
+    used, ready = verify_use(task, status)
+    return {"verify_status": status, "verify_ready": ready,
             "verify_reasons": {s["id"]: s.get("reason") or "not ready" for s in used if not s["ready"]},
             "mcp": target_mcp(item)}
 
@@ -1048,8 +1234,12 @@ def proposal(db, owner, result):
                     "project first. They can also pick it on the card in chat or on the remotea page. A bare yes "
                     "cannot start it until a place is chosen.")
     for problem in ready["problems"]:
-        told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
-                    "fixed; the proposal stays open until it expires.")
+        if problem.get("blocking", True):
+            told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
+                        "fixed; the proposal stays open until it expires.")
+        else:
+            told.append(f"Tell the owner: {problem['message']} ({problem['code']}) The run can still start, but its "
+                        "verification will not pass until that is fixed on the host.")
     return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
             "target": ready["target"], "problems": ready["problems"], **extra,
             **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
@@ -1416,6 +1606,8 @@ def spoken_run(db, run):
         spoken["awaiting_approval"] = {**judge_summary(db, run),
                                        "next": "Read the judge's summary to the owner. control_approve completes the "
                                                "task on their say-so; control_message sends changes back instead."}
+    # How old each fact is (E-S6): say it before a decision ("verify passed 3 min ago …; host seen 5 s ago").
+    spoken["freshness"] = freshness_text(item)
     return spoken
 
 
@@ -1455,7 +1647,7 @@ def status(db, owner, args):
     for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         degraded = agent_link.build_identity(h)["degraded_reason"]
         # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
-        hosts.append({"name": h.name, "connected": agent_link.connected(h),
+        hosts.append({"name": h.name, "connected": agent_link.connected(h), "last_seen_at": h.last_seen_at,
                       **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {})})
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
                    "pending": spoken_pending(db, owner),
