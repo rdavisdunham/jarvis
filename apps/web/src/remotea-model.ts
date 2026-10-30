@@ -871,8 +871,22 @@ export type TargetLaunch = { ready: boolean; version: string | null; error?: str
 export type VerifyStatus = { id: string; ready: boolean; reason?: string; timeout?: number;
   isolated?: boolean; isolation?: "bwrap" | "none"; isolation_reason?: string };
 export type TargetMcp = { configured: boolean; reason?: string };
+/** remotea S-Q3: the target's template check (repository, worktree root, base, launch, prepare steps, disk), fails
+ * first. A target that is not ready is advertised with no harnesses and its spawns are rejected `target_not_ready`. */
+export type TemplateProblem = { check: string; level: "fail" | "warn"; reason: string };
+export type TargetTemplate = { ready: boolean; problems?: TemplateProblem[] };
 type TargetFacts = { enabled?: string[] | null; launch?: Partial<Record<string, TargetLaunch>> | null;
-  verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null };
+  verify_status?: VerifyStatus[] | null; mcp?: TargetMcp | null;
+  /** S-Q3 (absent from an older host or Eridani): the template check and the preparation step ids. */
+  template?: TargetTemplate | null; prepare?: string[] | null };
+
+/** Why a target's template keeps agents from starting there ("not ready: repo: …; base: …"), or "" when it is ready
+ * or the host did not say. */
+export function templateNote(t: { template?: TargetTemplate | null }): string {
+  if (!t.template || t.template.ready) return "";
+  const fails = (t.template.problems ?? []).filter(p => p.level === "fail").map(p => `${p.check}: ${p.reason}`);
+  return "not ready: " + (fails.join("; ") || "the host did not say why");
+}
 /** A saved target. `harnesses`/`verify` (and the TargetFacts) are what its host advertised for it, present only when known. */
 export type SavedTarget = { id: string; host_id: string; host_target: string; name: string; repo: string; worktree_root: string; record_id: string | null;
   harnesses?: string[]; verify?: string[] } & TargetFacts;
@@ -888,10 +902,11 @@ export type UnmergedWork = { host_id: string; host_name: string; target: string 
 
 /** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. */
 export function targetOptions(need: NeedsTarget) {
-  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: t.repo, saved: t }));
+  const detail = (base: string, t: { template?: TargetTemplate | null }) => [base, templateNote(t)].filter(Boolean).join(" · ");
+  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: detail(t.repo, t), saved: t }));
   const known = new Set(need.candidates.map(t => `${t.host_id}:${t.host_target}`));
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
-    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: t.repo || t.host_name, advertised: t }));
+    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: detail(t.repo || t.host_name, t), advertised: t }));
   return [...saved, ...offered];
 }
 
@@ -1160,6 +1175,9 @@ export type Preflight = {
    * `verify_ready` for the verify ids a run would use, `verify_reasons` why not, `mcp` the agents' Eridani tools. */
   verify_status?: VerifyStatus[] | null; verify_ready?: boolean | null; verify_reasons?: Record<string, string>;
   mcp?: TargetMcp | null;
+  /** The resolved target's template check (remotea S-Q3; null when the host did not say). Not ready: a blocking
+   * TARGET_NOT_READY problem names the failed checks. */
+  template?: TargetTemplate | null;
 };
 /** What stands in a start's way. `blocking` false is a warning (VERIFY_NOT_READY: the run starts and records the
  * failure); `freestyle_ok` lifts a block for a freestyle start (MCP_UNCONFIGURED). Older servers send neither:

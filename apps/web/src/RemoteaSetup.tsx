@@ -4,7 +4,7 @@ import { api, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { ago } from "./remotea-model";
 import {
-  harnessText, hostLine, mcpText, selfCheck, SETUP_COMMAND, SETUP_STDIN, setupSteps, verifyText, withProbe,
+  harnessText, hostLine, mcpText, selfCheck, SETUP_COMMAND, SETUP_STDIN, setupSteps, templateText, verifyText, withProbe,
   type ProbeResult, type SetupHost, type SetupProblem, type SetupReport, type SetupTarget,
 } from "./remotea-setup";
 
@@ -75,6 +75,7 @@ export function TargetCard({ target, onProbed }: { target: SetupTarget; onProbed
       {target.verify === null ? <li>Verify: unknown (host too old)</li> : !target.verify.length ? <li>Verify: none configured</li>
         : target.verify.map(v => <li key={v.id}>Verify {verifyText(v)}</li>)}
       <li>{mcpText(target.mcp)}</li>
+      {templateText(target) && <li>{templateText(target)}</li>}
     </ul>}
     <Problems items={target.problems}/>
     {!!target.notes.length && <p className="footnote">{target.notes.join(" ")}</p>}

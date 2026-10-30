@@ -1,6 +1,6 @@
 // The guided remotea setup page (Settings → Connections → remotea, and the remotea page while nothing is ready):
 // `GET /remotea/setup` and `POST /remotea/targets/{key}/probe` (agent_control.setup_report / target_probe).
-import { ago, type DoctorSummary } from "./remotea-model";
+import { ago, type DoctorSummary, type TargetTemplate } from "./remotea-model";
 
 export type SetupProblem = { code: string; message: string; fix: string; blocks: boolean };
 export type SetupHost = {
@@ -21,6 +21,8 @@ export type SetupTarget = {
   key: string; host_id: string | null; host_name: string | null; host_target: string; name: string; repo: string;
   execution_target_id: string | null; advertised: boolean; harnesses: Record<string, SetupHarness>;
   verify: SetupVerify[] | null; mcp: { configured: boolean; reason?: string } | null;
+  /** remotea S-Q3 (absent from an older Eridani, null from an older host): the template check and prepare step ids. */
+  template?: TargetTemplate | null; prepare?: string[] | null;
   problems: SetupProblem[]; notes: string[]; ready: boolean; line: string | null;
 };
 export type SetupReport = { ready: boolean; hosts: SetupHost[]; targets: SetupTarget[]; lines: string[] };
@@ -81,6 +83,16 @@ export function verifyText(v: SetupVerify) {
   const sandbox = v.isolated === true ? " · sandboxed" : v.isolated === false
     ? ` · not sandboxed${v.isolation_reason ? ": " + v.isolation_reason : ""}` : "";
   return `${v.id}: ${v.ready ? "ready" : "not ready" + (v.reason ? ": " + v.reason : "")}${sandbox}`;
+}
+
+/** The target's template check in one line: ready (with its preparation steps), or how many checks failed (the
+ * TARGET_NOT_READY problem lists them with the fix). Null when the host did not say. */
+export function templateText(t: Pick<SetupTarget, "template" | "prepare">): string | null {
+  if (!t.template) return null;
+  const prepare = t.prepare?.length ? ` · prepares ${t.prepare.join(", ")}` : "";
+  if (t.template.ready) return `Template: ready${prepare}`;
+  const fails = (t.template.problems ?? []).filter(p => p.level === "fail").length;
+  return `Template: not ready (${fails === 1 ? "1 failing check" : `${fails} failing checks`})${prepare}`;
 }
 
 export function mcpText(mcp: SetupTarget["mcp"]) {

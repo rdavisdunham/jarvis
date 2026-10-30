@@ -607,6 +607,35 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
     assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000
 
 
+def test_template_spawn_rejections_fail_the_run_with_a_clear_reason(host):
+    """remotea S-Q3: a spawn on a target whose template broke since hello is rejected `target_not_ready: <reasons>`
+    (result {template}); one past limits.maxRuns is rejected `target_busy` (result {limit, running})."""
+    template = {"ready": False, "problems": [{"check": "limits.disk", "level": "fail", "reason": "312 MiB free, needs 4096"},
+                                             {"check": "migrations", "level": "warn", "reason": "not a folder"}]}
+    cases = [("target_not_ready: limits.disk: 312 MiB free, needs 4096", {"template": template}, "target_not_ready",
+              "limits.disk: 312 MiB free, needs 4096. Fix the target on the host"),
+             ("target_not_ready: base: main is not a branch", None, "target_not_ready", "base: main is not a branch."),
+             ("target_busy", {"limit": 2, "running": 2}, "target_busy", "2 of 2 runs allowed on this target are live."),
+             ("target_busy", {"limit": "two"}, "target_busy", "the target is at its run limit."),
+             ("worktree_busy", {"branch": "b"}, "spawn_rejected", "worktree_busy")]
+    for n, (detail, result, reason, said) in enumerate(cases):
+        started = start(host, task(f"Rejected {n}")["id"])
+        [spawn] = commands(started["id"], "spawn")
+        with session_scope() as db:
+            coordinator.on_outcome(db, db.get(AgentCommand, spawn.id), "rejected", detail, result)
+        assert state(started["id"]) == ("failed", reason), detail
+        with session_scope() as db:
+            row = db.get(AgentRun, started["id"])
+            assert said in row.history[-1]["detail"], (detail, row.history[-1])
+            public = control.public_run(db, row)
+            assert public["reason_text"] == coordinator.REASONS[reason]
+    failed = start(host, task("Failed spawn")["id"])
+    [spawn] = commands(failed["id"], "spawn")
+    with session_scope() as db:  # A failure (not a rejection) keeps its own reason, whatever the detail says.
+        coordinator.on_outcome(db, db.get(AgentCommand, spawn.id), "failed", "target_busy", {"limit": 1, "running": 1})
+    assert state(failed["id"]) == ("failed", "spawn_failed")
+
+
 def test_every_transition_reason_has_page_text():
     """The run card and drawer show REASON_TEXT for the current state; a reason without text showed the raw
     token ("plan_frozen") on the page. Every reason the coordinator, planner or control layer passes to
@@ -620,7 +649,8 @@ def test_every_transition_reason_has_page_text():
     used = set()
     for name in ("run_coordinator.py", "agent_plan.py", "agent_control.py"):
         used |= set(re.findall(r'reason="([a-z_]+)"\s*[,)]', (root / name).read_text()))  # Not "spawn_" + state.
-    used |= {"spawn_failed", "spawn_rejected", "spawn_uncertain", "spawn_expired"}  # run_coordinator's "spawn_" + outcome
+    used |= {"spawn_failed", "spawn_rejected", "spawn_uncertain", "spawn_expired",  # run_coordinator's "spawn_" + outcome
+             "target_not_ready", "target_busy"}  # run_coordinator.spawn_refusal
     missing = sorted(r for r in used if r not in REASON_TEXT)
     assert not missing, f"transition reasons without page text: {missing}"
     assert REASON_TEXT.get("no_such_reason", "") == ""

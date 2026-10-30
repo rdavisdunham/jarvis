@@ -93,6 +93,8 @@ REASONS = {
     "spawn_expired": "The host did not take the start command in time.",
     "spawn_failed": "The host could not start the agent.",
     "spawn_rejected": "The host refused the start command.",
+    "target_not_ready": "The host refused the start: the target is not ready (its template check failed).",
+    "target_busy": "The host refused the start: the target already runs as many agents as it allows.",
     "spawn_uncertain": "The host could not tell whether the agent started.",
     "wall_clock": "The run reached its wall-clock limit.",
     "no_progress": "No progress for a while.",
@@ -367,13 +369,36 @@ def on_outcome(db, row, state, detail="", result=None):
             if run.state == "stopping":
                 finish(db, run, detail="the agent never started")
             elif run.state not in TERMINAL:
-                transition(db, run, "failed", reason="spawn_" + state, detail=detail)
+                reason, why = spawn_refusal(state, detail, facts)
+                transition(db, run, "failed", reason=reason, detail=why)
     elif row.kind == "stop" and run.state == "stopping":
         if state == "executed":
             finish(db, run, detail=detail or "termination confirmed")
         else:
             run.state_reason = "stop_refused"
             note(run, "stop_refused", detail=detail[:300])
+
+
+def spawn_refusal(state, detail, result):
+    """(reason, detail) for a spawn the host failed or rejected. remotea S-Q3 names two rejections: `target_not_ready:
+    <the fail reasons>` (result {template}: the target's template check failed at spawn time) and `target_busy`
+    (result {limit, running}: the target is at its limits.maxRuns). Anything else is spawn_failed/spawn_rejected."""
+    code = detail.split(":", 1)[0].strip() if state == "rejected" else ""
+    if code == "target_not_ready":
+        from .agent_link import target_template
+
+        template = target_template(result.get("template")) or {}
+        fails = [f"{p['check']}: {p['reason']}" for p in template.get("problems") or [] if p["level"] == "fail"]
+        said = detail.split(":", 1)[1].strip() if ":" in detail else ""
+        return "target_not_ready", (("; ".join(fails) or said or "the host did not say why")
+                                    + ". Fix the target on the host (Settings → Connections → remotea), then start again.")[:300]
+    if code == "target_busy":
+        limit, running = result.get("limit"), result.get("running")
+        counts = (f"{running} of {limit} runs allowed on this target are live"
+                  if all(isinstance(v, int) and not isinstance(v, bool) for v in (limit, running))
+                  else "the target is at its run limit")
+        return "target_busy", (f"{counts}. Start again when one finishes, or raise limits.maxRuns on the target.")[:300]
+    return "spawn_" + state, detail
 
 
 def stop_command(db, run):

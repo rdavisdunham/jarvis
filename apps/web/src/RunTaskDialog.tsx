@@ -58,7 +58,8 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
   // The preflight says what the task's target can start; any connected host counts only when there is no preflight.
   const choice = (id: HarnessId) => harnessChoice(pre, hosts, id);
   const available = (id: HarnessId) => choice(id).ok;
-  const unavailable = HARNESSES.map(h => choice(h.id).reason).filter(Boolean);
+  // One line per distinct reason: a target that is not ready gives every harness the same one.
+  const unavailable = [...new Set(HARNESSES.map(h => choice(h.id).reason).filter(Boolean))];
   const notes = preflightNotes(pre);
   // A blocking problem (the server offline, agents without Eridani tools) keeps Start off; a freestyle start lifts
   // the tools one. Warnings (a verify command not ready) only show as notes.
@@ -109,7 +110,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
           <input type="checkbox" checked={!!draft.freestyle} onChange={e => setDraft(d => ({ ...d, freestyle: e.target.checked }))}/>
           <span>Start in freestyle</span><small>the agent has no Eridani tools to plan with</small>
         </label>}
-        {block.problem && !notes.includes(block.problem.message) && <p className="footnote run-dialog-note" role="note">{block.problem.message}</p>}
+        {block.problem && !notes.includes(block.problem.message) && !unavailable.includes(block.problem.message) && <p className="footnote run-dialog-note" role="note">{block.problem.message}</p>}
         {setupLink}
         <div className="settings-form-actions">
           <button className="btn btn-primary btn-sm" disabled={busy || blocked || !available(draft.harness)} onClick={() => void start()}>
