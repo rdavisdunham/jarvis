@@ -164,6 +164,7 @@ export interface Preferences {
   preferred_name: string;
   history_enabled: boolean;
   memory_learning: boolean;
+  live_memory_updates?: boolean;
   deep_sleep_enabled: boolean;
   history_days: number;
   timezone: string;

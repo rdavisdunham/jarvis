@@ -1,18 +1,18 @@
 {
   "version": 2,
   "registry": {
-    "cases": 1106,
+    "cases": 1107,
     "types": {
       "contracts": 456,
       "pipeline": 275,
       "integration": 150,
       "agent": 125,
-      "browser": 50,
+      "browser": 51,
       "voice": 50
     },
     "fully_bound": 239,
-    "component_cases": 225,
-    "sha256": "9b0e53abe5854ba3669da83c3d9d1b864809b51007d8537bcecfdd3f53842bea"
+    "component_cases": 226,
+    "sha256": "bbc39adad03311b80a77dd6ff0712b4d255137b5af9e1aa6be0e7abad843b3eb"
   },
   "features": {
     "accounts": {
@@ -8702,9 +8702,9 @@
       ]
     },
     "site_controls": {
-      "catalog": 25,
+      "catalog": 26,
       "fully_bound": 0,
-      "component_cases": 0,
+      "component_cases": 1,
       "supporting_suites": [
         "custom-planner.mjs",
         "shell-navigation.mjs",
@@ -8988,6 +8988,20 @@
             "invariants.1",
             "invariants.2",
             "invariants.3"
+          ]
+        },
+        {
+          "case_id": "site_controls.26",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "expected.2",
+            "expected.3",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3",
+            "invariants.4"
           ]
         }
       ]

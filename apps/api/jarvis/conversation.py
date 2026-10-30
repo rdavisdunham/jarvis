@@ -247,6 +247,7 @@ async def chat(
                                 device=device,
                                 conversation_id=conversation_id,
                             )
+                        tool_session.follow(outcome)
                         if outcome.get("ui_action"):
                             ui_actions.append(outcome["ui_action"])
                         # Store references only; retrieved personal context is not another transcript store.
