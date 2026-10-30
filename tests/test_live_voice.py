@@ -500,3 +500,25 @@ async def test_unreported_required_work_question_blocks_optional_review(controll
     c.groups=[{"received_at":time.monotonic()-10}]
     await c.offer_review()
     c.send.assert_not_called()
+
+
+async def test_a_proposed_agent_action_is_announced_as_waiting_for_the_owners_yes(controller):
+    """A result that only proposed (control_start / control_message, pending_confirmation) ends with a request for
+    the yes, so Live asks the owner and delegates their bare answer."""
+    from datetime import timedelta
+    from uuid import uuid4
+
+    from jarvis.agent_work import enqueue, finish
+    from jarvis.models import now
+    c = controller
+    with session_scope() as db:
+        row = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), "Start the agent on alpha",
+                      voice_session_id=c.id)
+        row.transient = False
+        finish(db, row, "succeeded", "I can start Claude Code on Alpha in jarvis.", quiet=True, tool_calls=2,
+               pending_confirmation=True)
+        db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=5)
+    await c.report_work()
+    events = [call.args[0] for call in c.send.await_args_list]
+    [spoken] = [e for e in events if e["type"] == "session.commentary.append"]
+    assert "Claude Code on Alpha in jarvis. It is waiting for your yes." in spoken["content"]

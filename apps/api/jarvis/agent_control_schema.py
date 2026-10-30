@@ -16,7 +16,7 @@ class Input(BaseModel):
 
 class Target(Input):
     """Which run: its id, its task's id, or the task's name / Linear identifier (exactly one, or none
-    when exactly one run is active)."""
+    when the owner's screen has a run open or exactly one run is active)."""
 
     run_id: str | None = Field(default=None, max_length=36)
     task_id: str | None = Field(default=None, max_length=36)
@@ -81,6 +81,27 @@ class ControlConfirm(Input):
     # Omitted: the newest pending action of this account (the one the owner is answering).
     pending_id: str | None = Field(default=None, min_length=1, max_length=36)
     decision: Literal["confirm", "decline"] = "confirm"
+    # Where a start that needs a target should run: an entry of the proposal's `targets` (a saved target's id, or
+    # an advertised one's key `host:<host_id>:<host_target>`, which is saved for the task's project first).
+    execution_target_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class ControlApprove(Target):
+    """Approve a run that is awaiting approval: the task is completed as the owner and the run settles."""
+
+
+class PlanDecisionInput(Input):
+    id: str = Field(min_length=1, max_length=64)
+    accept: bool
+    text: str | None = Field(default=None, min_length=1, max_length=1000)  # The owner's own wording, if any.
+
+
+class ControlPlanReview(Target):
+    """The owner's decisions on the agent's proposed plan changes (control_status lists them under plan_review)."""
+
+    decisions: list[PlanDecisionInput] = Field(default_factory=list, max_length=50)
+    verify: Literal["accept", "keep"] = "keep"
+    completion_policy: Literal["accept", "keep"] = "keep"
 
 
 COMMANDS = {
@@ -89,4 +110,6 @@ COMMANDS = {
     "control.confirm": ControlConfirm,
     "control.stop": ControlStop,
     "control.answer": ControlAnswer,
+    "control.approve": ControlApprove,
+    "control.plan_review": ControlPlanReview,
 }

@@ -290,6 +290,8 @@ export interface UIContext {
   query: string;
   selected_task_id: string | null;
   selected_task_ids?: string[];
+  /** The agent run open on the remotea page; Eri's control tools default to it. Sent by a later PR. */
+  open_run_id?: string | null;
   selected_calendar_event_id?: string | null;
   selected_note_id?: string | null;
   visible_ids: string[];

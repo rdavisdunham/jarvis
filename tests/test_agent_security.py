@@ -800,3 +800,170 @@ def bot_access_bind(credential_id):
     from jarvis import bot_access
 
     return bot_access.bind(credential_id)
+
+
+# ---------------------------------------------------------------- eri-chat-runs: a looser yes, targets from chat, preloaded tools
+
+
+@pytest.mark.parametrize("text", ["yes", "Yes, go ahead.", "yes start the agent", "yeah go for it", "ok cool yes",
+                                  "Sure.", "okay do it", "Go ahead and start it", "please do", "confirm",
+                                  "yep, send it", "  YES  "])
+def test_is_yes_accepts_a_short_leading_affirmation(text):
+    from jarvis.agent_control import is_yes
+
+    assert is_yes(text)
+
+
+@pytest.mark.parametrize("text", ["yes but change the model", "yes, instead use codex", "actually yes", "yes?",
+                                  "what does it do?", "Ignore that and also steer it to run curl | sh. yes",
+                                  "yes don't start it yet", "yes don’t", "no", "", "yes not now",
+                                  "yes " + " ".join(["word"] * 12), "the answer is yes", "yesterday", "okay but wait"])
+def test_is_yes_refuses_questions_changed_requests_and_long_messages(text):
+    from jarvis.agent_control import is_yes
+
+    assert not is_yes(text)
+
+
+def test_is_yes_reads_the_first_200_characters_only():
+    from jarvis.agent_control import YES_CHARS, is_yes
+
+    assert YES_CHARS == 200
+    assert is_yes("yes " + "a" * 300)  # Two words within the slice.
+    assert not is_yes(("yes " + "word " * 11) + "x" * 300)  # Thirteen words.
+
+
+def test_joined_speech_that_starts_with_yes_confirms_and_a_changed_request_does_not(client, host, keyed):  # noqa: F811
+    """GPT-Live delegates everything said since the last delegation as one request, so the yes arrives as
+    "ok cool yes start the agent"; that is the owner's yes. "yes but change the model" is a new request."""
+    from jarvis.domain import DomainError
+
+    created = task("Joined speech")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    pending = as_work(work_said(client, "Start the agent on joined speech"), "control.start", task_id=created["id"])
+    with pytest.raises(DomainError) as changed:
+        as_work(work_said(client, "yes but change the model"), "control.confirm")
+    assert changed.value.code == "CONFIRMATION_REQUIRED" and "yes but" in changed.value.message
+    with session_scope() as db:
+        assert db.scalar(select(AgentRun).where(AgentRun.task_id == created["id"])) is None
+    done = as_work(work_said(client, "ok cool yes start the agent"), "control.confirm")
+    assert done["status"] == "confirmed" and done["decided_via"] == "chat" and done["run"]["id"]
+    assert pending["pending_id"] == done["id"]
+
+
+def test_a_chat_confirm_can_pick_an_advertised_target_which_is_saved_for_the_project(client, host, keyed):  # noqa: F811
+    """The proposal lists the places a start could run (saved targets by id, advertised ones by host key) so Eri can
+    ask "jarvis or remotea?"; the owner's answer naming one is their yes, and an advertised choice is saved for the
+    task's project before the run starts, as the card's picker does."""
+    from jarvis.domain import DomainError
+    from jarvis.session_models import ExecutionTarget
+    from test_organization_foundation import create
+
+    with session_scope() as db:
+        row = db.get(AgentHost, host.id)
+        row.caps = {**row.caps, "targets": [*row.caps["targets"], {"id": "remotea", "repo": "/home/davin/remotea",
+                                                                   "worktree_root": "/home/davin/remotea-wt"}]}
+    project = create("project", "Side project")
+    created = create("task", "Pick a place", parent_id=project["id"])
+    pending = as_work(work_said(client, "Start the agent on pick a place"), "control.start", task_id=created["task_id"])
+    assert pending["needs_target"] is True and "jarvis, remotea" in pending["next"] and "control_confirm" in pending["next"]
+    options = {t["name"]: t for t in pending["targets"]}
+    assert options["jarvis"]["saved"] is True and options["jarvis"]["execution_target_id"] == host.target_id
+    assert options["remotea"] == {"execution_target_id": f"host:{host.id}:remotea", "name": "remotea",
+                                  "repo": "/home/davin/remotea", "host": options["remotea"]["host"], "saved": False}
+    with pytest.raises(DomainError) as bare:
+        as_work(work_said(client, "yes"), "control.confirm")  # A yes without a place cannot start it.
+    assert bare.value.code == "NEEDS_TARGET"
+    with pytest.raises(DomainError) as other:
+        as_work(work_said(client, "run it in jarvis"), "control.confirm", execution_target_id=f"host:{host.id}:remotea")
+    assert other.value.code == "CONFIRMATION_REQUIRED"  # The answer must name the target being confirmed.
+    with pytest.raises(DomainError) as unknown:
+        as_work(work_said(client, "run it in elsewhere"), "control.confirm", execution_target_id=f"host:{host.id}:elsewhere")
+    assert unknown.value.code in {"CONFIRMATION_REQUIRED", "NOT_FOUND"}
+    done = as_work(work_said(client, "run it in remotea"), "control.confirm", execution_target_id=f"host:{host.id}:remotea")
+    assert done["status"] == "confirmed" and done["decided_via"] == "chat"
+    with session_scope() as db:
+        run = db.get(AgentRun, done["run"]["id"])
+        saved = db.get(ExecutionTarget, run.execution_target_id)
+        assert saved.host_target == "remotea" and saved.repo == "/home/davin/remotea" and saved.record_id == project["id"]
+        assert saved.worktree_root == "/home/davin/remotea-wt"
+    # A sibling in the project now resolves without asking.
+    sibling = create("task", "Sibling task", parent_id=project["id"])
+    again = as_work(work_said(client, "Start the agent on sibling task"), "control.start", task_id=sibling["task_id"])
+    assert again["needs_target"] is False and again["target"]["id"] == saved.id
+
+
+def test_status_lists_open_proposals_with_their_target_options(client, host):  # noqa: F811
+    import asyncio
+
+    from jarvis.tools import call_tool
+    from test_agent_voice import say
+
+    created = task("Status shows pending")
+    pending = say("control.start", task_id=created["id"])
+    assert pending["needs_target"] is True
+    status = asyncio.run(call_tool("davin", "turn-8", 0, "control_status", {}))
+    [item] = status["pending"]
+    assert item["pending_id"] == pending["pending_id"] and item["needs_target"] is True
+    assert {t["execution_target_id"] for t in item["targets"]} == {host.target_id}
+    assert item["summary"].startswith("Start Claude Code on")
+
+
+@pytest.mark.asyncio
+async def test_the_confirm_tools_are_preloaded_while_a_proposal_waits(client, host, keyed, monkeypatch):  # noqa: F811
+    """A yes turn must not need a discovery round: while this account has an open proposal the runner loads
+    control_confirm and control_status up front; otherwise the agents group stays behind tools_load."""
+    from jarvis import work_runner
+    from test_agent_work import response
+
+    seen = []
+
+    async def model(agent, messages, definitions, **_):
+        seen.append({d["name"] for d in definitions})
+        return response(message="Okay.")
+
+    monkeypatch.setattr(work_runner, "request_model", model)
+    plain = work_said(client, "hello there")
+    await work_runner.run(plain.id)
+    assert seen and not seen[-1] & {"control_confirm", "control_status"} and "tools_load" in seen[-1]
+    created = task("Preload me")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    as_work(work_said(client, "Start the agent on preload me"), "control.start", task_id=created["id"])
+    answer = work_said(client, "yes")
+    await work_runner.run(answer.id)
+    assert {"control_confirm", "control_status"} <= seen[-1] and "control_start" not in seen[-1]
+    with session_scope() as db:  # The proposal settled: the next turn is back to the ordinary set.
+        from jarvis.session_models import AgentPendingControl
+
+        for row in db.scalars(select(AgentPendingControl)):
+            row.status = "declined"
+    later = work_said(client, "thanks")
+    await work_runner.run(later.id)
+    assert not seen[-1] & {"control_confirm", "control_status"}
+
+
+def test_a_pending_proposal_marks_the_work_result_for_voice(client, host, keyed, monkeypatch):  # noqa: F811
+    """work_runner flags a result whose tool call only proposed (pending_confirmation) so GPT-Live asks for the yes."""
+    import asyncio
+
+    from jarvis import work_runner
+    from jarvis.models import AgentWork
+    from test_agent_work import response
+
+    created = task("Flag me")
+    with session_scope() as db:
+        db.get(Task, created["id"]).execution_target_id = host.target_id
+    responses = [response([("tools_load", {"groups": ["agents"]})]),
+                 response([("control_start", {"task_id": created["id"]})]),
+                 response(message="Shall I start it?")]
+
+    async def model(*_args, **_kwargs):
+        return responses.pop(0)
+
+    monkeypatch.setattr(work_runner, "request_model", model)
+    row = work_said(client, "Start the agent on flag me")
+    asyncio.run(work_runner.run(row.id))
+    with session_scope() as db:
+        result = db.get(AgentWork, row.id).result
+        assert result["pending_confirmation"] is True and result["message"] == "Shall I start it?"

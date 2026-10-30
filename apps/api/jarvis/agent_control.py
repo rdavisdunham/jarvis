@@ -641,11 +641,30 @@ def task_by_name(db, owner, name):
     return ids[0]
 
 
+def device_open_run(db, owner):
+    """The run the owner's screen has open (UIContext.open_run_id, sent by the remotea page), when this call runs
+    under queued work from that device; None otherwise or when the id is not one of the owner's runs."""
+    from .access import execution
+    from .ui_control import get_context
+
+    grant = execution.get()
+    if not grant or not grant.get("device_id"):
+        return None
+    run_id = (get_context(owner, grant["device_id"]) or {}).get("open_run_id")
+    if not isinstance(run_id, str) or not run_id:
+        return None
+    return db.scalar(select(AgentRun.id).where(AgentRun.id == run_id, AgentRun.owner_id == owner))
+
+
 def run_for(db, owner, target):
-    """The run a voice command means: by id, by task, or the only active run."""
+    """The run a voice command means: by id, by task, the run open on the owner's screen, or the only active run."""
     if target.run_id:
         return coordinator.load(db, owner, target.run_id, lock=False).id
     task_id = target.task_id or (task_by_name(db, owner, target.task) if target.task else None)
+    if not task_id:
+        open_run = device_open_run(db, owner)
+        if open_run:
+            return open_run
     query = select(AgentRun.id).where(AgentRun.owner_id == owner, AgentRun.state.not_in(TERMINAL_RUN_STATES))
     if task_id:
         query = query.where(AgentRun.task_id == task_id)
@@ -670,9 +689,34 @@ def owner_control(db, owner):
 # ---------------------------------------------------------------- two-phase control from Eri (stage F, M5, D3)
 
 PENDING_TTL = timedelta(minutes=10)
-# A spoken or typed yes: the whole request is a short affirmation, nothing else.
+# A spoken or typed yes: the request starts with an affirmation and asks for nothing else (is_yes). Joined voice
+# speech ("ok cool yes", "yes start the agent") counts; a question or a changed request ("yes but …") does not.
 AFFIRMATIVE = re.compile(r"^\W*(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|do it|go ahead|go|send it|start it|"
-                         r"please do|yes please|yes,? (?:do it|go ahead|send it|start it|confirm))\W*$", re.IGNORECASE)
+                         r"please do)\b", re.IGNORECASE)
+NEGATING = re.compile(r"\b(but|instead|actually|not|don[\u2019']?t|no|never|wait|cancel|rather|unless|except|change|"
+                      r"different|however|only)\b", re.IGNORECASE)
+YES_CHARS, YES_WORDS = 200, 12
+
+
+def short_answer(text):
+    """The bounds every spoken decision shares: at most 12 words, not a question, no but/not/instead."""
+    text = (text or "")[:YES_CHARS].strip()
+    if not text or "?" in text or "\uff1f" in text or len(text.split()) > YES_WORDS or NEGATING.search(text):
+        return ""
+    return text
+
+
+def is_yes(text):
+    """A short affirmation: starts with yes/ok/sure/go ahead…, at most 12 words, no question, no but/not/instead."""
+    return bool(AFFIRMATIVE.match(short_answer(text)))
+
+
+def names_one(text, names):
+    """A short answer that names one of the offered places ("run it in jarvis", "jarvis please"): the owner's
+    choice is their yes when control_confirm carries that target."""
+    text = short_answer(text)
+    return bool(text) and any(re.search(r"(?<![A-Za-z0-9])" + re.escape(n) + r"(?![A-Za-z0-9])", text, re.IGNORECASE)
+                              for n in names if n)
 
 
 def current_work(db):
@@ -730,17 +774,59 @@ def proposal(db, owner, result):
     if row is None or row.tool != "control.start":
         return result
     ready = readiness(db, owner, row)
-    told = []
+    told, extra = [], {}
     if ready["needs_target"]:
-        told.append("No repository is chosen for this task yet: tell the owner to pick where it runs on the card on "
-                    "the remotea page (the choice is remembered for the task's project), which also confirms it. A "
-                    "yes in chat cannot start it until a place is chosen.")
+        extra["targets"] = target_options(ready["need"])
+        names = ", ".join(t["name"] for t in extra["targets"][:6]) or "none listed yet"
+        told.append("No repository is chosen for this task yet. Ask the owner where it should run, naming the "
+                    f"options in targets ({names}), then call control_confirm with the chosen execution_target_id "
+                    "(their answer naming one of them counts as their yes); an advertised one is saved for the task's "
+                    "project first. They can also pick it on the card in chat or on the remotea page. A bare yes "
+                    "cannot start it until a place is chosen.")
     for problem in ready["problems"]:
         told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
                     "fixed; the proposal stays open until it expires.")
     return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
-            "target": ready["target"], "problems": ready["problems"],
+            "target": ready["target"], "problems": ready["problems"], **extra,
             **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
+
+
+def target_options(need):
+    """The picker's choices as Eri reads them out: saved targets by id, then advertised ones not saved yet by the
+    key control_confirm accepts (host:<host_id>:<host_target>; the same options the remotea card offers)."""
+    saved = [{"execution_target_id": t["id"], "name": t.get("name") or t["host_target"], "repo": t.get("repo") or "",
+              "saved": True} for t in need.get("candidates") or []]
+    known = {(t["host_id"], t["host_target"]) for t in need.get("candidates") or []}
+    offered = [{"execution_target_id": f"host:{t['host_id']}:{t['host_target']}", "name": t["host_target"],
+                "repo": t.get("repo") or "", "host": t.get("host_name") or "", "saved": False}
+               for t in need.get("advertised") or [] if (t["host_id"], t["host_target"]) not in known]
+    return [*saved, *offered]
+
+
+def target_scope(need):
+    """Where a picked target is remembered, as the card defaults it: the nearest record that is not the task itself
+    (its project), else the task's own record, else only this task (None)."""
+    records = need.get("records") or []
+    nearest = next((r for r in records if r.get("type_id") and r.get("type_id") != "task"), records[0] if records else None)
+    return nearest["id"] if nearest else None
+
+
+def chosen_target(db, owner, row, choice):
+    """control_confirm's execution_target_id: a saved target's id as is; an advertised target's key is saved first
+    (save_target, for the task's nearest record, else the task) exactly as the card's picker does."""
+    if not choice or not choice.startswith("host:"):
+        return choice
+    ready = readiness(db, owner, row)
+    need = ready.get("need") or {}
+    host_id, _, host_target = choice[5:].partition(":")
+    match = next((a for a in advertised(db, owner) if a["host_id"] == host_id and a["host_target"] == host_target), None)
+    if match is None or not need:
+        raise DomainError("NOT_FOUND", "That repository is not offered by a connected remotea server.", 404,
+                          data={"targets": target_options(need)})
+    record_id = target_scope(need)
+    body = TargetInput(host_id=host_id, host_target=host_target, repo=match["repo"], worktree_root=match["worktree_root"],
+                       **({"record_id": record_id} if record_id else {"task_id": need["task_id"]}))
+    return save_target(db, owner, body)["id"]
 
 
 def propose(db, owner, account, tool, args, actor):
@@ -784,9 +870,10 @@ def propose(db, owner, account, tool, args, actor):
     return {**pending_reply(row), "next": "Nothing was sent yet. " + NEXT}
 
 
-NEXT = ("Read the summary to the owner and ask them to confirm. They can tap Confirm on the remotea page, or "
-        "answer yes in their next message; then call control_confirm (pending_id optional: the newest pending "
-        "action). Never confirm on their behalf, and never call control_start again after their yes.")
+NEXT = ("Read the summary to the owner and ask them to confirm. They can tap Confirm on the card in chat or on the "
+        "remotea page, or answer yes in their next message (a short reply that starts with yes, okay, sure or go "
+        "ahead); then call control_confirm (pending_id optional: the newest pending action). Never confirm on their "
+        "behalf, and never call control_start again after their yes.")
 
 
 def pending_reply(row):
@@ -794,10 +881,11 @@ def pending_reply(row):
             "expires_at": row.expires_at.isoformat()}
 
 
-def owners_yes(db, owner, row, work):
+def owners_yes(db, owner, row, work, *, chosen=()):
     """Is this request the owner's own plain yes to `row`? The same rule spoken_confirmation enforces: a later
-    request of the same account, not the one that proposed it, whose whole message is a short affirmation, and
-    `row` is the newest proposal that request could mean. Returns the channel ("voice"/"chat") or None."""
+    request of the same account, not the one that proposed it, whose message is a short affirmation (is_yes) or,
+    when confirming with a chosen target, names it (`chosen`: that target's names), and `row` is the newest
+    proposal that request could mean. Returns the channel ("voice"/"chat") or None."""
     from .models import Job
     from .session_models import AgentPendingControl
 
@@ -810,7 +898,8 @@ def owners_yes(db, owner, row, work):
         AgentPendingControl.created_at > row.created_at,
         not_(and_(AgentPendingControl.tool == row.tool, AgentPendingControl.arguments == row.arguments))).limit(1))
     job = db.get(Job, work.id)
-    if later or job is None or job.created_at < row.created_at or not AFFIRMATIVE.match(work_message(work)[:80]):
+    message = work_message(work)
+    if later or job is None or job.created_at < row.created_at or not (is_yes(message) or names_one(message, chosen)):
         return None
     return "voice" if work.voice_session_id else "chat"
 
@@ -898,12 +987,31 @@ def spoken_confirmation(db, owner, args):
     row = pending_for(db, owner, work, args.pending_id)
     if args.decision == "decline" or row.status != "pending":
         return "chat"  # Declining needs no proof; a closed one is refused by decide().
-    via = owners_yes(db, owner, row, work)
+    via = owners_yes(db, owner, row, work, chosen=choice_names(db, owner, row, args.execution_target_id))
     if not via:
         raise DomainError("CONFIRMATION_REQUIRED",
-                          "Only the owner's own yes, in their next message, confirms this. Ask them, or let them "
-                          "tap Confirm on the remotea page.", 409, data={"pending_id": row.id})
+                          "Only the owner's own yes confirms this: a later message of theirs that starts with yes, "
+                          "okay, sure, go ahead or do it, is short, and asks for nothing else (not a question, not "
+                          "\u201cyes but \u2026\u201d). Ask them, or let them tap Confirm on the remotea page.",
+                          409, data={"pending_id": row.id})
     return via
+
+
+def choice_names(db, owner, row, choice):
+    """The names the owner may answer with for `choice` (an entry of the proposal's targets): its saved name and
+    host target, so "jarvis" or "run it in jarvis" confirms a start that asked where to run."""
+    if not choice or row.tool != "control.start":
+        return ()
+    need = (readiness(db, owner, row).get("need") or {})
+    for option in target_options(need):
+        if option["execution_target_id"] == choice:
+            names = {option["name"], option.get("repo", "").rstrip("/").rsplit("/", 1)[-1]}
+            if option["saved"]:
+                target = db.get(ExecutionTarget, choice)
+                if target is not None:
+                    names |= {target.name, target.host_target}
+            return tuple(n for n in names if n)
+    return ()
 
 
 def not_proposed_by(work):
@@ -969,7 +1077,37 @@ def control_command(db, owner, tool, args):
     if tool == "control.confirm":
         via = spoken_confirmation(db, owner, args)
         row = pending_for(db, owner, current_work(db), args.pending_id)
-        return decide(db, owner, row.id, confirm=args.decision == "confirm", via=via, actor=actor)
+        confirm = args.decision == "confirm"
+        target_id = chosen_target(db, owner, row, args.execution_target_id) if confirm else None
+        return decide(db, owner, row.id, confirm=confirm, via=via, actor=actor, execution_target_id=target_id)
+    if tool == "control.approve":
+        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        if run.state != "awaiting_approval":
+            raise DomainError("NOT_AWAITING_APPROVAL",
+                              f"This run is {run.state}" + (f" ({REASON_TEXT.get(run.state_reason) or run.state_reason})"
+                                                           if run.state_reason else "") +
+                              ", not awaiting approval; only a run the judge passed can be approved here. Approving "
+                              "from the remotea page completes the task in any state.", 409,
+                              data={"run_id": run.id, "state": run.state, "state_reason": run.state_reason})
+        result = approve(db, owner, run.id, ApproveInput(expected_revision=run.state_revision), actor=actor)
+        return {"status": "approved", "run_id": run.id, "task": result["task"], "state": result["state"],
+                "next": "The task is complete and the run is settling; nothing else is needed."}
+    if tool == "control.plan_review":
+        from .agent_plan import PlanDecision, PlanReviewInput, review_plan
+
+        run = coordinator.load(db, owner, run_for(db, owner, args), lock=False)
+        plan = coordinator.frozen(db, run)
+        if run.state != "needs_you" or run.state_reason != "plan_review" or plan is None or not plan.proposals:
+            raise DomainError("NO_PLAN_REVIEW", f"This run is {run.state}" +
+                              (f" ({run.state_reason})" if run.state_reason else "") +
+                              ", not waiting for a plan review.", 409,
+                              data={"run_id": run.id, "state": run.state, "state_reason": run.state_reason})
+        body = PlanReviewInput(decisions=[PlanDecision(**d.model_dump()) for d in args.decisions], verify=args.verify,
+                               completion_policy=args.completion_policy, expected_revision=run.state_revision)
+        result = review_plan(db, owner, run.id, body, actor=actor)
+        return {"status": "plan_reviewed", "run_id": run.id, "task": result["task"], "state": result["state"],
+                "plan_revision": (result.get("plan") or {}).get("revision"),
+                "next": "The plan is frozen and the agent is executing against it."}
     if tool == "control.stop":
         return stop_run(db, owner, run_for(db, owner, args), StopInput(mode=args.mode), actor=actor)
     if tool == "control.answer":
@@ -994,13 +1132,37 @@ def spoken_run(db, run):
                  for q in coordinator.open_questions(db, run)]
     interview = coordinator.open_interview(db, run)
     linear = (run.sync_state or {}).get("linear") or {}
-    return {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
-            "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
-            "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
-            "questions": questions,
-            "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
-            if interview else None,
-            "linear": {k: (v or {}).get("status") for k, v in linear.items()} or None}
+    spoken = {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
+              "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
+              "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
+              "questions": questions,
+              "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
+              if interview else None,
+              "linear": {k: (v or {}).get("status") for k, v in linear.items()} or None}
+    if run.state == "needs_you" and run.state_reason == "plan_review":
+        plan = coordinator.frozen(db, run)
+        if plan is not None and plan.proposals:
+            # What the agent wants to change, with the ids control_plan_review decides on (criteria ids; verify and
+            # completion_policy are accept/keep flags).
+            spoken["plan_review"] = {"plan_revision": plan.revision, "proposals": plan.proposals,
+                                     "next": "Read each proposal to the owner; then call control_plan_review with "
+                                             "their accept/keep decision per criterion id (text for their own "
+                                             "wording), and verify / completion_policy when proposed."}
+    if run.state == "awaiting_approval":
+        spoken["awaiting_approval"] = {**judge_summary(db, run),
+                                       "next": "Read the judge's summary to the owner. control_approve completes the "
+                                               "task on their say-so; control_message sends changes back instead."}
+    return spoken
+
+
+def judge_summary(db, run):
+    """The last judge verdict on a run (summary and any gap), for Eri to read out before an approval."""
+    verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
+                                                   AgentAttempt.status == "done")
+                        .order_by(AgentAttempt.created_at.desc()).limit(1))
+    result = (verdict.result or {}) if verdict is not None else {}
+    return {"verdict": result.get("verdict"), "summary": (result.get("summary") or "")[:2000],
+            "gap": (result.get("gap") or "")[:2000], "criteria": result.get("criteria") or []}
 
 
 def status(db, owner, args):
@@ -1028,6 +1190,32 @@ def status(db, owner, args):
     hosts = [{"name": h.name, "connected": agent_link.connected(h)}
              for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner))]
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
+                   "pending": spoken_pending(db, owner),
                    "recently_finished": [{"run_id": r.id, "task": (db.get(Task, r.task_id).title if r.task_id else ""),
                                           "state": r.state, "finished_at": r.finished_at} for r in recent
                                          if r not in runs]})
+
+
+def spoken_pending(db, owner):
+    """Open control_start / control_message proposals as Eri reads them: the summary to confirm, and for a start
+    without a place, the target options control_confirm accepts."""
+    items = []
+    for row in pending_list(db, owner):
+        item = {"pending_id": row["id"], "tool": row["tool"], "summary": row["summary"], "expires_at": row["expires_at"],
+                "task_id": row.get("task_id"), "run_id": row.get("run_id")}
+        if row.get("needs_target"):
+            item.update(needs_target=True, targets=target_options(row.get("need") or {}))
+        if row.get("problems"):
+            item["problems"] = row["problems"]
+        items.append(item)
+    return items
+
+
+def open_proposal(db, owner, account):
+    """Does this account have a proposal waiting for the owner (pending, not expired)? work_runner preloads the
+    confirm tools for the next turn when it does, so a bare yes needs no discovery round."""
+    from .session_models import AgentPendingControl
+
+    return db.scalar(select(AgentPendingControl.id).where(
+        AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == account,
+        AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now()).limit(1)) is not None
