@@ -1,6 +1,15 @@
+"""Model usage in three separate buckets.
+
+recorded     Usage rows: provider-reported (or provider-evidence-reconciled) charges.
+reserved     Open reservations for work that is still active.
+unconfirmed  Reservations whose provider outcome is unknown (timeout, lost connection, missing final
+             usage), including historic ones from earlier months. Their held allowance stays counted
+             against the limit until provider evidence settles them; age alone never clears them as zero.
+"""
+
 from calendar import monthrange
 from datetime import UTC, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import select
 
@@ -31,6 +40,7 @@ def summary(db, owner):
             "limit_usd": None,
             "usage_by_model": {},
             "unconfirmed_sessions": None,
+            "buckets": None,
             "pricing_version": None,
             "month": now().strftime("%Y-%m"),
             "approximate": False,
@@ -47,15 +57,10 @@ def summary(db, owner):
     by_model = {}
     for item in usage:
         by_model[item.model] = by_model.get(item.model, Decimal(0)) + item.amount
-    uncertain = sum(
-        (
-            max(Decimal(0), r.amount - (r.actual or Decimal(0)))
-            for r in rows
-            if r.state == "uncertain" or stale(r)
-        ),
-        Decimal(0),
-    )
-    reserved = sum(max(Decimal(0), r.amount - (r.actual or Decimal(0))) for r in rows if r.state != "closed")
+    unconfirmed = [r for r in rows if bucket(r) == "unconfirmed"]
+    historic = [r for r in unconfirmed if r.created_at < month]
+    uncertain = sum((held(r) for r in unconfirmed), Decimal(0))
+    reserved = sum((held(r) for r in rows if r.state != "closed"), Decimal(0))
     limit = Decimal(str(preferences(db, owner)["monthly_budget_usd"]))
     fraction = float((spent + reserved) / limit) if limit else 1.0
     elapsed_days = max(1, (now() - month).total_seconds() / 86400)
@@ -64,7 +69,21 @@ def summary(db, owner):
         "enforcement_enabled": get_settings().budget_enforcement_enabled,
         "report": usage_report(db, owner),
         "uncertain_usd": float(uncertain),
-        "unconfirmed_sessions": sum(r.state == "uncertain" or stale(r) for r in rows),
+        "unconfirmed_sessions": len(unconfirmed),
+        "buckets": {
+            "recorded": {"usd": float(spent), "records": len(usage)},
+            "reserved": {
+                "usd": float(reserved - uncertain),
+                "sessions": sum(bucket(r) == "reserved" for r in rows),
+            },
+            "unconfirmed": {
+                "usd": float(uncertain),
+                "sessions": len(unconfirmed),
+                "historic_usd": float(sum((held(r) for r in historic), Decimal(0))),
+                "historic_sessions": len(historic),
+                "oldest_at": min(r.created_at for r in unconfirmed).isoformat() if unconfirmed else None,
+            },
+        },
         "active_reserved_usd": float(reserved - uncertain),
         "usage_by_model": {model: float(amount) for model, amount in by_model.items()},
         "projected_month_usd": (
@@ -233,6 +252,17 @@ def stale(row):
     return row.state == "reserved" and (row.last_activity_at or row.created_at) < now() - timedelta(minutes=3)
 
 
+def bucket(row):
+    """reserved (active work), unconfirmed (outcome unknown; a stale lease counts) or settled."""
+    if row.state == "closed":
+        return "settled"
+    return "unconfirmed" if row.state == "uncertain" or stale(row) else "reserved"
+
+
+def held(row):
+    return max(Decimal(0), row.amount - (row.actual or Decimal(0)))
+
+
 def touch(db, owner, reservation_id):
     if not enabled():
         return
@@ -266,15 +296,18 @@ def holds(db, owner):
         .where(BudgetReservation.owner_id == owner, BudgetReservation.state != "closed")
         .order_by(BudgetReservation.created_at)
     ).all()
+    month = now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return [
         {
             "id": r.id,
             "model": r.model,
             "state": "uncertain" if stale(r) else r.state,
+            "bucket": bucket(r),
+            "historic": r.created_at < month,
             "created_at": r.created_at.isoformat(),
             "last_activity_at": r.last_activity_at.isoformat(),
             "recorded_usd": float(r.actual or 0),
-            "held_usd": float(max(Decimal(0), r.amount - (r.actual or Decimal(0)))),
+            "held_usd": float(held(r)),
             "reason": r.settlement.get(
                 "reason",
                 "older_session_without_final_evidence"
@@ -329,6 +362,61 @@ def reconcile(db, owner, reservation_id, final_amount, evidence):
         "final_usd": str(amount),
         "at": now().isoformat(),
     }
+
+
+def reconcile_unconfirmed(db, owner, lookup, *, apply=True):
+    """Settle unconfirmed sessions one by one, only from provider evidence.
+
+    `lookup(hold)` gets a holds() entry and returns {"final_usd", "evidence"} from a provider statement,
+    or None when the provider has nothing for it. Without evidence a session stays unconfirmed: it is
+    never cleared as zero, and recorded charges and active reservations are not touched. A settlement's
+    adjustment Usage row is dated at the reservation, so a historic session lands in its own month.
+    """
+    if not enabled():
+        raise DomainError("TRACKING_DISABLED", "Cost tracking is disabled during development.")
+    report = {"settled": [], "unconfirmed": [], "rejected": []}
+    for hold in holds(db, owner):
+        if hold["bucket"] != "unconfirmed":
+            continue
+        try:
+            found = lookup(hold)
+        except Exception as exc:  # noqa: BLE001 - a failed lookup is not evidence
+            report["unconfirmed"].append({**hold, "why": "lookup_failed:" + type(exc).__name__})
+            continue
+        if not found:
+            report["unconfirmed"].append({**hold, "why": "no_provider_evidence"})
+            continue
+        evidence = str(found.get("evidence") or "").strip()
+        try:
+            final = Decimal(str(found.get("final_usd")))
+        except (InvalidOperation, ValueError):
+            final = None
+        if final is None or not final.is_finite() or final < 0 or not evidence:
+            report["rejected"].append({**hold, "why": "incomplete_evidence"})
+            continue
+        if apply:
+            try:
+                reconcile(db, owner, hold["id"], final, evidence)
+            except DomainError as exc:
+                report["rejected"].append({**hold, "why": exc.code})
+                continue
+        report["settled"].append({**hold, "final_usd": str(final), "evidence": evidence})
+    if apply:
+        db.flush()
+    return report
+
+
+def evidence_file_lookup(entries):
+    """A lookup over an operator's provider statement: [{"reservation", "final_usd", "evidence"}, ...].
+    Every entry names one reservation; nothing is matched by model, date or amount."""
+    by_id = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("reservation"):
+            raise ValueError("Each evidence entry needs a reservation id.")
+        if entry["reservation"] in by_id:
+            raise ValueError(f"Duplicate evidence for reservation {entry['reservation']}.")
+        by_id[entry["reservation"]] = entry
+    return lambda hold: by_id.get(hold["id"])
 
 
 def transcription_cost(usage):

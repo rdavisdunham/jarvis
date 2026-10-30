@@ -333,3 +333,49 @@ def test_field_clarification_gets_a_review_offer_and_answer_resolves_it(monkeypa
     )
     with session_scope() as db:
         assert not list(db.scalars(select(RoutingReview).where(RoutingReview.status == "pending")))
+
+
+def test_no_training_message_names_the_held_out_split_with_counts(monkeypatch):
+    parent = create()
+    held = 0
+    # Record ids are random and about one in five is held out, so create until at least one is
+    # (a fixed 12 left none about 7% of the time).
+    for i in range(80):
+        create("task", f"ABC docs {i}", parent_id=parent["id"])
+        with session_scope() as db:
+            rows = list(db.scalars(select(RoutingObservation).where(RoutingObservation.owner_id == OWNER)))
+            if i >= 11 and any(not routing.split([e])[0] for e in rows):
+                break
+    with session_scope() as db:
+        # Keep only the examples the stable split holds out: capture worked, training is empty.
+        for e in db.scalars(select(RoutingObservation).where(RoutingObservation.owner_id == OWNER)):
+            if routing.split([e])[0]:
+                e.suppressed = True
+            else:
+                held += 1
+    assert held, "fixture needs at least one held-out record"
+    monkeypatch.setattr(routing, "infer", lambda *a: pytest.fail("no training examples, no model call"))
+    job = run("routing.run", {})
+    routing.process(job["job_id"])
+    counts = {"eligible": held, "training": 0, "held_out": held}
+    with session_scope() as db:
+        review = db.scalar(select(RoutingReview).order_by(RoutingReview.created_at.desc()))
+        assert review.summary["split"] == counts
+        assert "held-out" in review.summary["message"] and str(held) in review.summary["message"]
+        assert db.get(Job, job["job_id"]).result == {"split": counts}
+        assert routing.state(db, OWNER)["split"] == counts
+
+
+def test_empty_capture_and_agent_filing_keep_the_no_examples_message(monkeypatch):
+    parent = create()
+    # The agent's own filing (tool command IDs carry a turn prefix) is never organization evidence.
+    for i in range(6):
+        run("record.create", {"type_id": "task", "title": f"ABC docs {i}", "parent_id": parent["id"],
+                              "schema_revision": definition()["revision"]}, key=f"turn-{i}:0")
+    monkeypatch.setattr(routing, "infer", lambda *a: pytest.fail("no training examples, no model call"))
+    job = run("routing.run", {})
+    routing.process(job["job_id"])
+    with session_scope() as db:
+        review = db.scalar(select(RoutingReview).order_by(RoutingReview.created_at.desc()))
+        assert review.summary["split"] == {"eligible": 0, "training": 0, "held_out": 0}
+        assert review.summary["message"] == "No independent human organization examples yet."

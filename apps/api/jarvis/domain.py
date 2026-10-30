@@ -950,10 +950,13 @@ def mutate(db, owner, tool, args, command_id):
         return resolve(db, owner, args, command_id)
     if tool == "memory.capture":
         source = capture_source(db, owner, args.content, f"capture:{command_id}", explicit=True)
+        from .memory_review import attribution
+
         memory = Memory(
             owner_id=owner,
             source_id=source.id,
             content=args.content,
+            attribution=attribution(command_id),
             fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
         )
         db.add(memory)
@@ -966,10 +969,13 @@ def mutate(db, owner, tool, args, command_id):
         old.suppressed, old.embedding = True, None
         if tool == "memory.correct":
             source = capture_source(db, owner, args.content, f"correction:{command_id}", explicit=True)
+            from .memory_review import attribution
+
             row = Memory(
                 owner_id=owner,
                 source_id=source.id,
                 content=args.content,
+                attribution=attribution(command_id),
                 fingerprint=hashlib.sha256(" ".join(args.content.casefold().split()).encode()).hexdigest(),
                 supersedes_id=old.id,
                 fact_key=old.fact_key,

@@ -970,7 +970,11 @@ export function SettingsPanel({
               </div>
               {boot.budget.uncertain_usd > 0 && (
                 <p className="footnote">
-                  ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs.
+                  ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs
+                  {boot.budget.buckets?.unconfirmed.historic_sessions
+                    ? ` ($${boot.budget.buckets.unconfirmed.historic_usd.toFixed(2)} from ${boot.budget.buckets.unconfirmed.historic_sessions} ${boot.budget.buckets.unconfirmed.historic_sessions === 1 ? "session" : "sessions"} in earlier months)`
+                    : ""}
+                  . It stays unconfirmed until provider records settle it; it is never assumed to be zero.
                 </p>
               )}
               <BudgetHolds enforced={enforced} />
