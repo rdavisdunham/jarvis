@@ -504,3 +504,104 @@ export function unmergedSummary(w: UnmergedWork) {
     w.uncommitted ? `${w.uncommitted} uncommitted` : "", w.untracked ? `${w.untracked} untracked` : ""].filter(Boolean);
   return parts.length ? parts.join(" · ") : (w.reasons ?? []).join(", ") || "unmerged";
 }
+
+// ---------------------------------------------------------------- run panel, row buttons, Run modal (run from anywhere)
+
+/** States where the run waits on the human; the panel rail, row chips and the Runs badge highlight them. */
+export const ATTENTION_STATES: RunState[] = ["needs_you", "waiting_answer", "awaiting_approval", "awaiting_integration", "interviewing"];
+
+/** A proposal from Eri (control_start / control_message) waiting for the owner; a start also carries what still
+ * stands in its way (no target chosen, server offline). */
+export type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string;
+  task_id?: string | null; needs_target?: boolean; need?: NeedsTarget | null; problems?: { code: string; message: string }[] };
+
+export type PanelState = { run: string | null; collapsed: boolean };
+export const PANEL_STORAGE_KEY = "eri-run-panel";
+
+/** The panel on load: the run from `?run=` (push deep links, reloads) and whether it was left collapsed. */
+export function restorePanel(search: string, stored: string | null): PanelState {
+  return { run: linkedRun(search), collapsed: stored === "rail" };
+}
+export function storedPanel(panel: PanelState): string | null {
+  return panel.collapsed ? "rail" : null;
+}
+
+export function runsByTask(runs: Run[]): Map<string, Run> {
+  const map = new Map<string, Run>();
+  for (const run of orderRuns(runs)) if (run.task && !map.has(run.task.id)) map.set(run.task.id, run);
+  return map;
+}
+
+/** The collapsed rail's dot: what the open run needs right now. */
+export function railDot(run: Run | undefined): { tone: "attention" | "working" | "settled" | "unknown"; label: string } {
+  if (!run) return { tone: "unknown", label: "Run" };
+  if (ATTENTION_STATES.includes(run.state)) return { tone: "attention", label: runLabel(run.state) };
+  if (isSettled(run)) return { tone: "settled", label: runLabel(run.state) };
+  return { tone: "working", label: runLabel(run.state) };
+}
+
+/** A task row's Run control: start a run, or open the one that exists (labelled by what it needs). */
+export function runChip(run: Run | undefined, hosts: Host[]):
+  { kind: "start"; label: "Run"; disabled: boolean; reason: string } |
+  { kind: "open"; label: "Running" | "Needs you" | "Approve" | "Starting"; tone: "attention" | "working"; run: string } {
+  if (run && !isSettled(run)) {
+    if (run.state === "awaiting_approval") return { kind: "open", label: "Approve", tone: "attention", run: run.id };
+    if (ATTENTION_STATES.includes(run.state)) return { kind: "open", label: "Needs you", tone: "attention", run: run.id };
+    if (["queued", "spawning"].includes(run.state)) return { kind: "open", label: "Starting", tone: "working", run: run.id };
+    return { kind: "open", label: "Running", tone: "working", run: run.id };
+  }
+  const button = runButton(true, hosts, null);
+  return { kind: "start", label: "Run", disabled: button.disabled, reason: button.reason };
+}
+
+/** The topbar Runs button: how many runs and proposals wait, and whether one needs the owner. */
+export function runsBadge(runs: Run[], pending: PendingControl[]) {
+  const active = runs.filter(r => !isSettled(r));
+  const attention = pending.length > 0 || active.some(r => ATTENTION_STATES.includes(r.state));
+  const count = active.length + pending.length;
+  const parts = [active.length ? `${active.length} active` : "", pending.length ? `${pending.length} waiting for your confirmation` : ""].filter(Boolean);
+  return { count, attention, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
+}
+
+// The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model); a drift guard reads both.
+export const HARNESSES = [
+  { id: "claude", label: "Claude Code", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] },
+  { id: "codex", label: "Codex", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }] },
+] as const;
+export type HarnessId = typeof HARNESSES[number]["id"];
+export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | "skip"; target: string | null };
+export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "opus", interview: "auto", target: null };
+
+/** Can any connected host start this harness? (`caps.harnesses.<id>.spawn` from hello.) */
+export function harnessAvailable(hosts: Host[], id: HarnessId) {
+  return hosts.some(h => h.connected && !!(h.harnesses?.[id] as { spawn?: boolean } | undefined)?.spawn);
+}
+
+/** The body for POST /remotea/runs. "Auto" leaves `interview` to the backend (interview unless the task is planned). */
+export function startBody(taskId: string, draft: RunDraft) {
+  const harness = HARNESSES.find(h => h.id === draft.harness) ?? HARNESSES[0];
+  const model = draft.model && draft.model !== harness.models[0].id ? draft.model : undefined;
+  return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}),
+    ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}) };
+}
+
+/** GET /remotea/runs/preflight: what a start would do, checked without acting. */
+export type Preflight = {
+  target: { id: string; name: string; repo: string } | null; needs_target: boolean; need: NeedsTarget | null;
+  problems: { code: string; message: string }[]; active_run: { id: string; state: RunState } | null;
+  interview: boolean; harnesses: Record<string, boolean>;
+};
+
+export function preflightLine(p: Preflight | null): string {
+  if (!p) return "Where it runs is chosen when the run starts.";
+  if (p.active_run) return "An agent run is already working on this task.";
+  if (p.needs_target) return "Choose where this task's agent should run.";
+  if (p.target) return `Runs in ${p.target.name}${p.target.repo ? " · " + p.target.repo : ""}.`;
+  return p.problems[0]?.message ?? "No remotea server can take this run yet.";
+}
+
+/** The run composer's keys: Enter queues, Ctrl/Cmd+Enter steers, Shift+Enter is a new line. */
+export function composerAction(e: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey?: boolean }): "queue" | "steer" | null {
+  if (e.key !== "Enter" || e.shiftKey || e.altKey) return null;
+  return e.ctrlKey || e.metaKey ? "steer" : "queue";
+}

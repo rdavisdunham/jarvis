@@ -432,7 +432,8 @@
 /* ---- Eri launcher (pill; becomes a round close button while the chat is open) --------- */
 .chat-launcher {
   position: fixed;
-  right: max(24px, env(safe-area-inset-right));
+  /* Left of the run panel while one is open (runs.css sets --run-panel-inset on .app-shell). */
+  right: calc(var(--run-panel-inset, 0px) + max(24px, env(safe-area-inset-right)));
   bottom: calc(24px + env(safe-area-inset-bottom));
   z-index: 65;
   display: flex;
@@ -503,7 +504,7 @@
 }
 .app-shell .companion.visible {
   position: fixed;
-  right: max(24px, env(safe-area-inset-right));
+  right: calc(var(--run-panel-inset, 0px) + max(24px, env(safe-area-inset-right)));
   bottom: calc(94px + env(safe-area-inset-bottom));
   z-index: 60;
   display: flex;

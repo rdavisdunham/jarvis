@@ -1,4 +1,5 @@
 import { useBodyLock, useDialogFocus, Dialog, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
+import { RunButton } from "./RunButton";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
@@ -157,6 +158,7 @@ export function TaskRow({
           )}
         </button>
       )}
+      <RunButton taskId={task.id} title={task.title}/>
       <button
         className="icon-button task-more"
         aria-label={"Edit " + task.title}

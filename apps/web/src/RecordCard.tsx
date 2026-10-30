@@ -123,7 +123,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
         <details className="detail-section"><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
         <RecordTools kind="record" id={row.id}/>
-        {row.task_id&&<Suspense fallback={null}><RunTask taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={id=>{location.assign("/?view=remotea&run="+id);}}/></Suspense>}
+        {row.task_id&&<Suspense fallback={null}><RunTask taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={()=>{if(!busy)close();}}/></Suspense>}
         {contents&&contents.work_total>0&&<p className="detail-progress">{contents.work_done}/{contents.work_total} descendants completed{contents.ready_to_complete?" · Ready for your final check":""}. Completing this record leaves child statuses unchanged.</p>}
         {!!row.blockers?.length&&<p className="detail-alert">Unfinished prerequisites: {row.blockers.map(b=>b.title).join(", ")}. You can still record progress.</p>}
         {childType&&canEdit&&!row.archived&&<form className="org-add detail-subtask" onSubmit={e=>{e.preventDefault();void finish().then(()=>run("record.create",{type_id:childType.id,title:childTitle,parent_id:row.id,schema_revision:schema.revision})).then(async()=>{setChildTitle("");setChildOffset(0);setChildRefresh(v=>v+1);await onChanged();}).catch(()=>{});}}>

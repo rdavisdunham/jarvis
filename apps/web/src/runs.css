@@ -1,0 +1,166 @@
+/* Run from anywhere: the persistent run panel, task-row Run controls, the Runs topbar panel and the Run modal.
+   Breakpoints mirror ux.tsx: COMPACT ≤1000, PHONE ≤700. Tokens only (theme.css). */
+
+/* ---- Panel column (≥701px) ------------------------------------------------------------- */
+.app-shell {
+  --run-panel-width: clamp(360px, 30vw, 460px);
+  --run-panel-rail: 40px;
+  --run-panel-inset: 0px;
+}
+.app-shell[data-run-panel="open"] { --run-panel-inset: var(--run-panel-width); }
+.app-shell[data-run-panel="rail"] { --run-panel-inset: var(--run-panel-rail); }
+.run-panel {
+  flex: 0 0 var(--run-panel-width);
+  width: var(--run-panel-width);
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  z-index: 45;
+}
+.run-panel[data-state="rail"] {
+  flex-basis: var(--run-panel-rail);
+  width: var(--run-panel-rail);
+}
+.run-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.run-panel-body[hidden] { display: none; }
+.run-panel-loading { margin: 16px; color: var(--ink-3); }
+.run-panel-rail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  font: inherit;
+}
+.run-panel-rail:hover { background: var(--sunken); color: var(--ink); }
+.run-panel-rail-label {
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.run-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink-3);
+  flex: none;
+}
+.tone-attention .run-dot, .run-dot.tone-attention { background: var(--violet); box-shadow: 0 0 0 3px var(--violet-soft); }
+.tone-working .run-dot, .run-dot.tone-working { background: var(--done); }
+.tone-settled .run-dot { background: var(--ink-3); }
+
+/* The drawer body inside the panel (Remotea.tsx RunDrawer): a flex column, no longer a fixed overlay. */
+.run-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* ---- Task rows ---------------------------------------------------------------------------- */
+.run-start { color: var(--ink-3); }
+.run-start:hover:not(:disabled) { color: var(--violet); }
+.run-start:disabled { opacity: 0.45; cursor: not-allowed; }
+.run-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.run-chip.tone-attention { border-color: var(--violet); color: var(--violet); background: var(--violet-soft); }
+.run-chip.tone-working { color: var(--done); }
+.run-chip:hover { border-color: var(--violet); }
+/* A run that exists is always visible, not only on hover. */
+.row-actions:has(.run-chip), .today-row .row-actions:has(.run-chip) { opacity: 1; }
+.today-row .row-actions { align-self: center; margin-left: 8px; }
+.task-row .run-start { width: 23px; opacity: 0; }
+.task-row:hover .run-start, .task-row .run-start:focus-visible, .task-row .run-chip { opacity: 1; }
+@media (hover: none) { .task-row .run-start { opacity: 1; } }
+
+/* ---- Runs topbar panel ------------------------------------------------------------------- */
+.runs-panel .activity-items { display: grid; gap: 8px; align-content: start; padding: 0 16px 16px; overflow: auto; }
+.runs-panel h3 { margin: 8px 0 0; font-size: 0.85rem; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.runs-panel footer { margin-top: auto; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+
+/* ---- Run modal ---------------------------------------------------------------------------- */
+.modal-backdrop > .run-dialog { width: min(440px, 100%); display: grid; gap: 12px; }
+.run-dialog h2 { margin: 0; font-size: 1.05rem; }
+.run-dialog .run-dialog-task { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.run-dialog .run-dialog-target { margin: 0; display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.9rem; }
+.run-dialog .segmented button { font: inherit; font-size: 0.9rem; }
+.run-dialog-row { display: grid; gap: 4px; }
+.run-dialog-row > span { font-size: 0.8rem; color: var(--ink-3); }
+.run-dialog select { width: 100%; }
+
+/* ---- Chat drawer: Eri's proposals waiting for a tap ----------------------------------------- */
+.chat-pending { display: grid; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+.chat-pending .remotea-pending-card { padding: 10px; }
+.chat-pending .footnote { margin: 0; }
+
+/* ---- Compact (≤1000): a narrower column ---------------------------------------------------- */
+@media (max-width: 1000px) {
+  .app-shell { --run-panel-width: min(380px, 48vw); }
+}
+
+/* ---- Phone (≤700): the panel is a sheet; collapsed it is an edge pill ---------------------- */
+@media (max-width: 700px) {
+  .app-shell { --run-panel-inset: 0px; }
+  .run-panel[data-state="open"] {
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
+    z-index: 62;
+    border-left: 0;
+  }
+  .run-panel[data-state="rail"] {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    width: 36px;
+    height: 84px;
+    transform: translateY(-50%);
+    z-index: 64;
+    border: 1px solid var(--float-line);
+    border-right: 0;
+    border-radius: var(--r-pill) 0 0 var(--r-pill);
+    box-shadow: var(--shadow-float);
+    overflow: hidden;
+  }
+  .run-panel[data-state="rail"] .run-panel-rail { padding: 10px 0; gap: 8px; }
+  .run-panel[data-state="rail"] .run-panel-rail-label { display: none; }
+  .app-shell[data-run-panel="open"] .chat-launcher { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .run-panel { transition: flex-basis 0.2s ease, width 0.2s ease; }
+}

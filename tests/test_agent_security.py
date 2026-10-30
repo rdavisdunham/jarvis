@@ -801,3 +801,37 @@ def bot_access_bind(credential_id):
     from jarvis import bot_access
 
     return bot_access.bind(credential_id)
+
+
+# ---------------------------------------------------------------- run from anywhere: the Run dialog's preflight
+
+
+def test_preflight_shows_what_run_would_do(client, host):  # noqa: F811
+    """GET /remotea/runs/preflight is the Run dialog's read-only look at a start: the resolved target (or the
+    picker's data), the run already on the task, whether the agent interviews first, which harnesses the server can
+    spawn. Nothing is started."""
+    created = task("Needs a home")
+    r = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["task"] == {"id": created["id"], "title": "Needs a home"}
+    assert body["needs_target"] is True and body["need"]["task_id"] == created["id"] and body["target"] is None
+    assert host.target_id in {c["id"] for c in body["need"]["candidates"]}
+    assert body["active_run"] is None and body["interview"] is True
+    assert body["harnesses"] == {"claude": True, "codex": True}  # The test host advertises spawn for both.
+
+    bound = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}&execution_target_id={host.target_id}").json()
+    assert bound["needs_target"] is False and bound["target"]["id"] == host.target_id and bound["problems"] == []
+    other = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}&execution_target_id={host.target_id}&harness=opencode").json()
+    assert [p["code"] for p in other["problems"]] == ["HARNESS_UNAVAILABLE"]
+
+    planned = task("Planned", success_criteria=[{"id": "c1", "text": "Tests pass"}], verify={"target_id": host.target_id, "verify_id": "tests"})
+    assert client.get(f"/api/v1/remotea/runs/preflight?task_id={planned['id']}").json()["interview"] is False
+
+    started = start(host, planned["id"])
+    again = client.get(f"/api/v1/remotea/runs/preflight?task_id={planned['id']}").json()
+    assert again["active_run"] == {"id": started["id"], "state": "spawning"}
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(AgentRun)) == 1  # Preflight never starts anything.
+    missing = client.get("/api/v1/remotea/runs/preflight?task_id=00000000-0000-0000-0000-000000000000")
+    assert missing.status_code == 404, missing.text

@@ -38,10 +38,9 @@
 .remotea-unmerged { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); }
 .remotea-unmerged summary { cursor: pointer; font-weight: 600; }
 .remotea-unmerged ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; overflow-wrap: anywhere; }
-.remotea-drawer { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; gap: 10px; padding: 16px; overflow: auto; background: var(--surface); }
-.remotea-drawer > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.remotea-drawer h2 { margin: 4px 0 0; font-size: 1.05rem; overflow-wrap: anywhere; }
-.remotea-drawer code { font-size: 0.8rem; overflow-wrap: anywhere; }
+/* The run detail (RunDrawer) renders inside the app shell's run panel; runs.css lays out .run-view. */
+.run-view h2 { margin: 4px 0 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.run-view code { font-size: 0.8rem; overflow-wrap: anywhere; }
 .remotea-question { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--violet); border-radius: var(--r-md); background: var(--violet-soft); }
 .remotea-question fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
 .remotea-question legend { padding: 0; color: var(--ink); overflow-wrap: anywhere; }
@@ -63,9 +62,8 @@
 .remotea-target-picker { display: grid; gap: 6px; margin-top: 6px; }
 .remotea-target-picker p { margin: 0; }
 .remotea-target-picker select { width: 100%; }
-@media (min-width: 720px) {
+@media (min-width: 701px) {
   .remotea-session { padding: 14px 16px; }
-  .remotea-drawer { left: auto; width: min(520px, 100vw); border-left: 1px solid var(--line); box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,.18)); }
 }
 .remotea-plan .step-disputed { color: var(--danger); }
 .remotea-criteria ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 0.9rem; }
@@ -84,8 +82,7 @@
 
 /* Run drawer as a chat: pinned header (state, reason, plan facts), scrolling log of bubbles, composer at the bottom. */
 .remotea-chat { padding: 0; gap: 0; overflow: hidden; }
-/* Outranks `.remotea-drawer > header` (a flex row), which laid the chat header out side by side. */
-.remotea-drawer.remotea-chat > header.remotea-chat-head { display: grid; align-items: stretch; justify-content: stretch; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; max-height: 55vh; overflow: auto; }
+.run-view > header.remotea-chat-head { display: grid; align-items: stretch; justify-content: stretch; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; max-height: 55vh; overflow: auto; }
 .remotea-chat-title { display: flex; align-items: center; gap: 8px; }
 .remotea-chat-title h2 { flex: 1; min-width: 0; margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
 .remotea-reason-box { margin: 0; padding: 8px 12px; border-radius: var(--r-md); background: var(--sunken); color: var(--ink-2); font-size: 0.9rem; display: grid; gap: 4px; }
@@ -123,14 +120,8 @@
 .remotea-proposal-new textarea { width: 100%; resize: vertical; }
 .remotea-proposal-why { margin: 0; padding: 4px 10px; border-left: 3px solid var(--done); color: var(--ink-2); font-size: 0.85rem; font-style: italic; overflow-wrap: anywhere; }
 
-/* While the run drawer is open, keep the floating Eri launcher off its composer and Approve button:
-   beside the drawer on wide screens, hidden on narrow ones where the drawer is the whole screen. */
-@media (min-width: 720px) {
-  body.run-drawer-open .chat-launcher { right: calc(min(520px, 100vw) + max(24px, env(safe-area-inset-right))); }
-}
-@media (max-width: 719px) {
-  body.run-drawer-open .chat-launcher { display: none; }
-}
+.remotea-ledger { display: grid; gap: 8px; }
+.remotea-ledger h2 { margin: 0; font-size: 0.95rem; color: var(--ink-2); }
 .remotea-base { display: flex; align-items: center; gap: 4px; }
 .remotea-base.stale { color: var(--danger); }
 .remotea-version.outdated, .remotea-version.outdated a { color: var(--danger); }
