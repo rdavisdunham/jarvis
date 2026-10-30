@@ -253,6 +253,10 @@ def upsert(db, owner, tool, session_id, body, *, reveal=True):
     row.fingerprint, row.updated_at = fingerprint(row), now()
     resolve(db, row)
     db.flush()
+    if row.run_id:
+        from .run_coordinator import session_reported
+
+        session_reported(db, row)  # The run's PR record is current as of now (the judge's pr_open evidence).
     queue_summary(db, row)
     return public(db, row, reveal=reveal)
 

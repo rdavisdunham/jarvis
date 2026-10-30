@@ -149,9 +149,10 @@ own short transaction.
 | up | `question` | `op_id, digest, surf, incarnation, run_id?, generation, provider, provider_session_id, provider_request_id, provider_turn_id?, items[], hold_until?` | a structured question the agent asked; stored once per `(session, provider_request_id)` |
 | up | `question.resolved` | `op_id, digest, question_id\|provider_request_id, status: accepted\|answered_locally\|timed_out\|canceled\|failed, still_open?, remote_answerable?` | the host's word on a question; only `accepted` confirms an answer sent from here |
 | up | `context.request` | `req_id, text, run_token?` | ephemeral, no ack: answered with `context.response {req_id, text}` |
-| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, base_ref?, ahead, behind, unpushed, uncommitted, untracked, merged, merged_reason?, active, reasons}], heads?: [{target, dir, ref, head}]` | replaces the host's last report; feeds **Unmerged work**, the run header's live "N behind" and the migration counter (0033). `merged` is null with `merged_reason: "no commits of its own yet"` for a branch with no commits of its own |
+| up | `worktrees.report` | `op_id, digest, worktrees: [{target, path, branch, base, base_ref?, ahead, behind, unpushed, uncommitted, untracked, merged, merged_reason?, active, reasons}], heads?: [{target, dir, ref, head}]` | replaces the host's last report; feeds **Unmerged work**, the run header's live "N behind" and the migration counter (0033). `merged` is null with `merged_reason: "no commits of its own yet"` for a branch with no commits of its own; Eridani reads null (and a branch missing from the report) as unknown, never merged. Stored with the time it arrived (`caps.worktrees.at`), which the judge compares with the turn |
 | down | `runs.snapshot` | `runs: [{run_id, generation, desired, stop_mode?}]` | after each reconnect's reconciliation |
-| down | `spawn` / `input` / `answer` / `stop` | see **Commands** | outbox commands |
+| down | `spawn` / `input` / `answer` / `stop` / `verify` | see **Commands** | outbox commands |
+| down | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (outbox command, only to a host whose `hello.caps` has `worktrees.scan`) | the judge needs a PR record newer than the turn: the host rescans its worktrees and sends `worktrees.report` even if unchanged, re-reads the named session and sends its `session.report` even if its fingerprint is unchanged, then acks (`executed`). An older host never gets it; the judge waits for its own tick instead |
 | down | `context.response` | `req_id, text` | |
 | up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
@@ -315,6 +316,7 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
 | `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
+| `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (the judge's PR evidence, below) | 2 min |
 
 Commands are rows in `agent_commands` (status `queued`). Whichever process queues one, the host's
 socket drains it within about a second of the commit (see "Wake" under Connection lifecycle), or at
@@ -327,7 +329,7 @@ by that id (or by `run_id`) and records it as accepted instead of spawning again
 
 Outcomes: an accepted spawn ack or `executed` outcome records `surf`, `incarnation`, `worktree`,
 `branch`, `base`, `base_sha`; a failed/rejected spawn fails the run; `uncertain` input moves to
-needs_you `delivery_uncertain`; a failed answer reopens the question; an executed stop settles a stopping
+needs_you `delivery_uncertain` (a `worktrees.scan` outcome never moves the run); a failed answer reopens the question; an executed stop settles a stopping
 run.
 
 **Reconnect.** After `sessions.snapshot`, `reconcile()` matches each unsettled run to its surface (by
@@ -519,7 +521,13 @@ attempts carry the same tuple). The run is `verifying` until the result.
 Job `agent_judge` on queue `jarvis-memory`, cost feature `agent_control`, one per judge attempt.
 Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root turn's final response
 (last 24k characters; `truncated` flagged), the bound verify attempt with `fresh` (same tuple and not
-stale) and the previous verdict's per-criterion record. The prompt says all of it is untrusted data.
+stale), the previous verdict's per-criterion record, and the completion policy with the PR record
+(`pr_urls`, `merged`, and `pr_fresh` / `merged_fresh` with `as_of` times: whether the session's collector
+report and the host's worktrees report arrived after the turn). The prompt (`judge-v2`) says all of it is
+untrusted data and that **the agent's text is a claim**: evidence is the verify attempt, the host's worktree and
+PR record and the ticked steps. A gap may only ask for what the loop can check (make the verify command pass,
+commit/push and open or update the PR, tick steps), never for pasted test output, logs or diffs. The gap prompt
+(`agent_prompts.gap`) repeats that to the agent.
 
 1. **Hard rules first.** No criteria → `needs_you` and the model is not asked. Plans without criteria do
    not enter the loop at all: they keep stage C's manual flow (turn cap → needs_you, Davin approves).
@@ -535,7 +543,8 @@ stale) and the previous verdict's per-criterion record. The prompt says all of i
 4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
    (refusal and budget are not retried), then the attempt is `failed` and the run goes to
    `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
-5. The attempt keeps model, `prompt_version` (`judge-v1`), cost, latency, retries and the final verdict.
+5. The attempt keeps model, `prompt_version` (`judge-v2`), cost, latency, retries, the final verdict and the
+   completion evidence it used (`evidence.completion`).
 
 **Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
 `(generation, turn_seq, plan_revision)`; otherwise the attempt is `stale` and nothing moves. Every
@@ -553,6 +562,22 @@ transition records `actor: run_judge`.
   that has **no** verify command becomes `needs_you(verify_missing)` at once. Nothing the agent does in its
   worktree can record a verification (run 75661a23 looped six turns on this); only the operator can set one
   (`POST /runs/{id}/verify-config`, the run header's **Set verify**) or approve on the evidence shown.
+- **`proof_request`** (rule): a model `not_met` gap that asks the agent to paste, quote, show or include test output,
+  logs, diffs or other proof in its reply (`agent_judge.PROOF_ASK`) is rewritten to the checkable actions
+  (`verifiable_actions`: make the plan's verify command pass, tick the open steps with `task_step`, commit/push and
+  open or update the PR under `pr_open`/`pr_merged`), keeping the rest of the judge's note without the request.
+  With no verify command and either a test-shaped ask or no such action, it is `needs_you(verify_missing)`
+  instead. A repeated rewrite counts toward `no_progress_gap` (same rules three times).
+- **PR evidence freshness** (rule `pr_unknown`, `pr_open`/`pr_merged` only, after a `met`): a missing PR on a
+  session record older than the turn, or `merged` that is false on a report older than the turn, null ("no
+  commits of its own yet") or absent, is unknown, not a gap. The verdict is **held** first (`EVIDENCE_WAIT`,
+  60 s): the attempt goes back to `queued` with `result.held` (the verdict before the policy), Eridani queues
+  `worktrees.scan` if the host advertises it, and the judge job is queued again (`release_held`) when a
+  `session.report` for the run's session (`session_reported`, which stamps `sync_state.session_report_at`) or a
+  `worktrees.report` arrives, or by the sweep when the wait is over. The released job applies the policy to the
+  held verdict with the record as it now is, without asking the model again. Still unknown after the wait →
+  `needs_you(pr_unknown)`. A later report that shows the PR (`pr_open`: the met path, so approval or
+  auto_complete) or the merge (`pr_merged`: `executing(merged)`) moves the run on; otherwise Davin checks.
 - `needs_you` → `needs_you(judge_needs_you)` with the gap; push `agent_stuck`.
 - **Steps**: the judge may mark `todo`/`doing` steps `done` (`by: judge:<run>`), may mark an agent's
   `done` step `disputed` when the verification contradicts it, and never moves a `done` step back.
@@ -581,7 +606,7 @@ revision N+1 with nothing else changed (history `verify_set`), and a run parked 
 operator talks to the agent directly. While on, a root turn is recorded (history `turn` with `freestyle: true`)
 but not verified, judged or counted toward the turn cap, no gap prompt is sent, and the 45-minute no-progress
 timer is skipped (the wall clock still applies). Turning it on from `needs_you(judge_needs_you | no_progress_gap |
-verify_missing | no_progress | turn_cap | awaiting_merge)` resumes `executing(freestyle)`; turning it off makes
+verify_missing | no_progress | turn_cap | awaiting_merge | pr_unknown)` resumes `executing(freestyle)`; turning it off makes
 the next turn judged again. Approve and Stop work as usual. The run header shows the toggle.
 
 ### auto_complete
@@ -668,10 +693,12 @@ pull requests, turn count, the completion policy and the judge's summary.
 **Completion policy** (`code_ready` default | `pr_open` | `pr_merged`), set on the task (`task.update`,
 `submit_plan`) and frozen onto the plan and the run like the other gate fields (`RUN_OWNS_COMPLETION` while
 a run holds it). The judge's hard rules apply it after a `met` verdict:
-- `pr_open` or `pr_merged` with no pull request → `not_met` (rule `pr_required`), so the agent is told to
-  open one;
-- `pr_merged` with the PR not merged (the host's worktree report for the run's branch) → `needs_you`
-  (rule `pr_not_merged`, reason `awaiting_merge`). The integration check resumes the run (reason
+- `pr_open` or `pr_merged` with no pull request on a session record reported after the turn → `not_met`
+  (rule `pr_required`), so the agent is told to open one; on an older record → held, then
+  `needs_you(pr_unknown)` (see **The judge**);
+- `pr_merged` with the PR not merged (the host's worktree report for the run's branch, reported after the turn)
+  → `needs_you` (rule `pr_not_merged`, reason `awaiting_merge`); an older report, `merged: null` or no row for
+  the branch → held, then `needs_you(pr_unknown)`. The integration check resumes the run (reason
   `merged`, prompt `merged`) once the host reports the branch merged, and the next judgment can complete.
 
 The run drawer shows the policy and each Linear outcome.

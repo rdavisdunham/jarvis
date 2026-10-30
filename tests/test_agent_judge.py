@@ -390,3 +390,200 @@ def test_freestyle_resumes_a_run_the_judge_parked(host, client):  # noqa: F811
     r = client.post(f"/api/v1/remotea/runs/{run_id}/freestyle", json={"enabled": True})
     assert r.status_code == 200, r.text
     assert state(run_id) == ("executing", "freestyle")
+
+
+# ---------------------------------------------------------------- evidence the loop can check (task 6e753e0f)
+
+
+@pytest.mark.parametrize("gap", [
+    "Paste the full pytest output in your final response so I can confirm the suite passes.",
+    "Provide the test output showing all tests pass.",
+    "Include the git diff of the handler change in your reply.",
+    "Please share the logs from the failing run in your next message.",
+    "Provide evidence that the migration ran.",
+])
+def test_a_gap_asking_for_pasted_proof_is_rewritten_to_the_verify_action(gap):
+    """The agent's reply is a claim: a gap asking it to paste output, logs or diffs can never close. With a verify
+    command the gap becomes "make it pass"; the request to paste is dropped, the rest of the judge's note stays."""
+    final = judge.decide({**EVIDENCE, "verify": fresh("failed")},
+                         stub(verdict("not_met", gap + " The KeyError in test_x is still there.",
+                                      criteria=(("c1", "not_met"),))))
+    assert final["verdict"] == "not_met" and "proof_request" in final["rules"]
+    assert "`tests` pass" in final["gap"] and "do not paste" in final["gap"]
+    assert "KeyError in test_x" in final["gap"] and not judge.PROOF_ASK.search(final["gap"].split("missing:")[-1])
+
+
+def test_a_pasted_proof_gap_without_any_check_needs_you():
+    no_verify = {"plan": {"criteria": [{"id": "c1", "text": "the suite passes", "kind": "text"}], "verify": None},
+                 "turn": {"text": "All tests pass:\n===== 40 passed ====="}}
+    tests = judge.decide(no_verify, stub(verdict("not_met", "Show the test results.", criteria=(("c1", "not_met"),))))
+    assert tests["verdict"] == "needs_you" and {"proof_request", "verify_missing"} <= set(tests["rules"])
+    diff = judge.decide(no_verify, stub(verdict("not_met", "Attach the diff.", criteria=(("c1", "not_met"),))))
+    assert diff["verdict"] == "needs_you" and "verify_missing" in diff["rules"]
+    # Something the agent can still do that Eridani checks: tick its steps, open the PR.
+    steps = {**no_verify, "plan": {**no_verify["plan"], "steps": [{"id": "s1", "status": "todo"}]},
+             "completion": {"policy": "pr_open", "pr_urls": ["https://github.com/a/b/pull/1"]}}
+    ticked = judge.decide(steps, stub(verdict("not_met", "Include the git diff of the handler change in your reply.",
+                                              criteria=(("c1", "not_met"),))))
+    assert ticked["verdict"] == "not_met" and "task_step" in ticked["gap"] and "pull request" in ticked["gap"]
+
+
+def test_a_gap_that_only_mentions_output_is_left_alone():
+    for gap in ("Fix the paste handler so pasted logs keep their newlines.",
+                "The CLI should print the diff of the two configs; add that.", "Add a log line when the job retries."):
+        final = judge.decide(EVIDENCE, stub(verdict("not_met", gap, criteria=(("c1", "not_met"),))))
+        assert final["verdict"] == "not_met" and final["gap"] == gap and "proof_request" not in final["rules"]
+
+
+def test_the_judge_and_gap_prompts_ask_only_for_checkable_actions():
+    from jarvis import agent_prompts as prompts
+
+    assert "claim" in judge.SYSTEM and "Never ask the agent to paste" in judge.SYSTEM
+    text = prompts.gap("Make tests pass.", [{"id": "c1", "status": "not_met", "evidence": "x"}])
+    assert "task_step" in text and "do not paste test output" in text
+
+
+PR_URL = "https://github.com/rdavisdunham/jarvis/pull/90"
+
+
+def pr_completion(policy, prs=(), merged=None, *, pr_fresh=True, merged_fresh=True, **extra):
+    return {"policy": policy, "branch": "user/eri-1-x", "pr_urls": list(prs), "merged": merged,
+            "pr_fresh": pr_fresh, "merged_fresh": merged_fresh, "as_of": {}, **extra}
+
+
+@pytest.mark.parametrize("completion,expected,rule", [
+    (pr_completion("pr_open", pr_fresh=False), "needs_you", "pr_unknown"),  # A stale record: never a gap.
+    (pr_completion("pr_open"), "not_met", "pr_required"),  # Reported after the turn, no PR: the agent opens one.
+    (pr_completion("pr_open", (PR_URL,), pr_fresh=False), "met", None),  # A PR on record does not go stale.
+    (pr_completion("pr_merged", (PR_URL,), None, merged_reason="no commits of its own yet"), "needs_you", "pr_unknown"),
+    (pr_completion("pr_merged", (PR_URL,), False, merged_fresh=False), "needs_you", "pr_unknown"),
+    (pr_completion("pr_merged", (PR_URL,), False), "needs_you", "pr_not_merged"),
+    (pr_completion("pr_merged", (PR_URL,), True, merged_fresh=False), "met", None),
+])
+def test_pr_evidence_freshness(completion, expected, rule):
+    final = judge.decide({"plan": {"criteria": [{"id": "c1", "text": "done"}]}, "turn": {"text": "Opened the PR."},
+                          "completion": completion}, stub(verdict()))
+    assert final["verdict"] == expected
+    assert (rule in final["rules"]) if rule else not final["rules"]
+    if completion.get("merged_reason"):
+        assert "no commits of its own yet" in final["gap"]
+
+
+def pr_open_run(host):  # noqa: F811
+    run_id = criteria_run(host, title="PR open")
+    with session_scope() as db:
+        coordinator.frozen(db, db.get(AgentRun, run_id)).completion_policy = "pr_open"
+    return run_id
+
+
+def report_session(run_id, prs=()):
+    """The collector's session.report for the run's session, stored through agent_sessions.upsert."""
+    from jarvis import agent_sessions as sessions
+    from jarvis.session_models import AgentSession
+
+    with session_scope() as db:
+        row = db.get(AgentSession, db.get(AgentRun, run_id).session_pk)
+        sessions.upsert(db, OWNER, row.tool, row.session_id, sessions.SessionInput(pr_urls=list(prs), turn_count=2))
+
+
+def judge_jobs(run_id):
+    with session_scope() as db:
+        ids = {a.id for a in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run_id,
+                                                                   AgentAttempt.kind == "judge"))}
+        return [j.id for j in db.scalars(select(Job).where(Job.kind == "agent_judge").order_by(Job.created_at))
+                if j.payload.get("attempt") in ids]
+
+
+def scans(run_id):
+    with session_scope() as db:
+        return [(c.id, c.op_id, c.payload) for c in db.scalars(select(AgentCommand).where(
+            AgentCommand.run_id == run_id, AgentCommand.kind == "worktrees.scan"))]
+
+
+def test_merged_null_is_unknown_in_the_evidence(host):  # noqa: F811
+    from datetime import timedelta
+
+    from jarvis.models import now
+    from jarvis.session_models import AgentHost
+
+    run_id = criteria_run(host)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        row = db.get(AgentHost, run.host_id)
+        row.caps = {**row.caps, "worktrees": {"at": now().isoformat(), "worktrees": [
+            {"branch": run.branch, "base": "main", "merged": None, "merged_reason": "no commits of its own yet"}]}}
+        db.flush()
+        completion = judge.completion_evidence(db, run, coordinator.frozen(db, run), since=now() - timedelta(minutes=1))
+        assert completion["merged"] is None and completion["merged_fresh"] is True
+        assert completion["merged_reason"] == "no commits of its own yet"
+        assert not coordinator.branch_merged(db, run)
+
+
+def test_pr_open_with_a_fresh_record_proceeds(host):  # noqa: F811
+    run_id = pr_open_run(host)
+    turn(run_id, 1)
+    report_session(run_id, [PR_URL])
+    assert judged(run_id, stub(verdict())) == ("awaiting_approval", "judge_met")
+    assert last_judge(run_id).result["evidence"]["completion"]["pr_fresh"] is True
+    # A record after the turn that has no PR: the agent can open one, so it is a gap, not a question for Davin.
+    other = pr_open_run(host)
+    turn(other, 1)
+    report_session(other)
+    assert judged(other, stub(verdict())) == ("executing", "not_met")
+    assert "pr_required" in last_judge(other).result["rules"]
+
+
+def test_pr_open_with_a_stale_record_waits_then_needs_you_instead_of_not_met(host):  # noqa: F811
+    from datetime import timedelta
+
+    from jarvis.models import now
+
+    run_id = pr_open_run(host)
+    report_session(run_id)  # Before the turn: stale for it.
+    turn(run_id, 1)
+    model = stub(verdict())
+    assert judged(run_id, model) == ("judging", "turn")  # Held, not judged from the old record.
+    held = last_judge(run_id)
+    assert held.status == "queued" and held.result["held"]["final"]["verdict"] == "met"
+    assert held.result["held"]["scan"] is None and not scans(run_id)  # This host does not offer worktrees.scan.
+    with session_scope() as db:
+        coordinator.sweep(db)  # Inside the wait: nothing yet.
+    assert len(judge_jobs(run_id)) == 1
+    with session_scope() as db:
+        coordinator.sweep(db, clock=now() + judge.EVIDENCE_WAIT + timedelta(seconds=5))
+    assert len(judge_jobs(run_id)) == 2
+    judge.process(judge_jobs(run_id)[-1], model=model)
+    assert state(run_id) == ("needs_you", "pr_unknown") and len(model.calls) == 1  # The model was asked once.
+    assert "no pull request on record" in last_judge(run_id).result["gap"]
+    # The record arrives later with the PR: the run moves on as the held verdict would have.
+    report_session(run_id, [PR_URL])
+    assert state(run_id) == ("awaiting_approval", "judge_met")
+
+
+def test_a_held_judge_runs_again_when_the_record_arrives(host):  # noqa: F811
+    from jarvis.session_models import AgentHost
+
+    run_id = pr_open_run(host)
+    with session_scope() as db:
+        row = db.get(AgentHost, host.id)
+        row.caps = {**row.caps, "caps": [*row.caps.get("caps", []), "worktrees.scan"]}
+    turn(run_id, 1)
+    assert judged(run_id, stub(verdict())) == ("judging", "turn")
+    [(scan_id, op_id, payload)] = scans(run_id)
+    assert payload["branch"] and payload["session_id"] == "sess-1" and payload["turn_seq"] == 1
+    assert last_judge(run_id).result["held"]["scan"] == op_id
+    with session_scope() as db:
+        from jarvis import agent_link
+
+        row = db.get(AgentHost, host.id)
+        sent = [f for f in agent_link.drain(db, row, row.conn_epoch) if f["t"] == "worktrees.scan"]
+        assert [f["op_id"] for f in sent] == [op_id] and sent[0]["digest"]
+    report_session(run_id, [PR_URL])
+    report_session(run_id, [PR_URL])  # Released once until it runs.
+    assert len(judge_jobs(run_id)) == 2
+    judge.process(judge_jobs(run_id)[-1], model=stub(AssertionError("the held verdict is reused")))
+    assert state(run_id) == ("awaiting_approval", "judge_met")
+    # Whatever the host did with the scan, its outcome never moves the run.
+    with session_scope() as db:
+        coordinator.on_outcome(db, db.get(AgentCommand, scan_id), "uncertain", "lost")
+    assert state(run_id) == ("awaiting_approval", "judge_met")
