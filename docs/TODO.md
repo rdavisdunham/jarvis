@@ -564,6 +564,7 @@ A checked implementation task never replaces connected-provider or physical-devi
   host, shared visibility rules, audit trail) — needed before remotea leaves personal workspaces.
   Stage F (2026-10-28 audit) made remotea personal-workspace only; see
   [Agent control § Security model](AGENT_CONTROL.md#security-model-stage-f-migration-0031).
+  Design (task `0ab99d68`): [REMOTEA_MULTI_USER.md](REMOTEA_MULTI_USER.md).
 - verify sandboxing on the host (bubblewrap / codex sandbox, no network).
 - Accept the MCP endpoint without a trailing slash: `/api/v1/external/mcp` answers 405 today, only
   `/api/v1/external/mcp/` serves the streamable HTTP app (`external_mcp.py`, `MCPMount`). Bit the first
