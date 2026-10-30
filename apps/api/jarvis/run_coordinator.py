@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import event, func, select, update
 
 from . import agent_sessions as sessions
+from . import run_summaries as summaries
 from .agent_actor import Actor, acting
 from .config import get_settings
 from .domain import DomainError, emit
@@ -93,6 +94,7 @@ REASONS = {
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "no_progress_gap": "The judge found the same gap several turns in a row.",
     "verify_missing": "No verify command is set, so test results cannot be recorded: set one on this run, or approve on the evidence shown.",
+    "verify_infra": "Verification could not run on the host, so it says nothing about the code: fix the setup shown, then message the agent or approve on the evidence shown.",
     "judge_needs_you": "The judge says this needs you.",
     "judge_unavailable": "The judge could not reach a verdict.",
     "judge_met": "The success criteria are met.",
@@ -164,6 +166,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
+    summaries.touch(db, run)
     if to in TERMINAL:
         from .migration_numbers import on_run_end
 
@@ -234,6 +237,8 @@ def notify(db, run, category, title, body, *, key):
         return
     task = db.get(Task, run.task_id)
     urgent = category == "agent_question" and quiet_bypass(db, run.owner_id)
+    if run.summary and category in ("agent_question", "agent_stuck"):
+        body = f"{body[:1300]}\nLatest: {run.summary}"  # What the agent was doing (run_summaries.py).
     db.add(Notification(owner_id=run.owner_id, dedup_key=dedup, category=category,
                         title=title, body=(f"{task.title}: " if task else "") + body[:1500],
                         importance="urgent" if urgent else "normal",
@@ -330,6 +335,9 @@ def on_outcome(db, row, state, detail="", result=None):
         return
     if row.kind == "spawn":
         facts = result or {}
+        mcp = mcp_facts(facts)
+        if mcp is not None:
+            run.sync_state = {**(run.sync_state or {}), "mcp": mcp}
         if state == "executed":
             run.surf = str(facts.get("surf") or run.surf)[:120]
             run.incarnation = int(facts.get("incarnation") or run.incarnation or 0)
@@ -500,6 +508,7 @@ def record_turn(db, run, frame):
     if frame.generation != run.generation:
         return  # A late turn from before a steer or stop (F07).
     run.last_progress_at = now()
+    summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
     if run.state == "waiting_answer":
         transition(db, run, resume_phase(run), reason="turn")
     if run.state in PLANNING:
@@ -584,6 +593,7 @@ def record_question(db, owner, host_id, frame):
     db.add(question)
     db.flush()
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)
         if run.state == "executing" and frame.generation == run.generation:
             transition(db, run, "waiting_answer", reason="question")
         notify(db, run, "agent_question", "An agent asked you something", question_text(question),
@@ -666,6 +676,7 @@ def question_resolved(db, host_id, frame):
             question.answered_via = question.answered_via if frame.outcome == "accepted" else "terminal"
     run = db.get(AgentRun, question.run_id, with_for_update=True) if question.run_id else None
     if run is not None and run.state not in TERMINAL:
+        summaries.touch(db, run)  # The open question is part of the summary's evidence.
         waiting = run.state == "waiting_answer" or (run.state == "needs_you" and run.state_reason == "question_timed_out")
         if question.status in {"accepted", "answered_locally", "canceled"} and waiting \
                 and not [q for q in open_questions(db, run) if q.id != question.id]:
@@ -689,7 +700,7 @@ def settle_planning(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
         if run.state != "needs_you":
-            transition(db, run, "needs_you", reason="no_plan")
+            transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         return
     plan = frozen(db, run)
     if plan is not None and plan.proposals:
@@ -699,6 +710,16 @@ def settle_planning(db, run):
             transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
         return
     begin_execution(db, run)
+
+
+def no_tools_detail(run):
+    """A planning turn ended without submit_plan: when the spawn said the agent had no Eridani MCP server
+    (remotea's `result.mcp.configured` false), that is why, and the operator's fix is on the host, not the plan."""
+    mcp = (run.sync_state or {}).get("mcp") or {}
+    if mcp.get("configured") is not False:
+        return ""
+    reason = mcp.get("reason") or "the host did not say why"
+    return f"The agent had no Eridani tools, so it could not call submit_plan: {reason}"
 
 
 def proposal_summary(proposals):
@@ -771,12 +792,122 @@ def settle_verify(db, run, attempt, status, result):
         return False
     attempt.status, attempt.updated_at = status, now()
     attempt.result = {**(attempt.result or {}), **result}
+    categorize(db, run, attempt)
     if attempt.created_at:
         attempt.latency_ms = int((now() - attempt.created_at).total_seconds() * 1000)
     emit(db, run.owner_id, "agent.changed", run.id)
     if run.state == "verifying" and current(run, attempt) and not (attempt.result or {}).get("on_demand"):
         to_judging(db, run, attempt)
     return True
+
+
+# ---------------------------------------------------------------- why a verification did not pass
+
+# What a non-passing verification means for the operator (attempt.result.category, with a one-line `action`).
+# tests_failed is the agent's to fix (the judge's gap prompt); every infra_* category is host setup the agent cannot
+# fix from its worktree, so the judge parks the run in needs_you(verify_infra) instead of sending a gap.
+VERIFY_CATEGORIES = ("tests_failed", "infra_missing_binary", "infra_missing_dependency", "infra_database",
+                     "infra_timeout", "infra_refused", "infra_uncertain")
+# "uv: command not found", "bash: line 1: uv: command not found", "spawn uv ENOENT", "/bin/sh: 1: uv: not found".
+# Case-sensitive: shells print it in lower case, and "404: Not Found" in a test's output is not a missing program.
+_MISSING_PROGRAM = re.compile(
+    r"(?:^|[\s:])([A-Za-z_./][\w.+/-]{0,79}): (?:command )?not found\b|\bspawn ([\w.+/-]{1,80}) ENOENT\b"
+    r"|\bcommand not found: ([\w.+/-]{1,80})", re.MULTILINE)
+_NOT_EXECUTABLE = re.compile(r"\bpermission denied\b|\bEACCES\b|\bnot executable\b", re.IGNORECASE)
+_MISSING_MODULE = re.compile(
+    r"\bModuleNotFoundError: No module named ['\"]?([\w.-]{1,120})|\bNo module named ['\"]?([\w.-]{1,120})"
+    r"|\bCannot find (?:module|package) ['\"]([^'\"\n]{1,120})['\"]|\bERR_MODULE_NOT_FOUND\b", re.IGNORECASE)
+_DATABASE = re.compile(
+    r"\b(?:psycopg2?|sqlalchemy\.exc|asyncpg)[\w.]*\.?OperationalError\b|\bOperationalError\b.{0,200}"
+    r"(?:connect|server|database|password|role)"
+    r"|could not connect to (?:server|database)|connection to server at .{0,120} failed"
+    r"|\bconnection refused\b|\bECONNREFUSED\b|password authentication failed for user"
+    r"|database \"[^\"\n]{1,80}\" does not exist|role \"[^\"\n]{1,80}\" does not exist"
+    r"|is the server running on that host and accepting", re.IGNORECASE)
+_CWD = re.compile(r"\bcwd\b|no such folder|the worktree is missing", re.IGNORECASE)
+
+
+def _program(match):
+    name = next((g for g in match.groups() if g), "") if match else ""
+    return name.rsplit("/", 1)[-1][:80]
+
+
+def classify_verify(status, result, readiness=None):
+    """(category, action) for a verification that did not pass, or (None, "") for passed, canceled and stale.
+
+    `result` holds the verify.result facts (exit_code, tail, error, timed_out, detail); `readiness` is the host's
+    hello `verify_status` reason for this verify id when it said the entry is not ready ("its program is not on the
+    service PATH ..."). Infra wins over tests_failed only on a pattern that means the command could not do its job:
+    a missing program, module or database, or no result at all."""
+    if status in ("passed", "canceled", "stale", "running", "superseded"):
+        return None, ""
+    tail = str(result.get("tail") or "")
+    error = str(result.get("error") or "")
+    detail = str(result.get("detail") or "")
+    exit_code = result.get("exit_code")
+    text = "\n".join(x for x in (error, tail) if x)
+    if status == "uncertain":
+        return "infra_uncertain", ("The host could not tell whether the verification ran" + (f" ({detail})" if detail else "")
+                                   + ": check remotea, then Verify now or message the agent.")
+    if status == "refused":
+        if "does not run verifications" in detail:
+            return "infra_refused", "Update remotea: this server does not run verifications."
+        return "infra_refused", ("remotea did not run the verify command" + (f" ({detail})" if detail else "")
+                                 + ": check the host is online and the verify entry in eridani.json, then Verify now.")
+    if status == "timed_out" or result.get("timed_out"):
+        if not result.get("timed_out") and exit_code is None and not tail:
+            return "infra_timeout", ("No verification result came back in time: check the remotea server is online, "
+                                     "then Verify now.")
+        return "infra_timeout", ("The verify command ran past its time limit: raise the entry's timeout in eridani.json "
+                                 "or make the suite faster.")
+    program = _MISSING_PROGRAM.search(text)
+    if readiness and (status == "error" or exit_code in (126, 127) or program):
+        if _CWD.search(readiness):
+            return "infra_refused", f"Fix the verify entry's cwd in eridani.json ({readiness})."
+        return "infra_missing_binary", f"Install the program or set PATH in the verify entry (eridani.json): {readiness}."
+    if program or exit_code == 127:
+        name = _program(program)
+        what = f"`{name}`" if name else "the verify command's program"
+        return "infra_missing_binary", f"Install {what} or set PATH in the verify entry (eridani.json)."
+    if exit_code == 126 or (status == "error" and _NOT_EXECUTABLE.search(error)):
+        return "infra_missing_binary", "Make the verify command's program executable, or point the entry at one (eridani.json)."
+    if _DATABASE.search(text):
+        return "infra_database", ("Point the verify entry at a disposable test database (its env in eridani.json) "
+                                  "and make sure that database is running.")
+    module = _MISSING_MODULE.search(text)
+    if module:
+        name = _program(module)
+        what = f"`{name}`" if name else "the missing module"
+        return "infra_missing_dependency", (f"Install {what} where the verify command runs (uv sync, npm install), "
+                                            "or message the agent if it is the project's own module.")
+    if status == "error":
+        if _CWD.search(error):
+            return "infra_refused", f"Fix the verify entry in eridani.json: {error[:160]}."
+        return "infra_uncertain", ("The verify command could not run" + (f" ({error[:160]})" if error else "")
+                                   + ": check the verify entry in eridani.json, then Verify now.")
+    return "tests_failed", "Fix the failing tests."
+
+
+def verify_readiness(db, run, verify_id):
+    """The host's hello readiness reason for this verify id on the run's target, when it said not ready."""
+    from .session_models import ExecutionTarget
+
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    for item in ((host.caps or {}).get("targets") or []) if host and target else []:
+        if isinstance(item, dict) and item.get("id") == target.host_target:
+            for entry in item.get("verify_status") or []:
+                if isinstance(entry, dict) and entry.get("id") == verify_id and entry.get("ready") is False:
+                    return str(entry.get("reason") or "the host says this verify entry is not ready")[:300]
+    return None
+
+
+def categorize(db, run, attempt):
+    """Record why a settled verification did not pass (category, action) on its result."""
+    result = attempt.result or {}
+    category, action = classify_verify(attempt.status, result, verify_readiness(db, run, attempt.verify_id))
+    if category:
+        attempt.result = {**result, "category": category, "action": action[:300]}
 
 
 def verify_status(frame):
@@ -809,11 +940,13 @@ def verify_result(db, host_id, frame):
             AgentAttempt.plan_revision == frame.plan_revision, AgentAttempt.verify_id == frame.verify_id
         ).with_for_update())
         if attempt is None:
-            db.add(AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=frame.generation, kind="verify",
+            kept = AgentAttempt(owner_id=run.owner_id, run_id=run.id, generation=frame.generation, kind="verify",
                                 turn_seq=frame.turn_seq, plan_revision=frame.plan_revision, initiator="host",
                                 verify_id=frame.verify_id, status=verify_status(frame),
                                 workspace_fingerprint=frame.workspace_fingerprint[:200],
-                                result={**facts, "host_attempt_id": frame.attempt_id[:200], "unmatched": True}))
+                                result={**facts, "host_attempt_id": frame.attempt_id[:200], "unmatched": True})
+            categorize(db, run, kept)
+            db.add(kept)
             return {"discarded": "no matching attempt"}
         facts["adopted"] = frame.attempt_id[:200]
     else:
@@ -879,6 +1012,9 @@ def on_verdict(db, attempt, final):
     merge_steps(db, run, final.get("steps") or [], disputable=final.get("verify_failed", False))
     verdict = final["verdict"]
     note(run, "verdict", verdict=verdict, attempt_id=attempt.id)
+    if "verify_infra" in (final.get("rules") or []):
+        # The verification could not run (host setup): no gap prompt, the agent cannot fix that from its worktree.
+        return transition(db, run, "needs_you", actor=actor, reason="verify_infra", detail=final.get("gap", ""))
     if verdict == "met":
         return judged_met(db, run, plan, actor)
     if verdict == "not_met":
@@ -1151,6 +1287,16 @@ def redact_spawn(row):
     """Once the host has taken a spawn, the stored payload no longer needs the raw run token (stage F, L4)."""
     if row.kind == "spawn" and (row.payload or {}).get("run_token"):
         row.payload = {**row.payload, "run_token": "[redacted]"}
+
+
+def mcp_facts(facts):
+    """The spawn outcome's `mcp {configured, reason?}` (remotea PR #20; absent from older hosts)."""
+    mcp = facts.get("mcp") if isinstance(facts, dict) else None
+    if not isinstance(mcp, dict) or not isinstance(mcp.get("configured"), bool):
+        return None
+    reason = mcp.get("reason")
+    return {"configured": mcp["configured"],
+            **({"reason": " ".join(reason.split())[:200]} if isinstance(reason, str) and reason.strip() else {})}
 
 
 def base_facts(facts):

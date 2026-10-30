@@ -56,6 +56,8 @@
 .remotea-timeline li { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; min-width: 0; }
 .remotea-timeline li.tone-good { border-color: var(--done); }
 .remotea-timeline li.tone-warn { border-color: var(--danger); }
+/* A host setup problem (a verification that could not run): amber, not the red of a failing test. */
+.remotea-timeline li.tone-setup { border-color: var(--due-today); }
 .remotea-timeline li.tone-attention { border-color: var(--violet); }
 .remotea-timeline small { color: var(--ink-3); }
 .remotea-timeline p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); font-size: 0.9rem; max-height: 40vh; overflow: auto; }
@@ -101,6 +103,7 @@
 .remotea-bubble.who-eridani::before { content: "※"; }
 .remotea-bubble.tone-good::before { color: var(--done); }
 .remotea-bubble.tone-warn::before { color: var(--danger); }
+.remotea-bubble.tone-setup::before { color: var(--due-today); }
 .remotea-bubble.tone-attention::before { color: var(--violet); }
 .remotea-bubble.system { padding: 3px 0; border-top: 0; }
 .remotea-bubble.system .remotea-bubble-head { color: var(--ink-3); font-weight: 400; }
@@ -111,6 +114,14 @@
 .remotea-bubble p { grid-column: 2; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 13px; line-height: 20px; max-height: none; overflow: visible; }
 .remotea-bubble.who-you p { color: var(--ink); }
 .remotea-bubble .btn-ghost { grid-column: 2; justify-self: start; font-family: inherit; font-size: 12px; }
+.remotea-bubble .remotea-bubble-note, .remotea-bubble .work-error { grid-column: 2; font-size: 12px; color: var(--ink-3); }
+/* How complete a response is (E-N5): clipped for display, truncated by the host, paged out, expired by retention. */
+.remotea-label { display: inline-block; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); font-family: var(--font, inherit); font-size: 11px; line-height: 16px; font-weight: 500; color: var(--ink-2); background: var(--sunken); white-space: nowrap; }
+.remotea-label.label-clipped { border-style: dashed; }
+.remotea-label.label-truncated { color: var(--danger); border-color: var(--danger); background: none; }
+.remotea-label.label-paged { color: var(--violet); border-color: var(--violet); background: none; }
+.remotea-label.label-expired { color: var(--ink-3); border-style: dotted; background: none; }
+.remotea-log-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 6px; font-size: 12px; color: var(--ink-3); }
 .remotea-composer { flex: none; display: grid; gap: 6px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
 .remotea-composer textarea { width: 100%; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 20px; }
 .remotea-chat-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 0.85rem; color: var(--ink-2); }
@@ -136,6 +147,8 @@
 .remotea-base { display: flex; align-items: center; gap: 4px; }
 .remotea-base.stale { color: var(--danger); }
 .remotea-version.outdated, .remotea-version.outdated a { color: var(--danger); }
+.remotea-host-build { color: var(--ink-3); }
+.remotea-dirty { margin-left: 6px; padding: 0 6px; border-radius: var(--r-pill); background: var(--danger-soft); color: var(--danger); font-size: 0.75rem; }
 .remotea-migration-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
 .remotea-migration-form .field { min-width: 0; flex: 1 1 8rem; }
 .remotea-migration-form input { width: 100%; }
