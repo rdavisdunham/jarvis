@@ -167,12 +167,26 @@ def target_launch(item):
 
 
 def target_verify_status(item):
-    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?}]; None when unsaid."""
+    """caps_version 2: each verify id's readiness on the target, [{id, ready, reason?}]; None when unsaid. A host with
+    verify isolation (remotea S-N4) adds `isolated`, `isolation` ("bwrap"/"none") and `isolation_reason`."""
     value = item.get("verify_status") if isinstance(item, dict) else None
     if not isinstance(value, list):
         return None
-    return [{"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {})}
+    return [{"id": str(v["id"])[:64], "ready": v["ready"], **({"reason": clip(v["reason"])} if clip(v.get("reason")) else {}),
+             **verify_isolation(v)}
             for v in value[:50] if isinstance(v, dict) and isinstance(v.get("id"), str) and isinstance(v.get("ready"), bool)]
+
+
+def verify_isolation(entry):
+    """The isolation facts of one verify_status entry, only those the host sent and in their wire shape."""
+    out = {}
+    if isinstance(entry.get("isolated"), bool):
+        out["isolated"] = entry["isolated"]
+    if entry.get("isolation") in ("bwrap", "none"):
+        out["isolation"] = entry["isolation"]
+    if clip(entry.get("isolation_reason")):
+        out["isolation_reason"] = clip(entry["isolation_reason"])
+    return out
 
 
 def target_mcp(item):
@@ -1010,6 +1024,224 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
             **target_readiness(db, owner, task, execution_target_id)}
 
 
+# ---------------------------------------------------------------- setup readiness (E-Q1)
+
+CONFIG_FILE = "~/.config/remotea/eridani.json"
+RELOAD = "Save eridani.json; remotea reconnects within 30 seconds and its next hello carries the change."
+TOO_OLD = "unknown (host too old)"
+SETUP_HINT = "Settings → Connections → remotea lists every problem with its fix."
+SETUP_FIX =("run `remotea eridani setup` in WSL and paste a setup code from Settings → Connections → remotea "
+             "(New setup code) when asked")
+
+
+def problem(code, message, fix, blocks=True):
+    """One setup problem as the page, the probe, control_status and Eri all say it. `blocks`: a run cannot start
+    (or cannot finish its planning turn) until it is fixed; otherwise it starts but works worse."""
+    return {"code": code, "message": message, "fix": fix, "blocks": blocks}
+
+
+def verify_fix(reason):
+    """The plain-language fix for a verify entry the host says is not ready (reason text from remotea's hello)."""
+    text = (reason or "").lower()
+    if "bwrap" in text or "bubblewrap" in text:
+        return ('The entry demands isolation "bwrap" and the sandbox does not work on this host: install bubblewrap '
+                '(sudo apt install bubblewrap) or set isolation "none" on the entry. ' + RELOAD)
+    if "path" in text:
+        return ("Its program is not on the service PATH (systemd's minimal PATH; uv in ~/.local/bin is the usual "
+                "case): use scripts/verify.sh or an absolute program, or set env.PATH on the entry in "
+                f"{CONFIG_FILE}. {RELOAD}")
+    if "cwd" in text:
+        return f"Its cwd does not exist in the repository: fix cwd on the entry in {CONFIG_FILE}. {RELOAD}"
+    return f"Fix the verify entry in {CONFIG_FILE} (program, cwd, env). {RELOAD}"
+
+
+def host_setup(host):
+    """Step 1 of the setup page: is the host connected and healthy? Its build line and its problems."""
+    build = agent_link.build_identity(host)
+    name = host.name or host.machine or "remotea"
+    out = {"id": host.id, "name": name, "connected": agent_link.connected(host), "last_seen_at": host.last_seen_at,
+           "hello_at": (host.caps or {}).get("hello_at"), "version": host.version, "build": build["build"],
+           "build_dirty": build["build_dirty"], "caps_version": build["caps_version"],
+           "degraded_reason": build["degraded_reason"], "problems": []}
+    if not out["connected"]:
+        out["problems"].append(problem(
+            "HOST_OFFLINE", f"The remotea server {name} is not connected.",
+            "In WSL, check it with `systemctl --user status remotea` and start it with "
+            f"`systemctl --user start remotea`; if it was never linked, {SETUP_FIX}."))
+    if build["degraded_reason"]:
+        out["problems"].append(problem(
+            "HOST_DEGRADED", f"Host journal degraded: {build['degraded_reason']}",
+            "remotea refuses starts, messages and stops until its journal can write again: free disk space (or fix "
+            "the journal folder's permissions) on the host, then `systemctl --user restart remotea`."))
+    return encode(out)
+
+
+def target_setup(db, owner, host, host_target, saved=None):
+    """Steps 2 and 3 of the setup page for one target (a host's `host_target`, saved or only advertised): what the
+    host's last hello said about it and what stands in a run's way, each problem with its fix. The harness checks
+    are harness_problem's (the refusals start_run and the Run dialog give); facts an older host did not send are
+    null and read "unknown (host too old)"."""
+    label = (saved.name if saved is not None and saved.name else None) or host_target
+    host = host if host is not None and host.owner_id == owner else None
+    item = hello_target(host, host_target) if host is not None else None
+    live = host is not None and agent_link.connected(host)
+    out = {"host_id": host.id if host is not None else None, "host_name": (host.name or "remotea") if host else None,
+           "host_target": host_target, "name": label,
+           "repo": str((item or {}).get("repo") or (saved.repo if saved is not None else ""))[:1000],
+           "execution_target_id": saved.id if saved is not None else None,
+           "key": saved.id if saved is not None else f"host:{host.id if host else ''}:{host_target}",
+           "advertised": item is not None, "harnesses": {}, "verify": None, "mcp": None, "problems": [], "notes": []}
+    if host is None:
+        out["problems"].append(problem("HOST_MISSING", f"{label} has no remotea server.",
+                                       f"{SETUP_FIX[0].upper()}{SETUP_FIX[1:]}, then pick this repository again."))
+        return finish_target(out)
+    if not live:
+        out["problems"].append(problem("HOST_OFFLINE", f"The remotea server {out['host_name']} is not connected.",
+                                       "Start remotea in WSL: `systemctl --user start remotea`."))
+    if item is None:
+        out["problems"].append(problem(
+            "TARGET_NOT_ADVERTISED", f"{out['host_name']} does not list the {host_target} target.",
+            f'Add a target with id "{host_target}" to targets[] in {CONFIG_FILE} (`remotea eridani setup '
+            f"--add-repo {host_target}=<path>` does it). {RELOAD}"))
+        return finish_target(out)
+    enabled, launch = target_enabled(item), target_launch(item)
+    for name in HARNESSES:
+        why = harness_problem(host, name, host_target)
+        probe = (launch or {}).get(name)
+        label_h = HARNESS_LABELS.get(name, name)
+        out["harnesses"][name] = {
+            "label": label_h, "ready": why is None, "enabled": (name in enabled) if enabled is not None else None,
+            "version": (probe or {}).get("version"), "error": (probe or {}).get("error"),
+            "launch": "probed" if probe is not None else ("not enabled" if launch is not None else TOO_OLD),
+            "reason": why}
+        if live and enabled is not None and name in enabled and why is not None:
+            out["problems"].append(problem(
+                "HARNESS_NOT_INSTALLED", f"{label_h} is enabled but not installed: {why}",
+                f"Install {label_h} where the service finds it (its login shell's PATH), or remove {name} from the "
+                f"target's launch in {CONFIG_FILE}. {RELOAD}", blocks=False))
+    if live and not any(h["ready"] for h in out["harnesses"].values()):
+        out["problems"].append(problem(
+            "NO_HARNESS", f"No coding agent can start on {label}.",
+            f"Add launch.claude (or launch.codex) to the {host_target} target in {CONFIG_FILE} and install that "
+            f"agent on the host. {RELOAD}"))
+    status = target_verify_status(item)
+    out["verify"] = status
+    if status is None:
+        out["notes"].append(f"Verify readiness: {TOO_OLD}.")
+    elif not status:
+        out["problems"].append(problem(
+            "NO_VERIFY", f"{label} has no verify command, so a run cannot check its work with tests.",
+            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, scripts/verify.sh with an isolated "
+            f"test database). {RELOAD}", blocks=False))
+    for entry in status or []:
+        if not entry["ready"]:
+            out["problems"].append(problem(
+                "VERIFY_NOT_READY",
+                f"Verify {entry['id']} is not ready: {entry.get('reason') or 'the host did not say why'}",
+                verify_fix(entry.get("reason")), blocks=False))
+        elif entry.get("isolated") is False and entry.get("isolation") != "none":
+            # Not chosen: the sandbox is unavailable on this host (an entry that sets "none" chose it).
+            out["notes"].append(f"Verify {entry['id']} runs without a sandbox: "
+                                f"{entry.get('isolation_reason') or 'the host did not say why'}.")
+    out["mcp"] = target_mcp(item)
+    if out["mcp"] is None:
+        out["notes"].append(f"Eridani tools for agents (MCP): {TOO_OLD}.")
+    elif not out["mcp"]["configured"]:
+        out["problems"].append(problem(
+            "MCP_NOT_CONFIGURED",
+            f"Agents on {label} get no Eridani tools: {out['mcp'].get('reason') or 'the host did not say why'}",
+            f"{SETUP_FIX[0].upper()}{SETUP_FIX[1:]}: it saves the MCP key to ~/.config/remotea/eridani-mcp-token. "
+            "Without it the agent cannot submit its plan."))
+    return finish_target(out)
+
+
+def finish_target(out):
+    out["ready"] = not any(p["blocks"] for p in out["problems"])
+    out["line"] = setup_line(out["name"], out.get("host_name"), out["problems"]) if not out["ready"] else None
+    return encode(out)
+
+
+def setup_line(name, host_name, problems):
+    """One spoken line for an unready host or target (control_status, Eri): its blocking problems, then the first
+    fix."""
+    blocking = [p for p in problems if p["blocks"]]
+    if not blocking:
+        return None
+    where = name + (f" on {host_name}" if host_name else "")
+    return f"{where}: " + "; ".join(p["message"].rstrip(".") for p in blocking) + f". Fix: {blocking[0]['fix']}"
+
+
+def setup_report(db, owner):
+    """The guided setup page (GET /remotea/setup): each host (connected? build? degraded?), then each target its hosts
+    advertise or the owner saved (one entry per host and host_target), with its readiness and fixes. `lines` holds
+    one line per unready host or target, the way control_status says them; `ready` is true when a connected,
+    healthy host has at least one ready target."""
+    hosts = list(db.scalars(select(AgentHost).where(AgentHost.owner_id == owner).order_by(AgentHost.created_at)))
+    by_id = {h.id: h for h in hosts}
+    saved = {}
+    for row in db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner)
+                          .order_by(ExecutionTarget.created_at)):
+        saved.setdefault((row.host_id, row.host_target), row)
+    pairs = []
+    for h in hosts:
+        for item in (h.caps or {}).get("targets") or []:
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and (h.id, item["id"]) not in pairs:
+                pairs.append((h.id, item["id"]))
+    pairs += [pair for pair in saved if pair not in pairs]
+    targets = [target_setup(db, owner, by_id.get(hid), ht, saved.get((hid, ht))) for hid, ht in pairs]
+    host_rows = [host_setup(h) for h in hosts]
+    lines = []
+    if not hosts:
+        lines.append(f"No remotea server has connected yet. Fix: {SETUP_FIX}.")
+    lines += [setup_line(h["name"], None, h["problems"]) for h in host_rows if h["problems"]]
+    offline = {h["id"] for h in host_rows if not h["connected"]}
+    # An offline host's targets would only repeat the host's own line.
+    lines += [t["line"] for t in targets if t["line"] and not (
+        t["host_id"] in offline and {p["code"] for p in t["problems"] if p["blocks"]} == {"HOST_OFFLINE"})]
+    if hosts and not targets:
+        lines.append("No execution target is configured. Fix: run `remotea eridani setup --scan <folder>` in WSL to "
+                     f"add your repositories, or add targets[] to {CONFIG_FILE}.")
+    ready = any(h["connected"] and not h["problems"] for h in host_rows) and any(t["ready"] for t in targets)
+    return {"ready": ready, "hosts": host_rows, "targets": targets, "lines": lines}
+
+
+def proposal_setup(db, owner, row):
+    """The setup line for a pending start's resolved target when something there would stall the run (no Eridani
+    tools, say) although check_host lets it start; None when the target is ready."""
+    try:
+        target = resolve_target(db, owner, db.get(Task, (row.arguments or {}).get("task_id")),
+                                (row.arguments or {}).get("execution_target_id"))
+    except DomainError:
+        return None
+    host = db.get(AgentHost, target.host_id) if target.host_id else None
+    return target_setup(db, owner, host, target.host_target, target)["line"]
+
+
+def target_probe(db, owner, key):
+    """POST /remotea/targets/{key}/probe: one target's readiness. remotea has no probe command yet, so this reads the
+    facts from the host's last hello and says so (`source: "hello"`, `hello_at`, `note`). `key` is a saved
+    execution target id or an advertised target's `host:<host_id>:<host_target>`."""
+    if key.startswith("host:"):
+        _, host_id, host_target = (key.split(":", 2) + ["", ""])[:3]
+        host, saved = db.get(AgentHost, host_id), None
+        if host is None or host.owner_id != owner or hello_target(host, host_target) is None:
+            raise DomainError("NOT_FOUND", "That remotea target is no longer advertised.", 404)
+    else:
+        try:
+            UUID(key)
+        except ValueError:
+            raise DomainError("NOT_FOUND", "That execution target is not available.", 404) from None
+        saved = owned(db, ExecutionTarget, key, owner)
+        host, host_target = (db.get(AgentHost, saved.host_id) if saved.host_id else None), saved.host_target
+    offline = host is not None and not agent_link.connected(host)
+    note = ("This remotea server has no readiness probe yet, so these are the facts from its last hello"
+            + (" (it is offline)" if offline else "") + ". Saving eridani.json makes remotea reconnect with fresh "
+            "facts within 30 seconds; `remotea eridani status --probe` in WSL checks now.")
+    return {"source": "hello", "hello_at": (host.caps or {}).get("hello_at") if host is not None else None,
+            "note": note, "host": host_setup(host) if host is not None and host.owner_id == owner else None,
+            "target": target_setup(db, owner, host, host_target, saved)}
+
+
 def proposal(db, owner, result):
     """A control_start proposal as Eri sees it: the pending row plus what still stands in its way, and what to
     tell the owner about it. The picker's data stays on the remotea card."""
@@ -1028,9 +1260,12 @@ def proposal(db, owner, result):
                     "(their answer naming one of them counts as their yes); an advertised one is saved for the task's "
                     "project first. They can also pick it on the card in chat or on the remotea page. A bare yes "
                     "cannot start it until a place is chosen.")
-    for problem in ready["problems"]:
-        told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
+    for item in ready["problems"]:
+        told.append(f"Tell the owner: {item['message']} ({item['code']}) Confirming fails until that is "
                     "fixed; the proposal stays open until it expires.")
+    setup = proposal_setup(db, owner, row) if ready["target"] and not ready["problems"] else None
+    if setup:
+        told.append(f"Also tell the owner before they confirm: {setup}")
     return {**result, "task_id": row.arguments.get("task_id"), "needs_target": ready["needs_target"],
             "target": ready["target"], "problems": ready["problems"], **extra,
             **({"next": " ".join(told) + " " + result.get("next", "")} if told else {})}
@@ -1438,7 +1673,10 @@ def status(db, owner, args):
         # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
         hosts.append({"name": h.name, "connected": agent_link.connected(h),
                       **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {})})
+    # One line per unready host or target with its first fix (the setup page's wording): why a run cannot start.
+    setup = setup_report(db, owner)["lines"]
     return encode({"enabled": True, "hosts": hosts, "runs": [spoken_run(db, r) for r in runs],
+                   **({"setup": setup, "setup_hint": SETUP_HINT} if setup else {}),
                    "pending": spoken_pending(db, owner),
                    "recently_finished": [{"run_id": r.id, "task": (db.get(Task, r.task_id).title if r.task_id else ""),
                                           "state": r.state, "finished_at": r.finished_at} for r in recent

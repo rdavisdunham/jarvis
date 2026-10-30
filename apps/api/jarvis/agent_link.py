@@ -829,7 +829,9 @@ def admit(credential_id, hello):
         host.version = hello.version or None
         host.caps = {**{k: v for k, v in (host.caps or {}).items() if k == "worktrees"},
                      "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets,
-                     "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None}}
+                     "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None},
+                     # When these facts were sent: the setup page's probe says how old they are.
+                     "hello_at": now().isoformat()}
         host.conn_epoch = (host.conn_epoch or 0) + 1
         host.last_seen_at, host.lease_until = now(), now() + LEASE
         db.flush()
