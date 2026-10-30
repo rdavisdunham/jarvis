@@ -194,8 +194,25 @@ Quiet hours default to 22:00–08:00 local time. Only an explicitly urgent alert
 bypasses them; task priority alone does not. The optional daily summary defaults
 to 08:00, skips empty days and consolidates eligible held notices. Snooze changes
 the same notification's next delivery, not the task deadline or recurring schedule;
-choose a duration or exact time. Delivery generations prevent old retries from
-sending a superseded snooze or deadline.
+choose a duration, an exact time, or words resolved in the owner's time zone ("in 2
+hours", "tomorrow morning", "after lunch", "friday 3pm", `snooze_words.py`). Delivery
+generations prevent old retries from sending a superseded snooze or deadline.
+
+Priorities are `low`, `normal`, `high` and `urgent`. A task's alerts follow it: its
+urgent switch makes them urgent, priority High makes them high, priority Low makes
+them low. "Interrupt me for" (`notify_min_priority`, default everything) sets which
+levels push; the rest wait for the digest (`digest_cadence`: hourly, every 3 hours,
+daily at the summary hour, or off for in-app only). When two or more interrupting
+notices are due in the same pass they arrive as one bundled push that opens the
+Notifications page; urgent alerts and the daily summary always push alone. Two due
+notices for the same task push once. A notice's delivered, read, snoozed and
+completed states stay distinct (`notices.state`), and a bundle's members each keep
+their own state and destination.
+
+Snoozing or completing one occurrence never drops the next. A repeating alert on an
+existing task: the next occurrence replaces an earlier one still open, and
+completing an occurrence completes only that occurrence (the task and series stay).
+A recurring task: each occurrence is its own task and notification.
 
 Unseen successful background work groups for 30 seconds; questions and failures
 have their own actions and open Activity. Task notifications open the correct

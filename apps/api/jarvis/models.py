@@ -260,6 +260,11 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Delivery, read, snoozed and completed stay separate facts (notices.state derives one state).
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The bundle or digest whose push carries this notice's current generation (notices.plan).
+    bundle_id: Mapped[str | None] = mapped_column(ForeignKey("notifications.id"), index=True)
 
 
 class PushSubscription(Base):

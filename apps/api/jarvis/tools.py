@@ -1004,10 +1004,16 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 db, owner, start, end, arguments.get("timezone") or preferences(db, owner)["timezone"]
             )
     if name == "notification_list":
+        from .notices import VEHICLES
+
         with session_scope() as db:
             rows = db.scalars(
                 select(Notification)
-                .where(Notification.owner_id == owner, Notification.dismissed_at.is_(None))
+                .where(
+                    Notification.owner_id == owner,
+                    Notification.dismissed_at.is_(None),
+                    Notification.category.not_in(sorted(VEHICLES)),
+                )
                 .order_by(Notification.created_at.desc())
                 .limit(30)
             )

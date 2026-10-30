@@ -77,7 +77,8 @@ def test_deadline_override_priority_not_urgency():
         notices.sync_deadlines(db, OWNER)
         rows = list(db.scalars(select(Notification)))
         assert len(rows) == 1
-        assert rows[0].importance == "normal"
+        # Priority High raises the level but never makes it urgent: only urgent bypasses quiet hours.
+        assert rows[0].importance == "high"
 
 
 def test_non_task_notice_cannot_complete_work():
