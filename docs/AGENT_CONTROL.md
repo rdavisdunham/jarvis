@@ -90,6 +90,28 @@ owns the host: an older connection in the same process is closed with 4001 at on
 process is fenced the next time it touches the database. Disconnect clears the lease only if the epoch
 still matches, so a superseded socket never marks the live one offline. Startup never resets hosts.
 
+**Wake (when a queued command is sent).** Sockets live in the web processes (`LINKS` in
+`agent_link.py` is per process; uvicorn runs several workers, and Railway may run several replicas),
+but commands are also queued by the worker (judge gap prompts, interview planning prompts, verify,
+replan). `run_coordinator.command()` therefore does two things inside the queuing transaction:
+
+- `wake_after_commit`: after commit, sets the link's wakeup event if *this* process holds the socket
+  (no database round trip).
+- `agent_link.notify_host`: `SELECT pg_notify('agent_link', <host_id>)`. Postgres delivers a NOTIFY
+  only when the transaction commits, and never on rollback, so a link cannot drain before the command
+  row is visible. Duplicate notifies in one transaction are folded into one.
+
+Each web process runs `agent_link.listen()` as a lifespan task: one dedicated autocommit psycopg
+connection outside the SQLAlchemy pool (`application_name = eridani-agent-link`; LISTEN needs the direct
+connection `docs/CLOUD_MIGRATION.md` already requires, not a transaction pooler) that `LISTEN`s on
+`agent_link` and calls `wake(host_id)` for each notify. A notify for a host whose socket is in another
+process or replica (or nowhere) finds no local link and is ignored; that process's own listener wakes
+it. A quiet listener runs `SELECT 1` every 30 s (`LISTEN_IDLE_SECONDS`); any error reconnects with
+backoff (0.5 s doubling to 30 s, `LISTEN_BACKOFF`). Notifies sent while it is disconnected are lost, so
+every (re)connect wakes all local links once. Waking is only a hint: the drain itself is
+`drain()`'s `FOR UPDATE SKIP LOCKED` query, and the 30-second tick (`TICK_SECONDS`) still drains every
+link, so a down listener means commands wait for the tick, not that they are lost.
+
 ## Frames
 
 Every frame is JSON text: `{v: 1, id, t, at, conn_epoch?, ...}`. `id` is the transport id (≤100 chars).
@@ -113,7 +135,7 @@ own short transaction.
 
 | Dir | `t` | Body | Effect / outcome |
 |---|---|---|---|
-| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
+| up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. Each target's `harnesses` lists the harnesses it may run (remotea's `launch` for that target) and `verify` its verify ids; both are kept in `caps.targets` and returned on advertised targets (see **Target capabilities**). A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
 | up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
@@ -260,13 +282,27 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
    and retries. "Remember for" defaults to the nearest record that is not a task (usually the project), so
    sibling tasks reuse the choice; "Only this task" binds just the task (reusing a target already saved
    for a record rather than copying it).
-2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (host lacks `spawn` for the harness),
+2. Refusals: `RUN_ACTIVE`, `HOST_OFFLINE`, `HARNESS_UNAVAILABLE` (the host lacks `spawn` for the harness, or the
+   resolved target does not enable it; the message names the target and `data` is `{harness, host_target}`),
    `HARNESS_DISABLED` (opencode).
 3. The run is created in `spawning`, the plan is frozen as revision 1 (PRD note or task notes, steps,
    criteria), a run token is minted and `spawn` is queued in the same transaction.
 
 Branch: Linear's `branchName`, else `<owner>/<identifier>-<slug>`, else `task/<id>`; base: the parent
 task's run branch, else `main`.
+
+**Target capabilities.** `agent_control.host_harness(host, harness, host_target)` decides whether a harness can
+start: the host must list `spawn` in `caps` and set `caps.harnesses.<harness>.spawn`, and when its hello entry for
+`host_target` carries `harnesses`, that list must include the harness (remotea refuses a harness missing from the
+target's `launch`). A target without `harnesses` (an older remotea) falls back to the host-wide flags alone.
+`check_host` passes the resolved target's `host_target`, so `start_run`, Eri's `control_start` proposal and
+confirm all refuse the same way. Advertised targets (`GET /remotea/targets` `advertised`, `NEEDS_TARGET`
+`data.advertised`) carry `harnesses` (null when the host did not say) and `verify`; a saved target carries the
+same two fields when its host advertises it. The Run dialog's preflight reports `harnesses` for the resolved
+target only, with `harness_reasons` (why each one cannot start, naming the target); while no target resolves, it
+reports the union over the picker's candidates and advertised targets and sets `harness_note`. Another host's
+capabilities never make the resolved target look ready. The dialog disables a harness the preflight rules out and
+shows the reason; only without a preflight does it fall back to "any connected host can spawn it".
 
 ### Commands
 
@@ -279,6 +315,10 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
 | `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
+
+Commands are rows in `agent_commands` (status `queued`). Whichever process queues one, the host's
+socket drains it within about a second of the commit (see "Wake" under Connection lifecycle), or at
+the next 30-second tick if no wake arrives.
 
 **Deterministic spawn surface.** remotea names a spawned surface
 `surf-eri-<sha256(run_id + "\0" + generation + "\0" + attempt) hex, first 32>` (`run_coordinator.surf_for`).
@@ -355,14 +395,25 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 |---|---|---|
 | `GET /runs?task_id=&active=&limit=` | no | runs, newest first |
 | `POST /runs` | yes | start (above) |
-| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses`, `task` |
+| `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `task` |
 | `GET /runs/{id}` | no | detail: plan, history, turns, commands with outcomes, questions |
-| `POST /runs/{id}/message {text, mode, expected_revision?}` | yes | queue or steer |
-| `POST /runs/{id}/stop {mode, expected_revision?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
-| `POST /runs/{id}/approve {expected_revision}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
+| `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
+| `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
+| `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
-| `GET`/`POST /targets` | yes | saved and advertised targets |
+| `GET`/`POST /targets` | yes | saved and advertised targets, with per-target `harnesses` and `verify` when the host sent them |
 | `GET /unmerged` | yes | the hosts' last `worktrees.report` |
+
+**Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`
+and `verify-config` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
+(`agent_action_receipts`: owner, action id, run, route, a SHA-256 of the route, run and body without
+`action_id`, and the response) in the same transaction as the effect (`agent_receipts.once`). A repeat with the
+same `action_id` and body returns the stored response and acts no more: one `AgentCommand`, one steer
+generation, one stop. The same `action_id` with a different body, route or run is refused with 409
+`ACTION_MISMATCH`. A refused action (409 `NOT_STARTED`, `REVISION_CONFLICT`, …) rolls back and stores nothing,
+so the same id may act later. Without `action_id` every request acts. Receipts are kept 7 days. The web helper
+`postAction(path, body)` in `apps/web/src/api.ts` sets one `action_id` per call and resends the same body after
+a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
 The page shows runs (needs-you first), **Unmerged work**, and a run drawer with the timeline, the
 questions card and Message / Steer / Stop (**Stopping…**, then **Force stop**) / Approve.
@@ -562,10 +613,10 @@ completion.
 | Route | Gated | |
 |---|---|---|
 | `POST /interviews/{id}/answers` | yes | interview form |
-| `POST /runs/{id}/replan {reason?, expected_revision?}` | yes | |
-| `POST /runs/{id}/verify {expected_revision?}` | yes | on-demand verification; the body is optional |
-| `POST /runs/{id}/verify-config {verify_id, expected_revision?}` | yes | set the plan's verify command mid-run (new revision) |
-| `POST /runs/{id}/freestyle {enabled, expected_revision?}` | yes | judge, verify, cap and gap prompts off while on |
+| `POST /runs/{id}/replan {reason?, expected_revision?, action_id?}` | yes | |
+| `POST /runs/{id}/verify {expected_revision?}` | yes | on-demand verification; the body is optional (a second request while one runs is refused, `VERIFY_RUNNING`) |
+| `POST /runs/{id}/verify-config {verify_id, expected_revision?, action_id?}` | yes | set the plan's verify command mid-run (new revision) |
+| `POST /runs/{id}/freestyle {enabled, expected_revision?, action_id?}` | yes | judge, verify, cap and gap prompts off while on |
 | `POST /runs/{id}/plan-review {decisions, verify, completion_policy, expected_revision}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale) |
 | `POST /auto-complete {enabled}` | yes | rollout flag |
 
@@ -840,6 +891,7 @@ The worker's housekeeping pass (every 12th supervisor cycle) deletes:
 | A settled run's turns, questions, attempts, interviews and commands (the run, plans and history stay) | 90 days after it finished |
 | The payload of a settled command | 7 days |
 | `agent_parity`, `agent_parity_days`, `agent_ingest_days`, expired pending controls | 30 days |
+| Run action receipts (`agent_action_receipts`) | 7 days |
 
 Each owner may ingest 64 MiB of turn text and prompts per UTC day (`agent_ingest_days`). Past it the turn
 is kept with its text dropped and `truncated: true`, and hosts report `status: "degraded"` until the next

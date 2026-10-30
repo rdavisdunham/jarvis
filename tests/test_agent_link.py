@@ -1,7 +1,12 @@
+import asyncio
+import contextlib
 import json
+import threading
 import time
+import types
 from datetime import UTC, datetime, timedelta
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from jarvis import agent_link, remotea_routes
@@ -9,7 +14,7 @@ from jarvis.api import app
 from jarvis.db import session_scope
 from jarvis.models import BotCredential, Event, now
 from jarvis.session_models import AgentHost, AgentParity, AgentRun, AgentSession, AgentTurn
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from starlette.testclient import WebSocketDenialResponse
 from starlette.websockets import WebSocketDisconnect
 from test_agent_sessions import key, report
@@ -678,3 +683,136 @@ def test_turns_for_runs_of_other_hosts_are_refused(client):
         reply = put(ws, "turn", tool="claude", surf="s", provider_session_id="x", provider_turn_id="t", root=True,
                     run_id="00000000-0000-0000-0000-000000000000", generation=1)
     assert not reply["ok"] and reply["error"]["code"] == "RUN_NOT_BOUND"
+
+
+# ---------------------------------------------------------------- cross-process wake (pg NOTIFY)
+
+
+def listeners():
+    """Backend pids of agent-link listeners on the test database."""
+    with session_scope() as db:
+        return set(db.scalars(text("SELECT pid FROM pg_stat_activity WHERE application_name = 'eridani-agent-link' "
+                                   "AND datname = current_database()")))
+
+
+def until(check, seconds=5.0):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        value = check()
+        if value:
+            return value
+        time.sleep(0.02)
+    raise AssertionError("condition not met in time")
+
+
+def test_notify_is_delivered_only_when_the_queuing_transaction_commits():
+    with psycopg.connect(agent_link.listen_dsn(), autocommit=True) as listener:
+        listener.execute(f"LISTEN {agent_link.CHANNEL}")
+        with session_scope() as db:
+            agent_link.notify_host(db, "host-a")
+            assert list(listener.notifies(timeout=0.3)) == []  # Still inside the transaction.
+        assert [n.payload for n in listener.notifies(timeout=1, stop_after=1)] == ["host-a"]
+        with pytest.raises(RuntimeError), session_scope() as db:
+            agent_link.notify_host(db, "host-b")
+            raise RuntimeError("roll back")
+        assert list(listener.notifies(timeout=0.3)) == []  # A rolled-back command wakes nobody.
+
+
+class FakeLoop:
+    def call_soon_threadsafe(self, callback, *args):
+        callback(*args)
+
+
+def test_listener_wakes_local_links_ignores_other_hosts_and_reconnects(monkeypatch):
+    local = types.SimpleNamespace(loop=FakeLoop(), wakeup=threading.Event())
+    monkeypatch.setattr(agent_link, "LINKS", {"host-local": local})
+    monkeypatch.setattr(agent_link, "LISTEN_BACKOFF", (0.1, 0.5))
+    monkeypatch.setattr(agent_link, "LISTEN_IDLE_SECONDS", 1)
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+
+    async def start():
+        return asyncio.create_task(agent_link.listen())
+
+    async def stop(task):
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+    task = asyncio.run_coroutine_threadsafe(start(), loop).result(5)
+
+    def queue(host_id):
+        with session_scope() as db:  # Another connection, as the worker would.
+            agent_link.notify_host(db, host_id)
+
+    try:
+        first = until(listeners)
+        assert local.wakeup.wait(5)  # Connecting wakes every local link once (missed notifies).
+        local.wakeup.clear()
+        queue("host-in-another-replica")  # No local socket: ignored, and the listener keeps going.
+        assert not local.wakeup.wait(0.3)
+        started = time.monotonic()
+        queue("host-local")
+        assert local.wakeup.wait(1) and time.monotonic() - started < 1
+        local.wakeup.clear()
+        time.sleep(1.2)  # Past an idle timeout: the health check keeps the same connection.
+        assert listeners() == first and not local.wakeup.is_set()
+        with session_scope() as db:
+            db.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                            "WHERE application_name = 'eridani-agent-link' AND datname = current_database()"))
+        assert local.wakeup.wait(5)  # Reconnected, and woke the local links in case a notify was lost.
+        assert until(listeners).isdisjoint(first)
+        local.wakeup.clear()
+        queue("host-local")
+        assert local.wakeup.wait(1)
+        assert not task.done()
+    finally:
+        asyncio.run_coroutine_threadsafe(stop(task), loop).result(10)
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(5)
+        loop.close()
+
+
+def reconciled_host(ws):
+    host_id = hello(ws, caps=C_CAPS, harnesses=C_HARNESSES)["host_id"]
+    snap = signed("sessions.snapshot", surfaces=[], journal={"pending": [], "uncertain": []})
+    ws.send_json(snap)
+    assert ws.receive_json()["t"] == "runs.snapshot"
+    assert ws.receive_json()["acked_id"] == snap["id"]
+    return host_id
+
+
+def queue_stop(host_id):
+    """Queue a command on a fresh session and connection, off the socket's own path (the worker's case)."""
+    with session_scope() as db:
+        owner = db.get(AgentHost, host_id).owner_id
+        return agent_link.coordinator.command(db, None, "stop", {"owner_id": owner, "surf": "surf-x", "incarnation": 1,
+                                                                 "mode": "interrupt"}, host_id=host_id).op_id
+
+
+def test_a_command_queued_by_another_process_is_sent_within_a_second(client, monkeypatch):
+    # Only the NOTIFY path can wake the socket: no in-process wake, and the tick is a minute away.
+    monkeypatch.setattr(agent_link.coordinator, "wake_after_commit", lambda db, host_id: None)
+    monkeypatch.setattr(agent_link, "TICK_SECONDS", 60)
+    token = enable(client)["token"]
+    until(listeners)  # The lifespan started this process's listener.
+    with connect(bearer(token)) as ws:
+        host_id = reconciled_host(ws)
+        started = time.monotonic()
+        op_id = queue_stop(host_id)
+        sent = ws.receive_json()
+        assert time.monotonic() - started < 1.5
+        assert sent["t"] == "stop" and sent["op_id"] == op_id
+
+
+def test_the_tick_still_drains_when_no_wake_arrives(client, monkeypatch):
+    # Listener down and no in-process wake (both go through `wake`): the periodic tick is the recovery.
+    monkeypatch.setattr(agent_link, "wake", lambda host_id: None)
+    monkeypatch.setattr(agent_link, "TICK_SECONDS", 1)
+    token = enable(client)["token"]
+    with connect(bearer(token)) as ws:
+        host_id = reconciled_host(ws)
+        op_id = queue_stop(host_id)
+        sent = ws.receive_json()  # Nothing can wake it; drained by the next tick (a 30-second test hang otherwise).
+        assert sent["t"] == "stop" and sent["op_id"] == op_id

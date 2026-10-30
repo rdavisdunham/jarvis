@@ -591,6 +591,7 @@ class SetVerifyInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     verify_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
     expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 VERIFY_SETTABLE = {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "verifying", "judging"}

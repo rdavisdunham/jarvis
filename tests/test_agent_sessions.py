@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 
 import pytest
 from cryptography.fernet import Fernet
@@ -196,6 +197,27 @@ def test_search_ranks_issue_keys_folders_and_text(client):
     assert [i["session_id"] for i in recent["items"]] == ["billing", "other"]
     assert recent["items"][0]["resume"] == {"cmd": "claude --resume billing"}
     assert "excerpt" not in recent["items"][0]
+
+
+def test_search_results_are_json_safe_as_eri_tool_results(client):
+    """Eri's runners (work_runner, conversation, voice) json.dumps a tool result as is. On 2026-10-29 a chat
+    turn that called session_search failed with "The task model could not finish this request" because the
+    items carried datetime objects; the wire already shows ISO strings, so the search must return those."""
+    _, headers = key(client, ["sessions:write", "sessions:read"])
+    report(headers, "billing", title="Billing CSV export", started_at=(now() - timedelta(hours=1)).isoformat())
+    with session_scope() as db:
+        row = db.scalar(select(AgentSession).where(AgentSession.session_id == "billing"))
+        row.state, row.state_since = "working", now()
+    for listing in (sessions.Listing(), sessions.Listing(query="billing"), sessions.Listing(live=True)):
+        found = sessions.search(OWNER, listing)
+        assert [i["session_id"] for i in found["items"]] == ["billing"]
+        json.dumps(found)  # TypeError before the fix: Object of type datetime is not JSON serializable
+        item = found["items"][0]
+        assert isinstance(item["started_at"], str) and isinstance(item["last_active_at"], str)
+        assert isinstance(item["live_state"]["since"], str)
+    # The HTTP route carried these as ISO strings before; the tool result now matches it exactly.
+    over_http = TestClient(app).get("/api/v1/external/sessions", headers=headers).json()["items"][0]
+    assert over_http["started_at"] == item["started_at"] and over_http["live_state"] == item["live_state"]
 
 
 def test_scopes_and_input_limits(client):

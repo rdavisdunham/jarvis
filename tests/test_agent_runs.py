@@ -624,3 +624,73 @@ def test_every_transition_reason_has_page_text():
     missing = sorted(r for r in used if r not in REASON_TEXT)
     assert not missing, f"transition reasons without page text: {missing}"
     assert REASON_TEXT.get("no_such_reason", "") == ""
+
+
+# ---------------------------------------------------------------- idempotent run actions (agent_receipts.py)
+
+
+def test_a_repeated_message_with_the_same_action_id_acts_once(host, client):
+    import uuid
+
+    from jarvis.session_models import AgentActionReceipt
+
+    run_id = start(host, task()["id"])["id"]
+    attached(host, run_id)
+    action_id = str(uuid.uuid4())
+    url = f"/api/v1/remotea/runs/{run_id}/message"
+    body = {"text": "Also update the docs.", "mode": "steer", "action_id": action_id}
+    first = client.post(url, json=body)
+    assert first.status_code == 200, first.text
+    with session_scope() as db:
+        generation = db.get(AgentRun, run_id).generation
+    again = client.post(url, json=body)  # The response was lost; the drawer retries with the same id.
+    assert again.status_code == 200 and again.json() == first.json()
+    assert len(commands(run_id, "input")) == 1  # One prompt queued, one steer generation.
+    with session_scope() as db:
+        assert db.get(AgentRun, run_id).generation == generation
+        receipt = db.get(AgentActionReceipt, (OWNER, action_id))
+        assert receipt.kind == "message" and receipt.run_id == run_id
+    other = client.post(url, json={**body, "text": "Something else."})
+    assert other.status_code == 409 and other.json()["error"]["code"] == "ACTION_MISMATCH"
+    elsewhere = client.post(f"/api/v1/remotea/runs/{run_id}/stop", json={"action_id": action_id})
+    assert elsewhere.status_code == 409 and elsewhere.json()["error"]["code"] == "ACTION_MISMATCH"
+    assert len(commands(run_id, "input")) == 1 and not commands(run_id, "stop")
+    fresh = client.post(url, json={**body, "action_id": str(uuid.uuid4())})  # A new id is a new message.
+    assert fresh.status_code == 200 and len(commands(run_id, "input")) == 2
+    plain = client.post(url, json={"text": "No id: acts every time."})
+    assert plain.status_code == 200 and len(commands(run_id, "input")) == 3
+    assert client.post(url, json={"text": "x", "action_id": "not-a-uuid"}).status_code == 422
+
+
+def test_a_repeated_stop_returns_the_first_result_and_a_refused_action_leaves_no_receipt(host, client):
+    import uuid
+
+    from jarvis.session_models import AgentActionReceipt
+
+    run_id = start(host, task()["id"])["id"]
+    action_id = str(uuid.uuid4())
+    # Not started yet: the message is refused, nothing is stored, and the same id may act once it can.
+    early = client.post(f"/api/v1/remotea/runs/{run_id}/message", json={"text": "hi", "action_id": action_id})
+    assert early.status_code == 409 and early.json()["error"]["code"] == "NOT_STARTED"
+    with session_scope() as db:
+        assert db.get(AgentActionReceipt, (OWNER, action_id)) is None
+    attached(host, run_id)
+    stop_id = str(uuid.uuid4())
+    url = f"/api/v1/remotea/runs/{run_id}/stop"
+    first = client.post(url, json={"mode": "interrupt", "action_id": stop_id})
+    assert first.status_code == 200, first.text
+    again = client.post(url, json={"mode": "interrupt", "action_id": stop_id})
+    assert again.json() == first.json() and len(commands(run_id, "stop")) == 1
+
+
+def test_retention_drops_old_action_receipts():
+    from jarvis import agent_retention as retention
+    from jarvis.session_models import AgentActionReceipt
+
+    with session_scope() as db:
+        db.add(AgentActionReceipt(owner_id=OWNER, action_id="old", run_id="r", kind="stop", digest="d", result={},
+                                  created_at=now() - timedelta(days=8)))
+        db.add(AgentActionReceipt(owner_id=OWNER, action_id="new", run_id="r", kind="stop", digest="d", result={}))
+    with session_scope() as db:
+        assert retention.sweep(db)["action_receipts"] == 1
+        assert db.get(AgentActionReceipt, (OWNER, "new")) is not None

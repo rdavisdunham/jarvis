@@ -216,6 +216,11 @@ GPT-Live (`live_voice.py`) delegates to queued work.
 
 - [ ] Read tool: add to `READ_TOOLS` in `tools.py` (description + JSON schema) and implement it in
       `call_tool`. Validate any browser-bound arguments with `jsonschema` the way the `ui_*` branch does.
+      Return plain JSON: timestamps as ISO strings (`agent_sessions.stamp`), never `datetime`, `UUID` or model
+      objects. HTTP routes and MCP pass results through FastAPI's `jsonable_encoder`, so a stray `datetime`
+      only surfaced when Eri called the tool in chat: `json.dumps` of the result raised and the whole request
+      finished `failed` ("The task model could not finish this request", `session_search`, 2026-10-29). The
+      runners now encode through `tools.tool_json`, but the fix belongs in the tool.
 - [ ] Mutation: add the domain command (section 5), then add its name to `VOICE_MUTATIONS` (many are
       added by prefix: `planning.`, `linear.`, `space.`, …, `control.`). Per-field null rules go in
       `domain.NOT_NULL`.
@@ -280,7 +285,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0033_run_freshness`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0035_action_receipts`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a
