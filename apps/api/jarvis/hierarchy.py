@@ -68,9 +68,9 @@ def adopt(db, owner, schema):
     rows = list(db.scalars(select(StructureRecord).where(
         StructureRecord.owner_id == owner, StructureRecord.task_id.is_not(None))))
     for row in rows:
-        task = db.get(Task, row.task_id)
+        # Load the task only for rows still to adopt; this runs on every record list.
         if row.provenance.get("home_version") != 1:
-            from_task(db, owner, row, task, schema)
+            from_task(db, owner, row, db.get(Task, row.task_id), schema)
     db.flush()
 
 
