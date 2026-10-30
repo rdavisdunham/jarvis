@@ -138,6 +138,22 @@ def test_model_failures_are_non_verdicts(monkeypatch):
 # ---------------------------------------------------------------- the job and the coordinator
 
 
+def test_an_infra_verification_needs_you_with_its_action_whatever_the_model_says():
+    infra = fresh("error", exit_code=None, category="infra_database", infra=True,
+                  action="Point the verify entry at a disposable test database.")
+    for answer in (verdict(), verdict("not_met", "Fix the database code", criteria=(("c1", "not_met"),),
+                                       steps=(("s1", "disputed"),))):
+        model = stub(answer)
+        final = judge.decide({**EVIDENCE, "verify": infra}, model)
+        assert final["verdict"] == "needs_you" and "verify_infra" in final["rules"]
+        assert final["gap"] == "Point the verify entry at a disposable test database."
+        assert not final["verify_failed"] and all(s["status"] != "disputed" for s in final["steps"])
+        assert model.calls[0]["verify"]["infra"] is True  # The model sees it could not run.
+    failing = judge.decide({**EVIDENCE, "verify": fresh("failed", category="tests_failed", infra=False)},
+                           stub(verdict(criteria=(("c1", "met"), ("c2", "met")))))
+    assert failing["verdict"] == "not_met" and "verify_infra" not in failing["rules"]
+
+
 def criteria_run(host, title="Judged", steps=None):  # noqa: F811
     run_id = planned(host, verify=False, title=title)
     if steps is not None:
@@ -361,6 +377,45 @@ def test_verify_missing_parks_the_run_once_instead_of_looping(host):  # noqa: F8
         assert row.turn_count == 1
         assert not db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "input",
                                                         AgentCommand.payload["text"].astext.like("%ERIDANI_GAP%")))
+
+
+def input_count(run_id):
+    with session_scope() as db:
+        return len(list(db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "input"))))
+
+
+def test_an_infra_verification_parks_the_run_without_a_gap_prompt(verifying_host):  # noqa: F811
+    run_id = planned(verifying_host)
+    turn(run_id, 3)
+    result(verifying_host, run_id, attempts(run_id)[0].id, exit_code=1,
+           tail="psycopg.OperationalError: connection to server at \"127.0.0.1\", port 5432 failed: Connection refused")
+    sent = input_count(run_id)
+    assert judged(run_id, stub(verdict("not_met", "Fix the database layer", criteria=(("c1", "not_met"),)))) == \
+        ("needs_you", "verify_infra")
+    assert input_count(run_id) == sent  # No gap prompt: the agent cannot fix the host.
+    action = attempts(run_id)[0].result["action"]
+    assert "disposable test database" in action
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        assert row.history[-1]["detail"] == action and control.reason_detail(db, row) == action
+        public = control.public_run(db, row)
+        assert public["reason_text"] == coordinator.REASONS["verify_infra"] and public["reason_detail"] == action
+        assert control.spoken_run(db, row)["why"] == "host setup problem: " + action
+    assert "verify_infra" in last_judge(run_id).result["rules"]
+
+
+def test_failing_tests_still_send_the_gap_prompt(verifying_host):  # noqa: F811
+    run_id = planned(verifying_host)
+    turn(run_id, 3)
+    result(verifying_host, run_id, attempts(run_id)[0].id, exit_code=1, tail="FAILED test_x - assert 1 == 2\n1 failed")
+    assert attempts(run_id)[0].result["category"] == "tests_failed"
+    sent = input_count(run_id)
+    assert judged(run_id, stub(verdict(criteria=(("c1", "met"),)))) == ("executing", "not_met")
+    assert input_count(run_id) == sent + 1
+    with session_scope() as db:
+        gap = db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "input")
+                         .order_by(AgentCommand.created_at.desc())).first()
+        assert "1 failed" in gap.payload["text"]
 
 
 # ---------------------------------------------------------------- freestyle: talk to the agent, Eridani stays out

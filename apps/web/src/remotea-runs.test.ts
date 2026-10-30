@@ -77,7 +77,7 @@ describe("run drawer model", () => {
     };
     const entries = timeline(detail);
     expect(entries.map(e => e.title)).toEqual([
-      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused"]);
+      "Starting", "Start · done", "Working", "Question · waiting for you", "Turn 1", "Steer · refused by remotea"]);
     expect(entries[0].detail).toBe("by you");
     expect(entries[4].detail).toMatch(/\[truncated\]$/);
     expect(entries[5]).toMatchObject({ tone: "warn", detail: "Use pg" });
