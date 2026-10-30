@@ -1495,6 +1495,13 @@
       "feature": "agent_control"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/remotea/runs/{identity}/turns/{turn_id}",
+      "handler": "run_turn",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/verify",
       "handler": "verify",

@@ -12,9 +12,10 @@ from datetime import timedelta
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, not_, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 
 from . import agent_link
+from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
@@ -468,9 +469,7 @@ def replan(db, owner, run_id, body, *, actor):
         attempt.status, attempt.updated_at = "superseded", now()
     if run.state != "planning":
         coordinator.transition(db, run, "replanning", actor=actor, reason="replan")
-    coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
-                                           "text": prompts.replan(body.reason), "mode": "steer" if busy else "queue"},
-                        source="eridani")
+    coordinator.say(db, run, prompts.replan(body.reason), "replan", mode="steer" if busy else "queue", actor=actor)
     if run.state == "replanning":
         coordinator.transition(db, run, "planning", actor=actor, reason="replan")
     return public_run(db, run)
@@ -538,8 +537,8 @@ def set_freestyle(db, owner, run_id, body, *, actor):
 
 
 # needs_you reasons that only mean "the loop is parked": freestyle resumes the conversation from them.
-FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "no_progress", "turn_cap", "awaiting_merge",
-                     "pr_unknown"}
+FREESTYLE_RESUMES = {"judge_needs_you", "no_progress_gap", "verify_missing", "verify_infra", "no_progress", "turn_cap",
+                     "awaiting_merge", "pr_unknown"}
 
 
 def answer_question(db, owner, question_id, body, *, actor):
@@ -577,6 +576,8 @@ def public_attempt(a):
                    "verdict": result.get("verdict"), "gap": result.get("gap"), "summary": result.get("summary"),
                    "criteria": result.get("criteria"), "rules": result.get("rules"),
                    "non_verdict": result.get("non_verdict"), "exit_code": result.get("exit_code"),
+                   # Why a verification did not pass and what to do (run_coordinator.classify_verify).
+                   "category": result.get("category"), "action": result.get("action"),
                    "tail": (result.get("tail") or "")[-4000:] or None, "on_demand": result.get("on_demand"),
                    "model": a.model, "cost": a.cost, "latency_ms": a.latency_ms, "workspace_fingerprint": a.workspace_fingerprint,
                    "created_at": a.created_at, "updated_at": a.updated_at})
@@ -592,15 +593,37 @@ def public_command(c):
 DETAIL_PAGE = 100
 
 
+TURN_CLIP = 4000  # Detail clips each turn's text here (`clipped`); GET /runs/{id}/turns/{turn_id} returns it whole.
+
+
 def page(db, query, column, limit, offset):
-    """The newest `limit` rows after skipping `offset` newest, oldest first; and whether older ones remain."""
+    """The newest `limit` rows after skipping `offset` newest, oldest first; whether older ones remain; and how many
+    older ones remain (counted only when there are some)."""
     rows = list(db.scalars(query.order_by(column.desc()).offset(offset).limit(limit + 1)))
-    return list(reversed(rows[:limit])), len(rows) > limit
+    more = len(rows) > limit
+    remaining = 0
+    if more:
+        total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+        remaining = max(0, total - offset - limit)
+    return list(reversed(rows[:limit])), more, remaining
+
+
+def run_turns(run):
+    """Turns that belong to the run: bound to it, or recorded on its session."""
+    return select(AgentTurn).where(AgentTurn.owner_id == run.owner_id,
+                                   (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or "")))
 
 
 def reason_detail(db, run):
     """The full text behind the current state, when there is one: the judge's notes for a judge-caused needs_you,
-    otherwise the detail recorded with the transition (REASON_TEXT is the one-line version)."""
+    otherwise the detail recorded with the transition (REASON_TEXT is the one-line version). verify_infra shows the
+    host setup action from the verification that could not run."""
+    if run.state_reason == "verify_infra":
+        recent = db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "verify")
+                            .order_by(AgentAttempt.created_at.desc()).limit(5))
+        action = next(((a.result or {}).get("action") for a in recent if (a.result or {}).get("action")), "")
+        if action:
+            return action[:300]
     if run.state_reason in ("judge_needs_you", "no_progress_gap", "judge_met", "awaiting_merge", "pr_unknown"):
         verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                        AgentAttempt.status == "done")
@@ -666,11 +689,10 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
     if detail:
         plan = coordinator.frozen(db, run)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
-        turns, more_turns = page(db, select(AgentTurn).where(
-            (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or ""))), AgentTurn.created_at,
-            limit, offset)
-        commands, more_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
-                                       AgentCommand.created_at, limit, offset)
+        turns, more_turns, older_turns = page(db, run_turns(run), AgentTurn.created_at, limit, offset)
+        commands, more_commands, older_commands = page(db, select(AgentCommand).where(AgentCommand.run_id == run.id),
+                                                       AgentCommand.created_at, limit, offset)
+        expires = retention.run_data_expires(run)
         result.update(
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
                   "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children,
@@ -684,12 +706,16 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             history=run.history or [],
             # `role` is "assistant" (a final response; `prompt` carries the typed message for older hosts) or
             # "user" (the typed message itself, sent by the host as a `prompt` frame when the turn started).
-            turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:4000], "clipped": len(t.text) > 4000,
+            # `clipped`: cut here for display, fetchable whole; `truncated`: the host cut it, the rest was never stored.
+            turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:TURN_CLIP], "clipped": len(t.text) > TURN_CLIP,
                     "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]}
                    for t in turns],
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),
-            more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
+            more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit,
+                  "remaining": {"turns": older_turns, "commands": older_commands}},
+            # A settled run's turns and commands are deleted RUN_DATA after it ended (agent_retention.py).
+            retention={"expires_at": expires, "expired": retention.run_data_expired(run)},
             questions=[public_question(q) for q in db.scalars(
                 select(AgentQuestion).where(AgentQuestion.run_id == run.id).order_by(AgentQuestion.created_at))],
         )
@@ -1302,6 +1328,9 @@ def spoken_run(db, run):
               "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
               if interview else None,
               "linear": {k: (v or {}).get("status") for k, v in linear.items()} or None}
+    if run.state == "needs_you" and run.state_reason == "verify_infra":
+        # Not a failing test: the verification could not run, and the owner fixes the host.
+        spoken["why"] = "host setup problem: " + (item["reason_detail"] or "the verification could not run on the host")
     if run.state == "needs_you" and run.state_reason == "plan_review":
         plan = coordinator.frozen(db, run)
         if plan is not None and plan.proposals:
