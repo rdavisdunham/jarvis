@@ -154,8 +154,9 @@ def last_turns(db, ids):
     if not ids:
         return {}
     latest = {}
-    for row in db.scalars(
-        select(AgentTurn).where(AgentTurn.session_pk.in_(ids)).order_by(AgentTurn.session_pk, AgentTurn.seq.desc(), AgentTurn.created_at.desc())
+    for row in db.scalars(  # The agent's last response; a typed prompt (role "user") is not a response.
+        select(AgentTurn).where(AgentTurn.session_pk.in_(ids), AgentTurn.role == "assistant")
+        .order_by(AgentTurn.session_pk, AgentTurn.seq.desc(), AgentTurn.created_at.desc())
         .ext(distinct_on(AgentTurn.session_pk))
     ):
         latest[row.session_pk] = row
@@ -164,8 +165,9 @@ def last_turns(db, ids):
 
 def public_turn(row, limit=None):
     text = row.text if limit is None else row.text[:limit]
-    return encode({"id": row.id, "seq": row.seq, "text": text, "length": len(row.text), "clipped": len(text) < len(row.text),
-                   "truncated": row.truncated, "generation": row.generation, "source": row.source, "at": row.created_at})
+    return encode({"id": row.id, "seq": row.seq, "role": row.role, "text": text, "length": len(row.text),
+                   "clipped": len(text) < len(row.text), "truncated": row.truncated, "generation": row.generation,
+                   "source": row.source, "at": row.created_at})
 
 
 @router.get("/sessions")

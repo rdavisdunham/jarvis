@@ -573,8 +573,11 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             interviews=[agent_plan_public(i) for i in db.scalars(
                 select(AgentInterview).where(AgentInterview.run_id == run.id).order_by(AgentInterview.created_at))],
             history=run.history or [],
-            turns=[{"id": t.id, "seq": t.seq, "text": t.text[:4000], "clipped": len(t.text) > 4000, "truncated": t.truncated,
-                    "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]} for t in turns],
+            # `role` is "assistant" (a final response; `prompt` carries the typed message for older hosts) or
+            # "user" (the typed message itself, sent by the host as a `prompt` frame when the turn started).
+            turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:4000], "clipped": len(t.text) > 4000,
+                    "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]}
+                   for t in turns],
             commands=[public_command(c) for c in commands],
             more={"turns": more_turns, "commands": more_commands, "offset": offset, "limit": limit},
             questions=[public_question(q) for q in db.scalars(

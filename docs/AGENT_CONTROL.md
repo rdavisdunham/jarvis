@@ -116,7 +116,8 @@ own short transaction.
 | up | `hello` | `server_id, boot_id, hostname, machine, proto, version?, caps[], harnesses{}, targets?: [{id, repo, worktree_root, harnesses, verify}]` | must be first, within 15 s. A `boot_id` starting `probe-` (`remotea eridani connect`) only checks the key: the welcome carries `probe: true` and the current epoch, no lease is taken, and the probe closes after its `bye` |
 | down | `welcome` | `acked_id, host_id, conn_epoch, server_time, replay_horizon (s), lease_seconds, proto, caps[], max_frame` | |
 | up | `session.report` | `tool, session_id, report: SessionInput, surf?, incarnation?, parity?` | same upsert as `PUT /external/sessions/{tool}/{id}`, attached to the host; outcome `{session}` identical to the HTTP response. With `parity: true`, compares instead (below) |
-| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap |
+| up | `turn` | `tool, surf, incarnation, run_id?, generation, provider_session_id, provider_turn_id, root, seq, text, truncated, missing?, prompt?, source: hook\|rollout, ended_at?` | stored once per `(session, provider_turn_id)`: a resend with a new transport id → `{duplicate:true}`; `root:false` → `{ignored:"subagent"}`; text capped at 64 KiB (UTF-8) with `truncated` set; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND` otherwise); a turn of a spawned run attaches the session (below) and counts toward the turn cap. `prompt` (the message typed in the terminal, ≤ 4000 bytes) is kept on the turn only when no `prompt` frame with the same `seq` and text was stored first |
+| up | `prompt` | `surf, incarnation, run_id?, generation, tool, provider, provider_session_id, seq, text, truncated, at` | the message typed in the terminal, sent on UserPromptSubmit (as the turn starts, not when it ends); `seq` pairs with the following `turn`'s `seq`; text clipped to 4000 bytes by the host and again here. Stored as a `user` row of `agent_turns` (`provider_turn_id` = `prompt:<seq>`) once per `(session, seq)`: a resend → `{duplicate:true}`; a `run_id` must name a run bound to this host (`RUN_NOT_BOUND`). It never counts toward the turn cap and never moves the run; the host sends it only when Eridani's `welcome` caps include `prompt` |
 | up | `status` | `surf, incarnation, state, since, reason?, effective_permission_mode?, provider?+provider_session_id? (or tool?+session_id?)` | sets the session's `state`/`state_since`. Older incarnation, or same incarnation with an earlier `since`, is ignored (`applied:false`). Without a provider (or tool) and session id, the surface maps to the newest session reported with that `surf` on this host (`UNKNOWN_SURFACE` otherwise) |
 | up | `exit` | `surf, incarnation, exited_at?, code?, provider?+provider_session_id?` | state `exited` at `exited_at` |
 | up | `sessions.snapshot` | `surfaces: [{surf, incarnation, state: live\|lost\|exited, agent_state, since, provider, provider_session_id, …}], part?: {of, i, n}` | a large snapshot arrives as several frames sharing `part.of`; non-final parts are acked `{pending:true}` and reconciliation runs once all `n` parts arrived. `live` takes the surface's `agent_state` (working/needs_you/idle). Applies each surface as `status`; when `complete`, sessions of this host missing from the snapshot become `exited` (`reason: absent_from_snapshot`) unless their state is newer than `at`. Eridani first reconciles runs (below), then replies `runs.snapshot {runs: [{run_id, generation, desired: continue\|stop\|none, stop_mode?}]}` and only then resends unacked commands |
@@ -135,7 +136,7 @@ own short transaction.
 
 `state` values: `working`, `needs_you`, `idle` (shown as **Live**), `restoring`, `lost` (shown as
 **Restoring**), `exited` (**Ended**). `since` must carry a timezone. Every stored change emits
-`session.changed` (report, status, exit, snapshot) or `agent.changed` (turn stored, host connected or
+`session.changed` (report, status, exit, snapshot) or `agent.changed` (turn or prompt stored, host connected or
 disconnected) on the change feed. The web client skips both in the workspace reload and forwards them as
 `eri-agents-changed` to the remotea page and Sessions drawer.
 
@@ -324,7 +325,11 @@ remotea page shows, so an assistant outside the run can review a run without a c
 - `GET /api/v1/external/agents/runs?task_id=&active=&limit=` (MCP `run_list`): runs newest first, the
   list shape of `agent_control.public_run` (state, `state_reason`, `reason_text`, task, branch, turns, host).
 - `GET /api/v1/external/agents/runs/{run_id}?limit=&offset=` (MCP `run_get`): the detail shape — frozen
-  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`,
+  `plan` (PRD, steps, criteria, verify), `history` (every transition with reason and actor), `turns`
+  (`{id, seq, role, text, clipped, truncated, generation, at, prompt}`: `role` is `assistant` for the agent's
+  final response or `user` for the message typed in the terminal, stored from the host's `prompt` frame; an
+  assistant turn's `prompt` (≤ 500 chars here) carries the typed message only when the host sent it with the
+  Stop alone, as older hosts do, so a message never appears twice),
   `commands` (spawn, input incl. the operator's and the judge's gap prompts, stop, verify), `questions`,
   `interviews` (questions and answers), and `attempts` (verify and judge: verdict, gap, per-criterion
   record, rules, model, cost). Turns and commands page newest first; `more` says whether older ones remain.

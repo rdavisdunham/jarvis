@@ -703,6 +703,7 @@ def test_run_detail_pages_turns_and_commands(client, host):  # noqa: F811
     turns_for(host, pk, 5, run_id=run_id)
     first = client.get(f"/api/v1/remotea/runs/{run_id}?limit=2").json()
     assert [t["text"] for t in first["turns"]] == ["turn 3", "turn 4"] and first["more"]["turns"] is True
+    assert [t["role"] for t in first["turns"]] == ["assistant", "assistant"]  # The web renders user rows apart.
     older = client.get(f"/api/v1/remotea/runs/{run_id}?limit=2&offset=4").json()
     assert [t["text"] for t in older["turns"]] == ["turn 0"] and older["more"]["turns"] is False
     assert client.get(f"/api/v1/remotea/runs/{run_id}?limit=500").status_code == 422

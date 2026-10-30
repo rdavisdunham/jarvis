@@ -65,11 +65,15 @@ TICK_SECONDS = 30  # Re-authorize, renew the lease and drain commands.
 LEASE = timedelta(seconds=90)
 REPLAY_HORIZON_DAYS = 7
 TURN_TEXT_BYTES = 65_536
+PROMPT_TEXT_BYTES = 4000  # The host clips a typed prompt to this; Eridani clips again on ingestion.
 SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "turn", "status", "exit",
                "sessions.snapshot", "command.outcome", "runs.snapshot", "question", "context", "worktrees.report",
                "spawn", "input", "answer", "stop", "verify", "verify.result",
                # Stage F: context.response.scope is "run" (full run context) or "candidates" (D6).
-               "context.scope"]
+               "context.scope",
+               # The host sends the user's typed prompt as its own `prompt` frame when the turn starts
+               # (UserPromptSubmit), not only on the following turn's Stop.
+               "prompt"]
 # Command kind -> host capability it needs.
 COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
@@ -158,6 +162,22 @@ class Turn(Frame):
     # A background subagent's hand-back, or a root Stop while background work still ran: not a turn of its own.
     synthetic: bool = False
     interim: bool = False
+
+
+class Prompt(Frame):
+    """The user's typed prompt as a turn starts (UserPromptSubmit). `seq` pairs with the following turn's `seq`."""
+    REDACT: ClassVar[tuple[str, ...]] = ("text",)
+    tool: str = Field(max_length=30)
+    surf: str = Field(default="", max_length=100)
+    incarnation: int = Field(default=0, ge=0)
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int = Field(default=0, ge=0)
+    provider: str = Field(default="", max_length=30)
+    provider_session_id: str = Field(max_length=100)
+    seq: int = Field(default=0, ge=0)
+    text: str = Field(default="", max_length=MAX_ASSEMBLED)
+    truncated: bool = False
+    at: WireTime | None = None
 
 
 class Surface(Frame):
@@ -395,7 +415,10 @@ def turn(db, bot, host_id, frame):
     if frame.surf and frame.incarnation >= row.incarnation:
         row.surf, row.incarnation = frame.surf, frame.incarnation
     text, cut = clip_bytes(frame.text, TURN_TEXT_BYTES)
-    prompt, _ = clip_bytes(frame.prompt, 4000)
+    prompt, _ = clip_bytes(frame.prompt, PROMPT_TEXT_BYTES)
+    if prompt and prompt == db.scalar(select(AgentTurn.text).where(
+            AgentTurn.session_pk == row.id, AgentTurn.role == "user", AgentTurn.seq == frame.seq)):
+        prompt = ""  # Already stored from the host's `prompt` frame: not shown twice.
     if not retention.admit(db, owner, text, prompt):
         text, prompt, cut = "", "", True  # Over today's ingestion quota: the turn counts, its text is dropped.
     inserted = db.scalar(
@@ -417,6 +440,37 @@ def turn(db, bot, host_id, frame):
         coordinator.record_turn(db, run, frame)
     emit(db, owner, "agent.changed", row.id)
     return {"turn_id": inserted, "truncated": frame.truncated or cut, "missing": frame.missing}
+
+
+def prompt(db, bot, host_id, frame):
+    """The user's typed prompt, stored as a `user` row once per `(session, seq)`. It never counts as an
+    execution turn and never moves the run: the following `turn` frame does that."""
+    run = coordinator.bound(db, host_id, frame.run_id) if frame.run_id else None
+    owner = bot.owner_id
+    row = host_session(db, owner, host_id, frame.tool, frame.provider_session_id)
+    db.flush()
+    row.host_id = host_id or row.host_id
+    if frame.surf and frame.incarnation >= row.incarnation:
+        row.surf, row.incarnation = frame.surf, frame.incarnation
+    text, cut = clip_bytes(frame.text, PROMPT_TEXT_BYTES)
+    if not retention.admit(db, owner, "", text):
+        text, cut = "", True  # Over today's ingestion quota: the row marks the prompt, its text is dropped.
+    inserted = db.scalar(
+        insert(AgentTurn)
+        .values(id=str(uuid.uuid4()), owner_id=owner, session_pk=row.id, host_id=host_id,
+                provider_session_id=frame.provider_session_id, provider_turn_id=f"prompt:{frame.seq}",
+                surf=frame.surf, incarnation=frame.incarnation, run_id=run.id if run else None,
+                generation=frame.generation,
+                seq=frame.seq, role="user", text=text, prompt="", truncated=frame.truncated or cut,
+                source="hook", created_at=frame.at or now())
+        .on_conflict_do_nothing(constraint="uq_agent_turn")
+        .returning(AgentTurn.id)
+    )
+    if inserted is None:
+        return {"duplicate": True}
+    row.updated_at = now()
+    emit(db, owner, "agent.changed", row.id)
+    return {"turn_id": inserted, "truncated": frame.truncated or cut}
 
 
 def host_session(db, owner, host_id, tool, session_id):
@@ -983,6 +1037,8 @@ class Link:
             return await self.effect(report, body)
         if kind == "turn":
             return await self.effect(turn, Turn.model_validate(frame))
+        if kind == "prompt":
+            return await self.effect(prompt, Prompt.model_validate(frame))
         if kind == "status":
             return await self.effect(status, Status.model_validate(frame))
         if kind == "exit":
