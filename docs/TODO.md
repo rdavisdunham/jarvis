@@ -576,12 +576,16 @@ A checked implementation task never replaces connected-provider or physical-devi
   reservation cannot see later merges; the release-migrations test covers that); host/server version
   pairing in Settings. Also: the worktrees report's `merged` flag is trivially true for a fresh branch
   with no commits of its own.
-- **Project play button (advanced, later).** A Play action on a project queues every
-  currently actionable task as remotea runs: in series when they touch the same
-  repo/target or declare dependencies, in parallel when they do not overlap. Needs
-  overlap detection, a per-host concurrency limit, an ordering view on the remotea
-  page and the same confirmation/approval gates as single runs. Requested 2026-10-28,
-  after the first single-task runs are proven.
+- **Swarm mode (project play button, advanced, later).** Play on a project opens an
+  editable swarm plan: a planning model (Fable) groups the project's open tasks into
+  batches so code will not overlap (series when they touch the same files, parallel
+  when independent, one-line reason per grouping). Select/deselect tasks, move them
+  between batches, split or merge batches, set a per-host concurrency cap; nothing
+  spawns until Start. Start spawns one terminal per task in the batch (one worktree
+  each), each a normal run with its own gates; batches run in sequence; an integrate
+  step surfaces merge order and conflicts before the next batch. Needs fetch-before-
+  basing and Eridani-reserved migration numbers first. Requested 2026-10-28,
+  expanded 2026-10-29.
 - Wholesale legacy-table/directory removal or whole-App refactors.
   Langfuse historical eval export is implemented; continuous production tracing
   remains optional and is not required for the latency instrumentation.
