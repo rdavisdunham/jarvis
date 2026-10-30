@@ -4,7 +4,7 @@ import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
-import { AttentionList } from "./RunsPanel";
+import { AttentionList, Facts, useNow } from "./RunsPanel";
 import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
@@ -22,19 +22,6 @@ import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, 
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
 
-/** Facts as small labelled chips, each with its own tone (freshness in the header, a verification's facts). */
-function Facts({ facts, label, className = "" }: { facts: Fact[]; label: string; className?: string }) {
-  if (!facts.length) return null;
-  return <ul className={"remotea-fresh " + className} aria-label={label}>
-    {facts.map(f => <li key={f.key} className={"tone-" + f.tone} title={f.title}>{f.label}</li>)}</ul>;
-}
-
-/** A clock for relative times ("host seen 12 s ago"): re-renders on its own, never fetches anything. */
-function useNow(ms = 15_000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), ms); return () => window.clearInterval(id); }, [ms]);
-  return now;
-}
 import "./remotea.css";
 import "./runs.css";
 

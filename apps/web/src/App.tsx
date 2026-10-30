@@ -25,6 +25,7 @@ import { RunPanel } from "./RunPanel";
 import { PendingControls } from "./PendingControls";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { runsBadge } from "./remotea-model";
+import { revealSetup } from "./remotea-setup";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import { ChatLauncher, focusComposer, startNewConversation } from "./chat-focus";
 import {
@@ -3203,7 +3204,8 @@ export default function App() {
       </div>
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
       {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
-        onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}/></Suspense>}
+        onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
+        onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); revealSetup(); }}/></Suspense>}
       <div className="tabbar" role="navigation" aria-label="Phone navigation">
         {nav.filter(item => item.tab).map(item => {
           const current = item.id === "today" ? dashboard : item.id === "all" ? isTaskTab(view) && !dashboard : view === item.id;
