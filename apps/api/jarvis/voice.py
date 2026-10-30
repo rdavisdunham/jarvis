@@ -25,7 +25,7 @@ from .memory_service import prompt_context
 from .models import Conversation, Source, now, uid
 from .personality import VOICE_CONVERSATION_STYLE
 from .tool_policy import remotea_tools
-from .tools import call_tool, instructions, registry
+from .tools import call_tool, instructions, registry, tool_json
 from .ui_control import get_context
 from .voice_options import DEFAULT_PROVIDER, ENABLED_PROVIDERS, OPTIONS
 
@@ -425,7 +425,7 @@ class Controller:
                                 "item": {
                                     "type": "function_call_output",
                                     "call_id": call["call_id"],
-                                    "output": json.dumps(result),
+                                    "output": tool_json(result),
                                 },
                             }
                         )

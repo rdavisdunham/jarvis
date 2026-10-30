@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from sqlalchemy import select
@@ -8,6 +9,15 @@ from .memory_service import semantic_search
 from .models import Memory, Note, Notification, Occurrence, Project, Schedule, Task
 from .planner_schema import PlanRequest
 from .ui_control import dispatch, get_context
+
+
+def tool_json(outcome):
+    """A tool result as the model reads it. Results are plain JSON by contract; a value json cannot encode (a
+    datetime a tool forgot to format) is encoded the way the HTTP layer would, so a tool that succeeded can never
+    fail the whole request at this step (session_search did on 2026-10-29)."""
+    from fastapi.encoders import jsonable_encoder
+
+    return json.dumps(outcome, default=jsonable_encoder)
 
 # A narrow tool registry. Model inputs never supply owner or device authority.
 READ_TOOLS = {
