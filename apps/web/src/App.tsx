@@ -1918,6 +1918,8 @@ export default function App() {
           ? null
           : (selected?.id ?? null),
     selected_schedule_id: scheduleEditor?.schedule?.id ?? null,
+    // The run open in the side panel: "approve it" / "answer that" resolve to it without naming the run.
+    open_run_id: remotea.panel.run,
     selected_task_ids: selectedTaskIds
       .filter((id) => tasks.some((t) => t.id === id))
       .slice(0, 100),
