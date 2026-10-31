@@ -10,7 +10,7 @@ import type { CustomRecord } from "./structure-types";
 import "./details.css";
 import { z } from "zod";
 import { api } from "./api";
-import { AddSubtask, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule } from "./TaskCardSections";
+import { AddSubtask, BugReportDetails, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule } from "./TaskCardSections";
 import { useEditor, choice, nullableId, tagsField } from "./editor-control";
 import type { Task, Schedule } from "./types";
 import type { Organization } from "./productivity";
@@ -464,6 +464,7 @@ function StandardTaskDetails(p: Props) {
               {text("notes", "Description", "textarea", "body", "Add details")}
               <SourceDetails source={task.source}/><SourceNotes kind="task" id={p.id} canEdit={p.canEdit!==false} onGuard={annotation.update}/>
               <RecordTools kind="task" id={p.id}/>
+              <BugReportDetails taskId={p.id} tags={task.tags ?? []}/>
               {p.remotea && p.onOpenRun && <TaskRun taskId={p.id} canEdit={p.canEdit !== false} onOpenRun={p.onOpenRun}/>}
               <RelatedTasks parent={parent} subtasks={children} onOpen={(t) => void leave(() => p.onTask(t))}/>
               {!task.is_template && !task.archived && p.canEdit !== false && <AddSubtask disabled={locked} onAdd={async (title) => {

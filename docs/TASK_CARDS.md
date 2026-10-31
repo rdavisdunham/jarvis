@@ -64,6 +64,7 @@ a label in `TASK_CARD_SECTIONS` (`task-card-sections.ts`). "Both" means each car
 | Source (provider, sync, Open original) | **Shared** `SourceDetails` ("Source") | |
 | Eridani-only notes | **Shared label** "Local notes". RC saves through its own `record.update`; TD uses `SourceNotes` | |
 | Copy record link, Previous record | **Shared** `RecordTools` ("Record link"). RC copies `record:<id>` (opens Organize), TD copies `task:<id>` (opens TaskDetails) | |
+| Bug report (screenshot and status of a Report a bug task) | **Shared** `BugReportDetails` ("Bug report"); only for tasks tagged `bug-report`. RC reads the tags from the shell's loaded tasks | |
 | remotea Run | **Shared** `TaskRun` → Remotea.tsx `RunTask` ("Agent run"). TD also gates on `remotea_enabled` | |
 | Related tasks (parent, subtasks) | **Shared** `RelatedTasks`. RC: parent link only (Contents lists the subtasks); ported here | TD: parent and subtasks |
 | Add subtask | **Shared** `AddSubtask`. RC: `record.create` of the child type | TD: `task.create` with `parent_task_id`; ported here |

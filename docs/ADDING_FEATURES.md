@@ -6,7 +6,8 @@ backend modules). A change that updates one copy works in isolation and breaks s
 the kind of change you are making below, touch every file listed, run the tests named, and run the
 verification command at the end of the section.
 
-Verified against `main` at `cb476cc` plus PR #76 (remotea device context), 2026-10-29. Code wins over
+Verified against `main` at `cb476cc` plus PR #76 (remotea device context), 2026-10-29; Report a bug
+lines added 2026-10-31. Code wins over
 this document; when they disagree, fix this document in the same PR.
 
 ## Commands used below
@@ -86,7 +87,12 @@ Web (`apps/web/src/`):
       `NARROW_MAX_WIDTH` 600 (mirrored in a comment in `style.css`). Check the page at 390 px wide;
       `apps/web/e2e/shell-navigation.mjs` is the CI fixture for shell navigation.
 - [ ] PWA: `public/sw.js` caches nothing and only opens URLs starting with `/?`; nothing to change for
-      a page. `public/manifest.webmanifest` needs no change.
+      a page. `public/manifest.webmanifest` needs no change. Bump `sw.js` `VERSION` when you change that file
+      (Report a bug reports it).
+- [ ] Floating controls: the Eri launcher is bottom-right, Report a bug (`.bug-report-launcher`) bottom-left
+      of the page area. Keep page controls that must stay reachable out of the bottom-left 64 px corner, or
+      check them with `apps/web/e2e/bug-report.mjs`. Report a bug records page changes through `App.tsx`
+      `recordNavigation`; nothing to add for a page.
 
 Backend (`apps/api/jarvis/`):
 
@@ -132,7 +138,9 @@ Verify: `pytest -q tests/test_drift_guards.py tests/test_ui_control.py` and
       goes in `PERSONAL_PATHS`; a POST that a **viewer** may call (read-equivalent) goes in the `reads`
       set, otherwise viewers get `READ_ONLY`. remotea routes additionally call
       `remotea_routes.gated()` (`owner_only` + `agent_link.gate` → `REMOTEA_DISABLED`).
-- [ ] Middleware facts (`api.py` `security`): bodies over 100,000 bytes are refused (413);
+- [ ] Middleware facts (`api.py` `security`): bodies over 100,000 bytes are refused (413), except
+      `POST /api/v1/bug-reports` (`bug_reports.BODY_MAX`, 3 MB, for the screenshot; the route also caps a body
+      sent without Content-Length);
       `maintenance_mode` returns 503 for `/api/`; every `/api/v1/` response is re-authenticated after
       the handler except the prefixes listed there; `Cache-Control: no-store` on `/api/`.
 - [ ] Rate limits are per feature, not global: bot keys 120/min (`bot_access.authenticate`), pairing
@@ -296,7 +304,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0041_hyperplan`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0042_bug_reports`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a
@@ -309,7 +317,9 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
 - [ ] Scoping: `owner_id: String(100), index=True` is the workspace namespace (personal account or
       shared workspace); `account_id` is the person. Read through `domain.owned(db, Model, id, owner)`.
 - [ ] Privacy and lifecycle: `api.py` `export` is a hand-written model list; decide whether the new
-      table belongs in the account export. Agent tables have retention in `agent_retention.py`, and a
+      table belongs in the account export (`bug_reports` is added by `bug_reports.export`, which encodes the
+      screenshot bytes; `serial` cannot encode a `LargeBinary`). Per-owner cleanup that is not agent data runs
+      in `worker.housekeeping_owner` (source history, `bug_reports.sweep`). Agent tables have retention in `agent_retention.py`, and a
       new `session_models.py` table must be named in `docs/AGENT_CONTROL.md` "Retention and redaction"
       with what it holds, how long, and whether it is exported (`agent_retention.export_tables`); guard:
       `tests/test_agent_retention.py::test_every_agent_table_is_in_the_retention_doc`. A new column that
@@ -444,7 +454,7 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 | `docs/DESIGN.md` | `apps/web/src/theme.css` tokens | New tokens or components |
 | `docs/CI.md` | `.github/workflows/ci.yml` | CI steps or local equivalents change |
 | `docs/TASK_CARDS.md` | Both task cards' sections and every entry point that opens each | A task-card section or a route into either card changes |
-| `docs/APP_FUNCTIONALITY.md` | Feature map, dated September 19 | New user-facing feature |
+| `docs/APP_FUNCTIONALITY.md` | Feature map, dated September 19; "Bug reports" at the end | New user-facing feature |
 | `evals/app/README.md`, `evals/app/surface-inventory.json` | Eval catalog and exposed surfaces | New feature, route, command or read tool |
 
 - There is no `CLAUDE.md` or `AGENTS.md` in this repository; coding agents should be pointed at this

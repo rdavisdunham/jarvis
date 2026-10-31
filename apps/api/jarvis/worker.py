@@ -479,6 +479,9 @@ def housekeeping_owner(db, owner):
         ):
             delete_source(db, source)
     budget.expire_abandoned(db, owner)
+    from .bug_reports import sweep as bug_report_sweep
+
+    bug_report_sweep(db, owner)
     # Finished DBOS invocations are never replayed under the same workflow ID.
     # Resume intentionally deferred memory work as a new durable job once funds allow.
     if budget.summary(db, owner)["budget_mode"] not in {"defer_optional", "paused"}:

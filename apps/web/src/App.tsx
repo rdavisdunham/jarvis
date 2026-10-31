@@ -28,6 +28,8 @@ import { runsBadge } from "./remotea-model";
 import { revealSetup } from "./remotea-setup";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import { ChatLauncher, focusComposer, startNewConversation } from "./chat-focus";
+import { BugReportButton } from "./BugReport";
+import { recordNavigation } from "./bug-report";
 import {
   readView,
   viewLink,
@@ -2037,6 +2039,10 @@ export default function App() {
   }else{navigationUrl.searchParams.delete("home");navigationUrl.searchParams.delete("layout");navigationUrl.searchParams.delete("contents");}
   if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
   if (remotea.panel.run) navigationUrl.searchParams.set("run", remotea.panel.run); else navigationUrl.searchParams.delete("run");
+  const openRecord = editors.summary?.record_id ? editors.summary.kind + ":" + editors.summary.record_id : null;
+  useEffect(() => {
+    if (boot) recordNavigation(view, remotea.panel.run, navigationUrl.pathname + navigationUrl.search);
+  }, [!!boot, view, remotea.panel.run, openRecord]);
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
     page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : ""),
     layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", remotea.panel.run ? "run:" + remotea.panel.run : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
@@ -3227,6 +3233,10 @@ export default function App() {
           <Ellipsis size={22} aria-hidden="true" /><span aria-hidden="true">More</span>
         </button>
       </div>
+      <BugReportButton page={() => ({view, runId: remotea.panel.run,
+        taskId: calendarDetail?.task_id ?? (selected && selected.id !== "new" ? selected.id : null) ?? (editors.summary?.kind === "task" ? editors.summary.record_id : null),
+        recordId: openRecord})}
+        onOpenTask={id => { const task = tasks.find(t => t.id === id); if (task) openTaskCard(task); else void openNoteTask(id); }}/>
       <ChatLauncher open={companion} listening={!!voiceState && !voiceState.closed} onOpenChange={setCompanion}
         focus={() => { if (!voice.current) focusChat(); }}/>
       {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}

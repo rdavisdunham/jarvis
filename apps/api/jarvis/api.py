@@ -106,6 +106,10 @@ app.include_router(agent_link_router)
 from .remotea_routes import router as remotea_router
 
 app.include_router(remotea_router)
+from . import bug_reports
+from .bug_reports import router as bug_reports_router
+
+app.include_router(bug_reports_router)
 app.mount("/api/v1/external/mcp", mcp_mount)
 app.router.routes.append(Route("/api/v1/external/mcp", mcp_bare_path))
 User = Annotated[Identity, Depends(authenticate)]
@@ -149,7 +153,9 @@ async def security(request, call_next):
         return JSONResponse(
             {"error": {"code": "INVALID_ARGUMENT", "message": "Invalid request length."}}, status_code=400
         )
-    if length < 0 or length > 100_000:
+    # A bug report carries a screenshot; bug_reports.read_body enforces the same cap without a Content-Length.
+    cap = bug_reports.BODY_MAX if request.method == "POST" and request.url.path == bug_reports.PATH else 100_000
+    if length < 0 or length > cap:
         return JSONResponse(
             {"error": {"code": "INVALID_ARGUMENT", "message": "Request is too large."}}, status_code=413
         )
@@ -915,6 +921,7 @@ def export(user: User, format: str = "json"):
             data[model.__tablename__] = [serial(r) for r in db.scalars(select(model).where(model.owner_id == user.owner_id))]
         from .agent_retention import export_tables
         data.update(export_tables(db, user.owner_id))
+        data["bug_reports"] = bug_reports.export(db, user.owner_id)
         data["note_task_links"] = [
             serial(link)
             for link in db.scalars(

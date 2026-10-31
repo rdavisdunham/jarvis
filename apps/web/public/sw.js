@@ -1,3 +1,8 @@
+// Bump with any change to this file; Report a bug asks for it ({type:'version'} on a MessagePort).
+const VERSION = '2026-10-31';
+self.addEventListener('message', event => {
+  if (event.data?.type === 'version' && event.ports?.[0]) event.ports[0].postMessage(VERSION);
+});
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 // No API, transcript or task caching: private data never becomes a second browser archive.

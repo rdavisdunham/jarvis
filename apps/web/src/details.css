@@ -135,6 +135,9 @@
   overflow-wrap: anywhere;
   resize: none;
   field-sizing: content;
+  /* .detail-main is a scrolling flex column: without this a long description shrank to min-height and
+     its text ran over the sections below (seen on Report a bug tasks, whose notes are long). */
+  flex-shrink: 0;
 }
 .detail-card .detail-body-button {
   min-height: 44px;

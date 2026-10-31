@@ -92,6 +92,9 @@ def route_owner(path, source):
         return "external_agents"
     if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):
         return "external_agents"
+    if "/bug-reports" in path:
+        # The Report a bug button: diagnostics for the operator (bot reads stay with external_agents above).
+        return "operations"
     if "/accounts" in path:
         return "workspaces"
     if "/voice/" in path:

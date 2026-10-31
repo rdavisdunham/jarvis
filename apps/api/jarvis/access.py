@@ -67,6 +67,8 @@ PERSONAL_PATHS = (
     "/api/v1/auth/google/",
     # remotea drives agents with the owner's OS privileges: personal workspace only (stage F, D1).
     "/api/v1/remotea",
+    # Bug reports and their tasks land in the reporter's own workspace.
+    "/api/v1/bug-reports",
 )
 
 

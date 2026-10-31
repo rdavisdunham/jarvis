@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -740,3 +741,23 @@ class ReviewDelivery(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class BugReport(Base):
+    """A report from the web app's Report a bug button (bug_reports.py). The screenshot is kept inline;
+    `context` is the browser's diagnostics with secrets removed on both sides."""
+    __tablename__ = "bug_reports"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    account_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    description: Mapped[str] = mapped_column(Text)
+    expected: Mapped[str] = mapped_column(Text, default="", server_default="")
+    context: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
+    screenshot: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    screenshot_mime: Mapped[str | None] = mapped_column(String(40))
+    screenshot_bytes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    screenshot_error: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    task_id: Mapped[str | None] = mapped_column(String(36), index=True)

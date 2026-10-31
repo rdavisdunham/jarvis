@@ -32,7 +32,7 @@ const task = (id: string, title: string, extra: Partial<Task> = {}): Task => ({
   occurrence_id: null, ...extra,
 });
 const parent = task("11111111-1111-4111-8111-111111111111", "Ship the release");
-const subject = task("22222222-2222-4222-8222-222222222222", "Write release notes", { parent_task_id: parent.id, source });
+const subject = task("22222222-2222-4222-8222-222222222222", "Write release notes", { parent_task_id: parent.id, source, tags: ["bug-report"] });
 const child = task("33333333-3333-4333-8333-333333333333", "Draft changelog", { parent_task_id: subject.id });
 const tasks = [parent, subject, child];
 const schedules: Schedule[] = [{

@@ -10,7 +10,7 @@ import { Link2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog, priorityLabels } from "./ux";
 import { useStructureActions } from "./structure-actions";
-import { AddSubtask, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule, useTaskCardHost } from "./TaskCardSections";
+import { AddSubtask, BugReportDetails, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule, useTaskCardHost } from "./TaskCardSections";
 import { TASK_CARD_SECTIONS } from "./task-card-sections";
 import type { Task } from "./types";
 import { ReviewProps } from "./Reviews";
@@ -128,6 +128,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
         <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
         <RecordTools kind="record" id={row.id}/>
+        {row.task_id&&<BugReportDetails taskId={row.task_id} tags={host?.tasks.find(t=>t.id===row.task_id)?.tags??[]}/>}
         {row.task_id&&<TaskRun taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={()=>{if(!busy)close();}}/>}
         {contents&&contents.work_total>0&&<p className="detail-progress">{contents.work_done}/{contents.work_total} descendants completed{contents.ready_to_complete?" · Ready for your final check":""}. Completing this record leaves child statuses unchanged.</p>}
         {!!row.blockers?.length&&<p className="detail-alert">Unfinished prerequisites: {row.blockers.map(b=>b.title).join(", ")}. You can still record progress.</p>}

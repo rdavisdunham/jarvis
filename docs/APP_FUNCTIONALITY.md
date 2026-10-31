@@ -429,3 +429,36 @@ recorded charges.
 - Acceptance set: [25 cases](../evals/app/features/budget.json).
 - Implementation: [budget.py](../apps/api/jarvis/budget.py), [voice.py](../apps/api/jarvis/voice.py).
 - Existing regression evidence: [test_budget_guard.py](../tests/test_budget_guard.py), [test_budget_controls.py](../tests/test_budget_controls.py), [test_budget_reconciliation.py](../tests/test_budget_reconciliation.py), [test_action_limits.py](../tests/test_action_limits.py).
+
+## Bug reports (Report a bug)
+
+A round red bug button floats bottom-left on every signed-in page (shortcut Alt+Shift+B). It takes a
+screenshot of the page first (`modern-screenshot`, loaded on demand; JPEG at most 1600 px wide and
+1.5 MB), then opens a dialog: "What went wrong?" (required), "What did you expect?" (optional), the
+screenshot with an Include screenshot toggle, and "Details that will be attached", which lists what is
+sent. If the screenshot fails, the report still sends and says why. Send posts to
+`POST /api/v1/bug-reports` (owner, personal workspace, CSRF; body up to 3 MB, screenshot up to 2 MB,
+context up to 200 KB; 30 reports per 10 minutes) and shows "Reported. Thanks" with Open task.
+
+Each report is a `bug_reports` row (migration 0042) and a task tagged `bug-report` in the project
+"Eridani bug reports" (created on first use). The task's title is the description's first line (80
+characters); its notes hold the description, the expected behavior, a context summary (view, address,
+build, server, device, last errors, failing requests) and links to the report and screenshot. Both task
+cards show the screenshot inline ("Bug report" section). The task can be Run with an agent like any other.
+
+What is collected and never collected: see `docs/EXTERNAL_AGENTS.md` "Bug reports" (the `context` fields).
+The ring buffers (`apps/web/src/bug-report.ts`) start when the app loads: the last 50 console errors and
+warnings plus uncaught errors and rejections, the last 40 API requests made through `api.ts`, and the last
+20 page changes.
+
+Reading reports: the owner uses `GET /api/v1/bug-reports[?status=&task_id=]`, `GET /api/v1/bug-reports/{id}`
+and `GET /api/v1/bug-reports/{id}/screenshot`; sets status with `POST /api/v1/bug-reports/{id}/status`
+(`open`, `fixed`, `dismissed`); deletes one with `DELETE /api/v1/bug-reports/{id}` (the task stays). A bot
+key with `tasks:read` reads the same under `/api/v1/external/bug-reports…`.
+
+Retention and privacy: the account export (`GET /api/v1/export`) includes `bug_reports` with each
+screenshot as base64. The worker's housekeeping drops screenshots older than 90 days
+(`bug_reports.SCREENSHOT_DAYS`); the text and context stay until the report is deleted.
+
+- Implementation: [bug_reports.py](../apps/api/jarvis/bug_reports.py), [BugReport.tsx](../apps/web/src/BugReport.tsx), [bug-report.ts](../apps/web/src/bug-report.ts), [bug-report-capture.ts](../apps/web/src/bug-report-capture.ts).
+- Regression evidence: [test_bug_reports.py](../tests/test_bug_reports.py), [bug-report.test.tsx](../apps/web/src/bug-report.test.tsx); browser fixture `apps/web/e2e/bug-report.mjs` (manual).
