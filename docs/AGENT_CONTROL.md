@@ -324,8 +324,8 @@ gap and reason text inside it is fenced as data.
 | `verify_set` · "verify command set" | Owner sets the verify command mid-run (`agent_plan.set_verify`) | Only when the run was parked in `needs_you` (it resumes `executing`) | `verify_set()` | Make the work pass that command, end the turn. |
 | `merged` · "pull request merged" | The host reports the run's branch merged (`check_integrations`, `recheck_pr`) | `needs_you(awaiting_merge)`, or `pr_unknown` under `pr_merged` | `merged()` | Update the worktree to the merged result, re-run the checks, end the turn. |
 | `integrated` · "sub-task pull requests merged" | All required sub-task branches merged into this run's branch (`check_integrations`) | `awaiting_integration` | `integrated()` | Pull the merged sub-tasks, re-check the combined code, end the turn. |
-| `plan_critique` · "plan review" | Hyperplan: a reviewer's turn ends (`finish_review`), or the owner sends the final plan back (`revise_plan`) | The planner's session; `plan_reviewing` → `planning`, or `needs_you(plan_approval)` → `planning` | `incorporate()` (the review fenced as data; `final` on the last round or after a clean approve), `plan_revise()` (the owner's note) | Answer every blocking/major finding in `review_resolutions`, ask with `task_interview` first if needed, `submit_plan`, stop. |
-| `handoff` · "handed to the worker" | Hyperplan: execution starts on a run whose worker differs from its planner (`hand_off`) | Recorded on the timeline; the text is the worker's spawn prompt, not an input | `worker()`: the frozen plan and the "decisions already made" digest | Execute the plan as written; ask for a re-plan instead of re-opening settled points. |
+| `plan_critique` · "review sent to the planner" | Hyperplan: a reviewer's turn ends (`finish_review`), or the owner sends the final plan back (`revise_plan`) | The planner's session; `plan_reviewing` → `planning`, or `needs_you(plan_approval)` → `planning` | `incorporate()` (the review fenced as data; `final` on the last round or after a clean approve), `plan_revise()` (the owner's note) | Answer every blocking/major finding in `review_resolutions`, ask with `task_interview` first if needed, `submit_plan`, stop. |
+| `handoff` · "plan handed to the worker" | Hyperplan: execution starts on a run whose worker differs from its planner (`hand_off`) | Recorded on the timeline; the text is the worker's spawn prompt, not an input | `worker()`: the frozen plan and the "decisions already made" digest | Execute the plan as written; ask for a re-plan instead of re-opening settled points. |
 
 The owner's texts are not in the table: **Message** (`queue`) and **Steer** (`steer`, advances the
 generation) send exactly what was typed (`agent_control.send_message`, also Eri's confirmed
@@ -1768,6 +1768,38 @@ Read-only is a harness-level mode (Claude `--permission-mode dontAsk` with an al
 read-only`): Bash allow rules match command text and are not a security boundary, and the reviewer shares the
 writer's worktree, so what it can read is bounded by the same git-ignore hygiene as the planner's. Prompts tell the
 read-only roles to ask through `task_interview`, never AskUserQuestion (denied under `dontAsk`).
+
+**In the app** (`RunTaskDialog.tsx`, `Remotea.tsx`, `remotea-model.ts`).
+
+- *Run dialog.* The agent and model choice is the **Planner**. **Worker** (every harness and model, default "Same as
+  planner") is always shown; **Hyperplan** reveals **Reviewer** (harness and model), **Rounds** (default 2, 1–10)
+  and **Approve final plan before running** (default on; also shown for a separate worker alone, which pauses the
+  same way). `startBody` sends `reviewer` + `rounds`, `worker` and `approve_final` only when they make a role run
+  (a worker equal to the planner is left out), so a classic start's body is unchanged. The preflight is read with
+  `reviewer_harness` / `worker_harness`; a harness the target cannot start is greyed out in every role's list, a
+  problem with `role` shows under that role, and `roles: false` (or a `409 HOST_NO_ROLES` at Start) turns the
+  worker and Hyperplan off with the reason and starts classic. Freestyle turns them off too. A `409
+  HARNESS_UNAVAILABLE` with `data.role` shows under the role. The last planner, worker, reviewer, rounds and
+  approval choices are kept in `localStorage` (`eri-run-draft`; never the target or freestyle), and restored only
+  where the model is still offered. `HARNESSES` lists Fable (`fable`) for Claude Code and GPT-6 Astra
+  (`gpt-6-astra`) for Codex after the defaults; the drift guard compares the default (first) model per harness.
+- *Timeline.* The planner's submissions read "Draft N · Fable" until the handoff (a re-plan after it is the
+  worker's "Plan submitted"); each review round is one entry, "Review N · GPT-6 Astra: revise — 2 blocking, 3
+  minor" / "approved" / "timed out" / "failed" / "reviewing", placed where it ended and unfolding to its findings
+  (severity, area, issue, suggestion), the planner's resolution of each and the reviewer's questions; "Final plan
+  approved by you" / "sent back", "Handed to Sonnet", the first `review_blocked` / `handoff_blocked` of a round,
+  and the `plan_critique` / `handoff` texts as "Sent by Eridani · …". Questions between rounds are the planner's
+  `task_interview`, answered in the usual interview form while the run is `interviewing`.
+- *Final-plan approval.* In `needs_you(plan_approval)` a card shows the frozen plan (title, plan text, steps,
+  criteria) and the review history, with **Approve** and **Revise with note** (the note is required for revise),
+  posting `{action, note?, expected_revision}`; a `REVISION_CONFLICT` reloads the run like the other controls. The
+  review packet, Edit criteria and Judge again stay off at this stop, and the footer's Approve reads **Complete
+  task** there, since it completes the task without running the plan. Run chips say "Approve plan" and the run
+  counts under "Review the plan".
+- *Who acts.* A role run's drawer header, run rows and the task row chip's tooltip carry an actor chip from
+  `actor` and `state`: "Planning · Fable", "Reviewing 1/2 · GPT-6 Astra", "Handing off → Sonnet", "Working ·
+  Sonnet". Classic and settled runs show none. `needs_you(host_busy)` says which session waits (the reviewer for
+  round N, or the worker) and that Eridani keeps retrying, and counts under "Repair the host or setup".
 
 **Not included.** Swarm starts have no roles yet; a replan during execution stays with the worker (escalating it back
 to the planner is a follow-up); `reviewer_blocked` is reserved.
