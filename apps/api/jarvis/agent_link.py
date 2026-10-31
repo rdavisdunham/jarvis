@@ -610,6 +610,12 @@ def turn(db, bot, host_id, frame):
     row.updated_at = now()
     if run is not None and run.session_pk == row.id:
         coordinator.record_turn(db, run, frame)
+    elif run is not None and run.roles and not frame.interim and not frame.synthetic:
+        # A reviewer's turn (hyperplan): it ends the review round; it never moves the run as a planner turn would.
+        # Matched by its own surface, so a steer of the planner (a newer generation) does not orphan the review.
+        review = coordinator.review_for_session(db, run, row)
+        if review is not None:
+            coordinator.finish_review(db, run, review, text, incarnation=frame.incarnation)
     emit(db, owner, "agent.changed", row.id)
     return {"turn_id": inserted, "truncated": frame.truncated or cut, "missing": frame.missing}
 

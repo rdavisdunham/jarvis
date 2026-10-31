@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from sqlalchemy import event, func, select, update
+from sqlalchemy.orm import object_session
 
 from . import agent_sessions as sessions
 from . import run_summaries as summaries
@@ -29,6 +30,7 @@ from .session_models import (
     AgentCommand,
     AgentHost,
     AgentInterview,
+    AgentPlanReview,
     AgentQuestion,
     AgentRun,
     AgentRunPlan,
@@ -42,7 +44,14 @@ TRANSITIONS = {
     # Skip-interview: a task whose plan can be frozen goes straight to executing.
     "spawning": {"interviewing", "planning", "executing", "needs_you", "stopping", "failed"},
     "interviewing": {"planning", "waiting_answer", "needs_you", "stopping"},
-    "planning": {"executing", "waiting_answer", "needs_you", "replanning", "stopping"},
+    # → interviewing: a hyperplan planner asks questions between review rounds; → plan_reviewing: a reviewer round;
+    # → handing_off: the plan goes to a different worker.
+    "planning": {"executing", "interviewing", "plan_reviewing", "handing_off", "waiting_answer", "needs_you",
+                 "replanning", "stopping"},
+    # Hyperplan: the reviewer works while the planner idles; back to planning when the review is done or failed.
+    "plan_reviewing": {"planning", "needs_you", "stopping"},
+    # Hyperplan: the planner is stopped and the worker is spawning; → executing when the worker attaches.
+    "handing_off": {"executing", "needs_you", "stopping", "failed"},
     "executing": {"verifying", "judging", "waiting_answer", "needs_you", "awaiting_approval", "awaiting_integration",
                   "replanning", "stopping", "capped", "failed"},
     "waiting_answer": {"executing", "interviewing", "planning", "needs_you", "stopping"},
@@ -50,8 +59,9 @@ TRANSITIONS = {
     # judging → completed exists for stage D's auto_complete; C never takes it.
     "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
     # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
+    # → plan_reviewing / handing_off: a hyperplan run resumes its review round or its worker's spawn (phase()).
     "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
-                  "verifying", "judging", "stopping", "failed"},
+                  "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
     "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
@@ -81,8 +91,23 @@ VERIFY_GRACE = timedelta(seconds=120)
 JUDGE_DEADLINE = timedelta(minutes=15)
 # This many consecutive not_met verdicts with the same gap are no progress.
 NO_PROGRESS_VERDICTS = 3
-PLANNING = ("interviewing", "planning", "replanning")
+# The planning phase (record_turn settles a planning turn; plan_reviewing returns before that, its turn is the
+# reviewer's). submit_plan is taken in PLAN_SUBMIT only: never while a reviewer reads the plan.
+PLANNING = ("interviewing", "planning", "replanning", "plan_reviewing")
+PLAN_SUBMIT = ("interviewing", "planning", "replanning")
 TOKEN_TTL = timedelta(hours=24)
+PROMPT_CHARS = 32_000  # A spawn prompt's limit (agent_control.PROMPT_CHARS is this).
+# Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer round is given up after REVIEW_DEADLINE once the
+# reviewer is up (REVIEW_SPAWN_DEADLINE for the host to start it); a spawn the host refuses as target_busy is retried
+# with backoff (REVIEW_BACKOFF, doubling to REVIEW_BACKOFF_MAX) for REVIEW_BUSY_LIMIT, then the run needs you (host_busy).
+REVIEW_DEADLINE = timedelta(minutes=20)
+REVIEW_SPAWN_DEADLINE = timedelta(minutes=15)
+REVIEW_BACKOFF = timedelta(seconds=30)
+REVIEW_BACKOFF_MAX = timedelta(minutes=5)
+REVIEW_BUSY_LIMIT = timedelta(minutes=10)
+REVIEW_SEVERITIES = ("blocking", "major", "minor")
+# Reviews that end the loop: the planner is not sent another reviewer after one of these.
+REVIEW_SETTLED = ("failed", "skipped")
 # SessionStart text for a surface not bound to a run: the fenced candidate list only (stage F, D6).
 CANDIDATES_CHARS = 4000
 REASONS = {
@@ -102,6 +127,9 @@ REASONS = {
     "question_timed_out": "The question timed out here; answer it in the terminal.",
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
+    "plan_approval": "The plan is final; approve it to start the work, or send it back with a note.",
+    "host_busy": "The host is at its run limit, so the next session could not start; free a run or raise limits.maxRuns, then message the agent.",
+    "reviewer_blocked": "The reviewer could not run.",
     "no_progress_gap": "The judge found the same gap several turns in a row.",
     "verify_missing": "No verify command is set, so test results cannot be recorded: set one on this run, or approve on the evidence shown.",
     "verify_incomplete": "The criteria look met, but the verification did not cover the whole workspace, so the task was not closed automatically: review and approve.",
@@ -128,6 +156,14 @@ REASONS = {
     "answered": "Your answer reached the agent.",
     "question": "The agent asked a question.",
     "replan": "Re-planning.",
+    # Hyperplan working states.
+    "review": "The reviewer is reading the plan.",
+    "review_done": "The review is in; the planner is incorporating it.",
+    "review_failed": "The review did not finish; planning continues without it.",
+    "interview": "The planner asked you questions.",
+    "plan_approved": "You approved the plan.",
+    "plan_revise": "You sent the plan back with a note; the planner is revising it.",
+    "handoff": "The plan is handed to the worker.",
     "surface_restored": "The agent's terminal is back.",
     "approve": "Approved.",
     "stopped": "Stopped.",
@@ -294,7 +330,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     db.flush()
     if run and kind not in QUIET_COMMANDS:
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
-             **({"source": source} if source else {}))
+             **({"role": body["role"]} if body.get("role") else {}), **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
     wake_after_commit(db, row.host_id)  # This process's socket, without a database round trip.
     notify_host(db, row.host_id)  # Any web process's socket (the worker queues too), on commit.
@@ -334,8 +370,14 @@ def on_outcome(db, row, state, detail="", result=None):
             emit(db, question.owner_id, "agent.changed", question.run_id or question.session_pk)
     if run is None:
         return
-    note(run, "outcome", kind=row.kind, op_id=row.op_id, state=state, **({"detail": detail[:300]} if detail else {}))
+    role = (row.payload or {}).get("role")
+    note(run, "outcome", kind=row.kind, op_id=row.op_id, state=state, **({"detail": detail[:300]} if detail else {}),
+         **({"role": role} if role else {}))
     emit(db, run.owner_id, "agent.changed", run.id)
+    if role == "reviewer":
+        return review_outcome(db, run, row, state, detail, result or {})
+    if row.kind == "stop" and role == "planner":
+        return  # The retired planner's surface (handoff): whatever the host did with it, the worker owns the run now.
     if row.kind == "verify":
         if state != "executed":  # The result arrives as verify.result; a refusal is a non-pass.
             attempt = db.get(AgentAttempt, (row.payload or {}).get("attempt_id"), with_for_update=True)
@@ -370,6 +412,8 @@ def on_outcome(db, row, state, detail="", result=None):
                 finish(db, run, detail="the agent never started")
             elif run.state not in TERMINAL:
                 reason, why = spawn_refusal(state, detail, facts)
+                if role == "worker" and reason == "target_busy" and run.state == "handing_off":
+                    return handoff_blocked(db, run, why)  # Retried with backoff (sweep), then needs_you(host_busy).
                 transition(db, run, "failed", reason=reason, detail=why)
     elif row.kind == "stop" and run.state == "stopping":
         if state == "executed":
@@ -430,8 +474,9 @@ def request_stop(db, run, *, actor, mode="interrupt", reason="stopped", final="s
     run.generation += 1  # Invalidates every older-generation command and event.
     run.stop_requested_at, run.stop_mode, run.stop_reason, run.stop_final = now(), mode, reason, final
     transition(db, run, "stopping", actor=actor, reason=reason)
-    spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn")
-                      .order_by(AgentCommand.created_at.desc()).limit(1))
+    for review in live_reviews(db, run):
+        close_review(db, run, review, "skipped", "the run was stopped")  # Its surface is killed with the run.
+    spawn = run_spawn(db, run)
     if spawn is not None and spawn.status == "queued":
         # Never sent: no process can exist, so the stop is already complete.
         settle_command(db, spawn, "canceled", "stopped before the host took it")
@@ -445,6 +490,19 @@ def request_stop(db, run, *, actor, mode="interrupt", reason="stopped", final="s
         stop_command(db, run)
     # Without a surface yet, the spawn outcome (or runs.snapshot after reconnect) carries the stop.
     return run
+
+
+def run_spawn(db, run):
+    """The run's own latest spawn command: a hyperplan reviewer's spawn is its review's business, never the run's."""
+    return next((c for c in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn")
+                                       .order_by(AgentCommand.created_at.desc()))
+                 if (c.payload or {}).get("role") != "reviewer"), None)
+
+
+def review_spawns(db, run, review, statuses):
+    return [c for c in db.scalars(select(AgentCommand).where(
+        AgentCommand.run_id == run.id, AgentCommand.kind == "spawn", AgentCommand.status.in_(statuses)))
+        if (c.payload or {}).get("role") == "reviewer" and (c.payload or {}).get("attempt") == review.attempt]
 
 
 def external_completion(db, run, actor):
@@ -491,8 +549,20 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
         return run
     row = sessions.claim(db, run.owner_id, sessions_tool(tool), provider_session_id)
     db.flush()
+    review = review_for_surface(db, run, surf) if surf else None
+    if review is not None:
+        # A reviewer session (hyperplan): it reads and reviews, it never owns the run.
+        review.session_pk, row.host_id = row.id, host_id
+        if incarnation is not None:
+            review.incarnation = incarnation
+        if review.status == "spawning":
+            review_started(db, run, review)
+        return run
     if run.session_pk and run.session_pk != row.id:
         return run  # The first confirmed session owns the run; a stray report cannot rebind it.
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    if not run.session_pk and handoff and not handoff.get("done") and surf != handoff_surf(run):
+        return run  # Only the worker spawned for this handoff may take the run (not the retired planner).
     row.run_id, row.host_id = run.id, host_id
     if row.binding_source not in ("explicit", "manual"):
         row.task_id, row.record_id = run.task_id, sessions.record_for_task(db, run.owner_id, run.task_id)
@@ -505,16 +575,35 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
         return run
     for spawn in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn",
                                                        AgentCommand.status.in_(("queued", "sent")))):
+        if (spawn.payload or {}).get("role") == "reviewer":
+            continue  # A reviewer's spawn is acknowledged by its own outcome.
         # The provider session exists, so the host took the spawn whatever happened to its ack.
         spawn.status, spawn.outcome = "acked", {"state": "accepted", "via": "attach"}
         redact_spawn(spawn)
-    run.session_pk, run.started_at, run.last_progress_at = row.id, now(), now()
-    note(run, "attached", session_pk=row.id, provider_session_id=provider_session_id)
-    if run.state == "spawning":
-        # No frozen plan yet: the interview phase (a task without a PRD).
-        transition(db, run, "executing" if run.plan_revision else "interviewing", reason="started")
+    run.session_pk, run.started_at, run.last_progress_at = row.id, run.started_at or now(), now()
+    note(run, "attached", session_pk=row.id, provider_session_id=provider_session_id,
+         **({"role": "worker"} if handoff and not handoff.get("done") else {}))
+    if handoff and not handoff.get("done"):
+        run.sync_state = {**(run.sync_state or {}), "handoff": {**handoff, "done": True, "attached_at": now().isoformat()}}
+        if run.state == "handing_off":
+            transition(db, run, "executing", reason="handoff")
+    elif run.state == "spawning":
+        # No frozen plan yet: the interview phase (a task without a PRD), or planning for a hyperplan run that has one.
+        transition(db, run, "executing" if run.plan_revision else start_phase(run), reason="started")
     mark_in_progress(db, run)
     return run
+
+
+def handoff_surf(run):
+    """The surface of the worker a pending handoff waits for (hand_off records it; the generation may move on)."""
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    return handoff.get("surf") or surf_for(run.id, run.generation, handoff.get("attempt"))
+
+
+def start_phase(run):
+    """Where an unplanned run begins: interviewing, or planning when the start said so (a hyperplan run whose task
+    already has a PRD reviews it instead of freezing it)."""
+    return "planning" if (run.sync_state or {}).get("start_phase") == "planning" else "interviewing"
 
 
 def sessions_tool(tool):
@@ -528,9 +617,14 @@ def sessions_tool(tool):
 
 def phase(run):
     """Where a run resumes after needs_you: execution once a plan is frozen and started, else its planning phase."""
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    if handoff and not handoff.get("done"):
+        return "handing_off"
+    if run.roles and run.plan_pending and (db := object_session(run)) is not None and live_reviews(db, run):
+        return "plan_reviewing"  # A reviewer is still reading the plan (needs_you came during its round).
     if run.plan_pending:
         return "planning"
-    return "executing" if run.plan_revision else "interviewing"
+    return "executing" if run.plan_revision else start_phase(run)
 
 
 def resume_phase(run):
@@ -552,6 +646,8 @@ def record_turn(db, run, frame):
     summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
     if run.state == "waiting_answer":
         transition(db, run, resume_phase(run), reason="turn")
+    if run.state in ("plan_reviewing", "handing_off"):
+        return  # A late planner turn: the reviewer (or the worker's spawn) has the move.
     if run.state in PLANNING:
         return settle_planning(db, run)
     if run.state != "executing":
@@ -576,9 +672,18 @@ def run_for_session(db, row, lock=True, host_id=None):
     return run
 
 
+def owns(run, row):
+    """Does this session speak for the run? Its bound session; before one is bound, any session except a retired
+    planner during a handoff (the worker's attempt is the only one that may take the run)."""
+    if run.session_pk:
+        return run.session_pk == row.id
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    return not handoff or handoff.get("done") or row.surf == handoff_surf(run)
+
+
 def on_status(db, row, frame, host_id=None):
     run = run_for_session(db, row, host_id=host_id)
-    if run is None or run.state in TERMINAL:
+    if run is None or run.state in TERMINAL or not owns(run, row):
         return
     if frame.effective_permission_mode:
         run.effective_permission_mode = frame.effective_permission_mode[:40]
@@ -599,7 +704,7 @@ def on_status(db, row, frame, host_id=None):
 
 def on_exit(db, row, detail="", host_id=None):
     run = run_for_session(db, row, host_id=host_id)
-    if run is None or run.state in TERMINAL:
+    if run is None or run.state in TERMINAL or not owns(run, row):
         return
     if run.state == "stopping":
         finish(db, run, detail=detail or "the agent process exited")
@@ -621,6 +726,8 @@ def record_question(db, owner, host_id, frame):
     row = host_session(db, owner, host_id, frame.provider, frame.provider_session_id)
     db.flush()
     run = bound(db, host_id, frame.run_id) if frame.run_id else run_for_session(db, row, host_id=host_id)
+    if run is not None and run.roles and frame.surf and review_for_surface(db, run, frame.surf) is not None:
+        run = None  # A reviewer's question (it should not ask; its tools deny it) never pauses the run.
     existing = db.scalar(select(AgentQuestion).where(
         AgentQuestion.session_pk == row.id, AgentQuestion.provider_request_id == frame.provider_request_id))
     if existing is not None:
@@ -736,7 +843,11 @@ def open_interview(db, run):
 
 
 def settle_planning(db, run):
-    """An interview or planning turn ended. Execution starts only once a frozen plan exists and nothing is pending."""
+    """An interview or planning turn ended. Execution starts only once a frozen plan exists and nothing is pending.
+
+    Hyperplan (run.roles with a reviewer): a new plan revision goes to a fresh reviewer while rounds remain and the
+    last review was not a clean approve; a turn that ends without resubmitting after a review needs you (no_plan),
+    unless that review was a clean approve (the approved revision stands)."""
     if open_questions(db, run) or open_interview(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
@@ -744,11 +855,34 @@ def settle_planning(db, run):
             transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         return
     plan = frozen(db, run)
+    if reviewer_role(run) and plan is not None:
+        last = last_review(db, run)
+        if last is not None and last.status in ("spawning", "reviewing"):
+            return  # A review is still running; its end moves the run.
+        if last is not None and last.status == "done" and plan.revision <= last.plan_revision and not clean_approve(last):
+            if run.state != "needs_you":
+                transition(db, run, "needs_you", reason="no_plan",
+                           detail=f"The planner ended its turn without resubmitting the plan after review {last.round}.")
+            return
+        if run.plan_round < rounds_of(run) and not review_settled(last):
+            return spawn_reviewer(db, run, plan)
+    conclude_planning(db, run, plan)
+
+
+def conclude_planning(db, run, plan):
+    """The loop is over (or there was none): the operator's proposals review, the final-plan approval stop a
+    hyperplan run asks for (approve_final), else execution."""
     if plan is not None and plan.proposals:
         # The agent wants to change what a human set (agent_plan.plan_proposals): the operator accepts or keeps
         # each change on the run page (review_plan) before anything is frozen for execution.
         if run.state != "needs_you":
             transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
+        return
+    if run.roles and run.roles.get("approve_final", True):
+        if run.state != "needs_you":
+            transition(db, run, "needs_you", reason="plan_approval",
+                       detail=f"Plan revision {plan.revision if plan else run.plan_revision} after {run.plan_round} "
+                              f"review{'s' if run.plan_round != 1 else ''}.")
         return
     begin_execution(db, run)
 
@@ -784,14 +918,375 @@ def proposal_summary(proposals):
 
 
 def begin_execution(db, run, reason="plan_frozen", preface="", actor=None):
+    """planning → executing with the execute prompt, or, the first time on a run whose worker differs from its
+    planner, the handoff: the planner's session is stopped and the worker spawned on the frozen plan."""
     from . import agent_prompts as prompts
 
     plan = frozen(db, run)
     run.plan_pending = False
     if run.state != "planning":
         transition(db, run, "planning", actor=actor, reason="plan_frozen")
+    if worker_role(run) and not (run.sync_state or {}).get("handoff"):
+        return hand_off(db, run, plan, actor=actor)
     transition(db, run, "executing", actor=actor, reason=reason)
     say(db, run, prompts.execute(render_plan(db, run, plan), preface), "execute", actor=actor)
+
+
+# ---------------------------------------------------------------- hyperplan: roles, the review loop, the handoff
+
+
+def reviewer_role(run):
+    return (run.roles or {}).get("reviewer") or None
+
+
+def worker_role(run):
+    """The worker's {harness, model} when it differs from the planner (a split worker), else None."""
+    return (run.roles or {}).get("worker") or None
+
+
+def rounds_of(run):
+    return int((run.roles or {}).get("rounds") or 0)
+
+
+def clean_approve(review):
+    return review is not None and review.verdict == "approve" and not any(
+        (f.get("severity") in ("blocking", "major")) for f in review.findings or [] if isinstance(f, dict))
+
+
+def review_settled(review):
+    """A review after which the loop sends no further reviewer: none yet is not settled; a clean approve, a failed
+    or a skipped review is (the loop treats a failure as "no review" and moves on)."""
+    if review is None:
+        return False
+    return review.status in REVIEW_SETTLED or (review.status == "done" and clean_approve(review))
+
+
+def last_review(db, run):
+    return db.scalar(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id)
+                     .order_by(AgentPlanReview.round.desc()).limit(1))
+
+
+def live_reviews(db, run):
+    return list(db.scalars(select(AgentPlanReview).where(
+        AgentPlanReview.run_id == run.id, AgentPlanReview.status.in_(("spawning", "reviewing")))))
+
+
+def review_for_surface(db, run, surf):
+    """The reviewer round spawned on this surface (any status: a late frame from a finished reviewer is still its)."""
+    return db.scalar(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id, AgentPlanReview.surf == surf))
+
+
+def review_for_session(db, run, row):
+    """The live reviewer round whose session this is (bound at attach), or whose surface the session reports."""
+    for review in live_reviews(db, run):
+        if review.session_pk == row.id or (row.surf and review.surf == row.surf):
+            return review
+    return None
+
+
+def spawn_target(db, run):
+    from .session_models import ExecutionTarget
+
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    body = {"id": target.host_target if target else "", "branch": run.branch, "base": run.base_branch}
+    if target is not None and target.repo:
+        body["repo"] = target.repo
+    return body
+
+
+def spawn_body(db, run, attempt, harness, model, prompt, token, **extra):
+    task = db.get(Task, run.task_id)
+    return {"attempt": attempt, "harness": harness, "model": model, "target": spawn_target(db, run),
+            "task_id": run.task_id, "title": (task.title if task else "")[:200].replace("\n", " "), "group": "Eridani",
+            "prompt": prompt, "run_token": token, "env": {}, **extra}
+
+
+def send_review_spawn(db, run, review):
+    """The reviewer's spawn command: read-only (`mode: review`), beside the planner in its worktree (`share: true`;
+    remotea counts it toward limits.maxRuns), with a fresh reviewer token. A resend keeps the attempt and surface."""
+    from . import agent_prompts as prompts
+
+    plan = db.scalar(select(AgentRunPlan).where(AgentRunPlan.run_id == run.id, AgentRunPlan.revision == review.plan_revision))
+    token = mint_review_token(run, review)
+    prompt = prompts.plan_review(render_plan(db, run, plan), resolution_log(db, run), review.round, rounds_of(run))
+    command(db, run, "spawn", spawn_body(db, run, review.attempt, review.harness, review.model, prompt[:PROMPT_CHARS],
+                                         token, role="reviewer", mode="review", share=True))
+
+
+def spawn_reviewer(db, run, plan):
+    """A fresh read-only reviewer session for the plan as frozen now (the next attempt number, a reviewer-scoped
+    token). planning → plan_reviewing."""
+    reviewer = reviewer_role(run)
+    run.attempt += 1
+    review = AgentPlanReview(owner_id=run.owner_id, run_id=run.id, round=run.plan_round + 1, plan_revision=plan.revision,
+                             harness=reviewer["harness"], model=reviewer.get("model") or "", attempt=run.attempt,
+                             surf=surf_for(run.id, run.generation, run.attempt), status="spawning",
+                             deadline_at=now() + REVIEW_SPAWN_DEADLINE, findings=[], questions=[], resolutions=[])
+    db.add(review)
+    db.flush()
+    send_review_spawn(db, run, review)
+    note(run, "review_started", review_id=review.id, round=review.round, rounds=rounds_of(run),
+         plan_revision=plan.revision, harness=review.harness, model=review.model)
+    if run.state != "plan_reviewing":
+        transition(db, run, "plan_reviewing", reason="review")
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return review
+
+
+def backoff(retries):
+    return min(REVIEW_BACKOFF * (2 ** retries), REVIEW_BACKOFF_MAX)
+
+
+def review_started(db, run, review):
+    """The reviewer is up (spawn outcome or its first report): the review deadline starts. A run that waited in
+    needs_you(host_busy) for this spawn goes back to plan_reviewing."""
+    review.status, review.started_at, review.deadline_at = "reviewing", now(), now() + REVIEW_DEADLINE
+    review.blocked_since, review.updated_at = None, now()
+    if run.state == "needs_you" and run.state_reason == "host_busy":
+        transition(db, run, "plan_reviewing", reason="review")
+
+
+def review_outcome(db, run, row, state, detail, facts):
+    """What the host did with a reviewer's command (spawn or stop): the review row moves, the run's surface does not."""
+    review = db.scalar(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id,
+                                                     AgentPlanReview.attempt == (row.payload or {}).get("attempt"))
+                       .with_for_update()) if row.kind == "spawn" else None
+    if row.kind != "spawn" or review is None:
+        return
+    if state == "executed":
+        review.surf = str(facts.get("surf") or review.surf)[:120]
+        review.incarnation = int(facts.get("incarnation") or review.incarnation or 0)
+        if review.status not in ("spawning", "reviewing"):
+            stop_review_surface(db, run, review)  # The round ended before the host started it (the run stopped).
+        elif run.state == "stopping":
+            close_review(db, run, review, "skipped", "the run was stopped")
+        elif review.status == "spawning":
+            review_started(db, run, review)
+        return
+    if review.status not in ("spawning", "reviewing"):
+        return
+    reason, why = spawn_refusal(state, detail, facts)
+    if reason == "target_busy" and run.state in ("plan_reviewing", "needs_you"):
+        return review_blocked(db, run, review, why)
+    fail_review(db, run, review, f"{reason}: {why}"[:300])
+
+
+def review_blocked(db, run, review, why):
+    """The host is at limits.maxRuns: the same spawn is sent again with backoff (sweep_reviews); after
+    REVIEW_BUSY_LIMIT the run needs you (host_busy) and the retries go on slowly until a slot frees up."""
+    clock = now()
+    review.blocked_since = review.blocked_since or clock
+    review.deadline_at, review.updated_at = clock + backoff(review.retries), clock
+    note(run, "review_blocked", review_id=review.id, round=review.round, retry_at=review.deadline_at.isoformat(),
+         detail=why[:300])
+    if review.blocked_since + REVIEW_BUSY_LIMIT <= clock and run.state == "plan_reviewing":
+        transition(db, run, "needs_you", reason="host_busy", detail=why)
+
+
+def stop_review_surface(db, run, review):
+    """Kill the reviewer's surface. Sent whenever the round may have one (a surface the host never started answers
+    `rejected`, which moves nothing); runs.snapshot repeats it after a reconnect (desired)."""
+    if review.surf and run.state not in TERMINAL:
+        command(db, run, "stop", {"surf": review.surf, "incarnation": review.incarnation or 0, "mode": "kill",
+                                  "role": "reviewer"})
+
+
+def close_review(db, run, review, status, detail=""):
+    """Settle a live review as failed or skipped and kill its surface, if it has one."""
+    review.status, review.finished_at, review.updated_at = status, now(), now()
+    review.token_hash = None  # Its token dies with the round.
+    if status == "failed" and not review.via:
+        review.via = "timeout" if "time" in detail else "failed"
+    queued = review_spawns(db, run, review, ("queued",))
+    for row in queued:
+        settle_command(db, row, "canceled", "the review round ended before the host took it")
+    if not queued:
+        stop_review_surface(db, run, review)
+    note(run, "review_" + status, review_id=review.id, round=review.round, **({"detail": detail[:300]} if detail else {}))
+
+
+def fail_review(db, run, review, detail):
+    """A reviewer that timed out, crashed or could not start: the round counts as "no review" and planning
+    continues to its next step without re-spawning (REVIEW_SETTLED)."""
+    close_review(db, run, review, "failed", detail)
+    if run.state == "plan_reviewing" or (run.state == "needs_you" and run.state_reason == "host_busy"):
+        transition(db, run, "planning", reason="review_failed", detail=detail)
+        conclude_planning(db, run, frozen(db, run))
+    emit(db, run.owner_id, "agent.changed", run.id)
+
+
+def finish_review(db, run, review, text="", incarnation=None):
+    """The reviewer's turn ended: record the review (its submit_plan_review call, else its turn text as a `revise`
+    summary), kill its surface and send the planner the incorporate prompt. plan_reviewing → planning."""
+    from . import agent_prompts as prompts
+
+    if review.status not in ("spawning", "reviewing"):
+        return
+    if incarnation:
+        review.incarnation = incarnation
+    if review.verdict is None:
+        review.verdict, review.summary, review.via = "revise", (text or "").strip()[:4000], "turn"
+    review.status, review.finished_at, review.updated_at, review.token_hash = "done", now(), now(), None
+    run.plan_round = max(run.plan_round or 0, review.round)
+    stop_review_surface(db, run, review)
+    counts = severity_counts(review)
+    note(run, "review", review_id=review.id, round=review.round, rounds=rounds_of(run), verdict=review.verdict,
+         via=review.via, harness=review.harness, model=review.model, **counts)
+    if run.state == "stopping" or run.state in TERMINAL:
+        return
+    if run.state == "plan_reviewing" or (run.state == "needs_you" and run.state_reason in SELF_HEALING | {"host_busy"}):
+        transition(db, run, "planning", reason="review_done")
+    final = run.plan_round >= rounds_of(run) or clean_approve(review)
+    say(db, run, prompts.incorporate(review, run.plan_round, rounds_of(run), final), "plan_critique")
+    emit(db, run.owner_id, "agent.changed", run.id)
+
+
+def severity_counts(review):
+    counts = {k: 0 for k in REVIEW_SEVERITIES}
+    for finding in review.findings or []:
+        if isinstance(finding, dict) and finding.get("severity") in counts:
+            counts[finding["severity"]] += 1
+    return counts
+
+
+def resolution_log(db, run):
+    """Earlier rounds' findings with the planner's decision on each, for the next reviewer (so it does not re-raise
+    a rejected point without saying why) and for the worker's digest."""
+    lines = []
+    for review in db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id, AgentPlanReview.status == "done")
+                             .order_by(AgentPlanReview.round)):
+        decided = {r.get("finding_id"): r for r in review.resolutions or [] if isinstance(r, dict)}
+        for finding in review.findings or []:
+            if not isinstance(finding, dict):
+                continue
+            resolution = decided.get(finding.get("id")) or {}
+            lines.append(f"Review {review.round}, {finding.get('id')} ({finding.get('severity')}, {finding.get('area') or 'general'}): "
+                         f"{finding.get('issue', '')[:300]} -> {resolution.get('decision') or 'unanswered'}"
+                         + (f": {resolution.get('note', '')[:300]}" if resolution.get("note") else ""))
+    return lines
+
+
+def decisions_digest(db, run):
+    """What is already settled, for the worker: rejected or deferred findings with the planner's reason, and the
+    operator's interview answers."""
+    lines = [line for line in resolution_log(db, run) if "-> rejected" in line or "-> deferred" in line]
+    for row in db.scalars(select(AgentInterview).where(AgentInterview.run_id == run.id, AgentInterview.status == "answered")
+                          .order_by(AgentInterview.created_at)):
+        for question in row.questions or []:
+            given = (row.answers or {}).get(question["id"])
+            if isinstance(given, list):
+                given = ", ".join(given)
+            if given:
+                lines.append(f"Q: {question['question'][:300]} A: {str(given)[:500]}")
+    return lines
+
+
+def send_worker_spawn(db, run, plan):
+    """The worker's spawn command (role worker, writable, the run's normal token scope) for the pending handoff's
+    attempt. A fresh token each time: the planner's (and an earlier send's) no longer matches the run."""
+    from . import agent_prompts as prompts
+
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    token = mint_token(run, fresh=True)
+    prompt = prompts.worker(render_plan(db, run, plan), decisions_digest(db, run))
+    verify = verify_config(plan)
+    migration = {k: plan.migration[k] for k in ("number", "dir")} if plan and plan.migration else None
+    command(db, run, "spawn", spawn_body(db, run, handoff["attempt"], run.tool, run.model, prompt[:PROMPT_CHARS], token,
+                                         role="worker", **({"verify": verify} if verify else {}),
+                                         **({"migration": migration} if migration else {})))
+    return prompt
+
+
+def hand_off(db, run, plan, *, actor=None):
+    """The worker differs from the planner: stop the planner's surface, revoke its token, spawn the worker on the
+    frozen plan with the decisions digest, and wait for exactly that attempt to attach (planning → handing_off)."""
+    worker = worker_role(run)
+    if run.surf:
+        command(db, run, "stop", {"surf": run.surf, "incarnation": run.incarnation, "mode": "kill", "role": "planner"})
+    run.attempt += 1
+    run.sync_state = {**(run.sync_state or {}), "handoff": {
+        "attempt": run.attempt, "surf": surf_for(run.id, run.generation, run.attempt), "at": now().isoformat(),
+        "from_session_pk": run.session_pk, "from_surf": run.surf, "planner": {"harness": run.tool, "model": run.model},
+        "worker": {"harness": worker["harness"], "model": worker.get("model") or run.model}}}
+    run.session_pk, run.surf, run.incarnation = None, "", 0
+    run.tool, run.model = worker["harness"], worker.get("model") or run.model
+    prompt = send_worker_spawn(db, run, plan)
+    note(run, "handoff", attempt=run.attempt, harness=run.tool, model=run.model,
+         actor=actor.record() if actor else {"kind": "eridani"})
+    note(run, "sent", actor={"kind": "eridani"}, text=prompt[:2000], kind="handoff")
+    transition(db, run, "handing_off", actor=actor, reason="handoff")
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return run
+
+
+def handoff_blocked(db, run, why):
+    """The worker's spawn was refused as target_busy: retry with backoff (sweep) for REVIEW_BUSY_LIMIT, then
+    needs_you(host_busy), still retrying every REVIEW_BACKOFF_MAX until a slot frees up."""
+    clock = now()
+    handoff = dict((run.sync_state or {}).get("handoff") or {})
+    handoff["blocked_since"] = handoff.get("blocked_since") or clock.isoformat()
+    retries = int(handoff.get("retries") or 0)
+    handoff["retry_at"] = (clock + backoff(retries)).isoformat()
+    run.sync_state = {**(run.sync_state or {}), "handoff": handoff}
+    note(run, "handoff_blocked", retry_at=handoff["retry_at"], detail=why[:300])
+    if datetime.fromisoformat(handoff["blocked_since"]) + REVIEW_BUSY_LIMIT <= clock and run.state == "handing_off":
+        transition(db, run, "needs_you", reason="host_busy", detail=why)
+
+
+def retry_handoff(db, run):
+    """Send the worker's spawn again (same attempt and surface). A run waiting in needs_you(host_busy) goes back
+    to handing_off."""
+    handoff = dict((run.sync_state or {}).get("handoff") or {})
+    handoff["retries"], handoff["retry_at"] = int(handoff.get("retries") or 0) + 1, None
+    run.sync_state = {**(run.sync_state or {}), "handoff": handoff}
+    send_worker_spawn(db, run, frozen(db, run))
+    if run.state == "needs_you":
+        transition(db, run, "handing_off", reason="handoff")
+
+
+def approve_plan(db, run, *, actor):
+    """needs_you(plan_approval): the operator approves the final plan; execution (or the handoff) starts."""
+    note(run, "plan_approved", plan_revision=run.plan_revision, actor=actor.record())
+    begin_execution(db, run, reason="plan_approved", actor=actor)
+
+
+def revise_plan(db, run, note_text, *, actor):
+    """needs_you(plan_approval): the operator sends the plan back with a note; the planner revises and resubmits."""
+    from . import agent_prompts as prompts
+
+    note(run, "plan_revise", plan_revision=run.plan_revision, actor=actor.record())
+    transition(db, run, "planning", actor=actor, reason="plan_revise")
+    say(db, run, prompts.plan_revise(note_text), "plan_critique", actor=actor)
+
+
+def current_actor(db, run):
+    """Who acts on the run now: {role, harness, model}, plus {round, rounds} for a reviewer. A classic run's single
+    session is `agent`; a hyperplan run's is the planner until the handoff, then the worker."""
+    if not run.roles:
+        return {"role": "agent", "harness": run.tool, "model": run.model}
+    live = next(iter(live_reviews(db, run)), None)
+    if live is not None and run.state in ("plan_reviewing", "needs_you"):
+        return {"role": "reviewer", "harness": live.harness, "model": live.model, "round": live.round,
+                "rounds": rounds_of(run)}
+    if (run.sync_state or {}).get("handoff"):
+        return {"role": "worker", "harness": run.tool, "model": run.model}
+    return {"role": "planner", "harness": run.tool, "model": run.model}
+
+
+def public_review(review):
+    from .domain import encode
+
+    return encode({"id": review.id, "round": review.round, "plan_revision": review.plan_revision,
+                   "harness": review.harness, "model": review.model, "attempt": review.attempt, "status": review.status,
+                   "verdict": review.verdict, "via": review.via, "findings": review.findings or [],
+                   "questions": review.questions or [], "summary": review.summary, "resolutions": review.resolutions or [],
+                   "counts": severity_counts(review), "started_at": review.started_at, "finished_at": review.finished_at,
+                   "created_at": review.created_at})
+
+
+def public_reviews(db, run):
+    return [public_review(r) for r in db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id)
+                                                 .order_by(AgentPlanReview.round))]
 
 
 def after_turn(db, run):
@@ -1395,6 +1890,39 @@ def mint_token(run, *, fresh=False):
     return token
 
 
+REVIEW_TOKEN_LABEL = "review"
+
+
+def review_token(run, review):
+    """A reviewer's token: the same shape as a run token, derived over the review row and its own salt."""
+    signature = hmac.new(token_key(), f"{run.id}:{REVIEW_TOKEN_LABEL}:{review.id}:{review.token_salt}".encode(),
+                         hashlib.sha256).hexdigest()[:40]
+    return f"ert_{run.id.replace('-', '')}_{signature}"
+
+
+def mint_review_token(run, review):
+    """A fresh reviewer token (per spawn, like mint_token(fresh=True)); the review keeps only its hash."""
+    review.token_salt = secrets.token_hex(16)
+    token = review_token(run, review)
+    review.token_hash = hashlib.sha256(token.encode()).hexdigest()
+    return token
+
+
+def review_for_token(db, owner, token):
+    """(review, run) for a reviewer token presented by an in-session tool, or None. Only a live review's token
+    binds (spawning or reviewing); a finished reviewer's token is dead."""
+    if not token or not token.startswith("ert_") or len(token) > 200:
+        return None
+    review = db.scalar(select(AgentPlanReview).where(
+        AgentPlanReview.token_hash == hashlib.sha256(token.encode()).hexdigest()))
+    if review is None or review.owner_id != owner or review.status not in ("spawning", "reviewing"):
+        return None
+    run = db.get(AgentRun, review.run_id)
+    if run is None or run.state in TERMINAL:
+        return None
+    return review, run
+
+
 def redact_spawn(row):
     """Once the host has taken a spawn, the stored payload no longer needs the raw run token (stage F, L4)."""
     if row.kind == "spawn" and (row.payload or {}).get("run_token"):
@@ -1514,6 +2042,21 @@ def context(db, owner, host_id, frame):
                        surf=frame.surf, incarnation=frame.incarnation)
             except DomainError:
                 pass  # An older generation's session still gets its context; it just does not attach.
+        review = review_for_surface(db, run, frame.surf) if frame.surf else None
+        if review is not None:
+            # A reviewer's SessionStart: its own token (re-derivable) and the plan it reviews, never the run token.
+            if review.status not in ("spawning", "reviewing"):
+                return {"text": "Eridani: this review round has ended.", "scope": "run"}
+            token = review_token(run, review) if review.token_hash else mint_review_token(run, review)
+            plan = db.scalar(select(AgentRunPlan).where(AgentRunPlan.run_id == run.id,
+                                                        AgentRunPlan.revision == review.plan_revision))
+            text = render_plan(db, run, plan, token) if plan else render_unplanned(db, run, token)
+            return {"text": text + "\n" + prompts_review_tools(), "scope": "run", "run_token": token}
+        owner_surf = run.surf or (handoff_surf(run) if (run.sync_state or {}).get("handoff") else "")
+        if run.roles and frame.surf and owner_surf and frame.surf != owner_surf:
+            # Another of the run's surfaces (the planner retired at the handoff): it gets no token.
+            return {"text": "Eridani: this session no longer works on the run; another session took it over.",
+                    "scope": "run"}
         token = mint_token(run) if run.state not in TERMINAL else None
         plan = frozen(db, run)
         text = render_plan(db, run, plan, token) if plan else render_unplanned(db, run, token)
@@ -1521,6 +2064,12 @@ def context(db, owner, host_id, frame):
     # Not bound to a run on this host: only the fenced candidate list (stage F, D6).
     return {"text": candidates_text(db, owner, frame.cwd, frame.provider, frame.provider_session_id),
             "scope": "candidates"}
+
+
+def prompts_review_tools():
+    from . import agent_prompts as prompts
+
+    return prompts.REVIEW_TOOLS
 
 
 def candidates_text(db, owner, cwd, provider, session_id):
@@ -1556,6 +2105,8 @@ def verify_config(plan):
 
 
 def desired(db, run):
+    """The run's own runs.snapshot entry: for a run with roles it names the owner's surface (`surf`, or the
+    handoff's `attempt` before the worker has one); desired_entries adds the run's other surfaces."""
     entry = {"run_id": run.id, "generation": run.generation, "desired": "stop" if run.state == "stopping" else "continue"}
     if run.state == "stopping":
         entry["stop_mode"] = run.stop_mode or "interrupt"
@@ -1563,7 +2114,36 @@ def desired(db, run):
         config = verify_config(frozen(db, run) if run.plan_revision and not run.plan_pending else None)
         if config or run.plan_revision > 1:
             entry["verify"] = config  # null clears an older plan's config after a re-plan; absent keeps it.
+    if not run.roles:
+        return entry
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    if run.surf:
+        entry["surf"] = run.surf
+    else:
+        entry["attempt"] = handoff["attempt"] if handoff and not handoff.get("done") else 1
     return entry
+
+
+def desired_entries(db, run):
+    """Every runs.snapshot entry of a run. A classic run has one, for all its sessions. A run with roles has one per
+    surface (remotea `spawn.roles`): its owner's with the verify config (desired), each live reviewer's (no verify:
+    a reviewer is never verified), and a kill for each surface it retired (finished reviewers, the planner after
+    the handoff), so a stop lost in transit is carried out after a reconnect."""
+    entry = desired(db, run)
+    if not run.roles:
+        return [entry]
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    entries = [entry]
+    kill = {"run_id": run.id, "generation": run.generation, "desired": "stop", "stop_mode": "kill"}
+    for review in db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id, AgentPlanReview.surf.is_not(None))
+                             .order_by(AgentPlanReview.round)):
+        if review.status in ("spawning", "reviewing") and run.state != "stopping":
+            entries.append({"run_id": run.id, "generation": run.generation, "desired": "continue", "surf": review.surf})
+        else:
+            entries.append({**kill, "surf": review.surf})
+    if handoff.get("from_surf") and handoff["from_surf"] != run.surf:
+        entries.append({**kill, "surf": handoff["from_surf"]})
+    return entries
 
 
 def stale(db, row, run):
@@ -1596,15 +2176,22 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
     by_run, by_surf = {}, {s.surf: s for s in surfaces if s.surf}
     for surface in surfaces:
         if surface.run_id:
-            by_run.setdefault(surface.run_id, surface)
+            by_run.setdefault(surface.run_id, []).append(surface)
     runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
                                                   AgentRun.state.not_in(TERMINAL_RUN_STATES)).with_for_update()))
     for run in runs:
-        surface = by_run.get(run.id)
-        spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn")
-                          .order_by(AgentCommand.created_at.desc()).limit(1))
+        # The run's own surface first: a run with roles may also have a reviewer's (or a retired planner's) surface.
+        mine = by_run.get(run.id) or []
+        reviews = list(db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id))) if run.roles else []
+        if run.roles:
+            reconcile_reviews(db, run, reviews, by_surf)
+        handoff = (run.sync_state or {}).get("handoff") or {}
+        retired = {r.surf for r in reviews if r.surf} | ({handoff["from_surf"]} if handoff.get("from_surf") else set())
+        surface = next((x for x in mine if run.surf and x.surf == run.surf), None) \
+            or next((x for x in mine if x.surf not in retired), None)
+        spawn = run_spawn(db, run)
         if surface is None and spawn is not None:
-            surface = by_surf.get(surf_for(run.id, spawn.generation, run.attempt))
+            surface = by_surf.get(surf_for(run.id, spawn.generation, (spawn.payload or {}).get("attempt") or run.attempt))
         if surface is not None and spawn is not None and spawn.status in ("queued", "sent"):
             # The host has the spawned surface, so it took the spawn even if its ack was lost.
             spawn.status, spawn.outcome = "acked", {"state": "accepted", "surf": surface.surf, "via": "reconcile"}
@@ -1625,7 +2212,7 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
             run.incarnation = max(run.incarnation, surface.incarnation)
             if run.state == "needs_you" and run.state_reason in SELF_HEALING:
                 transition(db, run, phase(run), reason="surface_restored")
-        elif run.state not in ("spawning", "queued") and run.state != "needs_you":
+        elif run.state not in ("spawning", "queued", "handing_off") and run.state != "needs_you":
             reason = "exited" if surface is not None and surface.state == "exited" else "surface_lost"
             transition(db, run, "needs_you", reason=reason)
     known = {r.id: r for r in runs}
@@ -1644,7 +2231,20 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
             on_outcome(db, row, "rejected", "stale after reconcile: " + why)
         else:
             row.status = "queued"  # Resent under the new connection's envelope.
-    return [desired(db, r) for r in runs if r.state not in TERMINAL]
+    return [entry for r in runs if r.state not in TERMINAL for entry in desired_entries(db, r)]
+
+
+def reconcile_reviews(db, run, reviews, by_surf):
+    """After welcome: a live reviewer the host no longer runs is over (failed: planning goes on without it); one it
+    still runs keeps its incarnation."""
+    for review in reviews:
+        if review.status != "reviewing" or not review.surf or run.state == "stopping":
+            continue
+        surface = by_surf.get(review.surf)
+        if surface is None or surface.state in ("exited", "lost"):
+            fail_review(db, run, review, "the host no longer runs the reviewer")
+        elif surface.incarnation:
+            review.incarnation = surface.incarnation
 
 
 def sweep(db, clock=None):
@@ -1660,7 +2260,8 @@ def sweep(db, clock=None):
                 question.status, question.detail = "open", "The answer did not reach the host in time."
         if run is None or run.state in TERMINAL:
             continue
-        if row.kind == "spawn" and run.state == "spawning":
+        if row.kind == "spawn" and (run.state == "spawning" or (
+                run.state == "handing_off" and (row.payload or {}).get("role") == "worker")):
             transition(db, run, "needs_you", reason="spawn_expired")
         elif row.kind == "stop" and run.state == "stopping":
             run.state_reason = "stop_unconfirmed"
@@ -1683,8 +2284,10 @@ def sweep(db, clock=None):
         AgentAttempt.kind == "judge", AgentAttempt.status == "queued").with_for_update(skip_locked=True))
         if (held := (a.result or {}).get("held")) and not held.get("queued")
         and (until := held.get("until")) and datetime.fromisoformat(until) <= clock], expired=True)
+    sweep_reviews(db, clock)
     hosts = {h.id: h for h in db.scalars(select(AgentHost))}
-    active = ("executing", "waiting_answer", "interviewing", "planning", "verifying", "judging")
+    active = ("executing", "waiting_answer", "interviewing", "planning", "verifying", "judging", "plan_reviewing",
+              "handing_off")
     for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(active)).with_for_update(skip_locked=True)):
         host = hosts.get(run.host_id)
         if run.started_at and run.started_at + timedelta(seconds=run.wall_clock_limit) <= clock:
@@ -1697,3 +2300,36 @@ def sweep(db, clock=None):
         elif host is not None and not (host.lease_until and host.lease_until > clock - timedelta(minutes=5)):
             # A disconnected host may finish its turn; after a grace period Davin is told.
             transition(db, run, "needs_you", reason="host_offline")
+
+
+def sweep_reviews(db, clock):
+    """Hyperplan deadlines (mirrors the judge and verify deadlines above): a reviewer past its deadline is given up and
+    planning continues without it; a reviewer or worker spawn the host refused as busy is sent again at its retry
+    time (or, after REVIEW_BUSY_LIMIT, the run needs you and is retried slowly from there)."""
+    for review in db.scalars(select(AgentPlanReview).where(AgentPlanReview.status.in_(("spawning", "reviewing")),
+                                                           AgentPlanReview.deadline_at <= clock)
+                             .with_for_update(skip_locked=True)):
+        run = db.get(AgentRun, review.run_id, with_for_update=True)
+        if run is None or run.state in TERMINAL:
+            review.status, review.finished_at, review.token_hash = "skipped", clock, None  # Its surfaces went with the run.
+            continue
+        if review.status == "spawning" and review.blocked_since is not None and (
+                run.state == "plan_reviewing" or (run.state == "needs_you" and run.state_reason == "host_busy")):
+            # The host refused it as busy: send it again (needs you once REVIEW_BUSY_LIMIT has passed).
+            review.retries, review.deadline_at, review.updated_at = review.retries + 1, clock + REVIEW_SPAWN_DEADLINE, clock
+            send_review_spawn(db, run, review)
+            if review.blocked_since + REVIEW_BUSY_LIMIT <= clock and run.state == "plan_reviewing":
+                transition(db, run, "needs_you", reason="host_busy",
+                           detail="The reviewer could not start: the host is at its run limit.")
+            continue
+        fail_review(db, run, review, "the reviewer did not finish in time" if review.status == "reviewing"
+                    else "the host did not start the reviewer in time")
+    for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(("handing_off", "needs_you")),
+                                                 AgentRun.roles.is_not(None)).with_for_update(skip_locked=True)):
+        handoff = (run.sync_state or {}).get("handoff") or {}
+        retry_at = handoff.get("retry_at")
+        if handoff.get("done") or not retry_at or datetime.fromisoformat(retry_at) > clock:
+            continue
+        if run.state == "needs_you" and run.state_reason != "host_busy":
+            continue
+        retry_handoff(db, run)

@@ -37,6 +37,7 @@ from .session_models import (
     AgentParity,
     AgentParityDay,
     AgentPendingControl,
+    AgentPlanReview,
     AgentQuestion,
     AgentRun,
     AgentRunPlan,
@@ -164,7 +165,7 @@ def run_children(db, runs, *, attempts=True):
     counts["run_turns"] = db.execute(delete(AgentTurn).where(or_(
         AgentTurn.run_id.in_(runs), AgentTurn.run_id.is_(None) & AgentTurn.session_pk.in_(sessions)))).rowcount
     models = (("run_questions", AgentQuestion), ("run_attempts", AgentAttempt), ("run_interviews", AgentInterview),
-              ("run_commands", AgentCommand))
+              ("run_reviews", AgentPlanReview), ("run_commands", AgentCommand))
     for name, model in models:
         if attempts or model is not AgentAttempt:
             counts[name] = db.execute(delete(model).where(model.run_id.in_(runs))).rowcount
@@ -218,12 +219,12 @@ def sweep(db, clock=None):
     return counts
 
 
-EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentSession, AgentSwarm)
+EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentPlanReview, AgentSession, AgentSwarm)
 # Not exported: run token material; agent_turns (up to 64 MiB a day per owner, built in memory here; the host
 # keeps the transcript and GET /remotea/runs/{id} pages them); agent_commands, the host-facing journal (its
 # input texts are the `sent` history entries; a spawn payload carried a run token). docs/AGENT_CONTROL.md
 # "Retention and redaction" lists every table.
-EXPORT_OMITS = {"run_token_hash", "run_token_salt", "summary_fingerprint"}
+EXPORT_OMITS = {"run_token_hash", "run_token_salt", "summary_fingerprint", "token_hash", "token_salt"}
 
 
 def export_tables(db, owner):

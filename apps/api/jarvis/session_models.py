@@ -274,6 +274,12 @@ class AgentRun(Base):
     plan_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     # Freestyle (0034): the operator talks to the agent directly; turns are recorded but not verified, judged or capped.
     freestyle: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Hyperplan (0041): {planner: {harness, model}, reviewer: {harness, model} | null, worker: {harness, model} | null,
+    # rounds, approve_final}. NULL is a classic run (one session plans and works). `tool`/`model` always describe the
+    # session that owns the run now (the planner, then the worker).
+    roles: Mapped[dict | None] = mapped_column(JSONB)
+    # Reviews completed so far (agent_plan_reviews rows with status done).
+    plan_round: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
     no_progress_limit: Mapped[int] = mapped_column(Integer, default=45 * 60)  # seconds
     last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -326,6 +332,50 @@ class AgentRunPlan(Base):
     # code_ready | pr_open | pr_merged: what "done" means for this plan (agent_judge hard rules).
     completion_policy: Mapped[str] = mapped_column(String(20), default="code_ready", server_default="code_ready")
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class AgentPlanReview(Base):
+    """One reviewer round of a hyperplan run (run_coordinator.py, "Hyperplan and roles"): a fresh read-only session
+    of the reviewer harness reads plan revision `plan_revision` and calls submit_plan_review once. `findings` is
+    [{id, severity: blocking|major|minor, area, issue, suggestion}], `questions` the questions it wants the operator
+    asked, `resolutions` the planner's answers from its next submit_plan ([{finding_id, decision, note}]). The
+    reviewer's token is bound to this row (token_hash), never to the run."""
+    __tablename__ = "agent_plan_reviews"
+    __table_args__ = (UniqueConstraint("run_id", "round", name="uq_agent_plan_review_round"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    round: Mapped[int] = mapped_column(Integer)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    harness: Mapped[str] = mapped_column(String(30), default="claude")
+    model: Mapped[str] = mapped_column(String(80), default="")
+    attempt: Mapped[int] = mapped_column(Integer, default=0)
+    surf: Mapped[str | None] = mapped_column(Text)
+    # The reviewer surface's incarnation (spawn outcome, attach, turn frames): remotea fences `stop` on it.
+    incarnation: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # No foreign key (agent_sessions.run_id points at runs; a cycle would block deletes).
+    session_pk: Mapped[str | None] = mapped_column(String(36))
+    # spawning | reviewing | done | failed | skipped
+    status: Mapped[str] = mapped_column(String(20), default="spawning")
+    verdict: Mapped[str | None] = mapped_column(String(20))
+    # tool (submit_plan_review), turn (the turn text stood in for the tool) or timeout.
+    via: Mapped[str] = mapped_column(String(20), default="", server_default="")
+    findings: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    questions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    resolutions: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    token_salt: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    # While spawning: when the spawn is given up (or retried after a host_busy refusal); while reviewing: the
+    # review timeout. The sweep reads it (run_coordinator.sweep).
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # First host_busy refusal of this review's spawn; retries stop REVIEW_BUSY_LIMIT after it.
+    blocked_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retries: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
 class AgentAttempt(Base):

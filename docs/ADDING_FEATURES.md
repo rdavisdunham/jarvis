@@ -296,7 +296,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0040_agent_swarms`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0041_hyperplan`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a
@@ -409,11 +409,18 @@ Checklist:
       `session_models.TERMINAL_RUN_STATES`.
 - [ ] `run_coordinator.transition` sends notifications on entering `needs_you`, `awaiting_approval`,
       `capped` and `awaiting_integration`; decide whether the new state notifies.
+- [ ] The phase lists: `PLANNING` (and `PLAN_SUBMIT`, where `submit_plan` is taken), `phase()` / `resume_phase()`
+      (where `needs_you` resumes), `RESUMABLE`, `SELF_HEALING`, the `active` tuple in `sweep` (wall clock,
+      no progress, host offline) and `reconcile`'s states that never become `surface_lost` (`spawning`,
+      `handing_off`). Hyperplan's `plan_reviewing` / `handing_off` are the worked example (AGENT_CONTROL.md
+      "Hyperplan and roles").
 - [ ] Reason text: `run_coordinator.REASONS` (shown on the run page via `agent_control.REASON_TEXT`,
       in push bodies and in `control_status`). Every `needs_you` reason needs an entry.
 - [ ] Web `remotea-model.ts`: `RunState` union, `RUN_LABELS`, `TERMINAL_RUN_STATES`, and the hard-coded
       state lists in `orderRuns` (attention rank), `runControls` (`replan` states) and `timeline` tone.
-      `Remotea.tsx` checks `state_reason === "plan_review"` literally.
+      `Remotea.tsx` checks `state_reason === "plan_review"` literally; `plan_approval` (hyperplan's final-plan
+      stop) is the other reason the backend treats like it (`agent_control` `PLAUSIBLE`, `judge_again`,
+      `spoken_run`).
 - [ ] `docs/AGENT_CONTROL.md` lifecycle section.
 
 Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_others_are_refused`,

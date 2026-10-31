@@ -29,10 +29,24 @@ class Target(Input):
         return self
 
 
+class RoleSpec(Input):
+    """A role's harness and model (hyperplan): the reviewer or the worker."""
+
+    harness: Literal["claude", "codex"] = "claude"
+    model: str | None = Field(default=None, max_length=80)
+
+
 class ControlStart(Input):
     task_id: str | None = Field(default=None, max_length=36)
     task: str | None = Field(default=None, min_length=1, max_length=300)
     harness: Literal["claude", "codex"] = "claude"
+    model: str | None = Field(default=None, max_length=80)
+    # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer turns it on; a worker that differs from the
+    # planner (harness/model above) hands the approved plan to a fresh session.
+    reviewer: RoleSpec | None = None
+    worker: RoleSpec | None = None
+    rounds: int = Field(default=2, ge=1, le=10)
+    approve_final: bool = True
 
     @model_validator(mode="after")
     def one_task(self):
@@ -97,11 +111,14 @@ class PlanDecisionInput(Input):
 
 
 class ControlPlanReview(Target):
-    """The owner's decisions on the agent's proposed plan changes (control_status lists them under plan_review)."""
+    """The owner's decisions on the agent's proposed plan changes (control_status lists them under plan_review), or,
+    for a hyperplan run waiting in plan_approval, `action` approve or revise (with a note)."""
 
     decisions: list[PlanDecisionInput] = Field(default_factory=list, max_length=50)
     verify: Literal["accept", "keep"] = "keep"
     completion_policy: Literal["accept", "keep"] = "keep"
+    action: Literal["approve", "revise"] | None = None
+    note: str = Field(default="", max_length=4000)
 
 
 COMMANDS = {

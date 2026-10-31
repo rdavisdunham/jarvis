@@ -148,8 +148,16 @@ def definitions(scopes):
             "Eridani reserves its number. Freezes the plan this run is judged against; stop after "
             "calling it and Eridani starts execution. The operator's own criteria are a floor: repeat them by id "
             "verbatim, or propose a change (same id, new text or drop=true, plus because) that the operator accepts "
-            "or keeps before execution. Needs run_token.",
+            "or keeps before execution. In a hyperplan run after a review, pass review_resolutions "
+            "([{finding_id, decision: accepted|rejected|deferred, note}]) for every blocking and major finding, or the "
+            "call is refused (REVIEW_UNRESOLVED). Needs run_token.",
             agent_plan.SubmitPlanInput.model_json_schema(), False)
+        add("submit_plan_review",
+            "Plan reviewer only (hyperplan): record your review of the plan with verdict approve or revise, findings "
+            "[{id, severity: blocking|major|minor, area, issue, suggestion}], questions_for_user and a summary. Call it "
+            "exactly once with the reviewer run_token from your session context, then stop; the planner answers every "
+            "blocking and major finding in its next submit_plan.",
+            agent_plan.SubmitReviewInput.model_json_schema(), False)
     if "agents:read" in scopes:
         add("run_list",
             "List runs started from tasks (remotea), newest first: state, reason, task, branch, turn count and host. "
@@ -245,7 +253,7 @@ def dispatch(name, arguments):
                 db, bot.owner_id, session_arguments(sessions.RuleInput, arguments),
                 reveal="records:read" in bot.scopes,
             )
-        if name in ("task_plan", "task_step", "submit_plan", "task_interview"):
+        if name in ("task_plan", "task_step", "submit_plan", "task_interview", "submit_plan_review"):
             from . import agent_plan
 
             bot = bot_access.authorize(db, bot.owner_id, "agents:session")
@@ -255,6 +263,8 @@ def dispatch(name, arguments):
                 return agent_plan.task_step(db, bot, session_arguments(agent_plan.StepInput, arguments))
             if name == "task_interview":
                 return agent_plan.task_interview(db, bot, session_arguments(agent_plan.InterviewInput, arguments))
+            if name == "submit_plan_review":
+                return agent_plan.submit_plan_review(db, bot, session_arguments(agent_plan.SubmitReviewInput, arguments))
             return agent_plan.submit_plan(db, bot, session_arguments(agent_plan.SubmitPlanInput, arguments))
         if name in ("run_list", "run_get"):
             from . import agent_control as control
