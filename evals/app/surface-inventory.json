@@ -803,6 +803,48 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/bug-reports",
+      "handler": "report_list",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bug-reports",
+      "handler": "report_create",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/bug-reports/{report_id}",
+      "handler": "report_delete",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bug-reports/{report_id}",
+      "handler": "report_get",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/bug-reports/{report_id}/screenshot",
+      "handler": "report_screenshot",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/bug-reports/{report_id}/status",
+      "handler": "report_status",
+      "source": "apps/api/jarvis/bug_reports.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/calendar",
       "handler": "calendar_items",
       "source": "apps/api/jarvis/api.py",
@@ -954,6 +996,27 @@
       "handler": "agent_submit_plan",
       "source": "apps/api/jarvis/external_routes.py",
       "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/bug-reports",
+      "handler": "bug_report_list",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/bug-reports/{report_id}",
+      "handler": "bug_report_get",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/bug-reports/{report_id}/screenshot",
+      "handler": "bug_report_screenshot",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
     },
     {
       "method": "GET",

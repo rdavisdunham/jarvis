@@ -30,6 +30,7 @@ Define these tokens once on `:root` in `src/theme.css`, and redefine them for da
 | `--due-today` | `#9C5F0B` | `#F5C36B` | due today (`--due-today-soft`: `#FBF0DD` / `#352915`) |
 | `--done` | `#1C7B60` | `#7FDDBF` | completed / success (`--done-soft`: `#E3F5EE` / `#16302A`) |
 | `--danger` | `#B42318` | `#FF9C92` | destructive actions, errors |
+| `--report` | `#D92D20` | `#E5372B` | the Report a bug button's solid fill (`--report-ink` `#FFFFFF`, `--report-shadow`); nowhere else |
 | iridescent stops `--iri-1..4` | `#B9A4F8` `#8CC8FA` `#9BE3CF` `#F6B9CF` | same | only in orbit elements |
 | `--orbit` | `conic-gradient(from 200deg, var(--iri-1), var(--iri-2), var(--iri-3), var(--iri-4), var(--iri-1))` | same | |
 
@@ -111,6 +112,7 @@ desktop ≥ 1000px
   - The workspace switcher is a compact select near the bottom, above the profile.
 - **Phones:** the sidebar becomes a bottom tab bar (Today, Tasks, Calendar, Notes, More). The top bar shows only the page title, search and notifications.
 - **Eri launcher:** the original pill, kept by request. It is 58px tall with a chat-bubble icon and the label "Eri", on a mint → lavender → blush linear gradient (`#b5e1cf`, `#d8d0ef`, `#efcfdc`), sitting bottom-right. While the chat is open it becomes a 58px round close button with an X that rotates in. Its shadow and border come from `--launcher-shadow` and `--launcher-line`, which have separate light and dark values. It is the only gradient-filled control. The chat panel is a floating surface (380×min(720px, 100vh − 120px)) anchored just above it, and becomes a full sheet on phones.
+- **Report a bug:** a 44px round solid red (`--report`) button with a bug icon (`BugReport.tsx`, `.bug-report-launcher` in `shell.css`), on every signed-in page, bottom-left of the page area (right of the sidebar), so it never covers the Eri launcher, the composer or Approve on the right. On phones it sits on the Eri launcher's row at the left edge, above the tab bar (higher while the voice dock shows), hides while the navigation drawer is open, and becomes a left-edge tab mid-height while the run sheet or the conversation covers the page. It sits above dialogs (z-index 1050; toasts are 1100) and moves to the bottom-left corner while one is open. Shortcut: **Alt+Shift+B** (Option+Shift+B on macOS; matched by key position). The button hides while it captures the screenshot and while its dialog is open.
 
 ## Pages
 

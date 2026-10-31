@@ -1,3 +1,4 @@
+import { recordRequest } from "./bug-report";
 let csrf = "";
 let device = "";
 export function setDevice(value: string) {
@@ -20,6 +21,12 @@ export async function api<T>(
   options: RequestInit = {},
 ): Promise<T> {
   let response: Response;
+  const method = (options.method ?? "GET").toUpperCase(), started = performance.now();
+  // The Report a bug ring buffer: method, path (query values dropped), status, timing; never bodies or headers.
+  const note = (status: number, error?: string) => recordRequest({
+    method, path: url, status, ms: Math.round(performance.now() - started), error,
+    request_id: response?.headers?.get?.("x-request-id") ?? response?.headers?.get?.("x-railway-request-id") ?? undefined,
+  });
   try {
     response = await fetch("/api/v1" + url, {
       credentials: "same-origin",
@@ -32,6 +39,7 @@ export async function api<T>(
       },
     });
   } catch {
+    note(0, "NETWORK");
     throw new ApiError(
       "NETWORK",
       "Connection lost. Your request may have saved. Retry the same request to check.",
@@ -41,11 +49,13 @@ export async function api<T>(
   try {
     value = await response.json();
   } catch {
+    note(response.status, "BAD_RESPONSE");
     throw new ApiError(
       "NETWORK",
       "Eridani is reconnecting. Retry the same request to check whether it saved.",
     );
   }
+  note(response.status, response.ok ? undefined : value?.error?.code ?? "ERROR");
   if (
     !response.ok &&
     ["ACCESS_REVOKED", "WORKSPACE_CHANGED"].includes(value.error?.code)

@@ -23,6 +23,10 @@
   --done-soft: #e3f5ee;
   --danger: #b42318;
   --danger-soft: #fdecea;
+  /* Report a bug: a solid red that stands out on every page, with its icon colour. */
+  --report: #d92d20;
+  --report-ink: #ffffff;
+  --report-shadow: 0 6px 18px rgb(180 35 24 / 0.35);
   --iri-1: #b9a4f8;
   --iri-2: #8cc8fa;
   --iri-3: #9be3cf;
@@ -77,6 +81,9 @@
   --done-soft: #16302a;
   --danger: #ff9c92;
   --danger-soft: #3a1f1d;
+  --report: #e5372b;
+  --report-ink: #ffffff;
+  --report-shadow: 0 6px 18px rgb(0 0 0 / 0.5);
   --region-1: #1c1c28;
   --region-2: #22212f;
   --region-3: #292738;
@@ -111,6 +118,9 @@
     --done-soft: #16302a;
     --danger: #ff9c92;
     --danger-soft: #3a1f1d;
+    --report: #e5372b;
+    --report-ink: #ffffff;
+    --report-shadow: 0 6px 18px rgb(0 0 0 / 0.5);
     --region-1: #1c1c28;
     --region-2: #22212f;
     --region-3: #292738;

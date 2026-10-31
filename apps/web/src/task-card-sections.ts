@@ -12,6 +12,8 @@ export const TASK_CARD_SECTIONS = {
   localNotes: "Local notes",
   /** `RecordTools`: Copy record link and Previous record. */
   recordLink: "Record link",
+  /** `BugReportDetails`: the screenshot and status behind a Report a bug task; only for tasks tagged `bug-report`. */
+  bugReport: "Bug report",
   /** remotea `RunTask` (owned by Remotea.tsx; its section label must stay this). */
   run: "Agent run",
   /** Parent task and subtasks. */

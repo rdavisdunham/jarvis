@@ -1,6 +1,6 @@
 """Browser-managed bot keys and a Bearer-only public planner API."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -284,6 +284,36 @@ def agent_run(run_id: UUID, identity: Bot, limit: int = Query(100, ge=1, le=200)
         bot = bot_access.authorize(db, required="agents:read")
         run = coordinator.load(db, bot.owner_id, str(run_id), lock=False)
         return control.public_run(db, run, detail=True, limit=limit, offset=offset)
+
+
+@external.get("/bug-reports")
+def bug_report_list(identity: Bot, status: Literal["open", "fixed", "dismissed"] | None = None, task_id: UUID | None = None,
+                    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0, le=100_000)):
+    """Reports from the web app's Report a bug button, newest first (scope tasks:read; each one is also a task)."""
+    from . import bug_reports
+
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="tasks:read")
+        return bug_reports.listing(db, bot.owner_id, status=status, task_id=str(task_id) if task_id else None,
+                                   limit=limit, offset=offset)
+
+
+@external.get("/bug-reports/{report_id}")
+def bug_report_get(report_id: UUID, identity: Bot):
+    """One report: description, expected, the scrubbed context, a readable summary and links (scope tasks:read)."""
+    from . import bug_reports
+
+    with session_scope() as db:
+        return bug_reports.get(db, bot_access.authorize(db, required="tasks:read").owner_id, report_id)
+
+
+@external.get("/bug-reports/{report_id}/screenshot")
+def bug_report_screenshot(report_id: UUID, identity: Bot):
+    """The report's screenshot image (scope tasks:read); 404 when it has none."""
+    from . import bug_reports
+
+    with session_scope() as db:
+        return bug_reports.screenshot(db, bot_access.authorize(db, required="tasks:read").owner_id, report_id)
 
 
 @external.post("/agents/session/plan")

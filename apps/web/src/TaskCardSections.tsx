@@ -39,6 +39,31 @@ export function TaskRun({ taskId, canEdit, onOpenRun }: { taskId: string; canEdi
   return <Suspense fallback={null}><RunTask taskId={taskId} canEdit={canEdit} onOpenRun={onOpenRun}/></Suspense>;
 }
 
+type BugReportSummary = { id: string; status: string; created_at: string; screenshot: { bytes: number } | null; screenshot_error: string | null };
+/** The report behind a task filed by Report a bug (BugReport.tsx): its screenshot inline, and its status.
+ * Renders nothing unless the task is tagged `bug-report`. */
+export function BugReportDetails({ taskId, tags }: { taskId: string; tags: readonly string[] }) {
+  const tagged = tags.includes("bug-report");
+  const [report, setReport] = useState<BugReportSummary | null | undefined>(undefined);
+  useEffect(() => {
+    if (!tagged) return;
+    let live = true;
+    api<{ items: BugReportSummary[] }>("/bug-reports?task_id=" + encodeURIComponent(taskId))
+      .then((r) => { if (live) setReport(r.items[0] ?? null); }, () => { if (live) setReport(null); });
+    return () => { live = false; };
+  }, [taskId, tagged]);
+  if (!tagged) return null;
+  const shot = report ? "/api/v1/bug-reports/" + report.id + "/screenshot" : "";
+  return <section className="detail-section" aria-label={TASK_CARD_SECTIONS.bugReport}>
+    <div className="detail-section-head"><h3>Bug report</h3>{report && <span className="chip">{humanLabel(report.status)}</span>}</div>
+    {report === undefined ? <p className="footnote">Loading the report…</p>
+      : report === null ? <p className="footnote">The report is not available here (deleted, or filed from another workspace).</p>
+      : report.screenshot ? <a className="bug-report-task-shot" href={shot} target="_blank" rel="noreferrer">
+        <img src={shot} alt="Screenshot attached to this bug report" loading="lazy"/></a>
+      : <p className="footnote">No screenshot{report.screenshot_error ? ": " + report.screenshot_error : ""}.</p>}
+  </section>;
+}
+
 /** Parent task and subtasks. Renders nothing when there are neither. */
 export function RelatedTasks({ parent, subtasks, onOpen }: { parent?: Task; subtasks: Task[]; onOpen: (task: Task) => void }) {
   if (!parent && !subtasks.length) return null;

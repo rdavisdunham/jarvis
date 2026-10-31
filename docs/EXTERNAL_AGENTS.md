@@ -36,6 +36,7 @@ API operations:
 - `POST /commands`: `{ "request_id": "UUID", "tool": "task.create", "arguments": { "title": "Call Alex" } }`.
 - `GET /changes?after=CURSOR&limit=100`: incremental record changes.
 - `POST /actions/{action_id}/revert`: `{ "request_id": "UUID" }` reverses this bot's own supported action.
+- `GET /bug-reports?status=open|fixed|dismissed&task_id=&limit=&offset=`, `GET /bug-reports/{id}`, `GET /bug-reports/{id}/screenshot` (scope `tasks:read`): reports from the web app's Report a bug button. See "Bug reports" below.
 
 Queries accept `query`, `archived`, `limit` (1–100), `offset`, and applicable exact filters: `status`, `space_id`, `area_id`, `project_id`, `goal_id`, `task_id` (linked notes), `parent_task_id`, `assignee_id`, `work_type`, `due_from`, `due_through`. Dates use `YYYY-MM-DD`. Queries are literal keyword matches, not semantic/vector searches. Pagination returns `next_offset`. Unsupported filters are rejected.
 
@@ -56,6 +57,43 @@ The returned `request_id` / Activity `id` is the server's durable work ID. Use t
 Independent operations can run concurrently. Writes still enforce current revisions and short graph transaction locks. Creating the same human idea with two different request UUIDs can create two records: idempotency is based on operation identity, not fuzzy title matching.
 
 Revert is a compensating command, not deletion of history. Creating a record is reversed by archiving when no later changes or links prevent it. Field-level undo preserves unrelated later edits and refuses to overwrite a later change to the same field. Relationship rewrites and external provider changes may require manual edits. A bot can only revert its own actions; its creator can use the site controls even after the key is revoked.
+
+## Bug reports
+
+The web app's **Report a bug** button (bottom-left on every page, Alt+Shift+B) files a report and a task tagged
+`bug-report` in the project "Eridani bug reports". A key with `tasks:read` reads both: the task through
+`/records/task/{id}` like any task, and the report through the routes below (no separate scope; a report
+is part of the task it opened). They are HTTP only; there is no MCP tool.
+
+- `GET /api/v1/external/bug-reports`: newest first, `{items, total}`. Each item: `id`, `title` (the
+  description's first line), `status`, `created_at`, `task_id`, `task_status`, `view`, `screenshot`
+  (`{mime, bytes, url}` or null), `screenshot_error`, `links`. Filters: `status` (`open`, `fixed`,
+  `dismissed`), `task_id`, `limit` (1–200, default 50), `offset`.
+- `GET /api/v1/external/bug-reports/{id}`: the same plus `description`, `expected`, `context` (below) and
+  `summary`, the readable digest that is also in the task's notes.
+- `GET /api/v1/external/bug-reports/{id}/screenshot`: the image bytes (`image/jpeg` from the button;
+  PNG and WebP are accepted), 404 when the report has none.
+
+`status` is the stored status (the owner sets it with `POST /api/v1/bug-reports/{id}/status`), except that
+an `open` report whose task was completed reads `fixed`, and one whose task was cancelled reads `dismissed`.
+
+`context` holds `page` (view, address with query values removed except `view`, `run`, `section`, `task`,
+`record`, `note`, `tab`, `activity`; the open run, task or record id; open dialog names), `build` (web
+version, commit, build time), `server` (the API's Railway commit and deployment), `service_worker`,
+`device` (user agent, platform, viewport, pixel ratio, installed-app mode, online, theme, locale, time
+and time zone), `storage` (localStorage key names; values only when short and not key-like), and three
+ring buffers from the page: `errors` (last 50 console errors and warnings, uncaught errors and unhandled
+rejections, stacks trimmed), `requests` (last 40 `api.ts` requests: method, path without query values,
+status, duration, error code, response request id) and `navigations` (last 20 page or run panel changes).
+Never collected: cookies, auth or bot keys, CSRF tokens, request or response bodies, query values, or
+storage values that look like keys. The server removes secret-named keys and secret-looking text again
+(`bug_reports.scrub`, the patterns in `redaction.py`).
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" "$ERIDANI/api/v1/external/bug-reports?status=open" | jq '.items[] | {id, title, task_id}'
+curl -s -H "Authorization: Bearer $KEY" "$ERIDANI/api/v1/external/bug-reports/$ID" | jq '{description, expected, summary}'
+curl -s -H "Authorization: Bearer $KEY" -o shot.jpg "$ERIDANI/api/v1/external/bug-reports/$ID/screenshot"
+```
 
 ## Synchronize another system
 

@@ -11,6 +11,8 @@ WORKDIR /build
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/web/ ./
+# Railway supplies the deployed commit; the web build shows it in Report a bug (vite.config.ts).
+ARG RAILWAY_GIT_COMMIT_SHA=""
 RUN npm run build
 
 FROM python:3.12-slim-bookworm@sha256:bc01d00b6417e4b1b01c331db3a14054b4be954e571ef8bf5748aaf64b66e941 AS core

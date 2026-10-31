@@ -429,6 +429,125 @@
   display: none;
 }
 
+/* ---- Report a bug (BugReport.tsx): bottom-left of the page area, clear of Eri's launcher, the
+   composer and Approve, which sit on the right. Left of the content column, not over the sidebar. --- */
+.bug-report-launcher {
+  position: fixed;
+  left: calc(var(--sidebar-width) + max(16px, env(safe-area-inset-left)));
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  /* Above open dialogs (.modal-backdrop is 1000) so a dialog can be reported too; below toasts (1100). */
+  z-index: 1050;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  color: var(--report-ink);
+  background: var(--report);
+  box-shadow: var(--report-shadow);
+  transition: transform 0.15s;
+}
+/* While a dialog is open the page behind it is inert: move to the corner, over the dimmed sidebar,
+   so the button stays clickable without covering the dialog. */
+body:has(.modal-backdrop) .bug-report-launcher {
+  left: max(12px, env(safe-area-inset-left));
+  bottom: calc(12px + env(safe-area-inset-bottom));
+}
+.bug-report-launcher:hover {
+  transform: translateY(-2px);
+}
+.bug-report-launcher:active {
+  transform: scale(0.94);
+}
+.bug-report-launcher:focus-visible {
+  outline-offset: 3px;
+}
+.bug-report-dialog {
+  width: min(600px, calc(100vw - 24px));
+}
+.bug-report-dialog label {
+  display: grid;
+  gap: 6px;
+}
+.bug-report-dialog textarea {
+  width: 100%;
+}
+.bug-report-dialog .field-optional {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.bug-report-dialog label.bug-report-include {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.bug-report-include input {
+  width: auto;
+  margin: 0;
+}
+.bug-report-shot {
+  display: grid;
+  gap: 8px;
+}
+.bug-report-shot img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  object-position: top left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+}
+.bug-report-task-shot img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  object-position: top left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+}
+.bug-report-details summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.bug-report-details summary::-webkit-details-marker {
+  display: none;
+}
+.bug-report-details[open] summary svg {
+  transform: rotate(90deg);
+}
+.bug-report-details dl {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.bug-report-details dl > div {
+  display: grid;
+  grid-template-columns: 9.5em 1fr;
+  gap: 8px;
+}
+.bug-report-details dt {
+  color: var(--ink-3);
+}
+.bug-report-details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Eri launcher (pill; becomes a round close button while the chat is open) --------- */
 .chat-launcher {
   position: fixed;
@@ -1141,6 +1260,36 @@
     right: 16px;
     bottom: calc(var(--tabbar-height) + 12px + env(safe-area-inset-bottom));
   }
+  /* Phone: no sidebar; the same row as Eri's launcher, on the other side, lifted above the voice dock
+     while voice is on. */
+  .bug-report-launcher {
+    left: max(16px, env(safe-area-inset-left));
+    bottom: calc(var(--tabbar-height) + 19px + env(safe-area-inset-bottom));
+  }
+  /* The navigation drawer's own controls sit bottom-left. */
+  .app-shell:has(.sidebar.open) .bug-report-launcher {
+    display: none;
+  }
+  .voice-active .bug-report-launcher {
+    bottom: calc(var(--tabbar-height) + 76px + env(safe-area-inset-bottom));
+  }
+  /* An open run sheet or conversation covers the page and its own controls fill the bottom: the
+     button becomes a tab on the left edge, mid-height (the run rail sits on the right edge). */
+  .app-shell:has(.run-panel[data-state="open"]) .bug-report-launcher,
+  .app-shell:has(.companion.visible) .bug-report-launcher {
+    left: 0;
+    top: 50%;
+    bottom: auto;
+    width: 32px;
+    height: 56px;
+    border-left: 0;
+    border-radius: 0 var(--r-pill) var(--r-pill) 0;
+    transform: translateY(-50%);
+  }
+  .bug-report-details dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
   .chat-launcher.is-open {
     bottom: calc(12px + env(safe-area-inset-bottom));
   }
@@ -1186,7 +1335,8 @@
     animation: none;
   }
   .chat-launcher,
-  .chat-launcher-icon {
+  .chat-launcher-icon,
+  .bug-report-launcher {
     transition: none;
   }
 }
