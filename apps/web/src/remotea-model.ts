@@ -165,6 +165,26 @@ export type Run = {
    * the first one. summary_stale: something newer landed (a turn, a question, a verdict) and a fresh line is due. */
   summary?: string; summary_at?: string | null; summary_stale?: boolean;
   session: { id: string; state: string; since: string | null } | null; created_at: string;
+  /** Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"; older Eridani: absent). Null `roles` is a classic run;
+   * `reviews` are the rounds so far ([] for a classic run); `actor` is who acts on the run now; `handoff` is set
+   * once the plan went to a separate worker. */
+  roles?: RunRoles | null; plan_round?: number; reviews?: PlanReviewRow[]; actor?: RunActor | null;
+  handoff?: { attempt: number; at: string; done?: boolean; attached_at?: string; planner: RoleSpec; worker: RoleSpec;
+    retry_at?: string; blocked_since?: string; retries?: number } | null;
+};
+export type RoleSpec = { harness: string; model: string };
+export type RunRoles = { planner: RoleSpec; reviewer: RoleSpec | null; worker: RoleSpec | null; rounds: number; approve_final: boolean };
+export type RunActor = RoleSpec & { role: "agent" | "planner" | "reviewer" | "worker"; round?: number; rounds?: number };
+export type ReviewFinding = { id: string; severity: "blocking" | "major" | "minor"; area: string; issue: string; suggestion: string };
+export type ReviewResolution = { finding_id: string; decision: "accepted" | "rejected" | "deferred"; note: string };
+/** One review round (`agent_plan_reviews`): a fresh reviewer's verdict on one plan revision, and the planner's
+ * resolution of each finding (filled by its next submit_plan). */
+export type PlanReviewRow = RoleSpec & {
+  id: string; round: number; plan_revision: number; attempt: number;
+  status: "spawning" | "reviewing" | "done" | "failed" | "skipped"; verdict: "approve" | "revise" | null;
+  via: "tool" | "turn" | "timeout" | "failed" | ""; findings: ReviewFinding[]; questions: string[]; summary: string;
+  resolutions: ReviewResolution[]; counts: { blocking: number; major: number; minor: number };
+  started_at: string | null; finished_at: string | null; created_at: string;
 };
 /** The run's latest verification as a decision fact (agent_control.verification_fact). `evidence`: `fresh` (this
  * turn, an unchanged workspace), `stale` (an older turn, or the checkout changed around it), `incomplete` (remotea's
@@ -264,7 +284,9 @@ export type RunCommand = {
 };
 export type HistoryEntry = { at: string; from?: string; to?: string; reason?: string; detail?: string; event?: string;
   kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string;
-  plan_revision?: number; proposals?: string; accepted?: string[]; kept?: string[] };
+  plan_revision?: number; proposals?: string; accepted?: string[]; kept?: string[];
+  /** Hyperplan events: `review_blocked` (round), `handoff` (the worker's harness and model). */
+  round?: number; harness?: string; model?: string };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -348,6 +370,8 @@ export function verifyLine(run: Pick<RunDetail, "plan" | "verify_options" | "ver
 /** `id` is stable across polls and older pages (the drawer keys bubbles and anchors its scroll by it); `turn` is set on
  *  an agent response so its bubble can show Clipped / Truncated by host and fetch the whole text. */
 export type TimelineEntry = { id: string; at: string; kind: "turn" | "command" | "question" | "state" | "attempt" | "plan"; title: string; detail: string;
+  /** A hyperplan review round: its findings, the planner's resolutions and the reviewer's questions unfold under it. */
+  review?: PlanReviewRow;
   /** `setup`: a host setup problem (a verification that could not run), distinct from `warn` (failing tests, refusals). */
   tone: "plain" | "good" | "warn" | "setup" | "attention"; who: "agent" | "you" | "eridani";
   turn?: { id: string; clipped: boolean; truncated: boolean };
@@ -382,7 +406,10 @@ export function runControls(run: Run) {
     message: { enabled: !settled && !stopping && started, reason: why },
     steer: { enabled: !settled && !stopping && started, reason: why },
     stop: { enabled: !settled, label: stopping ? (run.stop_mode === "kill" ? "Stopping…" : "Force stop") : "Stop", mode: stopping ? "kill" as const : "interrupt" as const },
+    // At the final-plan stop the card's Approve starts the work; this one would complete the task unworked, so it
+    // says so instead of reading as a second plan approval.
     approve: { enabled: !settled && !stopping, primary: run.state === "awaiting_approval",
+      label: run.state === "needs_you" && run.state_reason === "plan_approval" ? "Complete task" : "Approve",
       reason: settled ? "This run has finished." : stopping ? "The run is stopping." : "" },
     replan: { enabled: started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
       reason: !started ? "The agent has not started yet." : "Re-plan works while the run is working, waiting for you or awaiting approval." },
@@ -517,7 +544,7 @@ const OPEN_QUESTION = new Set(["open", "submitted", "timed_out"]);
  * judge's full reason. Null while the run is working (nothing to review) or in a plan review (PlanReview shows it).
  * agent_control.review_packet builds the same sentence for control_status. */
 export function reviewPacket(run: RunDetail, now = Date.now()): ReviewPacket | null {
-  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review");
+  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason));
   if (!parked && !isSettled(run) && run.state !== "stopping") return null;
   const word = { met: "met", not_met: "not met", unclear: "unknown", pending: "unknown" } as const;
   const criteria = criteriaEvidence(run).map(c => ({ id: c.id, text: c.text, status: word[c.status as keyof typeof word] ?? "unknown",
@@ -615,6 +642,71 @@ function commandTone(c: RunCommand): TimelineEntry["tone"] {
   const state = c.outcome?.state ?? c.status;
   return state === "executed" ? "good" : ["failed", "rejected", "expired"].includes(state) ? "warn" : state === "uncertain" ? "attention" : "plain";
 }
+/** needs_you reasons that stop on the plan, before any work: the proposals review and the hyperplan final-plan
+ * approval. Their own cards decide them; the review packet, Edit criteria and Judge again stay away. */
+export const PLAN_STOPS = ["plan_review", "plan_approval"];
+
+// ---------------------------------------------------------------- hyperplan: roles, reviews and who acts now
+
+/** "Fable", "GPT-6 Astra": a model's label from HARNESSES, else its id (else the harness's label). */
+export function modelLabel(harness: string, model: string) {
+  const h = HARNESSES.find(x => x.id === harness);
+  return (h?.models as readonly { id: string; label: string }[] | undefined)?.find(m => m.id === model)?.label || model || h?.label || harness;
+}
+
+/** A review round's outcome in words: "revise — 2 blocking, 3 minor", "approved", "timed out", "reviewing". */
+export function reviewOutcome(r: Pick<PlanReviewRow, "status" | "verdict" | "via" | "counts">) {
+  if (r.status === "spawning") return "starting";
+  if (r.status === "reviewing") return "reviewing";
+  if (r.status === "skipped") return "skipped";
+  if (r.status === "failed") return r.via === "timeout" ? "timed out" : "failed";
+  const counts = (["blocking", "major", "minor"] as const).filter(k => r.counts?.[k]).map(k => `${r.counts[k]} ${k}`).join(", ");
+  const verdict = r.verdict === "approve" ? "approved" : "revise";
+  return counts ? `${verdict} — ${counts}` : verdict;
+}
+export function reviewTitle(r: PlanReviewRow) {
+  return `Review ${r.round} · ${modelLabel(r.harness, r.model)}: ${reviewOutcome(r)}`;
+}
+function reviewTone(r: PlanReviewRow): TimelineEntry["tone"] {
+  if (r.status === "failed") return "warn";
+  return r.status === "done" && r.verdict === "approve" ? "good" : "plain";
+}
+/** Each finding with the planner's answer to it (accepted, rejected or deferred, with its note), once it gave one. */
+export function reviewFindings(r: Pick<PlanReviewRow, "findings" | "resolutions">) {
+  const byId = new Map((r.resolutions ?? []).map(x => [x.finding_id, x]));
+  return (r.findings ?? []).map(f => ({ ...f, resolution: byId.get(f.id) ?? null }));
+}
+
+/** Who acts on a hyperplan run now, for the drawer header and run rows: "Planning · Fable", "Reviewing 1/2 · GPT-6
+ * Astra", "Handing off → Sonnet", "Working · Sonnet". Null for a classic run (one agent, nothing to tell apart) and
+ * a settled one. */
+export function actorChip(run: Pick<Run, "state" | "roles" | "actor">): string | null {
+  const a = run.actor;
+  if (!run.roles || !a || a.role === "agent" || TERMINAL_RUN_STATES.includes(run.state)) return null;
+  const who = modelLabel(a.harness, a.model);
+  if (run.state === "handing_off") return `Handing off → ${who}`;
+  if (a.role === "reviewer") return `Reviewing ${a.round ?? "?"}/${a.rounds ?? "?"} · ${who}`;
+  return `${a.role === "worker" ? "Working" : "Planning"} · ${who}`;
+}
+
+/** needs_you(host_busy): which session waits for a free slot on the host, and that Eridani keeps retrying. */
+export function hostBusyText(run: Pick<Run, "state" | "state_reason" | "actor" | "handoff" | "host">): string | null {
+  if (run.state !== "needs_you" || run.state_reason !== "host_busy") return null;
+  const host = run.host?.name || "the remotea server";
+  const a = run.actor;
+  const who = a?.role === "reviewer" ? `The reviewer for round ${a.round ?? "?"} (${modelLabel(a.harness, a.model)})`
+    : run.handoff && !run.handoff.done ? `The worker (${modelLabel(run.handoff.worker.harness, run.handoff.worker.model)})`
+    : "The next session";
+  return `${who} cannot start: ${host} already runs as many agents as it allows. Eridani keeps retrying every few minutes; `
+    + "stop another run or raise limits.maxRuns on the host to let it start now.";
+}
+
+/** The plan-review body for the final-plan stop (needs_you(plan_approval)): approve, or revise with a note. */
+export function planApprovalBody(action: "approve" | "revise", note: string, expected_revision: number) {
+  const text = note.trim();
+  return { action, ...(action === "revise" && text ? { note: text } : {}), expected_revision };
+}
+
 const QUESTION_TEXT: Record<RunQuestion["status"], string> = {
   open: "waiting for you", submitted: "answer sent, waiting for the agent", accepted: "answer accepted",
   timed_out: "timed out here: answer in the terminal", failed: "could not be delivered", canceled: "canceled",
@@ -717,6 +809,7 @@ export const APPROVAL_FACTS = (f: Fact) => ["verify", "workspace", "sandbox", "h
 export const SENT_REASON: Record<string, string> = {
   execute: "plan frozen, start work", gap: "judge gap", replan: "re-plan", verify_set: "verify command set",
   interview_answers: "your interview answers", merged: "pull request merged", integrated: "sub-task pull requests merged",
+  plan_critique: "review sent to the planner", handoff: "plan handed to the worker",
 };
 
 /** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
@@ -768,6 +861,13 @@ export function timeline(run: RunDetail): TimelineEntry[] {
     ...(attemptFacts(a).length ? { facts: attemptFacts(a) } : {}) });
   for (const i of run.interviews ?? []) entries.push({ id: "interview:" + i.id, at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
+  // Hyperplan: one entry per review round, placed where it ended (its critique went to the planner then).
+  for (const r of run.reviews ?? []) entries.push({ id: "review:" + r.id, at: r.finished_at ?? r.started_at ?? r.created_at, kind: "plan",
+    title: reviewTitle(r), detail: r.summary, tone: reviewTone(r), who: "agent", review: r });
+  // The planner's submissions are numbered drafts until the handoff; a re-plan after it is the worker's.
+  const handedAt = run.roles ? run.history.findIndex(h => h.event === "handoff") : -1;
+  let drafts = 0;
+  const blocked = new Set<string>();
   // History is never paged (and only grows), so its index is a stable id.
   for (const [n, h] of run.history.entries()) {
     const id = "history:" + n;
@@ -787,8 +887,27 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       continue;
     }
     if (h.event === "plan_submitted") {
-      entries.push({ id, at: h.at, kind: "plan", title: `Plan submitted · revision ${h.plan_revision ?? ""}`.trim(),
+      const draft = run.roles && (handedAt < 0 || n < handedAt) ? ++drafts : 0;
+      entries.push({ id, at: h.at, kind: "plan", title: draft ? `Draft ${draft} · ${modelLabel(run.roles!.planner.harness, run.roles!.planner.model)}`
+        : `Plan submitted · revision ${h.plan_revision ?? ""}`.trim(),
         detail: h.proposals ? h.proposals + " — waiting for your review." : "", tone: h.proposals ? "attention" : "plain", who: "agent" });
+      continue;
+    }
+    if (h.event === "handoff") {
+      entries.push({ id, at: h.at, kind: "state", title: `Handed to ${modelLabel(h.harness ?? "", h.model ?? "")}`, detail: "", tone: "plain", who: "eridani" });
+      continue;
+    }
+    if (h.event === "plan_approved" || h.event === "plan_revise") {
+      entries.push({ id, at: h.at, kind: "plan", title: h.event === "plan_approved" ? "Final plan approved by you" : "Final plan sent back to the planner by you",
+        detail: "", tone: h.event === "plan_approved" ? "good" : "plain", who: "you" });
+      continue;
+    }
+    if (h.event === "review_blocked" || h.event === "handoff_blocked") {
+      // Retried with backoff: the first refusal says it, the retries add nothing.
+      const key = h.event + (h.round ?? "");
+      if (!blocked.has(key)) entries.push({ id, at: h.at, kind: "state", tone: "warn", who: "eridani", detail: h.detail ?? "",
+        title: (h.event === "review_blocked" ? `Review ${h.round ?? ""} waiting` : "Handoff waiting") + ": the host is at its run limit; retrying" });
+      blocked.add(key);
       continue;
     }
     if (h.event === "plan_reviewed") {
@@ -1051,6 +1170,7 @@ export function runsByTask(runs: Run[]): Map<string, Run> {
 /** The collapsed rail's dot: what the open run needs right now. */
 export function railDot(run: Run | undefined): { tone: "attention" | "working" | "settled" | "unknown"; label: string } {
   if (!run) return { tone: "unknown", label: "Run" };
+  if (run.state === "needs_you" && run.state_reason === "plan_approval") return { tone: "attention", label: "Approve plan" };
   if (ATTENTION_STATES.includes(run.state)) return { tone: "attention", label: runLabel(run.state) };
   if (isSettled(run)) return { tone: "settled", label: runLabel(run.state) };
   return { tone: "working", label: runLabel(run.state) };
@@ -1059,9 +1179,10 @@ export function railDot(run: Run | undefined): { tone: "attention" | "working" |
 /** A task row's Run control: start a run, or open the one that exists (labelled by what it needs). */
 export function runChip(run: Run | undefined, hosts: Host[]):
   { kind: "start"; label: "Run"; disabled: boolean; reason: string } |
-  { kind: "open"; label: "Running" | "Needs you" | "Approve" | "Starting"; tone: "attention" | "working"; run: string } {
+  { kind: "open"; label: "Running" | "Needs you" | "Approve" | "Approve plan" | "Starting"; tone: "attention" | "working"; run: string } {
   if (run && !isSettled(run)) {
     if (run.state === "awaiting_approval") return { kind: "open", label: "Approve", tone: "attention", run: run.id };
+    if (run.state === "needs_you" && run.state_reason === "plan_approval") return { kind: "open", label: "Approve plan", tone: "attention", run: run.id };
     if (ATTENTION_STATES.includes(run.state)) return { kind: "open", label: "Needs you", tone: "attention", run: run.id };
     if (["queued", "spawning"].includes(run.state)) return { kind: "open", label: "Starting", tone: "working", run: run.id };
     return { kind: "open", label: "Running", tone: "working", run: run.id };
@@ -1086,7 +1207,8 @@ export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolea
   { key: "done", verb: "Done", action: false },
 ];
 // needs_you reasons the host or its setup must fix (verify_infra: a verification that could not run).
-const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra"]);
+// host_busy: the host is at limits.maxRuns, so a reviewer or the worker cannot start until a slot frees up.
+const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra", "host_busy"]);
 const ANSWER_REASONS = new Set(["question_timed_out"]);
 const UNMERGED_REASONS = new Set(["awaiting_merge"]);
 
@@ -1108,7 +1230,7 @@ export function attentionKey(run: Run, hosts: Host[] = [], unmerged: UnmergedWor
   if (run.state === "awaiting_approval") return "approve";
   if (run.state === "awaiting_integration") return "unmerged";
   if (run.state === "needs_you") {
-    if (run.state_reason === "plan_review") return "review_plan";
+    if (PLAN_STOPS.includes(run.state_reason)) return "review_plan";
     if (REPAIR_REASONS.has(run.state_reason) || hostOffline(run, hosts)) return "repair";
     if (ANSWER_REASONS.has(run.state_reason)) return "answer";
     if (UNMERGED_REASONS.has(run.state_reason)) return "unmerged";
@@ -1140,29 +1262,92 @@ export function runsBadge(runs: Run[], pending: PendingControl[], hosts: Host[] 
   return { count, attention: count > 0, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
 }
 
-// The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model); a drift guard reads both.
+// The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model, the first one here); a drift
+// guard reads both. Any other model id the backend's MODEL pattern accepts may be listed after the default.
 export const HARNESSES = [
-  { id: "claude", label: "Claude Code", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] },
-  { id: "codex", label: "Codex", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }] },
+  { id: "claude", label: "Claude Code", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "fable", label: "Fable" }] },
+  { id: "codex", label: "Codex", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }, { id: "gpt-6-astra", label: "GPT-6 Astra" }] },
 ] as const;
 export type HarnessId = typeof HARNESSES[number]["id"];
+/** A role's harness and model (hyperplan): the reviewer, or a worker apart from the planner. */
+export type RoleChoice = { harness: HarnessId; model: string };
+/** `harness` / `model` are the planner (the only agent of a classic run). The hyperplan fields are optional so a
+ * draft without them is a classic run. */
 export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | "skip"; target: string | null;
   /** Start in freestyle: no interview, no judge; the only way to start where agents have no Eridani tools. */
-  freestyle?: boolean };
-export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "opus", interview: "auto", target: null };
+  freestyle?: boolean;
+  /** Who executes the approved plan; null: the planner's own session ("Same as planner"). */
+  worker?: RoleChoice | null;
+  /** Hyperplan: `reviewer` reads each plan revision in a fresh read-only session, `rounds` times at most. */
+  hyperplan?: boolean; reviewer?: RoleChoice; rounds?: number;
+  /** Pause in needs_you(plan_approval) before the work starts (a role run only). */
+  approveFinal?: boolean };
+export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "opus", interview: "auto", target: null,
+  worker: null, hyperplan: false, reviewer: { harness: "codex", model: "gpt-5.6-sol" }, rounds: 2, approveFinal: true };
+export const ROUNDS_MIN = 1, ROUNDS_MAX = 10;
+/** Where the Run dialog remembers the last agent, worker and hyperplan choices (never the target or freestyle). */
+export const DRAFT_STORAGE_KEY = "eri-run-draft";
+
+const defaultModel = (harness: string) => (HARNESSES.find(h => h.id === harness) ?? HARNESSES[0]).models[0].id;
+const knownModel = (harness: string, model: unknown): model is string =>
+  !!HARNESSES.find(h => h.id === harness)?.models.some(m => m.id === model);
+function roleChoice(value: unknown): RoleChoice | null {
+  const v = value as Partial<RoleChoice> | null;
+  if (!v || !HARNESSES.some(h => h.id === v.harness)) return null;
+  const harness = v.harness as HarnessId;
+  return { harness, model: knownModel(harness, v.model) ? v.model : defaultModel(harness) };
+}
+/** The draft the dialog opens with: the remembered choices where they are still offered, else the defaults. */
+export function restoreDraft(stored: string | null): RunDraft {
+  let saved: Record<string, unknown> = {};
+  try { saved = stored ? JSON.parse(stored) ?? {} : {}; } catch { saved = {}; }
+  if (typeof saved !== "object" || Array.isArray(saved)) saved = {};
+  const planner = roleChoice({ harness: saved.harness, model: saved.model });
+  const rounds = typeof saved.rounds === "number" && Number.isInteger(saved.rounds) ? Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, saved.rounds)) : DEFAULT_DRAFT.rounds;
+  return { ...DEFAULT_DRAFT, ...(planner ?? {}), worker: roleChoice(saved.worker), hyperplan: saved.hyperplan === true,
+    reviewer: roleChoice(saved.reviewer) ?? DEFAULT_DRAFT.reviewer, rounds,
+    approveFinal: typeof saved.approveFinal === "boolean" ? saved.approveFinal : DEFAULT_DRAFT.approveFinal };
+}
+export function storedDraft(draft: RunDraft): string {
+  const { harness, model, worker, hyperplan, reviewer, rounds, approveFinal } = draft;
+  return JSON.stringify({ harness, model, worker: worker ?? null, hyperplan: !!hyperplan, reviewer, rounds, approveFinal });
+}
+/** The worker apart from the planner, or null when it is the planner itself (same harness and model). */
+export function splitWorker(draft: RunDraft): RoleChoice | null {
+  const w = draft.worker;
+  if (!w) return null;
+  const same = w.harness === draft.harness && (w.model || defaultModel(w.harness)) === (draft.model || defaultModel(draft.harness));
+  return same ? null : w;
+}
+/** Whether the draft starts a run with roles (a reviewer, or a worker apart from the planner). */
+export function roleRun(draft: RunDraft) {
+  return !draft.freestyle && (!!draft.hyperplan || !!splitWorker(draft));
+}
+/** The draft as it can start: a classic run when the host cannot spawn roles (`roles` false) or in freestyle. */
+export function effectiveDraft(draft: RunDraft, roles: boolean | null | undefined): RunDraft {
+  return roles === false || draft.freestyle ? { ...draft, hyperplan: false, worker: null } : draft;
+}
 
 /** Can any connected host start this harness? (`caps.harnesses.<id>.spawn` from hello.) */
 export function harnessAvailable(hosts: Host[], id: HarnessId) {
   return hosts.some(h => h.connected && !!(h.harnesses?.[id] as { spawn?: boolean } | undefined)?.spawn);
 }
 
-/** The body for POST /remotea/runs. "Auto" leaves `interview` to the backend (interview unless the task is planned). */
+const rolePart = (c: RoleChoice) => ({ harness: c.harness, ...(c.model && c.model !== defaultModel(c.harness) ? { model: c.model } : {}) });
+
+/** The body for POST /remotea/runs. "Auto" leaves `interview` to the backend (interview unless the task is planned).
+ * `reviewer` (with `rounds`), `worker` and `approve_final` are sent only when they make it a role run; a classic
+ * run's body is what it always was. */
 export function startBody(taskId: string, draft: RunDraft) {
-  const harness = HARNESSES.find(h => h.id === draft.harness) ?? HARNESSES[0];
-  const model = draft.model && draft.model !== harness.models[0].id ? draft.model : undefined;
+  const model = draft.model && draft.model !== defaultModel(draft.harness) ? draft.model : undefined;
+  const worker = splitWorker(draft), reviewer = draft.hyperplan ? draft.reviewer ?? DEFAULT_DRAFT.reviewer! : null;
+  const roles = roleRun(draft) ? {
+    ...(reviewer ? { reviewer: rolePart(reviewer), rounds: draft.rounds ?? DEFAULT_DRAFT.rounds } : {}),
+    ...(worker ? { worker: rolePart(worker) } : {}), approve_final: draft.approveFinal ?? true,
+  } : {};
   return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}),
     ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}),
-    ...(draft.freestyle ? { freestyle: true } : {}) };
+    ...(draft.freestyle ? { freestyle: true } : {}), ...roles };
 }
 
 /** GET /remotea/runs/preflight: what a start would do, checked without acting. `harnesses` is what the task's
@@ -1180,11 +1365,18 @@ export type Preflight = {
   /** The resolved target's template check (remotea S-Q3; null when the host did not say). Not ready: a blocking
    * TARGET_NOT_READY problem names the failed checks. */
   template?: TargetTemplate | null;
+  /** Whether the resolved target's host can spawn hyperplan roles (`spawn.roles`); null while no target resolves,
+   * absent from older Eridani. */
+  roles?: boolean | null;
 };
 /** What stands in a start's way. `blocking` false is a warning (VERIFY_NOT_READY: the run starts and records the
  * failure); `freestyle_ok` lifts a block for a freestyle start (MCP_UNCONFIGURED). Older servers send neither:
- * every problem then blocks, as start_run refuses it. */
-export type PreflightProblem = { code: string; message: string; blocking?: boolean; freestyle_ok?: boolean };
+ * every problem then blocks, as start_run refuses it. `role` names the hyperplan role a problem is about
+ * (HOST_NO_ROLES, HARNESS_UNAVAILABLE for the reviewer or the worker). */
+export type PreflightProblem = { code: string; message: string; blocking?: boolean; freestyle_ok?: boolean; role?: "reviewer" | "worker" | string };
+
+/** Why the Run dialog offers no reviewer or separate worker: the host does not advertise `spawn.roles`. */
+export const ROLES_UNAVAILABLE = "This remotea server cannot run a reviewer or a separate worker yet: update remotea (it must advertise spawn.roles).";
 
 /** The problem that keeps the dialog's Start disabled for this draft, if any; whether a freestyle start lifts it
  * (`freestyle`: offer the toggle). */
@@ -1195,10 +1387,13 @@ export function startBlock(p: Preflight | null | undefined, draft: Pick<RunDraft
   return { problem, freestyle: blocking.length > 0 && blocking.every(x => x.freestyle_ok) };
 }
 
-/** The preflight URL; `target` is the execution target the picker just saved, so the re-read resolves to it. */
-export function preflightUrl(taskId: string, harness: string, target?: string | null) {
+/** The preflight URL; `target` is the execution target the picker just saved, so the re-read resolves to it.
+ * `roles` asks whether the target can also start the reviewer's and the worker's harnesses. */
+export function preflightUrl(taskId: string, harness: string, target?: string | null, roles: { reviewer?: string | null; worker?: string | null } = {}) {
   return `/remotea/runs/preflight?task_id=${encodeURIComponent(taskId)}&harness=${encodeURIComponent(harness)}`
-    + (target ? `&execution_target_id=${encodeURIComponent(target)}` : "");
+    + (target ? `&execution_target_id=${encodeURIComponent(target)}` : "")
+    + (roles.reviewer ? `&reviewer_harness=${encodeURIComponent(roles.reviewer)}` : "")
+    + (roles.worker ? `&worker_harness=${encodeURIComponent(roles.worker)}` : "");
 }
 
 /** After the dialog's picker saves a target: remember it in the draft and close the picker, so the preflight is

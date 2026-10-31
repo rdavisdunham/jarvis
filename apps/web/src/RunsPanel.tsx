@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
-import { ago, attentionGroups, rowFreshness, runLabel, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
+import { actorChip, ago, attentionGroups, rowFreshness, runLabel, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
 import "./runs.css";
@@ -31,6 +31,7 @@ export function useNow(ms = 15_000) {
 export function RunRow({ run, onOpen, now = Date.now() }: { run: Run; onOpen: (id: string) => void; now?: number }) {
   return <button key={run.id} className={"remotea-run-row state-" + run.state} onClick={() => onOpen(run.id)}>
     <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>
+    {actorChip(run) && <span className="run-actor">{actorChip(run)}</span>}
     <span className="remotea-run-title">{run.task?.title ?? "Task"}</span>
     <small>{run.reason_text || ago(run.state_since, now)}</small>
     {!!run.summary && <span className="run-summary" title={run.summary_at ? "As of " + ago(run.summary_at, now) : undefined}>

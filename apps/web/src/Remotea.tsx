@@ -22,6 +22,7 @@ import { SwarmList } from "./Swarm";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
+import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 
 import "./remotea.css";
 import "./runs.css";
@@ -416,6 +417,65 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
   </section>;
 }
 
+/** Hyperplan's final-plan stop (needs_you(plan_approval)): the frozen plan and the review history; Approve starts the
+ * work (or hands the plan to the worker), Revise with note sends it back to the planner. */
+export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
+  const [note, setNote] = useState(""), [busy, setBusy] = useState<"" | "approve" | "revise">(""), [error, setError] = useState("");
+  if (run.state !== "needs_you" || run.state_reason !== "plan_approval") return null;
+  const send = async (action: "approve" | "revise") => {
+    setBusy(action); setError("");
+    try { await post(`/remotea/runs/${run.id}/plan-review`, planApprovalBody(action, note, run.state_revision)); setNote(""); onDone(); }
+    catch (e) {
+      if (!isRevisionConflict(e)) setError(message(e));
+      else if (onConflict) onConflict();
+      else { setError(RUN_CHANGED); onDone(); }
+    } finally { setBusy(""); }
+  };
+  const plan = run.plan, reviews = run.reviews ?? [], worker = run.roles?.worker;
+  return <section className="remotea-question remotea-plan-approval" aria-label="Final plan approval">
+    <p className="remotea-card-kicker">Final plan</p>
+    <p className="footnote">{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}Approve to start the work
+      {worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}, or send it back to the planner with a note.</p>
+    {plan ? <>
+      <p><strong>{plan.title}</strong> <small>revision {plan.revision}</small></p>
+      {plan.prd_text && <details open><summary>Plan</summary><p className="remotea-plan-text">{plan.prd_text}</p></details>}
+      {!!plan.steps.length && <details><summary>Steps · {plan.steps.length}</summary><ol>{plan.steps.map(s => <li key={s.id}>{s.title}</li>)}</ol></details>}
+      {!!plan.criteria.length && <details open><summary>Success criteria · {plan.criteria.length}</summary>
+        <ul>{plan.criteria.map(c => <li key={c.id}>{c.text}{c.kind === "verify" && <small> · needs {c.verify_id} to pass</small>}</li>)}</ul></details>}
+    </> : <p className="footnote">The plan is still loading.</p>}
+    {!!reviews.length && <ul className="remotea-review-history" aria-label="Review history">{reviews.map(r => <li key={r.id}>{reviewTitle(r)}</li>)}</ul>}
+    <label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
+      <textarea rows={3} maxLength={4000} value={note} disabled={!!busy} onChange={e => setNote(e.target.value)}/></label>
+    <div className="remotea-control-row">
+      <button className="btn btn-sm" disabled={!!busy || !note.trim()} onClick={() => void send("revise")}>{busy === "revise" ? "Sending…" : "Revise with note"}</button>
+      <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void send("approve")}><Check size={14}/>{busy === "approve" ? "Approving…" : "Approve"}</button>
+    </div>
+    {error && <p role="alert" className="work-error">{error}</p>}
+  </section>;
+}
+
+const DECISION_TEXT = { accepted: "accepted", rejected: "rejected", deferred: "deferred" } as const;
+
+/** A review round's findings (severity, area, issue, suggestion) with the planner's answer to each, and the
+ * reviewer's questions for you, folded under the round's timeline entry. */
+export function ReviewFindings({ review }: { review: PlanReviewRow }) {
+  const findings = reviewFindings(review), questions = review.questions ?? [];
+  if (!findings.length && !questions.length && review.via !== "turn") return null;
+  const parts = [findings.length ? `${findings.length} finding${findings.length === 1 ? "" : "s"}` : "",
+    questions.length ? `${questions.length} question${questions.length === 1 ? "" : "s"} for you` : ""].filter(Boolean);
+  return <details className="remotea-review-findings">
+    <summary>{parts.join(" · ") || "Details"}</summary>
+    {review.via === "turn" && <p>The reviewer did not file a structured review; its reply is the review.</p>}
+    {!!findings.length && <ul>{findings.map(f => <li key={f.id} className={"severity-" + f.severity}>
+      <strong>{f.severity}</strong>{f.area ? " · " + f.area : ""} <code>{f.id}</code>
+      <p>{f.issue}</p>
+      {f.suggestion && <p>Suggestion: {f.suggestion}</p>}
+      {f.resolution && <p className="resolution">Planner {DECISION_TEXT[f.resolution.decision] ?? f.resolution.decision}{f.resolution.note ? ": " + f.resolution.note : ""}</p>}
+    </li>)}</ul>}
+    {!!questions.length && <><p>Questions for you (the planner decides which to ask):</p><ul>{questions.map((q, i) => <li key={i}>{q}</li>)}</ul></>}
+  </details>;
+}
+
 export function Criteria({ run }: { run: RunDetail }) {
   const rows = criteriaEvidence(run);
   if (!rows.length) return run.plan ? <p className="footnote">This plan has no success criteria, so the judge cannot complete it; you approve.</p> : null;
@@ -535,6 +595,7 @@ export function Bubble({ entry, runId }: { entry: TimelineEntry; runId?: string 
       <small>{ago(entry.at)}</small></div>
     {entry.facts && <Facts facts={entry.facts} label="Verification facts"/>}
     {entry.detail && <p>{text}</p>}
+    {entry.review && <ReviewFindings review={entry.review}/>}
     {fetchable ? <button className="btn btn-ghost btn-sm" disabled={loading} title={CLIPPED_HINT} onClick={() => void loadFull()}>
       <ChevronDown size={14}/>{loading ? "Loading…" : "Full response"}</button>
       : long && <button className="btn btn-ghost btn-sm" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -651,7 +712,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const [verifyPick, setVerifyPick] = useState("");
   const packet = run ? reviewPacket(run) : null;
   // Edit criteria / Judge again: only while the run is parked for you (not during a plan review).
-  const parked = !!run && bound && !run.freestyle && (run.state === "awaiting_approval" || (run.state === "needs_you" && run.state_reason !== "plan_review"));
+  const parked = !!run && bound && !run.freestyle && (run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason)));
+  const actor = run ? actorChip(run) : null, busyHost = run ? hostBusyText(run) : null;
   const [editing, setEditing] = useState(false);
   // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
   const now = useNow();
@@ -660,6 +722,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
         {run && <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>}
+        {actor && <span className="run-actor" title="Who acts on this run now">{actor}</span>}
         <h2>{run?.task?.title ?? "Run"}</h2>
         {onCollapse && <button className="btn-icon" aria-label="Collapse run panel" title="Collapse" onClick={onCollapse}><PanelRightClose size={18}/></button>}
         <button className="btn-icon" aria-label="Close run" onClick={onClose}><X size={18}/></button>
@@ -682,6 +745,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       {run?.reason_text && <div className={"remotea-reason-box" + (attention ? " attention" : "")} role={attention ? "status" : undefined}>
         <strong>{run.reason_text}</strong>
         {run.reason_detail && run.reason_detail !== run.reason_text && <p>{run.reason_detail}</p>}
+        {busyHost && <p>{busyHost}</p>}
       </div>}
       {run && !isSettled(run) && <div className="remotea-chat-modes">
         <label className="remotea-toggle" title="Talk to the agent directly: turns are recorded but not verified, judged or counted toward the cap.">
@@ -737,6 +801,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         <ol className="remotea-timeline" aria-label="Run timeline">{entries.map(e => <Bubble key={e.id} entry={e} runId={run.id}/>)}</ol>
         {bound && <>
           <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/>
+          <PlanApproval key={"approval-" + run.plan_revision} run={run} onDone={refresh} onConflict={changed}/>
           {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
           {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
             <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
@@ -771,7 +836,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || off || controls.stop.label === "Stopping…"}
           onClick={() => void act("stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
         <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || off}
-          title="Your decision: mark the task complete as you and end the run" onClick={() => void act("approve")}><Check size={14}/>Approve</button>
+          title="Your decision: mark the task complete as you and end the run" onClick={() => void act("approve")}><Check size={14}/>{controls.approve.label}</button>
       </div>
       {packet && run.state === "awaiting_approval" && <p className="review-beside-approve" role="note">
         <strong>{packet.text}.</strong> {packet.decision?.text}</p>}

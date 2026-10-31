@@ -129,6 +129,11 @@
 .run-dialog-freestyle { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; font-size: 0.9rem; }
 .run-dialog-freestyle small { color: var(--ink-3); }
 .run-dialog-setup { margin: 0; }
+/* Hyperplan: the reviewer and rounds sit indented under their toggle. */
+.run-dialog-hyperplan { gap: 8px; }
+.run-dialog-roles { display: grid; gap: 8px; padding-left: 12px; border-left: 2px solid var(--line); }
+.run-dialog-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.run-dialog-stepper output { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 .run-dialog-setup .text-button { display: inline-flex; align-items: center; gap: 4px; }
 
 /* ---- Chat drawer: Eri's proposals waiting for a tap ----------------------------------------- */

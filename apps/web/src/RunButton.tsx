@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import { runChip } from "./remotea-model";
+import { actorChip, runChip } from "./remotea-model";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import "./runs.css";
 
@@ -13,9 +13,10 @@ export function RunButton({ taskId, title, className = "", project = false }: { 
   const run = runsByTask.get(taskId);
   const chip = runChip(run, status?.hosts ?? []);
   if (chip.kind === "open") {
-    // The tooltip says what the agent is doing now (the run summary), when there is one.
+    // The tooltip says who acts on a hyperplan run and what the agent is doing now (the run summary), when known.
+    const tip = [run ? actorChip(run) : null, run?.summary].filter(Boolean).join(" — ");
     return <button type="button" className={"run-chip tone-" + chip.tone + (className ? " " + className : "")}
-      title={run?.summary || undefined} aria-label={chip.label + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
+      title={tip || undefined} aria-label={chip.label + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
       <i className="run-dot" aria-hidden="true"/>{chip.label}</button>;
   }
   return <button type="button" className={"btn-icon run-start" + (className ? " " + className : "")}
