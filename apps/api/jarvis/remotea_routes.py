@@ -350,12 +350,15 @@ def start(body: control.StartInput, user: User):
 
 
 @router.get("/runs/preflight")
-def preflight(task_id: UUID, user: User, harness: str = Query("claude", max_length=20), execution_target_id: UUID | None = None):
+def preflight(task_id: UUID, user: User, harness: str = Query("claude", max_length=20), execution_target_id: UUID | None = None,
+              reviewer_harness: str | None = Query(None, max_length=20), worker_harness: str | None = Query(None, max_length=20)):
     """What Run would do on this task: where it runs (or the picker's choices), the run already on it, whether the
-    agent interviews first, and which harnesses the server can start. Read-only; the Run dialog shows it."""
+    agent interviews first, which harnesses the server can start, and (`roles`) whether the host can spawn hyperplan
+    roles; `reviewer_harness` / `worker_harness` add their availability problems. Read-only; the Run dialog shows it."""
     with session_scope() as db:
         gated(db, user)
-        return control.preflight(db, user.owner_id, str(task_id), harness, str(execution_target_id) if execution_target_id else None)
+        return control.preflight(db, user.owner_id, str(task_id), harness, str(execution_target_id) if execution_target_id else None,
+                                 reviewer_harness=reviewer_harness, worker_harness=worker_harness)
 
 
 @router.get("/runs/{identity}")

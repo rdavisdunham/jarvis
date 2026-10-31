@@ -136,6 +136,7 @@ export function place(item: Pick<RemoteaSession, "repo" | "branch" | "cwd">) {
 export type RunState =
   | "queued" | "spawning" | "interviewing" | "planning" | "executing" | "waiting_answer" | "verifying" | "judging"
   | "needs_you" | "awaiting_integration" | "awaiting_approval" | "stopping" | "replanning"
+  | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
   id: string; task: { id: string; title: string; status: string } | null; state: RunState; state_revision: number;
@@ -361,6 +362,7 @@ const RUN_LABELS: Partial<Record<RunState, string>> = {
   awaiting_approval: "Awaiting approval", stopping: "Stopping…", completed: "Completed", stopped: "Stopped",
   capped: "Turn cap", failed: "Failed", interviewing: "Interviewing", planning: "Planning", verifying: "Verifying",
   judging: "Judging", awaiting_integration: "Awaiting integration", replanning: "Replanning",
+  plan_reviewing: "Reviewing plan", handing_off: "Handing off",
 };
 export function runLabel(state: RunState) {
   return RUN_LABELS[state] ?? state;

@@ -19,7 +19,7 @@ from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .domain import PLAN_ID, DomainError, advisory, emit, encode, execute, owned
 from .models import Note, Task, now
-from .session_models import AgentHost, AgentInterview, AgentRunPlan, ExecutionTarget
+from .session_models import AgentHost, AgentInterview, AgentPlanReview, AgentRunPlan, ExecutionTarget
 
 
 class Input(BaseModel):
@@ -87,6 +87,15 @@ class VerifyInput(BaseModel):
     verify_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
+class ReviewResolution(BaseModel):
+    """The planner's decision on one reviewer finding (hyperplan): every blocking or major finding of the last review
+    needs one before submit_plan accepts the next revision (REVIEW_UNRESOLVED)."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    finding_id: str = Field(min_length=1, max_length=64)
+    decision: Literal["accepted", "rejected", "deferred"]
+    note: str = Field(default="", max_length=1000)
+
+
 class SubmitPlanInput(Input):
     task_id: UUID | None = None
     prd: str = Field(min_length=1, max_length=28_000)
@@ -98,6 +107,34 @@ class SubmitPlanInput(Input):
     # The plan adds a schema migration: Eridani reserves its number at freeze (migration_numbers.py).
     migration: bool = False
     expected_plan_revision: int = Field(ge=0)
+    # Hyperplan: answers to the last review's findings (stored on that review as `resolutions`).
+    review_resolutions: list[ReviewResolution] | None = Field(default=None, max_length=100)
+
+
+class ReviewFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    id: str = Field(min_length=1, max_length=64)
+    severity: Literal["blocking", "major", "minor"]
+    area: str = Field(default="", max_length=200)
+    issue: str = Field(min_length=1, max_length=2000)
+    suggestion: str = Field(default="", max_length=2000)
+
+
+class SubmitReviewInput(Input):
+    """submit_plan_review (the reviewer's one call per round)."""
+    verdict: Literal["approve", "revise"]
+    findings: list[ReviewFinding] = Field(default_factory=list, max_length=50)
+    questions_for_user: list[str] = Field(default_factory=list, max_length=12)
+    summary: str = Field(default="", max_length=4000)
+
+    @model_validator(mode="after")
+    def distinct_ids(self):
+        ids = [f.id for f in self.findings]
+        if len(set(ids)) != len(ids):
+            raise ValueError("Each finding needs its own id.")
+        if any(len(q) > 1000 for q in self.questions_for_user):
+            raise ValueError("Questions are too long.")
+        return self
 
 
 class PlanDecision(BaseModel):
@@ -112,6 +149,9 @@ class PlanReviewInput(BaseModel):
     decisions: list[PlanDecision] = Field(default_factory=list, max_length=50)
     verify: Literal["accept", "keep"] = "keep"
     completion_policy: Literal["accept", "keep"] = "keep"
+    # Hyperplan: the final-plan stop (needs_you(plan_approval)) takes approve, or revise with a note for the planner.
+    action: Literal["approve", "revise"] | None = None
+    note: str = Field(default="", max_length=4000)
     # Required: the decisions are about the proposals the reviewer saw (REVISION_CONFLICT if the run moved on).
     expected_revision: int = Field(ge=1)
 
@@ -130,11 +170,19 @@ class InterviewAnswers(BaseModel):
         return self
 
 
+REVIEWER = "plan_reviewer"  # Actor capability of a reviewer token: task_plan and submit_plan_review only.
+
+
 def binding(db, bot, body):
-    """(actor, run) for this call: run token first, then the reporting session, else an unbound bot."""
+    """(actor, run) for this call: run token first (a reviewer's token binds with capability plan_reviewer), then the
+    reporting session, else an unbound bot."""
     run = coordinator.run_for_token(db, bot.owner_id, body.run_token)
     if run is not None:
         return Actor("run_session", credential_id=bot.id, run_id=run.id, generation=run.generation), run
+    bound = coordinator.review_for_token(db, bot.owner_id, body.run_token)
+    if bound is not None:
+        _, run = bound
+        return Actor("run_session", credential_id=bot.id, run_id=run.id, generation=run.generation, capability=REVIEWER), run
     if body.run_token:
         raise DomainError("RUN_TOKEN_INVALID", "That run token expired or the run has finished.", 401)
     if body.tool and body.session_id:
@@ -179,6 +227,7 @@ def task_step(db, bot, body):
 
     gate(db, bot.owner_id)
     actor, run = binding(db, bot, body)
+    reviewer_refused(actor)
     if run is not None and actor.verified and run.task_id != str(body.task_id):
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
     if not (run is not None and actor.verified) and "tasks:write" not in bot.scopes:
@@ -208,6 +257,13 @@ def task_step(db, bot, body):
     return encode({"task_id": task.id, "task_revision": task.revision, "step": steps[index], "actor": actor.record()})
 
 
+def reviewer_refused(actor):
+    """A reviewer token reads (task_plan) and reviews (submit_plan_review); it never changes the plan, the steps or
+    the run (docs/AGENT_CONTROL.md, "Hyperplan and roles")."""
+    if actor.capability == REVIEWER:
+        raise DomainError("REVIEWER_SCOPE", "A plan reviewer's token can only call task_plan and submit_plan_review.", 403)
+
+
 def run_scoped(db, bot, body, states):
     """task_interview and submit_plan: only the run's own session (run token), only in these phases."""
     from .agent_link import gate
@@ -216,6 +272,7 @@ def run_scoped(db, bot, body, states):
     actor, run = binding(db, bot, body)
     if run is None or not actor.verified:
         raise DomainError("RUN_TOKEN_REQUIRED", "Pass the run_token from your Eridani session context.", 401)
+    reviewer_refused(actor)
     if body.task_id and str(body.task_id) != run.task_id:
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
     run = coordinator.load(db, run.owner_id, run.id)
@@ -225,12 +282,37 @@ def run_scoped(db, bot, body, states):
     return actor, run
 
 
+def review_scoped(db, bot, body):
+    """submit_plan_review: only a live reviewer's token, while the run is in plan_reviewing."""
+    from .agent_link import gate
+
+    gate(db, bot.owner_id)
+    bound = coordinator.review_for_token(db, bot.owner_id, body.run_token)
+    if bound is None:
+        if body.run_token and coordinator.run_for_token(db, bot.owner_id, body.run_token) is not None:
+            raise DomainError("REVIEWER_ONLY", "Only the plan reviewer's session calls submit_plan_review.", 403)
+        raise DomainError("RUN_TOKEN_REQUIRED", "Pass the reviewer run_token from your Eridani session context.", 401)
+    review, run = bound
+    run = coordinator.load(db, run.owner_id, run.id)
+    review = db.get(AgentPlanReview, review.id, with_for_update=True)
+    if run.state != "plan_reviewing" or review.status not in ("spawning", "reviewing"):
+        raise DomainError("REVIEW_CLOSED", f"This review round is over (the run is {run.state}).", 409,
+                          data={"state": run.state, "review_status": review.status})
+    return Actor("run_session", credential_id=bot.id, run_id=run.id, generation=run.generation, capability=REVIEWER), run, review
+
+
 # ---------------------------------------------------------------- the interview
 
 
 def task_interview(db, bot, body):
-    """Questions for the operator; they arrive as one form on the remotea page."""
-    actor, run = run_scoped(db, bot, body, ("interviewing",))
+    """Questions for the operator; they arrive as one form on the remotea page. A hyperplan planner may also ask
+    while planning (between review rounds): the run goes back to interviewing until the answers come."""
+    actor, run = run_scoped(db, bot, body, ("interviewing", "planning"))
+    if run.state == "planning":
+        if not run.roles:
+            raise DomainError("PLAN_LOCKED", "The run is planning; ask for a re-plan to change the plan.", 409,
+                              data={"state": run.state})
+        coordinator.transition(db, run, "interviewing", actor=actor, reason="interview")
     if coordinator.open_interview(db, run):
         raise DomainError("INTERVIEW_OPEN", "Your questions are already with the operator; stop and wait.", 409)
     ids = [q.id for q in body.questions]
@@ -294,7 +376,8 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     row.answers = clean_answers(row.questions, body.answers)
     row.status, row.answered_at, row.answered_via, row.updated_at = "answered", now(), actor.kind, now()
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
-    coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1]), "interview_answers", actor=actor)
+    coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1], round=run.plan_round, roles=run.roles),
+                    "interview_answers", actor=actor)
     return public_interview(row)
 
 
@@ -469,11 +552,12 @@ def submit_plan(db, bot, body):
     """Planning only: write the PRD note and the task's template plan, then freeze run plan revision N+1.
     Changes the agent proposes to human-authored criteria are stored beside the frozen plan, not applied
     (plan_proposals); the coordinator asks the operator before execution starts."""
-    actor, run = run_scoped(db, bot, body, coordinator.PLANNING)
+    actor, run = run_scoped(db, bot, body, coordinator.PLAN_SUBMIT)
     task = owned(db, Task, run.task_id, run.owner_id, lock=True)
     if (task.plan_revision or 0) != body.expected_plan_revision:
         raise DomainError("REVISION_CONFLICT", "The task's plan changed; read it again with task_plan.", 409,
                           data={"plan_revision": task.plan_revision})
+    last_review = resolve_findings(db, run, body.review_resolutions)
     targets, offered = verify_ids(db, run)
     verify = None
     if body.verify:
@@ -524,10 +608,19 @@ def submit_plan(db, bot, body):
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
     coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record(),
-                     **({"proposals": coordinator.proposal_summary(proposals)} if proposals else {}))
+                     **({"proposals": coordinator.proposal_summary(proposals)} if proposals else {}),
+                     **({"review_round": last_review.round} if last_review is not None else {}))
     emit(db, run.owner_id, "agent.changed", run.id)
-    next_step = ("Stop now. The operator will accept or keep each change you proposed to their criteria; Eridani "
-                 "starts execution after that." if proposals else "Stop now. Eridani starts execution when this turn ends.")
+    if proposals:
+        next_step = ("Stop now. The operator will accept or keep each change you proposed to their criteria; Eridani "
+                     "continues after that.")
+    elif coordinator.reviewer_role(run) and run.plan_round < coordinator.rounds_of(run) \
+            and not coordinator.review_settled(last_review):
+        next_step = "Stop now. A reviewer reads this revision next; its findings arrive as your next prompt."
+    elif run.roles and run.roles.get("approve_final", True):
+        next_step = "Stop now. The operator approves the final plan before the work starts."
+    else:
+        next_step = "Stop now. Eridani starts execution when this turn ends."
     return encode({"plan_revision": revision, "task_plan_revision": task.plan_revision, "prd_note_id": prd_id,
                    "steps": task.steps, "success_criteria": task.success_criteria, "verify": task.verify,
                    "completion_policy": task.completion_policy, "proposals": proposals,
@@ -538,14 +631,72 @@ def submit_plan(db, bot, body):
                    "actor": actor.record(), "next": next_step})
 
 
+def resolve_findings(db, run, resolutions):
+    """Hyperplan: the planner's review_resolutions answer the last review's findings. Every blocking or major finding
+    of a `revise` review needs one (REVIEW_UNRESOLVED); the decisions are stored on that review. Returns the review."""
+    last = coordinator.last_review(db, run) if run.roles else None
+    if last is None or last.status != "done":
+        if resolutions:
+            raise DomainError("INVALID_ARGUMENT", "There is no review to resolve findings for.")
+        return None
+    given = {r.finding_id: r for r in resolutions or []}
+    ids = {f.get("id") for f in last.findings or [] if isinstance(f, dict)}
+    unknown = sorted(set(given) - ids)
+    if unknown:
+        raise DomainError("INVALID_ARGUMENT", "Resolve the findings the reviewer raised.", data={"unknown": unknown})
+    unresolved = [f["id"] for f in last.findings or [] if isinstance(f, dict) and f.get("severity") in ("blocking", "major")
+                  and f.get("id") not in given]
+    if unresolved and last.verdict == "revise" and last.plan_revision >= run.plan_revision:
+        raise DomainError("REVIEW_UNRESOLVED", "Answer every blocking and major finding of the last review in "
+                          "review_resolutions (accepted, rejected or deferred, with a note).", 409,
+                          data={"round": last.round, "unresolved": unresolved})
+    if resolutions:
+        last.resolutions = [r.model_dump() for r in resolutions]
+        last.updated_at = now()
+    return last
+
+
+def submit_plan_review(db, bot, body):
+    """The reviewer's one call: its verdict and findings go on the review row; the round completes when its turn
+    ends (run_coordinator.finish_review), which sends the planner the incorporate prompt."""
+    actor, run, review = review_scoped(db, bot, body)
+    if review.verdict is not None:
+        raise DomainError("REVIEW_SUBMITTED", "This review was already recorded; stop now.", 409)
+    review.verdict, review.via = body.verdict, "tool"
+    review.findings = [f.model_dump() for f in body.findings]
+    review.questions = list(body.questions_for_user)
+    review.summary = body.summary
+    review.updated_at = now()
+    counts = coordinator.severity_counts(review)
+    coordinator.note(run, "review_submitted", review_id=review.id, round=review.round, verdict=body.verdict, **counts)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return encode({"review_id": review.id, "round": review.round, "verdict": review.verdict, "counts": counts,
+                   "actor": actor.record(), "next": "Stop now. Your review reaches the planner when this turn ends."})
+
+
 def review_plan(db, owner, run_id, body, *, actor):
     """The operator's decisions on the agent's proposals: accepted changes are written to the task (a human edit,
-    allowed by the gate), the plan is frozen again as the next revision without proposals, and execution starts."""
+    allowed by the gate), the plan is frozen again as the next revision without proposals, and execution starts.
+    For a hyperplan run waiting in needs_you(plan_approval), `action` approves the final plan (execution or the
+    worker handoff starts) or sends it back to the planner with a note."""
     from .domain import execute
 
     run = coordinator.load(db, owner, run_id)
     coordinator.check_revision(run, body.expected_revision)
     plan = coordinator.frozen(db, run)
+    if run.state == "needs_you" and run.state_reason == "plan_approval":
+        from .agent_control import public_run
+
+        if body.action is None:
+            raise DomainError("INVALID_ARGUMENT", "This run waits for the final plan's approval: pass action approve or revise.")
+        if body.action == "approve":
+            coordinator.approve_plan(db, run, actor=actor)
+        else:
+            coordinator.revise_plan(db, run, body.note, actor=actor)
+        return public_run(db, run, detail=True)
+    if body.action is not None:
+        raise DomainError("NO_PLAN_APPROVAL", "This run is not waiting for the final plan's approval.", 409,
+                          data={"state": run.state, "state_reason": run.state_reason})
     if run.state != "needs_you" or run.state_reason != "plan_review" or plan is None or not plan.proposals:
         raise DomainError("NO_PLAN_REVIEW", "This run is not waiting for a plan review.", 409, data={"state": run.state})
     task = owned(db, Task, run.task_id, run.owner_id, lock=True)

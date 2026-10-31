@@ -311,7 +311,7 @@ Besides the spawn prompt, every text that reaches a running agent is an `input` 
 itself; each of those goes through `run_coordinator.say()`, which also records a `sent` history entry with a
 `kind`. The run timeline titles it "Sent by Eridani · <reason>" (`remotea-model.ts` `SENT_REASON`). The
 owner's own texts are "Sent by you" or "Sent by Eri, confirmed by you". Wording lives in
-[`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py) (`PROMPT_VERSION = "loop-v1"`); task, answer,
+[`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py) (`PROMPT_VERSION = "loop-v2"`); task, answer,
 gap and reason text inside it is fenced as data.
 
 | `kind` (timeline) | Trigger | Condition | Wording | What the agent is expected to do |
@@ -324,6 +324,8 @@ gap and reason text inside it is fenced as data.
 | `verify_set` · "verify command set" | Owner sets the verify command mid-run (`agent_plan.set_verify`) | Only when the run was parked in `needs_you` (it resumes `executing`) | `verify_set()` | Make the work pass that command, end the turn. |
 | `merged` · "pull request merged" | The host reports the run's branch merged (`check_integrations`, `recheck_pr`) | `needs_you(awaiting_merge)`, or `pr_unknown` under `pr_merged` | `merged()` | Update the worktree to the merged result, re-run the checks, end the turn. |
 | `integrated` · "sub-task pull requests merged" | All required sub-task branches merged into this run's branch (`check_integrations`) | `awaiting_integration` | `integrated()` | Pull the merged sub-tasks, re-check the combined code, end the turn. |
+| `plan_critique` · "plan review" | Hyperplan: a reviewer's turn ends (`finish_review`), or the owner sends the final plan back (`revise_plan`) | The planner's session; `plan_reviewing` → `planning`, or `needs_you(plan_approval)` → `planning` | `incorporate()` (the review fenced as data; `final` on the last round or after a clean approve), `plan_revise()` (the owner's note) | Answer every blocking/major finding in `review_resolutions`, ask with `task_interview` first if needed, `submit_plan`, stop. |
+| `handoff` · "handed to the worker" | Hyperplan: execution starts on a run whose worker differs from its planner (`hand_off`) | Recorded on the timeline; the text is the worker's spawn prompt, not an input | `worker()`: the frozen plan and the "decisions already made" digest | Execute the plan as written; ask for a re-plan instead of re-opening settled points. |
 
 The owner's texts are not in the table: **Message** (`queue`) and **Steer** (`steer`, advances the
 generation) send exactly what was typed (`agent_control.send_message`, also Eri's confirmed
@@ -642,7 +644,8 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
 - **needs_you reasons** (`state_reason`, shown with `reason_text`): `exited`, `surface_lost`,
   `host_offline` (lease gone 5 minutes; both clear themselves when the surface reports again),
   `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h), `no_progress` (45 min),
-  `turn_cap` (C pauses instead of `capped`), `question_timed_out`. Pushes: `agent_stuck` on needs_you,
+  `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and `host_busy`
+  (see [Hyperplan and roles](#hyperplan-and-roles-migration-0041)). Pushes: `agent_stuck` on needs_you,
   `agent_question` on a question, `agent_done` on awaiting_approval; each opens
   `/?view=remotea&run=<id>`.
 - **Approve** completes the task as a human (`task.complete`); the run moves to `stopping` with
@@ -650,7 +653,8 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
 
 ### Starting a run
 
-`POST /remotea/runs {task_id, harness?, model?, execution_target_id?, interview?, freestyle?}`:
+`POST /remotea/runs {task_id, harness?, model?, execution_target_id?, interview?, freestyle?, reviewer?, worker?,
+rounds?, approve_final?}` (the last four are hyperplan's, see [Hyperplan and roles](#hyperplan-and-roles-migration-0041)):
 
 1. Target resolution: explicit → the task's `execution_target_id` → a target saved for the task's
    record or an ancestor (nearest first) → folder rules whose path is under a target's repo → `409
@@ -836,7 +840,8 @@ cookie-authenticated browser routes.
 verified `run_session` actor; a bad one is `401 RUN_TOKEN_INVALID`; a session fallback is unverified.
 `task_step {step_id, status, note?, expected_revision?}` updates one step with its own revision
 (`by: agent:<run>[:unverified]`); it does not advance `plan_revision`. `task_interview` and
-`submit_plan` (stage D, below) need the run token. `session_link` accepts `task_id`. The run token is
+`submit_plan` (stage D, below) need the run token. `submit_plan_review` (hyperplan) takes only a reviewer's
+token; a reviewer token can call `task_plan` and `submit_plan_review` and nothing else (`REVIEWER_SCOPE`). `session_link` accepts `task_id`. The run token is
 HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refreshed by each
 `context.request`.
 
@@ -1381,19 +1386,20 @@ in `VOICE_MUTATIONS`:
 
 | Tool | Input | |
 |---|---|---|
-| `control.start` | `task_id` or `task` (name), `harness?` | starts a run as the human (`start_run`) |
+| `control.start` | `task_id` or `task` (name), `harness?`, `model?`, `reviewer? {harness, model?}`, `worker? {harness, model?}`, `rounds?`, `approve_final?` | starts a run as the human (`start_run`); the hyperplan fields travel with the proposal and its summary names them ("… with Codex gpt-6-astra reviewing (2 rounds) and Claude Code sonnet working") |
 | `control.message` | target, `text`, `mode: queue\|steer` | |
 | `control.stop` | target, `mode: interrupt\|kill` | |
 | `control.answer` | target, `question_id` + `answers`, or `interview_id` + `responses` | a run question or the planning interview |
 | `control.confirm` | `pending_id?`, `decision: confirm\|decline`, `execution_target_id?` | the owner's yes to a proposed start/message (below); a start that asked where to run takes the chosen target |
 | `control.approve` | target? | immediate: approves a run that is `awaiting_approval` (`agent_control.approve`; the server supplies `expected_revision` from the run it checked); any other state is refused with `NOT_AWAITING_APPROVAL` naming the state |
-| `control.plan_review` | target?, `decisions: [{id, accept, text?}]`, `verify?`, `completion_policy?` | immediate: the owner's decisions on a `plan_review` (`agent_plan.review_plan`; the server supplies `expected_revision`); otherwise `NO_PLAN_REVIEW` |
+| `control.plan_review` | target?, `decisions: [{id, accept, text?}]`, `verify?`, `completion_policy?`, `action?: approve\|revise`, `note?` | immediate: the owner's decisions on a `plan_review` (`agent_plan.review_plan`; the server supplies `expected_revision`); for a hyperplan run in `needs_you(plan_approval)`, `action` approve or revise (with `note`); otherwise `NO_PLAN_REVIEW` |
 | `control_status` (read) | target? | active runs, their open questions/interview, `plan_review` proposals, the judge's `awaiting_approval` summary with the `review_packet` (above), `freshness` per run (one line: "verify tests passed 3 min ago for the current turn on a complete workspace; sandboxed; host seen 5 s ago; last turn 2 min ago; in awaiting approval for 4 min; steer sent 40 s ago, delivery uncertain", `agent_control.freshness_text`), open proposals (`pending`, with target options), finished in the last 24 h, hosts (with `last_seen_at`), and `setup` (one line per unready host or target with its fix, when any) |
 
 A target is `run_id`, `task_id` or `task` (a spoken name). Names resolve through an exact Linear identifier, then
 `navigation_find`; none → `NOT_FOUND`; a name matching several tasks → `AMBIGUOUS_TASK` with the candidates when none
 of them has an active run. Without a target (`run_for(db, owner, target, tool)`), the command fits every unsettled run,
-except `control.approve` (only runs `awaiting_approval`) and `control.plan_review` (only `needs_you(plan_review)`): the
+except `control.approve` (only runs `awaiting_approval`) and `control.plan_review` (only `needs_you(plan_review)` or
+`needs_you(plan_approval)`): the
 run open on the owner's screen (`UIContext.open_run_id`, which the remotea page sends and `context_prompt` names as
 "Open run: <id>") is meant when it is also the newest run the command fits (or none fits), else the only run it fits.
 
@@ -1620,6 +1626,152 @@ harness's own tokens.
 | `POST /swarms/{id}/start` | yes | start the next batch (`all`: and each next one) |
 | `POST /swarms/{id}/cancel` | no (owner only) | no later batch starts |
 
+## Hyperplan and roles (migration 0041)
+
+Three roles in one run, each with its own harness and model: the **planner** drafts the plan and talks to the owner
+(one session through all planning rounds), the **reviewer** reads the plan in a fresh read-only session every round,
+and the **worker** executes the approved plan in a fresh session. A worker "same as the planner" means the planner's
+session continues into execution, which is the classic run. The host side (remotea #36, `spawn.roles`) is in
+`docs/remotea/eridani-link.md` "Roles and read-only modes".
+
+**Roles on the run.** `agent_runs.roles` (JSONB, null = a classic run) is `{planner: {harness, model}, reviewer:
+{harness, model} | null, worker: {harness, model} | null, rounds, approve_final}`; `worker` is null when it equals the
+planner. `agent_runs.plan_round` counts the reviews completed. `run.tool` / `run.model` always describe the session
+that owns the run now: the planner, then the worker after the handoff, so filters and the header keep working.
+
+**Starting.** `StartInput` (and Eri's `control.start`) gains `reviewer: {harness, model?} | null`, `worker: {harness,
+model?} | null`, `rounds` (default 2, 1–10) and `approve_final` (default true); `harness` / `model` are the planner.
+A role's `model` defaults to `HARNESSES[harness]` (`opus`, `gpt-5.6-sol`); any id matching `MODEL` is accepted
+(`fable`, `gpt-6-astra`). Hyperplan is on when `reviewer` is set; a split worker when `worker` differs from the
+planner. Either one:
+
+- refuses `freestyle` (`INVALID_ARGUMENT`); needs the host's hello `caps` to list `spawn.roles` (`409 HOST_NO_ROLES`)
+  and each role's harness to be spawnable on the target (`409 HARNESS_UNAVAILABLE` with `data.role`);
+- forces a planning start: a task without a PRD interviews as before; one that would skip the interview starts in
+  `planning` with `prompts.planning_start` instead of freezing its plan (`sync_state.start_phase`), so nothing runs
+  unreviewed;
+- spawns the planner with `role: "planner"`, and with `mode: "plan"` (read-only) when a different worker will do the
+  work.
+
+`GET /remotea/runs/preflight` takes `reviewer_harness` / `worker_harness` and answers `roles` (true / false: the
+resolved target's host advertises `spawn.roles`; null while no target resolves) plus a blocking `HOST_NO_ROLES` or
+`HARNESS_UNAVAILABLE` problem with `role` for a role it cannot start.
+
+**States.** `plan_reviewing` (the reviewer works, the planner idles) and `handing_off` (the planner is stopped, the
+worker spawning). `PLANNING` includes `plan_reviewing`; `submit_plan` is taken only in `PLAN_SUBMIT` (interviewing,
+planning, replanning). `phase()` resumes `handing_off` while a handoff is pending and `plan_reviewing` while a review
+is live. Transitions: `planning → plan_reviewing → planning`; `planning → interviewing → planning` (a hyperplan
+planner may call `task_interview` while planning; a classic run still gets `PLAN_LOCKED`); `planning →
+needs_you(plan_approval) → planning` (revise) `| handing_off` (approve, split worker) `| executing` (approve);
+`planning → handing_off → executing`; `needs_you → plan_reviewing | handing_off` (resume). New `state_reason`s:
+`plan_approval` and `host_busy` (needs_you), `reviewer_blocked` (reserved), and the working reasons `review`,
+`review_done`, `review_failed`, `interview`, `plan_approved`, `plan_revise`, `handoff`.
+
+**The loop** (`settle_planning`). When a planner turn ends with a new plan revision and no open question or
+interview: while `plan_round < rounds` and the last review was not a clean approve (verdict `approve` with no
+blocking or major finding), a review row is created (round `plan_round + 1`) and a reviewer spawned → `plan_reviewing`.
+Otherwise the existing proposals check (`needs_you(plan_review)`; deciding the proposals is also the approval), then
+`needs_you(plan_approval)` when `approve_final`, else `begin_execution`. A planner turn that ends without resubmitting
+after a `revise` review is `needs_you(no_plan)`; after a clean approve the reviewed revision stands.
+
+**The reviewer** (`run_coordinator.spawn_reviewer`). A spawn with `role: "reviewer"`, `mode: "review"`, `share:
+true`, the next `attempt` (a fresh surface every round), the reviewer's harness and model, and a reviewer token
+(`mint_review_token`: same `ert_…` shape, derived over the review row, only its hash stored on the review). The
+prompt (`prompts.plan_review`) carries the rendered plan, the resolution log of earlier findings with the
+planner's decisions, what to check, the severities and the one tool call. Its SessionStart context carries its
+own token and the reviewed revision, never the run token. It is never the run's `session_pk`: `attach` records it
+on the review, its questions never pause the run, its status and exit never move the run. Its turn end
+(`agent_link.turn`, matched by surface, interim and synthetic turns ignored) runs `finish_review`: the
+`submit_plan_review` call, or else its turn text as a `revise` summary (`via: turn`), status `done`,
+`plan_round += 1`, a `stop {mode: kill, role: reviewer}` for its surface (fenced on the reviewer's own
+`incarnation`), and the `plan_critique` prompt to the planner (`incorporate`, `final` on the last round or after a
+clean approve) → `planning`.
+
+**`submit_plan_review`** (MCP, `agents:session`, reviewer token only; the planner's token gets `403 REVIEWER_ONLY`):
+`{run_token, verdict: approve|revise, findings: [{id, severity: blocking|major|minor, area, issue, suggestion}] (≤ 50,
+distinct ids), questions_for_user: [str] (≤ 12), summary}` → `{review_id, round, verdict, counts: {blocking, major,
+minor}, next}`. Once per round (`409 REVIEW_SUBMITTED`); outside `plan_reviewing` `409 REVIEW_CLOSED`; after the
+round the token is dead (`401 RUN_TOKEN_REQUIRED`). A reviewer token on any other in-session tool than `task_plan`
+is `403 REVIEWER_SCOPE`.
+
+**`submit_plan`** gains `review_resolutions: [{finding_id, decision: accepted|rejected|deferred, note}]`, stored on
+the last review as `resolutions`. After a `revise` review of the current revision, every blocking and major finding
+needs one (`409 REVIEW_UNRESOLVED {round, unresolved}`); an unknown id is `INVALID_ARGUMENT`. The planner decides
+which of the reviewer's `questions_for_user` to forward with `task_interview`; the answers come back through
+`interview_answers`, which is round-aware ("continue incorporating review N").
+
+**Failures.** A reviewer has `REVIEW_SPAWN_DEADLINE` (15 min) to start and `REVIEW_DEADLINE` (20 min) to finish
+(`sweep_reviews`, beside the judge and verify deadlines); a timeout, crash, spawn failure or a reviewer the host lost
+at reconnect is `failed` (`via: timeout|failed`), its surface killed, `review_failed` on the timeline, and the loop
+moves on as if no review were due (no re-spawn). A spawn the host refuses `target_busy` (at `limits.maxRuns`; a
+read-only spawn counts) is sent again with backoff (30 s doubling to 5 min, same attempt and surface); after
+`REVIEW_BUSY_LIMIT` (10 min) the run is `needs_you(host_busy)` and the retries continue every 5 minutes until one
+starts, which resumes `plan_reviewing`. The worker's spawn follows the same rule from `handing_off`; any other
+worker spawn failure fails the run (`spawn_failed` / `spawn_rejected`), and a worker spawn that expires is
+`needs_you(spawn_expired)`. Stopping the run skips the live review and kills its surface (a reviewer spawn still
+queued is canceled; the run's own spawn, never a reviewer's, decides whether the stop settles at once).
+
+**The final plan.** `needs_you(plan_approval)` shows the plan and the review history. `POST
+/remotea/runs/{id}/plan-review {action: "approve" | "revise", note?, expected_revision}` (the existing route; the
+proposals path is unchanged and refuses `action` elsewhere): `approve` → `begin_execution`; `revise` → `planning`
+with the note as a `plan_critique` prompt. Eri: `control_plan_review` with `action` (and `note`); `control_status`
+lists `plan_approval {plan_revision, plan_round, title, criteria, reviews [{round, verdict, counts, summary}],
+next}` and `actor`.
+
+**The handoff** (`begin_execution` → `hand_off`, the first time on a split-worker run): `stop {surf, incarnation,
+mode: kill, role: planner}` for the planner; `attempt += 1`; `sync_state.handoff = {attempt, surf, at, from_session_pk,
+from_surf, planner {harness, model}, worker {harness, model}}`; `session_pk` cleared; `tool` / `model` set to the
+worker's; a fresh run token (the planner's no longer matches: revoked); a spawn with `role: "worker"` (writable, the
+run's normal token scope, the plan's verify and migration) and the prompt `prompts.worker(plan, digest)`: the frozen
+plan plus the "decisions already made" (rejected and deferred findings with the planner's reasons, the owner's
+interview answers); a `handoff` timeline entry and a `sent` entry with kind `handoff`; → `handing_off`. `attach`
+accepts exactly that attempt's surface as the new `session_pk` (a late report from the retired planner cannot take
+the run back, and its SessionStart gets no token), sets `handoff.done` → `executing`. Verify, judge, steer, message
+and approve then target the worker; re-plans stay with the worker (`replanning`).
+
+**The link.** Spawns carry `role` / `mode` / `share` as above (the host echoes `role` and `mode`; a harness without a
+read-only launch is `rejected mode_unsupported`, which fails the round or the start like any refusal). `runs.snapshot`
+gets one entry per surface for a run with roles (`run_coordinator.desired_entries`): the owner's entry with `surf`
+(or, before the worker has one, `attempt`) and the verify config, each live reviewer's `{surf, desired: continue}`
+without verify, and `{surf, desired: stop, stop_mode: kill}` for every surface the run retired (finished reviewers,
+the planner after the handoff), so a stop lost in transit is carried out after a reconnect. A classic run's entry has
+neither `surf` nor `attempt`, as before. `verify` is only ever sent while the owner's session is up (execution);
+`POST …/verify` is `409 NOT_STARTED` during `plan_reviewing` and `handing_off`, since remotea binds verify to the run's
+newest non-reviewer session and a run whose only session is a reviewer has none.
+
+**Reading it.** `public_run` adds:
+
+```
+roles:      null | {planner: {harness, model}, reviewer: {harness, model} | null, worker: {harness, model} | null,
+                    rounds, approve_final}
+plan_round: int
+reviews:    [{id, round, plan_revision, harness, model, attempt, status: spawning|reviewing|done|failed|skipped,
+              verdict: approve|revise|null, via: tool|turn|timeout|failed|"", findings, questions, summary,
+              resolutions, counts: {blocking, major, minor}, started_at, finished_at, created_at}]   ([] for classic)
+actor:      {role: agent|planner|reviewer|worker, harness, model, round?, rounds?}   (round/rounds for a reviewer)
+handoff:    null | {attempt, at, done?, attached_at?, planner {harness, model}, worker {harness, model}, retry_at?,
+                    blocked_since?, retries?}
+```
+
+Timeline events (`history`): `review_started {review_id, round, rounds, plan_revision, harness, model}`,
+`review_submitted {review_id, round, verdict, blocking, major, minor}`, `review {review_id, round, rounds, verdict,
+via, harness, model, blocking, major, minor}`, `review_blocked {review_id, round, retry_at, detail}`,
+`review_failed` / `review_skipped {review_id, round, detail?}`, `plan_submitted` (now with `review_round` when it
+answered a review), `plan_approved`, `plan_revise`, `handoff {attempt, harness, model, actor}`, `handoff_blocked
+{retry_at, detail}`, `attached` (with `role: worker` at the handoff), and `command` / `outcome` entries carry
+`role` for role commands.
+
+**Security.** A reviewer token can call `task_plan` and `submit_plan_review` only, and only while its round is live;
+reviewers never become `session_pk` and their turns, questions, status and exit never move the run. The planner's
+token is revoked at the handoff (the worker gets a fresh one), and the retired planner's SessionStart gets no token.
+Read-only is a harness-level mode (Claude `--permission-mode dontAsk` with an allow list, Codex `--sandbox
+read-only`): Bash allow rules match command text and are not a security boundary, and the reviewer shares the
+writer's worktree, so what it can read is bounded by the same git-ignore hygiene as the planner's. Prompts tell the
+read-only roles to ask through `task_interview`, never AskUserQuestion (denied under `dontAsk`).
+
+**Not included.** Swarm starts have no roles yet; a replan during execution stays with the worker (escalating it back
+to the planner is a follow-up); `reviewer_blocked` is reserved.
+
 ## Security model (stage F, migration 0031)
 
 Fixes from the 2026-10-28 security audit. Regression tests are in `tests/test_agent_security.py`, one
@@ -1764,7 +1916,7 @@ run is redacted once, marked by a `redacted` history entry with reason `retentio
 
 **Deleting one run now.** `POST /api/v1/remotea/runs/{id}/redact` (owner-only, CSRF, works while remotea is
 off; `409 RUN_ACTIVE` until the run has settled; another workspace's run is `404`) deletes the run's turns,
-questions, interviews and commands, scrubs the copies as above (history reason `owner`), and keeps the
+questions, interviews, plan reviews and commands, scrubs the copies as above (history reason `owner`), and keeps the
 attempts with their verdict, rules, exit code and each criterion's id and status while their `tail`,
 `error`, `gap`, `summary`, `detail` and per-criterion `evidence` become the marker. It returns
 `{redacted: {counts}, run: <detail>}`. Bot `agents:read` reads (`run_list`, `run_get`) and the page read
@@ -1782,6 +1934,7 @@ the same rows, so after either redaction they show the marker and never the text
 | `agent_attempts` `result` | verify tail (≤ 8,000) and error, the judge's gap, summary and per-criterion evidence | deleted at the window; the redact route keeps the row and scrubs the text |
 | `agent_questions` `items`, `answers`, `detail` | the agent's questions, choices and the answers | a run's: deleted at the window; a session no run owns: 30 days once no longer open |
 | `agent_interviews` `questions`, `answers` | the interview form and answers | deleted at the window |
+| `agent_plan_reviews` `findings`, `questions`, `summary`, `resolutions` | hyperplan review rounds: the reviewer's findings and summary (or its turn text), the planner's answers; `token_hash`/`token_salt` of the reviewer token | deleted at the window and by the redact route; exported without the token columns |
 | `agent_pending_controls` `summary`, `arguments` | Eri's proposed start or message | marker at the window; the row is deleted 30 days after it expires (10-minute expiry) |
 | `agent_action_receipts` `result` | a whole run response (history included) | 7 days; deleted at the window and by the redact route |
 | `notifications` `body` (`target.run_id`) | task title plus a question's text or a reason | marker at the window; the row follows the notification lifecycle |
@@ -1794,7 +1947,8 @@ the same rows, so after either redaction they show the marker and never the text
 | Linear comment (`agent_sync.comment_body`) | criteria ids and status, verify id and status, PR links: no free text | lives in Linear |
 
 **Account export.** `GET /api/v1/export` includes `agent_runs` (without `run_token_hash` / `run_token_salt`),
-`agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews`, `agent_sessions` (without the
+`agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews`, `agent_plan_reviews` (without
+`token_hash` / `token_salt`), `agent_sessions` (without the
 embedding and fingerprints) and `agent_swarms` as they are now: redacted rows export the marker, deleted rows are absent
 (`agent_retention.export_tables`). It leaves out `agent_turns` (up to 64 MiB a day per owner, and the export
 is built in memory; the host keeps the transcript and `GET /remotea/runs/{id}` pages them), `agent_commands`

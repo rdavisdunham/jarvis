@@ -44,15 +44,22 @@ HARNESSES = {"claude": "opus", "codex": "gpt-5.6-sol"}
 DISABLED_HARNESSES = {"opencode": "OpenCode control stays off until its adapter is tested."}
 MODEL = r"^[A-Za-z0-9][A-Za-z0-9._:/@\[\]-]{0,79}$"
 BRANCH = re.compile(r"^(?!-)(?!.*\.\.)(?!.*//)(?!.*\.lock$)[A-Za-z0-9._/-]{1,200}$")
-PROMPT_CHARS = 32_000
+PROMPT_CHARS = coordinator.PROMPT_CHARS
 
 
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
+class RoleInput(Input):
+    """A role's harness and model (hyperplan): the reviewer or the worker. model None = the harness default."""
+    harness: str = Field(max_length=20)
+    model: str | None = Field(default=None, pattern=MODEL)
+
+
 class StartInput(Input):
     task_id: str = Field(max_length=36)
+    # The planner (and, without a different worker, the agent that executes).
     harness: str = Field(default="claude", max_length=20)
     model: str | None = Field(default=None, pattern=MODEL)
     execution_target_id: str | None = Field(default=None, max_length=36)
@@ -61,6 +68,14 @@ class StartInput(Input):
     # Start in freestyle (no interview, no judge): the only way to start on a target whose agents have no Eridani
     # tools (MCP_UNCONFIGURED).
     freestyle: bool = False
+    # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer turns the review loop on (`rounds` reviews,
+    # each a fresh read-only session); a worker that differs from the planner gets the approved plan in a fresh
+    # session; approve_final pauses in needs_you(plan_approval) before the work starts. Either forces a planning
+    # start (never a frozen-plan direct execute).
+    reviewer: RoleInput | None = None
+    worker: RoleInput | None = None
+    rounds: int = Field(default=2, ge=1, le=10)
+    approve_final: bool = True
 
 
 class FreestyleInput(Input):
@@ -481,8 +496,10 @@ def harness_problem(host, harness, host_target=None):
     return f"The {host_target} target on {host.name or 'this remotea server'} does not enable {label}."
 
 
-def check_host(owner, task, host, harness, host_target=None):
-    """The refusals between a resolved target and a spawn; start_run raises them, a proposal reports them."""
+def check_host(owner, task, host, harness, host_target=None, *, roles=None):
+    """The refusals between a resolved target and a spawn; start_run raises them, a proposal reports them. `roles`
+    ({reviewer, worker}: each {harness, model} or None) adds the hyperplan checks: the host must advertise
+    `spawn.roles` (HOST_NO_ROLES) and must be able to start each role's harness on the target."""
     if host is None or host.owner_id != owner:
         raise DomainError("NEEDS_TARGET", "That execution target has no remotea server.", 409, data={"task_id": task.id})
     if not agent_link.connected(host):
@@ -496,6 +513,45 @@ def check_host(owner, task, host, harness, host_target=None):
     if not host_harness(host, harness, host_target):
         raise DomainError("HARNESS_UNAVAILABLE", harness_problem(host, harness, host_target), 409,
                           data={"harness": harness, **({"host_target": host_target} if host_target else {})})
+    for role, spec in (roles or {}).items():
+        if not spec:
+            continue
+        if not host_roles(host):
+            raise DomainError("HOST_NO_ROLES", "This remotea server cannot run a reviewer or a separate worker yet: "
+                              "update remotea (it must advertise spawn.roles).", 409, data={"host_id": host.id})
+        if not host_harness(host, spec["harness"], host_target):
+            raise DomainError("HARNESS_UNAVAILABLE", f"{role.capitalize()}: " + harness_problem(host, spec["harness"], host_target),
+                              409, data={"harness": spec["harness"], "role": role,
+                                         **({"host_target": host_target} if host_target else {})})
+
+
+def host_roles(host):
+    """Does the host spawn per-role sessions (hello caps `spawn.roles`: read-only plan/review modes, shared worktrees)?"""
+    return bool(host) and "spawn.roles" in ((host.caps or {}).get("caps") or [])
+
+
+def role_spec(spec):
+    """{harness, model} with the harness default filled in, or None."""
+    if spec is None:
+        return None
+    if spec.harness in DISABLED_HARNESSES:
+        raise DomainError("HARNESS_DISABLED", DISABLED_HARNESSES[spec.harness], 400)
+    if spec.harness not in HARNESSES:
+        raise DomainError("INVALID_ARGUMENT", "Choose Claude Code or Codex for every role.")
+    return {"harness": spec.harness, "model": spec.model or HARNESSES[spec.harness]}
+
+
+def run_roles(body):
+    """The run's `roles` from a StartInput, or None for a classic run (no reviewer, and no worker that differs from
+    the planner)."""
+    planner = {"harness": body.harness, "model": body.model or HARNESSES[body.harness]}
+    reviewer, worker = role_spec(body.reviewer), role_spec(body.worker)
+    if worker == planner:
+        worker = None  # "Same as planner": the planner's session continues into execution.
+    if reviewer is None and worker is None:
+        return None
+    return {"planner": planner, "reviewer": reviewer, "worker": worker, "rounds": body.rounds,
+            "approve_final": bool(body.approve_final)}
 
 
 def start_run(db, owner, account_id, body, *, actor, brief=""):
@@ -511,9 +567,13 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     active = coordinator_active(db, task.id)
     if active is not None:
         raise DomainError("RUN_ACTIVE", "An agent run is already working on this task.", 409, data={"run_id": active.id})
+    roles = run_roles(body)
+    if roles is not None and body.freestyle:
+        raise DomainError("INVALID_ARGUMENT", "A freestyle run has no plan to review or hand over; turn one of them off.")
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
-    check_host(owner, task, host, body.harness, target.host_target)
+    check_host(owner, task, host, body.harness, target.host_target,
+               roles={"reviewer": roles["reviewer"], "worker": roles["worker"]} if roles else None)
     tools = next((p for p in target_problems(task, hello_target(host, target.host_target))
                   if p["code"] == "MCP_UNCONFIGURED"), None)
     if tools is not None and not body.freestyle:
@@ -526,12 +586,15 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
     if body.freestyle:
         interview = False  # Freestyle talks to the agent directly: nothing to interview for or submit.
+    # Hyperplan never executes an unreviewed plan: a task with a PRD starts in planning instead of frozen.
+    planning_start = roles is not None and not interview
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
                    model=body.model or HARNESSES[body.harness], turn_cap=task.turn_cap or 15,
-                   worktree="", completion_policy=task.completion_policy or "code_ready", sync_state={},
-                   freestyle=bool(body.freestyle),
+                   worktree="", completion_policy=task.completion_policy or "code_ready",
+                   sync_state={"start_phase": "planning"} if planning_start else {},
+                   freestyle=bool(body.freestyle), roles=roles, plan_round=0,
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
@@ -540,7 +603,15 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     if interview:
         from . import agent_prompts as prompts
 
-        prompt = prompts.interview(task, coordinator.children(db, task), task.notes or "")[:PROMPT_CHARS]
+        prompt = prompts.interview(task, coordinator.children(db, task), task.notes or "", roles)[:PROMPT_CHARS]
+    elif planning_start:
+        from . import agent_prompts as prompts
+        from .agent_plan import verify_ids
+
+        note = db.get(Note, task.prd_note_id) if task.prd_note_id else None
+        prd = note.content if note and note.owner_id == owner and not note.archived else ""
+        prompt = prompts.planning_start(task, coordinator.children(db, task), task.notes or "", prd,
+                                        verify_ids(db, run)[1], roles)[:PROMPT_CHARS]
     else:
         plan = freeze(db, owner, run, task)
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
@@ -556,6 +627,8 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         "task_id": task.id, "title": task.title[:200].replace("\n", " "), "group": "Eridani",
         "prompt": prompt, "run_token": token, "env": {}, **({"verify": verify} if verify else {}),
         **({"migration": migration} if migration else {}),
+        # Roles (hyperplan): the planner; read-only (`mode: plan`) when a different worker will do the work.
+        **({"role": "planner"} if roles else {}), **({"mode": "plan"} if roles and roles["worker"] else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -629,6 +702,11 @@ def verify_now(db, owner, run_id, body=None, *, actor):
     coordinator.check_revision(run, body.expected_revision if body else None)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    if run.roles and (run.state in ("plan_reviewing", "handing_off") or not run.session_pk):
+        # remotea verifies the run's newest non-reviewer session: while a reviewer reads the plan or the worker is
+        # still spawning, there may be none (remotea would answer `unknown run`).
+        raise DomainError("NOT_STARTED", "Verify works once the run's working session is up.", 409,
+                          data={"state": run.state})
     plan = coordinator.frozen(db, run)
     if plan is None or not (plan.verify or {}).get("verify_id"):
         raise DomainError("NO_VERIFY", "This run's plan has no verification.", 409)
@@ -648,7 +726,7 @@ def judge_again(db, owner, run_id, body, *, actor):
     now, typically after Edit criteria (agent_plan.set_criteria). The verdict moves the run as after any turn."""
     run = coordinator.load(db, owner, run_id)
     coordinator.check_revision(run, body.expected_revision)
-    if run.state not in JUDGE_AGAIN_STATES or run.state_reason == "plan_review":
+    if run.state not in JUDGE_AGAIN_STATES or run.state_reason in ("plan_review", "plan_approval"):
         raise DomainError("RUN_NOT_PARKED", f"Judge again works while the run needs you or awaits approval (not during a "
                           f"plan review); this run is {run.state}.", 409, data={"state": run.state})
     if run.freestyle:
@@ -1015,6 +1093,13 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts
+        # on the run now ({role: planner|reviewer|worker|agent, harness, model}); `reviews` the rounds so far.
+        "roles": run.roles, "plan_round": run.plan_round, "reviews": coordinator.public_reviews(db, run) if run.roles else [],
+        "actor": coordinator.current_actor(db, run),
+        "handoff": {k: v for k, v in ((run.sync_state or {}).get("handoff") or {}).items()
+                    if k in ("attempt", "at", "done", "attached_at", "planner", "worker", "retry_at", "blocked_since",
+                             "retries")} or None,
         "base": base_info(db, run, host),
         "reason_detail": reason_detail(db, run),
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
@@ -1275,7 +1360,7 @@ def ambiguous(db, runs, message):
 
 # Which runs a command without a run_id could mean (default: any unsettled run).
 PLAUSIBLE = {"control.approve": lambda r: r.state == "awaiting_approval",
-             "control.plan_review": lambda r: r.state == "needs_you" and r.state_reason == "plan_review"}
+             "control.plan_review": lambda r: r.state == "needs_you" and r.state_reason in ("plan_review", "plan_approval")}
 
 
 def run_for(db, owner, target, tool=None):
@@ -1388,7 +1473,7 @@ def proposed_target(db, owner, task):
         return None  # readiness() says why; confirm resolves again.
 
 
-def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
+def readiness_for(db, owner, task, harness="claude", execution_target_id=None, *, roles=None):
     """What stands between a task and a run on it, checked without acting: no target chosen (`needs_target`, with
     the picker's data in `need`), or the target's server offline or unable to start the harness (`problems`)."""
     out = {"needs_target": False, "need": None, "target": None, "problems": []}
@@ -1398,7 +1483,9 @@ def readiness_for(db, owner, task, harness="claude", execution_target_id=None):
         target = resolve_target(db, owner, task, execution_target_id)
         out["target"] = {"id": target.id, "name": target.name or target.host_target, "repo": target.repo}
         host = db.get(AgentHost, target.host_id) if target.host_id else None
-        check_host(owner, task, host, harness, target.host_target)
+        specs = {k: ({"harness": v.get("harness", "claude"), "model": v.get("model")} if isinstance(v, dict) else None)
+                 for k, v in (roles or {}).items()}
+        check_host(owner, task, host, harness, target.host_target, roles=specs or None)
     except DomainError as error:
         if error.code == "NEEDS_TARGET" and isinstance(error.data, dict) and "candidates" in error.data:
             return {**out, "needs_target": True, "need": error.data}
@@ -1444,7 +1531,8 @@ def readiness(db, owner, row):
     if row.tool != "control.start":
         return {}
     args = row.arguments or {}
-    return readiness_for(db, owner, db.get(Task, args.get("task_id")), args.get("harness", "claude"), args.get("execution_target_id"))
+    return readiness_for(db, owner, db.get(Task, args.get("task_id")), args.get("harness", "claude"), args.get("execution_target_id"),
+                         roles={k: args.get(k) for k in ("reviewer", "worker")} if args.get("reviewer") or args.get("worker") else None)
 
 
 def target_capabilities(db, owner, task, execution_target_id=None):
@@ -1493,20 +1581,39 @@ def target_readiness(db, owner, task, execution_target_id=None):
             "mcp": target_mcp(item), "template": target_template(item)}
 
 
-def preflight(db, owner, task_id, harness="claude", execution_target_id=None):
+def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *, reviewer_harness=None, worker_harness=None):
     """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
     the interview would run (start_run's rule), which harnesses the task's target can spawn (`harness_reasons` says
     why not; `harness_note` is set while no target resolves), the target's verify and MCP readiness
-    (target_readiness), and the task's title."""
+    (target_readiness), the task's title, and `roles`: whether the target's host can spawn hyperplan roles
+    (`spawn.roles`; null while no target resolves). `reviewer_harness` / `worker_harness` add a HARNESS_UNAVAILABLE
+    (or HOST_NO_ROLES) problem with `role` for a role the target cannot start."""
     task = owned(db, Task, task_id, owner)
     out = readiness_for(db, owner, task, harness, execution_target_id)
     active = coordinator_active(db, task.id)
     planned = bool(task.success_criteria) and bool(task.verify)
     harnesses, reasons, note = target_capabilities(db, owner, task, execution_target_id)
+    roles = None
+    try:
+        target = resolve_target(db, owner, task, execution_target_id)
+        host = db.get(AgentHost, target.host_id) if target.host_id else None
+        roles = host_roles(host) if host is not None and host.owner_id == owner else False
+        for role, wanted in (("reviewer", reviewer_harness), ("worker", worker_harness)):
+            if not wanted or (role == "worker" and wanted == harness):
+                continue
+            if not roles:
+                out["problems"].append({"code": "HOST_NO_ROLES", "role": role, "blocking": True,
+                                        "message": "This remotea server cannot run a reviewer or a separate worker yet: "
+                                                   "update remotea (it must advertise spawn.roles)."})
+            elif wanted in HARNESSES and not harnesses.get(wanted, False):
+                out["problems"].append({"code": "HARNESS_UNAVAILABLE", "role": role, "blocking": True,
+                                        "message": f"{role.capitalize()}: " + (reasons.get(wanted) or "unavailable")})
+    except DomainError:
+        pass
     return {**out, "task": {"id": task.id, "title": task.title},
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
             "interview": not task.prd_note_id and not planned,
-            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note,
+            "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note, "roles": roles,
             **target_readiness(db, owner, task, execution_target_id)}
 
 
@@ -1825,12 +1932,28 @@ def propose(db, owner, account, tool, args, actor):
     if tool == "control.start":
         task = owned(db, Task, args.task_id or task_by_name(db, owner, args.task), owner)
         arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
+        if args.model:
+            arguments["model"] = args.model
+        # Hyperplan roles travel with the proposal; the summary names them so the owner's yes covers them.
+        extras = []
+        if args.reviewer is not None:
+            arguments["reviewer"] = args.reviewer.model_dump()
+            arguments["rounds"], arguments["approve_final"] = args.rounds, args.approve_final
+            extras.append(f"{HARNESS_LABELS.get(args.reviewer.harness, args.reviewer.harness)}"
+                          f"{' ' + args.reviewer.model if args.reviewer.model else ''} reviewing ({args.rounds} round"
+                          f"{'s' if args.rounds != 1 else ''})")
+        if args.worker is not None:
+            arguments["worker"] = args.worker.model_dump()
+            arguments.setdefault("approve_final", args.approve_final)
+            extras.append(f"{HARNESS_LABELS.get(args.worker.harness, args.worker.harness)}"
+                          f"{' ' + args.worker.model if args.worker.model else ''} working")
         # Where it runs is settled now when it can be (the card then names it); without a target the card asks.
         target = proposed_target(db, owner, task)
         if target is not None:
             arguments["execution_target_id"] = target.id
         summary = f"Start {'Codex' if args.harness == 'codex' else 'Claude Code'} on \u201c{task.title[:200]}\u201d" + (
-            f" in {(target.name or target.host_target)[:100]}" if target is not None else "")
+            f" in {(target.name or target.host_target)[:100]}" if target is not None else "") + (
+            " with " + " and ".join(extras) if extras else "")
     else:
         run = coordinator.load(db, owner, run_for(db, owner, args, tool), lock=False)
         task = db.get(Task, run.task_id)
@@ -1947,7 +2070,9 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
     if row.tool == "control.start":
         result = start_run(db, owner, row.account_id or account(db, owner),
                            StartInput(task_id=args["task_id"], harness=args.get("harness", "claude"),
-                                      execution_target_id=execution_target_id or args.get("execution_target_id")),
+                                      execution_target_id=execution_target_id or args.get("execution_target_id"),
+                                      **{k: args[k] for k in ("model", "reviewer", "worker", "rounds", "approve_final")
+                                         if k in args}),
                            actor=confirmed)
         run = coordinator.load(db, owner, result["id"])
         coordinator.note(run, "confirmed", pending_id=row.id, proposed_by=row.actor, via=via)
@@ -2170,6 +2295,21 @@ def control_dispatch(db, owner, tool, args):
 
         run = coordinator.load(db, owner, run_for(db, owner, args, tool), lock=False)
         plan = coordinator.frozen(db, run)
+        if run.state == "needs_you" and run.state_reason == "plan_approval":
+            if args.action is None:
+                raise DomainError("INVALID_ARGUMENT", "This run waits for the owner's approval of the final plan: pass "
+                                  "action approve or revise (with their note).")
+            body = PlanReviewInput(action=args.action, note=args.note, expected_revision=run.state_revision)
+            result = review_plan(db, owner, run.id, body, actor=actor)
+            return named(db, {"status": "plan_" + ("approved" if args.action == "approve" else "revised"), "run_id": run.id,
+                              "task": result["task"], "state": result["state"],
+                              "next": ("The plan is approved; the work starts" + (" in a fresh worker session" if
+                                       result["state"] == "handing_off" else "") + ".") if args.action == "approve"
+                              else "The planner is revising the plan with the owner's note."}, run.id)
+        if args.action is not None:
+            raise DomainError("NO_PLAN_APPROVAL", f"This run is {run.state}" +
+                              (f" ({run.state_reason})" if run.state_reason else "") +
+                              ", not waiting for the final plan's approval.", 409, data={"state": run.state})
         if run.state != "needs_you" or run.state_reason != "plan_review" or plan is None or not plan.proposals:
             raise DomainError("NO_PLAN_REVIEW", f"This run is {run.state}" +
                               (f" ({run.state_reason})" if run.state_reason else "") +
@@ -2230,6 +2370,16 @@ def spoken_run(db, run):
                                      "next": "Read each proposal to the owner; then call control_plan_review with "
                                              "their accept/keep decision per criterion id (text for their own "
                                              "wording), and verify / completion_policy when proposed."}
+    if run.state == "needs_you" and run.state_reason == "plan_approval":
+        plan = coordinator.frozen(db, run)
+        spoken["plan_approval"] = {"plan_revision": run.plan_revision, "plan_round": run.plan_round,
+                                   "title": plan.title if plan else "", "criteria": plan.criteria if plan else [],
+                                   "reviews": [{k: r[k] for k in ("round", "verdict", "counts", "summary")}
+                                               for r in coordinator.public_reviews(db, run)],
+                                   "next": "Read the plan's title, criteria and each review's verdict to the owner; then "
+                                           "call control_plan_review with action approve, or revise with their note."}
+    if run.roles:
+        spoken["actor"] = coordinator.current_actor(db, run)
     if run.state == "awaiting_approval":
         packet = review_packet(db, run)
         spoken["awaiting_approval"] = {**judge_summary(db, run), "review_packet": packet,
@@ -2238,7 +2388,7 @@ def spoken_run(db, run):
                                                "decision, not something verification established: control_approve "
                                                "completes the task on their say-so; control_message sends changes back "
                                                "instead."}
-    elif run.state == "needs_you" and run.state_reason != "plan_review":
+    elif run.state == "needs_you" and run.state_reason not in ("plan_review", "plan_approval"):
         spoken["review_packet"] = review_packet(db, run)
     # How old each fact is (E-S6): say it before a decision ("verify passed 3 min ago …; host seen 5 s ago").
     spoken["freshness"] = freshness_text(item)

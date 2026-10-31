@@ -229,7 +229,7 @@ def test_run_dialog_harnesses_match_the_backend():
 
 # remotea's eridani-mcp.ts ERIDANI_MCP_TOOLS: the tools a spawned agent is told it has. remotea's source is not in
 # this repository, so the list is pinned here; change both when remotea changes it.
-REMOTEA_MCP_TOOLS = {"task_plan", "submit_plan", "task_step", "task_interview", "session_link"}
+REMOTEA_MCP_TOOLS = {"task_plan", "submit_plan", "task_step", "task_interview", "submit_plan_review", "session_link"}
 
 
 def test_setup_code_mcp_key_and_command_match_remotea():
