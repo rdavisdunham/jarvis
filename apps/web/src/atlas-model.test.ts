@@ -136,3 +136,15 @@ describe("unfiled records", () => {
     expect(markName(layout.byId.get(UNFILED)!.record!, loose, "2026-10-03")).toBe("Unfiled: 2 records without a home");
   });
 });
+
+it("keeps finished ancestor context navigable without including it in search or work totals", () => {
+  const parent = rec("filed", "task", null, {context_only:true, archived:true, opens_as:"container", status_meaning:"completed"});
+  const active = rec("active-child", "task", parent.id);
+  const i = indexAtlas({records:[parent,active],types});
+  expect(searchRecords(i,"filed")).toEqual([]);
+  expect(searchRecords(i,"active")).toEqual([active]);
+  expect(i.progress.get(parent.id)).toEqual({done:0,total:1});
+  expect(layoutAtlas(i).byId.has(active.id)).toBe(true);
+  expect(markName(parent,i,"2026-11-02")).toContain("archived ancestor home");
+  expect(legalTargets(active,i).has(parent.id)).toBe(false);
+});

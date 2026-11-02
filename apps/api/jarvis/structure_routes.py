@@ -46,11 +46,12 @@ def records(
 
 
 @router.get("/atlas")
-def atlas(user: User, limit: int = Query(default=5000, ge=1, le=5000)):
+def atlas(user: User, limit: int = Query(default=5000, ge=1, le=5000),
+          archived: bool = False, show_finished: bool = False, status: str = "all"):
     """Bounded skeleton for the visual Atlas; viewers may read it like Browse."""
     from .atlas import skeleton
     with session_scope() as db:
-        return skeleton(db, user.owner_id, limit=limit)
+        return skeleton(db, user.owner_id, limit=limit, archived=archived, show_finished=show_finished, status=status)
 
 
 @router.get("/reviews")

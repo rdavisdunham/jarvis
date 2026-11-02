@@ -5,7 +5,7 @@ import { hierarchy, pack } from "d3-hierarchy";
 export type AtlasRecord = {
   id: string; title: string; type_id: string; parent_id: string | null; depth: number; revision: number; sort_order: number;
   opens_as: "container" | "item"; status_meaning: string | null; work: boolean; due_date: string | null; planned_date: string | null;
-  review_due?: boolean; next_review_at?: string | null;
+  context_only?: boolean; archived?: boolean; review_due?: boolean; next_review_at?: string | null;
 };
 export type AtlasLink = { id: string; source_id: string; target_id: string; relationship_id: string; label: string; behavior: "related" | "blocks" };
 export type AtlasType = { id: string; name: string; plural: string; capabilities: string[]; parent_types: string[]; opens_as?: string; review?: { enabled: boolean; every: string }; archived?: boolean };
@@ -37,8 +37,8 @@ export function indexAtlas(data: Pick<AtlasData, "records" | "types"> & { links?
     for (const child of children.get(id) ?? []) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
-      if (child.work) { total++; if (child.status_meaning === "completed") done++; }
-      if (child.review_due) due++;
+      if (child.work && !child.context_only) { total++; if (child.status_meaning === "completed") done++; }
+      if (child.review_due && !child.context_only) due++;
       const sub = visit(child.id, seen);
       done += sub.done; total += sub.total; due += sub.due;
     }
@@ -78,7 +78,7 @@ export function legalTargets(record: AtlasRecord, index: AtlasIndex): Set<string
   const allowed = new Set(index.types.get(record.type_id)?.parent_types ?? []);
   const own = subtreeIds(index, record.id);
   const out = new Set<string>();
-  for (const r of index.byId.values()) if (allowed.has(r.type_id) && !own.has(r.id) && r.id !== record.parent_id) out.add(r.id);
+  for (const r of index.byId.values()) if (!r.context_only && !r.archived && allowed.has(r.type_id) && !own.has(r.id) && r.id !== record.parent_id) out.add(r.id);
   return out;
 }
 
@@ -253,6 +253,7 @@ export function searchRecords(index: AtlasIndex, query: string, limit = 8): Atla
   if (!q) return [];
   const hits: [number, AtlasRecord][] = [];
   for (const r of index.byId.values()) {
+    if (r.context_only) continue;
     const t = r.title.toLowerCase(), at = t.indexOf(q);
     if (at >= 0) hits.push([at === 0 ? 0 : t.includes(" " + q) ? 1 : 2, r]);
   }
@@ -264,6 +265,7 @@ export function markName(r: AtlasRecord, index: AtlasIndex, today: string): stri
   if (r.id === UNFILED) return `Unfiled: ${count(index.children.get(null)?.filter(x => !isRegion(x)).length ?? 0, "record")} without a home`;
   const type = index.types.get(r.type_id);
   const parts = [`${type?.name ?? "Record"}: ${r.title}`];
+  if (r.context_only) parts.push(r.archived ? "archived ancestor home" : ["completed","cancelled"].includes(r.status_meaning??"") ? "finished ancestor home" : "ancestor home");
   const state = itemState(r, today);
   if (state) parts.push(stateLabel[state]);
   if (r.due_date && state !== "done") parts.push("due " + r.due_date);

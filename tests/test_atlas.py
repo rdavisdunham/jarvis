@@ -127,3 +127,82 @@ async def test_ui_records_can_fly_the_atlas(monkeypatch):
     await tools.call_tool(OWNER, "turn", 0, "ui_records", {"record_id": c["id"], "layout": "atlas"})
     assert sent[0]["record_id"] == c["id"] and sent[0]["layout"] == "atlas" and "parent_id" not in sent[0]
     assert "atlas" in tools.READ_TOOLS["ui_records"]["parameters"]["properties"]["layout"]["enum"]
+
+
+def test_finished_filter_precedes_budget_and_keeps_only_needed_ancestor_context():
+    c, p, t, s, n, g = tree()
+    with session_scope() as db:
+        db.get(Task, t["task_id"]).status = "cancelled"
+    data = skeleton()
+    rows = {r["id"]: r for r in data["records"]}
+    assert rows[t["id"]]["context_only"] and rows[t["id"]]["opens_as"] == "container"
+    assert rows[s["id"]]["parent_id"] == t["id"] and not rows[s["id"]]["context_only"]
+    assert not rows[t["id"]]["work"]
+    assert data["total"] == 5 and data["context_count"] == 1
+    assert not {r["id"]: r for r in skeleton(show_finished=True)["records"]}[t["id"]]["context_only"]
+    with session_scope() as db:
+        db.get(Task, s["task_id"]).status = "completed"
+    assert t["id"] not in {r["id"] for r in skeleton()["records"]}
+    capped = skeleton(limit=4)
+    assert capped["total"] == 4 and not capped["truncated"]
+    assert {r["id"] for r in capped["records"]} == {c["id"], p["id"], n["id"], g["id"]}
+
+
+def test_archived_parent_preserves_active_child_and_archive_lookup(client):
+    c, p, t, s, n, g = tree()
+    with session_scope() as db:
+        task = db.get(Task, t["task_id"])
+        task.status = "completed"
+        task.archived = True
+    rows = {r["id"]: r for r in skeleton()["records"]}
+    assert rows[t["id"]]["context_only"] and rows[t["id"]]["archived"]
+    assert rows[s["id"]]["parent_id"] == t["id"]
+    archived = client.get("/api/v1/structure/atlas?archived=true").json()
+    assert {r["id"] for r in archived["records"] if not r["context_only"]} == {t["id"]}
+    browse = client.get(f'/api/v1/structure/browse?parent_id={p["id"]}&status=active').json()
+    context = next(r for r in browse["items"] if r["id"] == t["id"])
+    assert context["context_only"] and context["opens_as"] == "container"
+    inside = client.get(f'/api/v1/structure/browse?parent_id={t["id"]}&status=active').json()
+    assert s["id"] in {r["id"] for r in inside["items"]}
+
+
+def test_historical_completion_summary_survives_task_archive():
+    from jarvis.record_contents import summary
+    from jarvis.structure_models import StructureRecord
+    from jarvis import structure
+    c, p, t, s, n, g = tree()
+    with session_scope() as db:
+        for task_id in (t["task_id"], s["task_id"]):
+            task = db.get(Task, task_id)
+            task.status = "completed"
+            task.archived = True
+        structure.sync_core_records(db, OWNER, structure.ensure(db, OWNER))
+        result = summary(db, db.get(StructureRecord, p["id"]), structure.ensure(db, OWNER))
+        assert result["work_done"] == 2 and result["work_total"] == 2 and result["work_open"] == 0
+
+
+def test_explicit_terminal_status_filters_before_limit_and_preserves_non_task_context(client):
+    c, p, t, s, n, g = tree()
+    with session_scope() as db:
+        db.get(Task, t["task_id"]).status = "completed"
+        db.get(Task, s["task_id"]).status = "cancelled"
+    data = client.get("/api/v1/structure/atlas?show_finished=true&status=cancelled").json()
+    rows = {r["id"]: r for r in data["records"]}
+    assert rows[t["id"]]["context_only"] and not rows[s["id"]]["context_only"]
+    # Work-capable projects also have backing tasks and honor explicit task status.
+    assert data["total"] == 4
+    assert not any(r["work"] and r["status_meaning"] != "cancelled" for r in data["records"])
+
+
+def test_root_groups_keep_hidden_task_home_as_navigation_context(client):
+    parent = create("task", "Finished root home")
+    child = create("task", "Still needs work", parent_id=parent["id"])
+    with session_scope() as db:
+        task = db.get(Task, parent["task_id"])
+        task.status = "completed"
+        task.archived = True
+    data = client.get("/api/v1/structure/browse?section=groups&status=active").json()
+    assert data["total"] == 0 and data["context_count"] == 1
+    assert data["items"][0]["id"] == parent["id"] and data["items"][0]["context_only"]
+    children = client.get(f'/api/v1/structure/browse?parent_id={parent["id"]}&status=active').json()
+    assert children["items"][0]["id"] == child["id"]

@@ -6,7 +6,7 @@ import {openTarget,type CustomRecord,type Schema} from "./structure-types";
 import {StartFromTemplateDialog,useTemplates,useUndoToast} from "./Templates";
 import {templatesFor} from "./template-model";
 
-type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;next_offset:number|null};
+type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;context_count?:number;row_total?:number;next_offset:number|null};
 export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible,onChanged}:{
  schema:Schema;parent:string;section:string;onSection:(s:string)=>void;query:string;archived:boolean;status:string;refresh:number;canEdit:boolean;
  onBrowse:(id:string)=>void;onOpen:(r:CustomRecord)=>void;onCreate:(type:string,title:string)=>Promise<void>;onVisible?:(ids:string[])=>void;onChanged?:()=>Promise<void>;
@@ -48,7 +48,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
   {starting&&selected&&<StartFromTemplateDialog templates={templatesFor(templates,[selected.id])} parentId={parent||null} homeTitle={page?.parent?.title} schemaRevision={schema.revision}
    onClose={()=>setStarting(false)} onCreated={async(result,undo)=>{setAdding(false);toast.show({message:`Created ${result.title} from the ${result.name} template.`,undo});await onChanged?.();}}/>}
   {error&&<p role="alert">{error}</p>}
-  <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")}</p>
+  <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")+(page?.context_count?" · "+page.context_count+" ancestor homes for navigation":"")}</p>
   <div className="org-tiles">{children.map(r=>{
    const container=openTarget(r,schema)==="contents";
    return <article key={r.id} className="org-tile" data-record-id={r.id}>
@@ -56,12 +56,13 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
     <button className="org-tile-title" onClick={()=>container?onBrowse(r.id):onOpen(r)}>{container&&<FolderOpen size={17}/>}<strong>{r.title}</strong>{container&&<ChevronRight size={16}/>}</button>
     {r.body&&<p>{r.body}</p>}
     <div className="org-tile-foot">{r.contents?.work_total?<span>{r.contents.work_done}/{r.contents.work_total} complete</span>:<span>{r.contents?.direct??0} directly inside</span>}
-     {r.status_meaning&&<span className="chip">{r.status_meaning.replaceAll("_"," ")}</span>}
-     <button className="btn-icon" aria-label={"Details for "+r.title} onClick={()=>onOpen(r)}><Info size={16}/></button></div>
+     {r.context_only&&<span className="chip">{r.archived?"Archived":["completed","cancelled"].includes(r.status_meaning??"")?"Finished":"Ancestor"} home · contents</span>}
+     {r.status_meaning&&!r.context_only&&<span className="chip">{r.status_meaning.replaceAll("_"," ")}</span>}
+     <button className="btn-icon" hidden={r.context_only} aria-label={"Details for "+r.title} onClick={()=>onOpen(r)}><Info size={16}/></button></div>
    </article>;
   })}</div>
   {!busy&&!error&&!children.length&&<p className="empty">Nothing here yet. Choose another view or add a record here.</p>}
   {toast.element}
-  {page&&(offset>0||page.next_offset!==null)&&<div className="org-pagination"><button className="btn" disabled={busy||!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous</button><span>{offset+1}–{Math.min(offset+40,page.total)} of {page.total}</span><button className="btn" disabled={busy||page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>Next</button></div>}
+  {page&&(offset>0||page.next_offset!==null)&&<div className="org-pagination"><button className="btn" disabled={busy||!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous</button><span>{offset+1}–{Math.min(offset+40,page.row_total??page.total)} of {page.row_total??page.total}</span><button className="btn" disabled={busy||page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>Next</button></div>}
  </section>;
 }
