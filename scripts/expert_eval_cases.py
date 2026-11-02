@@ -213,6 +213,10 @@ def fingerprint(data):
     import copy
     baseline=copy.deepcopy(data)
     for row in baseline.get("tasks",{}).values():
+        # Additive lifecycle metadata was absent from the frozen fixture identity.
+        # Full snapshots retain it so the oracle still catches unrelated mutations.
+        for field in ("finished_at", "archive_eligible_at", "archived_at", "archive_reason"):
+            row.pop(field, None)
         if row.get("deadline_alert")=="default":row.pop("deadline_alert")
         if row.get("alert_urgent") is False:row.pop("alert_urgent")
         for field,default in (("is_quick_list",False),("quick_section",""),("quick_order",0),
@@ -224,6 +228,8 @@ def fingerprint(data):
 
 
 def permit(f, table, ids, *fields):
+    if table == "tasks" and "status" in fields:
+        fields = (*fields, "finished_at", "archive_eligible_at")
     for key in ids:
         f["permitted"].setdefault(table, {}).setdefault(key, set()).update(fields)
 
@@ -270,6 +276,10 @@ def seed_case(case, repeat):
                 db.execute(table.update().values(**values))
             if "completed_at" in table.c:
                 db.execute(table.update().where(table.c.completed_at.is_not(None)).values(completed_at=CLOCK))
+            if table.name == "tasks":
+                db.execute(table.update().where(table.c.finished_at.is_not(None)).values(finished_at=CLOCK))
+                db.execute(table.update().where(table.c.archive_eligible_at.is_not(None)).values(archive_eligible_at=CLOCK + timedelta(hours=24)))
+                db.execute(table.update().where(table.c.archived_at.is_not(None)).values(archived_at=CLOCK))
     f["before"] = snapshot()
     f["fixture_hash"] = fingerprint(f["before"])
     seed_calendar_for_case(f)
