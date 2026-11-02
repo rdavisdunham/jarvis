@@ -304,7 +304,7 @@ Tests: `tests/test_domain.py`, `tests/test_agent_actor.py` (gate), `tests/test_c
       `search_models.py`, which `models.py` imports at the bottom so Alembic and `create_all` see them.
       A new model module must be added to that import block.
 - [ ] Migration `migrations/versions/00NN_<name>.py` with `revision = "00NN_<name>"` and
-      `down_revision` = the previous file's `revision` (head is `0042_bug_reports`). Two PRs that both
+      `down_revision` = the previous file's `revision` (head is `0043_run_owner_wait`). Two PRs that both
       add `0033_*` create two heads; `alembic upgrade head` in CI then fails. Rebase and renumber.
 - [ ] Rolling deploys: API and worker run `jarvis.deploy migrate` pre-deploy and the previous release
       keeps running briefly (`docs/CLOUD_MIGRATION.md`). New non-null columns need a

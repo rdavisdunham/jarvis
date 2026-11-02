@@ -8,7 +8,7 @@ import { AttentionList, Facts, useNow } from "./RunsPanel";
 import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  ago, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
+  ago, answerableInterviews, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, composerAction, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
   isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
@@ -324,6 +324,11 @@ function QuestionCard({ question, run, onDone }: { question: RunQuestion; run: R
     {mode === "terminal" && <p className="footnote">{question.status === "timed_out" ? "This question timed out here. " : ""}Open the terminal on your remotea server to answer.</p>}
     {error && <p role="alert" className="work-error">{error}</p>}
   </section>;
+}
+
+/** The interview forms the run can take answers for now (answerableInterviews). */
+export function OpenInterviews({ run, onDone }: { run: RunDetail; onDone: () => void }) {
+  return <>{answerableInterviews(run).map(i => <InterviewForm key={i.id} interview={i} onDone={onDone}/>)}</>;
 }
 
 export function InterviewForm({ interview, onDone }: { interview: Interview; onDone: () => void }) {
@@ -803,8 +808,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
           <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/>
           <PlanApproval key={"approval-" + run.plan_revision} run={run} onDone={refresh} onConflict={changed}/>
           {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
-          {run.state === "interviewing" && run.interviews?.filter(i => i.status === "open").map(i =>
-            <InterviewForm key={i.id} interview={i} onDone={refresh}/>)}
+          <OpenInterviews run={run} onDone={refresh}/>
         </>}
         {isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
       </>}

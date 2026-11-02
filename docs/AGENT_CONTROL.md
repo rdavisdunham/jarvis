@@ -317,7 +317,7 @@ gap and reason text inside it is fenced as data.
 | `kind` (timeline) | Trigger | Condition | Wording | What the agent is expected to do |
 |---|---|---|---|---|
 | (spawn prompt, not an input) | Run start | Every run | `interview()` without a plan; `agent_control.spawn_prompt` with a frozen plan | Interview: read the code, ask with `task_interview`, stop. Planned: execute the plan. |
-| `interview_answers` · "your interview answers" | Owner answers the interview form (`agent_plan.answer_interview`) | Run `interviewing`, current generation | `planning()`: the answers, the offered verify ids, the plan floor | Write the PRD and criteria, call `submit_plan`, stop; do not start the work. |
+| `interview_answers` · "your interview answers" | Owner answers the interview form (`agent_plan.answer_interview`) | Run `interviewing` (or `needs_you` on `wall_clock`/`no_progress`), current generation | `planning()`: the answers, the offered verify ids, the plan floor | Write the PRD and criteria, call `submit_plan`, stop; do not start the work. |
 | `execute` · "plan frozen, start work" | The planning turn settles with a frozen plan (`settle_planning`), or the owner finishes plan review (`review_plan`) | `plan_pending`, no open question or interview, no proposals left | `execute()`: "Your plan is frozen. Execute it now…" plus the rendered plan; after review it opens with what was accepted and kept | Do the work, tick steps with `task_step`. |
 | `gap` · "judge gap" | Judge verdict `not_met` (`on_verdict`) | Turn cap not reached, no `verify_missing`, not `no_progress_gap`, freestyle off | `gap()`: the judge's notes and open criteria, then "Close the gap in the code … Then end your turn … If you are blocked on something only the operator can decide, say so plainly in your final message." | Fix the code, make verify pass, commit/push and update the PR if the plan needs one, tick steps, end the turn; name any blocker in the final message. |
 | `replan` · "re-plan" | Owner presses Re-plan (`agent_control.replan`) | Executing, needs_you, awaiting_approval/integration or planning | `replan()`: "Stop the current work at a safe point", the reason, "call `submit_plan` … then stop" (`steer` while executing) | Stop at a safe point, revise the plan, `submit_plan`, stop. |
@@ -643,11 +643,22 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
   generations.
 - **needs_you reasons** (`state_reason`, shown with `reason_text`): `exited`, `surface_lost`,
   `host_offline` (lease gone 5 minutes; both clear themselves when the surface reports again),
-  `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h), `no_progress` (45 min),
-  `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and `host_busy`
-  (see [Hyperplan and roles](#hyperplan-and-roles-migration-0041)). Pushes: `agent_stuck` on needs_you,
+  `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h of working time, below), `no_progress`
+  (45 min), `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and
+  `host_busy` (see [Hyperplan and roles](#hyperplan-and-roles-migration-0041)). Pushes: `agent_stuck` on needs_you,
   `agent_question` on a question, `agent_done` on awaiting_approval; each opens
   `/?view=remotea&run=<id>`.
+- **The wall clock counts working time, not owner waits** (migration 0043). A run waits on the owner while an
+  interview for its current generation is open (from `task_interview` until it is answered or superseded), in
+  `waiting_answer` and in any `needs_you` (including `plan_review`, `plan_approval`, `host_busy`); hyperplan's
+  `plan_reviewing` is not a wait (the reviewer works). `agent_runs.owner_wait_since` marks the wait in progress and
+  `owner_wait_total_s` sums the finished ones; the deadline is `started_at + wall_clock_limit + owner_wait_total_s`
+  (`run_coordinator.wall_clock_deadline`), and a run waiting now never trips `wall_clock`. When a wait ends the run
+  token's expiry slides forward by the same amount (from the stored expiry, so a token that lapsed during the wait
+  works again; while the wait lasts the token's expiry already counts it). Resuming a run parked on `wall_clock`
+  (a message, steer, re-plan, interview answer or any other move out of it) adds 2 h to `wall_clock_limit`
+  (`WALL_CLOCK_GRANT`, more if the run was further past its deadline) and to the token's expiry, recorded on the
+  timeline as `{event: "wall_clock_extended", seconds}`, so it does not bounce straight back.
 - **Approve** completes the task as a human (`task.complete`); the run moves to `stopping` with
   `stop_final: completed` and becomes `completed` once the agent is gone.
 
@@ -1017,7 +1028,9 @@ spawning → interviewing → planning → executing → verifying → judging �
 - **`POST /remotea/interviews/{id}/answers {answers: {question_id: label | [labels] | text}}`** checks
   every question has an allowed answer (`INVALID_ARGUMENT`, `INTERVIEW_CLOSED`, `STALE_GENERATION`),
   sends the answers as the next `input` ("now write the PRD with success criteria and call `submit_plan`,
-  then stop") and moves the run to `planning`.
+  then stop") and moves the run to `planning`. The run is `interviewing`, or `needs_you` on `wall_clock` or
+  `no_progress` with the interview open for its current generation (the page shows the form there too); answering
+  from `wall_clock` grants the 2 h described under the needs_you reasons.
 - **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
   verify_id?}], verify?: {target_id, verify_id}, migration?: bool, expected_plan_revision}`** (interviewing, planning or
   replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
@@ -1911,7 +1924,8 @@ inside. Linear-sourced tasks say so ("written by an external party").
 
 A run token is HMAC-SHA256 over the run id and a per-spawn random salt, keyed by HKDF of the integration
 key (info `eridani-run-token-v1`); only the salt is stored. It expires once, at the wall-clock limit plus
-24 h; `context.request` does not slide it. The spawn command's copy becomes `[redacted]` once the spawn
+24 h; `context.request` does not slide it. Only owner waits (which the wall clock excludes) and wall-clock grants
+move the expiry forward, by the same amount. The spawn command's copy becomes `[redacted]` once the spawn
 is acked or attached. Rotation is per spawn, not per generation: remotea passes the token as
 `ERIDANI_RUN_TOKEN` at spawn, and a steer delivers no new SessionStart, so a rotated token could not reach
 the agent.

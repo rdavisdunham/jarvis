@@ -96,6 +96,11 @@ NO_PROGRESS_VERDICTS = 3
 PLANNING = ("interviewing", "planning", "replanning", "plan_reviewing")
 PLAN_SUBMIT = ("interviewing", "planning", "replanning")
 TOKEN_TTL = timedelta(hours=24)
+# The wall clock measures the agent's working time, not time spent waiting on the owner: a run waits on the owner in
+# these states and while an interview for its current generation is open (never in plan_reviewing: the reviewer works).
+OWNER_WAIT_STATES = ("needs_you", "waiting_answer")
+# Resuming a run parked on its wall clock grants it this much more working time, so it does not bounce straight back.
+WALL_CLOCK_GRANT = timedelta(hours=2)
 PROMPT_CHARS = 32_000  # A spawn prompt's limit (agent_control.PROMPT_CHARS is this).
 # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer round is given up after REVIEW_DEADLINE once the
 # reviewer is up (REVIEW_SPAWN_DEADLINE for the host to start it); a spawn the host refuses as target_busy is retried
@@ -201,6 +206,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         raise DomainError("ILLEGAL_TRANSITION", f"A run cannot go from {run.state} to {to}.", 409,
                           data={"run_id": run.id, "state": run.state, "to": to})
     clock = now()
+    parked = (run.state, run.state_reason)
     entry = {"at": clock.isoformat(), "from": run.state, "to": to, "reason": reason, "revision": run.state_revision + 1,
              "actor": actor.record(), **({"detail": detail[:300]} if detail else {})}
     changed = db.execute(
@@ -214,6 +220,9 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
     if not changed:
         raise DomainError("REVISION_CONFLICT", "This run changed. Reload it and try again.", 409, data={"run_id": run.id})
     db.refresh(run)
+    sync_wait(db, run, clock)
+    if parked == ("needs_you", "wall_clock") and to not in TERMINAL and to != "stopping":
+        extend_wall_clock(run, clock)  # The owner resumed a run parked on its wall clock.
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
     summaries.touch(db, run)
     if to in TERMINAL:
@@ -236,6 +245,75 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
         notify(db, run, "agent_stuck", "Sub-task work needs merging", REASONS["awaiting_integration"],
                key=f"{run.id}:{run.state_revision}")
     return run
+
+
+# ---------------------------------------------------------------- the wall clock and owner waits
+
+
+def awaiting_owner(db, run):
+    """Whether the run's next move is the owner's: needs_you, waiting_answer, or an open interview for its current
+    generation (plan_reviewing never: the reviewer is working)."""
+    if run.state in OWNER_WAIT_STATES:
+        return True
+    if run.state in TERMINAL or run.state in ("stopping", "plan_reviewing"):
+        return False
+    return db.scalar(select(AgentInterview.id).where(
+        AgentInterview.run_id == run.id, AgentInterview.status == "open",
+        AgentInterview.generation == run.generation).limit(1)) is not None
+
+
+def start_wait(run, clock=None):
+    if run.owner_wait_since is None:
+        run.owner_wait_since = clock or now()
+
+
+def end_wait(run, clock=None):
+    """The wait is over: its seconds stop counting toward the wall clock and the run token lives that much longer
+    (slid from the stored expiry, so a token that expired during the wait works again)."""
+    if run.owner_wait_since is None:
+        return 0
+    waited = max(0, int(((clock or now()) - run.owner_wait_since).total_seconds()))
+    run.owner_wait_total_s = (run.owner_wait_total_s or 0) + waited
+    if run.run_token_expires_at:
+        run.run_token_expires_at += timedelta(seconds=waited)
+    run.owner_wait_since = None
+    return waited
+
+
+def sync_wait(db, run, clock=None):
+    """Start or end the owner wait to match where the run is now (after a transition, an interview, an answer)."""
+    if awaiting_owner(db, run):
+        start_wait(run, clock)
+    else:
+        end_wait(run, clock)
+
+
+def wall_clock_deadline(run):
+    """started_at + wall_clock_limit + the finished owner waits. A run waiting now (owner_wait_since) is paused:
+    its deadline moves on by the wait once it ends, and it never trips the wall clock meanwhile."""
+    if not run.started_at:
+        return None
+    return run.started_at + timedelta(seconds=(run.wall_clock_limit or 0) + (run.owner_wait_total_s or 0))
+
+
+def past_wall_clock(run, clock):
+    deadline = wall_clock_deadline(run)
+    return run.owner_wait_since is None and deadline is not None and deadline <= clock
+
+
+def extend_wall_clock(run, clock=None):
+    """Resuming a run parked on wall_clock grants WALL_CLOCK_GRANT more working time (and as much token life), never
+    less than enough to leave the run WALL_CLOCK_GRANT before its deadline."""
+    clock = clock or now()
+    deadline = wall_clock_deadline(run)
+    if deadline is not None and run.owner_wait_since is not None:
+        deadline += clock - run.owner_wait_since  # Still waiting (an open interview): that time is not working time.
+    grant = WALL_CLOCK_GRANT + (clock - deadline if deadline is not None and deadline < clock else timedelta(0))
+    seconds = int(grant.total_seconds())
+    run.wall_clock_limit = (run.wall_clock_limit or 0) + seconds
+    if run.run_token_expires_at:
+        run.run_token_expires_at += timedelta(seconds=seconds)
+    note(run, "wall_clock_extended", seconds=seconds)
 
 
 def note(run, what, **values):
@@ -1881,7 +1959,8 @@ def run_token(run):
 
 def mint_token(run, *, fresh=False):
     """fresh (a spawn): a new salt and a hard expiry covering the run's wall clock. Otherwise the same token,
-    and the expiry never slides."""
+    and the expiry never slides here (only by the owner waits end_wait excludes and the grants extend_wall_clock
+    gives)."""
     if fresh or not run.run_token_salt:
         run.run_token_salt = secrets.token_hex(16)
         run.run_token_expires_at = now() + timedelta(seconds=run.wall_clock_limit or 0) + TOKEN_TTL
@@ -1960,10 +2039,18 @@ def run_for_token(db, owner, token):
     if not token or not token.startswith("ert_") or len(token) > 200:
         return None
     run = db.scalar(select(AgentRun).where(AgentRun.run_token_hash == hashlib.sha256(token.encode()).hexdigest()))
-    if run is None or run.owner_id != owner or run.state in TERMINAL or not run.run_token_expires_at \
-            or run.run_token_expires_at <= now():
+    if run is None or run.owner_id != owner or run.state in TERMINAL or not token_expiry(run) or token_expiry(run) <= now():
         return None
     return run
+
+
+def token_expiry(run, clock=None):
+    """The stored expiry plus the owner wait in progress (end_wait makes that slide permanent when the wait ends)."""
+    if not run.run_token_expires_at:
+        return None
+    if run.owner_wait_since is None:
+        return run.run_token_expires_at
+    return run.run_token_expires_at + max(timedelta(0), (clock or now()) - run.owner_wait_since)
 
 
 # ---------------------------------------------------------------- context
@@ -2290,7 +2377,7 @@ def sweep(db, clock=None):
               "handing_off")
     for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(active)).with_for_update(skip_locked=True)):
         host = hosts.get(run.host_id)
-        if run.started_at and run.started_at + timedelta(seconds=run.wall_clock_limit) <= clock:
+        if past_wall_clock(run, clock):  # Working time only: owner waits are excluded (wall_clock_deadline).
             transition(db, run, "needs_you", reason="wall_clock")
         elif run.state not in ("executing", "waiting_answer"):
             continue
