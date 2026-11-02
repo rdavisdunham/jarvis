@@ -33,6 +33,10 @@ export interface Task {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  finished_at?: string | null;
+  archive_eligible_at?: string | null;
+  archived_at?: string | null;
+  archive_reason?: "manual" | "automatic" | "external" | null;
   archived: boolean;
   occurrence_id: string | null;
   is_template?: boolean;
@@ -182,6 +186,7 @@ export interface Preferences {
   monthly_budget_usd: number;
   detailed_notifications: boolean;
   remotea_enabled?: boolean;
+  auto_archive_finished_tasks?: boolean;
 }
 export interface Bootstrap {
   account_id?: string;

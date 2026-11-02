@@ -532,7 +532,7 @@ function StandardTaskDetails(p: Props) {
                       void leave(() => {
                         void save({
                           status:
-                            task.status === "completed"
+                            ["completed", "cancelled"].includes(task.status)
                               ? "open"
                               : "completed",
                         }).catch(() => {});
@@ -540,7 +540,7 @@ function StandardTaskDetails(p: Props) {
                     }
                   >
                     <Check size={15} />
-                    {task.status === "completed"
+                    {["completed", "cancelled"].includes(task.status)
                       ? "Reopen task"
                       : "Complete task"}
                   </button>

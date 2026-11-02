@@ -392,3 +392,10 @@
     min-height: 0;
   }
 }
+
+.today-finished { display: grid; gap: 16px; min-width: 0; }
+.today-finished .panel { padding: 16px 20px 12px; }
+.today-finished-row { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.today-finished-row .row-title { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.today-finished-row .check.done { color: var(--violet); background: var(--violet-soft); }
+.today-finished-row .row-title { color: var(--ink-2); }
