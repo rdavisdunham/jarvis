@@ -4,12 +4,13 @@ import { api } from "./api";
 import { useStructureActions } from "./structure-actions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { TASK_CARD_SECTIONS } from "./task-card-sections";
+import { heldLabel, type HeldRemoteState } from "./types";
 
-export type SourceInfo={provider:string;label:string;context?:string;url?:string|null;sync_state?:string;identifier?:string;read_only_reason?:string;editable_fields?:string[];read_only_fields?:string[];local_only_fields?:string[];details?:Record<string,unknown>};
+export type SourceInfo={provider:string;label:string;context?:string;url?:string|null;sync_state?:string;identifier?:string;read_only_reason?:string;editable_fields?:string[];read_only_fields?:string[];local_only_fields?:string[];details?:Record<string,unknown>;held?:HeldRemoteState|null};
 const defaults:Record<string,string>={eridani:"#9edac8",linear:"#e4a261",google:"#e995bd"};
 export function SourceBadge({source}:{source?:SourceInfo}){
  const s=source??{provider:"eridani",label:"Eridani"};
- const state=s.sync_state&&!['synced','local'].includes(s.sync_state)?s.sync_state.replaceAll('_',' '):null;
+ const state=heldLabel(s.held)??(s.sync_state&&!['synced','local'].includes(s.sync_state)?s.sync_state.replaceAll('_',' '):null);
  return <span className="chip source-badge" title={[s.label,s.context,s.sync_state].filter(Boolean).join(" · ")}
    style={{"--source-color":`var(--source-${Object.hasOwn(defaults,s.provider)?s.provider:"eridani"}, ${defaults[s.provider]??defaults.eridani})`} as CSSProperties}>
    <span aria-hidden="true" className="source-dot"/>{s.label}{state&&<span className="source-state"> · {state}</span>}</span>;
@@ -30,7 +31,7 @@ export function SourceDetails({source}:{source?:SourceInfo}){
  const names=(values?:string[])=>values?.map(v=>v.replaceAll("_"," ")).join(", ");
  return <section className="detail-section source-details" aria-label={TASK_CARD_SECTIONS.source}><div className="detail-section-head"><SourceBadge source={source}/>{source.identifier&&<strong>{source.identifier}</strong>}
  {source.url&&/^https?:\/\//i.test(source.url)&&<a href={source.url} target="_blank" rel="noreferrer">Open original <ExternalLink size={13}/></a>}</div>
- {source.context&&<p className="footnote">{source.context}</p>}{source.sync_state&&source.sync_state!=="local"&&<p role="status">Sync: {source.sync_state.replaceAll("_"," ")}</p>}
+ {source.context&&<p className="footnote">{source.context}</p>}{source.sync_state&&source.sync_state!=="local"&&<p role="status">Sync: {source.sync_state.replaceAll("_"," ")}</p>}{source.held&&<p role="alert" className="source-held">{heldLabel(source.held)}. Eridani keeps this task open until you review the waiting change.</p>}
  {source.read_only_reason&&<p>{source.read_only_reason}</p>}
  {source.provider!=="eridani"&&<details><summary>Source fields & sync rules</summary><p>Edits to supported source fields update the original item. Pending changes are not yet confirmed by the source.</p><p><strong>Synced:</strong> {names(source.editable_fields)||"Read only"}</p><p><strong>Read only here:</strong> {names(source.read_only_fields)||"None"}</p><p><strong>Eridani only:</strong> {names(source.local_only_fields)}</p>{source.details&&<dl>{Object.entries(source.details).map(([key,value])=><div key={key}><dt>{fieldLabels[key]??key}</dt><dd>{providerValue(value)}</dd></div>)}</dl>}</details>}
  </section>;

@@ -18,6 +18,13 @@ describe("Batch B organization/source presentation",()=>{
   const html=renderToStaticMarkup(<SourceBadge source={{provider:"linear",label:"Linear",context:"Workspace · Team",sync_state:"pending"}}/>);
   expect(html).toContain("Linear");expect(html).toContain("pending");expect(html).toContain("Workspace · Team");
  });
+ it("names a held Linear cancel instead of looking merely pending",()=>{
+  const held={name:"Canceled",type:"canceled",status:"cancelled" as const};
+  const badge=renderToStaticMarkup(<SourceBadge source={{provider:"linear",label:"Linear",sync_state:"pending",held}}/>);
+  expect(badge).toContain("Cancelled in Linear: review to apply");
+  const details=renderToStaticMarkup(<SourceDetails source={{provider:"linear",label:"Linear",sync_state:"conflict",held}}/>);
+  expect(details).toContain("Cancelled in Linear: review to apply");expect(details).toContain("Sync: conflict");
+ });
  it("shows literal source names and rejects executable source links",()=>{
   const html=renderToStaticMarkup(<SourceDetails source={{provider:"google",label:"Google Calendar",url:"javascript:alert(1)"}}/>);
   expect(html).toContain("Google Calendar");expect(html).not.toContain('href="javascript');

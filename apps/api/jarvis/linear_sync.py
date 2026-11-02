@@ -23,6 +23,14 @@ STATE_TYPES = {
     "deferred": "backlog",
     "waiting": "started",
 }
+# Linear workflow state type -> Eridani status. Linear spells it "canceled"; Eridani "cancelled".
+REMOTE_STATUS = {
+    "started": "in_progress",
+    "completed": "completed",
+    "canceled": "cancelled",
+    "duplicate": "cancelled",
+    "backlog": "backlog",
+}
 
 
 # Set while an agent run writes the task's status (agent_sync.py): the observed start (in_progress) or the
@@ -161,8 +169,21 @@ def external_state(db, link):
         "sync_state": link.sync_state,
         "job_id": link.pending_job_id,
         "remote_updated_at": snapshot.get("updatedAt"),
+        "held_remote_state": held_finish(link),
     }
     emit(db, link.owner_id, "task.changed", task.id, task.revision)
+
+
+def held_finish(link):
+    """A Linear cancel or completion read while the link holds a change (pending, conflict, unconfirmed) is
+    kept in latest_remote and not applied; name it so the task can say so instead of looking merely open."""
+    held = ((link.latest_remote or {}).get("state")) or {}
+    status = REMOTE_STATUS.get(held.get("type"))
+    if status not in {"completed", "cancelled"}:
+        return None
+    if ((link.snapshot or {}).get("state") or {}).get("type") == held.get("type"):
+        return None
+    return {"name": held.get("name"), "type": held.get("type"), "status": status}
 
 
 def local_project(db, owner, workspace, remote):
@@ -201,17 +222,11 @@ def apply_remote(db, conn, link, remote, force=False):
         return  # A reordered, older Linear read never rolls back a newer applied snapshot.
     task = db.get(Task, link.task_id)
     project = local_project(db, conn.owner_id, conn.workspace_id, remote.get("project"))
-    state = remote["state"]["type"]
+    status = REMOTE_STATUS.get(remote["state"]["type"], "open")
     changes = {
         "title": remote["title"],
         "notes": remote.get("description") or "",
-        "status": {
-            "started": "in_progress",
-            "completed": "completed",
-            "canceled": "cancelled",
-            "duplicate": "cancelled",
-            "backlog": "backlog",
-        }.get(state, "open"),
+        "status": status,
         "priority": {0: 0, 1: 3, 2: 3, 3: 2, 4: 1}.get(remote.get("priority"), 0),
         "due_date": date.fromisoformat(remote["dueDate"]) if remote.get("dueDate") else None,
         "project_id": project.id if project else None,
@@ -219,7 +234,11 @@ def apply_remote(db, conn, link, remote, force=False):
         "assignee": "owner"
         if (remote.get("assignee") or {}).get("id") == conn.viewer_id
         else (remote.get("assignee") or {}).get("name", "unassigned"),
-        "archived": bool(remote.get("archivedAt")) or bool((task.external or {}).get("local_archived")),
+        # A cancelled Linear issue is put away here too; reopening it in Linear brings the task back unless
+        # the user archived it in Eridani (local_archived). Completed issues stay where they are for now.
+        "archived": bool(remote.get("archivedAt"))
+        or status == "cancelled"
+        or bool((task.external or {}).get("local_archived")),
     }
     from .productivity import task_home
 
@@ -260,7 +279,7 @@ def process_sync(job_id):
         except DomainError:
             job.status = "cancelled"
             return
-        owner, generation, key = job.owner_id, conn.generation, unseal(conn.credentials)["api_key"]
+        owner, generation, key = job.owner_id, conn.generation, linear_key(conn)
         teams, only_mine, viewer, workspace = (
             list(conn.team_ids),
             conn.only_mine,
@@ -327,6 +346,13 @@ def process_sync(job_id):
                     continue
                 if not included:
                     if link and not link.pending_job_id:
+                        if link.sync_state not in {"conflict", "unconfirmed"} and REMOTE_STATUS.get(
+                            remote["state"]["type"]
+                        ) in {"completed", "cancelled"}:
+                            # An issue cancelled (or finished) and unassigned or moved away in one go still
+                            # finishes the task: its last state is applied before the link leaves scope. A
+                            # full sync re-reads out-of-scope links by id, so it repairs ones already stuck.
+                            apply_remote(db, conn, link, remote)
                         link.sync_state = "out_of_scope"
                         external_state(db, link)
                     continue
@@ -341,7 +367,11 @@ def process_sync(job_id):
                     db.flush()
                     existing[rid] = link
                 if link.pending_job_id or link.sync_state in {"conflict", "unconfirmed"}:
+                    # Held, not applied (the user reviews it); a held cancel/complete still shows on the task.
                     link.latest_remote = remote
+                    shown = (db.get(Task, link.task_id).external or {}).get("held_remote_state")
+                    if held_finish(link) != shown:
+                        external_state(db, link)
                     continue
                 apply_remote(db, conn, link, remote)
             if full:
@@ -399,6 +429,14 @@ def process_sync(job_id):
         client.close()
 
 
+def linear_key(conn):
+    """The stored Linear API key. The shared unseal() names Google when decryption fails; say Linear here."""
+    try:
+        return unseal(conn.credentials)["api_key"]
+    except DomainError:
+        raise DomainError("LINEAR_RECONNECT", "Reconnect Linear in Settings.", 409) from None
+
+
 def require_editable(db, conn, link):
     if link.workspace_id != conn.workspace_id:
         raise DomainError("LINEAR_CHANGED", "Reconnect this task's Linear workspace.", 409)
@@ -408,7 +446,14 @@ def require_editable(db, conn, link):
         job = db.get(Job, link.pending_job_id)
         if job and job.status not in TERMINAL:
             raise DomainError("LINEAR_PENDING", "Wait for the current Linear change.", 409)
-    if link.sync_state in {"conflict", "unconfirmed", "unavailable", "out_of_scope"}:
+    if link.sync_state == "out_of_scope":
+        raise DomainError(
+            "LINEAR_SCOPE",
+            "This Linear issue is outside your sync scope (reassigned, or its team isn't selected), so shared "
+            "fields can't sync. Unlink it to keep editing here.",
+            409,
+        )
+    if link.sync_state in {"conflict", "unconfirmed", "unavailable"}:
         raise DomainError(
             "LINEAR_CONFLICT", "Review the Linear difference before making another change.", 409
         )
@@ -493,6 +538,12 @@ def before_task_update(db, owner, task, changes):
     if not any(k in mapped and v != getattr(task, k) for k, v in changes.items()):
         return
     finishing = changes.get("status") in {"completed", "cancelled"} and changes["status"] != task.status
+    if finishing and link.sync_state == "out_of_scope" and not link.pending_job_id:
+        # The issue is no longer yours to change in Linear (reassigned or team deselected): finishing it here
+        # is local. Before, this was refused with a conflict there was nothing to review for.
+        if origin is not None:
+            origin["status"] = "skipped"
+        return
     try:
         conn = connection(db, owner)
         if finishing:
@@ -610,7 +661,7 @@ def process_write(job_id):
             team = payload["patch"].get("teamId") or payload["base"].get("team", {}).get("id")
             if team not in conn.team_ids:
                 raise DomainError("LINEAR_SCOPE", "Team no longer selected.")
-            key = unseal(conn.credentials)["api_key"]
+            key = linear_key(conn)
         except DomainError:
             job.status = "unconfirmed" if attempted else "cancelled"
             job.result = {"message": "Connection changed; check Linear for any in-progress operation."}

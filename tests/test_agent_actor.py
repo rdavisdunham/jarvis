@@ -315,3 +315,51 @@ def test_note_tasks_still_links_to_dos_from_a_live_prd(host):  # noqa: F811
         linked = run("note.tasks", note_id=note.id, expected_revision=note.revision,
                      items=[{"title": "Do v1", "evidence": "Plan v1"}])
     assert linked["created_count"] == 1 and note_row(note_id).content == "Plan v1"
+
+
+@pytest.mark.parametrize("kind", AUTHORITIES + REFUSED)
+def test_cancelling_a_run_owned_task_is_gated_like_completing(host, kind):  # noqa: F811
+    record, run_id = running(host, "Cancelled task")
+    task = current(record)
+    with acting(Actor(kind)):
+        if kind in REFUSED:
+            with pytest.raises(DomainError) as refused:
+                run("task.update", task_id=task.id, expected_revision=task.revision, status="cancelled")
+            assert refused.value.code == "RUN_OWNS_COMPLETION" and "cancel this task" in refused.value.message
+        else:
+            run("task.update", task_id=task.id, expected_revision=task.revision, status="cancelled")
+    task, row = current(record), run_row(run_id)
+    if kind in REFUSED:
+        assert task.status != "cancelled" and row.state == "executing"
+    else:
+        assert task.status == "cancelled"
+        assert (row.state, row.stop_reason, row.stop_final) == ("stopping", "task_completed_externally", "stopped")
+        assert row.sync_state["completion"]["status"] == "cancelled"
+
+
+def test_linear_cancel_stops_the_run_like_a_linear_completion(host, linear):  # noqa: F811
+    tid, _ = imported()
+    run_id = start(host, tid)["id"]
+    attached(host, run_id)
+    linear.rows["remote"]["state"] = {"id": "canceled", "name": "Canceled", "type": "canceled"}
+    linear.rows["remote"]["updatedAt"] = "2099-01-01T00:00:00+00:00"
+    with acting(Actor("run_session")):
+        with session_scope() as db:
+            job = sync.queue_sync(db, "davin", force=True)
+        sync.process_sync(job)
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("cancelled", True)
+        row = db.get(AgentRun, run_id)
+        assert (row.state, row.stop_reason, row.stop_final) == ("stopping", "task_completed_externally", "stopped")
+        assert row.sync_state["completion"]["actor"]["kind"] == "source_sync"
+        assert row.sync_state["completion"]["status"] == "cancelled"
+
+
+def test_approving_a_cancellation_never_settles_the_run_as_completed(host):  # noqa: F811
+    record, run_id = running(host, "Approve cancel")
+    task = current(record)
+    with acting(Actor("human", reason="approve")):
+        run("task.update", task_id=task.id, expected_revision=task.revision, status="cancelled")
+    row = run_row(run_id)
+    assert row.stop_final == "stopped" and row.sync_state["completion"]["approved"] is False

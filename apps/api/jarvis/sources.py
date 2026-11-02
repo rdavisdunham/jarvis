@@ -2,7 +2,7 @@
 from .calendar_details import web_link
 
 def compact_source(source):
-    return {k:source.get(k) for k in ("provider","label","context","item_id","sync_state","url")}
+    return {k:source.get(k) for k in ("provider","label","context","item_id","sync_state","url","held") if k in source}
 
 def native(identity=None):
     return {"provider":"eridani", "label":"Eridani", "item_id":identity,
@@ -14,7 +14,7 @@ _UNSET = object()
 
 def task_source(db, task, *, link=_UNSET, connection=_UNSET):
     """link/connection: prefetched rows (structure.Prefetch); looked up when not given."""
-    from .linear_sync import link_for_task
+    from .linear_sync import held_finish, link_for_task
     from .models import LinearConnection
     if link is _UNSET:
         link = link_for_task(db, task.owner_id, task.id)
@@ -36,6 +36,8 @@ def task_source(db, task, *, link=_UNSET, connection=_UNSET):
             "read_only_fields":["identifier","team","labels","parent","updatedAt"],
             "local_only_fields":["local_notes","main_home","custom_fields","due_time","planned_date","estimate_minutes","archive"],
             "read_only_reason":reason,
+            # A Linear cancel/complete waiting behind a held change (linear_sync.held_finish): shown, not applied.
+            "held":held_finish(link) if state in {"pending","conflict","unconfirmed"} else None,
             "details":{k:snap[k] for k in ("identifier","team","project","assignee","state","priority","dueDate","parent","labels","updatedAt","archivedAt") if k in snap}}
 
 def google_source(db, calendar, payload, state="synced"):
