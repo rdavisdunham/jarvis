@@ -36,3 +36,6 @@ updates:
       # CI does not build these images, and Postgres must match the Railway database.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # The Python minor line (3.12 → 3.13+) is a deliberate upgrade too: CI tests on 3.12 only.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
