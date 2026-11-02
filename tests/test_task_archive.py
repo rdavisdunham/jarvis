@@ -267,3 +267,63 @@ def test_legacy_cancel_uses_recorded_transition_and_excludes_templates(monkeypat
             assert not db.get(Task, template_id).archived
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("failure", ["candidate", "mutation"])
+def test_bad_candidate_rolls_back_its_changes_without_blocking_later_work(monkeypatch, failure):
+    from jarvis import domain, task_archive
+    first, second = finished(), finished("cancelled")
+    for row in (first, second):
+        age(row["id"], now() - GRACE * 2)
+    broken_id = min(first["id"], second["id"])
+    good_id = max(first["id"], second["id"])
+    if failure == "candidate":
+        original = task_archive.organizational_container
+        def fail_candidate(db, task):
+            if task.id == broken_id:
+                raise ValueError("synthetic malformed candidate")
+            return original(db, task)
+        monkeypatch.setattr(task_archive, "organizational_container", fail_candidate)
+    else:
+        original = domain.mutate
+        def fail_mutation(db, owner, tool, args, command_id):
+            result = original(db, owner, tool, args, command_id)
+            if getattr(args, "task_id", None) == broken_id:
+                db.flush()  # Prove even already-flushed task/alert/events roll back atomically.
+                raise ValueError("synthetic post-mutation failure")
+            return result
+        monkeypatch.setattr(domain, "mutate", fail_mutation)
+    with session_scope() as db:
+        assert sweep_owner(db, "davin") == 1
+    with session_scope() as db:
+        assert db.get(Task, good_id).archived
+        broken = db.get(Task, broken_id)
+        assert not broken.archived and broken.archive_reason is None and broken.archived_at is None
+        assert not db.info.get("automatic_task_archive")
+    # A short (<200) page with the failing first item never prevents healthy later work.
+    later = finished()
+    age(later["id"], now() - GRACE * 2)
+    with session_scope() as db:
+        assert sweep_owner(db, "davin") == 1
+        assert db.get(Task, later["id"]).archived
+
+
+def test_owner_failure_keeps_other_owners_committed(monkeypatch):
+    from jarvis import task_archive
+    original = task_archive.sweep_owner
+    instant = now() - GRACE * 2
+    with session_scope() as db:
+        for owner in ("a-broken", "b-good"):
+            db.add(Task(id=owner, owner_id=owner, title=owner, status="completed", finished_at=instant, archive_eligible_at=instant + GRACE))
+    def fail_owner(db, owner):
+        if owner == "a-broken":
+            db.get(Task, owner).archived = True
+            db.flush()
+            raise ValueError("synthetic owner failure after write")
+        return original(db, owner)
+    monkeypatch.setattr(task_archive, "sweep_owner", fail_owner)
+    with session_scope() as db:
+        assert task_archive.sweep(db) == 1
+    with session_scope() as db:
+        assert not db.get(Task, "a-broken").archived
+        assert db.get(Task, "b-good").archived

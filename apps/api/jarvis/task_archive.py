@@ -3,6 +3,7 @@
 The worker checks each maintenance cycle. Scans process at most BATCH_SIZE records per
 owner and rotate a keyset cursor so blocked parents cannot starve later records.
 """
+import logging
 from datetime import timedelta
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ FINISHED = {"completed", "cancelled"}
 GRACE = timedelta(hours=24)
 BATCH_SIZE = 200
 _cursors = {}
+logger = logging.getLogger(__name__)
 
 
 def apply_lifecycle(task, changes, *, automatic=False, external=False):
@@ -145,33 +147,49 @@ def sweep_owner(db, owner, *, clock=None, limit=BATCH_SIZE):
     _cursors[owner] = rows[-1].id if len(rows) == limit else None
     count = 0
     for task in rows:
-        if task.archive_eligible_at is None:
-            # No trustworthy cancellation history: grace begins when policy first observes it.
-            reliable = task.finished_at or (task.completed_at if task.status == "completed" else None) or historical_finish(db, task)
-            if reliable:
-                task.finished_at = reliable
-            task.archive_eligible_at = (reliable or clock) + GRACE
-            task.revision += 1
-            task.updated_at = clock
-            emit(db, owner, "task.changed", task.id, task.revision)
-            if task.archive_eligible_at > clock:
-                continue
-        if organizational_container(db, task) or unfinished_descendants(db, task) or unsettled_execution(db, task):
-            continue
-        db.info["automatic_task_archive"] = True
+        identity = task.id
         try:
-            # Trusted worker entrypoint uses the same domain/structure mutation as commands;
-            # it has no interactive principal and never fabricates an account or bypasses API gates.
-            command_id = "autoarchive:" + str(uuid4())
-            args = TaskUpdate(task_id=task.id, expected_revision=task.revision, archived=True)
-            result = mutate(db, owner, "task.update", args, command_id)
-            observe_core(db, owner, "task.update", result, command_id)
-        finally:
-            db.info.pop("automatic_task_archive", None)
-        count += 1
+            # A malformed record/integration must not roll back valid earlier candidates.
+            # Savepoints include clocks, alerts, events and backing structure mutations.
+            with db.begin_nested():
+                if task.archive_eligible_at is None:
+                    # No trustworthy cancellation history: grace begins when policy first observes it.
+                    reliable = task.finished_at or (task.completed_at if task.status == "completed" else None) or historical_finish(db, task)
+                    if reliable:
+                        task.finished_at = reliable
+                    task.archive_eligible_at = (reliable or clock) + GRACE
+                    task.revision += 1
+                    task.updated_at = clock
+                    emit(db, owner, "task.changed", task.id, task.revision)
+                    if task.archive_eligible_at > clock:
+                        continue
+                if organizational_container(db, task) or unfinished_descendants(db, task) or unsettled_execution(db, task):
+                    continue
+                db.info["automatic_task_archive"] = True
+                try:
+                    # Trusted worker entrypoint uses the same domain/structure mutation as commands;
+                    # it has no interactive principal and never fabricates an account or bypasses API gates.
+                    command_id = "autoarchive:" + str(uuid4())
+                    args = TaskUpdate(task_id=task.id, expected_revision=task.revision, archived=True)
+                    result = mutate(db, owner, "task.update", args, command_id)
+                    observe_core(db, owner, "task.update", result, command_id)
+                finally:
+                    db.info.pop("automatic_task_archive", None)
+            count += 1
+        except Exception:
+            logger.exception("Task archive candidate failed owner=%s task=%s; will retry", owner, identity)
     return count
 
 
 def sweep(db):
     owners = list(db.scalars(select(Task.owner_id).where(Task.archived.is_(False), Task.is_template.is_(False), Task.status.in_(FINISHED)).distinct().order_by(Task.owner_id)))
-    return sum(sweep_owner(db, owner) for owner in owners)
+    count = 0
+    for owner in owners:
+        try:
+            # A policy/schema problem in one namespace must not undo another owner's filing.
+            with db.begin_nested():
+                archived = sweep_owner(db, owner)
+            count += archived
+        except Exception:
+            logger.exception("Task archive owner failed owner=%s; will retry", owner)
+    return count
