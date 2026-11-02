@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, post } from "./api";
 import { LinearMapping, type MappingSummary } from "./LinearMapping";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
-import type { Task } from "./types";
+import { heldLabel, type Task } from "./types";
 
 type Mutate = (
   tool: string,
@@ -357,6 +357,13 @@ export function LinearTask({
             <span className="chip">{task.external?.sync_state}</span>
             {task.external?.state && <> <span className="chip">{task.external.state}</span></>}
           </p>
+          {task.external?.held_remote_state && (
+            <p role="alert" className="linear-held">
+              {heldLabel(task.external.held_remote_state)}. The issue is{" "}
+              {task.external.held_remote_state.name ?? task.external.held_remote_state.status} in Linear, but a
+              change here is still waiting, so this task stays open until you review it.
+            </p>
+          )}
           {!data?.connected && (
             <>
               <p>Reconnect Linear in Settings to edit shared fields.</p>

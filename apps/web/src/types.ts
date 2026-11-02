@@ -46,6 +46,7 @@ export interface Task {
     priority?: number;
     sync_state?: string;
     job_id?: string;
+    held_remote_state?: HeldRemoteState | null;
   };
 }
 export interface Project {
@@ -325,4 +326,16 @@ export interface UIContext {
     | "completed"
     | "cancelled";
   project: string;
+}
+
+/** A Linear cancel/complete read while the link holds a change; shown on the task, not applied. */
+export interface HeldRemoteState {
+  name?: string;
+  type?: string;
+  status: "cancelled" | "completed";
+}
+
+export function heldLabel(held?: HeldRemoteState | null): string | null {
+  if (!held) return null;
+  return `${held.status === "cancelled" ? "Cancelled" : "Completed"} in Linear: review to apply`;
 }

@@ -583,10 +583,11 @@ def review_spawns(db, run, review, statuses):
         if (c.payload or {}).get("role") == "reviewer" and (c.payload or {}).get("attempt") == review.attempt]
 
 
-def external_completion(db, run, actor):
-    """A human or Linear completed the task during the run: record it, invalidate, request the stop (F03)."""
-    approved = actor.kind == "human" and actor.reason == "approve"
-    override = {"at": now().isoformat(), "actor": actor.record(), "approved": approved}
+def external_completion(db, run, actor, status="completed"):
+    """A human or Linear completed or cancelled the task during the run: record it, invalidate, request the
+    stop (F03). Only a human approval of a completion settles the run as completed."""
+    approved = actor.kind == "human" and actor.reason == "approve" and status == "completed"
+    override = {"at": now().isoformat(), "actor": actor.record(), "approved": approved, "status": status}
     run.sync_state = {**(run.sync_state or {}), "completion": override}
     note(run, "approved" if approved else "completed_externally", actor=actor.record())
     request_stop(db, run, actor=actor, reason="approved" if approved else "task_completed_externally",

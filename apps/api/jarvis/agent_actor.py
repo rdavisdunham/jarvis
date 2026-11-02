@@ -79,14 +79,18 @@ def active_run(db, task_id, lock=False):
     return db.scalar(query.with_for_update() if lock else query)
 
 
+FINISHED = ("completed", "cancelled")
+
+
 def completing(changes):
-    return changes.get("status") == "completed"
+    """Completing or cancelling: either one ends the task, so either one stops a run that owns it."""
+    return changes.get("status") in FINISHED
 
 
 def gate(db, owner, task, changes):
     """Called from task.update (every entrance) before the change is applied."""
     touches = [k for k in GATE_FIELDS if k in changes and changes[k] != getattr(task, k)]
-    finishing = completing(changes) and task.status != "completed"
+    finishing = completing(changes) and task.status != changes["status"]
     if not (touches or finishing):
         return
     run = active_run(db, task.id, lock=True)
@@ -96,13 +100,14 @@ def gate(db, owner, task, changes):
     planning = (actor.kind == "run_session" and actor.capability == "plan_write" and actor.verified
                 and actor.run_id == run.id and not finishing)
     if actor.kind not in AUTHORITIES and not planning:
-        field = "complete this task" if finishing else "change " + ", ".join(touches)
+        verb = "cancel" if changes.get("status") == "cancelled" else "complete"
+        field = f"{verb} this task" if finishing else "change " + ", ".join(touches)
         raise DomainError("RUN_OWNS_COMPLETION", f"An agent run owns this task; only you can {field} while it runs.", 409,
                           data={"run_id": run.id, "state": run.state})
     if finishing and actor.kind in ("human", "source_sync"):
         from .run_coordinator import external_completion
 
-        external_completion(db, run, actor)
+        external_completion(db, run, actor, changes["status"])
 
 
 def prd_run(db, note_id):

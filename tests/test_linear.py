@@ -339,3 +339,123 @@ def test_publish_backlog_chooses_matching_linear_state(linear):
     assert linear.writes[-1][1]["stateId"] == "backlog"
     with session_scope() as db:
         assert db.get(Task, task["id"]).status == "backlog"
+
+
+def resync(full=False):
+    with session_scope() as db:
+        if full:
+            db.get(LinearConnection, "davin").full_sync_at = None
+        jid = sync.queue_sync(db, "davin", force=True)
+    sync.process_sync(jid)
+
+
+def linear_state(fake, type, name, at):
+    fake.rows["remote"]["state"] = {"id": type, "name": name, "type": type}
+    fake.rows["remote"]["updatedAt"] = at
+
+
+@pytest.mark.parametrize("type, name", [("canceled", "Canceled"), ("duplicate", "Duplicate")])
+def test_linear_cancel_cancels_and_archives_and_reopen_restores(linear, type, name):
+    tid, _ = imported()
+    linear_state(linear, type, name, "2026-09-13T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("cancelled", True)
+        assert task.external["state"] == name and not task.external["local_archived"]
+    linear_state(linear, "unstarted", "Todo", "2026-09-14T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("open", False)
+    assert linear.writes == []
+
+
+def test_reopened_linear_issue_stays_archived_when_archived_locally(linear):
+    tid, rev = imported()
+    run("task.update", task_id=tid, expected_revision=rev, archived=True)
+    linear_state(linear, "canceled", "Canceled", "2026-09-13T10:00:00Z")
+    resync()
+    linear_state(linear, "unstarted", "Todo", "2026-09-14T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("open", True)
+
+
+def test_cancel_with_unassignment_finishes_task_before_it_leaves_scope(linear):
+    """The Livefront case: cancelled and unassigned in one go, so the issue dropped out of 'only mine'."""
+    tid, _ = imported()
+    with session_scope() as db:
+        db.get(LinearConnection, "davin").only_mine = True
+    linear_state(linear, "canceled", "Canceled", "2026-09-13T10:00:00Z")
+    linear.rows["remote"]["assignee"] = None
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("cancelled", True)
+        assert task.external["sync_state"] == "out_of_scope" and task.external["state"] == "Canceled"
+
+
+def test_unassigned_open_issue_only_leaves_scope(linear):
+    tid, _ = imported()
+    with session_scope() as db:
+        db.get(LinearConnection, "davin").only_mine = True
+    linear.rows["remote"]["assignee"] = None
+    linear.rows["remote"]["updatedAt"] = "2026-09-13T10:00:00Z"
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived, task.external["sync_state"]) == ("open", False, "out_of_scope")
+
+
+def test_full_sync_repairs_tasks_already_stuck_open_or_unarchived(linear):
+    tid, _ = imported()
+    linear.rows["second"] = {**issue("second"), "identifier": "ERI-2"}
+    resync()
+    with session_scope() as db:
+        conn = db.get(LinearConnection, "davin")
+        conn.only_mine = True
+        links = {link.remote_id: link for link in db.scalars(select(LinearIssue))}
+        # Left behind by the old code: one link out of scope with a stale open snapshot, and one task the sync
+        # cancelled without archiving.
+        links["remote"].sync_state = "out_of_scope"
+        sync.external_state(db, links["remote"])
+        second = db.get(Task, links["second"].task_id)
+        second.status, second.archived = "cancelled", False
+        links["second"].snapshot = {**links["second"].snapshot,
+                                    "state": {"id": "canceled", "name": "Canceled", "type": "canceled"}}
+        second_id = second.id
+    linear_state(linear, "canceled", "Canceled", "2026-09-13T10:00:00Z")
+    linear.rows["remote"]["assignee"] = None
+    linear.rows["second"]["state"] = {"id": "canceled", "name": "Canceled", "type": "canceled"}
+    # The issues query with the assignee filter no longer returns the unassigned issue; the full sync re-reads
+    # the known out-of-scope link by id.
+    original = linear.issues
+    def issues(filter):
+        rows = original(filter)
+        if "id" in filter:
+            return [r for r in rows if r["id"] in filter["id"]["in"]]
+        return [r for r in rows if "assignee" not in filter or (r.get("assignee") or {}).get("id") == "me"]
+
+    linear.issues = issues
+    resync(full=True)
+    with session_scope() as db:
+        stuck, second = db.get(Task, tid), db.get(Task, second_id)
+        assert (stuck.status, stuck.archived, stuck.external["sync_state"]) == ("cancelled", True, "out_of_scope")
+        assert (second.status, second.archived) == ("cancelled", True)
+
+
+def test_held_linear_cancel_is_shown_not_applied(linear):
+    from jarvis.sources import task_source
+
+    tid, rev = imported()
+    run("task.update", task_id=tid, expected_revision=rev, title="Local edit")  # a write waits on Linear
+    linear_state(linear, "canceled", "Canceled", "2026-09-13T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert (task.status, task.archived) == ("open", False)
+        assert task.external["sync_state"] == "pending"
+        assert task.external["held_remote_state"] == {"name": "Canceled", "type": "canceled", "status": "cancelled"}
+        assert task_source(db, task)["held"]["status"] == "cancelled"
