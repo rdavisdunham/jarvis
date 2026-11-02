@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from .db import session_scope
 from .domain import DomainError, emit, enqueue_job
-from .google_auth import unseal
+from .linear_sync import linear_key
 from .linear_client import LinearClient, LinearFailure
 from .models import Job, LinearConnection, LinearIssue, now
 from .session_models import AgentAttempt, AgentRun, AgentSession
@@ -136,7 +136,7 @@ def process_comment(job_id, client_factory=LinearClient):
                 raise DomainError("LINEAR_CHANGED", "The Linear connection changed.")
             if link is None or link.remote_id != payload["remote_id"]:
                 raise DomainError("LINEAR_CHANGED", "The task's Linear issue changed.")
-            key = unseal(conn.credentials)["api_key"]
+            key = linear_key(conn)
         except DomainError as exc:
             job.status, job.finished_at, job.result = "failed", now(), {"message": exc.message}
             save(run, "comment", {**state, "status": "unconfirmed" if state.get("attempted") else "failed",

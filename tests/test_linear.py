@@ -459,3 +459,50 @@ def test_held_linear_cancel_is_shown_not_applied(linear):
         assert task.external["sync_state"] == "pending"
         assert task.external["held_remote_state"] == {"name": "Canceled", "type": "canceled", "status": "cancelled"}
         assert task_source(db, task)["held"]["status"] == "cancelled"
+
+
+def out_of_scope_task(linear):
+    tid, _ = imported()
+    with session_scope() as db:
+        db.get(LinearConnection, "davin").only_mine = True
+    linear.rows["remote"]["assignee"] = None
+    linear.rows["remote"]["updatedAt"] = "2026-09-13T10:00:00Z"
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.external["sync_state"] == "out_of_scope"
+        return tid, task.revision
+
+
+def test_finishing_an_out_of_scope_task_here_is_local(linear):
+    """The reported case: cancelling an out-of-scope task in Eridani was refused as a conflict."""
+    tid, rev = out_of_scope_task(linear)
+    saved = run("task.update", task_id=tid, expected_revision=rev, status="cancelled")
+    assert saved["status"] == "cancelled"
+    assert linear.writes == []
+    with pytest.raises(DomainError) as refused:
+        run("task.update", task_id=tid, expected_revision=saved["revision"], title="Shared edit")
+    assert refused.value.code == "LINEAR_SCOPE"
+
+
+def test_resolve_without_a_review_token_is_stale_not_google(linear):
+    tid, rev = imported()
+    run("task.update", task_id=tid, expected_revision=rev, title="Local choice")
+    with session_scope() as db:
+        link = db.scalar(select(LinearIssue))
+        db.get(Job, link.pending_job_id).status = "failed"
+        link.sync_state = "conflict"
+        rev = db.get(Task, tid).revision
+    for token in (None, "not-a-token"):
+        with pytest.raises(DomainError) as refused:
+            run("linear.resolve", task_id=tid, expected_revision=rev, choice="linear", edit_token=token)
+        assert refused.value.code == "LINEAR_STALE" and "Google" not in refused.value.message
+
+
+def test_undecryptable_linear_key_asks_to_reconnect_linear(linear):
+    with session_scope() as db:
+        conn = db.get(LinearConnection, "davin")
+        conn.credentials = "garbage"
+        with pytest.raises(DomainError) as refused:
+            sync.linear_key(conn)
+    assert refused.value.code == "LINEAR_RECONNECT" and refused.value.message == "Reconnect Linear in Settings."

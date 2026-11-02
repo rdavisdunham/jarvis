@@ -10,6 +10,7 @@ from .linear_sync import (
     apply_remote,
     connection,
     external_state,
+    linear_key,
     link_for_task,
     queue_sync,
     queue_write,
@@ -50,7 +51,7 @@ def comparison(owner, task_id):
         if not link or link.workspace_id != conn.workspace_id:
             raise DomainError("NOT_FOUND", "This task has no connected Linear issue.", 404)
         key, remote_id, generation, revision = (
-            unseal(conn.credentials)["api_key"],
+            linear_key(conn),
             link.remote_id,
             conn.generation,
             task.revision,
@@ -209,7 +210,10 @@ def mutate(db, owner, tool, args):
         pending = db.get(Job, link.pending_job_id) if link.pending_job_id else None
         if pending and pending.status not in TERMINAL:
             raise DomainError("LINEAR_PENDING", "Wait for the current Linear operation.", 409)
-        token = unseal(args.edit_token or "")
+        try:
+            token = unseal(args.edit_token) if args.edit_token else {}
+        except DomainError:
+            token = {}  # A missing or foreign token is a stale review, not a Google connection problem.
         if (
             token.get("purpose") != "linear_compare"
             or token.get("owner") != owner

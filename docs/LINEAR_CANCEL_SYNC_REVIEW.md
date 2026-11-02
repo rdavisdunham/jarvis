@@ -37,13 +37,24 @@ Other causes were ruled out:
 - **Timestamp guard:** the `older()` guard did not reject any snapshot.
 - **Mapping:** the state mapping is correct.
 
+### The issue the operator remembered
+
+The operator's Eridani issue log has the bot's account of the incident. The task was "In Progress" locally, Canceled in Linear, and "out of scope for sync". That fits **LIV-37**.
+
+The bot then tried to cancel the task in Eridani and hit two more bugs:
+
+1. **A local cancel was refused as a conflict.** `require_editable` treated `out_of_scope` like a conflict and returned "Review the Linear difference before making another change", even though there was nothing to review.
+2. **The error blamed Google.** The bot then called `linear.resolve` without a valid review token. The token is decrypted with the shared `google_auth.unseal`, whose error always says "Reconnect Google in Settings." The Linear connection was never broken. The same misleading message would also appear if the stored Linear API key couldn't be decrypted.
+
 ## Fix (this branch)
 
 1. **Out-of-scope issues still finish.** When an issue leaves scope and its last state is Canceled, Duplicate or Done, that state is applied before the link is marked `out_of_scope`. This does not happen while the link holds a conflict or an unconfirmed write.
 2. **Cancel archives.** A Linear Canceled or Duplicate issue makes the task `cancelled` **and archived**. Reopening the issue in Linear brings the task back, unless the user archived it in Eridani. Archiving completed tasks is left for later.
 3. **Repair on the next full sync, no script needed.** A full sync, at most once a day, re-reads every known link by id, including out-of-scope ones. LIV-32, LIV-37 and LIV-70 become cancelled and archived on the first full sync after deploy, and ABCD-37 gets archived at the same time.
 4. **A cancel stops runs.** A cancel from Linear or from the user stops an active agent run, the same way a completion does.
-5. **Held cancels are shown.** A cancel or completion that arrives while the link holds a change is still not applied. It now appears on the task's Linear badge and detail as "Cancelled in Linear: review to apply".
+5. **Out-of-scope tasks can be finished here.** Cancelling or completing an out-of-scope task in Eridani now applies locally and doesn't write to Linear. Other edits to shared fields on such a task now say the issue is outside the sync scope, and point to Unlink.
+6. **Linear errors name Linear.** A missing or invalid `linear.resolve` token now returns `LINEAR_STALE` ("Refresh the Linear comparison."). A Linear key that can't be decrypted now returns `LINEAR_RECONNECT` ("Reconnect Linear in Settings.").
+7. **Held cancels are shown.** A cancel or completion that arrives while the link holds a change is still not applied. It now appears on the task's Linear badge and detail as "Cancelled in Linear: review to apply".
 
 ## Expected state after deploy and the next full sync
 

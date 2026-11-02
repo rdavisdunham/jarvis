@@ -30,9 +30,8 @@ from sqlalchemy import func, select
 
 from .db import session_scope
 from .domain import DomainError, advisory, emit, owned, serial
-from .google_auth import unseal
 from .linear_client import LinearClient, LinearFailure
-from .linear_sync import connection
+from .linear_sync import connection, linear_key
 from .models import LinearIssue, Task, now
 from .structure_models import StructureRecord
 
@@ -112,7 +111,7 @@ def discover(owner):
         conn = connection(db, owner)
         if not conn.team_ids:
             raise DomainError("LINEAR_SCOPE", "Select the Linear teams to sync first.", 409)
-        key = unseal(conn.credentials)["api_key"]
+        key = linear_key(conn)
         teams, only_mine, viewer = list(conn.team_ids), conn.only_mine, conn.viewer_id
         generation, workspace = conn.generation, conn.workspace_id
     client = LinearClient(key)

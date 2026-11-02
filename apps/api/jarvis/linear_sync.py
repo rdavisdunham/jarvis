@@ -279,7 +279,7 @@ def process_sync(job_id):
         except DomainError:
             job.status = "cancelled"
             return
-        owner, generation, key = job.owner_id, conn.generation, unseal(conn.credentials)["api_key"]
+        owner, generation, key = job.owner_id, conn.generation, linear_key(conn)
         teams, only_mine, viewer, workspace = (
             list(conn.team_ids),
             conn.only_mine,
@@ -429,6 +429,14 @@ def process_sync(job_id):
         client.close()
 
 
+def linear_key(conn):
+    """The stored Linear API key. The shared unseal() names Google when decryption fails; say Linear here."""
+    try:
+        return unseal(conn.credentials)["api_key"]
+    except DomainError:
+        raise DomainError("LINEAR_RECONNECT", "Reconnect Linear in Settings.", 409) from None
+
+
 def require_editable(db, conn, link):
     if link.workspace_id != conn.workspace_id:
         raise DomainError("LINEAR_CHANGED", "Reconnect this task's Linear workspace.", 409)
@@ -438,7 +446,14 @@ def require_editable(db, conn, link):
         job = db.get(Job, link.pending_job_id)
         if job and job.status not in TERMINAL:
             raise DomainError("LINEAR_PENDING", "Wait for the current Linear change.", 409)
-    if link.sync_state in {"conflict", "unconfirmed", "unavailable", "out_of_scope"}:
+    if link.sync_state == "out_of_scope":
+        raise DomainError(
+            "LINEAR_SCOPE",
+            "This Linear issue is outside your sync scope (reassigned, or its team isn't selected), so shared "
+            "fields can't sync. Unlink it to keep editing here.",
+            409,
+        )
+    if link.sync_state in {"conflict", "unconfirmed", "unavailable"}:
         raise DomainError(
             "LINEAR_CONFLICT", "Review the Linear difference before making another change.", 409
         )
@@ -523,6 +538,12 @@ def before_task_update(db, owner, task, changes):
     if not any(k in mapped and v != getattr(task, k) for k, v in changes.items()):
         return
     finishing = changes.get("status") in {"completed", "cancelled"} and changes["status"] != task.status
+    if finishing and link.sync_state == "out_of_scope" and not link.pending_job_id:
+        # The issue is no longer yours to change in Linear (reassigned or team deselected): finishing it here
+        # is local. Before, this was refused with a conflict there was nothing to review for.
+        if origin is not None:
+            origin["status"] = "skipped"
+        return
     try:
         conn = connection(db, owner)
         if finishing:
@@ -640,7 +661,7 @@ def process_write(job_id):
             team = payload["patch"].get("teamId") or payload["base"].get("team", {}).get("id")
             if team not in conn.team_ids:
                 raise DomainError("LINEAR_SCOPE", "Team no longer selected.")
-            key = unseal(conn.credentials)["api_key"]
+            key = linear_key(conn)
         except DomainError:
             job.status = "unconfirmed" if attempted else "cancelled"
             job.result = {"message": "Connection changed; check Linear for any in-progress operation."}
