@@ -384,7 +384,7 @@ def test_reopened_linear_issue_stays_archived_when_archived_locally(linear):
 
 
 def test_cancel_with_unassignment_finishes_task_before_it_leaves_scope(linear):
-    """The Livefront case: cancelled and unassigned in one go, so the issue dropped out of 'only mine'."""
+    """The reported case: cancelled and unassigned in one go, so the issue dropped out of 'only mine'."""
     tid, _ = imported()
     with session_scope() as db:
         db.get(LinearConnection, "davin").only_mine = True

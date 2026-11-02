@@ -13,18 +13,18 @@ The question: why did a Linear issue that was Canceled in Linear stay open in Er
 
 | Team | Linked tasks | Sync state |
 |---|---|---|
-| ABC (ABCD) | 40 | all `synced`, all match Linear exactly |
-| Livefront (LIV) | 6 | LIV-43, LIV-44, LIV-51 `synced` and matching; LIV-32, LIV-37, LIV-70 `out_of_scope` and **mismatched** |
+| Team A (ABCD) | 40 | all `synced`, all match Linear exactly |
+| Team B (LIV) | 6 | LIV-43, LIV-44, LIV-51 `synced` and matching; LIV-32, LIV-37, LIV-70 `out_of_scope` and **mismatched** |
 
-**The spelling is not the problem.** Linear's built-in state is named "Canceled", type `canceled`, and it maps to Eridani `cancelled` correctly. ABCD-37, "Create Rill dashboard for training numbers", synced as cancelled. Before this change it was not archived, because a cancel did not archive the task back then.
+**The spelling is not the problem.** Linear's built-in state is named "Canceled", type `canceled`, and it maps to Eridani `cancelled` correctly. ABCD-37 synced as cancelled. Before this change it was not archived, because a cancel did not archive the task back then.
 
 ### Mismatches
 
-| Issue | Title | Linear now | Eridani status | Last snapshot | Link |
-|---|---|---|---|---|---|
-| LIV-32 | HubSpot → MotherDuck sync service on Railway | Canceled (updated 2026-09-29) | open | Todo, 2026-09-18 | out_of_scope |
-| LIV-37 | Swap to a Livefront-owned HubSpot private app token | Canceled (updated 2026-09-29) | in_progress | In Progress, 2026-09-23 | out_of_scope |
-| LIV-70 | Investigate and fix Livefront MotherDuck sync | Canceled (cancelled 2026-09-29, updated 2026-09-30) | backlog | Backlog, 2026-09-23 | out_of_scope |
+| Issue | Linear now | Eridani status | Last snapshot | Link |
+|---|---|---|---|---|
+| LIV-32 | Canceled (updated 2026-09-29) | open | Todo, 2026-09-18 | out_of_scope |
+| LIV-37 | Canceled (updated 2026-09-29) | in_progress | In Progress, 2026-09-23 | out_of_scope |
+| LIV-70 | Canceled (updated 2026-09-30) | backlog | Backlog, 2026-09-23 | out_of_scope |
 
 ### Cause
 
