@@ -660,6 +660,8 @@ def send_message(db, owner, run_id, body, *, actor):
         coordinator.transition(db, run, "executing", actor=actor, reason=body.mode)
     elif run.state in coordinator.RESUMABLE or (run.state == "waiting_answer" and body.mode == "steer"):
         coordinator.transition(db, run, coordinator.phase(run), actor=actor, reason=body.mode)
+    elif body.mode == "steer":
+        coordinator.sync_wait(db, run)  # A steer moves past an open interview of the old generation.
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "text": body.text,
                                            "mode": body.mode})
     sent(run, actor, body.text, mode=body.mode)

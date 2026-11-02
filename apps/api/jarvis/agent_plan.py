@@ -327,6 +327,7 @@ def task_interview(db, bot, body):
                          answers={}, status="open")
     db.add(row)
     db.flush()
+    coordinator.start_wait(run)  # The owner has the move: this time does not count toward the wall clock.
     coordinator.note(run, "interview", interview_id=row.id, questions=len(questions))
     coordinator.notify(db, run, "agent_question", "An agent has questions before it plans",
                        " / ".join(q["question"] for q in questions)[:300], key=f"{run.id}:interview:{row.id}")
@@ -359,8 +360,13 @@ def clean_answers(questions, given):
     return clean
 
 
+# A run parked on these while its interview is open still takes the answers (and resumes: needs_you → planning).
+ANSWERABLE_PARKED = ("wall_clock", "no_progress")
+
+
 def answer_interview(db, owner, interview_id, body, *, actor):
-    """Store the answers and send them as the planning prompt: interviewing → planning."""
+    """Store the answers and send them as the planning prompt: interviewing → planning. A run parked in needs_you on
+    ANSWERABLE_PARKED resumes the same way (from wall_clock with the grant, run_coordinator.extend_wall_clock)."""
     from . import agent_prompts as prompts
 
     row = db.scalar(select(AgentInterview).where(AgentInterview.id == interview_id, AgentInterview.owner_id == owner)
@@ -370,7 +376,8 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     if row.status != "open":
         raise DomainError("INTERVIEW_CLOSED", "These questions were already answered.", 409, data={"status": row.status})
     run = coordinator.load(db, owner, row.run_id)
-    if run.state != "interviewing" or row.generation != run.generation:
+    parked = run.state == "needs_you" and run.state_reason in ANSWERABLE_PARKED
+    if (run.state != "interviewing" and not parked) or row.generation != run.generation:
         raise DomainError("STALE_GENERATION", "The run moved on since these questions were asked.", 409,
                           data={"state": run.state})
     row.answers = clean_answers(row.questions, body.answers)
@@ -576,6 +583,7 @@ def submit_plan(db, bot, body):
     open_row = coordinator.open_interview(db, run)
     if open_row is not None:
         open_row.status, open_row.updated_at = "superseded", now()  # The agent went ahead without the answers.
+        coordinator.sync_wait(db, run)
     agent_verify = {**body.verify.model_dump(), "by": "agent"} if body.verify else None
     proposals = plan_proposals(task, body.success_criteria, agent_verify, body.completion_policy)
     if default_proposal and not (proposals or {}).get("verify"):

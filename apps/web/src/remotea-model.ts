@@ -445,6 +445,14 @@ export function buildAnswers(q: RunQuestion, picked: Record<string, string[]>, t
   return answers.every(a => "choice_ids" in a || "text" in a) ? answers : null;
 }
 
+/** The open interviews the page offers to answer: while interviewing, and while parked in needs_you (e.g. on its wall
+ * clock) with the interview open for the current generation. The backend decides; a refusal shows on the form. */
+export function answerableInterviews(run: Pick<RunDetail, "state" | "generation" | "interviews">): Interview[] {
+  const open = (run.interviews ?? []).filter(i => i.status === "open");
+  if (run.state === "interviewing") return open;
+  return run.state === "needs_you" ? open.filter(i => i.generation === run.generation) : [];
+}
+
 /** Interview answers keyed by question id; null until every question has an allowed answer. */
 export function interviewAnswers(interview: Interview, picked: Record<string, string[]>, typed: Record<string, string>) {
   const answers: Record<string, string | string[]> = {};

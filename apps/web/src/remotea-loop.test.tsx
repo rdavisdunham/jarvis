@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Criteria, InterviewForm, PlanReview } from "./Remotea";
+import { Criteria, InterviewForm, OpenInterviews, PlanReview } from "./Remotea";
 import {
-  attemptTitle, attemptTone, commandTitle, criteriaEvidence, interviewAnswers, latestAttempt, orderOptions, planReviewBody, runControls, timeline,
+  answerableInterviews, attemptTitle, attemptTone, commandTitle, criteriaEvidence, interviewAnswers, latestAttempt, orderOptions, planReviewBody, runControls, timeline,
   type Attempt, type Interview, type Proposals, type Run, type RunDetail,
 } from "./remotea-model";
 
@@ -48,6 +48,13 @@ describe("interview form", () => {
     expect(html).toContain("Which widgets?"); expect(html).toContain("Charts"); expect(html).toContain("(choose any)");
     expect(html).toContain('aria-label="Answer: Latency target?"');
     expect(html).toMatch(/<button[^>]*disabled[^>]*>Send answers/);
+  });  it("offers the form while interviewing and while parked in needs_you with the interview open", () => {
+    const parked = detail({ state: "needs_you", state_reason: "wall_clock", plan_revision: 0, interviews: [interview] });
+    expect(renderToStaticMarkup(<OpenInterviews run={parked} onDone={() => {}}/>)).toContain("Which widgets?");
+    expect(answerableInterviews(detail({ state: "interviewing", interviews: [interview] }))).toEqual([interview]);
+    expect(answerableInterviews({ ...parked, generation: 2 })).toEqual([]);  // Asked by an older generation.
+    expect(answerableInterviews({ ...parked, interviews: [{ ...interview, status: "answered" }] })).toEqual([]);
+    expect(renderToStaticMarkup(<OpenInterviews run={detail({ interviews: [interview] })} onDone={() => {}}/>)).toBe("");
   });
 });
 

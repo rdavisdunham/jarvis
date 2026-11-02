@@ -281,6 +281,11 @@ class AgentRun(Base):
     # Reviews completed so far (agent_plan_reviews rows with status done).
     plan_round: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
+    # The wall clock measures the agent's working time (0043): time spent waiting on the owner (an open interview,
+    # waiting_answer, needs_you) is excluded. owner_wait_since: the current wait began; owner_wait_total_s: the
+    # seconds of finished waits (run_coordinator.wall_clock_deadline).
+    owner_wait_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    owner_wait_total_s: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     no_progress_limit: Mapped[int] = mapped_column(Integer, default=45 * 60)  # seconds
     last_progress_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     stop_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
