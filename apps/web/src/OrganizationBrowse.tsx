@@ -55,7 +55,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
     <div className="org-tile-kind"><span>{r.type_name}</span><SourceBadge source={r.source}/></div>
     <button className="org-tile-title" onClick={()=>container?onBrowse(r.id):onOpen(r)}>{container&&<FolderOpen size={17}/>}<strong>{r.title}</strong>{container&&<ChevronRight size={16}/>}</button>
     {r.body&&<p>{r.body}</p>}
-    <div className="org-tile-foot">{r.contents?.work_total?<span>{r.contents.work_done}/{r.contents.work_total} complete</span>:<span>{r.contents?.direct??0} directly inside</span>}
+    <div className="org-tile-foot">{r.contents?.work_total?<span>{r.contents.work_done}/{r.contents.work_total} complete</span>:<span>{r.contents?.direct??0} directly inside{!!r.contents?.context_direct&&` · ${r.contents.context_direct} ancestor ${r.contents.context_direct===1?"home":"homes"}`}</span>}
      {r.context_only&&<span className="chip">{r.archived?"Archived":["completed","cancelled"].includes(r.status_meaning??"")?"Finished":"Ancestor"} home · contents</span>}
      {r.status_meaning&&!r.context_only&&<span className="chip">{r.status_meaning.replaceAll("_"," ")}</span>}
      <button className="btn-icon" hidden={r.context_only} aria-label={"Details for "+r.title} onClick={()=>onOpen(r)}><Info size={16}/></button></div>

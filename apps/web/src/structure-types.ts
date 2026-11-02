@@ -12,7 +12,7 @@ export const fieldKinds=["text","long_text","number","boolean","date","datetime"
 export const describe=(value:string)=>value.replaceAll("_"," ");
 export const emptyField=():SchemaField=>({id:crypto.randomUUID(),name:"",description:"",kind:"text",options:[],target_types:[],multiple:false,inherit:false,visible:true,archived:false,binding:null});
 
-export type ContentsSummary={direct:number;descendants:number;work_total:number;work_done:number;work_open:number;ready_to_complete:boolean;child_start:string|null;child_end:string|null;blockers:{id:string;title:string;status:string}[]};
+export type ContentsSummary={context_direct?:number;direct:number;descendants:number;work_total:number;work_done:number;work_open:number;ready_to_complete:boolean;child_start:string|null;child_end:string|null;blockers:{id:string;title:string;status:string}[]};
 export type OpensAs="auto"|"container"|"item";
 /** Containers open their Browse contents; items open their detail card. The server resolves "auto". */
 export const openTarget=(r:Pick<CustomRecord,"opens_as"|"type_id">,schema?:Pick<Schema,"types">):"contents"|"details"=>{

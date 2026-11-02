@@ -37,7 +37,7 @@ def rows_under(db, owner, identity):
     )
 
 
-def summary(db, row, schema):
+def summary(db, row, schema, *, visible_ids=None, context_ids=frozenset()):
     """Unique descendants, separate from related links; never sum parent task effort."""
     from .structure import record_type
 
@@ -67,9 +67,11 @@ def summary(db, row, schema):
                 v = str(value)
                 (starts if f["binding"] in {"start_date", "planned_date"} else ends).append(v)
     blockers = blocking(db, row, schema)
+    counted = active if visible_ids is None else [r for r in descendants if r.id in visible_ids]
     return {
-        "direct": sum(r.parent_id == row.id for r in active),
-        "descendants": len(active),
+        "direct": sum(r.parent_id == row.id for r in counted),
+        "descendants": len(counted),
+        "context_direct": sum(r.parent_id == row.id and r.id in context_ids for r in descendants),
         "work_total": len(work),
         "work_done": done,
         "work_open": open_count,
@@ -224,12 +226,12 @@ def browse(
         value["context_only"] = row.id in context_ids
         if value["context_only"]:
             value["opens_as"] = "container"
-        value["contents"] = summary(db, row, schema)
+        value["contents"] = summary(db, row, schema, visible_ids=visible_ids, context_ids=context_ids)
         items.append(value)
     if parent:
         parent_data = structure.data(db, parent, schema)
         parent_data["context_only"] = parent.id in context_ids
-        parent_data["contents"] = summary(db, parent, schema)
+        parent_data["contents"] = summary(db, parent, schema, visible_ids=visible_ids, context_ids=context_ids)
     return {
         "parent": parent_data if parent else None,
         "items": items,

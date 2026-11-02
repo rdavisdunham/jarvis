@@ -234,3 +234,31 @@ def test_explicit_custom_container_work_type_remains_visible(client):
         db.get(Task, custom["task_id"]).status = "completed"
     rows = {r["id"]: r for r in skeleton()["records"]}
     assert custom["id"] in rows and not rows[custom["id"]]["context_only"]
+
+
+def test_browse_counts_follow_visibility_without_losing_historical_progress(client):
+    group = create("client", "Counts")
+    cancelled = create("task", "Canceled child", parent_id=group["id"])
+    completed = create("task", "Completed child", parent_id=group["id"])
+    with session_scope() as db:
+        db.get(Task, cancelled["task_id"]).status = "cancelled"
+        db.get(Task, completed["task_id"]).status = "completed"
+    active = client.get(f'/api/v1/structure/browse?parent_id={group["id"]}&status=active').json()
+    assert active["total"] == active["parent"]["contents"]["direct"] == 0
+    assert active["parent"]["contents"]["descendants"] == 0
+    assert active["parent"]["contents"]["work_total"] == 2
+    assert active["parent"]["contents"]["work_done"] == 1
+    finished = client.get(f'/api/v1/structure/browse?parent_id={group["id"]}&status=all').json()
+    assert finished["total"] == finished["parent"]["contents"]["direct"] == 2
+    child = create("task", "Active nested child", parent_id=cancelled["id"])
+    context = client.get(f'/api/v1/structure/browse?parent_id={group["id"]}&status=active').json()
+    assert context["parent"]["contents"]["direct"] == context["total"] == 0
+    assert context["parent"]["contents"]["context_direct"] == context["context_count"] == 1
+    assert context["parent"]["contents"]["descendants"] == 1
+    assert context["items"][0]["contents"]["direct"] == 1
+    with session_scope() as db:
+        db.get(Task, completed["task_id"]).archived = True
+    archive = client.get(f'/api/v1/structure/browse?parent_id={group["id"]}&archived=true&status=active').json()
+    assert archive["total"] == archive["parent"]["contents"]["direct"] == 1
+    assert archive["parent"]["contents"]["work_total"] == 3
+    assert archive["parent"]["contents"]["work_done"] == 1
