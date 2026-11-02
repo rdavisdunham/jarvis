@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CalendarEntry, Task } from "./types";
-import { activeTodayEntry, finishedToday, mergeFinishedTasks } from "./task-finished";
+import { activeTodayEntry, finishedToday, mergeFinishedTasks, readFinishedTasks } from "./task-finished";
+vi.mock("./api", () => ({ api: vi.fn() }));
+import { api } from "./api";
 const task = (id: string, extra: Partial<Task> = {}) => ({ id, title: id, status: "completed", completed_at: "2026-11-02T07:30:00Z", archived: false, ...extra }) as Task;
 describe("daily finished work", () => {
   it("uses configured local calendar day across fall DST, regardless of due date", () => {
@@ -23,4 +25,18 @@ describe("daily finished work", () => {
     expect(activeTodayEntry({ ...entry, kind: "event", status: "completed" }, [])).toBe(true);
     expect(activeTodayEntry(entry, [task("done", { status: "open" })])).toBe(true);
   });
+});
+
+it("pages the configured daily query without widening ordinary loads", async () => {
+  vi.mocked(api).mockResolvedValueOnce({ items: [task("one")], next_cursor: "cursor" }).mockResolvedValueOnce({ items: [task("two")], next_cursor: null });
+  expect((await readFinishedTasks("2026-11-02", "America/Chicago")).map(t => t.id)).toEqual(["one", "two"]);
+  const urls = vi.mocked(api).mock.calls.map(([url]) => new URL(url, "https://example.test"));
+  expect(urls).toHaveLength(2);
+  for (const url of urls) {
+    expect(url.pathname).toBe("/tasks");
+    expect(url.searchParams.get("finished_on")).toBe("2026-11-02");
+    expect(url.searchParams.get("timezone")).toBe("America/Chicago");
+    expect(url.searchParams.has("include_archived")).toBe(false);
+  }
+  expect(urls[1].searchParams.get("before")).toBe("cursor");
 });

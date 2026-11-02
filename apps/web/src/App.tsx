@@ -42,7 +42,7 @@ import { TaskDetails } from "./TaskDetails";
 import { TaskTabs } from "./TaskTabs";
 import { Today } from "./Today";
 import { FinishedToday } from "./FinishedToday";
-import { isFinishedTask, mergeFinishedTasks } from "./task-finished";
+import { isFinishedTask, mergeFinishedTasks, readFinishedTasks } from "./task-finished";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
 import { noticeDestination, noticeStatus } from "./notice-target";
@@ -584,16 +584,7 @@ export default function App() {
           api<{ items: Notice[] }>("/notifications"),
           api<Organization>("/organization"),
         ]);
-      const finished: Task[] = [];
-      const finishedDay = dayInZone(preferences.preferences.timezone);
-      let finishedCursor: string | null = null;
-      do {
-        const params = new URLSearchParams({ limit: "200", finished_on: finishedDay, timezone: preferences.preferences.timezone });
-        if (finishedCursor) params.set("before", finishedCursor);
-        const page: { items: Task[]; next_cursor: string | null } = await api("/tasks?" + params);
-        finished.push(...page.items);
-        finishedCursor = page.next_cursor;
-      } while (finishedCursor && current());
+      const finished = await readFinishedTasks(dayInZone(preferences.preferences.timezone), preferences.preferences.timezone, current);
       let items = taskData.items,
         cursor = taskData.next_cursor;
       while (cursor && current()) {
