@@ -148,3 +148,11 @@ it("keeps finished ancestor context navigable without including it in search or 
   expect(markName(parent,i,"2026-11-02")).toContain("archived ancestor home");
   expect(legalTargets(active,i).has(parent.id)).toBe(false);
 });
+
+it("classifies organizational containers from static schema, independently of task children", async () => {
+  const {organizationalContainer} = await import("./structure-types");
+  expect(organizationalContainer({opens_as:"auto",capabilities:["work","timeline"]})).toBe(true);
+  expect(organizationalContainer({opens_as:"container",capabilities:["work"]})).toBe(true);
+  expect(organizationalContainer({opens_as:"item",capabilities:["work","timeline"]})).toBe(false);
+  expect(organizationalContainer({opens_as:"auto",capabilities:["work"]})).toBe(false);
+});

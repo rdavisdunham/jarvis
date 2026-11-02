@@ -19,3 +19,10 @@ export const openTarget=(r:Pick<CustomRecord,"opens_as"|"type_id">,schema?:Pick<
   const mode=r.opens_as??schema?.types.find(t=>t.id===r.type_id)?.opens_as;
   return mode==="container"?"contents":"details";
 };
+
+/** Static organizational role, independent of whether an ordinary task currently has children. */
+export const organizationalContainer=(t:Pick<SchemaType,"opens_as"|"capabilities">|undefined)=>{
+  if(!t)return false;
+  if(t.opens_as&&t.opens_as!=="auto")return t.opens_as==="container";
+  return t.capabilities.includes("timeline")||!t.capabilities.some(c=>c==="work"||c==="content");
+};

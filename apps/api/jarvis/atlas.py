@@ -39,6 +39,9 @@ def visibility_rows(db, owner, *, archived=False, show_finished=False, status="a
     Context retains real containment, including archived parents of unfinished work.
     Templates never become context. Non-task organizational outcomes remain visible.
     """
+    from . import structure
+    schema = structure.ensure(db, owner)
+    containers = {t["id"] for t in schema.definition["types"] if structure.opens_as(t) == "container"}
     rows = list(db.execute(
         select(StructureRecord.id, StructureRecord.parent_id, StructureRecord.sort_order,
                StructureRecord.archived, Task.id, Task.status, Task.archived, Task.is_template, StructureRecord.type_id)
@@ -48,9 +51,9 @@ def visibility_rows(db, owner, *, archived=False, show_finished=False, status="a
     eligible = {r[0]: r for r in rows if not r[7]}
     visible = {r[0] for r in eligible.values()
                if bool(r[3] or r[6]) == archived
-               and (archived or show_finished or not r[4] or r[5] not in {"completed", "cancelled"})}
+               and (archived or show_finished or not r[4] or r[8] in containers or r[5] not in {"completed", "cancelled"})}
     if not archived and status not in {"active", "all"}:
-        visible = {identity for identity in visible if not eligible[identity][4] or eligible[identity][5] == status}
+        visible = {identity for identity in visible if not eligible[identity][4] or eligible[identity][8] in containers or eligible[identity][5] == status}
     context = set()
     for identity in visible:
         parent = eligible[identity][1]

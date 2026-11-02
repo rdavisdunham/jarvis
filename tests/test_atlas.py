@@ -189,9 +189,8 @@ def test_explicit_terminal_status_filters_before_limit_and_preserves_non_task_co
     data = client.get("/api/v1/structure/atlas?show_finished=true&status=cancelled").json()
     rows = {r["id"]: r for r in data["records"]}
     assert rows[t["id"]]["context_only"] and not rows[s["id"]]["context_only"]
-    # Work-capable projects also have backing tasks and honor explicit task status.
-    assert data["total"] == 4
-    assert not any(r["work"] and r["status_meaning"] != "cancelled" for r in data["records"])
+    assert data["total"] == 5
+    assert not any(r["work"] and r["type_id"] == "task" and r["status_meaning"] != "cancelled" for r in data["records"])
 
 
 def test_root_groups_keep_hidden_task_home_as_navigation_context(client):
@@ -206,3 +205,32 @@ def test_root_groups_keep_hidden_task_home_as_navigation_context(client):
     assert data["items"][0]["id"] == parent["id"] and data["items"][0]["context_only"]
     children = client.get(f'/api/v1/structure/browse?parent_id={parent["id"]}&status=active').json()
     assert children["items"][0]["id"] == child["id"]
+
+
+def test_completed_organizational_container_remains_visible_without_active_children(client):
+    project = create("project", "Finished project context")
+    task = create("task", "Finished ordinary task")
+    with session_scope() as db:
+        db.get(Task, project["task_id"]).status = "completed"
+        db.get(Task, task["task_id"]).status = "completed"
+    rows = {r["id"]: r for r in skeleton()["records"]}
+    assert project["id"] in rows and not rows[project["id"]]["context_only"]
+    assert task["id"] not in rows
+    browse = client.get("/api/v1/structure/browse?status=active").json()
+    assert project["id"] in {r["id"] for r in browse["items"]}
+    assert task["id"] not in {r["id"] for r in browse["items"]}
+
+
+def test_explicit_custom_container_work_type_remains_visible(client):
+    from jarvis.structure_models import StructureSchema
+    custom = create("task", "A custom organizational container")
+    with session_scope() as db:
+        definition = db.get(StructureSchema, OWNER)
+        import copy
+        value = copy.deepcopy(definition.definition)
+        task_type = next(t for t in value["types"] if t["id"] == "task")
+        task_type["opens_as"] = "container"
+        definition.definition = value
+        db.get(Task, custom["task_id"]).status = "completed"
+    rows = {r["id"]: r for r in skeleton()["records"]}
+    assert custom["id"] in rows and not rows[custom["id"]]["context_only"]

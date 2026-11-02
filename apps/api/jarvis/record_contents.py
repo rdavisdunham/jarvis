@@ -199,12 +199,14 @@ def browse(
                 ),
             )
         )
+    container_types = [t["id"] for t in schema.definition["types"] if structure.opens_as(t) == "container"]
     if status != "all" and not archived:
         task_filter = select(Task.id).where(Task.owner_id == owner)
         task_filter = task_filter.where(
             Task.status.notin_(["completed", "cancelled"]) if status == "active" else Task.status == status
         )
-        q = q.where(or_(StructureRecord.task_id.is_(None), StructureRecord.task_id.in_(task_filter),
+        q = q.where(or_(StructureRecord.task_id.is_(None), StructureRecord.type_id.in_(container_types),
+                        StructureRecord.task_id.in_(task_filter),
                         StructureRecord.id.in_(context_ids)))
     if query:
         from .text_normalize import sql_filter
