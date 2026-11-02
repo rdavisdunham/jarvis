@@ -39,6 +39,9 @@ def finish_task(db, task, status="completed", *, sync_external=True, gated=False
         from .linear_sync import before_task_update
 
         before_task_update(db, task.owner_id, task, {"status": status})
+    from .task_archive import apply_lifecycle
+
+    apply_lifecycle(task, {"status": status})
     task.status = status
     task.completed_at = (task.completed_at or now()) if status == "completed" else None
     task.revision += 1

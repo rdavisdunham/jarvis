@@ -349,7 +349,7 @@ def test_linear_cancel_stops_the_run_like_a_linear_completion(host, linear):  # 
         sync.process_sync(job)
     with session_scope() as db:
         task = db.get(Task, tid)
-        assert (task.status, task.archived) == ("cancelled", True)
+        assert (task.status, task.archived) == ("cancelled", False)
         row = db.get(AgentRun, run_id)
         assert (row.state, row.stop_reason, row.stop_final) == ("stopping", "task_completed_externally", "stopped")
         assert row.sync_state["completion"]["actor"]["kind"] == "source_sync"

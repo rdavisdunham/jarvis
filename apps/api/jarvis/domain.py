@@ -225,6 +225,7 @@ class WorkWindow(Args):
 
 
 class SettingsUpdate(Args):
+    auto_archive_finished_tasks: bool | None = None
     source_colors: dict[str, str] | None = None
     routing_mode: Literal["off", "suggest", "automatic"] | None = None
     routing_learning: bool | None = None
@@ -336,8 +337,12 @@ def serial(record):
             result["source"] = task_source(db, record)
             if record.is_quick_list:
                 from sqlalchemy import func
-                result["quick_total"] = db.scalar(select(func.count()).select_from(Task).where(Task.owner_id==record.owner_id,Task.parent_task_id==record.id,Task.archived.is_(False)))
-                result["quick_done"] = db.scalar(select(func.count()).select_from(Task).where(Task.owner_id==record.owner_id,Task.parent_task_id==record.id,Task.archived.is_(False),Task.status=="completed"))
+                checklist = select(Task).where(
+                    Task.owner_id == record.owner_id, Task.parent_task_id == record.id,
+                    Task.archived.is_(False) | ((Task.archive_reason == "automatic") & Task.status.in_(("completed", "cancelled"))),
+                )
+                result["quick_total"] = db.scalar(select(func.count()).select_from(checklist.subquery()))
+                result["quick_done"] = db.scalar(select(func.count()).select_from(checklist.where(Task.status == "completed").subquery()))
             parent = db.get(Task, record.parent_task_id) if record.parent_task_id else None
             result["quick_list_parent_id"] = parent.id if parent and parent.is_quick_list else None
     if isinstance(record, Notification):
@@ -388,6 +393,7 @@ def preferences(db, owner):
         "scheduling_windows": {"work":[{"days":[0,1,2,3,4],"start":"08:00","end":"17:00"}],"personal":[]},
         "source_colors": {"eridani":"#9edac8","linear":"#e4a261","google":"#e995bd"},
         "work_windows": [{"days": [0,1,2,3,4], "start": "08:00", "end": "17:00"}],
+        "auto_archive_finished_tasks": True,
         "deadline_alerts": True, "quiet_enabled": True, "quiet_start": "22:00", "quiet_end": "08:00",
         "morning_summary": False, "morning_hour": 8,
         # Below this priority a notice does not interrupt; it waits for the digest (notices.plan).
@@ -757,7 +763,7 @@ def mutate(db, owner, tool, args, command_id):
         if tool == "task.complete":
             changes = {"status": "completed"}
         elif tool == "task.reopen":
-            changes = {"status": "open"}
+            changes = {"status": "open", "archived": False}
         if "status" in changes and changes["status"] not in {
             "backlog",
             "open",
@@ -780,9 +786,13 @@ def mutate(db, owner, tool, args, command_id):
         run_gate(db, owner, task, changes)
         from .linear_sync import before_task_update
 
+        if changes.get("status") not in {None, "completed", "cancelled"} and task.status in {"completed", "cancelled"}:
+            changes["archived"] = False
         before_task_update(db, owner, task, changes)
         if "parent_task_id" in changes:
             db.info.setdefault("task_parent_moves", set()).add(task.id)
+        from .task_archive import apply_lifecycle
+        apply_lifecycle(task, changes, automatic=db.info.get("automatic_task_archive", False))
         moved = "project_id" in changes and changes["project_id"] != task.project_id
         for key, value in changes.items():
             setattr(task, key, value)

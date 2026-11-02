@@ -213,3 +213,53 @@ def test_notification_bundles_migration_backfills_delivery_and_downgrades(test_d
         if trial:trial.dispose()
         with admin.connect() as c:c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_task_archive_migration_preserves_outcomes_and_legacy_unknown_age(test_database):
+    from datetime import UTC, datetime
+    from sqlalchemy import text
+    name = 'jarvis_archive_' + uuid4().hex
+    supplied = make_url(test_database)
+    admin = create_engine(supplied.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = supplied.set(database=name)
+    trial = None
+    with admin.connect() as c:
+        c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env = {**os.environ, 'JARVIS_DATABASE_URL': target.render_as_string(hide_password=False), 'JARVIS_ENV_FILE': ''}
+        def migrate(*args):
+            result = subprocess.run([sys.executable, '-m', 'alembic', *args], cwd=ROOT, env=env, capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        migrate('upgrade', '0043_run_owner_wait')
+        trial = create_engine(target)
+        old = Table('tasks', MetaData(), autoload_with=trial)
+        instant = datetime(2026, 10, 1, 12, tzinfo=UTC)
+        for status in ('completed', 'cancelled', 'open'):
+            values = {'id': status, 'owner_id': 'release-owner', 'title': status, 'status': status, 'archived': status == 'cancelled'}
+            for col in Task.__table__.columns:
+                if col.name in old.c and col.name not in values and col.default is not None:
+                    values[col.name] = col.default.arg(None) if col.default.is_callable else col.default.arg
+            if status == 'completed':
+                values['completed_at'] = instant
+            with trial.begin() as c:
+                c.execute(old.insert().values(**values))
+        migrate('upgrade', 'head')
+        migrate('check')
+        with trial.connect() as c:
+            rows = {r['id']: r for r in c.execute(text('SELECT * FROM tasks')).mappings()}
+        assert rows['completed']['finished_at'] == instant
+        assert (rows['completed']['archive_eligible_at'] - instant).total_seconds() == 86400
+        assert rows['cancelled']['finished_at'] is None and rows['cancelled']['archive_eligible_at'] is None
+        assert rows['cancelled']['archived'] and rows['cancelled']['archive_reason'] == 'manual'
+        assert rows['open']['finished_at'] is None
+        migrate('downgrade', '0043_run_owner_wait')
+        assert 'finished_at' not in {c['name'] for c in inspect(trial).get_columns('tasks')}
+        with trial.connect() as c:
+            assert c.scalar(text("SELECT status FROM tasks WHERE id='cancelled'")) == 'cancelled'
+        migrate('upgrade', 'head')
+    finally:
+        if trial:
+            trial.dispose()
+        with admin.connect() as c:
+            c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()

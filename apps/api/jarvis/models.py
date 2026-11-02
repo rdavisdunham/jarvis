@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    event,
     ForeignKey,
     Index,
     Integer,
@@ -159,6 +160,11 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Outcome time is distinct from archive grace (restore/legacy observation).
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archive_eligible_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archive_reason: Mapped[str | None] = mapped_column(String(20))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     occurrence_id: Mapped[str | None] = mapped_column(String(36), unique=True)
     is_template: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -761,3 +767,11 @@ class BugReport(Base):
     screenshot_error: Mapped[str | None] = mapped_column(String(300))
     status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
     task_id: Mapped[str | None] = mapped_column(String(36), index=True)
+
+
+# Backstop imports and direct ORM writers as well as domain commands.
+@event.listens_for(Task, "before_insert")
+@event.listens_for(Task, "before_update")
+def _task_lifecycle(mapper, connection, task):
+    from .task_archive import observe_lifecycle
+    observe_lifecycle(task)

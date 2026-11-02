@@ -174,7 +174,7 @@ def data(db, row):
                 select(Task).where(
                     Task.owner_id == row.owner_id,
                     Task.project_id == row.id,
-                    Task.archived.is_(False),
+                    Task.archived.is_(False) | (Task.status == "completed"),
                     Task.is_template.is_(False),
                 )
             )

@@ -355,13 +355,14 @@ def linear_state(fake, type, name, at):
 
 
 @pytest.mark.parametrize("type, name", [("canceled", "Canceled"), ("duplicate", "Duplicate")])
-def test_linear_cancel_cancels_and_archives_and_reopen_restores(linear, type, name):
+def test_linear_cancel_records_outcome_with_archive_grace_and_reopen_restores(linear, type, name):
     tid, _ = imported()
     linear_state(linear, type, name, "2026-09-13T10:00:00Z")
     resync()
     with session_scope() as db:
         task = db.get(Task, tid)
-        assert (task.status, task.archived) == ("cancelled", True)
+        assert (task.status, task.archived) == ("cancelled", False)
+        assert task.finished_at is not None and task.archive_eligible_at > task.finished_at
         assert task.external["state"] == name and not task.external["local_archived"]
     linear_state(linear, "unstarted", "Todo", "2026-09-14T10:00:00Z")
     resync()
@@ -393,7 +394,7 @@ def test_cancel_with_unassignment_finishes_task_before_it_leaves_scope(linear):
     resync()
     with session_scope() as db:
         task = db.get(Task, tid)
-        assert (task.status, task.archived) == ("cancelled", True)
+        assert (task.status, task.archived) == ("cancelled", False)
         assert task.external["sync_state"] == "out_of_scope" and task.external["state"] == "Canceled"
 
 
@@ -442,8 +443,8 @@ def test_full_sync_repairs_tasks_already_stuck_open_or_unarchived(linear):
     resync(full=True)
     with session_scope() as db:
         stuck, second = db.get(Task, tid), db.get(Task, second_id)
-        assert (stuck.status, stuck.archived, stuck.external["sync_state"]) == ("cancelled", True, "out_of_scope")
-        assert (second.status, second.archived) == ("cancelled", True)
+        assert (stuck.status, stuck.archived, stuck.external["sync_state"]) == ("cancelled", False, "out_of_scope")
+        assert (second.status, second.archived) == ("cancelled", False)
 
 
 def test_held_linear_cancel_is_shown_not_applied(linear):
@@ -506,3 +507,39 @@ def test_undecryptable_linear_key_asks_to_reconnect_linear(linear):
         with pytest.raises(DomainError) as refused:
             sync.linear_key(conn)
     assert refused.value.code == "LINEAR_RECONNECT" and refused.value.message == "Reconnect Linear in Settings."
+
+
+def test_automatic_linear_archive_survives_reads_but_clears_on_remote_reopen(linear):
+    from datetime import timedelta
+    from jarvis.task_archive import sweep_owner
+    from jarvis.models import now
+
+    tid, _ = imported()
+    linear_state(linear, "canceled", "Canceled", "2026-09-13T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        task.finished_at = now() - timedelta(hours=25)
+        task.archive_eligible_at = task.finished_at + timedelta(hours=24)
+    with session_scope() as db:
+        assert sweep_owner(db, "davin") == 1
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.archived and task.archive_reason == "automatic"
+        assert not task.external["local_archived"]
+    linear_state(linear, "unstarted", "Todo", "2026-09-14T10:00:00Z")
+    resync()
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.status == "open" and not task.archived
+        assert task.finished_at is None and task.archive_eligible_at is None
+    assert linear.writes == []
+
+
+def test_local_reopen_clears_manual_linear_archive(linear):
+    tid, rev = imported()
+    archived = run("task.update", task_id=tid, expected_revision=rev, archived=True)
+    # Reopen is explicit recovery even for an already-open manually archived task.
+    reopened = run("task.reopen", task_id=tid, expected_revision=archived["revision"])
+    assert not reopened["archived"] and not reopened["external"]["local_archived"]

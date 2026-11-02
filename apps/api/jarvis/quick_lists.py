@@ -39,7 +39,7 @@ COMMANDS={"quicklist.create":Create,"quicklist.item":ItemChange,"quicklist.promo
 
 def children(db, owner, identity):
     from .hierarchy import children as canonical_children
-    return canonical_children(db, owner, identity)
+    return canonical_children(db, owner, identity, include_finished_archives=True)
 
 def read(db,owner,identity):
     row=owned(db,Task,identity,owner)
