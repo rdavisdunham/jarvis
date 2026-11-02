@@ -37,19 +37,21 @@ def rows_under(db, owner, identity):
     )
 
 
-def summary(db, row, schema):
+def summary(db, row, schema, *, visible_ids=None, context_ids=frozenset()):
     """Unique descendants, separate from related links; never sum parent task effort."""
     from .structure import record_type
 
     descendants = rows_under(db, row.owner_id, row.id)
     active = [r for r in descendants if not r.archived]
-    work = [r for r in active if r.task_id]
+    work = [r for r in descendants if r.task_id]
     tasks = {
         t.id: t
         for t in db.scalars(
             select(Task).where(Task.owner_id == row.owner_id, Task.id.in_([r.task_id for r in work]))
         )
     }
+    # Filed outcomes still contribute to historical completion progress.
+    work = [r for r in work if not r.archived or tasks[r.task_id].status in {"completed", "cancelled"}]
     done = sum(tasks[r.task_id].status == "completed" for r in work)
     open_count = sum(tasks[r.task_id].status not in {"completed", "cancelled"} for r in work)
     starts, ends = [], []
@@ -65,9 +67,11 @@ def summary(db, row, schema):
                 v = str(value)
                 (starts if f["binding"] in {"start_date", "planned_date"} else ends).append(v)
     blockers = blocking(db, row, schema)
+    counted = active if visible_ids is None else [r for r in descendants if r.id in visible_ids]
     return {
-        "direct": sum(r.parent_id == row.id for r in active),
-        "descendants": len(active),
+        "direct": sum(r.parent_id == row.id for r in counted),
+        "descendants": len(counted),
+        "context_direct": sum(r.parent_id == row.id and r.id in context_ids for r in descendants),
         "work_total": len(work),
         "work_done": done,
         "work_open": open_count,
@@ -152,7 +156,10 @@ def browse(
     if structure.core_drift(db, owner):
         structure.sync_core_records(db, owner, schema)
     parent = owned(db, StructureRecord, parent_id, owner) if parent_id else None
-    q = select(StructureRecord).where(StructureRecord.owner_id == owner, StructureRecord.archived == archived)
+    from .atlas import visibility_rows
+    _, visible_ids, context_ids = visibility_rows(db, owner, archived=archived, show_finished=status != "active", status=status)
+    q = select(StructureRecord).where(StructureRecord.owner_id == owner,
+                                      StructureRecord.id.in_(visible_ids | context_ids))
     if scope == "related":
         if not parent:
             raise DomainError("INVALID_ARGUMENT", "Related records need a container.")
@@ -183,6 +190,7 @@ def browse(
         q = q.where(
             or_(
                 StructureRecord.type_id.in_(containers),
+                StructureRecord.id.in_(context_ids),
                 and_(
                     StructureRecord.type_id.in_(inferred),
                     select(child.id)
@@ -193,33 +201,44 @@ def browse(
                 ),
             )
         )
-    if status != "all":
+    container_types = [t["id"] for t in schema.definition["types"] if structure.opens_as(t) == "container"]
+    if status != "all" and not archived:
         task_filter = select(Task.id).where(Task.owner_id == owner)
         task_filter = task_filter.where(
             Task.status.notin_(["completed", "cancelled"]) if status == "active" else Task.status == status
         )
-        q = q.where(or_(StructureRecord.task_id.is_(None), StructureRecord.task_id.in_(task_filter)))
+        q = q.where(or_(StructureRecord.task_id.is_(None), StructureRecord.type_id.in_(container_types),
+                        StructureRecord.task_id.in_(task_filter),
+                        StructureRecord.id.in_(context_ids)))
     if query:
         from .text_normalize import sql_filter
 
-        q = q.where(sql_filter(query, StructureRecord.title))
-    total = db.scalar(select(func.count()).select_from(q.subquery()))
+        q = q.where(sql_filter(query, StructureRecord.title), StructureRecord.id.notin_(context_ids))
+    row_total = db.scalar(select(func.count()).select_from(q.subquery()))
+    context_count = db.scalar(select(func.count()).select_from(q.where(StructureRecord.id.in_(context_ids)).subquery()))
+    total = row_total - context_count
     found = list(
         db.scalars(q.order_by(StructureRecord.sort_order, StructureRecord.id).offset(offset).limit(limit))
     )
     items = []
     for row in found:
         value = structure.data(db, row, schema)
-        value["contents"] = summary(db, row, schema)
+        value["context_only"] = row.id in context_ids
+        if value["context_only"]:
+            value["opens_as"] = "container"
+        value["contents"] = summary(db, row, schema, visible_ids=visible_ids, context_ids=context_ids)
         items.append(value)
     if parent:
         parent_data = structure.data(db, parent, schema)
-        parent_data["contents"] = summary(db, parent, schema)
+        parent_data["context_only"] = parent.id in context_ids
+        parent_data["contents"] = summary(db, parent, schema, visible_ids=visible_ids, context_ids=context_ids)
     return {
         "parent": parent_data if parent else None,
         "items": items,
         "total": total,
-        "next_offset": offset + limit if offset + limit < total else None,
+        "context_count": context_count,
+        "row_total": row_total,
+        "next_offset": offset + limit if offset + limit < row_total else None,
         "scope": scope,
         "section": section,
         "schema_revision": schema.revision,

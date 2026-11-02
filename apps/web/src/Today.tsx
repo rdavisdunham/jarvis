@@ -11,9 +11,12 @@ import { plural, priorityLabels } from "./ux";
 import { TodayReviews } from "./Reviews";
 import { RunButton } from "./RunButton";
 import "./today.css";
+import { FinishedToday } from "./FinishedToday";
+import { activeTodayEntry, finishedToday } from "./task-finished";
 
 type Props = {
   tasks: Task[];
+  finishedTasks?: Task[];
   schedules: Schedule[];
   today: string;
   zone: string;
@@ -125,10 +128,10 @@ export function Today(p: Props) {
   const dueIds = new Set(due.map(t => t.id));
   const inbox = p.tasks.filter(t => isOpen(t) && !dueIds.has(t.id) && !t.project_id && !t.space_id && !t.area_id)
     .sort((a, b) => b.priority - a.priority || b.created_at.localeCompare(a.created_at));
-  const doneToday = p.tasks.filter(t => t.status === "completed" && t.completed_at && localParts(p.zone, new Date(t.completed_at)).day === p.today).length;
+  const doneToday = finishedToday(p.finishedTasks ?? p.tasks, p.today, p.zone).filter(t => t.status === "completed").length;
   const dueToday = due.filter(t => t.due_date === p.today).length;
   const overdue = due.filter(t => t.due_date && t.due_date < p.today).length;
-  const timed = (entries ?? []).filter(e => e.date === p.today && e.at && !(e.kind === "task" && e.timing === "planned"))
+  const timed = (entries ?? []).filter(e => e.date === p.today && activeTodayEntry(e, p.tasks) && e.at && !(e.kind === "task" && e.timing === "planned"))
     .sort((a, b) => a.at!.localeCompare(b.at!));
   const allDay = (entries ?? []).filter(e => e.date === p.today && !e.at && eventKinds.has(e.kind));
   const events = [...timed, ...allDay].filter(e => eventKinds.has(e.kind)).length;
@@ -207,6 +210,7 @@ export function Today(p: Props) {
         </section>
       </div>
     </div>
+    <FinishedToday tasks={p.finishedTasks ?? p.tasks} today={p.today} zone={p.zone} busy={p.busy} canEdit={p.canEdit} onTask={p.onTask} onReopen={p.onToggle}/>
     {notes !== null && <section className="today-notes" aria-labelledby="today-notes-title">
       <header className="panel-header"><h2 id="today-notes-title">Recent notes</h2>
         <button type="button" className="btn btn-ghost btn-sm panel-action" onClick={() => p.onNavigate("notes")}>All notes</button></header>

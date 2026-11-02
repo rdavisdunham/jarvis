@@ -82,11 +82,14 @@ def report(db, owner):
     ]}
 
 
-def children(db, owner, task_id):
+def children(db, owner, task_id, *, include_finished_archives=False):
     parent = for_task(db, owner, task_id)
     if not parent:
         return []
+    visible = Task.archived.is_(False)
+    if include_finished_archives:
+        visible = visible | ((Task.archive_reason == "automatic") & Task.status.in_(("completed", "cancelled")))
     return list(db.scalars(select(Task).join(StructureRecord, StructureRecord.task_id == Task.id).where(
         StructureRecord.owner_id == owner, StructureRecord.parent_id == parent.id,
-        Task.owner_id == owner, Task.archived.is_(False)
+        Task.owner_id == owner, visible
     ).order_by(Task.quick_order, Task.created_at, Task.id)))

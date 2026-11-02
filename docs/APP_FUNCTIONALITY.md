@@ -102,6 +102,15 @@ Resolve references and change only requested fields, preserving concurrent edits
 
 Backlog, open, active, waiting, completion, reopening, archive and atomic bulk operations.
 
+Completed and canceled tasks hide immediately from ordinary Tasks and Organization
+views, with a **Show completed and canceled** filter. Both Today surfaces keep a daily
+checklist below unfinished work. The worker files eligible tasks after 24 elapsed hours;
+Archived preserves outcomes and history. Restore grants another 24 hours; Reopen
+returns work to active. Settings → Organization exposes a personal/workspace archive
+policy toggle, restricted to owners in shared workspaces. Organizational containers and
+tasks with unfinished descendants or unsettled execution are protected. See
+[finished tasks and automatic archiving](TASK_ARCHIVING.md) for lifecycle and validation details.
+
 - Acceptance set: [25 cases](../evals/app/features/task_lifecycle.json).
 - Implementation: [domain.py](../apps/api/jarvis/domain.py), [workspace.py](../apps/api/jarvis/workspace.py).
 - Existing regression evidence: [test_backlog.py](../tests/test_backlog.py), [test_workspace.py](../tests/test_workspace.py), [test_recurrence_edges.py](../tests/test_recurrence_edges.py).

@@ -453,13 +453,33 @@ def budget_holds(user: User):
 
 @app.get("/api/v1/tasks")
 def tasks(
-    user: User, q: str = "", before: str | None = None, limit: int = 100, include_archived: bool = False
+    user: User, q: str = "", before: str | None = None, limit: int = 100, include_archived: bool = False,
+    finished_on: date | None = None, timezone: str | None = None,
 ):
     limit = max(1, min(limit, 200))
     with session_scope() as db:
         query = select(Task).where(Task.owner_id == user.owner_id)
-        if not include_archived:
+        if finished_on is not None:
+            if include_archived:
+                raise DomainError("INVALID_ARGUMENT", "Daily finished work includes automatic archives only; omit include_archived.")
+            from datetime import time as day_time
+            from sqlalchemy import or_
+            from .domain import zone
+
+            location = zone(timezone or preferences(db, user.owner_id)["timezone"])
+            start = datetime.combine(finished_on, day_time.min, location)
+            end = datetime.combine(finished_on + timedelta(days=1), day_time.min, location)
+            quick_children = select(Task.id).where(Task.owner_id == user.owner_id, Task.is_quick_list.is_(True))
+            query = query.where(
+                Task.status.in_(("completed", "cancelled")), Task.finished_at >= start, Task.finished_at < end,
+                Task.is_template.is_(False),
+                or_(Task.parent_task_id.is_(None), Task.parent_task_id.not_in(quick_children)),
+                or_(Task.archived.is_(False), Task.archive_reason == "automatic"),
+            )
+        elif not include_archived:
             query = query.where(Task.archived.is_(False))
+        if timezone is not None and finished_on is None:
+            raise DomainError("INVALID_ARGUMENT", "Supply finished_on with a daily time zone.")
         if q:
             query = query.where(Task.title.ilike("%" + q[:200] + "%"))
         if before:

@@ -7,7 +7,7 @@ import type {ContentsSummary} from "./structure-types";
 import { RecordTools } from "./record-links";
 import { useEditor } from "./editor-control";
 import { Link2, X } from "lucide-react";
-import { api } from "./api";
+import { api, command } from "./api";
 import { Dialog, priorityLabels } from "./ux";
 import { useStructureActions } from "./structure-actions";
 import { AddSubtask, BugReportDetails, LinkedNotes, RelatedTasks, SaveTemplate, TaskRun, TaskSchedule, useTaskCardHost } from "./TaskCardSections";
@@ -169,7 +169,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
             <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={alert.alert_urgent} disabled={locked} onChange={e=>void alertSave({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop></>}
           <ReviewProps row={row} canEdit={canEdit&&!locked&&!row.archived} onRecord={r=>{current.current=r;setRow(r);void onChanged();}}/>
         </div>
-        {canEdit&&<div className="detail-props-foot">{!row.archived&&!t.archived&&<SaveTemplate row={row} type={t} hasContents={!!(contents?.direct??children.length)} disabled={busy} beforeOpen={finish} onNotice={setNotice}/>}<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button></div>}
+        {canEdit&&<div className="detail-props-foot">{!row.archived&&!t.archived&&<SaveTemplate row={row} type={t} hasContents={!!(contents?.direct??children.length)} disabled={busy} beforeOpen={finish} onNotice={setNotice}/>}<button className="btn btn-ghost btn-sm" disabled={busy} onClick={()=>{if(row.archived)void save({archived:false}).then(onClose).catch(()=>{});else setContentsAction({operation:"archive"});}}>{row.archived?"Restore":"Archive"}</button>{row.task_id&&["completed","cancelled"].includes(row.status_meaning??"")&&<button className="btn btn-ghost btn-sm" disabled={locked} onClick={()=>{void finish().then(()=>api<Task>("/tasks/"+row.task_id)).then(task=>command("task.reopen",{task_id:task.id,expected_revision:task.revision}).send()).then(async()=>{await onChanged();onClose();}).catch(e=>setError(e.message));}}>Reopen</button>}</div>}
         {notice&&<p className="detail-notice" role="status">{notice}</p>}
       </aside>
     </div>

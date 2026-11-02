@@ -18,7 +18,7 @@ import { RunButton } from "./RunButton";
 import { StructureEditor } from "./StructureEditor";
 import { StartFromTemplateDialog, useTemplates, useUndoToast } from "./Templates";
 import { templatesFor } from "./template-model";
-import type { Schema, CustomRecord, Proposal } from "./structure-types";
+import { organizationalContainer, type Schema, type CustomRecord, type Proposal } from "./structure-types";
 import "./tasks.css";
 import { useSemanticSearch } from "./semantic-search";
 import { inHome, inTab, matchesQuery, rankOrder } from "./record-filters";
@@ -39,7 +39,7 @@ const AtlasView = lazy(() => import("./AtlasView"));
 export const ATLAS_MIN_WIDTH = 720;
 
 
-export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,onSelection,onBulk,query="",canEdit=true,canDesign=true,refresh=0,onChanged,capability="",tab="all",today=new Date().toISOString().slice(0,10),onTask,onVisible,control,onQuery,onTab,statusFilter,homeFilter,layoutFilter,groupFilter,sortFilter,onContext,tabs,searchLabel,viewLink,onApplyTaskView,onTalkStructure}:{onTalkStructure?:(typeName?:string)=>Promise<void>;selecting?:boolean;selectedIds?:string[];onSelecting?:(v:boolean)=>void;onSelection?:(ids:string[])=>void;onBulk?:()=>void;statusFilter?:string;homeFilter?:string;layoutFilter?:string;groupFilter?:string;sortFilter?:string;onContext?:(state:Record<string,string|number|null>)=>void;query?:string;canEdit?:boolean;canDesign?:boolean;refresh?:number;onChanged?:()=>void;capability?:string;tab?:string;today?:string;onTask?:(id:string)=>void;onQuery?:(value:string)=>void;onTab?:(value:"today"|"inbox"|"week"|"all")=>void;onVisible?:(ids:string[])=>void;control?:Control;
+export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,onSelection,onBulk,query="",canEdit=true,canDesign=true,refresh=0,onChanged,capability="",tab="all",today=new Date().toISOString().slice(0,10),onTask,onVisible,control,onQuery,onTab,statusFilter,homeFilter,layoutFilter,groupFilter,sortFilter,onContext,tabs,searchLabel,viewLink,onApplyTaskView,onTalkStructure,todayFinished}:{todayFinished?:ReactNode;onTalkStructure?:(typeName?:string)=>Promise<void>;selecting?:boolean;selectedIds?:string[];onSelecting?:(v:boolean)=>void;onSelection?:(ids:string[])=>void;onBulk?:()=>void;statusFilter?:string;homeFilter?:string;layoutFilter?:string;groupFilter?:string;sortFilter?:string;onContext?:(state:Record<string,string|number|null>)=>void;query?:string;canEdit?:boolean;canDesign?:boolean;refresh?:number;onChanged?:()=>void;capability?:string;tab?:string;today?:string;onTask?:(id:string)=>void;onQuery?:(value:string)=>void;onTab?:(value:"today"|"inbox"|"week"|"all")=>void;onVisible?:(ids:string[])=>void;control?:Control;
   /** Leading toolbar content, such as the task tabs. */ tabs?:ReactNode; searchLabel?:string;
   /** Returns a shareable link for the current view. */ viewLink?:()=>string;
   /** Applies a saved task view that was not saved from a collection. */ onApplyTaskView?:(state:Record<string,unknown>)=>void}){
@@ -55,7 +55,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const [selected,setSelected]=useState<CustomRecord|null>(null);const [design,setDesign]=useState(false);const [designDirty,setDesignDirty]=useState(false);
   const [title,setTitle]=useState("");const [archived,setArchived]=useState(false);const [group,setGroup]=useState("status");
   const [proposal,setProposal]=useState<Proposal>();
-  const [status,setStatus]=useState(capability?"active":"all"),[filterField,setFilterField]=useState(""),[filterValue,setFilterValue]=useState("");
+  const [status,setStatus]=useState("active"),[filterField,setFilterField]=useState(""),[filterValue,setFilterValue]=useState("");
   const [sort,setSort]=useState<Sort>(capability?"due":"default");
   const [saved,setSaved]=useState<SavedEntry[]>([]),[viewName,setViewName]=useState(""),[viewNotice,setViewNotice]=useState("");
   const [timelineStart,setTimelineStart]=useState(today);
@@ -110,8 +110,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(!matchesQuery(r,query,ranked))return false;
     if(filterField&&filterValue&&!String(r.values[filterField]??"").toLowerCase().includes(filterValue.toLowerCase()))return false;
     if(!scoped)return true;
-    if(status==="active"&&["completed","cancelled"].includes(r.status_meaning??""))return false;
-    if(status!=="active"&&status!=="all"&&r.status_meaning!==status)return false;
+    const filterTask=!!r.task_id&&(!!capability||!organizationalContainer(typeOf(r)));
+    if(!archived&&filterTask&&["completed","cancelled"].includes(r.status_meaning??"")&&(status==="active"||(capability&&tab==="today"&&!searching)))return false;
+    if(!archived&&filterTask&&status!=="active"&&status!=="all"&&r.status_meaning!==status)return false;
     const rt=schema.types.find(t=>t.id===r.type_id)!;const dateFor=(binding:string)=>String(r.values[rt.fields.find(f=>f.binding===binding)?.id??""]??"");
     if(!searching&&!inTab(r,tab,[dateFor("planned_date"),dateFor("due_date")],today,end))return false;
     return true;
@@ -229,7 +230,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   const activeChips=[
     typeId&&{key:"type",label:type?.plural??"Collection",clear:()=>{setTypeId("");setGroup("status");}},
     parent&&{key:"home",label:"In "+(items.find(r=>r.id===parent)?.title??"selected home"),clear:()=>setParent("")},
-    status!=="active"&&{key:"status",label:status==="all"?"All statuses":describe(status).replace(/^./,c=>c.toUpperCase()),clear:()=>setStatus("active")},
+    status!=="active"&&{key:"status",label:status==="all"?"Show completed and canceled":describe(status).replace(/^./,c=>c.toUpperCase()),clear:()=>setStatus("active")},
     filterField&&filterValue&&{key:"field",label:(field?.name??"Field")+": "+((field?.kind==="relation"?items.find(r=>r.id===filterValue)?.title:field?.options.find(o=>o.id===filterValue)?.name)??filterValue),clear:()=>{setFilterField("");setFilterValue("");}},
     archived&&{key:"archived",label:"Archived",clear:()=>setArchived(false)},
   ].filter(Boolean) as {key:string;label:string;clear:()=>void}[];
@@ -239,15 +240,16 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     {tabs}
     <div className="work-toolbar-controls">
       {!atlas&&<label className="toolbar-search"><Search size={16} aria-hidden="true"/><input type="search" aria-label={searchLabel??(capability?"Search this list":"Search organization")} placeholder="Search…" value={query} onChange={e=>onQuery?.(e.target.value)}/></label>}
-      {!atlas&&<Popover label={"Filter"+(filterCount?", "+filterCount+" active":"")} button={<><ListFilter size={16} aria-hidden="true"/><span className="toolbar-label">Filter</span>{!!filterCount&&<span className="toolbar-count">{filterCount}</span>}</>} panelClassName="filter-popover">
+      {<Popover label={"Filter"+(filterCount?", "+filterCount+" active":"")} button={<><ListFilter size={16} aria-hidden="true"/><span className="toolbar-label">Filter</span>{!!filterCount&&<span className="toolbar-count">{filterCount}</span>}</>} panelClassName="filter-popover">
         {()=><div className="filter-fields">
           <label className="field">Collection<select value={typeId} onChange={e=>{setTypeId(e.target.value);setGroup("status");}}><option value="">{capability?"All actionable work":"All records"}</option>{types.map(t=><option key={t.id} value={t.id}>{t.plural}</option>)}</select></label>
           <label className="field">Main home<select value={parent} onChange={e=>setParent(e.target.value)}><option value="">All homes</option>{homeGroups.map(g=><optgroup key={g.name} label={g.name}>{g.rows.map(r=><option key={r.id} value={r.id}>{r.title}</option>)}</optgroup>)}</select></label>
-          <label className="field">Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="all">All statuses</option>{meanings.map(m=><option key={m} value={m}>{describe(m).replace(/^./,c=>c.toUpperCase())}</option>)}</select></label>
+          <label className="field">Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="all">Show completed and canceled</option>{meanings.map(m=><option key={m} value={m}>{describe(m).replace(/^./,c=>c.toUpperCase())}</option>)}</select></label>
           {layout==="list"&&<label className="field">Sort<select value={sort} onChange={e=>setSort(e.target.value as Sort)}>{sortOptions.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>}
           {layout==="board"&&<label className="field">Group<select value={group} onChange={e=>setGroup(e.target.value)}><option value="status">Status</option><option value="parent">Main home</option>{type?.fields.filter(f=>(f.kind==="select"||(f.kind==="relation"&&!f.multiple))&&!f.archived).map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></label>}
           {type&&<><label className="field">Field filter<select value={filterField} onChange={e=>{setFilterField(e.target.value);setFilterValue("");}}><option value="">Any field</option>{type.fields.filter(f=>!f.archived).map(f=><option value={f.id} key={f.id}>{f.name}</option>)}</select></label>
             {filterField&&<label className="field">Value{["select","multiselect","relation"].includes(field?.kind??"")?<select aria-label="Field filter value" value={filterValue} onChange={e=>setFilterValue(e.target.value)}><option value="">Any value</option>{(field?.kind==="relation"?items.filter(r=>field?.target_types.includes(r.type_id)).map(r=>({id:r.id,name:r.title})):field?.options??[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>:<input aria-label="Field filter value" value={filterValue} onChange={e=>setFilterValue(e.target.value)}/>}</label>}</>}
+          <label className="check-label"><input type="checkbox" checked={status!=="active"} disabled={archived} onChange={e=>setStatus(e.target.checked?"all":"active")}/>Show completed and canceled</label>
           <label className="check-label filter-archived"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>Archived</label>
           {!!filterCount&&<button type="button" className="btn btn-ghost btn-sm filter-reset" onClick={resetFilters}>Reset filters</button>}
         </div>}
@@ -359,7 +361,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     </div>
     }
     <div className="work-body" id={tabs?"task-workspace":undefined} role={tabs?"tabpanel":undefined} aria-labelledby={tabs?"task-tab-"+tab:undefined}>
-      {atlas?<Suspense fallback={<p role="status" className="work-loading">Loading the Atlas…</p>}><AtlasView schema={schema} canEdit={canEdit} canDesign={canDesign} focus={parent} target={atlasTarget} refresh={refresh+browseRefresh} today={today}
+      {atlas?<Suspense fallback={<p role="status" className="work-loading">Loading the Atlas…</p>}><AtlasView schema={schema} canEdit={canEdit} canDesign={canDesign} focus={parent} target={atlasTarget} refresh={refresh+browseRefresh} today={today} archived={archived} showFinished={status!=="active"} status={status}
         onFocus={setParent} onVisible={onVisible} onOpen={id=>void api<CustomRecord>("/structure/records/"+id).then(open).catch(e=>setError(e.message))}
         onBrowse={id=>{setParent(id);setLayout("browse");setBrowseSection("all");}} onChanged={async()=>{await load();onChanged?.();}}
         onEditTypes={(draft,type)=>{setProposal(undefined);setDesignDraft({draft,type});setDesign(true);}}/></Suspense>
@@ -368,6 +370,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}} onChanged={refreshAll}/>
        :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
+    {capability&&tab==="today"&&!archived&&!query.trim()&&todayFinished}
     {selected?.is_quick_list&&selected.task_id?<QuickListDetail refresh={refresh} key={selected.id} id={selected.task_id} today={today} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>:selected&&<RecordCard key={selected.id} schema={schema} initial={selected} onOpen={go} choices={items} canEdit={canEdit} onClose={()=>setSelected(null)} onChanged={refreshAll}/>}
     {startingTemplate&&captureType&&<StartFromTemplateDialog templates={captureTemplates} parentId={parent||null} homeTitle={parent?items.find(r=>r.id===parent)?.title:undefined} schemaRevision={schema.revision}
       onClose={()=>setStartingTemplate(false)} onCreated={async(result,undo)=>{templateToast.show({message:`Created ${result.title} from the ${result.name} template.`,undo});await refreshAll();}}/>}

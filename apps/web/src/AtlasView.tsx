@@ -48,8 +48,8 @@ function useSize<T extends HTMLElement>() {
 /** Atlas: your actual records as a zoomable star map, with the Blueprint of types beside it.
  * Moves use record.contents preview/apply, creates use record.create, and type edits stay a draft
  * until they are reviewed in Types & fields (structure preview → apply). */
-export default function AtlasView({ schema, canEdit, canDesign, focus, target, refresh, today, onFocus, onOpen, onBrowse, onChanged, onEditTypes, onVisible }: {
-  schema: Schema; canEdit: boolean; canDesign: boolean; focus: string; target?: { nonce: string; record_id?: string } | null; refresh: number; today: string;
+export default function AtlasView({ schema, canEdit, canDesign, focus, target, refresh, today, archived=false, showFinished=false, status="all", onFocus, onOpen, onBrowse, onChanged, onEditTypes, onVisible }: {
+  status?: string; archived?: boolean; showFinished?: boolean; schema: Schema; canEdit: boolean; canDesign: boolean; focus: string; target?: { nonce: string; record_id?: string } | null; refresh: number; today: string;
   onFocus: (id: string) => void; onOpen: (id: string) => void; onBrowse: (id: string) => void; onChanged: () => Promise<void>;
   onEditTypes: (draft: Schema | null, type?: string) => void; onVisible?: (ids: string[]) => void;
 }) {
@@ -70,7 +70,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   const searchRef = useRef<HTMLInputElement>(null), manualCamera = useRef(false), animation = useRef(0), suppressClick = useRef(false), keyboard = useRef(false);
   const viewRef = useRef(view); viewRef.current = view;
 
-  const load = useCallback(async () => { const next = await api<AtlasData>("/structure/atlas"); setData(next); setError(""); return next; }, []);
+  const load = useCallback(async () => { const next = await api<AtlasData>("/structure/atlas?archived="+archived+"&show_finished="+showFinished+"&status="+encodeURIComponent(status)); setData(next); setError(""); return next; }, [archived,showFinished,status]);
   useEffect(() => { void load().catch(e => setError(e.message)); }, [load, refresh]);
   useEffect(() => setDraft(null), [schema.revision]);
   const index = useMemo(() => (data ? indexAtlas(data) : null), [data]);
@@ -104,7 +104,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   }, [target?.nonce, layout]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!focusNode || !onVisible) return;
-    onVisible(focusNode.children.map(n => n.id).slice(0, 60));
+    onVisible(focusNode.children.filter(n => !n.record?.context_only).map(n => n.id).slice(0, 60));
   }, [focusNode, onVisible]);
   useEffect(() => {
     const key = (e: globalThis.KeyboardEvent) => {
@@ -276,7 +276,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   };
   const startDrag = (e: ReactPointerEvent, node: PackedNode) => {
     if (e.button !== 0 || !layout || !index) return;
-    if (!node.record || node === focusNode || !canEdit || busy) { startPan(e); return; }
+    if (!node.record || node.record.context_only || node.record.archived || node === focusNode || !canEdit || busy) { startPan(e); return; }
     e.stopPropagation();
     const record = node.record, origin = [e.clientX, e.clientY];
     // Dragging one of several picked records carries them all, into homes every one of them allows.
@@ -357,11 +357,11 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   const path = focusNode === layout.root ? [] : [...ancestors(index, focusNode.id), focusNode.record!];
   const litType = hoverType ?? selectedType;
   const counts = new Map<string, number>();
-  for (const r of data.records) counts.set(r.type_id, (counts.get(r.type_id) ?? 0) + 1);
+  for (const r of data.records.filter(r=>!r.context_only)) counts.set(r.type_id, (counts.get(r.type_id) ?? 0) + 1);
   const results = searchRecords(index, query);
   const changes = draft ? draftChanges(schema, draft) : 0;
   const reviewing = data.types.some(t => t.review?.enabled && !t.archived);
-  const dueReviews = data.records.filter(r => r.review_due).length;
+  const dueReviews = data.records.filter(r => r.review_due&&!r.context_only).length;
   const scale = mapSize.width ? scaleOf(view, mapSize.width, mapSize.height) : 1;
   const legend: Record<Lens, [string, string][]> = {
     status: [["open", "Open"], ["in_progress", "In progress"], ["done", "Done"], ["overdue", "Overdue"]],
@@ -371,7 +371,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   };
   const popupStyle = popup ? { left: Math.max(16, Math.min(popup.x + 8, innerWidth - 336)), top: Math.max(16, Math.min(popup.y + 8, innerHeight - 260)) } : undefined;
 
-  const pickedRecords = [...picked].map(id => index.byId.get(id)).filter((r): r is AtlasRecord => !!r);
+  const pickedRecords = [...picked].map(id => index.byId.get(id)).filter((r): r is AtlasRecord => !!r&&!r.context_only&&!r.archived);
 
   return <section className={"atlas" + (full ? " is-full" : "")} aria-label="Atlas">
     <div className="atlas-bar">
@@ -390,7 +390,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
     {!!changes && <div className="atlas-draft" role="status"><span>Your structure draft has {changes} {changes === 1 ? "change" : "changes"}. Nothing applies until you review it.</span>
       <button type="button" className="btn btn-primary btn-sm" onClick={() => onEditTypes(draft, selectedType ?? undefined)}>Review and apply</button>
       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>Discard draft</button></div>}
-    {data.truncated && <p className="atlas-note">Showing the first {data.records.length} of {data.total} records, upper levels first. Browse lists everything.</p>}
+    {data.truncated && <p className="atlas-note">Showing the first {data.records.filter(r=>!r.context_only).length} of {data.total} records, upper levels first. Browse lists everything.</p>}
     <div className="atlas-work">
       <div className={"atlas-stage is-" + mode}>
         {mode !== "blueprint" && <div className="atlas-pane">
@@ -436,7 +436,8 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
             onMove={id => void moveMany(pickedRecords.map(r => r.id), id)}/>
           : selectedType ? <TypeInspector typeId={selectedType} draft={working} saved={schema} records={data.records} index={index} canDesign={canDesign}
             onDraft={changeDraft} onFly={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onEditTypes={type => onEditTypes(draft, type)} onPlace={place}/>
-          : record ? <RecordInspector record={record} index={index} schema={schema} today={today} canEdit={canEdit} focused={record.id === focusNode.id} busy={busy}
+          : record?.context_only ? <div className="atlas-section"><h2>{record.title}</h2><p className="atlas-muted">{record.archived?"Archived":["completed","cancelled"].includes(record.status_meaning??"")?"Finished":"Ancestor"} home, shown to keep its contents reachable.</p><button type="button" className="btn btn-sm" onClick={()=>onBrowse(record.id)}>Browse contents</button></div>
+          : record ? <RecordInspector record={record} index={index} schema={schema} today={today} canEdit={canEdit&&!archived} focused={record.id === focusNode.id} busy={busy}
             onFly={id => flyTo(id)} onSelect={id => { const goal = flyTarget(layout, index, id); flyTo(goal.focus); select(goal.select); }} onOpen={onOpen} onBrowse={onBrowse}
             onType={id => { selectType(id); if (mode === "atlas") setMode("both"); }} onMove={move} onCreate={create} onReviewed={markReviewed} templates={templateHooks}/>
           : <FocusSummary focus={focusNode} index={index} canEdit={canEdit} schema={schema} busy={busy} onCreate={create} templates={templateHooks}/>}

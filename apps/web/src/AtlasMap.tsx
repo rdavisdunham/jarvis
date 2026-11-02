@@ -141,7 +141,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
       const n = layout.byId.get(l.id)!; const p = index.progress.get(l.id); const r = n.r * k;
       const caption = l.kind === "region" && r > 60;
       return <g key={"label-" + l.id} className="atlas-labels" aria-hidden="true">
-        <text className={"atlas-label" + (l.kind === "item" ? " is-item" : "")} x={l.x} y={caption ? l.y - 2 : l.y} textAnchor="middle">{l.text}</text>
+        <text className={"atlas-label" + (l.kind === "item" ? " is-item" : "")} x={l.x} y={caption ? l.y - 2 : l.y} textAnchor="middle">{l.text}{n.record?.context_only?" ("+(n.record.archived?"archived":["completed","cancelled"].includes(n.record.status_meaning??"")?"finished":"ancestor")+" home)":""}</text>
         {caption && <text className="atlas-label is-caption" x={l.x} y={l.y + 12} textAnchor="middle">
           <tspan>{index.types.get(n.record!.type_id)?.name}</tspan>{!!p?.total && <tspan dx="10">{p.done} of {p.total} done</tspan>}
         </text>}

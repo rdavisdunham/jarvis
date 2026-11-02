@@ -220,7 +220,7 @@ def older(remote, snapshot):
 def apply_remote(db, conn, link, remote, force=False):
     if not force and older(remote, link.snapshot or {}):
         return  # A reordered, older Linear read never rolls back a newer applied snapshot.
-    task = db.get(Task, link.task_id)
+    task = db.scalar(select(Task).where(Task.id == link.task_id, Task.owner_id == conn.owner_id).with_for_update().execution_options(populate_existing=True))
     project = local_project(db, conn.owner_id, conn.workspace_id, remote.get("project"))
     status = REMOTE_STATUS.get(remote["state"]["type"], "open")
     changes = {
@@ -234,11 +234,11 @@ def apply_remote(db, conn, link, remote, force=False):
         "assignee": "owner"
         if (remote.get("assignee") or {}).get("id") == conn.viewer_id
         else (remote.get("assignee") or {}).get("name", "unassigned"),
-        # A cancelled Linear issue is put away here too; reopening it in Linear brings the task back unless
-        # the user archived it in Eridani (local_archived). Completed issues stay where they are for now.
+        # Cancellation records the outcome immediately; local filing waits 24 elapsed hours.
+        # A same-status read preserves automatic filing without creating a local manual override.
         "archived": bool(remote.get("archivedAt"))
-        or status == "cancelled"
-        or bool((task.external or {}).get("local_archived")),
+        or bool((task.external or {}).get("local_archived"))
+        or (task.archived and task.archive_reason == "automatic" and status == task.status),
     }
     from .productivity import task_home
 
@@ -251,6 +251,9 @@ def apply_remote(db, conn, link, remote, force=False):
     changed = any(getattr(task, k) != v for k, v in changes.items())
     if changes["due_date"] is None:
         changes.update(due_time=None, due_timezone=None)
+    from .task_archive import apply_lifecycle
+
+    apply_lifecycle(task, changes, external=True)
     for key, value in changes.items():
         setattr(task, key, value)
     if changed:
@@ -532,7 +535,7 @@ def before_task_update(db, owner, task, changes):
         if origin is not None:
             origin["status"] = "skipped"
         return
-    if "archived" in changes:
+    if "archived" in changes and not db.info.get("automatic_task_archive"):
         task.external = {**(task.external or {}), "local_archived": changes["archived"]}
     mapped = {"title", "notes", "due_date", "priority", "status", "assignee", "project_id"}
     if not any(k in mapped and v != getattr(task, k) for k, v in changes.items()):

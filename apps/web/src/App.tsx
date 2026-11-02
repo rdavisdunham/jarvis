@@ -41,6 +41,8 @@ import { AccountSwitcher, SharingSettings } from "./Accounts";
 import { TaskDetails } from "./TaskDetails";
 import { TaskTabs } from "./TaskTabs";
 import { Today } from "./Today";
+import { FinishedToday } from "./FinishedToday";
+import { isFinishedTask, mergeFinishedTasks, readFinishedTasks } from "./task-finished";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
 import { noticeDestination, noticeStatus } from "./notice-target";
@@ -163,6 +165,7 @@ const ThemeSetting = lazy(() => viewChunks.preferences().then((m) => ({ default:
 const Remotea = lazy(() => viewChunks.remotea().then((m) => ({ default: m.Remotea })));
 const RunTaskDialog = lazy(() => import("./RunTaskDialog").then((m) => ({ default: m.RunTaskDialog })));
 const SwarmDialog = lazy(() => import("./Swarm").then((m) => ({ default: m.SwarmDialog })));
+const TaskArchivePreferences = lazy(() => import("./TaskArchivePreferences").then(m => ({ default: m.TaskArchivePreferences })));
 const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
@@ -568,6 +571,8 @@ export default function App() {
   // One coalesced, single-flight loader for the workspace snapshot (see events.ts).
   // /bootstrap is read first so its event_cursor is a lower bound for the rest of the
   // snapshot; change-feed signals at or below it (including our own write echoes) are dropped.
+  const [dailyFinished, setDailyFinished] = useState<Task[]>([]);
+  const [localDay, setLocalDay] = useState(() => dayInZone("UTC"));
   const loader = useRef<ReturnType<typeof createLoader> | null>(null);
   if (!loader.current)
     loader.current = createLoader(async ({ revision, current }) => {
@@ -579,6 +584,7 @@ export default function App() {
           api<{ items: Notice[] }>("/notifications"),
           api<Organization>("/organization"),
         ]);
+      const finished = await readFinishedTasks(dayInZone(preferences.preferences.timezone), preferences.preferences.timezone, current);
       let items = taskData.items,
         cursor = taskData.next_cursor;
       while (cursor && current()) {
@@ -602,6 +608,7 @@ export default function App() {
       if (!current()) return;
       setBoot(preferences);
       setTasks(items);
+      setDailyFinished(finished);
       setSchedules(scheduleItems);
       setProjects(projectData.projects);
       setOrganization(projectData);
@@ -614,6 +621,16 @@ export default function App() {
     () => loader.current!.request({ immediate: true, revision: true }),
     [],
   );
+  useEffect(() => {
+    const zone = boot?.preferences.timezone;
+    if (!zone) return;
+    const checkDay = () => setLocalDay(dayInZone(zone));
+    checkDay();
+    const timer = window.setInterval(checkDay, 30_000);
+    document.addEventListener("visibilitychange", checkDay);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", checkDay); };
+  }, [boot?.preferences.timezone]);
+  useEffect(() => { if (boot) void load().catch(() => {}); }, [localDay, load]);
   const initialize = useCallback(async () => {
     try {
       const info = await api<Bootstrap>("/bootstrap");
@@ -907,13 +924,16 @@ export default function App() {
   async function toggle(task: Task) {
     if (toggling.current.has(task.id)) return;
     toggling.current.add(task.id);
-    const completed = task.status === "completed";
+    const completed = isFinishedTask(task);
     const optimistic: Task = {
       ...task,
       status: completed ? "open" : "completed",
       completed_at: completed ? null : new Date().toISOString(),
+      finished_at: completed ? null : new Date().toISOString(),
+      archived: false,
     };
-    setTasks((items) => items.map((t) => (t.id === task.id ? optimistic : t)));
+    setTasks((items) => items.some(t => t.id === task.id) ? items.map((t) => (t.id === task.id ? optimistic : t)) : [...items, optimistic]);
+    setDailyFinished(items => items.map(t => t.id === task.id ? optimistic : t));
     try {
       const result = await mutate(
         completed ? "task.reopen" : "task.complete",
@@ -921,10 +941,12 @@ export default function App() {
         completed ? "Task reopened" : "Task completed",
         { background: true },
       );
-      if (result === undefined)
+      if (result === undefined) {
+        setDailyFinished(items => items.map(t => t.id === task.id && t.revision === task.revision ? task : t));
         setTasks((items) =>
           items.map((t) => (t.id === task.id && t.revision === task.revision ? task : t)),
         );
+      }
     } finally {
       toggling.current.delete(task.id);
     }
@@ -2539,7 +2561,7 @@ export default function App() {
             {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
             {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
-            {dashboard && boot && <Today tasks={tasks} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
+            {dashboard && boot && <Today tasks={tasks} finishedTasks={mergeFinishedTasks(dailyFinished, tasks)} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
               onEntry={openCalendarEntry} onNote={id => void openNote(id)}
               onNavigate={target => { setQuery(""); if (target === "tasks-today") { setTodayList(true); } else setView(target); }}/>}
@@ -2630,7 +2652,7 @@ export default function App() {
                 />
               </>
             )}
-            {isTaskTab(view)&&!dashboard&&<StructureWorkspace tabs={<TaskTabs value={view} onChange={tab=>{setTodayList(tab==="today");setView(tab);}}/>} viewLink={()=>viewLink(savedViewState).href} onApplyTaskView={state=>{const parsed=viewStateSchema.safeParse(state);if(parsed.success){applySavedView(parsed.data);setTodayList(parsed.data.tab==="today");}}} sortFilter={workSort} control={taskRecordControl} selecting={selectingTasks} selectedIds={selectedTaskIds} onSelecting={value=>{setSelectingTasks(value);if(!value)setSelectedTaskIds([]);}} onSelection={setSelectedTaskIds} onBulk={()=>{setError("");setBulkEditor(tasks.filter(t=>selectedTaskIds.includes(t.id)));}} key={boot.workspace?.id??"personal"} onContext={setCollectionContext} statusFilter={taskStatus} homeFilter={organizationFilter.area||organizationFilter.space||projects.find(p=>p.name===projectFilter)?.id||""} layoutFilter={workLayout} groupFilter={workGroup} onQuery={setQuery} onTab={tab=>{setTodayList(tab==="today");setView(tab);}} capability="work" tab={view} today={today} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()} onVisible={setWorkVisible} onTask={id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);}}/>}
+            {isTaskTab(view)&&!dashboard&&<StructureWorkspace todayFinished={<FinishedToday tasks={mergeFinishedTasks(dailyFinished, tasks)} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"} onTask={openTaskCard} onReopen={task=>void toggle(task)}/>} tabs={<TaskTabs value={view} onChange={tab=>{setTodayList(tab==="today");setView(tab);}}/>} viewLink={()=>viewLink(savedViewState).href} onApplyTaskView={state=>{const parsed=viewStateSchema.safeParse(state);if(parsed.success){applySavedView(parsed.data);setTodayList(parsed.data.tab==="today");}}} sortFilter={workSort} control={taskRecordControl} selecting={selectingTasks} selectedIds={selectedTaskIds} onSelecting={value=>{setSelectingTasks(value);if(!value)setSelectedTaskIds([]);}} onSelection={setSelectedTaskIds} onBulk={()=>{setError("");setBulkEditor(tasks.filter(t=>selectedTaskIds.includes(t.id)));}} key={boot.workspace?.id??"personal"} onContext={setCollectionContext} statusFilter={taskStatus} homeFilter={organizationFilter.area||organizationFilter.space||projects.find(p=>p.name===projectFilter)?.id||""} layoutFilter={workLayout} groupFilter={workGroup} onQuery={setQuery} onTab={tab=>{setTodayList(tab==="today");setView(tab);}} capability="work" tab={view} today={today} query={query} canEdit={boot.workspace?.role!=="viewer"} canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} refresh={noteRevision} onChanged={()=>void load()} onVisible={setWorkVisible} onTask={id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);else void openNoteTask(id);}}/>}
             {view === "notifications" && (
               <div className="notice-page">
                 <div className="notice-page-head">
@@ -2854,6 +2876,7 @@ export default function App() {
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
                 {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization" && <TaskArchivePreferences enabled={boot.preferences.auto_archive_finished_tasks!==false} canEdit={!boot.workspace?.id||boot.workspace.role==="owner"} shared={!!boot.workspace?.id} onChanged={()=>void load()}/>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
                   ["profile", "organization", "notifications", "privacy", "system", "integrations"].includes(

@@ -33,7 +33,40 @@ def _breadth_first(pairs, limit):
     return chosen, depth
 
 
-def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
+def visibility_rows(db, owner, *, archived=False, show_finished=False, status="all"):
+    """Visible records and minimal ancestor context, before any pagination/breadth limit.
+
+    Context retains real containment, including archived parents of unfinished work.
+    Templates never become context. Non-task organizational outcomes remain visible.
+    """
+    from . import structure
+    schema = structure.ensure(db, owner)
+    containers = {t["id"] for t in schema.definition["types"] if structure.opens_as(t) == "container"}
+    rows = list(db.execute(
+        select(StructureRecord.id, StructureRecord.parent_id, StructureRecord.sort_order,
+               StructureRecord.archived, Task.id, Task.status, Task.archived, Task.is_template, StructureRecord.type_id)
+        .outerjoin(Task, Task.id == StructureRecord.task_id)
+        .where(StructureRecord.owner_id == owner)
+    ))
+    eligible = {r[0]: r for r in rows if not r[7]}
+    visible = {r[0] for r in eligible.values()
+               if bool(r[3] or r[6]) == archived
+               and (archived or show_finished or not r[4] or r[8] in containers or r[5] not in {"completed", "cancelled"})}
+    if not archived and status not in {"active", "all"}:
+        visible = {identity for identity in visible if not eligible[identity][4] or eligible[identity][8] in containers or eligible[identity][5] == status}
+    context = set()
+    for identity in visible:
+        parent = eligible[identity][1]
+        seen = {identity}
+        while parent in eligible and parent not in seen:
+            seen.add(parent)
+            if parent not in visible:
+                context.add(parent)
+            parent = eligible[parent][1]
+    return eligible, visible, context
+
+
+def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset(), archived=False, show_finished=False, status="all"):
     """Everything the Atlas needs to lay out the active workspace, capped at ``limit`` records.
 
     ``withhold`` names core kinds ("task", "note") whose dates a bot key may not read.
@@ -46,17 +79,22 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
     types = {t["id"]: t for t in schema.definition["types"]}
     from .record_reviews import cadence, is_due
     instant = now()
-    hidden_task = select(Task.id).where(Task.owner_id == owner, (Task.archived.is_(True)) | (Task.is_template.is_(True)))
-    pairs = list(db.execute(
-        select(StructureRecord.id, StructureRecord.parent_id, StructureRecord.sort_order).where(
-            StructureRecord.owner_id == owner,
-            StructureRecord.archived.is_(False),
-            StructureRecord.type_id.in_(list(types)),
-            (StructureRecord.task_id.is_(None)) | (StructureRecord.task_id.notin_(hidden_task)),
-        )
-    ))
-    chosen, depth = _breadth_first([(a, b, c or 0) for a, b, c in pairs], limit)
-    included = set(chosen)
+    eligible, visible, context = visibility_rows(db, owner, archived=archived, show_finished=show_finished, status=status)
+    eligible = {identity: r for identity, r in eligible.items() if r[8] in types}
+    visible &= eligible.keys()
+    pairs = [(r[0], r[1], r[2] or 0) for r in eligible.values() if r[0] in visible or r[0] in context]
+    ordered, depth = _breadth_first(pairs, len(pairs))
+    chosen_visible = [identity for identity in ordered if identity in visible][:limit]
+    included = set(chosen_visible)
+    for identity in chosen_visible:
+        parent = eligible[identity][1]
+        seen = {identity}
+        while parent in eligible and parent not in seen:
+            seen.add(parent)
+            included.add(parent)
+            parent = eligible[parent][1]
+    chosen = [identity for identity in ordered if identity in included]
+    context = included - set(chosen_visible)
     rows = {}
     for start in range(0, len(chosen), 1000):
         batch = chosen[start:start + 1000]
@@ -85,12 +123,14 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
             "depth": depth.get(row.id, 0),
             "revision": row.revision,
             "sort_order": row.sort_order or 0,
-            "opens_as": structure.opens_as(t, row.id in with_children),
+            "opens_as": "container" if row.id in context else structure.opens_as(t, row.id in with_children),
+            "context_only": row.id in context,
+            "archived": bool(row.archived or (task and task.archived)),
             "status_meaning": status,
-            "work": bool(row.task_id) and "work" in t["capabilities"],
+            "work": row.id not in context and bool(row.task_id) and "work" in t["capabilities"],
             "due_date": task.due_date.isoformat() if dated and task.due_date else None,
             "planned_date": task.planned_date.isoformat() if dated and task.planned_date else None,
-            "review_due": is_due(row, cadence(t), instant),
+            "review_due": row.id not in context and is_due(row, cadence(t), instant),
             "next_review_at": row.next_review_at.isoformat() if cadence(t) and row.next_review_at and not row.review_paused else None,
         })
     behaviors = {r["id"]: r for r in schema.definition["relationships"]}
@@ -115,7 +155,8 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset()):
         ],
         "records": records,
         "links": links,
-        "total": len(pairs),
-        "truncated": len(pairs) > len(records),
+        "total": len(visible),
+        "context_count": len(context),
+        "truncated": len(visible) > len(chosen_visible),
         "limit": limit,
     }

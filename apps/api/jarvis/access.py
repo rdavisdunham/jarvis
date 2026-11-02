@@ -175,7 +175,10 @@ def command_access(db, owner, tool, arguments):
         raise DomainError("ACCESS_REVOKED", "The active workspace changed.", 403)
     if permission == "viewer":
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
-    if tool.startswith(PERSONAL_TOOLS) or arguments.get("google_calendar_id"):
+    archive_policy = tool == "settings.update" and set(arguments) == {"auto_archive_finished_tasks"}
+    if archive_policy and permission != "owner":
+        raise DomainError("NOT_AUTHORIZED", "Only the workspace owner can change automatic task archiving.", 403)
+    if (tool.startswith(PERSONAL_TOOLS) and not archive_policy) or arguments.get("google_calendar_id"):
         raise DomainError(
             "PERSONAL_WORKSPACE",
             "Connected accounts and personal memory stay in your personal workspace.",

@@ -6,7 +6,7 @@ import {openTarget,type CustomRecord,type Schema} from "./structure-types";
 import {StartFromTemplateDialog,useTemplates,useUndoToast} from "./Templates";
 import {templatesFor} from "./template-model";
 
-type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;next_offset:number|null};
+type Page={parent:CustomRecord|null;items:CustomRecord[];total:number;context_count?:number;row_total?:number;next_offset:number|null};
 export function OrganizationBrowse({schema,parent,section,onSection,query,archived,status,refresh,canEdit,onBrowse,onOpen,onCreate,onVisible,onChanged}:{
  schema:Schema;parent:string;section:string;onSection:(s:string)=>void;query:string;archived:boolean;status:string;refresh:number;canEdit:boolean;
  onBrowse:(id:string)=>void;onOpen:(r:CustomRecord)=>void;onCreate:(type:string,title:string)=>Promise<void>;onVisible?:(ids:string[])=>void;onChanged?:()=>Promise<void>;
@@ -19,7 +19,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
  useEffect(()=>{let live=true;setBusy(true);setError("");
   const p=new URLSearchParams({section:section==="related"?"all":section,scope:section==="related"?"related":"children",archived:String(archived),status,query,limit:"40",offset:String(offset)});
   if(parent)p.set("parent_id",parent);
-  void api<Page>("/structure/browse?"+p).then(v=>{if(live){setPage(v);onVisible?.(v.items.map(r=>r.task_id??r.id));}}).catch(e=>live&&setError(e.message)).finally(()=>live&&setBusy(false));
+  void api<Page>("/structure/browse?"+p).then(v=>{if(live){setPage(v);onVisible?.(v.items.filter(r=>!r.context_only).map(r=>r.task_id??r.id));}}).catch(e=>live&&setError(e.message)).finally(()=>live&&setBusy(false));
   return()=>{live=false;};
  },[parent,section,query,archived,status,offset,refresh]);
  const types=schema.types.filter(t=>!t.archived&&(!page?.parent||t.parent_types.includes(page.parent.type_id)));
@@ -33,7 +33,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
   <div className="org-container-head"><div><h2>{page?.parent?.title??(section==="all"?"Unfiled":"Your organization")}</h2>
    <p>{page?.parent?.body||(!parent?"Open a group to find the work and notes that live there.":"Direct contents of this home. Extra links live under Related.")}</p>
    {!!page?.parent?.contents?.work_total&&<div className="org-progress"><span className="chip">{page.parent.contents.work_done}/{page.parent.contents.work_total} complete</span>{page.parent.contents.ready_to_complete&&<span className="chip chip-done">Ready for your final check</span>}</div>}</div>
-   {page?.parent&&<button className="btn btn-sm" onClick={()=>onOpen(page.parent!)}><Info size={15}/>Details</button>}
+   {page?.parent&&!page.parent.context_only&&<button className="btn btn-sm" onClick={()=>onOpen(page.parent!)}><Info size={15}/>Details</button>}
    {canEdit&&!archived&&<button className="btn btn-soft btn-sm" onClick={()=>setAdding(v=>!v)}><Plus size={15}/>Add here</button>}
   </div>
   <div className="org-tabs" role="group" aria-label="Container contents">{(parent?[["groups","Groups"],["work","Tasks"],["content","Notes"],["related","Related"],["all","All contents"]]:[["groups","Groups"],["all","Unfiled"]]).map(([id,label])=>
@@ -48,20 +48,21 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
   {starting&&selected&&<StartFromTemplateDialog templates={templatesFor(templates,[selected.id])} parentId={parent||null} homeTitle={page?.parent?.title} schemaRevision={schema.revision}
    onClose={()=>setStarting(false)} onCreated={async(result,undo)=>{setAdding(false);toast.show({message:`Created ${result.title} from the ${result.name} template.`,undo});await onChanged?.();}}/>}
   {error&&<p role="alert">{error}</p>}
-  <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")}</p>
+  <p className="org-count" aria-live="polite">{busy?"Loading…":page?.total+" "+(section==="related"?"linked records":"records in this view")+(page?.context_count?" · "+page.context_count+" ancestor homes for navigation":"")}</p>
   <div className="org-tiles">{children.map(r=>{
    const container=openTarget(r,schema)==="contents";
    return <article key={r.id} className="org-tile" data-record-id={r.id}>
     <div className="org-tile-kind"><span>{r.type_name}</span><SourceBadge source={r.source}/></div>
     <button className="org-tile-title" onClick={()=>container?onBrowse(r.id):onOpen(r)}>{container&&<FolderOpen size={17}/>}<strong>{r.title}</strong>{container&&<ChevronRight size={16}/>}</button>
     {r.body&&<p>{r.body}</p>}
-    <div className="org-tile-foot">{r.contents?.work_total?<span>{r.contents.work_done}/{r.contents.work_total} complete</span>:<span>{r.contents?.direct??0} directly inside</span>}
-     {r.status_meaning&&<span className="chip">{r.status_meaning.replaceAll("_"," ")}</span>}
-     <button className="btn-icon" aria-label={"Details for "+r.title} onClick={()=>onOpen(r)}><Info size={16}/></button></div>
+    <div className="org-tile-foot">{r.contents?.work_total?<span>{r.contents.work_done}/{r.contents.work_total} complete</span>:<span>{r.contents?.direct??0} directly inside{!!r.contents?.context_direct&&` · ${r.contents.context_direct} ancestor ${r.contents.context_direct===1?"home":"homes"}`}</span>}
+     {r.context_only&&<span className="chip">{r.archived?"Archived":["completed","cancelled"].includes(r.status_meaning??"")?"Finished":"Ancestor"} home · contents</span>}
+     {r.status_meaning&&!r.context_only&&<span className="chip">{r.status_meaning.replaceAll("_"," ")}</span>}
+     <button className="btn-icon" hidden={r.context_only} aria-label={"Details for "+r.title} onClick={()=>onOpen(r)}><Info size={16}/></button></div>
    </article>;
   })}</div>
   {!busy&&!error&&!children.length&&<p className="empty">Nothing here yet. Choose another view or add a record here.</p>}
   {toast.element}
-  {page&&(offset>0||page.next_offset!==null)&&<div className="org-pagination"><button className="btn" disabled={busy||!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous</button><span>{offset+1}–{Math.min(offset+40,page.total)} of {page.total}</span><button className="btn" disabled={busy||page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>Next</button></div>}
+  {page&&(offset>0||page.next_offset!==null)&&<div className="org-pagination"><button className="btn" disabled={busy||!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous</button><span>{offset+1}–{Math.min(offset+40,page.row_total??page.total)} of {page.row_total??page.total}</span><button className="btn" disabled={busy||page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>Next</button></div>}
  </section>;
 }

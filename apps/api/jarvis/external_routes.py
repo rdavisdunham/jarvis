@@ -204,11 +204,11 @@ def external_records(identity: Bot,type_id: str | None=None,capability: str | No
         return service.custom_read(db,key,"record_list",arguments)
 
 @external.get("/structure/atlas")
-def external_atlas(identity: Bot, limit: int = Query(1000, ge=1, le=5000)):
+def external_atlas(identity: Bot, limit: int = Query(1000, ge=1, le=5000), archived: bool = False, show_finished: bool = False, status: str = "all"):
     from .atlas import skeleton
     with session_scope() as db:
         key=bot_access.authorize(db,required="records:read")
-        return skeleton(db,key.owner_id,limit=limit,withhold=service.withheld(key.scopes))
+        return skeleton(db,key.owner_id,limit=limit,withhold=service.withheld(key.scopes),archived=archived,show_finished=show_finished,status=status)
 
 @external.get("/structure/templates")
 def external_templates(identity: Bot, type_id: str | None = None):

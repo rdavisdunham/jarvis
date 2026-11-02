@@ -8,6 +8,29 @@ from jarvis.models import Conversation
 from accounts_acceptance import app
 
 
+@app.post("/api/v1/__test_task_archive")
+def archive_finished_fixture(body: dict, user: User):
+    """Advance only synthetic fixture tasks to the real worker's archive threshold."""
+    from datetime import timedelta
+    from jarvis.domain import owned
+    from jarvis.models import Task, now
+    from jarvis.task_archive import sweep_owner
+
+    identities = body.get("task_ids", [])
+    if not isinstance(identities, list) or not 1 <= len(identities) <= 10:
+        raise ValueError("The browser fixture must name between one and ten tasks")
+    with session_scope() as db:
+        for identity in identities:
+            task = owned(db, Task, identity, user.owner_id)
+            if task.status not in {"completed", "cancelled"}:
+                raise ValueError("Only a finished fixture task can be aged")
+            task.finished_at = now() - timedelta(hours=25)
+            task.archive_eligible_at = now() - timedelta(hours=1)
+        db.flush()
+        count = sweep_owner(db, user.owner_id)
+        return {"archived": count}
+
+
 @app.post("/api/v1/__test_work")
 def accept_work(body: dict, user: User):
     with session_scope() as db:
