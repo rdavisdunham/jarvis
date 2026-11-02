@@ -226,6 +226,7 @@ def browse(
         items.append(value)
     if parent:
         parent_data = structure.data(db, parent, schema)
+        parent_data["context_only"] = parent.id in context_ids
         parent_data["contents"] = summary(db, parent, schema)
     return {
         "parent": parent_data if parent else None,

@@ -19,7 +19,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
  useEffect(()=>{let live=true;setBusy(true);setError("");
   const p=new URLSearchParams({section:section==="related"?"all":section,scope:section==="related"?"related":"children",archived:String(archived),status,query,limit:"40",offset:String(offset)});
   if(parent)p.set("parent_id",parent);
-  void api<Page>("/structure/browse?"+p).then(v=>{if(live){setPage(v);onVisible?.(v.items.map(r=>r.task_id??r.id));}}).catch(e=>live&&setError(e.message)).finally(()=>live&&setBusy(false));
+  void api<Page>("/structure/browse?"+p).then(v=>{if(live){setPage(v);onVisible?.(v.items.filter(r=>!r.context_only).map(r=>r.task_id??r.id));}}).catch(e=>live&&setError(e.message)).finally(()=>live&&setBusy(false));
   return()=>{live=false;};
  },[parent,section,query,archived,status,offset,refresh]);
  const types=schema.types.filter(t=>!t.archived&&(!page?.parent||t.parent_types.includes(page.parent.type_id)));
@@ -33,7 +33,7 @@ export function OrganizationBrowse({schema,parent,section,onSection,query,archiv
   <div className="org-container-head"><div><h2>{page?.parent?.title??(section==="all"?"Unfiled":"Your organization")}</h2>
    <p>{page?.parent?.body||(!parent?"Open a group to find the work and notes that live there.":"Direct contents of this home. Extra links live under Related.")}</p>
    {!!page?.parent?.contents?.work_total&&<div className="org-progress"><span className="chip">{page.parent.contents.work_done}/{page.parent.contents.work_total} complete</span>{page.parent.contents.ready_to_complete&&<span className="chip chip-done">Ready for your final check</span>}</div>}</div>
-   {page?.parent&&<button className="btn btn-sm" onClick={()=>onOpen(page.parent!)}><Info size={15}/>Details</button>}
+   {page?.parent&&!page.parent.context_only&&<button className="btn btn-sm" onClick={()=>onOpen(page.parent!)}><Info size={15}/>Details</button>}
    {canEdit&&!archived&&<button className="btn btn-soft btn-sm" onClick={()=>setAdding(v=>!v)}><Plus size={15}/>Add here</button>}
   </div>
   <div className="org-tabs" role="group" aria-label="Container contents">{(parent?[["groups","Groups"],["work","Tasks"],["content","Notes"],["related","Related"],["all","All contents"]]:[["groups","Groups"],["all","Unfiled"]]).map(([id,label])=>

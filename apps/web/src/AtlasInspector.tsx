@@ -116,7 +116,7 @@ export function TypeInspector({ typeId, draft, saved, records, index, canDesign,
   if (!t) return <p className="atlas-muted">This type is no longer in the draft.</p>;
   const name = (id: string) => draft.types.find(x => x.id === id)?.name ?? id;
   const plural = (id: string) => (draft.types.find(x => x.id === id)?.plural ?? id).toLowerCase();
-  const count = records.filter(r => r.type_id === t.id).length;
+  const count = records.filter(r => !r.context_only && r.type_id === t.id).length;
   const remove = (home: string) => {
     const living = recordsLivingIn(records, t.id, home);
     if (living.length) { setBlocked({ home, records: living }); return; }

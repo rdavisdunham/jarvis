@@ -18,6 +18,7 @@ export function OrganizationTree({items,visible,schema,disabled,onOpen,onBrowse,
 }) {
   const [moving,setMoving]=useState<string|null>(null);
   const [closed,setClosed]=useState<Set<string>>(new Set());
+  const visibleIds=new Set(visible.map(r=>r.id));
   const included=new Set(visible.flatMap(r=>[r.id,...r.home.map(h=>h.id)]));
   const rows=ordered(items.filter(r=>included.has(r.id)));
   const move=(r:CustomRecord,parent:string|null,before:string|null)=>{
@@ -31,7 +32,8 @@ export function OrganizationTree({items,visible,schema,disabled,onOpen,onBrowse,
       const index=allSiblings.findIndex(r=>r.id===row.id);
       const descendants=items.filter(r=>r.home.some(h=>h.id===row.id));
       const homes=validHomes(row,items,schema);
-      const locked=disabled||moving!==null;
+      const contextOnly=!visibleIds.has(row.id);
+      const locked=disabled||moving!==null||contextOnly;
       const content=<div className="organization-node" draggable={!locked}
         onDragStart={e=>{e.stopPropagation();e.dataTransfer.setData("application/eri-record",row.id);}}
         onDragOver={e=>{if(!locked)e.preventDefault();}} onDrop={e=>{e.preventDefault();e.stopPropagation();
@@ -42,9 +44,9 @@ export function OrganizationTree({items,visible,schema,disabled,onOpen,onBrowse,
             if(home===null||validHomes(source,items,schema).some(h=>h.id===home))move(source,home,top?row.id:null);
           }
         }}>
-        <button className="row-title" onClick={()=>onOpen(row)}>{row.title}</button><span className="chip">{row.type_name}</span>
+        <button className="row-title" onClick={()=>contextOnly?onBrowse(row):onOpen(row)}>{row.title}</button>{contextOnly&&<span className="chip">Ancestor home · contents</span>}<span className="chip">{row.type_name}</span>
         {!!descendants.length&&<button className="text-button" onClick={()=>onBrowse(row)}>View {descendants.length} inside</button>}
-        {!disabled&&<Popover label={"Move "+row.title} button={<FolderInput size={16}/>} panelClassName="filter-popover">{close=><>
+        {!disabled&&!contextOnly&&<Popover label={"Move "+row.title} button={<FolderInput size={16}/>} panelClassName="filter-popover">{close=><>
           <label className="field">Main home<select aria-label={"Move "+row.title+" to"} disabled={locked} value={row.parent_id??""}
             onChange={e=>{move(row,e.target.value||null,null);close();}}><option value="">Unfiled</option>{homes.map(h=><option key={h.id} value={h.id}>{[...h.home.map(p=>p.title),h.title].join(" / ")}</option>)}</select></label>
           <div className="settings-form-actions"><button className="btn btn-sm" disabled={locked||index<1} onClick={()=>{move(row,row.parent_id,allSiblings[index-1].id);close();}}><ArrowUp size={15}/>Move up</button>
