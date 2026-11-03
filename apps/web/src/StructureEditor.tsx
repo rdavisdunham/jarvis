@@ -39,10 +39,10 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,initia
   // Only a type the owner opened is a focus; the default first selection is not.
   const [chosen,setChosen]=useState(!!initialType),[starting,setStarting]=useState(false);
   const talk=async()=>{
-    if(edited){setError("Preview or discard your edits before asking Eri. Eri proposes changes to the saved structure.");return;}
+    if(edited){setError("Preview or discard your edits before asking Dani. Dani proposes changes to the saved structure.");return;}
     setStarting(true);setError("");
     try{await onTalk!(chosen?type?.name:undefined);onClose();}
-    catch(e){setError(e instanceof Error?e.message:"Could not start Eri. Retry when connected.");}
+    catch(e){setError(e instanceof Error?e.message:"Could not start Dani. Retry when connected.");}
     finally{setStarting(false);}
   };
   const update=(patch:Partial<SchemaType>)=>{const added=patch.fields?.find(f=>!type?.fields.some(old=>old.id===f.id));setDraft(updateType(draft,selected,patch));if(added)setFieldId(added.id);setProposal(null);};
@@ -98,7 +98,7 @@ export function StructureEditor({schema,onClose,onApplied,initialProposal,initia
           <div className="schema-history">{history.map(p=><button key={p.id} className="btn btn-ghost" style={{justifyContent:"flex-start"}} disabled={busy} onClick={()=>void run<Proposal>("structure.restore",{proposal_id:p.id,expected_revision:schema.revision}).then(setProposal).catch(()=>{})}>Preview undo of version {p.schema_revision+1}</button>)}</div>
         </div>}
       </div>
-      <footer className="schema-dialog-foot"><span className="schema-foot-note">Changes apply after you review them.</span>{onTalk&&<button className="btn" disabled={busy||starting} title="Eri asks about your types and fields, then shows a proposal to review" onClick={()=>void talk()}><Sparkles size={16} aria-hidden="true"/>{starting?"Starting…":"Refine with Eri"}</button>}<button className="btn" onClick={onClose}>Close</button><button className="btn btn-primary" disabled={busy} onClick={()=>void preview().catch(()=>{})}>Preview changes</button></footer>
+      <footer className="schema-dialog-foot"><span className="schema-foot-note">Changes apply after you review them.</span>{onTalk&&<button className="btn" disabled={busy||starting} title="Dani asks about your types and fields, then shows a proposal to review" onClick={()=>void talk()}><Sparkles size={16} aria-hidden="true"/>{starting?"Starting…":"Refine with Dani"}</button>}<button className="btn" onClick={onClose}>Close</button><button className="btn btn-primary" disabled={busy} onClick={()=>void preview().catch(()=>{})}>Preview changes</button></footer>
     </>}
   </Dialog>;
 }

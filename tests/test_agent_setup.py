@@ -1,7 +1,7 @@
 """One-click setup (task bbdb6440) and the guided readiness page (task 0a1274a7, Astra review E-Q1).
 
 Enable mints the link key and the MCP key and hands both over in one setup code for `remotea eridani setup`; the
-setup page, the probe route, control_status and Eri's start proposal all say what stands in a run's way the same
+setup page, the probe route, control_status and Dani's start proposal all say what stands in a run's way the same
 way, each problem with its fix."""
 
 import base64
@@ -248,7 +248,7 @@ def test_no_host_yet_says_to_run_setup(client):
 
 def test_eri_hears_the_setup_problem_before_confirming_a_start(client, host):  # noqa: F811
     """A start check_host allows (Claude is installed) still stalls when the agent gets no Eridani tools; the
-    proposal tells Eri to say so, with the fix, before the owner confirms."""
+    proposal tells Dani to say so, with the fix, before the owner confirms."""
     from test_agent_voice import say
 
     v2_hello(host.token)

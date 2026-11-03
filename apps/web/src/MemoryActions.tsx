@@ -38,7 +38,7 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
         {counts.map(c => <span className={"chip" + (c.includes("failed") ? " chip-due-overdue" : "")} key={c}>{c}</span>)}
         {!counts.length && <span className="memory-status-quiet">{status.pending ? "Learning is queued" : "No learning waiting"}</span>}
       </div>
-      <p className="memory-status-help">These are learning steps, not a count of messages. Correct a fact to change what Eri remembers; View source shows where it came from.</p>
+      <p className="memory-status-help">These are learning steps, not a count of messages. Correct a fact to change what Dani remembers; View source shows where it came from.</p>
     </div>
     <div className="memory-maintenance">
       <p className="memory-status-quiet tabular">{review}</p>
@@ -59,7 +59,7 @@ export function MemoryRow({memory, onCorrect, onForget}: {memory: Memory; onCorr
     <div className="memory-main">
       <p className="memory-content">{memory.content}</p>
       <div className="memory-meta">
-        <span>{memory.attribution === "owner_statement" ? "You told Eri" : memory.attribution === "agent_capture" ? "Saved by Eri at your request" : "Learned from a saved source"}</span>
+        <span>{memory.attribution === "owner_statement" ? "You told Dani" : memory.attribution === "agent_capture" ? "Saved by Dani at your request" : "Learned from a saved source"}</span>
         <time className="tabular" dateTime={memory.created_at}>{new Date(memory.created_at).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"})}</time>
         {memory.tags?.map(tag => <span className="chip" key={tag}>{tag}</span>)}
       </div>
@@ -98,7 +98,7 @@ function MemoryActionDialog({memory, mode, onClose, onForget}: {memory:Memory; m
       <div className="dialog-actions"><button className="btn" onClick={onClose}>Done</button></div>
     </> : <>
       <blockquote className="source-content">{memory.content}</blockquote>
-      <p className="memory-forget-copy">Eri will stop using this fact. Your tasks and notes stay as they are.</p>
+      <p className="memory-forget-copy">Dani will stop using this fact. Your tasks and notes stay as they are.</p>
       <label className="inline-check"><input type="checkbox" checked={deleteSource} onChange={e => setDeleteSource(e.target.checked)}/>Also delete the stored source and every memory learned from it</label>
       <p className="field-hint">This cannot be undone. Leaving the box unchecked keeps the source and other learned facts.</p>
       <div className="dialog-actions">

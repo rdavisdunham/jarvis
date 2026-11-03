@@ -19,7 +19,7 @@ export function VoiceDraftCard({ draft, onResolved }: { draft: VoiceDraft; onRes
   }
   return <section className="voice-draft" aria-label="Unsent voice draft">
     <strong>Unsent voice draft</strong>
-    <p>Voice ended before this was sent to Eri. Kept for 24 hours.</p>
+    <p>Voice ended before this was sent to Dani. Kept for 24 hours.</p>
     <textarea aria-label="Recovered voice request" value={message} disabled={busy}
       onChange={e => setMessage(e.target.value)} rows={3}/>
     {message.length > 12000 && <p>Shorten this request to 12,000 characters before sending.</p>}

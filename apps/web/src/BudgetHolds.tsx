@@ -34,7 +34,7 @@ export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
     <details className="settings-block budget-holds">
       <summary>{uncertain.length} {uncertain.length === 1 ? "session" : "sessions"} awaiting final usage</summary>
       <p>
-        {enforced ? "These estimates reserve room in your limit until provider billing is checked." : "These are estimates for sessions without a final usage report. They do not block Eri while spending limits are off."}
+        {enforced ? "These estimates reserve room in your limit until provider billing is checked." : "These are estimates for sessions without a final usage report. They do not block Dani while spending limits are off."}
         {" "}They are not confirmed charges.
       </p>
       {uncertain.map((h) => (

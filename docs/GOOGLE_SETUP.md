@@ -51,7 +51,7 @@ stack or create a new OAuth client just to publish the existing app.
 1. Open https://app.eridani.app and choose **Sign in with Google**.
 2. Use the already linked owner account or an email invited through **Settings → Sharing**.
 3. In **Settings → Google**, choose **Connect Calendar** if it is not connected.
-4. Grant Calendar read access, then select the calendars Eri should use.
+4. Grant Calendar read access, then select the calendars Dani should use.
 5. Open Calendar; synced events appear with Eridani's own scheduled records.
 6. Optionally enable Calendar editing below. Login and Calendar consent remain separate.
 
@@ -67,7 +67,7 @@ does not send email; share the app address with the person yourself.
 3. Select a calendar marked **Can edit**. Your Google account must have writer
    or owner access to that calendar.
 4. In Calendar, choose **New event**, or open an existing event and choose
-   **Edit event** / **Delete event**. Eri can use the same operations by request.
+   **Edit event** / **Delete event**. Dani can use the same operations by request.
 
 Use the existing OAuth client and callback; no new credentials are needed.
 If you maintain the scope list in Google Auth Platform → Data Access, include
@@ -88,7 +88,7 @@ provides a Google link.
 ### Answering invitations (RSVP)
 
 When the connected account is a guest, Eridani offers **Yes / Maybe / No** in the
-event dialog, on the event's row in the Calendar agenda, and through Eri ("I'm not
+event dialog, on the event's row in the Calendar agenda, and through Dani ("I'm not
 going to the 3pm": `calendar_list` → `calendar_event_read` → `calendar_respond`).
 It needs Calendar editing (`calendar.events`) and a calendar marked **Can edit**.
 
@@ -101,12 +101,12 @@ It needs Calendar editing (`calendar.events`) and a calendar marked **Can edit**
   the event since.
 - **Organizer notification:** responses use `sendUpdates=all`, so the organizer is
   told, as when answering in Google Calendar. The dialog has a checkbox to answer
-  quietly (`sendUpdates=none`); Eri's `calendar_respond` takes `notify=false`.
+  quietly (`sendUpdates=none`); Dani's `calendar_respond` takes `notify=false`.
   The agenda row always notifies.
 - **Declined events are dimmed, not hidden.** They stay on the calendar struck
   through so the answer can be changed or reverted, but they are not busy time:
   they never show as deadline conflicts. Google's free/busy (availability) already
-  ignores them. `calendar_list` reports `my_response` and `declined` for Eri.
+  ignores them. `calendar_list` reports `my_response` and `declined` for Dani.
 - Cached events gain the `my_response` field on the first sync after this change:
   each calendar resyncs fully once (`DETAILS_VERSION` in `google_calendar.py`).
 

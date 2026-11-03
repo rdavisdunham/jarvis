@@ -42,7 +42,7 @@ export function RunRow({ run, onOpen, now = Date.now() }: { run: Run; onOpen: (i
 }
 
 /** Runs grouped by the next human action (attentionGroups): a heading with the verb and count, then the rows. The
- * confirm group shows Eri's proposals (PendingControls) instead of rows. One clock re-renders every row's ages. */
+ * confirm group shows Dani's proposals (PendingControls) instead of rows. One clock re-renders every row's ages. */
 export function AttentionList({ groups, onOpen }: { groups: AttentionGroup[]; onOpen: (id: string) => void }) {
   const now = useNow(30_000);
   return <>{groups.map(g => <section key={g.key} className={"run-group group-" + g.key + (g.action ? " needs-action" : "")}

@@ -4,7 +4,7 @@
     uv run --no-sync python scripts/model_eval.py --plan                 # request count and cost ceiling, no calls
     uv run --no-sync python scripts/model_eval.py --repeats 3 --grader sonnet-5.5 --max-usd 5   # real (paid)
 
-Runs the recorded cases in evals/models/cases (session summaries, the weekly routing review, Eri chat tool
+Runs the recorded cases in evals/models/cases (session summaries, the weekly routing review, Dani chat tool
 selection, the run judge, run-card summaries) against each job's current model and the candidate profiles in
 jarvis.model_map, with the production prompts and request builders. Records per job type and profile: pass rate,
 cost per completed job (from returned usage and PRICES below), latency, refusal and non-verdict rates. Writes

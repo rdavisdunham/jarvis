@@ -1,6 +1,6 @@
 # Eridani
 
-Eridani ("Eri") is a durable personal assistant: tasks, reminders, calendar blocks,
+Eridani is a durable personal organizer with Dani as its assistant: tasks, reminders, calendar blocks,
 notes and lists, source-backed memory, text chat and GPT-Live voice, with Google
 Calendar and Linear integrations.
 
@@ -24,7 +24,7 @@ Start with the [documentation index](docs/README.md), [active TODO](docs/TODO.md
 and [web v1 PRD](docs/ERIDANI_WEB_V1_PRD.md). See [CI](docs/CI.md),
 [app evals](evals/app/README.md) and the [latency plan](docs/ERI_LATENCY_PLAN.md)
 for verification and response-speed work.
-Assistant personality: [Eridani / Eri](apps/api/jarvis/personality.py).
+Assistant personality: [Dani](apps/api/jarvis/personality.py).
 
 ## Local development and tests
 

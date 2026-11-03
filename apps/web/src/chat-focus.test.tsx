@@ -28,7 +28,7 @@ function Shell({ voice = false, reset }: { voice?: boolean; reset: () => Promise
   return <>
     {open && <aside>
       <button type="button" className="new-chat" onClick={() => void startNewConversation(focus, reset, voice)}>New chat</button>
-      <textarea ref={input} aria-label="Message Eridani" disabled={voice}/>
+      <textarea ref={input} aria-label="Message Dani" disabled={voice}/>
     </aside>}
     <button type="button" className="elsewhere">Elsewhere</button>
     <ChatLauncher open={open} listening={voice} onOpenChange={setOpen} focus={() => { if (!voice) focus(); }}/>
@@ -46,7 +46,7 @@ function click(selector: string) {
   return focused;
 }
 
-it("opening the panel from the Eri launcher focuses the composer within the click", () => {
+it("opening the panel from the Dani launcher focuses the composer within the click", () => {
   act(() => root.render(<Shell reset={async () => {}}/>));
   expect(composer()).toBeNull();
   const during = click(".chat-launcher");

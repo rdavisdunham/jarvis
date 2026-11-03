@@ -660,7 +660,7 @@ async def test_gratitude_cannot_propose_end_with_delayed_work_status(controller,
     c = controller
     await c.event({"type":"session.input_transcript.delta", "event_id":"request", "delta":"Add milk", "start_ms":0, "end_ms":100})
     c.claim()
-    await c.event({"type":"session.input_transcript.delta", "event_id":"thanks", "delta":"Thank you, Eri", "start_ms":2000, "end_ms":2500})
+    await c.event({"type":"session.input_transcript.delta", "event_id":"thanks", "delta":"Thank you, Dani", "start_ms":2000, "end_ms":2500})
     accepted = c.claim()
     with session_scope() as db:
         work = db.get(AgentWork, accepted[0]); db.expunge(work)
@@ -691,7 +691,7 @@ async def test_gratitude_during_work_keeps_both_accounts_open_with_delayed_polli
         await c.report_work()
         assert c.pending_work
         c.pending_question=True
-    await c.event({"type":"session.input_transcript.delta","event_id":"thanks","delta":"Thank you, Eri","start_ms":1000,"end_ms":1500})
+    await c.event({"type":"session.input_transcript.delta","event_id":"thanks","delta":"Thank you, Dani","start_ms":1000,"end_ms":1500})
     accepted=c.claim()
     with session_scope() as db:
         work=db.get(AgentWork,accepted[0]);db.expunge(work)

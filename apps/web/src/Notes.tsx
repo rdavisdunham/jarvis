@@ -347,7 +347,7 @@ export function NotesPage({
                   ? "Every note is filed in a list."
                   : listId
                     ? "Nothing is filed in this list yet."
-                    : "Keep notes here, connect them to your work, and ask Eri to find the next steps."}
+                    : "Keep notes here, connect them to your work, and ask Dani to find the next steps."}
           </p>
           {!query && !archived && canEdit && !listId && (
             <button className="btn btn-soft" onClick={onNew}>

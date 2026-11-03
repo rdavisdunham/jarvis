@@ -6,7 +6,7 @@ import { useRemotea, useRemoteaActions, type PendingCardState } from "./remotea-
 // The picker lives in the remotea chunk; it loads only when a start has no target yet.
 const TargetPicker = lazy(() => import("./Remotea").then(m => ({ default: m.TargetPicker })));
 
-/** One of Eri's proposals (control_start / control_message) waiting for the owner's tap; nothing is sent before.
+/** One of Dani's proposals (control_start / control_message) waiting for the owner's tap; nothing is sent before.
  * A start with no target shows the task's target picker; picking one saves it and confirms. */
 export function PendingControlCard({ item, card, onDecide, onCancelPicker }: {
   item: PendingControl; card?: PendingCardState;
@@ -29,7 +29,7 @@ export function PendingControlCard({ item, card, onDecide, onCancelPicker }: {
   </DecisionCard>;
 }
 
-/** Eri's open proposals. `compact` (the chat drawer) shows the newest few and points at the remotea page for the rest. */
+/** Dani's open proposals. `compact` (the chat drawer) shows the newest few and points at the remotea page for the rest. */
 export function PendingControls({ compact = false, limit = 2, onMore, heading = true }: {
   compact?: boolean; limit?: number; onMore?: () => void; heading?: boolean;
 }) {
@@ -40,8 +40,8 @@ export function PendingControls({ compact = false, limit = 2, onMore, heading = 
   const act = (id: string, decision: "confirm" | "decline", target?: string) =>
     void decide(id, decision, target).then(run => { if (run) openRun(run.id); });
   return <section className={compact ? "chat-pending" : "remotea-pending"} aria-label="Waiting for your confirmation" aria-live="polite">
-    {heading && !compact && <h2>Eri is waiting for you</h2>}
-    {compact && <p className="remotea-card-kicker">Eri is waiting for you</p>}
+    {heading && !compact && <h2>Dani is waiting for you</h2>}
+    {compact && <p className="remotea-card-kicker">Dani is waiting for you</p>}
     {shown.map(p => <PendingControlCard key={p.id} item={p} card={cards[p.id]} onDecide={(d, t) => act(p.id, d, t)} onCancelPicker={() => cancelPicker(p.id)}/>)}
     {compact && pending.length > shown.length && <p className="footnote">
       {pending.length - shown.length} more {onMore ? <button className="text-button" onClick={onMore}>on the remotea page</button> : "on the remotea page"}.</p>}

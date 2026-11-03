@@ -106,7 +106,7 @@ def test_maintenance_blocks_api_but_keeps_health_available(client, monkeypatch):
 
 
 def test_inline_chat_route_is_removed(client):
-    """Requests go through the work queue; POST /api/v1/chat ran Eri's tools as a human and was removed (stage F)."""
+    """Requests go through the work queue; POST /api/v1/chat ran Dani's tools as a human and was removed (stage F)."""
     from uuid import uuid4
 
     body = {"turn_id": str(uuid4()), "conversation_id": str(uuid4()), "message": "Do something"}

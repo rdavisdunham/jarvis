@@ -97,7 +97,7 @@ try {
   await page.goto(process.env.JARVIS_LIVE_TEST_URL);
   await page.getByLabel("Pairing code").fill(token);
   await page.locator(".login-card button.primary").click();
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   await page
     .getByRole("button", { name: "Start a private session", exact: true })
     .click();
@@ -106,12 +106,12 @@ try {
     .click();
 
   await page.getByLabel("Voice", { exact: true }).selectOption("marin");
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   const baseline = await page.evaluate(async () =>
     (await (await fetch("/api/v1/tasks")).json()).items.map((t) => t.id),
   );
   await page
-    .getByRole("button", { name: "Talk to Eridani", exact: true })
+    .getByRole("button", { name: "Talk to Dani", exact: true })
     .click();
   await expect(page.locator(".voice-panel")).toContainText(
     /Listening|Taking care/,
@@ -182,7 +182,7 @@ try {
     throw new Error("Voice timed out too early");
   evidence.idleTimeout = true;
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   evidence.gracefulClose = (
     await page.evaluate(() => window.__live.events)
   ).includes("session.closed");
@@ -190,7 +190,7 @@ try {
   await expect(page.locator(".message")).toHaveCount(0);
   evidence.newChat = true;
   await page
-    .getByRole("button", { name: "Talk to Eridani", exact: true })
+    .getByRole("button", { name: "Talk to Dani", exact: true })
     .click();
   await expect(page.locator(".voice-panel")).toContainText("Listening", {
     timeout: 40000,

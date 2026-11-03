@@ -1,4 +1,4 @@
-import { wakeRequest } from "./wake-word";
+import { isPartialWakePhrase, wakeRequest } from "./assistant-identity";
 // Startup-only control; normal conversational playout never enters this gate.
 export class StartupCue {
   private ready = false;
@@ -25,9 +25,7 @@ export class StartupCue {
   input(text:string){
     this.text+=text;
     const request=wakeRequest(this.text);
-    const words=this.text.toLowerCase().replace(/[^a-z ]/g," ").replace(/\s+/g," ").trim();
-    const incomplete=["eri","erie","airy","eridani","hey eri","hey erie","hey airy","hey eridani","hi eri","ok eri","okay eri"].some(phrase=>phrase.startsWith(words));
-    if(request!==null ? request!=="" : !incomplete)this.cancel();
+    if(request!==null ? request!=="" : !isPartialWakePhrase(this.text))this.cancel();
   }
   activity(active:boolean, epoch:number, backlog:boolean, delivered:boolean, now:number) {
     if(!this.sampled || active || this.active!==active)this.quietAt=now;

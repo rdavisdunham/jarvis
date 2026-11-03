@@ -254,7 +254,7 @@ def profile_pairs(db, owner, rows, instant):
 
 
 def attribution(command_id):
-    """The owner's own words, or Eri's wording of a fact the owner asked it to keep (an agent tool call).
+    """The owner's own words, or Dani's wording of a fact the owner asked it to keep (an agent tool call).
     Agent-filed facts are never treated as owner statements when choosing between duplicates."""
     from .routing import human_command
 
@@ -350,7 +350,7 @@ def _review(job_id):
         for candidates in duplicates.values():
             if len(candidates) < 2:
                 continue
-            # Prefer the owner's own statement over Eri's filing; retain every original source and merge link.
+            # Prefer the owner's own statement over Dani's filing; retain every original source and merge link.
             rank = {"owner_statement": 0, "agent_capture": 1}
             candidates.sort(key=lambda m: (rank.get(m.attribution, 2), m.created_at, m.id))
             winner = candidates[0]

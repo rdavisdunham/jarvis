@@ -5,7 +5,7 @@ the sync scope. The default imports only issues assigned to you. Turn that optio
 off to import all issues in the selected teams.
 
 Create the key in Linear's **Settings → Security & access → Personal API keys**.
-Grant read, create and write access, restricted to the teams you want Eri to use.
+Grant read, create and write access, restricted to the teams you want Dani to use.
 The app verifies the workspace/member identity and stores the key encrypted with
 the existing integration encryption key. It never returns the key to the browser,
 puts it into command receipts, or supplies it to the assistant.
@@ -19,7 +19,7 @@ Eridani tags remain independent. Synced projects are marked “· Linear”.
 
 Edit a linked task normally, or expand **Linear workflow** in task details for
 the exact Linear status, priority, assignee and project. **Publish to Linear**
-creates a new issue for an existing local task. Eri has the same read/write tools.
+creates a new issue for an existing local task. Dani has the same read/write tools.
 Publishing a routine template is disabled; publish a concrete occurrence instead.
 
 Due times/time zones, reminder alerts, work blocks, local tags, work types and
@@ -78,7 +78,7 @@ Browser routes (personal workspace, cookie + CSRF), all under `/api/v1/integrati
 `GET` (saved mapping, catalog with counts, types and candidate Homes), `POST /discover` (reads teams,
 projects and issue counts from Linear; nothing else changes), `POST /preview` (dry run; makes the
 structure proposal when types change), `POST /apply` (`fingerprint` from the preview) and `POST /skip`.
-`GET /api/v1/integrations/linear` reports `structure.offer` while the choice is still open. Eri has no
+`GET /api/v1/integrations/linear` reports `structure.offer` while the choice is still open. Dani has no
 tool for this yet; the owner reviews it in Settings.
 
 Implementation: [linear_structure.py](../apps/api/jarvis/linear_structure.py),
@@ -116,7 +116,7 @@ Agents APIs instead support bringing our own agent into Linear.
 Eridani uses the documented GraphQL API for both durable sync and assistant
 actions. This avoids maintaining a second, independent MCP write path. Polling
 works with the current Tailnet-only deployment; it needs no public webhook
-endpoint. OAuth, webhooks and an Eri agent inside Linear can be added later.
+endpoint. OAuth, webhooks and an Dani agent inside Linear can be added later.
 
 Sources:
 - [GraphQL API and personal keys](https://linear.app/developers/graphql)

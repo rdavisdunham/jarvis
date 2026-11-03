@@ -45,6 +45,15 @@ def command(c, tool, **args):
     return post(c, "/commands", {"command_id": str(uuid4()), "tool": tool, "arguments": args})["data"]
 
 
+def test_shared_workspace_keeps_person_named_dani_and_disambiguates_assistant(client):
+    from jarvis.models import Actor
+    command(client, "settings.update", preferred_name="Dani")
+    workspace = post(client, "/accounts/workspaces", {"name": "Dani's team", "kind": "space"})
+    with session_scope() as db:
+        actors = list(db.scalars(select(Actor).where(Actor.owner_id == workspace["id"])))
+        assert {(actor.name, actor.kind) for actor in actors} == {("Dani", "person"), ("Dani (assistant)", "agent")}
+
+
 def shared(owner, guest, role="editor"):
     w = post(owner, "/accounts/workspaces", {"name": "Team launch", "kind": "project"})
     invite = post(

@@ -24,7 +24,7 @@ try{
  await expect(crumbs.getByRole("button",{name:"Atlas client ABC"})).toHaveAttribute("aria-current","location");
  await expect.poll(()=>new URL(page.url()).searchParams.get("home")).toBe(abc.id);
  await page.keyboard.press("Backspace");await expect(crumbs.getByRole("button",{name:"Atlas client ABC"})).toHaveCount(0);
- // Eri can fly the map: an item opens its home region and is selected.
+ // Dani can fly the map: an item opens its home region and is selected.
  await ui("ui_records",{layout:"atlas",record_id:task.id});
  await expect(crumbs.getByRole("button",{name:"Atlas transcript project"})).toHaveAttribute("aria-current","location");
  const inspector=atlas.getByRole("complementary",{name:"Inspector"});
@@ -143,5 +143,5 @@ try{
  await expect(page.getByRole("region",{name:"Browse organization"})).toBeVisible();
  await expect(page.getByRole("group",{name:"Layout"}).getByRole("button",{name:"Atlas",exact:true})).toHaveCount(0);
  if(errors.length)throw Error(errors.join("\n"));
- console.log("Organization Atlas acceptance passed: fly in/out, Eri focus, keyboard Move to (tasks move whole, projects ask), Undo, Blueprint hover linking, blocking home list, draft review, map controls (zoom, wheel, pan, full screen, multiselect move) and phone fallback.");
+ console.log("Organization Atlas acceptance passed: fly in/out, Dani focus, keyboard Move to (tasks move whole, projects ask), Undo, Blueprint hover linking, blocking home list, draft review, map controls (zoom, wheel, pan, full screen, multiselect move) and phone fallback.");
 }finally{await browser.close();}

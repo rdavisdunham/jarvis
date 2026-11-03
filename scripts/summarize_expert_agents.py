@@ -273,7 +273,7 @@ def render(report, summary):
         failed = [k for k, v in row.get("checks", {}).items() if not v]
         review = manual_bykey.get((row["model"], row["case"], row["repeat"]))
         text = "".join(
-            f"<h4>User</h4><p>{esc(t['user'])}</p><h4>Eri</h4><p>{esc(t['assistant'])}</p>"
+            f"<h4>User</h4><p>{esc(t['user'])}</p><h4>Dani</h4><p>{esc(t['assistant'])}</p>"
             for t in row.get("turns", [])
         )
         checks = (

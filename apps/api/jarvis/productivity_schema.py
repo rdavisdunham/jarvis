@@ -1,4 +1,4 @@
-"""Productivity contracts shared by HTTP and Eri's tools."""
+"""Productivity contracts shared by HTTP and Dani's tools."""
 
 from datetime import date
 from typing import Literal

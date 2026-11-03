@@ -96,7 +96,7 @@ export class VoiceCoordinator {
     const ready=()=> {
       if (valid() && !this.activeAttempt && this.recognitionStarted && this.flowing) {
         if (this.state!=="listening_for_wake") this.listeningSince=performance.now();
-        this.publish("listening_for_wake","Listening for Eri or Hey Eri. Microphone in use by wake and the browser speech service.");
+        this.publish("listening_for_wake","Listening for Dani or Hey Dani. Microphone in use by wake and the browser speech service.");
       }
     };
     this.unsubscribe=this.capture.subscribe(activity=> {

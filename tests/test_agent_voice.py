@@ -1,4 +1,4 @@
-"""Stage E: Eri voice control of agent runs (control.* through domain.mutate, control_status) — the same
+"""Stage E: Dani voice control of agent runs (control.* through domain.mutate, control_status) — the same
 command service as the remotea page, present only while remotea is enabled."""
 
 import asyncio
@@ -331,7 +331,7 @@ def test_a_bare_command_with_several_runs_asks_instead_of_acting(host):  # noqa:
         from jarvis.session_models import AgentPendingControl
 
         assert db.scalar(select(AgentPendingControl).where(AgentPendingControl.tool == "control.message")) is None
-    # Named by task: exactly one run, and the result names task, host and branch for Eri's sentence.
+    # Named by task: exactly one run, and the result names task, host and branch for Dani's sentence.
     stopped = say("control.stop", task="recipient two")
     assert stopped["recipient"]["run_id"] == two and stopped["recipient"]["task"] == "Recipient two"
     assert stopped["recipient"]["branch"] and stopped["recipient"]["label"] in stopped["next"]

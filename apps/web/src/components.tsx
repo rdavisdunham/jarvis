@@ -451,7 +451,7 @@ export function TaskDialog({
               ) : (
                 <>
                   <option value="owner" />
-                  <option value="Eri" />
+                  <option value="Dani" />
                 </>
               )}
             </datalist>
@@ -727,7 +727,7 @@ export function SettingsPanel({
     <div className="settings-sections">
       {section === "profile" && (
         <SettingsGroup title="Your name">
-          <SettingRow className="setting-row-form" label="What should Eri call you?" hint="Used in greetings and conversation.">
+          <SettingRow className="setting-row-form" label="What should Dani call you?" hint="Used in greetings and conversation.">
             <form
               className="setting-inline-form"
               onSubmit={async (e) => {
@@ -775,7 +775,7 @@ export function SettingsPanel({
               key: "live_memory_updates",
               label: "Memory during voice",
               description:
-                "While you talk with GPT-Live, quietly give Eri saved facts that match what you are saying.",
+                "While you talk with GPT-Live, quietly give Dani saved facts that match what you are saying.",
             },
             {
               key: "deep_sleep_enabled",
@@ -930,9 +930,9 @@ export function SettingsPanel({
           ) : (
             <>
               {boot.budget.report && <UsageReport report={boot.budget.report} />}
-              {!enforced && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Eri.</p>}
+              {!enforced && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Dani.</p>}
               {enforced && (
-                <SettingRow className="setting-row-form" label="Monthly limit ($)" labelId="monthly-limit-label" hint="Eri pauses optional model work near this limit.">
+                <SettingRow className="setting-row-form" label="Monthly limit ($)" labelId="monthly-limit-label" hint="Dani pauses optional model work near this limit.">
                   <form
                     className="setting-inline-form"
                     onSubmit={(event) => {

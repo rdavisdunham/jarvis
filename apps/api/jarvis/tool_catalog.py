@@ -242,7 +242,7 @@ REMOTE = (
     "Do not invent a follow-up promise. "
     "Never create another record to retry an unknown write. "
 )
-# E-Q6: Eri names who a control command affects before acting, and asks when several runs fit.
+# E-Q6: Dani names who a control command affects before acting, and asks when several runs fit.
 RECIPIENT = (" Before acting, tell the owner the task, host and branch it affects (the run in control_status, or the "
              "result's recipient.label). A needs_choice result means more than one run fits and nothing was done: read "
              "each candidate (task · host · branch · state) and ask which, then call again with its run_id.")

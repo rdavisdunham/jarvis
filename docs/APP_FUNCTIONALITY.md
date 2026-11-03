@@ -377,7 +377,7 @@ memory.
 
 ### 34. Wake words and voice shutdown
 
-Foreground Eri/Hey Eri detection, continuous captured-audio startup, a 120-second quiet window, contextual ending candidates and wake recovery. Ordinary thanks keeps listening. Ambiguous completion may receive a rate-limited closing offer. Device and provider acceptance remains pending; see [voice validation](VOICE_WAKE_VALIDATION.md).
+Foreground Dani/Hey Dani detection, continuous captured-audio startup, a 120-second quiet window, contextual ending candidates and wake recovery. Ordinary thanks keeps listening. Ambiguous completion may receive a rate-limited closing offer. Device and provider acceptance remains pending; see [voice validation](VOICE_WAKE_VALIDATION.md).
 
 - Acceptance set: [33 cases](../evals/app/features/wake_shutdown.json).
 - Implementation: [voice_control.py](../apps/api/jarvis/voice_control.py), [live_voice.py](../apps/api/jarvis/live_voice.py).

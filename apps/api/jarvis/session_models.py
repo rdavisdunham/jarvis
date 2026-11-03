@@ -457,7 +457,7 @@ class AutolinkRejection(Base):
 
 
 class AgentPendingControl(Base):
-    """control_start / control_message from Eri wait here until the owner confirms (stage F, M5, D3).
+    """control_start / control_message from Dani wait here until the owner confirms (stage F, M5, D3).
 
     Confirmed on the remotea page, or by a later spoken or typed yes bound to this id; never by the model
     in the turn that proposed it."""

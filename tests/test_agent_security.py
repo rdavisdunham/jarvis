@@ -213,7 +213,7 @@ def test_candidate_titles_are_fenced(host, monkeypatch):  # noqa: F811
     assert "ERIDANI_CANDIDATES> > >" in reply["text"]
 
 
-# ---------------------------------------------------------------- M5: Eri's control is two-phase
+# ---------------------------------------------------------------- M5: Dani's control is two-phase
 
 
 @pytest.fixture
@@ -370,7 +370,7 @@ def test_eri_steer_is_logged_with_its_source_after_the_app_confirms(client, host
 
 
 def test_a_proposed_start_without_a_target_asks_on_the_card(client, host):  # noqa: F811
-    """The 2026-10-29 bug: Eri proposed a start on a task with no execution target; Confirm on the card got 409
+    """The 2026-10-29 bug: Dani proposed a start on a task with no execution target; Confirm on the card got 409
     NEEDS_TARGET and only showed an error. The proposal now says so, the card carries the picker's data, a
     refused confirm leaves the proposal open, and confirming with the picked target starts the run there."""
     from jarvis.session_models import AgentPendingControl
@@ -992,7 +992,7 @@ def test_joined_speech_that_starts_with_yes_confirms_and_a_changed_request_does_
 
 
 def test_a_chat_confirm_can_pick_an_advertised_target_which_is_saved_for_the_project(client, host, keyed):  # noqa: F811
-    """The proposal lists the places a start could run (saved targets by id, advertised ones by host key) so Eri can
+    """The proposal lists the places a start could run (saved targets by id, advertised ones by host key) so Dani can
     ask "jarvis or remotea?"; the owner's answer naming one is their yes, and an advertised choice is saved for the
     task's project before the run starts, as the card's picker does."""
     from jarvis.domain import DomainError

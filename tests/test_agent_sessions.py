@@ -200,7 +200,7 @@ def test_search_ranks_issue_keys_folders_and_text(client):
 
 
 def test_search_results_are_json_safe_as_eri_tool_results(client):
-    """Eri's runners (work_runner, conversation, voice) json.dumps a tool result as is. On 2026-10-29 a chat
+    """Dani's runners (work_runner, conversation, voice) json.dumps a tool result as is. On 2026-10-29 a chat
     turn that called session_search failed with "The task model could not finish this request" because the
     items carried datetime objects; the wire already shows ISO strings, so the search must return those."""
     _, headers = key(client, ["sessions:write", "sessions:read"])

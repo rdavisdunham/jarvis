@@ -12,10 +12,10 @@ Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davi
   recovers lost spawn acks, repeats the desired state (`runs.snapshot`: stops, verify config) and only then
   drains the outbox ([Connection lifecycle](#connection-lifecycle), [Commands](#commands)).
 - **Runs from any task.** Every task row has a Run control (task details too) while remotea is on; the Run
-  dialog picks the execution target and harness with a read-only preflight. Eri can start or message a run
+  dialog picks the execution target and harness with a read-only preflight. Dani can start or message a run
   too, in two phases: `control.start` and `control.message` only propose, and nothing reaches the host until
   the owner says yes on the card, on the remotea page or in a later message
-  ([Two-phase control from Eri](#two-phase-control-from-eri)).
+  ([Two-phase control from Dani](#two-phase-control-from-eri)).
 - **Interview and planning.** A task without a PRD (and without human-written criteria and verify) starts
   with an interview: the agent asks up to 12 questions through `task_interview`, the owner answers on one
   form, and the agent writes the PRD and calls `submit_plan`. The **plan floor** means an agent's plan may
@@ -43,13 +43,13 @@ Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davi
   column beside any page, opened from a task's run chip or the topbar Runs panel; a sheet on phones), and
   the run timeline, which names who sent every text ([Messages Eridani sends to the
   agent](#messages-eridani-sends-to-the-agent)).
-- **Eri** has the `control_*` tools (start, message, stop, answer, confirm, approve, plan review, status)
+- **Dani** has the `control_*` tools (start, message, stop, answer, confirm, approve, plan review, status)
   while remotea is on ([Voice commands](#voice-commands-control)). **Other assistants** read runs with a
   bot key carrying `agents:read` (`run_list` / `run_get`, [Reading runs](#reading-runs-agentsread)).
 
 Code: [`agent_link.py`](../apps/api/jarvis/agent_link.py) (socket, ingestion, parity),
 [`run_coordinator.py`](../apps/api/jarvis/run_coordinator.py) (run states, commands, verify and judge loop),
-[`agent_control.py`](../apps/api/jarvis/agent_control.py) (start, message, stop, Eri's `control.*`),
+[`agent_control.py`](../apps/api/jarvis/agent_control.py) (start, message, stop, Dani's `control.*`),
 [`agent_plan.py`](../apps/api/jarvis/agent_plan.py) (interview, `submit_plan`, plan review, verify),
 [`agent_judge.py`](../apps/api/jarvis/agent_judge.py), [`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py),
 [`remotea_routes.py`](../apps/api/jarvis/remotea_routes.py) (browser routes),
@@ -107,7 +107,7 @@ messages already queued under those modes.
 them; they describe current behaviour unless they say otherwise. A was remotea's own spike (launching and
 observing the harnesses, no Eridani code); B the read-only link (sessions, turns, collector parity, jarvis
 #63); C runs, the actor model and manual control; D interview, planning, verify attempts and the judge loop;
-E Linear sync outcomes, Eri's voice commands, the dream auto-link and the collector cutover; F the fixes from
+E Linear sync outcomes, Dani's voice commands, the dream auto-link and the collector cutover; F the fixes from
 the 2026-10-28 security audit (all merged by 2026-10-28, jarvis #63 to #68). Later work (verify by default,
 freestyle, the side run panel, action idempotency, per-target capabilities, judge evidence rules) is
 described in place.
@@ -115,7 +115,7 @@ described in place.
 ## Turning it on
 
 remotea is **off by default** (preference `remotea_enabled`). While it is off, Eridani behaves exactly as
-before: no nav entry, no page, no Run controls on tasks, no `control_*` tools for Eri, the link refuses
+before: no nav entry, no page, no Run controls on tasks, no `control_*` tools for Dani, the link refuses
 connections, and every `/api/v1/remotea/*` route except `status`, `enable` and `disable` answers
 `403 REMOTEA_DISABLED` (reading runs and Stop stay available).
 
@@ -181,7 +181,7 @@ persist (for example `journal_unavailable (write failed: ENOSPC)`): remotea refu
 clears. The page header shows the connected host's line ("remotea 0.1.0 · build 76c5f62", with a **dirty** badge
 for a build with uncommitted changes) and, while degraded, the warning "Host journal degraded: …"; Settings →
 Connections → remotea shows the same version line and warning. `status` (the host-wide `ok`/`degraded`) is a
-different thing: the owner's daily ingestion quota. Eri's `control_status` lists a degraded host with
+different thing: the owner's daily ingestion quota. Dani's `control_status` lists a degraded host with
 `degraded_reason` and the same warning text.
 
 ### 2. The MCP key (the agent inside a run ↔ Eridani)
@@ -343,11 +343,11 @@ summary's `at`), and each warn and fail line with its fix and check id, fails fi
 when the host cut the list. A host that advertises `doctor` but has sent nothing yet reads "Not reported yet"; a
 host without the cap reads "unknown (host too old)". The data is the host's `doctor` on `GET /remotea/setup` and
 `GET /remotea/status` (the `doctor` frame row under [Frames](#frames)). Self-check findings are shown, not turned
-into setup problems: they do not change a host's or target's readiness. Eri's `control_status` adds a
+into setup problems: they do not change a host's or target's readiness. Dani's `control_status` adds a
 `self_check` line to a host whose summary has a failure or warning.
 
 Each unready host or target also has one spoken `line` ("jarvis on desk: Agents on jarvis get no Eridani tools: …
-Fix: …"). Eri's `control_status` returns those lines as `setup` (with `setup_hint`) whenever any exists, so voice
+Fix: …"). Dani's `control_status` returns those lines as `setup` (with `setup_hint`) whenever any exists, so voice
 and chat can say why a run cannot start; a `control_start` proposal whose target has no problem that makes
 confirming fail (only warnings, or `MCP_UNCONFIGURED`, which a freestyle start lifts) but would stall adds "Also
 tell the owner before they confirm: <line>" to `next`, so the owner hears the fix.
@@ -358,7 +358,7 @@ Besides the spawn prompt, every text that reaches a running agent is an `input` 
 (`mode: queue` waits for the current turn to end, `steer` interrupts it). Eridani writes some of them
 itself; each of those goes through `run_coordinator.say()`, which also records a `sent` history entry with a
 `kind`. The run timeline titles it "Sent by Eridani · <reason>" (`remotea-model.ts` `SENT_REASON`). The
-owner's own texts are "Sent by you" or "Sent by Eri, confirmed by you". Wording lives in
+owner's own texts are "Sent by you" or "Sent by Dani, confirmed by you". Wording lives in
 [`agent_prompts.py`](../apps/api/jarvis/agent_prompts.py) (`PROMPT_VERSION = "loop-v2"`); task, answer,
 gap and reason text inside it is fenced as data.
 
@@ -376,7 +376,7 @@ gap and reason text inside it is fenced as data.
 | `handoff` · "plan handed to the worker" | Hyperplan: execution starts on a run whose worker differs from its planner (`hand_off`) | Recorded on the timeline; the text is the worker's spawn prompt, not an input | `worker()`: the frozen plan and the "decisions already made" digest | Execute the plan as written; ask for a re-plan instead of re-opening settled points. |
 
 The owner's texts are not in the table: **Message** (`queue`) and **Steer** (`steer`, advances the
-generation) send exactly what was typed (`agent_control.send_message`, also Eri's confirmed
+generation) send exactly what was typed (`agent_control.send_message`, also Dani's confirmed
 `control.message`), and an answer to the agent's own question is an `answer` command, not an input.
 
 **There are no time-based nudges.** The turn cap, the wall clock (6 h) and the no-progress timer (45 min)
@@ -649,7 +649,7 @@ Tasks gain `steps` (ordered, stable `id`s; each `{id, title, status: todo|doing|
 note, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same workspace),
 `success_criteria` (`[{id, text, kind: text|verify, verify_id?}]`), `verify` (`{target_id, verify_id}`),
 `turn_cap` (default 15), `execution_target_id` (foreign key arrives with `execution_targets` in 0028) and
-the server-managed `plan_revision`. They are edited through `task.update` (browser, Eri, bots), normalized
+the server-managed `plan_revision`. They are edited through `task.update` (browser, Dani, bots), normalized
 by `task_plan.normalize`: missing ids are assigned, unchanged steps keep their stamp, changed steps record
 who changed them, and `plan_revision` advances only when the plan actually changes. Plan fields never
 queue a Linear write. A run freezes a plan revision when it starts; agents tick steps with `task_step` (below).
@@ -741,7 +741,7 @@ task's run branch, else `main`.
 start: the host must list `spawn` in `caps` and set `caps.harnesses.<harness>.spawn`, and when its hello entry for
 `host_target` carries `harnesses`, that list must include the harness (remotea refuses a harness missing from the
 target's `launch`). A target without `harnesses` (an older remotea) falls back to the host-wide flags alone.
-`check_host` passes the resolved target's `host_target`, so `start_run`, Eri's `control_start` proposal and
+`check_host` passes the resolved target's `host_target`, so `start_run`, Dani's `control_start` proposal and
 confirm all refuse the same way. Advertised targets (`GET /remotea/targets` `advertised`, `NEEDS_TARGET`
 `data.advertised`) carry `harnesses` (null when the host did not say) and `verify`; a saved target carries the
 same two fields when its host advertises it. From a `caps_version: 2` host both also carry `enabled`, `launch`,
@@ -759,12 +759,12 @@ the host did not say). The picker (`remotea-model.ts` `targetOptions`) adds "not
 target whose template is not ready, and the setup view's target card a "Template: ready · prepares api, web" /
 "Template: not ready (2 failing checks)" line.
 
-`problems` (from `readiness_for`, shared by the preflight, Eri's `control_start` proposal and the remotea card) are
+`problems` (from `readiness_for`, shared by the preflight, Dani's `control_start` proposal and the remotea card) are
 `{code, message, blocking, freestyle_ok?}`. The `check_host` refusals block. `agent_control.target_problems` adds,
 from the target's hello: `MCP_UNCONFIGURED` "Agents on this target have no Eridani tools: <reason>" (blocks Start
 unless the run starts in freestyle, `freestyle_ok: true`) and `VERIFY_NOT_READY` "This target's verify command is
 not ready (<id>: <reason>; …)" (when the task's verify id, or every offered id, is not ready; `blocking: false`: the
-run still starts and records the failed verification). Eri tells the owner a blocking problem makes confirming fail,
+run still starts and records the failed verification). Dani tells the owner a blocking problem makes confirming fail,
 and a warning only that verification will not pass until the host is fixed. An older Eridani's problems have no
 `blocking` and all block.
 
@@ -834,7 +834,7 @@ marks it `submitted` and queues `answer`; the run resumes on `question.resolved`
 ### Actors and the completion gate
 
 `agent_actor` decides who is acting: an explicitly bound actor (`acting(Actor(...))`), else `eri_work`
-inside Eri's execution context, else `bot` for an unbound bot key, else `human`. Authorities are
+inside Dani's execution context, else `bot` for an unbound bot key, else `human`. Authorities are
 `human`, `source_sync` (the Linear import always runs as it) and `run_judge` (the coordinator).
 
 While a task has an unsettled run, `task.update`/`task.complete`/`task.batch`/`record.update` refuse
@@ -943,7 +943,7 @@ Approve.
 
 **Attention-first grouping (E-Q5).** The topbar Runs panel and the remotea page list group runs with
 `remotea-model.ts` `attentionGroups(runs, pending, hosts, unmerged)` (pure; `attentionKey` decides one run), in this
-order, each with a verb heading and a count, empty groups hidden: **Confirm Eri's proposal** (pending
+order, each with a verb heading and a count, empty groups hidden: **Confirm Dani's proposal** (pending
 `control_start`/`control_message`), **Answer a question** (`waiting_answer`, `interviewing`,
 `needs_you(question_timed_out)`), **Review the plan** (`needs_you(plan_review)`), **Repair the host or setup**
 (`needs_you` for `host_offline`, `surface_lost`, `exited`, `spawn_expired`, `delivery_uncertain`, `verify_infra`, or
@@ -1322,7 +1322,7 @@ Beside **Approve** (and read-only in `needs_you` and settled runs) the run page 
   presented as independently established completion.
 
 The same packet as one sentence ("2 of 3 criteria met; tests passed 4 min ago in a sandbox; PR #12 open; 1 open
-question") is shown next to Approve, and `control_status` returns it for Eri as `awaiting_approval.review_packet`
+question") is shown next to Approve, and `control_status` returns it for Dani as `awaiting_approval.review_packet`
 (`agent_control.review_packet`: `text`, `criteria`, `criteria_met`/`criteria_total`, `tests`, `pull_requests`,
 `open_questions`, `reason`; also `review_packet` on a `needs_you` run).
 
@@ -1442,7 +1442,7 @@ The run drawer shows the policy and each Linear outcome.
 
 ### Voice commands (`control.*`)
 
-Eri drives runs through the same command service as the remotea page (`agent_control`); there is no second
+Dani drives runs through the same command service as the remotea page (`agent_control`); there is no second
 control path. The commands go through `domain.mutate` (personal tools, never offered to bots) and are
 in `VOICE_MUTATIONS`:
 
@@ -1475,7 +1475,7 @@ label: "task · host · branch · state"}], next}` (nothing proposed, sent or jo
 spoken yes still confirms only the newest (the older ones on the page, or after declining the newer). When exactly one
 run is meant, the result carries `recipient` (the same fields) and its `next` begins "Name the task, host and branch
 this affects when you tell the owner (<label>)": message proposals, stop, approve, plan review, answers (whose
-question or interview id already names one run, so they never need a choice) and confirms. Eri's tool descriptions
+question or interview id already names one run, so they never need a choice) and confirms. Dani's tool descriptions
 (`tool_catalog.RECIPIENT`) say to name the task, host and branch before acting and to ask on `needs_choice`.
 
 Every command passes the remotea gate (`REMOTEA_DISABLED` when off). The `control_*` tools and the `agents` catalog
@@ -1596,7 +1596,7 @@ summary job"), written by a small model (`run_summaries.py`).
 - **Surfaces.** `public_run` carries `summary`, `summary_at` and `summary_stale` (a line exists and a newer one is due).
   The run row (`RunsPanel.tsx` `RunRow`, on the remotea page and in the topbar Runs panel) shows the line under the
   state chip with a quiet "updating…" while `summary_stale`; the task-row chip (`RunButton.tsx`) uses it as its
-  tooltip. `control_status` gives each run `doing` and `doing_as_of`, so Eri can say "the agent is adding the parity
+  tooltip. `control_status` gives each run `doing` and `doing_as_of`, so Dani can say "the agent is adding the parity
   test". `agent_question` and `agent_stuck` pushes append "Latest: <summary>" to the body when there is one.
 
 Tests: `tests/test_run_summaries.py`; web `apps/web/src/run-anywhere.test.tsx` (`RunRow`, `RunButton`).
@@ -1674,7 +1674,7 @@ minutes, or "no finished runs yet". The coding agent's own usage is billed by it
 started_at, settled_at, items: [{task_id, run_id, error, retries}]}]`, `tasks` (the planner's facts per task), `excluded`
 and `planner`). Every change emits `agent.changed` with the swarm id.
 
-**Not yet.** Eri has no swarm tool (a start would need the two-phase confirmation of `control_start` for a whole batch);
+**Not yet.** Dani has no swarm tool (a start would need the two-phase confirmation of `control_start` for a whole batch);
 the planner cannot merge two tasks into one run (it can only put them in series); changed-file overlap uses the
 planner's predicted areas until remotea's `worktrees.report` lists changed files; the cost estimate does not cover the
 harness's own tokens.
@@ -1701,7 +1701,7 @@ session continues into execution, which is the classic run. The host side (remot
 planner. `agent_runs.plan_round` counts the reviews completed. `run.tool` / `run.model` always describe the session
 that owns the run now: the planner, then the worker after the handoff, so filters and the header keep working.
 
-**Starting.** `StartInput` (and Eri's `control.start`) gains `reviewer: {harness, model?} | null`, `worker: {harness,
+**Starting.** `StartInput` (and Dani's `control.start`) gains `reviewer: {harness, model?} | null`, `worker: {harness,
 model?} | null`, `rounds` (default 2, 1–10) and `approve_final` (default true); `harness` / `model` are the planner.
 A role's `model` defaults to `HARNESSES[harness]` (`opus`, `gpt-5.6-sol`); any id matching `MODEL` is accepted
 (`fable`, `gpt-6-astra`). Hyperplan is on when `reviewer` is set; a split worker when `worker` differs from the
@@ -1776,7 +1776,7 @@ queued is canceled; the run's own spawn, never a reviewer's, decides whether the
 **The final plan.** `needs_you(plan_approval)` shows the plan and the review history. `POST
 /remotea/runs/{id}/plan-review {action: "approve" | "revise", note?, expected_revision}` (the existing route; the
 proposals path is unchanged and refuses `action` elsewhere): `approve` → `begin_execution`; `revise` → `planning`
-with the note as a `plan_critique` prompt. Eri: `control_plan_review` with `action` (and `note`); `control_status`
+with the note as a `plan_critique` prompt. Dani: `control_plan_review` with `action` (and `note`); `control_status`
 lists `plan_approval {plan_revision, plan_round, title, criteria, reviews [{round, verdict, counts, summary}],
 next}` and `actor`.
 
@@ -1931,9 +1931,9 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 - `task_step` needs a verified run token or a key with `tasks:write`. The in-session tools refuse while
   remotea is off.
 
-### Two-phase control from Eri
+### Two-phase control from Dani
 
-`control.start` and `control.message` from Eri only propose: they store an `agent_pending_controls` row
+`control.start` and `control.message` from Dani only propose: they store an `agent_pending_controls` row
 (10-minute expiry) and nothing reaches the host. The owner confirms on the card in chat, on the remotea page
 (`GET /remotea/pending`, `POST /remotea/pending/{id}/confirm|decline`) or by saying yes: `control.confirm`
 works only from a later request by the same account whose own text is the owner's yes, for the newest
@@ -1948,12 +1948,12 @@ A proposed start resolves its target when proposed (read-only): when one resolve
 row's `arguments` and the summary names it ("… in jarvis"), and confirm starts there. When none does, the
 row is still created and the result says `needs_target: true` (with `task_id`) and lists `targets`: the
 saved candidates by `execution_target_id` and the advertised-but-unsaved ones by the key
-`host:<host_id>:<host_target>` (the same options the card's picker builds), so Eri asks "run it in jarvis
+`host:<host_id>:<host_target>` (the same options the card's picker builds), so Dani asks "run it in jarvis
 or remotea?" and confirms with `control.confirm {execution_target_id}`; the owner's short answer naming the
 chosen place counts as their yes. An advertised choice is saved first (`save_target`, for the task's
 nearest non-task record, else the task itself, as the picker defaults it), then the run starts there.
 `control_status` lists the same open proposals under `pending`. An offline server or a harness it cannot start is checked the same
-way and returned as `problems` for Eri to relay; neither blocks the proposal. `GET /remotea/pending` lists
+way and returned as `problems` for Dani to relay; neither blocks the proposal. `GET /remotea/pending` lists
 each start with that readiness (`needs_target`, the picker's `need` data, `target`, `problems`), and the
 card shows the picker in place of Confirm; picking saves the choice and confirms with
 `POST /remotea/pending/{id}/confirm {execution_target_id}` (owner-checked). A confirm refused with
@@ -2030,7 +2030,7 @@ the same rows, so after either redaction they show the marker and never the text
 | `agent_questions` `items`, `answers`, `detail` | the agent's questions, choices and the answers | a run's: deleted at the window; a session no run owns: 30 days once no longer open |
 | `agent_interviews` `questions`, `answers` | the interview form and answers | deleted at the window |
 | `agent_plan_reviews` `findings`, `questions`, `summary`, `resolutions` | hyperplan review rounds: the reviewer's findings and summary (or its turn text), the planner's answers; `token_hash`/`token_salt` of the reviewer token | deleted at the window and by the redact route; exported without the token columns |
-| `agent_pending_controls` `summary`, `arguments` | Eri's proposed start or message | marker at the window; the row is deleted 30 days after it expires (10-minute expiry) |
+| `agent_pending_controls` `summary`, `arguments` | Dani's proposed start or message | marker at the window; the row is deleted 30 days after it expires (10-minute expiry) |
 | `agent_action_receipts` `result` | a whole run response (history included) | 7 days; deleted at the window and by the redact route |
 | `notifications` `body` (`target.run_id`) | task title plus a question's text or a reason | marker at the window; the row follows the notification lifecycle |
 | `agent_sessions` title, prompts, excerpt, `summary` | the collector's session ledger (redacted on ingestion) | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns |

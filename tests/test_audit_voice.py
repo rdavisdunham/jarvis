@@ -175,7 +175,7 @@ async def test_needs_input_question_is_spoken_once_and_not_on_revision_bumps(con
 
 
 async def test_heard_question_does_not_capture_the_next_request(controller):
-    # Regression (2026-10-02): after Eri asked a question, every later spoken request was
+    # Regression (2026-10-02): after Dani asked a question, every later spoken request was
     # attached to it as the "answer", so new requests (e.g. Linear changes) never ran.
     c = controller
     work_id, _ = pending_question(c)

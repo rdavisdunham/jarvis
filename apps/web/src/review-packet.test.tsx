@@ -44,7 +44,7 @@ const question = { id: "q", question_id: "q-1", run_id: ID, generation: 1, statu
 afterEach(() => vi.unstubAllGlobals());
 
 describe("reviewPacket", () => {
-  it("reads criteria, tests, PR and questions into the sentence Eri says", () => {
+  it("reads criteria, tests, PR and questions into the sentence Dani says", () => {
     const packet = reviewPacket(detail({ questions: [question] }), NOW)!;
     expect(packet.text).toBe("2 of 3 criteria met; tests passed 4 min ago in a sandbox; PR #12 open; 1 open question");
     expect(packet.criteria.map(c => c.status)).toEqual(["met", "met", "unknown"]);
@@ -155,7 +155,7 @@ describe("attentionGroups", () => {
   it("orders groups by the next human action and leaves empty ones out", () => {
     const groups = attentionGroups(runs, pending, [host()]);
     expect(groups.map(g => [g.verb, g.count])).toEqual([
-      ["Confirm Eri's proposal", 1], ["Answer a question", 1], ["Review the plan", 1], ["Repair the host or setup", 1],
+      ["Confirm Dani's proposal", 1], ["Answer a question", 1], ["Review the plan", 1], ["Repair the host or setup", 1],
       ["Inspect the failed check", 1], ["Approve", 1], ["Resolve unmerged work", 1], ["Working", 1], ["Done", 1],
     ]);
     expect(groups.map(g => g.runs.map(r => r.id)).flat()).toEqual(["ask", "plan", "infra", "judge", "approve", "merge", "work", "done"]);

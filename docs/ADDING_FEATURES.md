@@ -51,8 +51,8 @@ job (pip-audit, npm audit, gitleaks).
 
 The page name is a value of the web `View` type, and the browser reports the current page to the
 backend on every `POST /api/v1/ui/sync` (`App.tsx`, `sendChat` awaits it before `POST /work`). The
-backend validates it, and Eri's site-control tools emit page names the browser validates in turn.
-Every list below must agree, or chat from the new page fails before Eri sees it.
+backend validates it, and Dani's site-control tools emit page names the browser validates in turn.
+Every list below must agree, or chat from the new page fails before Dani sees it.
 
 Web (`apps/web/src/`):
 
@@ -63,19 +63,19 @@ Web (`apps/web/src/`):
       `className="page-search"` if the page has no search.
 - [ ] `task-presets.ts` `initialView`: the `?view=` deep-link allowlist. Not type-checked; a missing
       name silently opens Today.
-- [ ] `site-actions.ts` `views`: the zod enum for Eri's site controls. It must equal
-      `ui_contracts.VIEWS`: Eri may name any page in `ui_show`/`ui_workspace`/`ui_search`, and a view
+- [ ] `site-actions.ts` `views`: the zod enum for Dani's site controls. It must equal
+      `ui_contracts.VIEWS`: Dani may name any page in `ui_show`/`ui_workspace`/`ui_search`, and a view
       missing here throws in `copilot.tsx` (`actionSchema.parse`). `remotea` was missing until the
       fix-remotea-wiring branch.
 - [ ] Lazy chunk: large pages go in `viewChunks` with `lazy()` + `<Suspense>` (as `Remotea` does).
 - [ ] Extra deep-link parameters (for example `?view=remotea&run=<id>`) are parsed inside the page
       (`remotea-model.ts` `linkedRun`, validated as a UUID). The URL sync block in `App.tsx`
       (`navigationUrl.searchParams…`) sets/deletes only the parameters it knows; add yours there if
-      back/forward should preserve it. In-app paths to the same place (a task row's Run, Eri's
+      back/forward should preserve it. In-app paths to the same place (a task row's Run, Dani's
       `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does:
       it opens the run in the shell's side panel (`RunPanel.tsx`, state in `remotea-context.tsx`) on
       whatever page is open; `?run=` is kept in the URL by that same sync block.
-- [ ] If Eri may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
+- [ ] If Dani may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
       list and an `else if (action.view === "…")` that fetches the record first) and the model map in
       `tools.py` `call_tool` (below).
 - [ ] Styling: a page stylesheet imported by the page component (`import "./remotea.css"`), using
@@ -89,7 +89,7 @@ Web (`apps/web/src/`):
 - [ ] PWA: `public/sw.js` caches nothing and only opens URLs starting with `/?`; nothing to change for
       a page. `public/manifest.webmanifest` needs no change. Bump `sw.js` `VERSION` when you change that file
       (Report a bug reports it).
-- [ ] Floating controls: the Eri launcher is bottom-right, Report a bug (`.bug-report-launcher`) bottom-left
+- [ ] Floating controls: the Dani launcher is bottom-right, Report a bug (`.bug-report-launcher`) bottom-left
       of the page area. Keep page controls that must stay reachable out of the bottom-left 64 px corner, or
       check them with `apps/web/e2e/bug-report.mjs`. Report a bug records page changes through `App.tsx`
       `recordNavigation`; nothing to add for a page.
@@ -114,7 +114,7 @@ Tests: `tests/test_drift_guards.py` (`test_web_pages_match_backend_views`,
 `apps/web/src/calendar-tasks.test.ts` (`initialView`).
 
 Verify: `pytest -q tests/test_drift_guards.py tests/test_ui_control.py` and
-`cd apps/web && npx vitest run && npx tsc -b`; then open the page and send Eri a chat message from it.
+`cd apps/web && npx vitest run && npx tsc -b`; then open the page and send Dani a chat message from it.
 
 ## 2. A new HTTP route
 
@@ -173,7 +173,7 @@ Scopes (`bot_access.py`):
 - [ ] `PRIVILEGED` if every use is a write check and viewers/shared workspaces must not hold it
       (today `agents:control`, `agents:session`; `agents:read` is not privileged).
 - [ ] `COMMAND_SCOPES` (domain command → scope) for direct commands; `READ_SCOPES` (read tool →
-      scope) for read tools. `tool_allowed()` uses both to filter Eri's registry for bot-queued work
+      scope) for read tools. `tool_allowed()` uses both to filter Dani's registry for bot-queued work
       (`external_service.py`, `registry()` filtered by `tool_allowed`).
 - [ ] `bot_access.create`: viewers are refused `:write`, `work:run` and `PRIVILEGED`; `schema:write`
       needs the owner; `PRIVILEGED` is refused in shared workspaces. Extend if the new scope needs a
@@ -219,9 +219,9 @@ Verify: `pytest -q tests/test_drift_guards.py tests/test_external_agents.py test
 `cd apps/web && npx vitest run src/BotSettings.test.tsx`, and
 `curl -s -H "Authorization: Bearer $KEY" https://<host>/api/v1/external/capabilities | jq '.tools[].name'`.
 
-## 4. A new Eri tool (chat and voice)
+## 4. A new Dani tool (chat and voice)
 
-Eri's tool list is `tools.registry()`: every `READ_TOOLS` entry plus every command in
+Dani's tool list is `tools.registry()`: every `READ_TOOLS` entry plus every command in
 `VOICE_MUTATIONS` (name `a.b` becomes tool `a_b`). Chat (`conversation.py`), the voice controller
 (`voice.py`) and queued work (`work_runner.py`) each wrap it in `tool_policy.remotea_tools(...)`;
 GPT-Live (`live_voice.py`) delegates to queued work.
@@ -230,7 +230,7 @@ GPT-Live (`live_voice.py`) delegates to queued work.
       `call_tool`. Validate any browser-bound arguments with `jsonschema` the way the `ui_*` branch does.
       Return plain JSON: timestamps as ISO strings (`agent_sessions.stamp`), never `datetime`, `UUID` or model
       objects. HTTP routes and MCP pass results through FastAPI's `jsonable_encoder`, so a stray `datetime`
-      only surfaced when Eri called the tool in chat: `json.dumps` of the result raised and the whole request
+      only surfaced when Dani called the tool in chat: `json.dumps` of the result raised and the whole request
       finished `failed` ("The task model could not finish this request", `session_search`, 2026-10-29). The
       runners now encode through `tools.tool_json`, but the fix belongs in the tool.
 - [ ] Mutation: add the domain command (section 5), then add its name to `VOICE_MUTATIONS` (many are
@@ -250,7 +250,7 @@ GPT-Live (`live_voice.py`) delegates to queued work.
 - [ ] Shared workspaces (`access.py`): personal-only tools must match `tool_access`'s underscore
       prefixes (`review_`, `memory_`, `control_`, …) and, for commands, `PERSONAL_TOOLS` (dotted).
 - [ ] Bot exposure: a tool reaches bot-queued work only if `bot_access.READ_SCOPES` /
-      `COMMAND_SCOPES` maps it; leave it out to keep it Eri-only.
+      `COMMAND_SCOPES` maps it; leave it out to keep it Dani-only.
 - [ ] Consequential actions (control.start/control.message) are two-phase: `agent_control.propose`
       writes an `AgentPendingControl` row and returns `pending_confirmation`; only `control_confirm`
       after the owner's own yes (or the remotea page's Confirm) executes it. Reuse this for new
@@ -291,7 +291,7 @@ Verify: `pytest -q tests/test_tool_refinement.py tests/test_drift_guards.py` and
       know the kind. `journal` skips `quicksort.` and `control.` on purpose.
 - [ ] Access: `access.command_access` runs first. Viewers are refused; `PERSONAL_TOOLS` prefixes are
       refused in shared workspaces; bots go through `bot_access.check_command` (`COMMAND_SCOPES`).
-- [ ] Exposure: Eri (`VOICE_MUTATIONS`, section 4), bots (`COMMAND_SCOPES`, section 3), the browser
+- [ ] Exposure: Dani (`VOICE_MUTATIONS`, section 4), bots (`COMMAND_SCOPES`, section 3), the browser
       (`POST /api/v1/commands` with `command_id`), and the surface inventory (a new command appears in
       `commands`; refresh it).
 
@@ -386,12 +386,12 @@ Change feed (SSE `GET /api/v1/events`):
 
 Two patterns exist; pick deliberately.
 
-- Account preference Eri may change: default in `domain.preferences()`, a field on
-  `domain.SettingsUpdate` (validated), written by the `settings.update` command (which Eri has via
+- Account preference Dani may change: default in `domain.preferences()`, a field on
+  `domain.SettingsUpdate` (validated), written by the `settings.update` command (which Dani has via
   `VOICE_MUTATIONS`). Shared workspaces override some values in `access.shared_preferences`. The web
   reads `boot.preferences` (`types.ts` `Preferences`) and edits through the `settings.update` command
   (for example `PlannerPreferences.tsx` `NotificationPreferences`).
-- Owner-only gate Eri must not flip (remotea): a dedicated route writes `OwnerSettings.values`
+- Owner-only gate Dani must not flip (remotea): a dedicated route writes `OwnerSettings.values`
   (`remotea_routes.set_enabled` for `remotea_enabled`, `remotea_auto_complete`, `agent_quiet_bypass`,
   and `agent_retention_days` via `POST /remotea/retention`), **not** `SettingsUpdate`. Readers:
   `agent_link.enabled` / `gate`, `run_coordinator.auto_complete` / `quiet_bypass`,
@@ -403,7 +403,7 @@ Checklist:
 - [ ] Every surface that the gate hides: web nav (`remoteaNav` shown only when
       `boot.preferences.remotea_enabled`), page body, the Run controls (`RunButton.tsx` on task rows,
       `Remotea.tsx` `RunTask` in the detail dialogs, the topbar Runs button and `RunPanel.tsx`; all read
-      `remotea-context.tsx`, which App feeds from the same preference), backend routes (`gated()`), Eri tools
+      `remotea-context.tsx`, which App feeds from the same preference), backend routes (`gated()`), Dani tools
       (`tool_policy.remotea_tools`), the dream (`agent_autolink.py` checks `remotea_enabled`).
 - [ ] Emit `settings.changed` after writing so other tabs reload.
 - [ ] Settings page placement: `settings-sections.ts` (8 sections). A new section must also be added

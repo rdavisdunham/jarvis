@@ -37,7 +37,7 @@ export function MemoryReviewCard({
             aria-label="Correct fact"
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            placeholder="Write the complete fact Eri should remember."
+            placeholder="Write the complete fact Dani should remember."
             maxLength={20000}
             rows={2}
             required

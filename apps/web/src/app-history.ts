@@ -29,7 +29,7 @@ export function useAppHistory<T>({enabled, snapshot, page, layers, url, restore,
       if (!marker || marker.session !== state.session || !state.entries.has(marker.index)) return;
       if (state.rollback) {state.rollback = false; state.restoring = false; return;}
       if (state.consuming === marker.index) {
-        // The UI already closed the layer. Do not replay old filters over an Eri navigation.
+        // The UI already closed the layer. Do not replay old filters over an Dani navigation.
         state.consuming = null; state.index = marker.index;
         const value = latest.current;
         state.entries.set(state.index, {snapshot: value.snapshot, page: value.page, layers: [...value.layers],

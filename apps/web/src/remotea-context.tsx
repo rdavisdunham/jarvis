@@ -38,7 +38,7 @@ export type RemoteaActions = {
   closeStart: () => void;
   openSwarm: (projectTaskId: string) => void;
   closeSwarm: () => void;
-  /** Confirm or decline one of Eri's proposals; a confirmed start returns its run. */
+  /** Confirm or decline one of Dani's proposals; a confirmed start returns its run. */
   decide: (id: string, decision: "confirm" | "decline", target?: string) => Promise<Run | null>;
   cancelPicker: (id: string) => void;
 };
@@ -62,7 +62,7 @@ function writeStored(value: string | null) {
 }
 const message = (e: unknown) => (e as Error).message || "Something went wrong.";
 
-/** One place that knows remotea's state for the whole app: the server, active runs, Eri's open proposals and which
+/** One place that knows remotea's state for the whole app: the server, active runs, Dani's open proposals and which
  * run the side panel shows. Rows, the Runs button, the chat drawer and the remotea page read it; nothing else polls. */
 export function RemoteaProvider({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useState(false);

@@ -23,7 +23,7 @@ export function UsageReport({ report }: { report: CostReport }) {
         <thead><tr><th scope="col">Feature</th><th scope="col">7 days</th><th scope="col">30 days</th></tr></thead>
         <tbody>{report.features.map(row => <tr key={row.id}><th scope="row">{row.label}</th><td>{costLabel(row.last_7_days_usd)}</td><td>{costLabel(row.last_30_days_usd)}</td></tr>)}</tbody>
       </table>
-    </div> : <p className="footnote">No model usage recorded yet. Costs appear as Eri works.</p>}
+    </div> : <p className="footnote">No model usage recorded yet. Costs appear as Dani works.</p>}
     <p className="footnote">
       {report.tracking_since ? "Continuous tracking since " + new Date(report.tracking_since).toLocaleDateString() + ". " : ""}
       Estimates from recorded model usage; periods when tracking was off are missing.

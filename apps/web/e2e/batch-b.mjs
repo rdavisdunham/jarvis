@@ -27,7 +27,7 @@ try{
  await expect(page.getByLabel("Record content")).toHaveValue("My retained draft");await page.getByRole("button",{name:"Compare saved version"}).click();await expect(page.getByRole("alert")).toContainText("Other writer");
  await page.getByRole("button",{name:"Reapply my change"}).click();await expect.poll(async()=>(await request("/structure/records/"+task.id)).body).toBe("My retained draft");
  await ui("ui_workspace",{view:"organize",layout:"tree"});await expect(page.getByRole("dialog")).toHaveCount(0);
- // The native task detail card flushes its nested annotation editor before Eri navigates.
+ // The native task detail card flushes its nested annotation editor before Dani navigates.
  await page.goto(base+"?view=tasks&tab=all&record=task:"+task.task_id+"&workspace=personal");
  await expect(page.getByRole("dialog",{name:"Task details"})).toBeVisible();
  await page.getByText("Eridani-only notes",{exact:true}).click();

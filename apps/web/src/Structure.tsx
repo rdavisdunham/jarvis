@@ -84,7 +84,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
   useEffect(()=>{if(homeFilter!==undefined)setParent(homeFilter);},[homeFilter]);
   useEffect(()=>{if(layoutFilter)setLayout(layoutFilter);},[layoutFilter]);
   useEffect(()=>{if(groupFilter)setGroup(groupFilter==="project"?"parent":groupFilter);},[groupFilter]);
-  // A sort chosen elsewhere (Eri, a saved view) applies once it changes; the page keeps its own default until then.
+  // A sort chosen elsewhere (Dani, a saved view) applies once it changes; the page keeps its own default until then.
   const firstSort=useRef(true);
   useEffect(()=>{if(firstSort.current){firstSort.current=false;return;}if(sortFilter)setSort(sortFilter==="updated"?"default":sortFilter as Sort);},[sortFilter]);
   useEffect(()=>{onContext?.({section:browseSection,type_id:typeId,parent_id:parent,layout,group,status,archived:Number(archived),design:Number(design),design_dirty:Number(design&&designDirty),field:filterField,value:filterValue,record_id:selected?.id??null,schema_revision:schema?.revision??0});},[browseSection,typeId,parent,layout,group,status,archived,design,designDirty,filterField,filterValue,selected?.id,schema?.revision,onContext]);

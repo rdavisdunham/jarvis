@@ -546,7 +546,7 @@
   {
     "id": "wake_shutdown",
     "title": "Wake words and voice shutdown",
-    "description": "Hey Eri/Eri detection, 120-second quiet timeout, natural goodbye and wake-up recovery.",
+    "description": "Hey Dani/Dani detection, 120-second quiet timeout, natural goodbye and wake-up recovery.",
     "order": 34,
     "target_cases": 33,
     "source_files": [
@@ -715,7 +715,7 @@
   {
     "id": "agent_control",
     "title": "Agent control (remotea)",
-    "description": "The remotea link, runs started from tasks, two-phase control from Eri, questions, the completion gate and run notifications.",
+    "description": "The remotea link, runs started from tasks, two-phase control from Dani, questions, the completion gate and run notifications.",
     "order": 44,
     "target_cases": 31,
     "source_files": [

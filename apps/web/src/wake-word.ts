@@ -1,10 +1,8 @@
 import { startRecognition, validatesAudioTrack } from "./voice-recognition";
+import { WAKE_HINTS, wakeRequest } from "./assistant-identity";
+export { wakeRequest } from "./assistant-identity";
 // Foreground browser speech service. Detection hints never execute a task.
 export const isWakePhrase = (text: string) => wakeRequest(text) === "";
-export function wakeRequest(text: string): string | null {
-  const match = text.trim().match(/^(?:(?:hey|hi|okay|ok)[,\s]+)?(?:eri|erie|airy|eridani)(?=$|[.!?,\s])(?:[.!?,\s]*)(.*)$/i);
-  return match ? match[1].trim() : null;
-}
 export type Recognition = {
   continuous:boolean; interimResults:boolean; maxAlternatives:number; lang:string;
   processLocally?:boolean; phrases?:unknown[];
@@ -39,7 +37,7 @@ export class WakeWord {
     // Bias is optional and must not prevent the existing browser-service path.
     const Phrase = (window as any).SpeechRecognitionPhrase;
     if (this.bias && "phrases" in recognition && Phrase) {
-      try { recognition.phrases = [new Phrase("Eri",5), new Phrase("Hey Eri",5)]; } catch { /* optional */ }
+      try { recognition.phrases = WAKE_HINTS.map(phrase => new Phrase(phrase,5)); } catch { /* optional */ }
     }
     recognition.onstart = () => { if (this.recognition === recognition && this.enabled) this.options.started?.(); };
     recognition.onresult = event => {

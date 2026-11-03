@@ -380,7 +380,7 @@ def record_titles(db, owner, ids):
 
 def stamp(value):
     """A timestamp as the wire already carries it (ISO 8601). The result of public() is also a tool result that
-    Eri's runners json.dumps as is; a datetime there failed the whole chat turn (2026-10-29)."""
+    Dani's runners json.dumps as is; a datetime there failed the whole chat turn (2026-10-29)."""
     return value.isoformat() if value else None
 
 

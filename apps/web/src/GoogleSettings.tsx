@@ -121,7 +121,7 @@ export function GoogleSettings({
   const selectedCount = data ? data.calendars.filter(c => c.selected && c.available).length : 0;
   return (
     <SettingsGroup className="google-settings" title="Google"
-      description="Sign in with your account and bring your calendars into Eri’s view of your day.">
+      description="Sign in with your account and bring your calendars into Dani’s view of your day.">
       {error && (
         <p className="error-banner" role="alert">
           <span>{error}</span>
@@ -183,7 +183,7 @@ export function GoogleSettings({
           {data.calendar_enabled && (
             <SettingRow label="Calendar editing" hint={data.calendar_write_enabled
               ? "Create, edit and delete personal events on calendars your Google account can write to."
-              : "Allow Eri and the website to save changes to Google Calendar."}>
+              : "Allow Dani and the website to save changes to Google Calendar."}>
               <button
                 className="btn"
                 disabled={!data.configured || busy || voiceActive}
@@ -297,7 +297,7 @@ export function GoogleSettings({
               {disconnecting && (
                 <div className="settings-confirm">
                   <p>
-                    Remove synced events from Eri and revoke Calendar access?
+                    Remove synced events from Dani and revoke Calendar access?
                     Your Google events stay in Google.
                   </p>
                   <button

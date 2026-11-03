@@ -355,9 +355,9 @@ def work_finished(db, row, status, message):
             owner_id=row.owner_id,
             dedup_key=key,
             category=category,
-            title="Eri needs your answer"
+            title="Dani needs your answer"
             if category == "question"
-            else "Eri could not finish",
+            else "Dani could not finish",
             body=message[:2000],
             scheduled_at=instant,
             eligible_at=instant,

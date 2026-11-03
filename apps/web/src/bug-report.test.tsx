@@ -181,7 +181,7 @@ describe("Report a bug", () => {
     expect(isReportShortcut({ altKey: false, shiftKey: true, ctrlKey: true, metaKey: false, code: "KeyB" })).toBe(false);
   });
 
-  it("is mounted by the shell on every page, beside Eri's launcher", () => {
+  it("is mounted by the shell on every page, beside Dani's launcher", () => {
     expect(appSource).toMatch(/<BugReportButton [\s\S]*?\/>\s*<ChatLauncher /);
     expect(dataUrlBytes("data:image/jpeg;base64,AAAA")).toBe(3);
   });

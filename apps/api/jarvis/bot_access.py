@@ -25,7 +25,7 @@ SCOPES = {
     "organization:write": "Create and edit organization",
     "notes:read": "Read notes",
     "notes:write": "Create and edit notes",
-    "work:run": "Ask Eri to work using this key's permitted records and tools",
+    "work:run": "Ask Dani to work using this key's permitted records and tools",
     "sessions:read": "Read the agent session ledger: where coding and chat work happened",
     "sessions:write": "Report agent sessions and file them under issues or records",
     "agents:control": "Link a remotea server: report live sessions, turns and status (remotea only)",

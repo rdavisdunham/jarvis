@@ -652,7 +652,7 @@ def test_a_task_with_a_frozen_plan_still_plans_under_hyperplan(roles_host):
     assert state(result["id"]) == ("planning", "started")
 
 
-# ---------------------------------------------------------------- Eri and MCP
+# ---------------------------------------------------------------- Dani and MCP
 
 
 def test_eri_proposes_and_confirms_a_hyperplan_start(roles_host):

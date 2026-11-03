@@ -134,7 +134,7 @@ describe("text sent to the agent (stage F)", () => {
       { at: "2026-10-28T10:02:00Z", event: "sent", text: "Also docs.", actor: { kind: "human" } },
     ] }));
     expect(entries.map(e => [e.title, e.detail])).toEqual([
-      ["Sent by Eri, confirmed by you", "Change course."], ["Sent by you", "Also docs."]]);
+      ["Sent by Dani, confirmed by you", "Change course."], ["Sent by you", "Also docs."]]);
   });
 });
 
