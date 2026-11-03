@@ -151,6 +151,7 @@ try {
   await event(run, "consume"); await refresh();
   await expect.poll(async () => (await api(`/remotea/actions/${queued.id}`)).status).toBe("delivered");
   await expect(view.locator(".remotea-composer .run-delivery")).toContainText("Delivered to the agent");
+  await expect(composer()).toHaveValue("");
   expect((await readRun(run)).commands.filter(c => c.text === "Retain the offline benchmark instruction.")).toHaveLength(1);
   mark("offline_outbox_reload_and_same_action_delivery", { action_id: queued.id });
 
@@ -160,6 +161,24 @@ try {
   await expect(view.locator(".run-activity")).toBeVisible();
   await page.screenshot({ path: resolve(artifacts, "mobile-reduced-motion.png"), fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await context.setOffline(true);
+  await composer().fill("A second offline instruction.");
+  await view.getByRole("button", { name: "Message", exact: true }).click();
+  await expect(view.getByText("Queued on this device · waiting for connection", { exact: false })).toBeVisible();
+  const secondQueued = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith("eri-remotea-actions-v1:")).flatMap(([, value]) => JSON.parse(value)).find(r => r.body.text === "A second offline instruction."));
+  await composer().fill("A newer unsent draft must stay here.");
+  await page.route("**/api/v1/remotea/actions/**", route => route.abort("failed"));
+  await context.setOffline(false);
+  await expect.poll(() => page.evaluate(() => fetch("/api/v1/bootstrap").then(response => response.ok).catch(() => false))).toBeTruthy();
+  await page.reload();
+  await expect(composer()).toHaveValue("A newer unsent draft must stay here.");
+  await page.unroute("**/api/v1/remotea/actions/**");
+  await page.evaluate(() => dispatchEvent(new Event("online")));
+  await expect.poll(async () => { try { return (await api(`/remotea/actions/${secondQueued.id}`)).action_id; } catch { return null; } }).toBe(secondQueued.id);
+  await event(run, "consume"); await refresh();
+  await expect.poll(async () => (await api(`/remotea/actions/${secondQueued.id}`)).status).toBe("delivered");
+  await expect(composer()).toHaveValue("A newer unsent draft must stay here.");
+  mark("acknowledgement_preserves_newer_draft_after_reload", { action_id: secondQueued.id });
   await view.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(view.locator(".run-activity")).toHaveText("Paused");
   await view.getByRole("button", { name: "Resume", exact: true }).click();

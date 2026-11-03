@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { actionReceipts, api, durableScope, durableStorageKey, postAction, subscribeActions, type ActionReceipt } from "./api";
+import { actionReceipts, api, durableScope, postAction, subscribeActions, type ActionReceipt, type SubmittedDraft } from "./api";
+import { readDraft, storeDraft, subscribeDrafts, writeDraft } from "./run-drafts";
 import "./runs.css";
 import { isSettled, workflowStage, workflowAttention, type Run, type RunDetail } from "./remotea-model";
 
 export type RunDecision = { id: string; kind: "question" | "interview" | "control" | "plan_approval" | "plan_review" | "final_acceptance"; run_id: string | null; revision: number; status: string; payload: Record<string, unknown>; actions: string[]; generation: number; plan_revision: number };
-export function respondDecision<T>(decision: RunDecision, action: string, values: Record<string, unknown> = {}) {
-  return postAction<T>(`/remotea/decisions/${encodeURIComponent(decision.id)}/respond`, { expected_revision: decision.revision, action, ...values });
+export function respondDecision<T>(decision: RunDecision, action: string, values: Record<string, unknown> = {}, options?: { draft?: SubmittedDraft }) {
+  return postAction<T>(`/remotea/decisions/${encodeURIComponent(decision.id)}/respond`, { expected_revision: decision.revision, action, ...values }, options);
 }
 export function decisionFor(run: RunDetail, kind: RunDecision["kind"], id?: string) {
   return run.decisions?.find(d => d.kind === kind && (!id || d.id === id) && ["open", "pending"].includes(d.status));
@@ -30,43 +31,7 @@ export function DecisionCard({ title, task, agent, reason, children, receipt, cl
   </section>;
 }
 
-type DraftRecord<T> = { value: T; dirty: boolean; revision: number };
-const DRAFT_PREFIX = "eri-draft:";
-const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const memoryDrafts = new Map<string, DraftRecord<unknown>>();
-const draftSaving = new Set<string>();
-function readDraft<T>(key: string, initial: T): DraftRecord<T> {
-  try {
-    const storageKey = durableStorageKey(DRAFT_PREFIX);
-    const stored = storageKey ? localStorage.getItem(storageKey + ":" + key) : null;
-    if (stored === null) return { value: initial, dirty: false, revision: 0 };
-    const parsed = JSON.parse(stored);
-    return parsed && typeof parsed === "object" && "dirty" in parsed && "value" in parsed ? parsed : { value: parsed, dirty: true, revision: 0 };
-  } catch { return (memoryDrafts.get((durableScope() ?? "unbound") + ":" + key) as DraftRecord<T> | undefined) ?? { value: initial, dirty: false, revision: 0 }; }
-}
-function storeDraft<T>(key: string, record: DraftRecord<T>) {
-  memoryDrafts.set((durableScope() ?? "unbound") + ":" + key, record);
-  try { const storageKey = durableStorageKey(DRAFT_PREFIX); if (storageKey) localStorage.setItem(storageKey + ":" + key, JSON.stringify(record)); } catch { /* Editing remains available in memory. */ }
-}
-async function saveDraftKey(key: string) {
-  const scope = durableScope();
-  if (!scope) return;
-  const record = readDraft<unknown>(key, null);
-  if (!record.dirty || draftSaving.has(key)) return;
-  draftSaving.add(key);
-  try {
-    const saved = await api<{ revision: number }>(`/remotea/drafts/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ value: record.value }) });
-    if (durableScope() !== scope) return;
-    const latest = readDraft<unknown>(key, null);
-    if (JSON.stringify(latest.value) === JSON.stringify(record.value)) storeDraft(key, { ...latest, dirty: false, revision: saved.revision });
-  } catch { /* Dirty local copies are retried by the existing run provider after reconnection. */ }
-  finally { draftSaving.delete(key); }
-}
-export async function flushDrafts() {
-  const prefix = durableStorageKey(DRAFT_PREFIX);
-  if (!prefix) return;
-  try { await Promise.all(Object.keys(localStorage).filter(key => key.startsWith(prefix + ":")).map(key => saveDraftKey(key.slice(prefix.length + 1)))); } catch { /* Browser storage can be unavailable. */ }
-}
+export { flushDrafts, submittedDraft } from "./run-drafts";
 export function useRunDraft<T>(key: string, initial: T): [T, (value: T | ((current: T) => T)) => void] {
   const [draft, setDraft] = useState<T>(() => readDraft(key, initial).value);
   const currentKey = useRef(key), edited = useRef(false);
@@ -75,24 +40,22 @@ export function useRunDraft<T>(key: string, initial: T): [T, (value: T | ((curre
     const local = readDraft(key, initial); setDraft(local.value);
     const scope = durableScope();
     let live = true;
+    const unsubscribe = subscribeDrafts((changedKey, changedScope) => {
+      if (live && changedKey === key && changedScope === scope) setDraft(readDraft(key, initial).value);
+    });
     void api<{ value: T | null; revision: number }>(`/remotea/drafts/${encodeURIComponent(key)}`).then(result => {
       if (!live || durableScope() !== scope || edited.current || readDraft(key, initial).dirty) return;
-      const value = result.value ?? initial;
-      storeDraft(key, { value, dirty: false, revision: result.revision }); setDraft(value);
+      const current = readDraft(key, initial), value = result.value ?? initial;
+      storeDraft(key, { value, dirty: false, revision: result.revision,
+        edit_id: JSON.stringify(value) === JSON.stringify(current.value) ? current.edit_id : crypto.randomUUID() });
     }).catch(() => {});
-    return () => { live = false; };
+    return () => { live = false; unsubscribe(); };
   }, [key]);
   const update = (value: T | ((current: T) => T)) => {
     edited.current = true;
-    setDraft(current => {
-      const next = typeof value === "function" ? (value as (current: T) => T)(current) : value;
-      const draftKey = currentKey.current;
-      storeDraft(draftKey, { ...readDraft(draftKey, initial), value: next, dirty: true });
-      clearTimeout(draftTimers.get(draftKey));
-      // The timer belongs to the draft, so navigation cannot cancel its server save.
-      draftTimers.set(draftKey, setTimeout(() => { draftTimers.delete(draftKey); void saveDraftKey(draftKey); }, 600));
-      return next;
-    });
+    const current = readDraft(key, initial).value;
+    const next = typeof value === "function" ? (value as (current: T) => T)(current) : value;
+    writeDraft(currentKey.current, next);
   };
   return [draft, update];
 }

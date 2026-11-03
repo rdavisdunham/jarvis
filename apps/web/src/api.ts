@@ -96,7 +96,8 @@ export function post<T>(url: string, data: unknown = {}) {
   return api<T>(url, { method: "POST", body: JSON.stringify(data) });
 }
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-export type ActionReceipt = { id: string; url: string; body: Record<string, unknown>; status: "queued" | "saved" | "delivered" | "applied" | "uncertain" | "rejected"; error?: string; updatedAt: string; retention?: "tab"; terminal?: boolean };
+export type SubmittedDraft = { scope: string; key: string; edit_id: string };
+export type ActionReceipt = { id: string; url: string; body: Record<string, unknown>; status: "queued" | "saved" | "delivered" | "applied" | "uncertain" | "rejected"; error?: string; updatedAt: string; retention?: "tab"; terminal?: boolean; draft?: SubmittedDraft };
 const ACTION_STORAGE = "eri-remotea-actions-v1";
 let actionCache: ActionReceipt[] | null = null;
 const actionListeners = new Set<() => void>();
@@ -123,14 +124,15 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 /** An unresolved intent keeps its ID across automatic retries, manual retries and reloads. */
-export async function postAction<T>(url: string, data: Record<string, unknown> = {}, { retries = 2, delayMs = 500 }: { retries?: number; delayMs?: number } = {}): Promise<T> {
+export async function postAction<T>(url: string, data: Record<string, unknown> = {}, { retries = 2, delayMs = 500, draft }: { retries?: number; delayMs?: number; draft?: SubmittedDraft } = {}): Promise<T> {
   const scope = durableScope();
   const supplied = typeof data.action_id === "string" ? data.action_id : null;
   const intent = { ...data }; delete intent.action_id;
-  const previous = actionReceipts().find(x => x.url === url && ["queued", "uncertain"].includes(x.status) && canonical(Object.fromEntries(Object.entries(x.body).filter(([k]) => k !== "action_id"))) === canonical(intent));
+  const previous = actionReceipts().find(x => x.url === url && ["queued", "uncertain"].includes(x.status) && (!draft || (x.draft?.scope === draft.scope && x.draft?.key === draft.key && x.draft?.edit_id === draft.edit_id)) && canonical(Object.fromEntries(Object.entries(x.body).filter(([k]) => k !== "action_id"))) === canonical(intent));
   const id = supplied ?? previous?.id ?? crypto.randomUUID();
   const body = { ...intent, action_id: id };
-  const receipt: ActionReceipt = { id, url, body, status: previous?.status ?? "queued", updatedAt: new Date().toISOString() };
+  const existing = actionReceipts().find(x => x.id === id);
+  const receipt: ActionReceipt = { id, url, body, draft: existing?.draft ?? draft, status: previous?.status ?? "queued", updatedAt: new Date().toISOString() };
   saveAction(receipt);
   for (let attempt = 0; ; attempt++) {
     try {

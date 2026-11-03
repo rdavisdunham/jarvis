@@ -16,7 +16,7 @@ import {
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import { postAction } from "./api";
-import { DecisionCard, DeliveryReceipt, RunActivity, approvalShortcut, decisionFor, respondDecision, useReceipts, useRunDraft, workflowAttention, workflowStage } from "./RunWorkflow";
+import { DecisionCard, DeliveryReceipt, RunActivity, submittedDraft, approvalShortcut, decisionFor, respondDecision, useReceipts, useRunDraft, workflowAttention, workflowStage } from "./RunWorkflow";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { SwarmList } from "./Swarm";
@@ -702,7 +702,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     if (!action) return;
     setBusy(what); setError(""); setNotice("");
     // Routes with a receipt get one action_id and a retry after a lost response; Verify now has no receipt, so no retry.
-    try { await (what === "verify" ? post(action.url, action.body) : postAction(action.url, action.body)); if (what === "message" || what === "steer") setText(""); refresh(); }
+    try { await (what === "verify" ? post(action.url, action.body) : postAction(action.url, action.body, { draft: what === "message" || what === "steer" ? submittedDraft("composer:" + id) : undefined })); refresh(); }
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
@@ -722,7 +722,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     const primary = approvalShortcut(run, text);
     if (primary) {
       setBusy("decision"); setError("");
-      try { await respondDecision(primary.decision, primary.action, primary.values); setText(""); refresh(); }
+      try { await respondDecision(primary.decision, primary.action, primary.values, { draft: submittedDraft("composer:" + id) }); refresh(); }
       catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
       finally { setBusy(""); }
       return;
