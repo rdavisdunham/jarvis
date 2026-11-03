@@ -67,3 +67,17 @@ it("unbinds replay when another tab logs out or changes account", async () => {
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
   await client.flushActions(); expect(fetch).not.toHaveBeenCalled();
 });
+
+it("keeps a newer queued action visible when older receipts are polled", async () => {
+  const client = await import("./api"); client.setDurableScope("owner-a:personal");
+  vi.stubGlobal("fetch", async () => response({}));
+  await client.postAction("/remotea/runs/r/first", {});
+  const first = client.actionReceipts()[0].id;
+  vi.stubGlobal("navigator", { onLine: false });
+  await expect(client.postAction("/remotea/runs/r/message", { text: "Queued later" }, { retries: 0 })).rejects.toMatchObject({ code: "NETWORK" });
+  const queued = client.actionReceipts().at(-1)!.id;
+  vi.stubGlobal("navigator", { onLine: true });
+  vi.stubGlobal("fetch", async (url: string) => { if (url.endsWith(first)) return response({ status: "saved", terminal: true }); throw new TypeError("receipt temporarily unreachable"); });
+  await client.flushActions();
+  expect(client.actionReceipts().at(-1)).toMatchObject({ id: queued, status: "queued" });
+});

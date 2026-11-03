@@ -141,6 +141,8 @@ export type RunState =
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
   execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani";
+  pause_reason?: "permission_denied" | "receipt_uncertain" | null;
+  host_attention?: { kind: string; tool?: string; reason?: string; action?: unknown; question_id?: string } | null;
   stage?: string; attention?: "none" | "decision" | "paused" | "error"; connectivity?: "online" | "offline"; paused?: boolean;
   activity?: { kind: string; label?: string; at: string } | null; decisions?: RunDecision[];
   id: string; task: { id: string; title: string; status: string } | null; state: RunState; state_revision: number;
@@ -413,6 +415,8 @@ export function workflowStage(run: Run): string {
 }
 export function workflowAttention(run: Run): string | null {
   if (run.controller === "terminal") return "Terminal has control";
+  if (run.pause_reason === "permission_denied") return "Permission needs review";
+  if (run.pause_reason === "receipt_uncertain") return "Delivery unconfirmed";
   if (run.paused || run.attention === "paused") return "Paused";
   if (run.attention === "error") return "Needs attention";
   if (run.attention === "decision" || ["needs_you", "waiting_answer", "awaiting_approval"].includes(run.state)) return run.state_reason === "plan_approval" || run.state === "awaiting_approval" ? "Needs your approval" : "Waiting for you";

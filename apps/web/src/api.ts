@@ -109,7 +109,9 @@ export function actionReceipts(): ActionReceipt[] {
 }
 export function subscribeActions(listener: () => void) { actionListeners.add(listener); return () => { actionListeners.delete(listener); }; }
 function saveAction(receipt: ActionReceipt) {
-  const all = [...actionReceipts().filter(x => x.id !== receipt.id), receipt];
+  const all = [...actionReceipts()];
+  const existing = all.findIndex(x => x.id === receipt.id);
+  if (existing < 0) all.push(receipt); else all[existing] = receipt;
   const settled = new Set(all.filter(x => ["delivered", "applied", "rejected"].includes(x.status)).slice(-100).map(x => x.id));
   actionCache = all.filter(x => !["delivered", "applied", "rejected"].includes(x.status) || settled.has(x.id));
   try { const key = durableStorageKey(ACTION_STORAGE); if (key) localStorage.setItem(key, JSON.stringify(actionCache)); else throw new Error("Authentication scope unavailable"); } catch { actionCache = actionCache.map(x => x.id === receipt.id ? { ...x, retention: "tab" } : x); }

@@ -33,6 +33,8 @@ it("animates only fresh reported work and keeps waiting/reconnection separate", 
   expect(activityStatus({ ...active, connectivity: "offline" }, now)).toEqual({ label: "Reconnecting…", animate: false });
   expect(activityStatus(active, now + 100_000)).toEqual({ label: "Activity unconfirmed", animate: false });
   expect(activityStatus(run(), now).animate).toBe(false);
+  expect(activityStatus({ ...active, paused: true, pause_reason: "receipt_uncertain" }, now)).toEqual({ label: "Delivery unconfirmed", animate: false });
+  expect(activityStatus({ ...active, paused: true, pause_reason: "permission_denied" }, now)).toEqual({ label: "Permission needs review", animate: false });
   expect(renderToStaticMarkup(<RunActivity run={active} now={now}/>)).toContain('aria-live="polite"');
 });
 

@@ -672,7 +672,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const refresh = useCallback(() => {
     void latestRun(requests.current!, id, signal => api<RunDetail>(`/remotea/runs/${id}`, { signal })).then(result => {
       if (!result) return;
-      if ("run" in result) { setRun(result.run); setError(""); } else setError(message(result.error));
+      if ("run" in result) { setRun(current => current?.id === result.run.id && current.state_revision > result.run.state_revision ? current : result.run); setError(""); } else setError(message(result.error));
     });
   }, [id]);
   useEffect(() => { stuck.current = true; setEarlier(null); refresh(); return () => requests.current?.cancel(); }, [refresh]);
@@ -709,7 +709,11 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   const lifecycle = async (action: "pause" | "resume" | "cancel") => {
     if (!run || !bound) return;
     setBusy(action); setError("");
-    try { await postAction(`/remotea/runs/${run.id}/${action}`, { expected_revision: run.state_revision }); refresh(); }
+    try {
+      const saved = await postAction<RunDetail>(`/remotea/runs/${run.id}/${action}`, action === "cancel" ? {} : { expected_revision: run.state_revision });
+      if (saved.id === id && Array.isArray(saved.questions) && Array.isArray(saved.history)) setRun(current => current?.id === saved.id && current.state_revision > saved.state_revision ? current : saved);
+      refresh();
+    }
     catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
     finally { setBusy(""); }
   };
@@ -788,6 +792,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}{run.turn_cap > 0 && <>/{run.turn_cap}</>}
       </p>}
+      {run?.host_attention?.reason && run.host_attention.reason !== run.reason_text && <p role="status" className="footnote">{run.host_attention.reason}</p>}
       {run?.controller === "terminal" && <p role="status" className="footnote">Terminal has control. Continue in the terminal; Eridani controls are paused.</p>}
       {run && executionModeLabel(run) && <p className="footnote">{executionModeLabel(run)} · native approvals may require the terminal.</p>}
       {run && <div className="remotea-control-row remotea-terminal-row">
@@ -892,7 +897,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
           onClick={() => void act("replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
         {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={off || !run.surf} title="Run the plan's verification now"
           onClick={() => void act("verify")}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
-        <button className="btn btn-sm btn-ghost" disabled={off || run.state === "stopping" || run.controller === "terminal"} onClick={() => void lifecycle(run.paused ? "resume" : "pause")}>{run.paused ? "Resume" : "Pause"}</button>
+        <button className="btn btn-sm btn-ghost" disabled={off || run.state === "stopping" || run.controller === "terminal" || !!run.pause_reason} onClick={() => void lifecycle(run.paused ? "resume" : "pause")}>{run.paused ? "Resume" : "Pause"}</button>
         <button className="btn btn-sm btn-danger" disabled={off || run.state === "stopping" || run.controller === "terminal"} onClick={() => void lifecycle("cancel")}><Square size={14}/>Cancel run</button>
 
       </div>
