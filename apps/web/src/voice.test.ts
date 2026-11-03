@@ -225,7 +225,7 @@ test("GPT-Live releases the mic immediately while its peer collects final usage"
 });
 
 test.each(["live"] as const)(
-  "spoken thanks ends %s, releases the mic and allows a fresh session",
+  "spoken thanks keeps %s open until manual end",
   async (provider) => {
     const changed = vi.fn();
     const voice = new Voice(changed);
@@ -258,10 +258,9 @@ test.each(["live"] as const)(
       new MessageEvent("message", { data: JSON.stringify(event) }),
     );
     await vi.advanceTimersByTimeAsync(3000);
-    expect(stopped).toHaveBeenCalled();
-    expect(changed).toHaveBeenCalledWith(
-      expect.objectContaining({ state: "ended", closed: true, error: null }),
-    );
+    expect(stopped).not.toHaveBeenCalled();
+    expect(changed.mock.calls.some(([state]) => state.closed)).toBe(false);
+    await voice.stop();
     const next = await startVoice("live");
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
     await next.stop();
@@ -365,6 +364,9 @@ test.each(["live"] as const)(
       "Saved. Anything else I can help you with?",
     );
     userReply(provider, "No.");
+    vi.mocked(api).mockResolvedValue({state:"listening", closed:false, text:"", error:null, receipts:[],
+      end_candidate:{id:"candidate",source:{sequence:1,event_id:"reply",end_ms:2400},category:"confirm"}});
+    vi.mocked(post).mockResolvedValue({closed:true});
     await vi.advanceTimersByTimeAsync(3000);
     expect(stopped).toHaveBeenCalledOnce();
     expect(Peer.current.close).toHaveBeenCalledOnce();
@@ -413,10 +415,10 @@ test.each(["live"] as const)(
 );
 
 
-test("the default idle window keeps listening for 30 seconds then releases the microphone", async () => {
+test("the default idle window keeps listening for 120 seconds then releases the microphone", async () => {
   const changed = vi.fn();
   await startVoice("live", changed);
-  await vi.advanceTimersByTimeAsync(29999);
+  await vi.advanceTimersByTimeAsync(119999);
   expect(stopped).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(251);
   expect(stopped).toHaveBeenCalledOnce();
@@ -437,7 +439,7 @@ test("a server-side voice_end closes media and allows a fresh wake session", asy
 });
 
 
-test("queued backend work suspends idle shutdown and completion starts a fresh 30 seconds", async () => {
+test("queued backend work suspends idle shutdown and completion starts a fresh 120 seconds", async () => {
   const changed = vi.fn();
   vi.mocked(api).mockResolvedValue({
     state: "working", closed: false, error: null, text: "", receipts: [],
@@ -451,7 +453,7 @@ test("queued backend work suspends idle shutdown and completion starts a fresh 3
   });
   // Stable status backs off to the slower lease cadence before noticing completion.
   await vi.advanceTimersByTimeAsync(POLL_STABLE_MS);
-  await vi.advanceTimersByTimeAsync(29000);
+  await vi.advanceTimersByTimeAsync(119000);
   expect(stopped).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1200);
   expect(stopped).toHaveBeenCalledOnce();
@@ -519,4 +521,49 @@ test("a hidden tab polls slowly but well inside the 30 second lease", async () =
   expect(polls).toBeLessThanOrEqual(5);
   expect(POLL_HIDDEN_MS).toBeLessThanOrEqual(10_000);
   await voice.stop();
+});
+
+test.each([0,2,5,15])("prepared capture carries samples once through %s-second setup without reacquiring or text submission",async delay=>{
+ const {CaptureProcessor}=await import("./voice-audio");
+ const listeners=new Set<(value:any)=>void>();
+ const processor=new CaptureProcessor(1000,value=>{for(const l of listeners)l(value);});
+ processor.command({type:"confirm",generation:0});
+ const expected:number[]=[],heard:number[]=[];
+ const track={enabled:true,stop:vi.fn()};
+ const capture={stream:{getTracks:()=>[track],getAudioTracks:()=>[track]},context:null,
+   subscribe:(fn:(value:any)=>void)=>{listeners.add(fn);return()=>listeners.delete(fn);},
+   command:(type:string,epoch?:number)=>processor.command({type,generation:0,epoch}),
+   ready:vi.fn(()=>processor.command({type:"ready",generation:0})),pause:vi.fn(()=>processor.command({type:"pause",generation:0}))};
+ let identity!:(id:string)=>void,ui!:(value:void)=>void;
+ const id=new Promise<string>(resolve=>{identity=resolve;}),uiReady=new Promise<void>(resolve=>{ui=resolve;});
+ const voice=new Voice(vi.fn());
+ const start=voice.start(id,undefined,{provider:"live",voice:"marin"},capture as never,
+   {id:crypto.randomUUID(),generation:1,wake:true,wakeOnly:false,detectedAt:performance.now(),epoch:1},uiReady);
+ await vi.advanceTimersByTimeAsync(0);
+ expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();expect(post).not.toHaveBeenCalled();
+ for(let i=0;i<Math.max(1,delay*10);i++){
+   const input=Float32Array.from({length:100},(_,j)=>(i*100+j+1)/20000),out=new Float32Array(100);
+   expected.push(...input);processor.process(input,out);expect(out.every(x=>x===0)).toBe(true);
+ }
+ identity("conversation");ui();await vi.advanceTimersByTimeAsync(0);
+ event({type:"session.started"});await start;
+ expect(capture.ready).toHaveBeenCalledOnce();
+ while(processor.queue.backlog){heard.push(...processor.queue.read(Math.min(100,processor.queue.backlog)));}
+ expect(heard).toEqual(expected);
+ expect(vi.mocked(post).mock.calls.filter(([path])=>path==="/voice/sessions")).toHaveLength(1);
+ expect(vi.mocked(post).mock.calls.some(([path])=>path==="/work")).toBe(false);
+ await voice.stop();expect(track.stop).not.toHaveBeenCalled();expect(capture.pause).toHaveBeenCalledOnce();
+});
+
+test("accepted contextual close stops local audio before final provider usage settles",async()=>{
+ const changed=vi.fn();await startVoice("live",changed);
+ userReply("live","No.");
+ vi.mocked(api).mockImplementation(async(path,options)=>{
+   if(path.endsWith("/stop") && options?.method==="POST")return await new Promise(resolve=>{settle=resolve;});
+   return {state:"listening",closed:false,text:"",error:null,receipts:[],end_candidate:{id:"candidate",source:{sequence:1,event_id:"reply",end_ms:2400},category:"confirm"}};
+ });
+ let settle!:(value:unknown)=>void;
+ vi.mocked(post).mockResolvedValue({closed:false,accepted:true,status:"closing"});
+ await vi.advanceTimersByTimeAsync(1200);expect(stopped).toHaveBeenCalledOnce();expect(Peer.current.close).not.toHaveBeenCalled();
+ settle({closed:true});await vi.advanceTimersByTimeAsync(0);expect(Peer.current.close).toHaveBeenCalledOnce();
 });

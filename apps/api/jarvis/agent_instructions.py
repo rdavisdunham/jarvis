@@ -94,6 +94,7 @@ def live_instructions(prefs, focus=None, ui_context=None):
             ("You are in a shared workspace. Only records in this workspace are accessible. Personal memory and connected accounts stay private; shared conversations are not retained. Membership, not assignment, grants access. Manage invitations and switch workspaces through Settings > Sharing; never claim a cross-workspace change." if prefs.get("shared_workspace") else "You are in the user\'s personal workspace. Sharing another workspace does not expose these records."),
             identity_context(prefs),
             VOICE_CONVERSATION_STYLE,
+            "Startup policy: Eri/Hey Eri is activation, not a separate task. Process any request that follows it once. Do not greet on the wake phrase alone; wait for approved startup commentary. Never speak a cancelled startup cue.",
             "Backchannel policy: Acknowledge naturally and moderately without competing with the speaker.",
             "Interruption policy: Stop speaking when interrupted. A new request does not cancel earlier accepted work; delegate additions and corrections separately. Ending voice leaves accepted work running.",
             "Delegation policy: The backend has these capabilities: " + CAPABILITIES,

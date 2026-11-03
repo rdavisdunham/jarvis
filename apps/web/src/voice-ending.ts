@@ -1,176 +1,82 @@
-import type { ChatMessage } from "./types";
-
-type ClosingQuestion = "more" | "done";
-
-function normalize(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[’']/g, "")
-    .replace(/[^a-z\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^(?:eri|eridani)\s+/, "")
-    .replace(/\s+(?:eri|eridani)$/, "");
+// Conservative command vocabulary; unknown/uncertain intent always keeps listening.
+export type ClosingQuestion = "more" | "done";
+export function normalize(text: string) {
+  return text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
 }
-
-function ending(text: string): string {
-  return normalize(text)
-    .replace(/^(?:(?:okay|ok|alright|yes|yeah|yep|no|nope|please)\s+)+/, "")
-    .replace(/\s+(?:please|thanks|thank you)(?:\s+(?:very much|so much))?$/, "");
+const explicit = new Set(["goodbye", "good bye", "bye", "bye bye", "goodnight", "good night", "see you later", "talk to you later", "end voice", "stop voice", "end the voice session", "end our conversation", "end the conversation", "stop listening", "stop listening now", "im done talking", "i am done talking", "were finished talking", "thanks goodbye", "thank you goodbye", "that will be all goodbye", "im done with this conversation"]);
+const ambiguous = new Set(["im done", "i am done", "thats all", "that is all", "im good", "i am good", "thats it for now", "thatll do for now", "were good for now", "nothing else", "i dont need anything else", "thats all for now"]);
+function command(text: string) {
+  if (text.includes('"') || ["'", "“", "‘"].some(x => text.trim().startsWith(x))) return "";
+  let value = normalize(text);
+  for (const prefix of ["eri ", "eridani ", "okay ", "ok ", "please ", "you can "]) if (value.startsWith(prefix)) value = value.slice(prefix.length);
+  for (const suffix of [" eri", " eridani", " thank you", " thanks", " please"]) if (value.endsWith(suffix)) value = value.slice(0, -suffix.length);
+  return value;
 }
-
-// An unmistakable farewell or stop request. While backend work runs or its question is
-// pending, only these close voice: "thanks", "that's all", "no" may be an answer.
-export function isExplicitFarewell(text: string): boolean {
-  return /^(?:goodbye|good bye|bye|bye bye|goodnight|good night|see you later|talk to you later|(?:you can |lets )?(?:end|stop|close)(?: (?:the|this|our))? (?:conversation|voice chat|voice session|voice mode)|(?:you can )?stop listening(?: now)?)$/.test(
-    ending(text),
-  );
-}
-
-// Complete standalone endings only; never close on quoted words or an added request.
-export function isVoiceEnding(text: string): boolean {
-  const value = ending(text);
-  return /^(?:goodbye|good bye|bye|bye bye|goodnight|good night|see you later|talk to you later|thank you|thanks|thank you very much|thanks so much|thanks for (?:your|the) help|(?:i think )?(?:thats|that is) (?:all|everything|it)(?: for (?:now|today|me))?|that(?:ll| will| would) (?:be all|do)(?: for (?:now|today))?|(?:im|i am|were|we are) (?:done|finished)(?: (?:talking|chatting|with (?:this|the|our) (?:conversation|chat)))?(?: for (?:now|today))?|(?:im|i am|were|we are) (?:all set|good)(?: for (?:now|today))|i dont need anything else|nothing else(?: for (?:now|today))?|(?:you can |lets )?(?:end|stop|close)(?: (?:the|this|our))? (?:conversation|voice chat|voice session|voice mode)|(?:you can )?stop listening(?: now)?)$/.test(value);
-}
-
+export const isExplicitFarewell = (text: string) => explicit.has(command(text));
+export const isVoiceEnding = isExplicitFarewell;
 export function closingQuestion(text: string): ClosingQuestion | null {
-  // Only a single, final, direct question. Quoted examples and compound questions
-  // must not make an ordinary "yes" permission to hang up.
-  if ((text.match(/\?/g) ?? []).length !== 1) return null;
-  const tail = text.match(/(?:^|[.!]\s+)([^.!?]*\?)\s*$/)?.[1];
-  if (!tail) return null;
-  const value = normalize(tail);
-  if (
-    /^(?:anything else(?: (?:i can|can i) help(?: you)? with)?|is there anything else(?: (?:i can|you need|i can help(?: you)? with))?|do you need anything else|would you like anything else|can i help(?: you)? with anything else)$/.test(
-      value,
-    )
-  )
-    return "more";
-  if (
-    /^(?:will that be all|is that (?:all|everything)|are (?:we|you) (?:all )?(?:done|finished)|shall we wrap up)(?: for (?:now|today))?$/.test(
-      value,
-    )
-  )
-    return "done";
-  return null;
+  if (!text.trim().endsWith("?") || text.split("?").length !== 2) return null;
+  return ({"anything else":"more", "anything else i can help you with":"more", "will that be all":"done", "will that be all for now":"done"} as const)[normalize(text) as "anything else"] ?? null;
 }
-
-function confirmsEnding(
-  text: string,
-  question: ClosingQuestion | null,
-): boolean {
+export function endingDecision(text: string, context: {question?: string; age?: number; busy?: boolean; pending?: boolean; final_action_accepted?: boolean} = {}) {
+  if (isExplicitFarewell(text)) return "explicit";
+  if (context.busy || context.pending) return "keep";
   const value = normalize(text);
-  // Politeness does not reverse a yes/no answer: "yes, thank you" to an
-  // offer of more help keeps listening rather than treating thanks as goodbye.
-  if (
-    question &&
-    /^(?:yes|yeah|yep|yup)(?: please)?(?: (?:thanks|thank you))?$/.test(value)
-  )
-    return question === "done";
-  if (question && /^(?:no|nope|nah)(?: (?:thanks|thank you))?$/.test(value))
-    return question === "more";
-  if (isVoiceEnding(text)) return true;
-  if (!question) return false;
-  if (
-    /^(?:(?:yes|yeah|yep|no|nope|okay|ok) )?(?:nothing else|not (?:right )?now|(?:im|i am|were|we are) (?:all set|good)(?: for (?:now|today))?)(?: (?:thanks|thank you))?$/.test(
-      value,
-    )
-  )
-    return true;
-  if (question === "more")
-    return /^(?:no|nope|nah|no thank you|no thanks)(?: (?:im|i am) good)?$/.test(
-      value,
-    );
-  return /^(?:yes|yeah|yep|yup|yes please|absolutely|correct|thats right|that will be all|that would be all)(?: (?:thanks|thank you))?$/.test(
-    value,
-  );
+  if ((context.age ?? 0) <= 60 && ((context.question === "more" && ["no", "nope", "no thanks", "no thank you", "nope thank you"].includes(value)) || (context.question === "done" && ["yes", "yeah", "yep", "yes thanks", "yes thank you", "yep thanks"].includes(value)))) return "confirm";
+  if (context.final_action_accepted && value.endsWith(" then end voice")) return "final_action";
+  return ambiguous.has(command(text)) ? "offer" : "keep";
 }
-
-type Offer = {
-  kind: ClosingQuestion;
-  at: number;
-  userId: string;
-  userText: string;
-};
-
-// Session-local context, never restored from old chat history. Capture the question
-// when the next user utterance begins so early assistant replies cannot change it.
+export type UserMarker = {sequence: number; event_id: string; end_ms: number};
+export type EndCandidate = {id: string; source: UserMarker; category: string; expires_in_ms?:number};
+// Observes raw provider inputs and actual local speech, never display finalization.
 export class VoiceEnding {
-  private offer: Offer | null = null;
-  private answer: {
-    id: string;
-    prefix: string;
-    kind: ClosingQuestion | null;
-  } | null = null;
-  private lastUser = { id: "", content: "" };
-  private lastUserFinal = false;
-  private lastAssistant = { id: "", content: "" };
-  private assistantBoundary = { id: "", content: "" };
-  private assistantSinceUser = false;
-
-  assistant(id: string, content: string, now = Date.now()) {
-    if (id === this.lastAssistant.id && content === this.lastAssistant.content)
-      return;
-    this.lastAssistant = { id, content };
-    this.assistantSinceUser = true;
-    // Live can group several exchanges in one caption bubble. An earlier
-    // question in that bubble must not hide the current closing question.
-    const spoken =
-      id === this.assistantBoundary.id &&
-      content.startsWith(this.assistantBoundary.content)
-        ? content.slice(this.assistantBoundary.content.length).trim()
-        : content;
-    const kind = closingQuestion(spoken);
-    this.offer = kind
-      ? {
-          kind,
-          at: now,
-          userId: this.lastUser.id,
-          userText: this.lastUser.content,
-        }
-      : null;
+  private seen = new Set<string>();
+  private marker: UserMarker | null = null;
+  private text = "";
+  private lastEnd: number | null = null;
+  private assistantSince = false;
+  private epoch = 0;
+  private inputEpoch = -1;
+  private pendingEpochs:number[] = [];
+  private sourceEpoch:number|null=null;
+  private uncertain=false;
+  private speaking = false;
+  private lastActivity = 0;
+  private candidateSeen = new Map<string, number>();
+  speech(active: boolean, now: number) {
+    if (active && !this.speaking) { this.epoch++;this.pendingEpochs.push(this.epoch);if(this.pendingEpochs.length>64){this.pendingEpochs.shift();this.uncertain=true;} }
+    this.speaking = active;
+    if (active) this.lastActivity = now;
   }
-
-  // busy: backend work is running or its clarification awaits the user's answer.
-  user(message: ChatMessage, now = Date.now(), busy = false): boolean {
-    if (!message.content.trim()) return false;
-    const { id, content } = message;
-    if (
-      this.assistantSinceUser &&
-      (id !== this.lastUser.id || content !== this.lastUser.content)
-    ) {
-      this.assistantBoundary = { ...this.lastAssistant };
-      // A new spoken reply can extend the same display bubble. Strip the completed
-      // prior utterance even when the assistant did not ask a closing question.
-      if (this.lastUserFinal && id === this.lastUser.id && content.startsWith(this.lastUser.content)) {
-        this.answer = { id, prefix: this.lastUser.content, kind: null };
-      }
-      this.assistantSinceUser = false;
-    }
-    if (
-      this.offer &&
-      (id !== this.offer.userId || content !== this.offer.userText)
-    ) {
-      const prefix =
-        id === this.offer.userId && content.startsWith(this.offer.userText)
-          ? this.offer.userText
-          : "";
-      this.answer = {
-        id,
-        prefix,
-        kind: now - this.offer.at <= 60_000 ? this.offer.kind : null,
-      };
-      this.offer = null;
-    } else if (id !== this.answer?.id) {
-      this.answer = { id, prefix: "", kind: null };
-    }
-    this.lastUser = { id, content };
-    this.lastUserFinal = !message.pending;
-    if (message.pending) return false;
-    const reply = content.startsWith(this.answer?.prefix ?? "")
-      ? content.slice(this.answer?.prefix.length ?? 0)
-      : content;
-    if (busy) return isExplicitFarewell(reply);
-    return confirmsEnding(reply, this.answer?.kind ?? null);
+  captured(active:boolean, sourceEpoch:number, now:number) {
+    if(this.sourceEpoch===null)this.sourceEpoch=sourceEpoch-(active?1:0);
+    const changes=sourceEpoch-this.sourceEpoch;
+    if(changes>64)this.uncertain=true;
+    for(let i=0;i<Math.min(64,changes);i++){this.speaking=false;this.speech(true,now);}
+    this.sourceEpoch=sourceEpoch;this.speech(active,now);
+  }
+  observe(event: Record<string, any>, now: number) {
+    if (event.event_id && this.seen.has(event.event_id)) return;
+    if (event.event_id) this.seen.add(event.event_id);
+    if (event.type === "session.output_transcript.delta") { this.assistantSince = true; return; }
+    if (event.type !== "session.input_transcript.delta" || !event.delta) return;
+    const start = Number(event.start_ms ?? 0), end = Number(event.end_ms ?? start);
+    const boundary=this.lastEnd === null || start-this.lastEnd>750;
+    if(boundary)this.inputEpoch=this.pendingEpochs.shift() ?? this.epoch;
+    if (boundary || this.assistantSince) this.text = "";
+    this.text += event.delta;
+    this.assistantSince = false;
+    this.lastEnd = end;
+    this.marker = {sequence:(this.marker?.sequence ?? 0) + 1, event_id:event.event_id ?? "", end_ms:end};
+    this.lastActivity = now;
+  }
+  quiet(now: number, backlog = false) {
+    return !this.uncertain && !!this.marker && !backlog && !this.speaking && this.epoch === this.inputEpoch && now - this.lastActivity >= 1000;
+  }
+  explicit(now: number, backlog = false) { return this.quiet(now, backlog) && isExplicitFarewell(this.text); }
+  accepts(candidate: EndCandidate, now: number, backlog = false) {
+    if (!this.candidateSeen.has(candidate.id)) this.candidateSeen.set(candidate.id, now+Math.max(0,Math.min(5000,candidate.expires_in_ms ?? 5000)));
+    return this.quiet(now, backlog) && now < this.candidateSeen.get(candidate.id)! && !!this.marker &&
+      candidate.source.sequence === this.marker.sequence && candidate.source.event_id === this.marker.event_id && candidate.source.end_ms === this.marker.end_ms;
   }
 }

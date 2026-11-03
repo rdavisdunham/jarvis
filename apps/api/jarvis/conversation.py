@@ -233,8 +233,13 @@ async def chat(
                             if args:
                                 raise DomainError("INVALID_ARGUMENT", "voice_end takes no arguments.")
                             assert_current(owner, device)
-                            outcome = end_voice()
-                            voice_ended = True
+                            from .voice_end_policy import decide
+                            category = decide(message, final_action_accepted=bool(actions) and not tool_errors)
+                            if category in {"explicit", "final_action"}:
+                                outcome = end_voice()
+                                voice_ended = outcome.get("status") == "closing" or outcome.get("voice_ended") is True
+                            else:
+                                outcome = {"status": "keep_listening", "voice_ended": False}
                         elif fn["name"] == "tools_load":
                             outcome = tool_session.load(args)
                         else:

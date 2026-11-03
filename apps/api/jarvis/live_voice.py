@@ -7,7 +7,6 @@ import time
 from datetime import timedelta
 from urllib.parse import quote
 
-import httpx
 import websockets
 from sqlalchemy import or_, select
 
@@ -22,6 +21,9 @@ from .ui_control import get_context
 from .voice import Controller, controllers
 from .latency import mark, span
 from .work_intake import append_voice, claim_voice, mark_asked, open_voice
+from .voice_end_policy import EndPolicy, candidate_valid
+from .work_crypto import seal, unseal
+from .domain import advisory
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
@@ -50,6 +52,11 @@ class LiveController(Controller):
         self.finalized, self.attached = asyncio.Event(), asyncio.Event()
         self.closing = False
         self.end_requested = False
+        self.end_policy = EndPolicy()
+        self.startup_state = None
+        self.startup_pending = False
+        self.end_candidate = None
+        self.end_candidate_deadline = 0.0
         self.close_lock, self.delegation_lock = asyncio.Lock(), asyncio.Lock()
         self.delegations, self.work = set(), set()
         self.fragments, self.groups, self.history, self.backend_results = [], [], [], []
@@ -77,6 +84,7 @@ class LiveController(Controller):
         self.asked = set()
         self.unclaimed = set()  # Delegations still waiting for their final transcript.
         self.last_user_delta = 0.0
+        self.input_speaking = False
         # Claim after the current utterance's transcript lands: min wait, then this much quiet.
         self.settle_min, self.settle_quiet, self.settle_max = 0.6, 0.8, 4.0
 
@@ -88,12 +96,6 @@ class LiveController(Controller):
         if self.pending_work or any(not task.done() for task in self.work):
             return "working"
         return self.state
-
-    def request_end(self):
-        # Bound by the controller that delegated this turn; the model supplies no IDs.
-        self.end_requested = True
-        self.state, self.error = "closing", None
-        return {"status": "closing"}
 
     def can_submit(self):
         # GPT-Live decides when to respond; Realtime's response.create is not a Live command.
@@ -147,8 +149,9 @@ class LiveController(Controller):
             ],
         }
         self.creation_attempted = True
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
+        from .live_http import client
+        with span("live_create", self.id, attempt=self.attempt_id):
+            response = await client().post(
                 "https://api.openai.com/v1/live/sessions",
                 headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 json={"session": session, "transport": {"type": "webrtc", "sdp": sdp}},
@@ -170,6 +173,11 @@ class LiveController(Controller):
         data = response.json()
         self.call_id = data["session"]["id"]
         self.session_created = True
+        if self.closed or self.closing:
+            # A cancelled create can finish after normal close. Never revive it or
+            # leave newly-created paid media unattached; collect final usage directly.
+            await self.close_late_creation()
+            raise DomainError("INTEGRATION_UNAVAILABLE", "Voice start was cancelled. Please retry.", 409)
         self.started = time.monotonic()
         self.record_seconds(15)  # WebRTC initialization credit, not an extra charge.
         self.receiver = asyncio.create_task(self.run())
@@ -181,6 +189,29 @@ class LiveController(Controller):
             raise DomainError("INTEGRATION_UNAVAILABLE", "GPT-Live task controls could not connect.", 503)
         return {"session_id": self.id, "sdp": data["transport"]["sdp"], "ready": True, "provider": "live"}
 
+    async def close_late_creation(self):
+        uncertain = True
+        try:
+            async with asyncio.timeout(12):
+                async with websockets.connect(
+                    f"wss://api.openai.com/v1/live/sessions/{quote(self.call_id, safe='')}/attach",
+                    additional_headers={"Authorization": f"Bearer {get_settings().openai_api_key}"},
+                    open_timeout=5, max_size=2_000_000,
+                ) as ws:
+                    await ws.send(json.dumps({"type": "session.close", "event_id": uid()}))
+                    async for message in ws:
+                        event=json.loads(message)
+                        if event.get("type") in {"session.usage.updated", "session.closed"}:
+                            self.record_seconds(event.get("usage", {}).get("seconds", 0))
+                        if event.get("type") == "session.closed":
+                            uncertain=False
+                            break
+        except (TimeoutError, websockets.ConnectionClosed, OSError):
+            pass
+        finally:
+            with session_scope() as db:
+                budget.close(db, self.owner, self.id, uncertain=uncertain)
+
     async def run(self):
         try:
             async with websockets.connect(
@@ -191,6 +222,7 @@ class LiveController(Controller):
             ) as ws:
                 self.ws = ws
                 self.attached.set()
+                mark("live_sideband", self.id, attempt=self.attempt_id)
                 async for message in ws:
                     await self.event(json.loads(message))
                     if self.finalized.is_set():
@@ -214,6 +246,19 @@ class LiveController(Controller):
         if kind == "session.started":
             self.state, self.error = "listening", None
             self.ready.set()
+            mark("live_session_started", self.id, attempt=self.attempt_id)
+        elif kind == "input_audio_buffer.speech_started":
+            self.input_speaking = True
+            self.end_candidate = None
+            with session_scope() as db:
+                advisory(db, "voice-inbox:" + self.id)
+                inbox = db.get(VoiceInbox, self.id, populate_existing=True)
+                if inbox:
+                    data = unseal(inbox.content_ciphertext)
+                    data.pop("end_intent", None)
+                    inbox.content_ciphertext = seal(data)
+        elif kind == "input_audio_buffer.speech_stopped":
+            self.input_speaking = False
         elif kind in {"session.input_transcript.delta", "session.output_transcript.delta"}:
             role = "user" if kind == "session.input_transcript.delta" else "assistant"
             delta = event.get("delta", "")
@@ -223,8 +268,14 @@ class LiveController(Controller):
             self.state = "listening"
             start = float(event.get("start_ms", 0))
             end = float(event.get("end_ms", start))
+            if role == "user":
+                end_context = self.end_policy.input(delta, start, end)
+                self.end_candidate = None
+            else:
+                self.end_policy.assistant(delta)
+                end_context = None
             with session_scope() as db:
-                append_voice(db, self.id, event_id or uid(), role, delta, start, end)
+                append_voice(db, self.id, event_id or uid(), role, delta, start, end, end_context=end_context)
             self.fragments.append({"role": role, "delta": delta, "start_ms": start, "end_ms": end})
             self.fragments = self.fragments[-2000:]
             group = next((g for g in reversed(self.groups) if g["role"] == role), None)
@@ -435,10 +486,20 @@ class LiveController(Controller):
     async def report_work(self):
         from .agent_work import ACTIVE, public
         with session_scope() as db:
-            inbox = db.get(VoiceInbox, self.id)
-            if inbox and inbox.end_requested:
-                self.request_end()
-                return
+            advisory(db, "voice-inbox:" + self.id)
+            inbox = db.get(VoiceInbox, self.id, populate_existing=True)
+            if inbox:
+                data = unseal(inbox.content_ciphertext)
+                intent = data.get("end_intent")
+                if intent and candidate_valid(db, inbox, data, intent):
+                    if "published" not in intent:
+                        intent["published"] = True
+                        self.end_candidate_deadline = time.monotonic() + 5
+                        inbox.content_ciphertext = seal(data)
+                    self.end_candidate = ({k: intent[k] for k in ("id", "source", "category")}
+                                          if time.monotonic() < self.end_candidate_deadline else None)
+                else:
+                    self.end_candidate = None
             if not inbox:
                 self.pending_work = False
                 return
@@ -581,6 +642,80 @@ class LiveController(Controller):
             self.release_review()
             raise
 
+    async def startup_control(self, attempt, epoch, state):
+        if self.closed or self.closing or (self.attempt_id and attempt != self.attempt_id):
+            return {"accepted": False}
+        if self.startup_state is None:
+            self.startup_state = {"attempt": attempt, "epoch": epoch, "sent": False, "cancelled": False}
+        current = self.startup_state
+        if current["attempt"] != attempt or epoch < current["epoch"]:
+            return {"accepted": False}
+        current["epoch"] = epoch
+        if state == "cancel":
+            if current["cancelled"]:
+                return {"accepted": False}
+            current["cancelled"] = True
+            self.startup_pending = False
+            if current["sent"]:
+                await self.send({"type": "session.instructions.append", "event_id": uid(), "delegation_id": None,
+                    "content": "Cancel the startup greeting now. Do not greet or repeat it later. Keep listening and handle real user requests; preserve accepted work."})
+            return {"accepted": True}
+        from .voice_end_policy import normalize
+        wake_only = {prefix + name for prefix in ("", "hey ", "hi ", "ok ", "okay ")
+                     for name in ("eri", "erie", "airy", "eridani")}
+        if (current["cancelled"] or current["sent"] or not self.ready.is_set()
+                or self.pending_work or self.pending_question or self.unclaimed or self.input_speaking
+                or time.monotonic() - self.last_user_delta < .75
+                or normalize(self.end_policy.text) not in wake_only):
+            return {"accepted": False}
+        current["sent"] = True
+        self.startup_pending = False
+        # Read the authenticated account's own profile, never a workspace/owner default.
+        from .models import OwnerSettings, UserAccount
+        with session_scope() as db:
+            inbox = db.get(VoiceInbox, self.id)
+            account = self.account or (inbox.account_id if inbox else self.owner)
+            prefs = db.get(OwnerSettings, account)
+            profile = db.get(UserAccount, account)
+            name = (prefs.values or {}).get("preferred_name") if prefs else None
+            if not name and profile:
+                name = profile.name
+        name = name.strip()[:80] if isinstance(name, str) else ""
+        if name == "New member":
+            name = ""
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+            "content": "Approved startup cue: give one very brief ready greeting, then listen. Use the preferred name only if supplied in this DATA: "
+                       + json.dumps({"preferred_name": name}, ensure_ascii=False)})
+        return {"accepted": True}
+
+    async def offer_closing(self):
+        question = self.end_policy.offer(busy=self.pending_work, pending=self.pending_question,
+            unaccepted=self.startup_pending or self.input_speaking or bool(self.unclaimed) or any(not t.done() for t in self.work)
+                or time.monotonic() - self.last_user_delta < 1)
+        if question:
+            await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+                             "content": "Approved closing offer. Ask exactly once: " + question})
+
+    def confirm_end(self, identity):
+        if (not self.end_candidate or identity != self.end_candidate["id"] or self.closed or self.closing
+                or time.monotonic() >= self.end_candidate_deadline):
+            return False
+        with session_scope() as db:
+            advisory(db, "voice-inbox:" + self.id)
+            inbox = db.get(VoiceInbox, self.id, populate_existing=True)
+            data = unseal(inbox.content_ciphertext) if inbox else {}
+            candidate = data.get("end_intent")
+            if (not inbox or (inbox.owner_id, inbox.device_id, inbox.conversation_id) != (self.owner, self.device, self.conversation_id)
+                    or (self.account is not None and inbox.account_id != self.account)
+                    or not candidate or candidate["id"] != identity
+                    or not candidate_valid(db, inbox, data, candidate)):
+                return False
+            self.closing = True
+            data.pop("end_intent", None)
+            inbox.content_ciphertext = seal(data)
+        self.end_candidate = None
+        return True
+
     async def interrupt(self):
         self.release_review()
         self.error = None
@@ -605,6 +740,7 @@ class LiveController(Controller):
                 return
             try:
                 await self.report_work()
+                await self.offer_closing()
                 await self.offer_review()
             except Exception as exc:  # noqa: BLE001 - optional result reporting
                 logging.getLogger("jarvis.voice").warning("Work result update unavailable (%s)", type(exc).__name__)

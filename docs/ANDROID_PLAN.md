@@ -43,7 +43,7 @@ Non-goals (for this plan)
 | Voice transport | `apps/web/src/voice.ts`: `getUserMedia` with AEC/NS/AGC, an `RTCPeerConnection` with one audio track and an `oai-events` data channel. It POSTs the offer SDP to `/api/v1/voice/sessions` and applies the returned answer. Media flows device ↔ OpenAI (CSP `connect-src https://api.openai.com`). | The same route and SDP exchange from native WebRTC. |
 | Voice server | `voice.py` `start`: binds the session to `user.device_id` and a conversation owned by that device, closes any other open session on that device, reserves budget. `live_voice.py` `LiveController.connect` creates `/v1/live/sessions` with the SDP and attaches the server sideband WebSocket, which delegates to the chat agent. | Unchanged. A native client is just another device. |
 | Voice lease | `GET /voice/sessions/{id}` is the lease. `Controller.watch` closes after 30 s without a poll. Web polls every 400 ms to 5 s (`POLL_*_MS`). Also `stop`, `interrupt` and `submit`. | Native polls the same status route. Hidden cadence ≤ 5 s. |
-| Session end | `voice_end` tool (`voice_control.py`), client-side `VoiceEnding` (`voice-ending.ts`, farewell and closing-question logic) and `VoiceIdle` (`voice-idle.ts`, 30 s quiet, 120 s busy cap). | Port both to Kotlin and share test vectors (§5.4). |
+| Session end | `voice_end` tool (`voice_control.py`), client-side `VoiceEnding` (`voice-ending.ts`, farewell and closing-question logic) and `VoiceIdle` (`voice-idle.ts`, 120 s quiet, 120 s busy cap). | Port both to Kotlin and share test vectors (§5.4). |
 | Wake word (web) | `wake-word.ts`: opt-in Web Speech `SpeechRecognition`, continuous, `processLocally = false` (the browser's speech service). It runs only while the page is visible (`visibilitychange` stops it). Phrases are "Eri", "Hey/Hi/OK Eri", "Eridani", plus a trailing request. `App.tsx` `wakeStart` POSTs the trailing request to `/work`, then starts voice. | The phrase grammar and the "trailing request becomes a `/work` turn" behavior. |
 | Durable requests | `POST /work {turn_id, conversation_id, message, focus}`. Retrying the same `turn_id` is idempotent (guided-setup retry relies on this). | Native text/capture turns and the offline capture queue (§9). |
 | App actions | Eri's `ui_*` tools (`ui_contracts.py`) dispatch through `ui_control.dispatch` to one `(owner, device)`. The device fetches them on `POST /ui/sync`, sends its `UIContext` (`ui_control.py`) and acknowledges `displayed` or `failed` within about 10 s. Context expires after 60 s. `device_bridge.py` handles cross-process work. | Native syncs as its own device, with a small UIContext and honest acknowledgements (§5.3). |
@@ -120,7 +120,7 @@ APK  app.eridani (Kotlin, minSdk 29, target = current Play requirement — verif
 5. Poll `GET /voice/sessions/{id}`: 400 ms while active, 1 s when stable, ≤ 5 s when
    the screen is off. The lease cutoff is 30 s. Show `receipts`, `state` and
    `awaiting_answer` in the overlay or notification.
-6. End on `voice_end` (the server closes the session), on the `VoiceEnding`/`VoiceIdle`
+6. End on a confirmed `voice_end` candidate (the server validates freshness and closes the session), on the `VoiceEnding`/`VoiceIdle`
    rules, on the notification's Stop action, or on loss of audio focus to a call (§6).
    Always `POST /stop`, then release the mic before resuming the wake engine.
 
@@ -398,7 +398,7 @@ voice, reminders and deep links folded and unfolded, and note what fails while l
   creates the reminder with an Activity receipt (in capture-only mode if adopted).
 - "Show my tasks" while locked returns the honest `failed` message; unlocked, it opens
   the TWA at Today.
-- "That's all, thanks" ends the session and releases the mic: the green indicator turns
+- "End voice" ends the session and releases the mic: the green indicator turns
   off within 2 s.
 - Revoking the device stops the next status poll with 401, and the app unlinks.
 - Shared fixtures pass in both test suites.
