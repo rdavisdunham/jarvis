@@ -686,6 +686,7 @@ def test_retention_drops_old_unbound_turns_settled_runs_children_and_payloads(ho
     turns_for(host, loose_pk, 2, age=timedelta(days=31))
     turns_for(host, loose_pk, 1, age=timedelta(days=1))  # Recent: kept.
     old_run = start(host, task("Old run")["id"])["id"]
+    settled_run = start(host, task("Recently settled run")["id"])["id"]
     live_run = start(host, task("Live run")["id"])["id"]
     with session_scope() as db:
         session = AgentSession(owner_id="davin", tool="claude", session_id="old-run")
@@ -694,7 +695,9 @@ def test_retention_drops_old_unbound_turns_settled_runs_children_and_payloads(ho
         old_pk = session.id
         row = db.get(AgentRun, old_run)
         row.state, row.finished_at = "completed", now() - timedelta(days=91)
-        for c in db.scalars(select(AgentCommand).where(AgentCommand.run_id == live_run)):
+        settled = db.get(AgentRun, settled_run)
+        settled.state, settled.finished_at = "completed", now() - timedelta(days=10)
+        for c in db.scalars(select(AgentCommand).where(AgentCommand.run_id.in_((settled_run, live_run)))):
             c.status, c.updated_at = "acked", now() - timedelta(days=8)
     turns_for(host, old_pk, 2, run_id=old_run, age=timedelta(days=92))
     with session_scope() as db:
@@ -705,8 +708,10 @@ def test_retention_drops_old_unbound_turns_settled_runs_children_and_payloads(ho
         assert db.scalar(select(func.count(AgentTurn.id)).where(AgentTurn.session_pk == loose_pk)) == 1
         assert db.get(AgentRun, old_run) is not None  # The run row and its history stay.
         assert not db.scalars(select(AgentCommand).where(AgentCommand.run_id == old_run)).all()
+        settled = db.scalars(select(AgentCommand).where(AgentCommand.run_id == settled_run)).all()
+        assert settled and all(c.payload == {} for c in settled)  # Finished-run replay payloads expire after 7 days.
         live = db.scalars(select(AgentCommand).where(AgentCommand.run_id == live_run)).all()
-        assert live and all(c.payload == {} for c in live)
+        assert live and all(c.payload for c in live)  # Unsettled runs retain recovery context for indefinite waits.
 
 
 def test_the_daily_ingestion_quota_drops_text_and_degrades_the_host(host, monkeypatch):  # noqa: F811
