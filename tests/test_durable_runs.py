@@ -488,3 +488,31 @@ def test_pause_resume_rebinding_uses_new_operation_after_verified_incarnation_ch
         assert old.status == "superseded" and old.digest == original_digest
         assert newer.op_id != old.op_id and newer.payload["incarnation"] == 2
         assert newer.payload["plan_revision"] == run.plan_revision
+
+
+def test_managed_spawn_survives_days_paused_before_attach_and_resume_uses_same_operation(durable):
+    with session_scope() as db:
+        host_row = db.get(AgentHost, durable.id)
+        host_row.caps = {**host_row.caps, "caps": [*host_row.caps["caps"], "managed.sessions", "role.options", "spawn.roles"],
+            "harnesses": {**host_row.caps["harnesses"], "claude": {**host_row.caps["harnesses"]["claude"], "managed": True}},
+            "model_catalog": [{"harness": "claude", "model": "actual-default", "default": True}]}
+    run_id = new_run(durable, attach=False)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "spawn"))
+        original_op, original_digest = spawn.op_id, spawn.digest
+        pause = decisions.PauseInput(action_id=uuid4(), expected_revision=run.state_revision)
+        decisions.set_paused(db, OWNER, run_id, pause, True, actor=HUMAN)
+        run.owner_wait_since = now() - timedelta(days=2)
+        run.sync_state = {**run.sync_state, "paused_since": (now() - timedelta(days=2)).isoformat()}
+        coordinator.sweep(db, now() + timedelta(days=2))
+        assert spawn.status == "queued" and spawn.expires_at is None and run.paused
+        assert not agent_link.drain(db, db.get(AgentHost, durable.id), 1)
+        resume = decisions.PauseInput(action_id=uuid4(), expected_revision=run.state_revision)
+        decisions.set_paused(db, OWNER, run_id, resume, False, actor=HUMAN)
+        frames = agent_link.drain(db, db.get(AgentHost, durable.id), 1)
+        assert len(frames) == 1 and frames[0]["t"] == "spawn"
+        assert frames[0]["op_id"] == original_op and frames[0]["digest"] == original_digest
+        assert frames[0]["expires_at"] == 0
+        assert not list(db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id,
+            AgentCommand.kind.in_(("run.pause", "run.resume", "input")))))

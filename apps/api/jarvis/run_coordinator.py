@@ -405,7 +405,9 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
         ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
-    expires = None if durable and kind in ("input", "answer", "run.pause", "run.resume") else expires_at or now() + (ttl or TTL[kind])
+    indefinite = kind in ("input", "answer", "run.pause", "run.resume") or (
+        kind == "spawn" and run and (run.sync_state or {}).get("execution_mode") == "managed")
+    expires = None if durable and indefinite else expires_at or now() + (ttl or TTL[kind])
     op_id = op_id or f"{kind}-{uuid.uuid4()}"
     frame = {"t": kind, "command_id": op_id, **({"run_id": run.id, "generation": run.generation, "plan_revision": run.plan_revision} if run else {}),
              **body, "expires_at": epoch_ms(expires)}
