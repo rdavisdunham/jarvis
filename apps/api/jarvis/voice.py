@@ -12,7 +12,7 @@ from uuid import UUID
 
 import httpx
 import websockets
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Body
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -36,7 +36,7 @@ controllers = {}
 GATE = """Classify the latest speech in conversational context. Return exactly one word:
 SILENT: a backchannel, filler or remark needing no response.
 WAIT: an incomplete thought, or explicit request to pause/let the speaker think.
-END_SESSION: a standalone goodbye, closing thank you/thanks, or explicitly finished talking, with no remaining request. A thanks followed by a new request is RESPOND. Quoted farewell words are not a request to end voice.
+END_SESSION: an unmistakable standalone goodbye, end voice, stop listening, or I am done talking. Ordinary thanks, ambiguous completion, task completion, quoted farewells and uncertainty always keep listening.
 A closing offer must be the assistant's latest direct question, with no other
 question or outstanding work. After "Anything else?" a standalone "no" means
 END_SESSION and "yes" means RESPOND. After "Will that be all?" a standalone "yes"
@@ -52,6 +52,7 @@ class VoiceInput(BaseModel):
     conversation_id: UUID
     sdp: str = Field(min_length=1, max_length=64000)
     focus: str | None = None
+    attempt_id: UUID | None = None
     provider: Literal["realtime", "live"] = DEFAULT_PROVIDER
     voice: str = "marin"
 
@@ -76,6 +77,8 @@ class Controller:
         self.ui_actions = []
         self.voice = "marin"
         self.provider = "realtime"
+        self.attempt_id = None
+        self.account = None
         self.text_id = None
         self.input_started = {}
         self.answered_items = set()
@@ -352,7 +355,11 @@ class Controller:
             if phase == "gate":
                 decision = content.strip()
                 if decision == "END_SESSION":
-                    await self.close()
+                    from .voice_end_policy import decide
+                    if decide(self.transcripts.get(self.current_item, "")) == "explicit":
+                        await self.close()
+                    else:
+                        self.state = "listening"
                 elif decision in {"WAIT", "SILENT"}:
                     self.state = "waiting" if decision == "WAIT" else "listening"
                 elif decision == "RESPOND":
@@ -534,7 +541,8 @@ class Controller:
 
 def control(session_id, user):
     c = controllers.get(session_id)
-    if c is None or c.owner != user.owner_id or c.device != user.device_id:
+    if (c is None or c.owner != user.owner_id or c.device != user.device_id
+            or (c.account is not None and c.account != (user.account_id or user.owner_id))):
         raise DomainError("NOT_FOUND", "Voice session ended. Start a new session.", 404)
     c.client_seen = time.monotonic()
     return c
@@ -579,6 +587,10 @@ async def start(body: VoiceInput, user: User):
             c = LiveController(user.owner_id, user.device_id, conv.id, body.focus, prefs)
         else:
             c = Controller(user.owner_id, user.device_id, conv.id, body.focus, prefs)
+        c.attempt_id = str(body.attempt_id) if body.attempt_id else None
+        if body.provider == "live":
+            c.startup_pending = bool(c.attempt_id)
+        c.account = user.account_id or user.owner_id
         c.voice = body.voice
         budget.reserve(db, user.owner_id, c.id, 0.10 if body.provider == "live" else 5, c.model)
     controllers[c.id] = c
@@ -631,6 +643,10 @@ async def start(body: VoiceInput, user: User):
 @router.get("/voice/sessions/{session_id}")
 async def status(session_id: str, user: User):
     c = control(session_id, user)
+    candidate = getattr(c, "end_candidate", None)
+    if candidate:
+        remaining = max(0, int((c.end_candidate_deadline-time.monotonic())*1000))
+        candidate = {**candidate, "expires_in_ms": remaining} if remaining else None
     return {
         "state": c.display_state(),
         "provider": c.provider,
@@ -643,13 +659,38 @@ async def status(session_id: str, user: User):
         # A backend question is pending: the browser must not auto-close on a bare "thanks".
         "awaiting_answer": bool(getattr(c, "pending_question", False)),
         "receipts": [r for r in c.receipts[-10:] if r],
+        "end_candidate": candidate,
     }
 
 
 @router.post("/voice/sessions/{session_id}/stop")
-async def stop(session_id: str, user: User):
-    await control(session_id, user).close()
+async def stop(session_id: str, user: User, body: dict | None = Body(default=None)):
+    c = control(session_id, user)
+    candidate_id = (body or {}).get("candidate_id")
+    if body and (set(body) != {"candidate_id"} or not isinstance(candidate_id, str)):
+        return {"closed": False, "status": "keep_listening"}
+    if candidate_id is not None:
+        if not isinstance(candidate_id, str) or not hasattr(c, "confirm_end") or not c.confirm_end(candidate_id):
+            return {"closed": False, "status": "keep_listening"}
+        asyncio.create_task(c.close())
+        return {"closed": False, "accepted": True, "status": "closing"}
+    await c.close()
     return {"closed": True}
+
+
+class StartupInput(BaseModel):
+    model_config = {"extra": "forbid"}
+    attempt_id: UUID
+    activity_epoch: int = Field(ge=0, le=1_000_000_000)
+    state: Literal["ready", "cancel"]
+
+
+@router.post("/voice/sessions/{session_id}/startup")
+async def startup(session_id: str, body: StartupInput, user: User):
+    c = control(session_id, user)
+    if c.provider != "live":
+        return {"accepted": False}
+    return await c.startup_control(str(body.attempt_id), body.activity_epoch, body.state)
 
 
 @router.post("/voice/sessions/{session_id}/interrupt")

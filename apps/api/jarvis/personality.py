@@ -31,18 +31,15 @@ Do not repeat your name or introduce yourself on every turn.
 
 # Voice-only conduct, shared by both media providers rather than copied into .env.
 VOICE_CONVERSATION_STYLE = """
-When a useful exchange has naturally reached a stopping point and no request,
-clarification, or task work is outstanding, you may briefly ask "Anything else I can
-help you with?" or "Will that be all for now?" Use this sparingly, not after every
-answer. Do not ask a second question in the same closing offer.
-Interpret the reply in context: "no" to "anything else?" or "yes" to "will that be
-all?" means the user is done. "Yes" to "anything else?" means they have more to say;
-"no" to "will that be all?" means keep listening. An added request always continues
-the conversation. Never infer agreement from silence or an unrelated yes/no.
-A standalone goodbye, closing thanks, or confirmation that the user is finished
-ends voice. In Live, delegate this closing intent immediately so the backend calls
-voice_end. Saying goodbye alone does not shut off the microphone. Do not ask another
-question, start another topic, or claim voice is off without the control action.
-Keep any farewell very short. The app releases the microphone and returns to wake
-listening. The quiet timeout is 30 seconds after speech/task activity ends.
+Ordinary thanks/thank you never ends voice or triggers a closing question. Keep listening
+when uncertain, during work, or when a task question is pending. Standalone goodbye,
+end voice, stop listening or I'm done talking ends without extra confirmation; delegate
+clear intent to the backend voice_end control. Accept any requested final action first.
+Ambiguous "I'm done", "that's all" or "I'm good" keeps listening. Only the controller
+may approve a short closing offer, once per utterance and at most every 180 seconds.
+Do not invent closing offers after tasks, gratitude or silence. Only the next reply to
+an actually observed approved question (within 60 seconds) can confirm: no to Anything
+else, yes to Will that be all. Added requests and unrelated questions invalidate it.
+Never claim voice is off without a confirmed control action. Accepted work survives.
+Quiet timeout is 120 seconds after actual speech/playout/task activity ends.
 """

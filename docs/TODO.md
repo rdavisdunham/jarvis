@@ -676,7 +676,7 @@ The physical/provider gates and pilot below remain pending.
   isolation, viewer/editor boundaries, removed members and scoped/revoked bot keys,
   including source annotations and new capture/onboarding paths.
 - [ ] **D3 — real acceptance.** Pixel folded/unfolded plus desktop: rapid requests,
-  clarification, natural/explicit goodbye, “Eri”/“Hey Eri,” 30-second quiet timeout
+  clarification, natural/explicit goodbye, “Eri”/“Hey Eri,” 120-second quiet timeout
   while work runs, Wi-Fi/cellular loss, reconnect, Back, keyboard and accessibility.
 - [ ] Verify receipt/Edit/Revert behavior, stale/failed Activity cleanup, notes/list
   filing and extraction, search aliases/misfiled matches, both learning/review flows,

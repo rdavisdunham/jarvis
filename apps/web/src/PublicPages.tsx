@@ -1,5 +1,6 @@
 import { ArrowLeft, CalendarDays, Check, FileText, ListTodo, Mic } from "lucide-react";
 import { BrandMark } from "./ux";
+import { VOICE_IDLE_SECONDS } from "./voice-idle";
 
 const apex = ["eridani.app", "www.eridani.app"].includes(location.hostname);
 export const appLink = apex ? "https://app.eridani.app/" : "/";
@@ -37,7 +38,7 @@ export function PublicPages() {
         <h2 id="access">Getting an invitation</h2><p>Eridani is currently invitation-only. Ask the person who shared it with you to invite your Google email. Invitations are copied and shared manually; Eridani does not send an invitation email. Sign in with the exact invited account, then review the invitation in Settings › Sharing.</p>
         <h2>Wrong account or expired invitation</h2><p>Choose Sign in with Google again and select the invited address. If the invitation expired or was revoked, ask its sender for a new invitation. A shared-workspace invitation does not expose the sender’s personal tasks, memories, or connected accounts.</p>
         <h2>Where did Eri’s work go?</h2><p>Open Activity in the top bar. Queued and working requests continue after voice ends. Waiting for you means Eri needs a clarification; a failed or partly completed request keeps its saved changes visible. Use Revise or Continue to move it forward.</p>
-        <h2>Voice and wake words</h2><p>Allow microphone access, then tap Talk to Eridani. Voice ends after 30 quiet seconds or a clear goodbye. Enable wake listening in Settings › Voice to use “Eri” or “Hey Eri” while the page is visible. Locked-screen and background phone wake are not supported by the web app.</p>
+        <h2>Voice and wake words</h2><p>Allow microphone access, then tap Talk to Eridani. Voice ends after {VOICE_IDLE_SECONDS} quiet seconds or a clear goodbye. Ordinary thanks keeps listening. Enable wake listening in Settings › Voice to use “Eri” or “Hey Eri” while the page is visible. Your preference is remembered for this account on this device; foreground wake uses the microphone and browser speech service. If wake is paused or unavailable, tap Talk to Eridani. Locked-screen and background phone wake are not supported by the web app.</p>
         <h2>Calendar and synchronization</h2><p>Check Settings › Integrations for the connected account, selected calendars, permissions, and sync status. Local tasks stay in Eridani unless you explicitly publish or synchronize them. An external action is not complete until its provider confirms it.</p>
         <h2>Still need help?</h2><p>Contact the person who invited you or the app owner. Include the page, what you expected, and the visible error or Activity status. Do not send API keys, passwords, or private invitation details in a public post.</p>
       </>}

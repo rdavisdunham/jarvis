@@ -352,7 +352,7 @@ async def test_delegated_voice_end_preserves_accepted_work_and_closes_once(contr
     with session_scope() as db:
         db.get(VoiceInbox, c.id).end_requested = True
     await c.report_work()
-    assert c.end_requested
+    assert not c.end_requested and c.end_candidate is None  # legacy flag is not authorization
     c.session_created = True
     c.ws = type("Socket", (), {"close": AsyncMock()})()
     async def send(event):
@@ -375,7 +375,6 @@ async def test_voice_end_still_closes_if_final_intake_is_rejected(controller, mo
         from jarvis.domain import DomainError
         raise DomainError("QUEUE_FULL", "Synthetic full queue")
     monkeypatch.setattr(live_voice, "claim_voice", rejected)
-    c.request_end()
     await c.close()
     assert c.closed
 
@@ -517,8 +516,6 @@ async def test_completed_notice_does_not_hide_parallel_pending_work(controller, 
     await c.report_work()
     assert any("First is done." in call.args[0]["content"] for call in c.send.await_args_list)
     assert await voice_state(c, monkeypatch) == "working"
-    c.request_end()
-    assert await voice_state(c, monkeypatch) == "closing"
     await c.close()
     assert await voice_state(c, monkeypatch) == "closed"
 
@@ -616,3 +613,93 @@ async def test_a_proposed_agent_action_is_announced_as_waiting_for_the_owners_ye
     events = [call.args[0] for call in c.send.await_args_list]
     [spoken] = [e for e in events if e["type"] == "session.commentary.append"]
     assert "Claude Code on Alpha in jarvis. It is waiting for your yes." in spoken["content"]
+
+
+async def test_fresh_end_candidate_requires_browser_confirmation_and_rejects_new_input(controller, monkeypatch):
+    from jarvis.voice_end_policy import propose
+    monkeypatch.setattr("jarvis.access.assert_current", lambda *a: None)
+    c = controller
+    await c.event({"type":"session.input_transcript.delta", "event_id":"bye", "delta":"goodbye", "start_ms":0, "end_ms":100})
+    accepted = c.claim()
+    with session_scope() as db:
+        work = db.get(AgentWork, accepted[0]); db.expunge(work)
+    assert propose(work) == {"status":"end_proposed", "voice_ended":False}
+    await c.report_work()
+    candidate = c.end_candidate
+    assert candidate and not c.closing
+    assert not c.confirm_end("wrong")
+    await c.event({"type":"session.input_transcript.delta", "event_id":"new", "delta":"Also add milk", "start_ms":2000, "end_ms":2500})
+    assert not c.confirm_end(candidate["id"])
+    assert propose(work)["status"] == "keep_listening"
+    await c.close()
+
+
+async def test_candidate_is_session_device_account_bound_and_expires(controller, monkeypatch):
+    from jarvis.voice_end_policy import propose
+    monkeypatch.setattr("jarvis.access.assert_current", lambda *a: None)
+    c = controller
+    await c.event({"type":"session.input_transcript.delta", "event_id":"bye", "delta":"end voice", "start_ms":0, "end_ms":100})
+    accepted = c.claim()
+    with session_scope() as db:
+        work = db.get(AgentWork, accepted[0]); db.expunge(work)
+    for field in ("owner_id", "account_id", "device_id", "conversation_id"):
+        original = getattr(work, field); setattr(work, field, "another")
+        assert propose(work)["status"] == "keep_listening"
+        setattr(work, field, original)
+    assert propose(work)["status"] == "end_proposed"
+    await c.report_work()
+    candidate = c.end_candidate
+    c.end_candidate_deadline = 0
+    assert not c.confirm_end(candidate["id"])
+    await c.close()
+
+
+async def test_gratitude_cannot_propose_end_with_delayed_work_status(controller, monkeypatch):
+    from jarvis.voice_end_policy import propose
+    monkeypatch.setattr("jarvis.access.assert_current", lambda *a: None)
+    c = controller
+    await c.event({"type":"session.input_transcript.delta", "event_id":"request", "delta":"Add milk", "start_ms":0, "end_ms":100})
+    c.claim()
+    await c.event({"type":"session.input_transcript.delta", "event_id":"thanks", "delta":"Thank you, Eri", "start_ms":2000, "end_ms":2500})
+    accepted = c.claim()
+    with session_scope() as db:
+        work = db.get(AgentWork, accepted[0]); db.expunge(work)
+    assert propose(work)["status"] == "keep_listening"
+    await c.report_work()
+    assert not c.end_candidate and not c.closing
+    await c.close()
+
+
+@pytest.mark.parametrize("account", ["davin", "mother"])
+@pytest.mark.parametrize("next_step", ["clarification", "continued_request"])
+async def test_gratitude_during_work_keeps_both_accounts_open_with_delayed_polling(controller, monkeypatch, account, next_step):
+    from jarvis.accounts import ensure_account
+    from jarvis.voice_end_policy import propose
+    monkeypatch.setattr("jarvis.access.assert_current", lambda *a: None)
+    with session_scope() as db:
+        ensure_account(db, account)
+        conv=Conversation(owner_id=account,device_id=account+"-device",private=True,learning=False)
+        db.add(conv);db.flush()
+        c=LiveController(account,account+"-device",conv.id,None,preferences(db,account))
+        budget.reserve(db,account,c.id,.1,c.model)
+        open_voice(db,c.id,account,account,c.device,conv.id)
+    c.send=AsyncMock()
+    await c.event({"type":"session.input_transcript.delta","event_id":"task","delta":"Add a reminder","start_ms":0,"end_ms":500})
+    c.claim()
+    # First test variant shows working; the other withholds status polling entirely.
+    if next_step=="clarification":
+        await c.report_work()
+        assert c.pending_work
+        c.pending_question=True
+    await c.event({"type":"session.input_transcript.delta","event_id":"thanks","delta":"Thank you, Eri","start_ms":1000,"end_ms":1500})
+    accepted=c.claim()
+    with session_scope() as db:
+        work=db.get(AgentWork,accepted[0]);db.expunge(work)
+    assert propose(work)["status"]=="keep_listening"
+    assert not c.closed and not c.end_candidate
+    if next_step=="continued_request":
+        await c.event({"type":"session.input_transcript.delta","event_id":"next","delta":"What is on tomorrow?","start_ms":4000,"end_ms":5000})
+        assert c.claim()
+    await c.close()
+    with session_scope() as db:
+        assert all(not w.cancel_requested for w in db.scalars(select(AgentWork).where(AgentWork.voice_session_id==c.id)))

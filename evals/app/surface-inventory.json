@@ -2161,6 +2161,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/voice/sessions/{session_id}/startup",
+      "handler": "startup",
+      "source": "apps/api/jarvis/voice.py",
+      "feature": "live_voice"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/voice/sessions/{session_id}/stop",
       "handler": "stop",
       "source": "apps/api/jarvis/voice.py",

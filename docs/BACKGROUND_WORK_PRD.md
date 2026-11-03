@@ -82,7 +82,7 @@ confirmed code paths that explain how it can occur:
   currently matches a standalone wake phrase. Test a wake phrase followed by an
   immediate request so words are not silently lost. Background/locked-phone wake
   is a later native-app capability, not a promise of this web implementation.
-- The idle timer is 30 seconds, but the UI still contains a 15-second ending label.
+- The quiet voice window is 120 seconds; the UI shows a countdown in its final five seconds.
   Align the status copy and behavior. Current Live shutdown mutes immediately but
   can retain the media track while awaiting server finalization; test release and
   wake re-entry during slow or failed close acknowledgment.

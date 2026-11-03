@@ -1,18 +1,18 @@
 {
   "version": 2,
   "registry": {
-    "cases": 1107,
+    "cases": 1122,
     "types": {
       "contracts": 456,
       "pipeline": 275,
-      "integration": 150,
+      "integration": 154,
       "agent": 125,
       "browser": 51,
-      "voice": 50
+      "voice": 61
     },
-    "fully_bound": 239,
+    "fully_bound": 243,
     "component_cases": 226,
-    "sha256": "bbc39adad03311b80a77dd6ff0712b4d255137b5af9e1aa6be0e7abad843b3eb"
+    "sha256": "35ec34da907678fb810d7683c0403f02b8fa4b487e6f33ccb809b921709886fa"
   },
   "features": {
     "accounts": {
@@ -171,10 +171,11 @@
       ]
     },
     "agent_control": {
-      "catalog": 25,
-      "fully_bound": 0,
+      "catalog": 29,
+      "fully_bound": 4,
       "component_cases": 0,
       "supporting_suites": [
+        "durable-runs.mjs",
         "tests/test_agent_link.py",
         "tests/test_agent_runs.py",
         "tests/test_agent_security.py",
@@ -2959,14 +2960,16 @@
       ]
     },
     "live_voice": {
-      "catalog": 25,
+      "catalog": 28,
       "fully_bound": 0,
       "component_cases": 0,
       "supporting_suites": [
         "tests/test_live_voice.py",
         "tests/test_voice.py",
         "tests/test_voice_drafts.py",
-        "tests/test_voice_settlement.py"
+        "tests/test_voice_end_policy.py",
+        "tests/test_voice_settlement.py",
+        "tests/test_voice_startup.py"
       ],
       "remaining": [
         {
@@ -3238,6 +3241,39 @@
           "case_id": "live_voice.25",
           "kind": "device",
           "reason": "Physical phone evidence required",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "live_voice.26",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "live_voice.27",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "live_voice.28",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [
             "expected.1",
             "invariants.1",
@@ -9665,12 +9701,14 @@
       ]
     },
     "wake_shutdown": {
-      "catalog": 25,
+      "catalog": 33,
       "fully_bound": 0,
       "component_cases": 0,
       "supporting_suites": [
         "tests/test_live_voice.py",
-        "tests/test_voice.py"
+        "tests/test_voice.py",
+        "tests/test_voice_end_policy.py",
+        "tests/test_voice_startup.py"
       ],
       "remaining": [
         {
@@ -9778,7 +9816,6 @@
           "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [
             "expected.1",
-            "expected.2",
             "invariants.1",
             "invariants.2",
             "invariants.3"
@@ -9943,6 +9980,94 @@
           "case_id": "wake_shutdown.25",
           "kind": "device",
           "reason": "Physical phone evidence required",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.26",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.27",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.28",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.29",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.30",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.31",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.32",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
+          "criteria": [
+            "expected.1",
+            "invariants.1",
+            "invariants.2",
+            "invariants.3"
+          ]
+        },
+        {
+          "case_id": "wake_shutdown.33",
+          "kind": "acceptance_binding",
+          "reason": "Scenario-specific acceptance assertions are not yet fully bound; supporting tests cannot substitute",
           "criteria": [
             "expected.1",
             "invariants.1",

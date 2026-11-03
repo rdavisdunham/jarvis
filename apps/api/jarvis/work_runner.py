@@ -631,20 +631,12 @@ async def perform(request_id):
                     elif fn["name"] == "work_followup":
                         outcome = work_coordination.followup(row, args)
                     elif fn["name"] == "voice_end" and row.voice_session_id:
-                        from .models import VoiceInbox
-
+                        from .voice_end_policy import propose
                         if args:
                             raise DomainError("INVALID_ARGUMENT", "voice_end takes no arguments.")
-                        with session_scope() as db:
-                            inbox = db.get(VoiceInbox, row.voice_session_id)
-                            if (
-                                inbox
-                                and inbox.account_id == row.account_id
-                                and inbox.device_id == row.device_id
-                            ):
-                                inbox.end_requested = True
-                        outcome = {"status": "succeeded", "voice_ended": True}
-                        state["reply"] = "Voice ended. Saved work remains available."
+                        outcome = propose(row, final_action_accepted=bool(state.get("actions")) and not state.get("errors") and not state.get("needs_input") and not state.get("pending_confirmation"))
+                        state["reply"] = ("All right."
+                                          if outcome["status"] == "end_proposed" else "I’m still listening.")
                     elif fn["name"] == "tools_load":
                         with span("tool_discovery", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
                             before = set(session.names)

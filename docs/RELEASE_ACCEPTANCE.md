@@ -34,7 +34,7 @@ provider items; retain IDs until both local and remote cleanup are verified.
 | Voice clarification | Incomplete to-do asks once; partial answer remains one waiting card; complete answer resolves it | Pending |
 | Independent / dependent requests | Call Alex + buy milk can run independently; “make that call tomorrow” updates the correct request | Typed task + note + task correction passed Oct 27; voice/restart pending |
 | Optional offer / unrelated request | “Anything else?” never captures or drops a separate next request | Pending |
-| Voice lifecycle | Eri / Hey Eri, explicit and natural goodbye, 30-second silence, no premature timeout while work runs | Pending |
+| Voice lifecycle | Eri / Hey Eri, explicit and natural goodbye, 120-second silence, no premature timeout while work runs | Pending |
 | Connection recovery | Wi-Fi/cellular change, offline/reconnect, close/reopen; accepted work persists; Send/Discard is explicit | Pending |
 | Physical UX | Pixel folded/unfolded and desktop; Back, keyboard, scroll, focus, controls and screen reader | Pending |
 | Activity | Compact cards stay in conversation order; Edit/Revert preserves later unrelated edits; stale history clears safely | Typed receipts, detail readback and date Revert pass Oct 27; note-indexing creation-Revert repaired and regression-tested; finishing deployment tracked in GitHub |

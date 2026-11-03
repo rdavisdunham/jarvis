@@ -371,15 +371,15 @@ in a running session; it is on by default because these context updates were alr
 GPT-Live design (acceptance cases `live_voice.14`/`.15`). Shared workspaces never receive personal
 memory.
 
-- Acceptance set: [25 cases](../evals/app/features/live_voice.json).
+- Acceptance set: [28 cases](../evals/app/features/live_voice.json).
 - Implementation: [live_voice.py](../apps/api/jarvis/live_voice.py), [voice_control.py](../apps/api/jarvis/voice_control.py).
 - Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
 
 ### 34. Wake words and voice shutdown
 
-Hey Eri/Eri detection, 30-second quiet timeout, natural goodbye and wake-up recovery.
+Foreground Eri/Hey Eri detection, continuous captured-audio startup, a 120-second quiet window, contextual ending candidates and wake recovery. Ordinary thanks keeps listening. Ambiguous completion may receive a rate-limited closing offer. Device and provider acceptance remains pending; see [voice validation](VOICE_WAKE_VALIDATION.md).
 
-- Acceptance set: [25 cases](../evals/app/features/wake_shutdown.json).
+- Acceptance set: [33 cases](../evals/app/features/wake_shutdown.json).
 - Implementation: [voice_control.py](../apps/api/jarvis/voice_control.py), [live_voice.py](../apps/api/jarvis/live_voice.py).
 - Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice.py](../tests/test_voice.py).
 

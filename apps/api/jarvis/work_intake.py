@@ -39,7 +39,7 @@ def open_voice(db, session_id, owner, account, device, conversation):
     return row
 
 
-def append_voice(db, session_id, event_id, role, delta, start, end):
+def append_voice(db, session_id, event_id, role, delta, start, end, *, end_context=None):
     # Lock order everywhere: voice-inbox advisory, then the inbox row.
     advisory(db, "voice-inbox:" + session_id)
     row = db.get(VoiceInbox, session_id, populate_existing=True)
@@ -50,6 +50,11 @@ def append_voice(db, session_id, event_id, role, delta, start, end):
     if event_id and any(item["id"] == event_id for item in entries):
         return
     entries.append({"id": event_id, "role": role, "text": delta, "start": start, "end": end})
+    if role == "user":
+        previous = data.get("user_marker", {})
+        data["user_marker"] = {"sequence": previous.get("sequence", 0) + 1, "event_id": event_id, "end_ms": end}
+        data["end_context"] = end_context or {"text": delta}
+        data.pop("end_intent", None)
     row.content_ciphertext = seal({**data, "entries": entries})
     row.revision += 1
     row.last_input_at = now()  # Quiet means neither speaker is mid-utterance.
@@ -83,7 +88,8 @@ def grouped(entries):
     return result
 
 
-# A goodbye alone needs no recovery. Everything else remains a draft, never an action guess.
+# Draft-noise filter only: pure thanks may be omitted from recovery. This NEVER authorizes ending voice.
+# Requests containing gratitude remain drafts; no action is guessed.
 CLOSING = re.compile(
     r"^\W*(?:(?:ok(?:ay)?|alright|great|cool|perfect)\W+)?"
     r"(?:(?:that'?s all(?: for now)?|that will be all|that'?ll be all|i'?m done|we'?re done|"
@@ -185,6 +191,7 @@ def claim_voice(db, row, *, close=False):
             message,
             voice_session_id=row.id,
             context=context[-20:],
+            voice_source={"marker": data.get("user_marker"), "context": data.get("end_context", {})},
         )
     # A delegated turn is always a new request. Pending questions reach the backend as context,
     # and it answers one with work_answer only when this turn actually is that answer.
