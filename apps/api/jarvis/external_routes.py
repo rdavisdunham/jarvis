@@ -399,3 +399,18 @@ async def session_search(identity: Bot, query: Annotated[sessions.Listing, Query
 
 
 router.include_router(external)
+
+
+@external.get("/agents/session/submissions/{submission_id}")
+def plan_submission_receipt(submission_id: UUID, identity: Bot):
+    """A receipt can be recovered after the planner token has been retired by a worker handoff."""
+    from . import agent_receipts
+    from .domain import DomainError
+    with session_scope() as db:
+        bot = bot_access.authorize(db, required="agents:session")
+        from .agent_link import gate
+        gate(db, bot.owner_id)
+        receipt = agent_receipts.lookup(db, bot.owner_id, str(submission_id))
+        if receipt["kind"] != "submit_plan":
+            raise DomainError("NOT_FOUND", "That plan submission was not found.", 404)
+        return receipt

@@ -1,6 +1,6 @@
-import { type Dispatch, type SetStateAction, useEffect, useId, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useId, useState, useRef } from "react";
 import { FolderGit2, Minus, Play, Plus, Wrench } from "lucide-react";
-import { api, ApiError, post } from "./api";
+import { api, ApiError, durableStorageKey, postAction } from "./api";
 import { Dialog } from "./ux";
 import {
   afterTargetSaved, DRAFT_STORAGE_KEY, effectiveDraft, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl,
@@ -9,36 +9,21 @@ import {
 } from "./remotea-model";
 import { useRemotea } from "./remotea-context";
 import { TargetPicker } from "./Remotea";
+import { EffortSelect, RoleModelSelect, RunModelsContext, modelOptions, unsupportedRole, pendingRolePreferences, queueRolePreferences, type ModelOption } from "./RunModels";
 import "./runs.css";
 
 const message = (e: unknown) => (e as Error).message || "Something went wrong.";
 
 /** The remembered choices (DRAFT_STORAGE_KEY); storage may be missing or refuse (private mode), which is no error. */
 function readDraft(): RunDraft {
-  try { return restoreDraft(localStorage.getItem(DRAFT_STORAGE_KEY)); } catch { return restoreDraft(null); }
+  try { return restoreDraft(localStorage.getItem(durableStorageKey(DRAFT_STORAGE_KEY) ?? "eri-unbound-run-draft")); } catch { return restoreDraft(null); }
 }
 function saveDraft(draft: RunDraft) {
-  try { localStorage.setItem(DRAFT_STORAGE_KEY, storedDraft(draft)); } catch { /* Remembering is a convenience only. */ }
+  try { const key = durableStorageKey(DRAFT_STORAGE_KEY); if (key) localStorage.setItem(key, storedDraft(draft)); } catch { /* Remembering is a convenience only. */ }
 }
 
 type Choice = (id: HarnessId) => { ok: boolean; reason?: string };
-const roleKey = (c: RoleChoice | null | undefined) => c ? `${c.harness}:${c.model}` : "";
-
-/** One select over every harness and model, grouped by harness; a harness the target cannot start is greyed out
- * with its reason. `same` adds a first option that means "no role of its own" (the worker's "Same as planner"). */
-function RoleSelect({ label, value, choice, onChange, same, disabled }: {
-  label: string; value: RoleChoice | null | undefined; choice: Choice; onChange: (value: RoleChoice | null) => void; same?: string; disabled?: boolean;
-}) {
-  return <select aria-label={label} value={roleKey(value)} disabled={disabled} onChange={e => {
-    const [harness, model] = e.target.value.split(/:(.*)/);
-    onChange(harness ? { harness: harness as HarnessId, model } : null);
-  }}>
-    {same && <option value="">{same}</option>}
-    {HARNESSES.map(h => <optgroup key={h.id} label={h.label + (choice(h.id).ok ? "" : " (cannot start here)")}>
-      {h.models.map(m => <option key={m.id} value={`${h.id}:${m.id}`} disabled={!choice(h.id).ok}>{h.label} · {m.label}</option>)}
-    </optgroup>)}
-  </select>;
-}
+const RoleSelect = RoleModelSelect;
 
 /** The Run dialog's roles: the Worker (default "Same as planner") and the Hyperplan toggle with its Reviewer, Rounds
  * and "Approve final plan before running". Off with the reason when the host cannot spawn roles (`roles` false, or a
@@ -115,6 +100,28 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
   // A start refused for its roles: HOST_NO_ROLES turns the role controls off, HARNESS_UNAVAILABLE names the role.
   const [noRoles, setNoRoles] = useState(""), [roleProblem, setRoleProblem] = useState<PreflightProblem | null>(null);
   const heading = useId();
+  const [catalog, setCatalog] = useState<ModelOption[] | null>(null);
+  const [legacyHosts, setLegacyHosts] = useState<string[]>([]);
+  const editedRoles = useRef(false);
+  useEffect(() => {
+    let live = true;
+    void api<{ models: ModelOption[]; legacy_hosts?: string[] }>("/remotea/model-catalog").then(result => { if (live && Array.isArray(result.models)) { setCatalog(result.models); setLegacyHosts(result.legacy_hosts ?? []); } }).catch(() => {});
+    void api<{ planner: RoleChoice | null; reviewer: RoleChoice | null; worker: RoleChoice | null }>("/remotea/role-preferences").then(prefs => {
+      if (!live || editedRoles.current || pendingRolePreferences()) return;
+      const normalize = (role: RoleChoice): RoleChoice => ({ ...role, model: role.model ?? "" });
+      setDraft(d => ({ ...d, ...(prefs.planner ? normalize(prefs.planner) : {}), ...(prefs.reviewer ? { reviewer: normalize(prefs.reviewer) } : {}), worker: prefs.planner ? (prefs.worker ? normalize(prefs.worker) : null) : d.worker }));
+    }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const changeDraft: Dispatch<SetStateAction<RunDraft>> = change => {
+    editedRoles.current = true;
+    setDraft(change);
+  };
+  useEffect(() => {
+    saveDraft(draft);
+    if (!editedRoles.current) return;
+    queueRolePreferences({ planner: { harness: draft.harness, model: draft.model, effort: draft.effort, permission_profile: draft.permission_profile }, reviewer: draft.reviewer ?? null, worker: draft.worker ?? null });
+  }, [draft]);
   // What can start: a classic run while the host cannot spawn roles, or in freestyle.
   const effective = effectiveDraft(draft, noRoles ? false : pre?.roles);
   const reviewerHarness = effective.hyperplan ? effective.reviewer?.harness ?? null : null;
@@ -132,7 +139,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
     setBusy(true); setError(""); setRoleProblem(null);
     saveDraft(draft);
     try {
-      const run = await post<Run>("/remotea/runs", startBody(taskId, { ...effective, target: target ?? draft.target }));
+      const run = await postAction<Run>("/remotea/runs", startBody(taskId, { ...effective, target: target ?? draft.target }));
       onStarted(run.id);
     } catch (e) {
       const data = e instanceof ApiError ? e.data as { run_id?: string; role?: string } | null : null;
@@ -144,6 +151,9 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
       else setError(message(e));
     } finally { setBusy(false); }
   };
+  const legacyTarget = pre?.target?.host_id ? legacyHosts.includes(pre.target.host_id) : !catalog?.length && legacyHosts.length > 0;
+  const targetCatalog = legacyTarget ? null : catalog && pre?.target?.host_id ? catalog.filter(m => m.host_id === pre.target!.host_id) : catalog;
+  const modelProblems = [unsupportedRole(targetCatalog, draft), ...(effective.hyperplan ? [unsupportedRole(targetCatalog, effective.reviewer)] : []), unsupportedRole(targetCatalog, effective.worker)].filter(Boolean);
   const harness = HARNESSES.find(h => h.id === draft.harness) ?? HARNESSES[0];
   // The preflight says what the task's target can start; any connected host counts only when there is no preflight.
   const choice = (id: HarnessId) => harnessChoice(pre, hosts, id);
@@ -162,7 +172,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
     ? "With a reviewer or a separate worker the planner always plans first, from the task as written."
     : draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
-  return <Dialog className="dialog run-dialog" aria-labelledby={heading} onEscape={onClose} onBackdrop={onClose}>
+  return <RunModelsContext.Provider value={targetCatalog}><Dialog className="dialog run-dialog" aria-labelledby={heading} onEscape={onClose} onBackdrop={onClose}>
     <h2 id={heading}>Run with an agent</h2>
     {task && <p className="run-dialog-task">{task.title}</p>}
     {pre?.active_run ? <>
@@ -180,15 +190,19 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
           <div className="segmented" role="group" aria-labelledby={heading + "-agent"}>
             {HARNESSES.map(h => <button key={h.id} type="button" aria-pressed={draft.harness === h.id} disabled={!available(h.id)}
               title={choice(h.id).reason}
-              onClick={() => setDraft(d => ({ ...d, harness: h.id, model: h.models[0].id }))}>{h.label}</button>)}
+              onClick={() => changeDraft(d => ({ ...d, harness: h.id, model: "", effort: undefined }))}>{h.label}</button>)}
           </div>
-          <select aria-label="Planner model" value={draft.model} onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}>
-            {harness.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+          <select aria-label="Planner model" value={draft.model} onChange={e => changeDraft(d => ({ ...d, model: e.target.value, effort: undefined }))}>
+            <option value="">Model default{modelOptions(targetCatalog, harness.id).find(m => m.default)?.label ? ` (${modelOptions(targetCatalog, harness.id).find(m => m.default)!.label})` : ""}</option>
+            {draft.model && !modelOptions(targetCatalog, harness.id).some(m => m.model === draft.model) && <option value={draft.model} disabled>{draft.model} (unsupported)</option>}
+            {modelOptions(targetCatalog, harness.id).map(m => <option key={m.model} value={m.model}>{m.label ?? m.model}</option>)}
           </select>
+          <EffortSelect label="Planner" value={draft} onChange={role => changeDraft(d => ({ ...d, ...role }))}/>
+          {modelProblems.map(problem => <p key={problem} role="alert" className="work-error">{problem}</p>)}
           {unavailable.length > 0 && <p className="footnote">{unavailable.join(" ")}{pre?.harness_note ? ` ${pre.harness_note}` : ""}</p>}
           {notes.map(n => <p key={n} className="footnote run-dialog-note" role="note">{n}</p>)}
         </div>
-        <RoleControls draft={draft} setDraft={change => { setRoleProblem(null); setDraft(change); }} choice={choice} roles={pre?.roles} rolesReason={noRoles}
+        <RoleControls draft={draft} setDraft={change => { setRoleProblem(null); changeDraft(change); }} choice={choice} roles={pre?.roles} rolesReason={noRoles}
           problems={roleProblems} idPrefix={heading}/>
         <div className="run-dialog-row">
           <span id={heading + "-interview"}>Interview first</span>
@@ -206,7 +220,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
         {block.problem && !block.problem.role && !notes.includes(block.problem.message) && !unavailable.includes(block.problem.message) && <p className="footnote run-dialog-note" role="note">{block.problem.message}</p>}
         {setupLink}
         <div className="settings-form-actions">
-          <button className="btn btn-primary btn-sm" disabled={busy || blocked || !available(draft.harness)} onClick={() => void start()}>
+          <button className="btn btn-primary btn-sm" disabled={busy || blocked || !!modelProblems.length || !available(draft.harness)} onClick={() => void start()}>
             <Play size={14} aria-hidden="true"/>{busy ? "Starting…" : "Start"}</button>
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={onClose}>Cancel</button>
         </div>
@@ -214,5 +228,5 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
       {need && setupLink}
       {error && <p role="alert" className="work-error">{error}</p>}
     </>}
-  </Dialog>;
+  </Dialog></RunModelsContext.Provider>;
 }

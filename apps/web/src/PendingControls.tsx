@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { NeedsTarget, PendingControl } from "./remotea-model";
+import { DecisionCard, useReceipts } from "./RunWorkflow";
 import { useRemotea, useRemoteaActions, type PendingCardState } from "./remotea-context";
 
 // The picker lives in the remotea chunk; it loads only when a start has no target yet.
@@ -13,18 +14,19 @@ export function PendingControlCard({ item, card, onDecide, onCancelPicker }: {
 }) {
   const need: NeedsTarget | null = card && card.need !== undefined ? card.need : (item.needs_target ? item.need ?? null : null);
   const busy = !!card?.busy;
-  return <div className="remotea-pending-card" data-pending-id={item.id}>
-    <p>{item.summary}</p>
+  const receipts = useReceipts();
+  return <DecisionCard title={item.tool.includes("start") ? "Start task" : "Send message"} reason={item.summary} className="remotea-pending-card" receipt={receipts.filter(r => r.url.includes(item.id)).at(-1)}>
+
     {(item.problems ?? []).map(problem => <p key={problem.code} className="footnote">{problem.message}</p>)}
     {need ? <Suspense fallback={<p className="footnote">Loading repositories…</p>}>
         <TargetPicker key={need.task_id} need={need} onSaved={target => onDecide("confirm", target)} onCancel={onCancelPicker}/>
       </Suspense> :
       <div className="settings-form-actions">
-        <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDecide("confirm")}>Confirm</button>
-        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onDecide("decline")}>Decline</button>
+        <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => onDecide("confirm")}>Approve once</button>
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => onDecide("decline")}>Deny</button>
       </div>}
     {card?.error && <p role="alert" className="work-error">{card.error}</p>}
-  </div>;
+  </DecisionCard>;
 }
 
 /** Eri's open proposals. `compact` (the chat drawer) shows the newest few and points at the remotea page for the rest. */

@@ -54,7 +54,7 @@ jobs:
       - name: Install locked Python dependencies
         run: uv sync --locked --group dev
       - name: Check Python correctness
-        run: uv run --no-sync ruff check --select E9,F63,F7,F82,F811 apps/api/jarvis tests scripts/validate_custom_planner.py scripts/validate_google_rsvp.py
+        run: uv run --no-sync ruff check --select E9,F63,F7,F82,F811 apps/api/jarvis tests scripts/validate_custom_planner.py scripts/validate_google_rsvp.py scripts/validate_durable_runs.py tests/fixtures/durable_runs_acceptance.py
       - name: Validate app eval catalog and graders (no paid inference)
         run: |
           uv run --no-sync ruff check --select E9,F63,F7,F82,F811 scripts/app_eval evals
@@ -132,6 +132,7 @@ jobs:
         run: |
           uv run --no-sync python scripts/validate_custom_planner.py
           uv run --no-sync python scripts/validate_google_rsvp.py
+          uv run --no-sync python scripts/validate_durable_runs.py
       - name: Keep failed browser artifacts
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -147,6 +148,7 @@ jobs:
             artifacts/semantic-search/
             artifacts/note-lists/
             artifacts/task-archive/
+            artifacts/durable-runs/
             apps/web/test-results/
           if-no-files-found: ignore
           retention-days: 7

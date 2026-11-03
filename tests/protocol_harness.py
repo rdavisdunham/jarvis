@@ -17,6 +17,7 @@ recorded under tests/fixtures/protocol/<caps_version>/.
 """
 
 import asyncio
+import base64
 import contextlib
 import json
 import os
@@ -353,6 +354,8 @@ const HOOK = __HOOK__;
 const LOG = __LOG__;
 const args = process.argv.slice(2);
 if (args[0] === '--version') { process.stdout.write('2.1.999 (Claude Code)\n'); process.exit(0); }
+// This legacy fixture has no structured catalog transport and must not treat a probe as a task.
+if (args.includes('--input-format')) process.exit(0);
 const log = (entry) => fs.appendFileSync(LOG, JSON.stringify({ pid: process.pid, ...entry }) + '\n');
 const sid = crypto.randomUUID();
 const prompt = !args.includes('--resume') && args.length && !args[args.length - 1].startsWith('-') ? args[args.length - 1] : '';
@@ -482,9 +485,19 @@ class RemoteaHost:
         path.write_text(json.dumps(data, indent=2) + "\n")
         path.chmod(0o600)
 
+    def configure_mcp(self, setup_code, origin):
+        """Only the fresh test account's setup code; never use a real host credential."""
+        encoded = setup_code.removeprefix("eridani-setup:1:")
+        setup = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        token = self.config / "eridani-mcp-token"
+        token.write_text(setup["mcp_key"] + "\n")
+        token.chmod(0o600)
+        config = json.loads((self.config / "eridani.json").read_text())
+        self.write("eridani.json", {**config, "mcpUrl": origin + "/api/v1/external/mcp/"})
+
     def env(self):
         # Nothing from the real home: no ~/.claude, ~/.config/remotea or ~/.local/share/remotea is read or written.
-        return {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(self.home), "SHELL": "/bin/bash",
+        return {"PATH": str(self.bin) + os.pathsep + "/usr/bin:/bin", "HOME": str(self.home), "SHELL": "/bin/bash",
                 "LANG": "C.UTF-8", "TERM": "xterm-256color", "USER": os.environ.get("USER", "e2e"),
                 "XDG_CONFIG_HOME": str(self.home / ".config"), "XDG_DATA_HOME": str(self.home / ".local" / "share"),
                 "XDG_STATE_HOME": str(self.home / ".local" / "state"), "REMOTEA_CONFIG_DIR": str(self.config),

@@ -5,13 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteaDataContext, type RemoteaData } from "./remotea-context";
 import { PlanApproval } from "./Remotea";
 import { RunTaskDialog } from "./RunTaskDialog";
+import { durableStorageKey, setDurableScope } from "./api";
 import { DRAFT_STORAGE_KEY, ROLES_UNAVAILABLE, type RunDetail } from "./remotea-model";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ID = "11111111-1111-4111-8111-111111111111";
 let host: HTMLDivElement, root: Root;
-beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); localStorage.clear(); });
+beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); localStorage.clear(); setDurableScope("test-owner:personal"); });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 /** A fetch that answers by method and path, and records every call. */
@@ -43,7 +44,7 @@ describe("the Run dialog's Start", () => {
   };
 
   it("starts a hyperplan run, asks the preflight about the reviewer, and remembers the choices", async () => {
-    const calls = stubFetch((method, url) => method === "POST" ? { body: { id: ID } } : preflight(true));
+    const calls = stubFetch((method, url) => method === "POST" ? { body: { id: ID } } : url.includes("/model-catalog") ? { body: { models: [] } } : url.includes("/role-preferences") ? { body: { planner: null, reviewer: null, worker: null } } : preflight(true));
     await open();
     act(() => byText("label", "Hyperplan").querySelector("input")!.click());
     await settle();
@@ -52,11 +53,11 @@ describe("the Run dialog's Start", () => {
     await settle();
     expect(calls.at(-1)).toMatchObject({ method: "POST", url: "/api/v1/remotea/runs",
       body: { task_id: "t1", harness: "claude", reviewer: { harness: "codex" }, rounds: 2, approve_final: true } });
-    expect(JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY)!)).toMatchObject({ hyperplan: true, rounds: 2 });
+    expect(JSON.parse(localStorage.getItem(durableStorageKey(DRAFT_STORAGE_KEY)!)!)).toMatchObject({ hyperplan: true, rounds: 2 });
   });
 
   it("starts classic and turns the roles off while the host cannot spawn them", async () => {
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ hyperplan: true, worker: { harness: "claude", model: "sonnet" } }));
+    localStorage.setItem(durableStorageKey(DRAFT_STORAGE_KEY)!, JSON.stringify({ hyperplan: true, worker: { harness: "claude", model: "sonnet" } }));
     const calls = stubFetch((method) => method === "POST" ? { body: { id: ID } } : preflight(false));
     await open();
     expect(host.textContent).toContain(ROLES_UNAVAILABLE);
@@ -65,7 +66,7 @@ describe("the Run dialog's Start", () => {
     expect(calls.at(-1)!.url).not.toContain("reviewer_harness");
     act(() => byText("button", "Start").click());
     await settle();
-    expect(calls.at(-1)!.body).toEqual({ task_id: "t1", harness: "claude" });
+    expect(calls.at(-1)!.body).toMatchObject({ task_id: "t1", harness: "claude", action_id: expect.any(String) });
   });
 
   it("shows a HOST_NO_ROLES refusal inline and offers a classic start", async () => {
@@ -81,7 +82,7 @@ describe("the Run dialog's Start", () => {
     expect(byText("label", "Hyperplan").querySelector("input")!.disabled).toBe(true);
     act(() => byText("button", "Start").click());
     await settle();
-    expect(calls.at(-1)!.body).toEqual({ task_id: "t1", harness: "claude" });
+    expect(calls.at(-1)!.body).toMatchObject({ task_id: "t1", harness: "claude", action_id: expect.any(String) });
   });
 });
 
@@ -94,13 +95,13 @@ describe("the final-plan approval card", () => {
     const done = vi.fn();
     act(() => root.render(<PlanApproval run={run} onDone={done}/>));
     act(() => type(host.querySelector("textarea")!, "Split step 2."));
-    act(() => byText("button", "Revise with note").click());
+    act(() => byText("button", "Request changes").click());
     await settle();
-    expect(calls[0]).toMatchObject({ method: "POST", url: `/api/v1/remotea/runs/${ID}/plan-review`,
+    expect(calls.find(c => c.method === "POST")).toMatchObject({ method: "POST", url: `/api/v1/remotea/runs/${ID}/plan-review`,
       body: { action: "revise", note: "Split step 2.", expected_revision: 7 } });
     act(() => byText("button", "Approve").click());
     await settle();
-    expect(calls[1].body).toEqual({ action: "approve", expected_revision: 7 });
+    expect(calls.filter(c => c.method === "POST")[1].body).toMatchObject({ action: "approve", expected_revision: 7, action_id: expect.any(String) });
     expect(done).toHaveBeenCalledTimes(2);
   });
 

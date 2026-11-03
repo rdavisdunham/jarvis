@@ -152,14 +152,6 @@
                "boolean"
               ]
              }
-            },
-            "reason": {
-             "required": true,
-             "shape": {
-              "types": [
-               "string"
-              ]
-             }
             }
            },
            "types": [

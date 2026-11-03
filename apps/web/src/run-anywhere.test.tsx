@@ -68,11 +68,11 @@ describe("panel helpers", () => {
 });
 
 describe("Run dialog helpers", () => {
-  it("builds the start body with defaults left out", () => {
-    expect(startBody("t1", { harness: "claude", model: "opus", interview: "auto", target: null })).toEqual({ task_id: "t1", harness: "claude" });
+  it("leaves model default implicit and sends explicit model selections", () => {
+    expect(startBody("t1", { harness: "claude", model: "opus", interview: "auto", target: null })).toEqual({ task_id: "t1", harness: "claude", model: "opus" });
     expect(startBody("t1", { harness: "claude", model: "sonnet", interview: "skip", target: "x" }))
       .toEqual({ task_id: "t1", harness: "claude", model: "sonnet", execution_target_id: "x", interview: false });
-    expect(startBody("t1", { harness: "codex", model: HARNESSES[1].models[0].id, interview: "auto", target: null })).toEqual({ task_id: "t1", harness: "codex" });
+    expect(startBody("t1", { harness: "codex", model: HARNESSES[1].models[0].id, interview: "auto", target: null })).toEqual({ task_id: "t1", harness: "codex", model: HARNESSES[1].models[0].id });
   });
   it("reads harness availability from connected hosts", () => {
     expect(harnessAvailable([host()], "claude")).toBe(true);
@@ -144,10 +144,10 @@ describe("RunPanel", () => {
 
 describe("PendingControlCard", () => {
   const item: PendingControl = { id: "p1", tool: "control.start", summary: "Start Claude Code on “Ship it”", run_id: null, expires_at: "", task_id: "t1" };
-  it("shows Confirm and Decline", () => {
+  it("shows Approve once and Deny", () => {
     const html = renderToStaticMarkup(<PendingControlCard item={item} onDecide={() => {}} onCancelPicker={() => {}}/>);
-    expect(html).toContain("Confirm");
-    expect(html).toContain("Decline");
+    expect(html).toContain("Approve once");
+    expect(html).toContain("Deny");
     expect(html).toContain("Start Claude Code on");
   });
   it("shows the refusal and a problem", () => {

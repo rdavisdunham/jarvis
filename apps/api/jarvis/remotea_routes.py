@@ -19,8 +19,8 @@ from . import agent_control as control
 from . import agent_link, agent_plan, bot_access, swarm
 from . import agent_receipts as receipts
 from . import agent_retention as retention
-from . import run_coordinator as coordinator
 from . import agent_sessions as sessions
+from . import run_coordinator as coordinator
 from .auth import Identity, authenticate
 from .config import get_settings
 from .db import session_scope
@@ -346,7 +346,8 @@ def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: i
 def start(body: control.StartInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return control.start_run(db, user.owner_id, user.account_id, body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, body.task_id, "start", body, lambda: control.start_run(
+            db, user.owner_id, user.account_id, body, actor=actor_for(user)))
 
 
 @router.get("/runs/preflight")
@@ -498,7 +499,8 @@ def freestyle(identity: UUID, body: control.FreestyleInput, user: User):
 def plan_review(identity: UUID, body: agent_plan.PlanReviewInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return agent_plan.review_plan(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "plan_review", body, lambda: agent_plan.review_plan(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs/{identity}/redact")
@@ -516,14 +518,16 @@ def redact_run(identity: UUID, user: User):
 def interview_answers(identity: UUID, body: agent_plan.InterviewAnswers, user: User):
     with session_scope() as db:
         writable(db, user)
-        return agent_plan.answer_interview(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "interview", body, lambda: agent_plan.answer_interview(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/questions/{identity}/answer")
 def answer(identity: UUID, body: control.AnswerInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return control.answer_question(db, user.owner_id, str(identity), body, actor=actor_for(user))
+        return receipts.once(db, user.owner_id, str(identity), "answer", body, lambda: control.answer_question(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.get("/targets")
@@ -677,3 +681,139 @@ def cancel_swarm(identity: UUID, body: swarm.CancelInput, user: User):
     with session_scope() as db:
         owner_only(db, user)
         return swarm.cancel(db, user.owner_id, str(identity), body)
+
+
+@router.get("/actions/{action_id}")
+def action_receipt(action_id: UUID, user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        return receipts.lookup(db, user.owner_id, str(action_id))
+
+
+@router.get("/decisions")
+def decisions(user: User, run_id: UUID | None = None):
+    from . import agent_decisions
+    from .session_models import AgentRun
+    with session_scope() as db:
+        owner_only(db, user)
+        if run_id:
+            runs = [coordinator.load(db, user.owner_id, str(run_id), lock=False)]
+        else:
+            runs = db.scalars(select(AgentRun).where(AgentRun.owner_id == user.owner_id,
+                                                     AgentRun.state.not_in(coordinator.TERMINAL)))
+        result = [d for run in runs for d in agent_decisions.for_run(db, run)]
+        if not run_id:
+            from .session_models import AgentPendingControl, AgentQuestion
+            for cls, kind, statuses in ((AgentPendingControl, "control", ("pending",)),
+                                         (AgentQuestion, "question", ("open", "submitted"))):
+                result.extend(agent_decisions.present(db, row, kind) for row in db.scalars(select(cls).where(
+                    cls.owner_id == user.owner_id, cls.run_id.is_(None), cls.status.in_(statuses))))
+        return {"decisions": result}
+
+
+from .agent_decisions import PauseInput, RespondInput
+
+
+@router.post("/decisions/{identity}/respond")
+def respond_decision(identity: str, body: RespondInput, user: User):
+    from . import agent_decisions
+    with session_scope() as db:
+        writable(db, user)
+        return agent_decisions.respond(db, user.owner_id, identity, body, actor=actor_for(user))
+
+
+@router.post("/runs/{identity}/pause")
+def pause_run(identity: UUID, body: PauseInput, user: User):
+    from . import agent_decisions
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "pause", body, lambda: agent_decisions.set_paused(
+            db, user.owner_id, str(identity), body, True, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/resume")
+def resume_run(identity: UUID, body: PauseInput, user: User):
+    from . import agent_decisions
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "resume", body, lambda: agent_decisions.set_paused(
+            db, user.owner_id, str(identity), body, False, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/cancel")
+def cancel_run(identity: UUID, body: control.StopInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "cancel", body, lambda: control.stop_run(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+class RolePreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    planner: control.RoleInput | None = None
+    reviewer: control.RoleInput | None = None
+    worker: control.RoleInput | None = None
+
+
+@router.get("/role-preferences")
+def role_preferences(user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        row = db.get(OwnerSettings, user.owner_id)
+        return (row.values if row else {}).get("remotea_roles", {"planner": None, "reviewer": None, "worker": None})
+
+
+@router.put("/role-preferences")
+def save_role_preferences(body: RolePreferences, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        value = body.model_dump(mode="json")
+        set_enabled(db, user.owner_id, value, "remotea_roles")
+        return value
+
+
+@router.get("/model-catalog")
+def model_catalog(user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        hosts = list(db.scalars(select(AgentHost).where(AgentHost.owner_id == user.owner_id)))
+        return {"models": [{**model, "host_id": host.id} for host in hosts
+                           for model in (host.caps or {}).get("model_catalog", []) if isinstance(model, dict)],
+                "legacy_hosts": [host.id for host in hosts if "role.options" not in ((host.caps or {}).get("caps") or [])]}
+
+
+class DraftInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    value: dict | list | str | None
+    expected_revision: int | None = Field(default=None, ge=0)
+
+
+@router.get("/drafts/{key}")
+def draft(key: str, user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        row = db.get(OwnerSettings, user.owner_id)
+        return ((row.values if row else {}).get("remotea_drafts") or {}).get(key, {"value": None, "revision": 0})
+
+
+@router.put("/drafts/{key}")
+def save_draft(key: str, body: DraftInput, user: User):
+    from .domain import DomainError
+    if len(json.dumps(body.value).encode()) > 131072:
+        raise DomainError("INVALID_ARGUMENT", "Draft is too large.")
+    if len(key) > 200:
+        raise DomainError("INVALID_ARGUMENT", "Draft key is too long.")
+    with session_scope() as db:
+        writable(db, user)
+        advisory(db, f"budget:{user.owner_id}")
+        owner_only(db, user)
+        row = db.get(OwnerSettings, user.owner_id)
+        drafts = dict((row.values if row else {}).get("remotea_drafts") or {})
+        revision = drafts.get(key, {}).get("revision", 0)
+        if body.expected_revision is not None and body.expected_revision != revision:
+            raise DomainError("REVISION_CONFLICT", "The draft was changed on another device.", 409)
+        drafts[key] = {"value": body.value, "revision": revision + 1}
+        if len(drafts) > 500:
+            raise DomainError("INVALID_ARGUMENT", "Clear an old draft before saving another.")
+        set_enabled(db, user.owner_id, drafts, "remotea_drafts")
+        return drafts[key]

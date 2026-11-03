@@ -252,16 +252,16 @@ def test_plan_review_by_voice_decides_each_proposal_and_freezes_the_plan(host): 
     assert "control_plan_review" in review["next"]
     out = say("control.plan_review", task="reviewed by voice", decisions=[
         {"id": "c1", "accept": True, "text": "compares resume.cmd and resume.url only"}, {"id": "c2", "accept": False}])
-    assert out["status"] == "plan_reviewed" and out["state"] == "executing" and out["plan_revision"] == 2
+    assert out["status"] == "plan_reviewed" and out["state"] == "needs_you" and out["plan_revision"] == 2
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
-        assert row.plan_revision == 2 and not row.plan_pending
+        assert row.plan_revision == 2 and row.plan_pending
         texts = [c["text"] for c in db.get(Task, created["id"]).success_criteria]
         assert texts == ["compares resume.cmd and resume.url only", "docs updated"]
         assert [h for h in row.history if h.get("event") == "plan_reviewed"][0]["accepted"] == ["c1"]
     with pytest.raises(DomainError) as again:
         say("control.plan_review", run_id=run_id, decisions=[])
-    assert again.value.code == "NO_PLAN_REVIEW" and "executing" in again.value.message
+    assert again.value.code == "NO_PLAN_REVIEW"
 
 
 def test_a_target_defaults_to_the_run_open_on_the_owners_screen(host, monkeypatch):  # noqa: F811

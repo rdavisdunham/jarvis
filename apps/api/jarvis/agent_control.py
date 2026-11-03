@@ -9,22 +9,22 @@ its outbound command in one transaction (run_coordinator.py owns the transitions
 import json
 import re
 from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link
+from . import agent_link, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
 from . import run_coordinator as coordinator
-from . import run_summaries
 from .agent_actor import Actor, acting
+from .agent_control_schema import COMMANDS  # noqa: F401  (voice commands; domain.COMMANDS includes them)
 from .config import get_settings
 from .domain import DomainError, emit, encode, owned
 from .models import Note, StructureRecord, Task, now
-from .agent_control_schema import COMMANDS  # noqa: F401  (voice commands; domain.COMMANDS includes them)
 from .session_models import (
     TERMINAL_RUN_STATES,
     AgentAttempt,
@@ -55,13 +55,20 @@ class RoleInput(Input):
     """A role's harness and model (hyperplan): the reviewer or the worker. model None = the harness default."""
     harness: str = Field(max_length=20)
     model: str | None = Field(default=None, pattern=MODEL)
+    effort: str | None = Field(default=None, max_length=40)
+    permission_profile: Literal["read-only", "workspace-write"] | None = None
 
 
 class StartInput(Input):
+    action_id: UUID | None = None
+    turn_cap: int | None = Field(default=None, ge=0, le=100)
+    wall_clock_limit: int = Field(default=0, ge=0)
     task_id: str = Field(max_length=36)
     # The planner (and, without a different worker, the agent that executes).
     harness: str = Field(default="claude", max_length=20)
     model: str | None = Field(default=None, pattern=MODEL)
+    effort: str | None = Field(default=None, max_length=40)
+    permission_profile: Literal["read-only", "workspace-write"] | None = None
     execution_target_id: str | None = Field(default=None, max_length=36)
     # None: interview when the task has no PRD. False: run on the plan the task already has (stage C's manual run).
     interview: bool | None = None
@@ -128,6 +135,8 @@ class AnswerItem(Input):
 
 
 class AnswerInput(Input):
+    action_id: UUID | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
     answers: list[AnswerItem] = Field(min_length=1, max_length=16)
 
 
@@ -188,6 +197,7 @@ def target_launch(item):
     for name, probe in value.items():
         if name in HARNESSES and isinstance(probe, dict) and isinstance(probe.get("ready"), bool):
             out[name] = {"ready": probe["ready"], "version": clip(probe.get("version"), 100),
+                         **({"managed": probe["managed"]} if isinstance(probe.get("managed"), bool) else {}),
                          **({"error": clip(probe["error"])} if clip(probe.get("error")) else {})}
     return out
 
@@ -444,7 +454,7 @@ def freeze(db, owner, run, task):
     plan = AgentRunPlan(owner_id=owner, run_id=run.id, revision=1, task_plan_revision=task.plan_revision or 0,
                         title=task.title, prd_text=prd or task.notes or "", steps=list(task.steps or []),
                         criteria=list(task.success_criteria or []), verify=verify,
-                        completion_policy=task.completion_policy or "code_ready",
+                        completion_policy=run.completion_policy or task.completion_policy or "code_ready",
                         required_children=[c.id for c in coordinator.children(db, task)
                                            if any(s.get("task_id") == c.id for s in task.steps or [])],
                         migration=numbers.carry(db, run))
@@ -538,13 +548,16 @@ def role_spec(spec):
         raise DomainError("HARNESS_DISABLED", DISABLED_HARNESSES[spec.harness], 400)
     if spec.harness not in HARNESSES:
         raise DomainError("INVALID_ARGUMENT", "Choose Claude Code or Codex for every role.")
-    return {"harness": spec.harness, "model": spec.model or HARNESSES[spec.harness]}
+    return {"harness": spec.harness, "model": spec.model or HARNESSES[spec.harness],
+            **({"effort": spec.effort} if spec.effort else {}),
+            **({"permission_profile": spec.permission_profile} if spec.permission_profile else {})}
 
 
 def run_roles(body):
     """The run's `roles` from a StartInput, or None for a classic run (no reviewer, and no worker that differs from
     the planner)."""
-    planner = {"harness": body.harness, "model": body.model or HARNESSES[body.harness]}
+    planner = role_spec(RoleInput(harness=body.harness, model=body.model, effort=body.effort,
+                                   permission_profile=body.permission_profile))
     reviewer, worker = role_spec(body.reviewer), role_spec(body.worker)
     if worker == planner:
         worker = None  # "Same as planner": the planner's session continues into execution.
@@ -556,6 +569,7 @@ def run_roles(body):
 
 def start_run(db, owner, account_id, body, *, actor, brief=""):
     """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt."""
+    body = body.model_copy(deep=True)
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
         raise DomainError("HARNESS_DISABLED", DISABLED_HARNESSES[body.harness], 400)
@@ -572,8 +586,38 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         raise DomainError("INVALID_ARGUMENT", "A freestyle run has no plan to review or hand over; turn one of them off.")
     target = resolve_target(db, owner, task, body.execution_target_id)
     host = db.get(AgentHost, target.host_id, with_for_update=True) if target.host_id else None
+    selected_launch = (target_launch(hello_target(host, target.host_target)) or {}).get(body.harness, {})
+    selected_managed = selected_launch.get("managed", ((host.caps or {}).get("harnesses", {}).get(body.harness) or {}).get("managed", False)) if host else False
+    managed_start = coordinator.host_cap(db, host.id, "managed.sessions") and selected_managed if host else False
+    catalog = (host.caps or {}).get("model_catalog", []) if host else []
+    for spec in [body, body.reviewer, body.worker]:
+        if spec and not spec.model:
+            candidates = [m for m in catalog if m.get("harness") == spec.harness]
+            chosen = next((m for m in candidates if m.get("default") or m.get("is_default") or m.get("isDefault")), None)
+            if chosen:
+                spec.model = chosen.get("model")
+            elif candidates or managed_start:
+                raise DomainError("MODEL_DEFAULT_UNAVAILABLE", "This host has not reported the provider default model. Choose an advertised model explicitly.", 409,
+                                  data={"harness": spec.harness})
+    roles = run_roles(body)
     check_host(owner, task, host, body.harness, target.host_target,
                roles={"reviewer": roles["reviewer"], "worker": roles["worker"]} if roles else None)
+    if coordinator.host_cap(db, host.id, "managed.sessions") and not body.freestyle:
+        for harness in [body.harness, *[s.harness for s in (body.reviewer, body.worker) if s]]:
+            launch = (target_launch(hello_target(host, target.host_target)) or {}).get(harness, {})
+            managed = launch.get("managed", ((host.caps or {}).get("harnesses", {}).get(harness) or {}).get("managed", False))
+            if not managed:
+                raise DomainError("MANAGED_UNAVAILABLE", "This target's launcher does not support managed runs; update its launcher.", 409,
+                                  data={"harness": harness, "host_target": target.host_target})
+        planner = role_spec(RoleInput(harness=body.harness, model=body.model, effort=body.effort,
+                                      permission_profile=body.permission_profile))
+        roles = roles or {"planner": planner, "reviewer": None, "worker": None, "rounds": 0, "approve_final": True}
+        roles["worker"] = roles.get("worker") or {**planner, "permission_profile": "workspace-write"}
+    validate_role_options(host, body.harness, body.model, body.effort, body.permission_profile)
+    for spec in (body.reviewer, body.worker):
+        if spec:
+            validate_role_options(host, spec.harness, spec.model, spec.effort, spec.permission_profile)
+
     tools = next((p for p in target_problems(task, hello_target(host, target.host_target))
                   if p["code"] == "MCP_UNCONFIGURED"), None)
     if tools is not None and not body.freestyle:
@@ -587,19 +631,25 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     if body.freestyle:
         interview = False  # Freestyle talks to the agent directly: nothing to interview for or submit.
     # Hyperplan never executes an unreviewed plan: a task with a PRD starts in planning instead of frozen.
-    planning_start = roles is not None and not interview
+    planning_start = not body.freestyle and not interview
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
                    execution_target_id=target.id, generation=1, attempt=1, state="spawning", state_revision=1,
                    state_reason="start", state_since=now(), branch=branch, base_branch=base_for(db, task), tool=body.harness,
-                   model=body.model or HARNESSES[body.harness], turn_cap=task.turn_cap or 15,
-                   worktree="", completion_policy=task.completion_policy or "code_ready",
-                   sync_state={"start_phase": "planning"} if planning_start else {},
+                   model=body.model or HARNESSES[body.harness],
+                   turn_cap=body.turn_cap if body.turn_cap is not None else task.turn_cap or 0,
+                   wall_clock_limit=body.wall_clock_limit,
+                   effort=body.effort, permission_profile=body.permission_profile,
+                   worktree="", completion_policy="pr_open" if target.repo and not task.completion_policy_explicit
+                   else task.completion_policy or "code_ready",
+                   sync_state={"execution_mode": "managed" if managed_start else "legacy",
+                               **({"start_phase": "planning"} if planning_start else {})},
                    freestyle=bool(body.freestyle), roles=roles, plan_round=0,
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
     db.flush()
     verify, migration = None, None
+    manual_plan = body.interview is False and roles is None and not body.freestyle
     if interview:
         from . import agent_prompts as prompts
 
@@ -612,6 +662,14 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         prd = note.content if note and note.owner_id == owner and not note.archived else ""
         prompt = prompts.planning_start(task, coordinator.children(db, task), task.notes or "", prd,
                                         verify_ids(db, run)[1], roles)[:PROMPT_CHARS]
+        if manual_plan:
+            plan = freeze(db, owner, run, task)
+            run.plan_pending = True
+            run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
+                              "planning_turn_generation": run.generation}
+            migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
+            prompt = ("The existing task plan below is awaiting human approval. Read it without editing code; "
+                      "wait for the approval decision before execution.\n\n" + coordinator.render_plan(db, run, plan))[:PROMPT_CHARS]
     else:
         plan = freeze(db, owner, run, task)
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
@@ -628,7 +686,11 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         "prompt": prompt, "run_token": token, "env": {}, **({"verify": verify} if verify else {}),
         **({"migration": migration} if migration else {}),
         # Roles (hyperplan): the planner; read-only (`mode: plan`) when a different worker will do the work.
-        **({"role": "planner"} if roles else {}), **({"mode": "plan"} if roles and roles["worker"] else {}),
+        **({"role": "planner"} if roles else {}),
+        **({"mode": "plan"} if roles and roles.get("worker") else {}),
+        **({"effort": body.effort} if body.effort else {}),
+        **({"permission_profile": body.permission_profile} if body.permission_profile else {}),
+        **({"execution": "managed"} if managed_start else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -645,14 +707,36 @@ def coordinator_active(db, task_id):
 
 def send_message(db, owner, run_id, body, *, actor):
     run = coordinator.load(db, owner, run_id)
-    coordinator.check_revision(run, body.expected_revision)
+    coordinator.ensure_eridani_control(run)
+    semantic_approval = body.text.strip().lower().rstrip(".! ") == "approved"
+    if body.mode == "steer" or semantic_approval:
+        coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
-    if not run.surf:
+    if not run.surf and not coordinator.host_cap(db, run.host_id, "commands.durable"):
         raise DomainError("NOT_STARTED", "The agent has not started yet; send this once it is running.", 409)
-    if body.mode == "steer":
+    if actor.kind == "human" and body.text.strip().lower().rstrip(".! ") == "approved":
+        from uuid import uuid4
+
+        from . import agent_decisions
+        waiting = [d for d in agent_decisions.for_run(db, run) if d["status"] in ("open", "pending")]
+        if len(waiting) == 1 and "approve" in waiting[0]["actions"]:
+            if body.expected_revision is None:
+                raise DomainError("REVISION_REQUIRED", "Review this decision and approve it with its current revision.", 409)
+            decision = waiting[0]
+            return agent_decisions.respond(db, owner, decision["id"], agent_decisions.RespondInput(
+                action_id=body.action_id or uuid4(), expected_revision=decision["revision"], action="approve"),
+                actor=actor, journal=False)["result"]
+        if waiting:
+            raise DomainError("DECISION_AMBIGUOUS", "Choose the decision to approve with its button.", 409)
+
+    plan = coordinator.frozen(db, run)
+    pending_plan = bool(plan and plan.approval_status == "pending" and run.plan_pending)
+    if body.mode == "steer" and not pending_plan and not run.paused:
         run.generation += 1  # The steered turn belongs to the new generation (F07).
-    if run.state in ("verifying", "judging"):
+    if run.paused or pending_plan:
+        pass  # Persist messages without changing the decision or resuming a paused run.
+    elif run.state in ("verifying", "judging"):
         # Davin's message overrides this turn's check: the next turn is verified and judged instead.
         for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id,
                                                              AgentAttempt.status.in_(("queued", "running")))):
@@ -679,6 +763,7 @@ def replan(db, owner, run_id, body, *, actor):
     from . import agent_prompts as prompts
 
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state not in {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"}:
         raise DomainError("RUN_SETTLED", f"A run that is {run.state} cannot re-plan.", 409)
@@ -701,6 +786,7 @@ def replan(db, owner, run_id, body, *, actor):
 def verify_now(db, owner, run_id, body=None, *, actor):
     """On-demand verification: the same attempt machinery, bound to the current tuple; it never moves the run."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision if body else None)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -727,6 +813,7 @@ def judge_again(db, owner, run_id, body, *, actor):
     """Judge again: verify (when the plan has a verify command) and judge the last turn against the plan as frozen
     now, typically after Edit criteria (agent_plan.set_criteria). The verdict moves the run as after any turn."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state not in JUDGE_AGAIN_STATES or run.state_reason in ("plan_review", "plan_approval"):
         raise DomainError("RUN_NOT_PARKED", f"Judge again works while the run needs you or awaits approval (not during a "
@@ -756,6 +843,7 @@ def approve(db, owner, run_id, body, *, actor):
     from .domain import execute
 
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run, allow_verified_exit=True)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -776,6 +864,7 @@ def set_freestyle(db, owner, run_id, body, *, actor):
     toward the cap, and no gap prompts are sent. A run the judge parked goes back to executing so the conversation
     can continue; turning freestyle off makes the next turn judged again."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -816,7 +905,7 @@ REASON_TEXT = {**coordinator.REASONS, "stopped_by_user": "Stopped from Eridani."
 
 def public_question(q):
     return encode({"id": q.id, "question_id": q.question_id, "run_id": q.run_id, "generation": q.generation,
-                   "items": q.items, "status": q.status, "answers": q.answers, "answered_via": q.answered_via,
+                   "items": q.items, "kind": q.kind, "action": q.action, "request_digest": q.request_digest, "recovery": q.recovery, "status": q.status, "answers": q.answers, "answered_via": q.answered_via,
                    "remote_answerable": q.remote_answerable, "hold_until": q.hold_until, "detail": q.detail,
                    "created_at": q.created_at, "resolved_at": q.resolved_at})
 
@@ -1090,7 +1179,13 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "generation": run.generation, "plan_revision": run.plan_revision, "tool": run.tool, "model": run.model,
         "branch": run.branch, "base_branch": run.base_branch, "worktree": run.worktree,
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
-        "turn_cap": run.turn_cap, "started_at": run.started_at, "finished_at": run.finished_at,
+        "turn_cap": run.turn_cap, "paused": bool(run.paused), "effort": run.effort,
+        "execution_mode": (run.sync_state or {}).get("execution_mode", "legacy"),
+        "controller": (run.sync_state or {}).get("controller", "eridani"),
+        "terminal_exited": (run.sync_state or {}).get("controller") == "terminal" and coordinator.native_exit_verified(run),
+        "pause_reason": (run.sync_state or {}).get("automatic_pause"),
+        "host_attention": (run.sync_state or {}).get("host_attention"),
+        "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
         "integration": (run.sync_state or {}).get("integration") or [],
@@ -1118,12 +1213,21 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "last_turn_at": db.scalar(run_turns(run).with_only_columns(func.max(AgentTurn.created_at))),
         "verification": verification_fact(db, run),
         "pending_controls": pending_controls(db, run),
-        "structured_answers": bool(harness.get("question")),
+        "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
         "created_at": run.created_at,
         # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
         **run_summaries.public(run),
     }
+    from .agent_decisions import for_run
+    run_decisions = for_run(db, run)
+    result.update(decisions=run_decisions,
+                  stage=coordinator.phase(run) if run.state in ("needs_you", "waiting_answer") else run.state,
+                  attention="paused" if run.paused else "decision" if any(
+                      d["status"] in ("open", "pending") for d in run_decisions) else
+                            "error" if run.state == "needs_you" else "none",
+                  connectivity="online" if host and agent_link.connected(host) else "offline",
+                  activity=run.activity)
     if detail:
         plan = coordinator.frozen(db, run)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
@@ -1133,9 +1237,13 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             AgentCommand.created_at, limit, offset)
         expires = retention.run_data_expires(run)
         result.update(
+            plan_history=[{"revision": p.revision, "title": p.title, "prd_text": p.prd_text, "steps": p.steps,
+                           "criteria": p.criteria, "verify": p.verify, "approval_status": p.approval_status,
+                           "frozen_at": p.frozen_at} for p in db.scalars(select(AgentRunPlan).where(
+                               AgentRunPlan.run_id == run.id).order_by(AgentRunPlan.revision))],
             plan={"revision": plan.revision, "title": plan.title, "prd_text": plan.prd_text, "steps": task.steps if task else plan.steps,
                   "criteria": plan.criteria, "verify": plan.verify, "required_children": plan.required_children,
-                  "proposals": plan.proposals}
+                  "proposals": plan.proposals, "approval_status": plan.approval_status}
             if plan else None,
             attempts=[public_attempt(a) for a in db.scalars(
                 select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind != "summary")
@@ -1421,7 +1529,7 @@ def owner_control(db, owner):
 
 # ---------------------------------------------------------------- two-phase control from Eri (stage F, M5, D3)
 
-PENDING_TTL = timedelta(minutes=10)
+PENDING_TTL = timedelta(days=36500)
 # A spoken or typed yes: the request starts with an affirmation and asks for nothing else (is_yes). Joined voice
 # speech ("ok cool yes", "yes start the agent") counts; a question or a changed request ("yes but …") does not.
 AFFIRMATIVE = re.compile(r"^\W*(yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|do it|go ahead|go|send it|start it|"
@@ -1875,7 +1983,7 @@ def proposal(db, owner, result):
     for problem in ready["problems"]:
         if problem.get("blocking", True):
             told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
-                        "fixed; the proposal stays open until it expires.")
+                        "fixed; the proposal stays open until you confirm or decline it.")
         else:
             told.append(f"Tell the owner: {problem['message']} ({problem['code']}) The run can still start, but its "
                         "verification will not pass until that is fixed on the host.")
@@ -1936,6 +2044,10 @@ def propose(db, owner, account, tool, args, actor):
         arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
         if args.model:
             arguments["model"] = args.model
+        if args.effort:
+            arguments["effort"] = args.effort
+        if args.permission_profile:
+            arguments["permission_profile"] = args.permission_profile
         # Hyperplan roles travel with the proposal; the summary names them so the owner's yes covers them.
         extras = []
         if args.reviewer is not None:
@@ -1967,7 +2079,7 @@ def propose(db, owner, account, tool, args, actor):
     same = db.scalar(select(AgentPendingControl).where(
         AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == account, AgentPendingControl.tool == tool,
         AgentPendingControl.arguments == arguments, AgentPendingControl.status == "pending",
-        AgentPendingControl.expires_at > now()).order_by(AgentPendingControl.created_at.asc()).limit(1))
+        or_(AgentPendingControl.expires_at.is_(None), AgentPendingControl.expires_at > now())).order_by(AgentPendingControl.created_at.asc()).limit(1))
     if same is not None:
         # The model proposed the same thing again (a new chat turn does not carry the earlier pending_id).
         # If this request is the owner's plain yes to that proposal, it is the confirmation; otherwise hand the
@@ -1978,7 +2090,7 @@ def propose(db, owner, account, tool, args, actor):
         return {**pending_reply(same), "next": "This was already proposed and is still waiting for the owner. " + NEXT}
     row = AgentPendingControl(owner_id=owner, account_id=account, work_id=work.id if work else None, tool=tool,
                               arguments=arguments, summary=summary, run_id=run_id, status="pending",
-                              actor=actor.record(), decided_via="", expires_at=now() + PENDING_TTL)
+                              actor=actor.record(), decided_via="", expires_at=None)
     db.add(row)
     db.flush()
     emit(db, owner, "agent.changed", run_id or row.id)
@@ -1993,7 +2105,7 @@ NEXT = ("Read the summary to the owner and ask them to confirm. They can tap Con
 
 def pending_reply(row):
     return {"status": "pending_confirmation", "pending_id": row.id, "summary": row.summary,
-            "expires_at": row.expires_at.isoformat()}
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None}
 
 
 def owners_yes(db, owner, row, work, *, chosen=()):
@@ -2038,7 +2150,7 @@ def pending_list(db, owner):
                                                  AgentPendingControl.expires_at <= now()).values(status="expired"))
     rows = db.scalars(select(AgentPendingControl).where(AgentPendingControl.owner_id == owner,
                                                         AgentPendingControl.status == "pending",
-                                                        AgentPendingControl.expires_at > now())
+                                                        or_(AgentPendingControl.expires_at.is_(None), AgentPendingControl.expires_at > now()))
                       .order_by(AgentPendingControl.created_at.desc()).limit(20))
     return [{**public_pending(r), **readiness(db, owner, r)} for r in rows]
 
@@ -2058,7 +2170,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
     if row.status != "pending":
         raise DomainError("PENDING_CLOSED", f"That agent action was already {row.status}.", 409,
                           data={"status": row.status})
-    if row.expires_at <= now():
+    if row.expires_at and row.expires_at <= now():
         # Refused, so this transaction rolls back: pending_list() marks the row expired.
         raise DomainError("PENDING_EXPIRED", "That agent action expired; ask again.", 409)
     row.decided_at, row.decided_via = now(), via
@@ -2073,7 +2185,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
         result = start_run(db, owner, row.account_id or account(db, owner),
                            StartInput(task_id=args["task_id"], harness=args.get("harness", "claude"),
                                       execution_target_id=execution_target_id or args.get("execution_target_id"),
-                                      **{k: args[k] for k in ("model", "reviewer", "worker", "rounds", "approve_final")
+                                      **{k: args[k] for k in ("model", "effort", "permission_profile", "reviewer", "worker", "rounds", "approve_final")
                                          if k in args}),
                            actor=confirmed)
         run = coordinator.load(db, owner, result["id"])
@@ -2096,7 +2208,6 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
 def spoken_confirmation(db, owner, args):
     """control_confirm from Eri: only a later request from the owner that is itself a short yes, for the newest
     pending action of that account (so the yes is unambiguous). Declining needs no proof."""
-    from .session_models import AgentPendingControl
 
     work = current_work(db)
     if work is None or work.credential_id:
@@ -2146,7 +2257,7 @@ def pending_for(db, owner, work, pending_id):
     else:
         row = db.scalar(select(AgentPendingControl).where(
             AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
-            AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now(),
+            AgentPendingControl.status == "pending", or_(AgentPendingControl.expires_at.is_(None), AgentPendingControl.expires_at > now()),
             not_proposed_by(work)).order_by(AgentPendingControl.created_at.desc()).limit(1))
     if row is None or row.owner_id != owner:
         raise DomainError("NOT_FOUND", "That pending agent action was not found.", 404)
@@ -2220,7 +2331,7 @@ def pending_choices(db, owner, work):
 
     rows = db.scalars(select(AgentPendingControl).where(
         AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == work.account_id,
-        AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now(), not_proposed_by(work))
+        AgentPendingControl.status == "pending", or_(AgentPendingControl.expires_at.is_(None), AgentPendingControl.expires_at > now()), not_proposed_by(work))
         .order_by(AgentPendingControl.created_at.desc()).limit(10))
     seen, unique = set(), []
     for row in rows:
@@ -2253,6 +2364,36 @@ def control_dispatch(db, owner, tool, args):
     agent_link.gate(db, owner)
     owner_control(db, owner)
     actor = current()
+    if tool == "control.message":
+        work = current_work(db)
+        if work is not None and not work.credential_id and work_message(work).strip().lower().rstrip(".! ") == "approved" \
+                and args.text.strip().lower().rstrip(".! ") == "approved":
+            from uuid import UUID as ActionUUID
+
+            from . import agent_decisions
+            selected = args.run_id or args.task_id or device_open_run(db, owner)
+            candidate_runs = ([coordinator.load(db, owner, run_for(db, owner, args, tool))] if selected else
+                              list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner,
+                                                                    AgentRun.state.not_in(TERMINAL_RUN_STATES)))))
+            waiting = [d for r in candidate_runs for d in agent_decisions.for_run(db, r)
+                       if d["status"] in ("open", "pending")]
+            if len(waiting) == 1 and "approve" in waiting[0]["actions"]:
+                decision = waiting[0]
+                row, _kind, _run = agent_decisions.load(db, owner, decision["id"])
+                asked_at = getattr(row, "frozen_at", getattr(row, "state_since", None))
+                if asked_at is not None and work.created_at < asked_at:
+                    raise DomainError("DECISION_STALE", "The decision changed after this approval message was written.", 409)
+                return agent_decisions.respond(db, owner, decision["id"], agent_decisions.RespondInput(
+                    action_id=ActionUUID(work.id), expected_revision=decision["revision"], action="approve"),
+                    actor=Actor("human"))["result"]
+            if waiting:
+                raise DomainError("DECISION_AMBIGUOUS", "Choose the decision to approve with its button.", 409)
+    if tool == "control.message" and (args.run_id or args.task_id or device_open_run(db, owner)):
+        work = current_work(db)
+        # Only owner-origin work with an explicit selection can bypass the proposal step.
+        if work is not None and not work.credential_id:
+            run_id = run_for(db, owner, args, tool)
+            return send_message(db, owner, run_id, MessageInput(text=args.text, mode=args.mode), actor=actor)
     if tool in ("control.start", "control.message"):
         result = propose(db, owner, account(db, owner), tool, args, actor)
         if tool != "control.message":
@@ -2354,7 +2495,7 @@ def spoken_run(db, run):
     spoken = {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
               # What the agent is doing now in one line, as of summary_at; say it as "the agent is …".
               "doing": run.summary or None, "doing_as_of": run.summary_at if run.summary else None,
-              "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
+              "turns": f"{run.turn_count}/{run.turn_cap}" if run.turn_cap else str(run.turn_count), "tool": run.tool, "branch": run.branch,
               "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
               "questions": questions,
               "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}
@@ -2550,4 +2691,20 @@ def open_proposal(db, owner, account):
 
     return db.scalar(select(AgentPendingControl.id).where(
         AgentPendingControl.owner_id == owner, AgentPendingControl.account_id == account,
-        AgentPendingControl.status == "pending", AgentPendingControl.expires_at > now()).limit(1)) is not None
+        AgentPendingControl.status == "pending", or_(AgentPendingControl.expires_at.is_(None), AgentPendingControl.expires_at > now())).limit(1)) is not None
+
+
+def validate_role_options(host, harness, model, effort, permission_profile):
+    catalog = [m for m in (host.caps or {}).get("model_catalog", []) if m.get("harness") == harness]
+    if model and (catalog or "role.options" in ((host.caps or {}).get("caps") or [])) and not any(m.get("model") == model for m in catalog):
+        raise DomainError("MODEL_UNAVAILABLE", "This host does not advertise the selected model; choose an available model.", 409)
+    if not effort and not permission_profile:
+        return
+    if "role.options" not in ((host.caps or {}).get("caps") or []):
+        raise DomainError("HOST_TOO_OLD", "Update Remotea to select effort and permissions.", 409)
+    offered = [m for m in (host.caps or {}).get("model_catalog", []) if m.get("harness") == harness
+               and (not model or m.get("model") == model)]
+    if not offered or (effort and not any(effort in m.get("efforts", []) for m in offered)):
+        raise DomainError("ROLE_OPTION_UNAVAILABLE", "This host does not advertise the selected model effort.", 409)
+    if permission_profile and not any(permission_profile in m.get("permission_profiles", []) for m in offered):
+        raise DomainError("ROLE_OPTION_UNAVAILABLE", "This host does not advertise that permission profile.", 409)

@@ -334,6 +334,7 @@ def test_wall_clock_covers_planning_and_a_stuck_judge_needs_you(host):  # noqa: 
 
     _, planning = interviewing(host)
     with session_scope() as db:
+        db.get(AgentRun, planning).wall_clock_limit = 6 * 3600
         coordinator.sweep(db, now() + timedelta(hours=7))
     assert state(planning) == ("needs_you", "wall_clock")
     run_id = criteria_run(host)
@@ -462,7 +463,7 @@ def test_freestyle_records_turns_without_verifying_judging_or_capping(host, clie
         revision = db.get(AgentRun, run_id).state_revision
     r = client.post(f"/api/v1/remotea/runs/{run_id}/freestyle", json={"enabled": True, "expected_revision": revision})
     assert r.status_code == 200 and r.json()["freestyle"] is True, r.text
-    assert turn(run_id, 1) == ("executing", "started")
+    assert turn(run_id, 1) == ("executing", "plan_approved")
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert row.turn_count == 0 and row.turn_seq == 1

@@ -54,7 +54,7 @@ COMMAND_PAYLOADS = timedelta(days=7)
 PARITY = timedelta(days=30)
 ACTION_RECEIPTS = timedelta(days=7)
 QUOTA_BYTES = 64 * 1_048_576
-SETTLED = ("acked", "executed", "failed", "rejected", "uncertain", "expired", "canceled")
+SETTLED = ("superseded", "acked", "executed", "failed", "rejected", "uncertain", "expired", "canceled")
 MARKER = "[redacted after retention]"
 # Free text a history entry may carry: a sent message, a transition's or an outcome's detail.
 HISTORY_TEXT = ("text", "detail")
@@ -208,6 +208,8 @@ def sweep(db, clock=None):
         counts["redacted_runs"] += 1
     counts["command_payloads"] = db.execute(update(AgentCommand).where(
         AgentCommand.status.in_(SETTLED), AgentCommand.updated_at < clock - COMMAND_PAYLOADS,
+        or_(AgentCommand.run_id.is_(None), AgentCommand.run_id.not_in(select(AgentRun.id).where(
+            AgentRun.state.not_in(TERMINAL_RUN_STATES)))),
         AgentCommand.payload != {}).values(payload={})).rowcount
     counts["parity"] = db.execute(delete(AgentParity).where(AgentParity.updated_at < clock - PARITY)).rowcount
     counts["parity_days"] = db.execute(delete(AgentParityDay).where(
@@ -215,7 +217,10 @@ def sweep(db, clock=None):
     db.execute(delete(AgentIngestDay).where(AgentIngestDay.day < (clock - PARITY).date()))
     db.execute(delete(AgentPendingControl).where(AgentPendingControl.expires_at < clock - PARITY))
     counts["action_receipts"] = db.execute(delete(AgentActionReceipt).where(
-        AgentActionReceipt.created_at < clock - ACTION_RECEIPTS)).rowcount
+        AgentActionReceipt.created_at < clock - ACTION_RECEIPTS,
+        AgentActionReceipt.run_id.not_in(select(AgentRun.id).where(AgentRun.state.not_in(TERMINAL_RUN_STATES))),
+        AgentActionReceipt.action_id.not_in(select(AgentCommand.action_id).where(
+            AgentCommand.action_id.is_not(None), AgentCommand.status.in_(("deferred", "queued", "sent", "acked", "uncertain")))))).rowcount
     return counts
 
 

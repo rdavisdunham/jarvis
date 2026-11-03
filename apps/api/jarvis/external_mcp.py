@@ -130,7 +130,9 @@ def definitions(scopes):
 
         add("task_plan",
             "Read the task you are working on: PRD, steps with ids and revisions, success criteria and the run you belong to. "
-            "Pass run_token from your session context; task_id is optional when the token names the run.",
+            "Pass run_token from your session context; task_id is optional when the token names the run. "
+            "To reconcile a lost submit_plan response, pass its stable submission_id to retrieve the saved submission receipt "
+            "(also available after the planner token has been retired).",
             agent_plan.PlanQuery.model_json_schema())
         add("task_step",
             "Set one step's status (todo, doing, done, skipped) with an optional note. expected_revision is the step's "
@@ -146,7 +148,8 @@ def definitions(scopes):
             "(kind text, or verify naming the verify_id) and an optional verify config from your execution target, "
             "with expected_plan_revision from task_plan. Set migration=true when the plan adds a database migration: "
             "Eridani reserves its number. Freezes the plan this run is judged against; stop after "
-            "calling it and Eridani starts execution. The operator's own criteria are a floor: repeat them by id "
+            "calling it and wait for the operator to approve the persisted plan. Use a stable submission_id UUID "
+            "across retries; its receipt is available from agents/session/submissions/{submission_id}. The operator's own criteria are a floor: repeat them by id "
             "verbatim, or propose a change (same id, new text or drop=true, plus because) that the operator accepts "
             "or keeps before execution. In a hyperplan run after a review, pass review_resolutions "
             "([{finding_id, decision: accepted|rejected|deferred, note}]) for every blocking and major finding, or the "

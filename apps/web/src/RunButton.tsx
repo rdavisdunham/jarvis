@@ -16,8 +16,8 @@ export function RunButton({ taskId, title, className = "", project = false }: { 
     // The tooltip says who acts on a hyperplan run and what the agent is doing now (the run summary), when known.
     const tip = [run ? actorChip(run) : null, run?.summary].filter(Boolean).join(" — ");
     return <button type="button" className={"run-chip tone-" + chip.tone + (className ? " " + className : "")}
-      title={tip || undefined} aria-label={chip.label + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
-      <i className="run-dot" aria-hidden="true"/>{chip.label}</button>;
+      title={tip || undefined} aria-label={[chip.label, chip.attention].filter(Boolean).join(" · ") + ": open the agent run for " + title} onClick={e => { e.stopPropagation(); openRun(chip.run); }}>
+      <i className="run-dot" aria-hidden="true"/>{chip.label}{chip.attention && <span className="run-attention"> · {chip.attention}</span>}</button>;
   }
   return <button type="button" className={"btn-icon run-start" + (className ? " " + className : "")}
     aria-label={project ? "Plan a swarm of agents for " + title : "Run " + title + " with an agent"}

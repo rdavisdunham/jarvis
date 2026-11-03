@@ -32,6 +32,9 @@ def backdate(run_id, started=None, waiting=None, **values):
     """Move the run's start (and its wait in progress) into the past: hours ago."""
     with session_scope() as db:
         row = db.get(AgentRun, run_id, with_for_update=True)
+        row.wall_clock_limit = 6 * 3600  # This suite exercises an explicit operator limit.
+        if row.run_token_expires_at is None:
+            row.run_token_expires_at = now() + timedelta(hours=30)
         if started is not None:
             row.started_at = now() - timedelta(hours=started)
         if waiting is not None:

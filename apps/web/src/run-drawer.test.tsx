@@ -51,7 +51,7 @@ describe("the run drawer's latest-only loading", () => {
     // Title, controls and the next action's URL all refer to B.
     const html = renderToStaticMarkup(<RunDrawer id={B} preloaded={shown} onClose={() => {}}/>);
     expect(html).toContain("Task B");
-    expect(button(html, "Approve")).not.toContain("disabled");
+    expect(button(html, "Accept results")).not.toContain("disabled");
     const next = runAction(shown, B, "approve")!;
     expect(next).toEqual({ url: `/remotea/runs/${B}/approve`, body: { expected_revision: 7 } });
   });
@@ -83,7 +83,7 @@ function button(html: string, label: string) {
 }
 
 describe("the run drawer's controls", () => {
-  const labels = ["Message", "Steer", "Re-plan", "Verify now", "Stop", "Approve"];
+  const labels = ["Message", "Steer", "Re-plan", "Verify now", "Pause", "Cancel run"];
 
   it("are all disabled while the loaded run is not the run the panel asked for", () => {
     const html = renderToStaticMarkup(<RunDrawer id={B} preloaded={detail(A, "Task A", { state: "executing" })} onClose={() => {}}/>);
@@ -96,7 +96,24 @@ describe("the run drawer's controls", () => {
   it("are enabled once the loaded run is the panel's run", () => {
     const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={detail(A, "Task A", { state: "executing" })} onClose={() => {}}/>);
     expect(html).not.toContain("Loading the selected run");
-    for (const label of ["Re-plan", "Verify now", "Stop", "Approve"]) expect(button(html, label), label).not.toContain("disabled");
+    for (const label of ["Re-plan", "Verify now", "Pause", "Cancel run"]) expect(button(html, label), label).not.toContain("disabled");
+  });
+
+  it("enables only administrative Cancel after backend-verified terminal exit", () => {
+    const terminal = detail(A, "Terminal task", { state: "awaiting_approval", controller: "terminal", paused: true, terminal_exited: true });
+    const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={terminal} onClose={() => {}}/>);
+    expect(button(html, "Cancel run")).not.toContain("disabled");
+    for (const label of ["Message", "Steer", "Resume", "Re-plan", "Verify now", "Accept results"]) expect(button(html, label), label).toContain("disabled");
+    expect(html).toContain("Terminal session ended. Cancel this run to close its record.");
+  });
+
+  it("does not infer verified exit from a missing or exited session snapshot", () => {
+    for (const session of [null, { id: "session", state: "exited", since: "2026-10-30T10:00:00Z" }]) {
+      const terminal = detail(A, "Terminal task", { state: "needs_you", controller: "terminal", paused: true, session });
+      const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={terminal} onClose={() => {}}/>);
+      expect(button(html, "Cancel run")).toContain("disabled");
+      expect(html).toContain("Terminal has control");
+    }
   });
 
   it("post to the loaded run with the revision the reader saw, except Stop", () => {

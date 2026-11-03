@@ -191,3 +191,10 @@
 
 /* ---- Freshness chips on a run row (RunsPanel.tsx RunRow, rowFreshness) ----------------------- */
 .remotea-run-row .run-row-fresh { flex-basis: 100%; }
+
+/* Shared requests and stage labels appear on tasks, in chat and in the run drawer. */
+.run-decision { display: grid; gap: 8px; min-width: 0; padding: 10px 12px; border: 1px solid var(--violet); border-radius: var(--r-md); background: var(--surface); }
+.run-decision-context { font-size: 12px; color: var(--ink-3); margin: 0 0 8px; }
+.run-delivery { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+.run-attention { color: var(--ink-3); font-size: 12px; }
+.run-chip .run-attention { font-weight: 400; white-space: normal; }

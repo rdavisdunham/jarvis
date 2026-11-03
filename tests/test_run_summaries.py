@@ -232,6 +232,7 @@ def test_status_and_pushes_carry_the_line(host):  # noqa: F811
         spoken = control.spoken_run(db, row)
         assert spoken["doing"] == "Adding the parity test" and spoken["doing_as_of"]
         coordinator.transition(db, row, "needs_you", reason="no_progress")
-        push = db.scalar(select(Notification).where(Notification.category == "agent_stuck"))
+        push = db.scalar(select(Notification).where(Notification.category == "agent_stuck")
+                         .order_by(Notification.created_at.desc()).limit(1))
         assert push.body.endswith("Latest: Adding the parity test")
     assert state(run_id)[0] == "needs_you"

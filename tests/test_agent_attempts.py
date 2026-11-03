@@ -23,11 +23,11 @@ def planned(host, *, verify=True, title="Verified task"):  # noqa: F811
         db.add(note)
         db.flush()
         note_id = note.id
-    values = {"prd_note_id": note_id, "success_criteria": [{"id": "c1", "text": "tests pass", "kind": "verify",
+    values = {"completion_policy": "code_ready", "prd_note_id": note_id, "success_criteria": [{"id": "c1", "text": "tests pass", "kind": "verify",
                                                             "verify_id": "tests"}] if verify else [{"id": "c1", "text": "done"}]}
     if verify:
         values["verify"] = {"target_id": "jarvis", "verify_id": "tests"}
-    result = start(host, task(title, **values)["id"])
+    result = start(host, task(title, **values)["id"], interview=False)
     attached(host, result["id"])
     return result["id"]
 

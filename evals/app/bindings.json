@@ -5667,5 +5667,74 @@
       ],
       "scope": "Synthetic persisted-state regression; real-model/physical voice acceptance remains separate."
     }
+  ],
+  "agent_control.26": [
+    {
+      "id": "browser:agent_control.26:offline",
+      "adapter": "browser",
+      "target": "durable-runs.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "invariants.1",
+        "invariants.2"
+      ],
+      "scope": "Real browser and migrated API; synthetic host events replace paid agents and terminal execution. Provider execution correctness is outside this browser binding."
+    }
+  ],
+  "agent_control.27": [
+    {
+      "id": "browser:agent_control.27:offline",
+      "adapter": "browser",
+      "target": "durable-runs.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3",
+        "invariants.1",
+        "invariants.2"
+      ],
+      "scope": "Real browser and migrated API; synthetic host events replace paid agents and terminal execution. Provider execution correctness is outside this browser binding."
+    }
+  ],
+  "agent_control.28": [
+    {
+      "id": "browser:agent_control.28:offline",
+      "adapter": "browser",
+      "target": "durable-runs.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3",
+        "invariants.1",
+        "invariants.2"
+      ],
+      "scope": "Real browser and migrated API; synthetic host events replace paid agents and terminal execution. Provider execution correctness is outside this browser binding."
+    }
+  ],
+  "agent_control.29": [
+    {
+      "id": "browser:agent_control.29:offline",
+      "adapter": "browser",
+      "target": "durable-runs.mjs",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2",
+        "expected.3",
+        "expected.4",
+        "expected.5",
+        "invariants.1",
+        "invariants.2"
+      ],
+      "scope": "Real browser and migrated API; synthetic host events replace paid agents and terminal execution. Provider execution correctness is outside this browser binding."
+    }
   ]
 }

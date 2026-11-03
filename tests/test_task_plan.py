@@ -13,7 +13,7 @@ def plan(**values):
 
 def test_new_columns_serialize_with_defaults():
     task = run("task.create", title="Plain task")
-    assert (task["steps"], task["success_criteria"], task["verify"], task["turn_cap"], task["plan_revision"]) == ([], [], None, 15, 0)
+    assert (task["steps"], task["success_criteria"], task["verify"], task["turn_cap"], task["plan_revision"]) == ([], [], None, 0, 0)
     assert task["prd_note_id"] is None and task["execution_target_id"] is None
 
 
