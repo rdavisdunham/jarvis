@@ -163,7 +163,7 @@ export function NoteLists({selected, onSelect, onOpen, revision, canEdit = true,
         <label>Name<input autoFocus required maxLength={80} value={draft.name} onChange={e => setDraft({...draft, name: e.target.value})}/></label>
         <label>Matching tags<input maxLength={800} placeholder="movies, date-night" value={draft.filters.tags.join(", ")} onChange={e => setDraft({...draft, filters: {...draft.filters, tags: e.target.value.split(",").map(t => t.trim())}})}/></label>
       </div>
-      <label>Description<textarea required rows={3} maxLength={5000} placeholder="What belongs here? Eri uses this to organize your notes." value={draft.description} onChange={e => setDraft({...draft, description: e.target.value})}/></label>
+      <label>Description<textarea required rows={3} maxLength={5000} placeholder="What belongs here? Dani uses this to organize your notes." value={draft.description} onChange={e => setDraft({...draft, description: e.target.value})}/></label>
       <details className="note-list-custom"><summary>Custom field filters</summary>
         <label>Content collection<select value={draft.filters.type_id ?? ""} onChange={e => setDraft({...draft, filters: {...draft.filters, type_id: e.target.value || null, values: {}}})}>
           <option value="">Any content collection</option>{schema?.types.filter(t => t.capabilities.includes("content") && !t.archived).map(t => <option value={t.id} key={t.id}>{t.plural}</option>)}
@@ -171,7 +171,7 @@ export function NoteLists({selected, onSelect, onOpen, revision, canEdit = true,
         <div className="note-list-fields">{fields.map(f => <label key={f.id}>{f.name}{fieldInput(f)}{f.description && <small>{f.description}</small>}</label>)}</div>
       </details>
       <div className="note-list-options">
-        <label className="check-label"><input type="checkbox" checked={draft.automatic} onChange={e => setDraft({...draft, automatic: e.target.checked})}/>Let Eri organize new and edited notes into this list</label>
+        <label className="check-label"><input type="checkbox" checked={draft.automatic} onChange={e => setDraft({...draft, automatic: e.target.checked})}/>Let Dani organize new and edited notes into this list</label>
         <label className="check-label"><input type="checkbox" checked={draft.extract_entries} onChange={e => setDraft({...draft, extract_entries: e.target.checked})}/>Extract individual saved items from longer notes</label>
       </div>
       <p className="field-hint">Notes must match every filter you choose. Removing a list keeps its notes.</p>

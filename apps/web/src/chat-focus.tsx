@@ -21,7 +21,7 @@ export async function startNewConversation(focus: () => unknown, reset: () => Pr
   focus();
 }
 
-/** The floating Eri button. Opening commits the panel synchronously so the composer exists and can be
+/** The floating Dani button. Opening commits the panel synchronously so the composer exists and can be
  * focused within the same tap. */
 export function ChatLauncher({ open, listening, onOpenChange, focus }: {
   open: boolean;
@@ -31,14 +31,14 @@ export function ChatLauncher({ open, listening, onOpenChange, focus }: {
   focus: () => unknown;
 }) {
   return <button type="button" className={"chat-launcher" + (open ? " is-open" : "") + (listening ? " is-listening" : "")}
-    aria-label={open ? "Close Eridani" : "Open Eridani"} aria-controls="eri-conversation" aria-expanded={open}
+    aria-label={open ? "Close Dani" : "Open Dani"} aria-controls="eri-conversation" aria-expanded={open}
     onClick={() => {
       const opening = !open;
       flushSync(() => onOpenChange(opening));
       if (opening) focus();
     }}>
     <span className="chat-launcher-icon" aria-hidden="true">{open ? <X size={23}/> : <MessageCircle size={24}/>}</span>
-    {!open && <span className="chat-launcher-label">Eri</span>}
+    {!open && <span className="chat-launcher-label">Dani</span>}
     {listening && <span className="chat-live-dot" aria-label="Voice active"/>}
   </button>;
 }

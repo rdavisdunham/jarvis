@@ -33,37 +33,37 @@ try{
  await ui("ui_workspace",{view:"settings",settings_section:"organization"});await page.getByRole("button",{name:"Use setup form",exact:true}).click();await page.getByLabel("Setup name").fill("Morgan");await page.getByLabel("Setup purpose").fill("Work projects and travel lists");await page.getByRole("button",{name:"Save progress",exact:true}).click();await expect.poll(async()=>(await request("/onboarding")).preferred_name).toBe("Morgan");
  await page.getByText("How would you like to organize it?",{exact:true}).click();await page.getByLabel("Grouping name").fill("Course");await page.getByLabel("Grouping description").fill("Classes I attend with assignments and lecture notes.");await page.getByLabel("Grouping example").fill("Biology contains my lab project and notes.");await page.getByRole("button",{name:"Preview my organization",exact:true}).click();await expect(page.getByRole("heading",{name:"Preview — nothing added yet",exact:true})).toBeVisible();
  expect((await request("/structure")).types.some(t=>t.id==="setup-group")).toBe(false);await page.getByRole("button",{name:"Confirm this setup",exact:true}).click();await expect.poll(async()=>(await request("/onboarding")).status).toBe("completed");expect((await request("/structure")).types.find(t=>t.id==="setup-group").name).toBe("Course");
- await page.reload();await expect(page.getByRole("button",{name:"Refine with Eri",exact:true})).toBeVisible();await expect(page.getByLabel("Setup name")).toHaveCount(0);
+ await page.reload();await expect(page.getByRole("button",{name:"Refine with Dani",exact:true})).toBeVisible();await expect(page.getByLabel("Setup name")).toHaveCount(0);
  for(const width of [390,892]){await page.setViewportSize({width,height:900});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();await page.screenshot({path:`../../artifacts/batch-c/settings-${width}.png`,fullPage:true});}
 
  // A guided launcher uses the normal work endpoint and saves the manual interview draft first.
  await page.getByRole("button",{name:"Use setup form",exact:true}).click();
  await page.getByLabel("Setup design notes").fill("A customer can have several projects. ABC is an example only.");
- await page.getByRole("button",{name:"Open Eridani",exact:true}).click();
- await page.getByRole("textbox",{name:"Message Eridani",exact:true}).fill("Keep this unsent draft.");
- await page.getByRole("button",{name:"Close Eridani",exact:true}).click();
+ await page.getByRole("button",{name:"Open Dani",exact:true}).click();
+ await page.getByRole("textbox",{name:"Message Dani",exact:true}).fill("Keep this unsent draft.");
+ await page.getByRole("button",{name:"Close Dani",exact:true}).click();
  loseSetupResponse=true;
- await page.getByRole("button",{name:"Talk to Eri",exact:true}).click();
+ await page.getByRole("button",{name:"Talk to Dani",exact:true}).click();
  await expect.poll(()=>setupRequests.length).toBe(1);
- await expect(page.getByRole("textbox",{name:"Message Eridani",exact:true})).toHaveValue("Keep this unsent draft.");
+ await expect(page.getByRole("textbox",{name:"Message Dani",exact:true})).toHaveValue("Keep this unsent draft.");
  await expect.poll(async()=>(await request("/onboarding")).design_notes).toBe("A customer can have several projects. ABC is an example only.");
- await page.getByRole("button",{name:"Close Eridani",exact:true}).click();
- const setup=page.getByRole("region",{name:"Set up with Eri",exact:true});
+ await page.getByRole("button",{name:"Close Dani",exact:true}).click();
+ const setup=page.getByRole("region",{name:"Set up with Dani",exact:true});
  await expect(setup.getByRole("alert")).toContainText("Setup could not be confirmed");
- await setup.getByRole("button",{name:"Talk to Eri",exact:true}).click();
+ await setup.getByRole("button",{name:"Talk to Dani",exact:true}).click();
  await expect.poll(()=>setupRequests.length).toBe(2);
  expect(setupRequests[0].item.id).toBe(setupRequests[1].item.id);
  expect(setupRequests[0].body.turn_id).toBe(setupRequests[1].body.turn_id);
  expect(setupRequests[1].body.message).toContain("Resume my saved setup");
  await expect(page.locator(".message.user").filter({hasText:"Help me design or refine my organization"})).toHaveCount(1);
- await expect(page.getByRole("textbox",{name:"Message Eridani",exact:true})).toHaveValue("Keep this unsent draft.");
- await page.getByRole("button",{name:"Close Eridani",exact:true}).click();
- await expect(setup.getByRole("button",{name:"Resume with Eri",exact:true})).toBeVisible();
+ await expect(page.getByRole("textbox",{name:"Message Dani",exact:true})).toHaveValue("Keep this unsent draft.");
+ await page.getByRole("button",{name:"Close Dani",exact:true}).click();
+ await expect(setup.getByRole("button",{name:"Resume with Dani",exact:true})).toBeVisible();
  // The primary compact CTA also starts work; a rapid second click cannot enqueue another turn.
  const count=setupRequests.length;
- const resume=setup.getByRole("button",{name:"Resume with Eri",exact:true});
+ const resume=setup.getByRole("button",{name:"Resume with Dani",exact:true});
  await resume.dblclick();
  await expect.poll(()=>setupRequests.length).toBe(count+1);
- await page.getByRole("button",{name:"Close Eridani",exact:true}).click();
+ await page.getByRole("button",{name:"Close Dani",exact:true}).click();
  if(errors.length)throw Error(errors.join("\n"));console.log("Batch C browser passed: compact capture, completion/reorder/reopen/promotion, setup preview/confirmation/resume, guided launch/dirty save/unknown-response retry and phone/fold layout.");
 }finally{await browser.close();}

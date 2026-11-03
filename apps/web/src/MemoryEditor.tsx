@@ -70,7 +70,7 @@ export function MemoryEditor({
           onChange={(e) => setContent(e.target.value)}
         />
       </label>
-      <p className="field-hint">Write the complete fact as Eri should remember it. Your original words stay in the source.</p>
+      <p className="field-hint">Write the complete fact as Dani should remember it. Your original words stay in the source.</p>
       <div className="dialog-actions">
         <button type="button" className="btn" onClick={onClose}>
           Cancel

@@ -1,4 +1,4 @@
-# Try Gemini as Eri's task agent
+# Try Gemini as Dani's task agent
 
 Gemini 3.8 Flash can handle text chat and the task work delegated by GPT-Live.
 GPT-5.4 mini is retired. Luna is the OpenAI option and the default when its key is configured.
@@ -19,13 +19,13 @@ and remains fixed throughout an in-progress request.
    docker compose --env-file .env.upgrade -f compose.upgrade.yml up -d --force-recreate api worker
    ```
 
-4. Refresh Eri, then select **Settings → Task agent → Backend model →
+4. Refresh Dani, then select **Settings → Task agent → Backend model →
    Gemini 3.8 Flash**. Switch to GPT-5.6 Luna in the same menu.
 
 An option marked **API key needed** is unavailable until its key is loaded.
 A loaded key does not prove model access or available quota; the first real check
 verifies those. Credential and quota failures identify the provider in chat.
-Eri never automatically changes providers after a failed request or repeats its
+Dani never automatically changes providers after a failed request or repeats its
 already committed task actions.
 
 ## Verify before using real work

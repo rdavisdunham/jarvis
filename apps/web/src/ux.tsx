@@ -57,7 +57,7 @@ export function useMaxWidth(px: number) {
 }
 // ---- Dialogs -------------------------------------------------------------------------
 // Dialogs stay in the normal stacking context (not native showModal()) on purpose: the
-// Eri conversation panel sits above open dialogs and must stay usable while the agent
+// Dani conversation panel sits above open dialogs and must stay usable while the agent
 // drives a form. Focus is still managed: initial focus moves into the dialog, Tab wraps
 // inside the topmost dialog, Escape is offered to the topmost dialog only, and focus
 // returns to the opener on close.

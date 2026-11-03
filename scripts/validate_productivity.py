@@ -47,7 +47,7 @@ def main():
         with engine().begin() as db:
             db.execute(
                 text("""INSERT INTO tasks(id,owner_id,title,notes,status,priority,assignee,work_type,tags,revision,created_at,updated_at,archived,is_template,external,due_date)
-                VALUES ('legacy-task','davin','Preserved task','Preserved context','open',0,'Eri','','[]',1,now(),now(),false,false,'{}','2030-01-15')""")
+                VALUES ('legacy-task','davin','Preserved task','Preserved context','open',0,'Dani','','[]',1,now(),now(),false,false,'{}','2030-01-15')""")
             )
             db.execute(
                 text("""INSERT INTO projects(id,owner_id,name,description,archived,revision,created_at)

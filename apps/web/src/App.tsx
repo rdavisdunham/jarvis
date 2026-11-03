@@ -1694,7 +1694,7 @@ export default function App() {
   async function startGuidedConversation(message: string) {
     flushSync(() => setCompanion(true));
     if (voice.current || (voiceState && !voiceState.closed))
-      throw Error("Voice is already active. Ask Eri to help with setup, or end voice and try again.");
+      throw Error("Voice is already active. Ask Dani to help with setup, or end voice and try again.");
     if (!boot?.capabilities.chat)
       throw Error("Chat needs a configured task agent. You can still make these changes with the form.");
     if (thinking || chatSubmitLock.current)
@@ -2130,7 +2130,7 @@ export default function App() {
           <h1>A little more organized.</h1>
           <p className="footnote">Personal-account invitations create your own space. Shared-workspace invitations grant only the named workspace and role; your personal records stay separate.</p>
           <p>
-            Your day, with Eri.{" "}
+            Your day, with Dani.{" "}
             {pairingLogin ? "Sign in with Google, or pair an owner device." : "Sign in with your linked or invited Google account."}
           </p>
           {googleLogin && (
@@ -2499,8 +2499,8 @@ export default function App() {
           </form>
           <div className="top-actions">
             <button className={"btn btn-ghost activity-toggle " + (attentionWork ? "needs-attention" : "")}
-              aria-label={"Eri activity, " + activeWork + " pending, " + attentionWork + " need attention"}
-              title="Eri activity" onClick={() => setActivityOpen(true)}>
+              aria-label={"Dani activity, " + activeWork + " pending, " + attentionWork + " need attention"}
+              title="Dani activity" onClick={() => setActivityOpen(true)}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
             {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending, remotea.status?.hosts ?? []); return (
@@ -2834,7 +2834,7 @@ export default function App() {
                           ? "Memory corrected"
                           : action === "distinct"
                             ? "Kept as separate facts"
-                            : "Eri can ask next week",
+                            : "Dani can ask next week",
                       )
                     }
                   />
@@ -2867,7 +2867,7 @@ export default function App() {
                       <p>
                         {query
                           ? "No memories match this search."
-                          : "Nothing remembered yet. Tell Eri something above, or let it learn from saved conversations."}
+                          : "Nothing remembered yet. Tell Dani something above, or let it learn from saved conversations."}
                       </p>
                     </div>
                   )}
@@ -2912,7 +2912,7 @@ export default function App() {
                 )}
                 {settingsSection === "voice" && (
                   <SettingsGroup className="voice-settings" title="Voice & conversation"
-                    description={"Choose how Eri sounds on this device. Changes apply to the next voice session. Voice ends after " + VOICE_IDLE_SECONDS + " quiet seconds after speech, playback and task activity finish."}>
+                    description={"Choose how Dani sounds on this device. Changes apply to the next voice session. Voice ends after " + VOICE_IDLE_SECONDS + " quiet seconds after speech, playback and task activity finish."}>
                     {voiceState && !voiceState.closed && (
                       <p className="settings-callout">
                         End the active voice session before changing its voice.
@@ -2965,7 +2965,7 @@ export default function App() {
                       </select>
                     </SettingRow>
                     <SettingRow as="label" className="switch-row" label="Wake word"
-                      hint={<>Remembered for this account on this device. Uses the browser speech service and microphone while foreground wake is enabled. Say “Eri” or “Hey, Eri”. {wakeEnabled
+                      hint={<>Remembered for this account on this device. Uses the browser speech service and microphone while foreground wake is enabled. Say “Dani” or “Hey, Dani” (DAN-ee or DAH-nee). {wakeEnabled
                           ? voiceState && !voiceState.closed
                             ? "Paused during voice."
                             : wakeStatus
@@ -2977,7 +2977,7 @@ export default function App() {
                         type="checkbox"
                         className="switch"
                         role="switch"
-                        aria-label="“Eri” or “Hey, Eri”"
+                        aria-label="“Dani” or “Hey, Dani”"
                         checked={wakeEnabled}
                         disabled={!recognitionType() && !wakeEnabled}
                         onChange={(e) => {
@@ -3026,7 +3026,7 @@ export default function App() {
             )}
             <footer className="page-footer">
               <Shield size={13} />
-              <span>{syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Eri has work that needs attention" : "Connected. Changes save automatically.")}</span>
+              <span>{syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Dani has work that needs attention" : "Connected. Changes save automatically.")}</span>
             </footer>
           </main>
           <aside
@@ -3037,7 +3037,7 @@ export default function App() {
               (companion ? "visible " : "") +
               (voiceState && !voiceState.closed ? "voice-mode" : "")
             }
-            aria-label="Eridani conversation"
+            aria-label="Dani conversation"
             role={mobile && companion ? "dialog" : undefined}
             aria-modal={mobile && companion ? true : undefined}
           >
@@ -3103,7 +3103,7 @@ export default function App() {
                 return (
                 <div className={"message " + m.role} key={m.id} data-message-id={m.id} data-native-id={m.native_id??m.id}>
                   <span className="message-label">
-                    {m.role === "assistant" ? <><span className="eri-orb" aria-hidden="true"/>Eri</> : "You"}
+                    {m.role === "assistant" ? <><span className="eri-orb" aria-hidden="true"/>Dani</> : "You"}
                   </span>
                   <p>{m.content || (m.pending ? "Listening…" : "")}</p>
                   {m.pending && (
@@ -3148,7 +3148,7 @@ export default function App() {
                 {voiceProvider === "realtime" && (
                   <button
                     className="text-button"
-                    title="Ask Eri to answer your latest speech after you finish talking."
+                    title="Ask Dani to answer your latest speech after you finish talking."
                     disabled={!voiceState.can_submit}
                     onClick={() => {
                       void voice.current
@@ -3172,10 +3172,10 @@ export default function App() {
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder={
                   boot.capabilities.chat
-                    ? "Ask Eridani anything…"
+                    ? "Ask Dani anything…"
                     : "Chat needs a configured API key"
                 }
-                aria-label="Message Eridani"
+                aria-label="Message Dani"
                 rows={2}
                 disabled={!!voiceState && !voiceState.closed}
                 maxLength={12000}
@@ -3205,7 +3205,7 @@ export default function App() {
                   }
                 >
                   {voice.current || wakeRuntime==="connecting_voice" ? <Square size={15} /> : <Mic size={17} />}
-                  <span>{voice.current || wakeRuntime==="connecting_voice" ? "End voice" : "Talk to Eridani"}</span>
+                  <span>{voice.current || wakeRuntime==="connecting_voice" ? "End voice" : "Talk to Dani"}</span>
                 </button>
                 <button
                   className="send-button"
@@ -3635,11 +3635,11 @@ function voiceLabel(state: string) {
         thinking: "Thinking…",
         acting: "Saving that…",
         working: "Taking care of that…",
-        speaking: "Eri is speaking",
+        speaking: "Dani is speaking",
         unresolved: "Ready for your next words",
         disconnected: "Voice disconnected",
         closed: "Voice ended",
-        ended: "Voice ended. Say Hey Eri when you need me.",
+        ended: "Voice ended. Say Hey Dani when you need me.",
         draining_startup_audio: "Finishing startup audio…",
         idle_timeout: `Voice ended after ${VOICE_IDLE_SECONDS} quiet seconds`,
       } as Record<string, string>

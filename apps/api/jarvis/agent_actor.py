@@ -1,7 +1,7 @@
 """Who is changing a task, for the run completion gate (docs/AGENT_CONTROL.md, "Actor model").
 
 An actor is bound per request or job. Explicit bindings (the run coordinator, in-session tools,
-Linear import) win; otherwise the request context decides: queued Eri work is `eri_work`, a bot
+Linear import) win; otherwise the request context decides: queued Dani work is `eri_work`, a bot
 key without a run binding is `bot`, and a signed-in browser is `human`.
 
 While a task has an unsettled run, only a human, source sync or the run judge (the coordinator)

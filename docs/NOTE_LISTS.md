@@ -6,7 +6,7 @@ Implemented September 19, 2026.
 
 Open Notes and choose **Set up suggested lists** for Movies, Books, Shows,
 Restaurants and Recipes, or create a list of your own. Every list has an editable
-description and saved filters. Eri can discover the lists, open one, edit its
+description and saved filters. Dani can discover the lists, open one, edit its
 definition, file a note, or queue organization through the same validated commands
 as the interface.
 
@@ -96,7 +96,7 @@ Existing data is not rewritten by migration or suggested-list setup.
 Automated coverage includes extraction and classifications, exact-source checks,
 duplicates and reuse, manual corrections, stale results, schema changes, shared
 permissions, failed-job recovery, custom filters and weekly rule approval.
-The browser suite covers source navigation, Eri list navigation, list creation
+The browser suite covers source navigation, Dani list navigation, list creation
 and editing, Back navigation and layouts at 390, 600, 820 and 1440 pixels.
 
 A bounded real-Luna smoke evaluation passed six synthetic cases: two films,

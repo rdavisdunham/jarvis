@@ -185,7 +185,7 @@ export function ReminderList({
             {tab === "completed"
               ? "Reminders you mark complete stay here."
               : tab === "pending"
-                ? "Add a reminder and Eri will keep the time."
+                ? "Add a reminder and Dani will keep the time."
                 : ""}
           </p>
         </div>

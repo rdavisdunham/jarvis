@@ -2,7 +2,7 @@
 completion policy (code_ready | pr_open | pr_merged: what "done" means for the judge).
 
 The plan on a task is a template; agent runs (stage C) freeze their own revision. Every entrance
-(browser, Eri, external bots) goes through task.update, so this module is the single normalization
+(browser, Dani, external bots) goes through task.update, so this module is the single normalization
 path. Plan fields never sync to Linear (linear_sync maps only core task fields).
 """
 

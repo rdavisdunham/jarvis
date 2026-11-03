@@ -21,7 +21,7 @@ it("keeps Backlog in unfinished work, exact filters and dated views", () => {
   expect(matchesTaskTab(task, "today", "2030-01-15")).toBe(true);
 });
 
-it("restores Backlog saved links and accepts Eri's status filter", () => {
+it("restores Backlog saved links and accepts Dani's status filter", () => {
   const state = viewStateSchema.parse({ status: "backlog", layout: "board" });
   const params = new URLSearchParams({ view: "tasks", state: JSON.stringify(state) });
   expect(readView(params.toString())).toEqual(state);

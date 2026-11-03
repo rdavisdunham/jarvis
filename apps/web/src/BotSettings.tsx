@@ -43,7 +43,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     catch(e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const scopeLabel = (scope: string) => scope === "work:run" ? "Eri requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link"
+  const scopeLabel = (scope: string) => scope === "work:run" ? "Dani requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link"
     : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
   return <SettingsGroup className="bot-settings" icon={<KeyRound size={18}/>} title="Connected agents"
     description={`Let other assistants work in ${workspace}. Their changes appear in Activity.`}
@@ -60,7 +60,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
       <label className="field"><span className="field-label-text">Key expires after</span><select value={days} onChange={e => setDays(Number(e.target.value))}>
         <option value={30}>30 days</option><option value={90}>90 days</option><option value={365}>1 year</option></select></label>
       {!readOnly && <label className="inline-check wide"><input type="checkbox" checked={queued} onChange={e => setQueued(e.target.checked)}/>
-        Allow requests to Eri’s background agent</label>}
+        Allow requests to Dani’s background agent</label>}
       {!readOnly && <label className="inline-check wide"><input type="checkbox" checked={runTools} onChange={e => setRunTools(e.target.checked)}/>
         Run tools for coding agents started from a task (remotea): read the plan, tick steps, submit the plan</label>}
       <label className="inline-check wide"><input type="checkbox" checked={runRead} onChange={e => setRunRead(e.target.checked)}/>

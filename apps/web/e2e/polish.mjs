@@ -13,7 +13,7 @@ try {
   await page.goto("https://davispc.tail957c2.ts.net:9443");
   await page.getByLabel("Pairing code").fill(token);
   await page.locator(".login-card button.primary").click();
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   await page
     .getByRole("button", { name: "Start a private session", exact: true })
     .click();
@@ -57,9 +57,9 @@ try {
     if (!response.ok) throw new Error("Reminder fixture could not save");
     return (await response.json()).data;
   });
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   await page
-    .getByLabel("Message Eridani")
+    .getByLabel("Message Dani")
     .fill(
       "Show me the reminder named Synthetic polish check amber lake. Open it on this site.",
     );
@@ -92,7 +92,7 @@ try {
     .getByRole("button", { name: "Close conversation", exact: true })
     .click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   await expect(page.locator(".companion")).toBeVisible();
   evidence.mobileOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > innerWidth,

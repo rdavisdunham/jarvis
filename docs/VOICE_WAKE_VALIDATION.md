@@ -1,3 +1,12 @@
+# Dani naming update — November 3, 2026
+
+The current assistant is Dani; Eridani remains the app. Wake listening accepts
+DAN-ee and DAH-nee via Dani, Danny, Danni, Donny and Donnie transcripts. Eri, Erie,
+Airy and Eridani are retired wake words. The evidence below records the earlier
+voice implementation under its previous name; it does not establish microphone
+recognition reliability for Dani. Repeat the device matrix with both pronunciations,
+standalone wake phrases, immediate requests and retired-name negatives.
+
 # Foreground voice and wake validation
 
 Approved plan: task 1f324cd9-aed5-4c14-83f4-8f0a6de456b3, revision 1.

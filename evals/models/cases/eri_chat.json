@@ -1,7 +1,7 @@
 {
   "version": 1,
   "job": "eri_chat",
-  "description": "First step of an Eri chat turn: which tool the model calls (or none) for an owner message. The system prompt is Eri's static production instructions plus a fixed profile/time block; the tools are production definitions (tools.registry) for config.tools. Only the first call is graded: several first steps can be right, so tools_any lists them.",
+  "description": "First step of an Dani chat turn: which tool the model calls (or none) for an owner message. The system prompt is Dani's static production instructions plus a fixed profile/time block; the tools are production definitions (tools.registry) for config.tools. Only the first call is graded: several first steps can be right, so tools_any lists them.",
   "prompt_source": "jarvis.tools.instructions(prefs, parts=True)[0] + config.context; jarvis.tools.registry() filtered to config.tools",
   "grader": "tool_call",
   "config": {

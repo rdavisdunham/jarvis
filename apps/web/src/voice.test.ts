@@ -247,14 +247,14 @@ test.each(["live"] as const)(
       provider === "live"
         ? {
             type: "session.input_transcript.delta",
-            delta: "Thank you, Eri.",
+            delta: "Thank you, Dani.",
             start_ms: 0,
             end_ms: 1000,
           }
         : {
             type: "conversation.item.input_audio_transcription.completed",
             item_id: "ending",
-            transcript: "Thank you, Eri.",
+            transcript: "Thank you, Dani.",
           };
     Peer.current.channel.dispatchEvent(
       new MessageEvent("message", { data: JSON.stringify(event) }),
@@ -471,7 +471,7 @@ test("explicit goodbye still ends voice while queued backend work is pending", a
   });
   await startVoice("live", changed);
   await vi.advanceTimersByTimeAsync(35000);
-  userReply("live", "Goodbye Eri.");
+  userReply("live", "Goodbye Dani.");
   await vi.advanceTimersByTimeAsync(3000);
   expect(stopped).toHaveBeenCalledOnce();
   expect(changed).toHaveBeenCalledWith(
@@ -618,7 +618,7 @@ test.each(["manual","wake"].flatMap(mode=>[0,.0001].map(noise=>({mode,noise}))))
     for(let i=0;i<20;i++)await process(noise);
     expect(heard.every(sample=>sample===0)).toBe(true);
     event({type:"session.started"});await vi.advanceTimersByTimeAsync(0);await manual;
-    if(mode==="wake")event({type:"session.input_transcript.delta",event_id:"wake",delta:"Hey Eri",start_ms:0,end_ms:1600});
+    if(mode==="wake")event({type:"session.input_transcript.delta",event_id:"wake",delta:"Hey Dani",start_ms:0,end_ms:1600});
     for(let i=0;i<350;i++)await process(noise);
     expect(coordinator.state).toBe("active_voice");
     expect(capture.close).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
 // Conservative command vocabulary; unknown/uncertain intent always keeps listening.
+import { SPOKEN_NAMES } from "./assistant-identity";
 export type ClosingQuestion = "more" | "done";
 export function normalize(text: string) {
   return text.toLowerCase().replace(/[’']/g, "").replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -8,8 +9,8 @@ const ambiguous = new Set(["im done", "i am done", "thats all", "that is all", "
 function command(text: string) {
   if (text.includes('"') || ["'", "“", "‘"].some(x => text.trim().startsWith(x))) return "";
   let value = normalize(text);
-  for (const prefix of ["eri ", "eridani ", "okay ", "ok ", "please ", "you can "]) if (value.startsWith(prefix)) value = value.slice(prefix.length);
-  for (const suffix of [" eri", " eridani", " thank you", " thanks", " please"]) if (value.endsWith(suffix)) value = value.slice(0, -suffix.length);
+  for (const prefix of [...SPOKEN_NAMES.map(name => `${name} `), "okay ", "ok ", "please ", "you can "]) if (value.startsWith(prefix)) value = value.slice(prefix.length);
+  for (const suffix of [...SPOKEN_NAMES.map(name => ` ${name}`), " thank you", " thanks", " please"]) if (value.endsWith(suffix)) value = value.slice(0, -suffix.length);
   return value;
 }
 export const isExplicitFarewell = (text: string) => explicit.has(command(text));

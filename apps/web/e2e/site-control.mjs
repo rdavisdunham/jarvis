@@ -9,8 +9,8 @@ page.on("response", async r => { if(r.url().endsWith("/ui/sync")) { try {
   const v=await r.json(); evidence.uiActions.push(...v.actions.map(a => ({kind:a.kind, view:a.view, mode:a.mode})));
 } catch {} }});
 page.on("pageerror", e => evidence.errors.push(e.message));
-const open = async () => { if (!await page.locator(".companion").isVisible()) await page.getByRole("button", {name: "Open Eridani", exact: true}).click(); };
-const say = async text => { await open(); await page.getByLabel("Message Eridani").fill(text); await page.getByRole("button", {name: "Send message", exact: true}).click(); };
+const open = async () => { if (!await page.locator(".companion").isVisible()) await page.getByRole("button", {name: "Open Dani", exact: true}).click(); };
+const say = async text => { await open(); await page.getByLabel("Message Dani").fill(text); await page.getByRole("button", {name: "Send message", exact: true}).click(); };
 try {
   await page.goto("https://davispc.tail957c2.ts.net:9443");
   await page.getByLabel("Pairing code").fill(token);

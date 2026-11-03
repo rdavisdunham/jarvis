@@ -95,7 +95,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   useEffect(() => () => cancelAnimationFrame(animation.current), []);
   // Keep the camera on the focused region whenever the layout changes (load, move, create), unless you zoomed or panned by hand.
   useEffect(() => { if (layout) { const node = layout.byId.get(focusId) ?? layout.root; if (!manualCamera.current || node === layout.root && focusId !== ROOT) setView(viewFor(node)); if (node === layout.root && focusId !== ROOT) setFocusId(ROOT); } }, [layout]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Breadcrumbs, history and Eri set the focus from outside.
+  // Breadcrumbs, history and Dani set the focus from outside.
   useEffect(() => { if (layout && (focus || ROOT) !== focusId) flyTo(focus || ROOT, { report: false }); }, [focus, layout]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!target?.record_id || !layout || !index) return;

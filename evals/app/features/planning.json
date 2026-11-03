@@ -26,7 +26,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Fit two 30-minute tasks in one hour.",
@@ -67,7 +67,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Schedule B after A.",
@@ -108,7 +108,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Apply not-before boundary.",
@@ -149,7 +149,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Apply not-after boundary.",
@@ -190,7 +190,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Plan around known busy event.",
@@ -231,7 +231,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Calendar coverage unknown.",
@@ -272,7 +272,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Explicit local-only planning.",
@@ -314,7 +314,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Fit 90 minutes in 60.",
@@ -355,7 +355,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Fit indivisible 45-minute task into two 30-minute gaps.",
@@ -396,7 +396,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Commit same proposal twice.",
@@ -437,7 +437,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Task revision changes after proposal.",
@@ -478,7 +478,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Availability changes before commit.",
@@ -519,7 +519,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Plan completed task.",
@@ -560,7 +560,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Plan eight tasks.",
@@ -601,7 +601,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Plan nine tasks through bounded API.",
@@ -642,7 +642,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Create manual work block.",
@@ -683,7 +683,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Edit block start.",
@@ -724,7 +724,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Delete block.",
@@ -765,7 +765,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Publish block to Google.",
@@ -806,7 +806,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Compare local/remote divergence.",
@@ -847,7 +847,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Resolve toward local.",
@@ -888,7 +888,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Resolve toward remote.",
@@ -929,7 +929,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Unlink published block.",
@@ -970,7 +970,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Plan across midnight.",
@@ -1011,7 +1011,7 @@
       "Clone the marked rowan-v1 corpus into a new disposable trial database; never reuse another case’s mutations.",
       "Use Rowan’s personal workspace unless this case explicitly names a different account, role, or workspace.",
       "Use 2030-01-14 09:00 America/Chicago for user-facing relative dates. Keep execution leases and network timers on real time.",
-      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Eri."
+      "Treat the corpus and persona oracle_only facts as grader data; expose only ordinary saved app records to Dani."
     ],
     "steps": [
       "Include foreign workspace task.",

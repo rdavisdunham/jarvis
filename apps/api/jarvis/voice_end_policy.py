@@ -7,6 +7,8 @@ turn ownership. All durable metadata lives in existing encrypted payloads.
 import re
 import time
 
+from .assistant_identity import SPOKEN_NAMES
+
 from sqlalchemy import select
 
 from .models import AgentWork, Job, VoiceInbox, uid, now
@@ -37,10 +39,10 @@ def command(text):
     if '"' in text or text.strip().startswith(("'", "“", "‘")):
         return ""
     value = normalize(text)
-    for prefix in ("eri ", "eridani ", "okay ", "ok ", "please ", "you can "):
+    for prefix in (*[name + " " for name in SPOKEN_NAMES], "okay ", "ok ", "please ", "you can "):
         if value.startswith(prefix):
             value = value[len(prefix):]
-    for suffix in (" eri", " eridani", " thank you", " thanks", " please"):
+    for suffix in (*[" " + name for name in SPOKEN_NAMES], " thank you", " thanks", " please"):
         if value.endswith(suffix):
             value = value[:-len(suffix)]
     return value
@@ -158,7 +160,8 @@ def propose(row, *, final_action_accepted=False):
         text = ctx.get("text", "")
         resolved_final = (final_action_accepted and accepted_input.get("clarification_answer")
                           and normalize(accepted_input.get("continuation_request", "")).endswith(" then end voice")
-                          and normalize(text) not in {"thanks", "thank you", "thank you eri", "thanks eri"})
+                          and normalize(text) not in {phrase + suffix for phrase in ("thanks", "thank you")
+                                                     for suffix in ("", *[" " + name for name in SPOKEN_NAMES])})
         if resolved_final:
             text = accepted_input["continuation_request"]
         category = decide(text, question=ctx.get("question"), age=ctx.get("age", 61),

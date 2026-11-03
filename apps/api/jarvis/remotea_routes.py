@@ -604,12 +604,12 @@ def rescan(identity: UUID, user: User):
         return control.rescan_worktrees(db, user.owner_id, str(identity))
 
 
-# ---------------------------------------------------------------- Eri's pending control (stage F, M5)
+# ---------------------------------------------------------------- Dani's pending control (stage F, M5)
 
 
 @router.get("/pending")
 def pending(user: User):
-    """control_start / control_message Eri proposed, waiting for the owner's tap."""
+    """control_start / control_message Dani proposed, waiting for the owner's tap."""
     with session_scope() as db:
         gated(db, user)
         return {"items": control.pending_list(db, user.owner_id)}

@@ -57,15 +57,15 @@ await page.getByRole('button',{name:'Edit '+title,exact:true}).click();
 await expect(page.getByRole('button',{name:'Save task',exact:true})).toBeVisible();
 await page.screenshot({path:'../../.runtime/screenshots/mobile-dialog.png',fullPage:true,animations:"disabled"});
 await page.getByRole('button',{name:'Close',exact:true}).click();
-await page.getByRole('button',{name:'Open Eridani',exact:true}).click();
-await expect(page.getByRole('complementary',{name:'Eridani conversation'})).toBeVisible();
+await page.getByRole('button',{name:'Open Dani',exact:true}).click();
+await expect(page.getByRole('complementary',{name:'Dani conversation'})).toBeVisible();
 await page.screenshot({path:'../../.runtime/screenshots/mobile-chat.png',fullPage:true,animations:"disabled"});
 if (process.env.JARVIS_E2E_CHAT === '1') {
-  await page.getByLabel('Message Eridani').fill('Synthetic connection test: reply with exactly READY. Do not use tools or save a memory.');
+  await page.getByLabel('Message Dani').fill('Synthetic connection test: reply with exactly READY. Do not use tools or save a memory.');
   await page.getByRole('button',{name:'Send message',exact:true}).click();
   await expect(page.locator('.message.assistant').last()).toContainText('READY',{timeout:60000});
   await page.reload();
-  await page.getByRole('button',{name:'Open Eridani',exact:true}).click();
+  await page.getByRole('button',{name:'Open Dani',exact:true}).click();
   await expect(page.locator('.message.assistant').last()).toContainText('READY');
 }
 expect(errors).toEqual([]);

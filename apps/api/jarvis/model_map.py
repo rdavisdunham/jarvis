@@ -3,7 +3,7 @@
 Every backend job that calls a text model has an entry in JOBS: the cost feature its usage is recorded under
 (cost_features.LABELS, the Settings → Model usage buckets), the production function that makes the call, and its
 default profile. The defaults are today's models: Luna with low reasoning through memory_learning.extraction_request
-for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Eri chat. Nothing in
+for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Dani chat. Nothing in
 production reaches a non-default profile yet: memory_learning.profile_request refuses any route that is not the
 extraction model, exactly as extraction_request's allowlist does, because the budget ledger prices Luna only.
 
@@ -51,9 +51,9 @@ PROFILES = {
                 "OPENAI_API_KEY", "GPT-5.6 Luna · low reasoning (current backend)", "low"),
         Profile("luna-none", "openai", "gpt-5.6-luna", "openai_responses", "https://api.openai.com/v1/responses",
                 "OPENAI_API_KEY", "GPT-5.6 Luna · no reasoning", "none"),
-        # Eri chat's default: the Settings task agent is Luna, interactive requests at the Fast tier.
+        # Dani chat's default: the Settings task agent is Luna, interactive requests at the Fast tier.
         Profile("luna-fast", "openai", "gpt-5.6-luna", "openai_responses", "https://api.openai.com/v1/responses",
-                "OPENAI_API_KEY", "GPT-5.6 Luna · low reasoning · Fast tier (Eri chat default)", "low",
+                "OPENAI_API_KEY", "GPT-5.6 Luna · low reasoning · Fast tier (Dani chat default)", "low",
                 service_tier="fast"),
         Profile("haiku-5.5", "anthropic", "claude-haiku-5-5", "anthropic_messages",
                 "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Haiku 5.5 · low effort", "low"),
@@ -75,7 +75,7 @@ PROFILES = {
 class Job:
     id: str
     cost_feature: str
-    site: str  # The production call: module.function, or the module for Eri chat's request loop.
+    site: str  # The production call: module.function, or the module for Dani chat's request loop.
     path: str  # extraction (structured JSON via extraction_request) | agent (tool-calling chat)
     label: str
 
@@ -102,11 +102,11 @@ JOBS = {
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),
         Job("swarm_plan", "agent_control", "swarm.ask", "extraction",
             "Swarm plans: which of a project's tasks run in parallel"),
-        Job("eri_chat", "assistant", "conversation", "agent", "Eri chat turns (tool selection)"),
+        Job("eri_chat", "assistant", "conversation", "agent", "Dani chat turns (tool selection)"),
     )
 }
 
-# Today's behaviour: every structured job on Luna (low reasoning), Eri chat on the Settings choice.
+# Today's behaviour: every structured job on Luna (low reasoning), Dani chat on the Settings choice.
 DEFAULTS = {job: (SELECTED if spec.path == "agent" else "luna") for job, spec in JOBS.items()}
 MODEL_MAP = dict(DEFAULTS)
 

@@ -1071,7 +1071,7 @@ def pending_controls(db, run):
 
 
 def freshness_text(item, clock=None):
-    """The run's freshness facts as one line for Eri (control_status), e.g. "verify tests passed 3 min ago on a
+    """The run's freshness facts as one line for Dani (control_status), e.g. "verify tests passed 3 min ago on a
     complete workspace; host seen 5 s ago; last turn 2 min ago; in needs you for 4 min"."""
     clock = clock or now()
 
@@ -1481,7 +1481,7 @@ def device_open_run(db, owner):
 
 
 def recipient(db, run):
-    """Who a control command affects, as Eri names it before acting: task · host · branch · state."""
+    """Who a control command affects, as Dani names it before acting: task · host · branch · state."""
     task = db.get(Task, run.task_id) if run.task_id else None
     host = db.get(AgentHost, run.host_id) if run.host_id else None
     title, host_name = (task.title if task else "a task")[:120], ((host.name if host else "") or "remotea")[:80]
@@ -1492,7 +1492,7 @@ def recipient(db, run):
 
 def ambiguous(db, runs, message):
     """Several runs fit a control command: AMBIGUOUS_RUN with each candidate, which control_command turns into a
-    needs_choice result so Eri asks instead of acting."""
+    needs_choice result so Dani asks instead of acting."""
     unique = list({r.id: r for r in runs if r is not None}.values())[:8]
     return DomainError("AMBIGUOUS_RUN", message, 409, data={"candidates": [recipient(db, r) for r in unique]})
 
@@ -1556,7 +1556,7 @@ def owner_control(db, owner):
         raise DomainError("PERSONAL_WORKSPACE", "Agent control works only in your personal workspace.", 403)
 
 
-# ---------------------------------------------------------------- two-phase control from Eri (stage F, M5, D3)
+# ---------------------------------------------------------------- two-phase control from Dani (stage F, M5, D3)
 
 PENDING_TTL = timedelta(days=36500)
 # A spoken or typed yes: the request starts with an affirmation and asks for nothing else (is_yes). Joined voice
@@ -1666,7 +1666,7 @@ def verify_use(task, status):
 
 
 def readiness(db, owner, row):
-    """readiness_for a pending control.start. The proposal reports it to Eri, the card shows it; confirm checks again."""
+    """readiness_for a pending control.start. The proposal reports it to Dani, the card shows it; confirm checks again."""
     if row.tool != "control.start":
         return {}
     args = row.arguments or {}
@@ -1767,7 +1767,7 @@ SETUP_FIX =("run `remotea eridani setup` in WSL and paste a setup code from Sett
 
 
 def problem(code, message, fix, blocks=True):
-    """One setup problem as the page, the probe, control_status and Eri all say it. `blocks`: a run cannot start
+    """One setup problem as the page, the probe, control_status and Dani all say it. `blocks`: a run cannot start
     (or cannot finish its planning turn) until it is fixed; otherwise it starts but works worse."""
     return {"code": code, "message": message, "fix": fix, "blocks": blocks}
 
@@ -1911,7 +1911,7 @@ def finish_target(out):
 
 
 def setup_line(name, host_name, problems):
-    """One spoken line for an unready host or target (control_status, Eri): its blocking problems, then the first
+    """One spoken line for an unready host or target (control_status, Dani): its blocking problems, then the first
     fix."""
     blocking = [p for p in problems if p["blocks"]]
     if not blocking:
@@ -1992,7 +1992,7 @@ def target_probe(db, owner, key):
 
 
 def proposal(db, owner, result):
-    """A control_start proposal as Eri sees it: the pending row plus what still stands in its way, and what to
+    """A control_start proposal as Dani sees it: the pending row plus what still stands in its way, and what to
     tell the owner about it. The picker's data stays on the remotea card."""
     from .session_models import AgentPendingControl
 
@@ -2028,7 +2028,7 @@ def proposal(db, owner, result):
 
 
 def target_options(need):
-    """The picker's choices as Eri reads them out: saved targets by id, then advertised ones not saved yet by the
+    """The picker's choices as Dani reads them out: saved targets by id, then advertised ones not saved yet by the
     key control_confirm accepts (host:<host_id>:<host_target>; the same options the remotea card offers)."""
     saved = [{"execution_target_id": t["id"], "name": t.get("name") or t["host_target"], "repo": t.get("repo") or "",
               "saved": True} for t in need.get("candidates") or []]
@@ -2066,7 +2066,7 @@ def chosen_target(db, owner, row, choice):
 
 
 def propose(db, owner, account, tool, args, actor):
-    """control_start / control_message from Eri: resolve and validate now, act only after the owner confirms."""
+    """control_start / control_message from Dani: resolve and validate now, act only after the owner confirms."""
     work = current_work(db)
     if tool == "control.start":
         task = owned(db, Task, args.task_id or task_by_name(db, owner, args.task), owner)
@@ -2235,7 +2235,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
 
 
 def spoken_confirmation(db, owner, args):
-    """control_confirm from Eri: only a later request from the owner that is itself a short yes, for the newest
+    """control_confirm from Dani: only a later request from the owner that is itself a short yes, for the newest
     pending action of that account (so the yes is unambiguous). Declining needs no proof."""
 
     work = current_work(db)
@@ -2335,7 +2335,7 @@ def needs_choice(tool, error):
 
 def control_command(db, owner, tool, args):
     """E-Q6: a command whose run could be one of several returns needs_choice (each candidate as task · host · branch
-    · state) instead of acting; one that acts names its recipient so Eri's sentence is grounded."""
+    · state) instead of acting; one that acts names its recipient so Dani's sentence is grounded."""
     try:
         result = control_dispatch(db, owner, tool, args)
     except DomainError as error:
@@ -2648,7 +2648,7 @@ def review_packet(db, run):
 
 
 def judge_summary(db, run):
-    """The last judge verdict on a run (summary and any gap), for Eri to read out before an approval."""
+    """The last judge verdict on a run (summary and any gap), for Dani to read out before an approval."""
     verdict = db.scalar(select(AgentAttempt).where(AgentAttempt.run_id == run.id, AgentAttempt.kind == "judge",
                                                    AgentAttempt.status == "done")
                         .order_by(AgentAttempt.created_at.desc()).limit(1))
@@ -2682,7 +2682,7 @@ def status(db, owner, args):
     hosts = []
     for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         degraded = agent_link.build_identity(h)["degraded_reason"]
-        # A degraded journal refuses starts, messages and stops until it clears; Eri should say so.
+        # A degraded journal refuses starts, messages and stops until it clears; Dani should say so.
         check = agent_link.doctor_line(h)
         hosts.append({"name": h.name, "connected": agent_link.connected(h), "last_seen_at": h.last_seen_at,
                       **({"degraded_reason": degraded, "warning": f"Host journal degraded: {degraded}"} if degraded else {}),
@@ -2699,7 +2699,7 @@ def status(db, owner, args):
 
 
 def spoken_pending(db, owner):
-    """Open control_start / control_message proposals as Eri reads them: the summary to confirm, and for a start
+    """Open control_start / control_message proposals as Dani reads them: the summary to confirm, and for a start
     without a place, the target options control_confirm accepts."""
     items = []
     for row in pending_list(db, owner):

@@ -5,10 +5,10 @@ September 18, 2026.
 ## User behavior
 
 The top search finds actionable tasks across custom collections. Notes keep their
-own search-by-meaning control. Eri can search every accessible custom record type,
+own search-by-meaning control. Dani can search every accessible custom record type,
 field definition, option and relationship. Exact names, current fields and hierarchy
 produce deterministic matches; cloud embeddings and text retrieval supply possible
-matches outside an inferred classification. Eri evaluates both lanes and chooses
+matches outside an inferred classification. Dani evaluates both lanes and chooses
 what to show. Possible relevance does not silently change a saved assignment.
 
 For example, “the pest control company” can resolve to ABC. Tasks filed under ABC
@@ -28,7 +28,7 @@ by opening/using a selected result or continuing within 15 minutes of actual
 presentation without a correction. Browser replies need visible message elements;
 selected visual results need visible cards; voice requires a captured spoken target.
 Silence, hidden output and wake-word-only input stay unknown. Obvious corrections
-withdraw the weak positive; Eri can attribute nuanced corrections with search_feedback.
+withdraw the weak positive; Dani can attribute nuanced corrections with search_feedback.
 Both account and workspace scope apply. External bots never supply implicit feedback.
 Turning learning off stops new search-session capture and suppresses pending feedback.
 

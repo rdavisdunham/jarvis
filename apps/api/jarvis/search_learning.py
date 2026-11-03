@@ -222,7 +222,10 @@ def observe_source(db, source):
         .order_by(SearchSession.presented_at.desc())
         .limit(1)
     )
-    if not row or not normalize(source.content) or normalize(source.content) in ("eri", "hey eri"):
+    from .assistant_identity import wake_request
+    # Retired wake-only messages can still occur when processing historical turns.
+    if (not row or not normalize(source.content) or wake_request(source.content) == ""
+            or normalize(source.content) in ("eri", "hey eri")):
         return
     if row.signal == "possible_correction:" + source.id or row.signal == "continued:" + source.id:
         return

@@ -24,7 +24,7 @@ that keeps the shared sections on both cards; it does not change which entry poi
 |---|---|
 | Tasks page rows (list, board, timeline, all tabs) and its search | `Structure.tsx:158-159` `go`/`open` → `:355`; the header search refilters this list (`App.tsx:974` `searchAllTasks`) |
 | Organize: Browse, Atlas, Tree, list rows | same (`Structure.tsx:355`) |
-| Eri `ui_records` with `record_id` | `App.tsx:1106` `setRecordControl({record_id})` → `Structure.tsx:72` |
+| Dani `ui_records` with `record_id` | `App.tsx:1106` `setRecordControl({record_id})` → `Structure.tsx:72` |
 | Activity → open a changed record of kind `record` | `App.tsx:1681` `openWorkRecord` |
 | A `?record=record:<id>` link (Copy record link from RecordCard), history restore | `App.tsx:1004` `openLinkedRecord` → Organize; restore `App.tsx` `useAppHistory` → `setTaskRecordControl`/`setRecordControl` |
 | Review queue rows, "Main home" on TaskDetails | `Reviews.tsx:16` `openRecord` and `TaskDetails.tsx:491` → `eri-open-custom-record` → `App.tsx:220` (switches to Organize) |
@@ -46,7 +46,7 @@ that keeps the shared sections on both cards; it does not change which entry poi
 | Quick capture launcher: always opens the new task | `App.tsx:2531` |
 | Inline capture: only when the new task does not match the current filters | `App.tsx:873` `drainCaptures` |
 | New task form saved | `App.tsx:3364` |
-| Eri `ui_show` on `all` with `entity_id`; `form: task` with `entity_id`; a calendar entry of kind task | `App.tsx:1434`, `:1411`, `:1239` |
+| Dani `ui_show` on `all` with `entity_id`; `form: task` with `entity_id`; a calendar entry of kind task | `App.tsx:1434`, `:1411`, `:1239` |
 | Related tasks links inside TaskDetails | `TaskDetails.tsx` `onTask` → `openTaskCard` |
 
 Sessions (`Sessions.tsx`) show the filed record as text only; no session opens either card.
@@ -87,7 +87,7 @@ a label in `TASK_CARD_SECTIONS` (`task-card-sections.ts`). "Both" means each car
 | Quick lists | Structure routes them to `QuickListDetail` | TaskDetails routes them to `QuickListDetail` |
 | Escape | Bubble listener; ignores handled events; closes after saving | Capture listener; first Escape cancels an edit, next closes; now ignores Escape while a dialog inside the card (Save as template) is open |
 | Backdrop click | Closes after saving | Same |
-| Eri editor (`useEditor`) | kind `record`: title, body, local_notes, parent_id, status_id, values, archived | kind `task`: title, notes, status, priority, homes, parent, assignee, tags, dates, estimate, alerts |
+| Dani editor (`useEditor`) | kind `record`: title, body, local_notes, parent_id, status_id, values, archived | kind `task`: title, notes, status, priority, homes, parent, assignee, tags, dates, estimate, alerts |
 | URL / deep link | `?record=record:<id>`; reloading on the Tasks page with it open lands in Organize | `?record=task:<id>` (with `view=tasks&tab=all`) |
 | Mobile (≤760px) | Same `.detail-card` bottom sheet (`details.css:584`); `task-detail-card` has no rules of its own | |
 
@@ -131,7 +131,7 @@ Exact routing rule for (b):
 1. `openTaskCard(task)` opens the RecordCard for the task's record (`/structure/by-core/task/<id>`),
    over the current page. Every row in "Opens TaskDetails" above goes through it, so they all switch at
    once: Today, Calendar, Task alerts, calendar entry details, notes, notices, quick capture, new task
-   form, Eri `ui_show`/`form`/calendar.
+   form, Dani `ui_show`/`form`/calendar.
 2. TaskDetails opens only for `?record=task:<id>` (old copied links, history restore of a `task`
    detail) and from a new "Open full task" button in the RecordCard header.
 3. RecordCard's Related tasks and Contents links stay in the RecordCard.
@@ -142,8 +142,8 @@ What (b) needs first:
 - A shell-level RecordCard host. RecordCard is only mounted inside `StructureWorkspace`, and needs the
   schema (`/structure`), choices and an `onOpen`. App.tsx needs its own host (like `calendarDetail`)
   that loads the schema once and renders the card over Today and Calendar.
-- Eri: with a RecordCard open, the open editor is kind `record`, so Eri patches `values`/`status_id`
-  instead of `status`/`due_date`. Check `ui_contracts.EDITOR_KINDS` callers and the Eri prompt text
+- Dani: with a RecordCard open, the open editor is kind `record`, so Dani patches `values`/`status_id`
+  instead of `status`/`due_date`. Check `ui_contracts.EDITOR_KINDS` callers and the Dani prompt text
   that assumes a `task` editor after `ui_show`.
 - RecordCard should gain the TaskDetails-only controls people use from Today and Calendar: Complete /
   Reopen, the Linear section (needs the `Task` and `mutate`; the host context can lend them), and the

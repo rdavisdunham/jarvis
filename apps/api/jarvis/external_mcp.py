@@ -191,7 +191,7 @@ def definitions(scopes):
     if "work:run" in scopes:
         add(
             "request_submit",
-            "Queue a natural-language request for Eri. Uses only this bot key's permitted planner tools. Returns immediately; poll request_get. Use the same thread_id for related requests and a new request_id per request.",
+            "Queue a natural-language request for Dani. Uses only this bot key's permitted planner tools. Returns immediately; poll request_get. Use the same thread_id for related requests and a new request_id per request.",
             service.RequestInput.model_json_schema(),
             False,
         )
@@ -200,7 +200,7 @@ def definitions(scopes):
         parameters["required"].append("work_id")
         add(
             "request_reply",
-            "Answer Eri's clarification or correct queued work. request_id identifies this reply for retries; work_id identifies the original queued request.",
+            "Answer Dani's clarification or correct queued work. request_id identifies this reply for retries; work_id identifies the original queued request.",
             parameters,
             False,
         )

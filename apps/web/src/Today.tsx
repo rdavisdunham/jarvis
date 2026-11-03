@@ -222,7 +222,7 @@ export function Today(p: Props) {
           <span className="note-card-date tabular">{shortDate(localParts(p.zone, new Date(n.updated_at)).day, p.today)}</span>
         </span>
       </button>)}</div>
-        : <div className="empty"><span>Notes you write or save from Eri show up here.</span><button type="button" className="btn btn-soft" onClick={() => p.onNavigate("notes")}>Open notes</button></div>}
+        : <div className="empty"><span>Notes you write or save from Dani show up here.</span><button type="button" className="btn btn-soft" onClick={() => p.onNavigate("notes")}>Open notes</button></div>}
     </section>}
   </section>;
 }

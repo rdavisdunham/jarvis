@@ -124,7 +124,7 @@ def test_stub_run_writes_results_and_summary(tmp_path):
     report = json.loads((tmp_path / "2026-10-30-stub.json").read_text())
     summary = (tmp_path / "2026-10-30-stub.md").read_text()
     assert report["mode"] == "stub" and report["stopped"] is None
-    # Eri chat runs on the Settings choice: Luna at the configured interactive tier (Fast by default).
+    # Dani chat runs on the Settings choice: Luna at the configured interactive tier (Fast by default).
     tier = "luna-fast" if get_settings().agent_service_tier == "fast" else "luna"
     assert report["baselines"] == {**{job: "luna" for job in case_schema.JOBS}, "eri_chat": tier}
     assert set(report["decisions"]) == set(case_schema.JOBS)

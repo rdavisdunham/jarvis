@@ -34,7 +34,7 @@ try {
     .getByRole("dialog")
     .getByLabel("Project", { exact: true })
     .selectOption({ label: "Workspace verification" });
-  await page.getByLabel("Assignee", { exact: true }).fill("Eri");
+  await page.getByLabel("Assignee", { exact: true }).fill("Dani");
   await page.getByLabel("Work type", { exact: true }).fill("Planning");
   await page.getByLabel("Tags", { exact: true }).fill("calendar, test");
   await page.getByRole("button", { name: "Save task", exact: true }).click();
@@ -90,7 +90,7 @@ try {
     .locator(".agenda-row")
     .filter({ hasText: "Task deadline" })
     .click();
-  await expect(page.getByLabel("Assignee", { exact: true })).toHaveValue("Eri");
+  await expect(page.getByLabel("Assignee", { exact: true })).toHaveValue("Dani");
   await expect(page.getByLabel("Tags", { exact: true })).toHaveValue(
     "calendar, test",
   );

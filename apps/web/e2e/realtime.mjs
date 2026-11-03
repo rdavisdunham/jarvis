@@ -188,7 +188,7 @@ try {
   await page.goto("https://davispc.tail957c2.ts.net:9443");
   await page.getByLabel("Pairing code").fill(token);
   await page.locator(".login-card button.primary").click();
-  await page.getByRole("button", { name: "Open Eridani", exact: true }).click();
+  await page.getByRole("button", { name: "Open Dani", exact: true }).click();
   await page
     .getByRole("button", { name: "Start a private session", exact: true })
     .click();
@@ -197,7 +197,7 @@ try {
   );
   const started = Date.now();
   await page
-    .getByRole("button", { name: "Talk to Eridani", exact: true })
+    .getByRole("button", { name: "Talk to Dani", exact: true })
     .click();
   const deadline = Date.now() + 65000;
   while (Date.now() < deadline) {
@@ -317,7 +317,7 @@ try {
   if (scenario === "task" && evidence.result === "passed") {
     const previousSession = evidence.session_id;
     await page
-      .getByRole("button", { name: "Talk to Eridani", exact: true })
+      .getByRole("button", { name: "Talk to Dani", exact: true })
       .click();
     await expect(
       page.getByRole("button", { name: "End voice", exact: true }),

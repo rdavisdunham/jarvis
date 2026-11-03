@@ -447,7 +447,7 @@ def suggest_tasks(owner, note_id):
     )
     message = data["choices"][0]["message"]
     if message.get("refusal"):
-        raise DomainError("INTEGRATION_UNAVAILABLE", "Eri could not extract to-dos from this note.")
+        raise DomainError("INTEGRATION_UNAVAILABLE", "Dani could not extract to-dos from this note.")
     result = Suggestions.model_validate_json(message["content"])
     with session_scope() as db:
         current = owned(db, Note, note_id, owner)

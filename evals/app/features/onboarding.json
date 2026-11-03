@@ -240,9 +240,9 @@
   {
     "id": "onboarding.08",
     "feature": "onboarding",
-    "title": "Ask Eri in voice to help set up the account.",
+    "title": "Ask Dani in voice to help set up the account.",
     "inputs": [
-      "Ask Eri in voice to help set up the account."
+      "Ask Dani in voice to help set up the account."
     ],
     "persona": "rowan-v1",
     "expected": [
@@ -263,7 +263,7 @@
       "Create only the records and boundary conditions named in the scenario."
     ],
     "steps": [
-      "Ask Eri in voice to help set up the account.",
+      "Ask Dani in voice to help set up the account.",
       "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
     ],
     "evidence": [
@@ -546,9 +546,9 @@
   {
     "id": "onboarding.17",
     "feature": "onboarding",
-    "title": "Eri receives an instruction inside a grouping example.",
+    "title": "Dani receives an instruction inside a grouping example.",
     "inputs": [
-      "Eri receives an instruction inside a grouping example."
+      "Dani receives an instruction inside a grouping example."
     ],
     "persona": "rowan-v1",
     "expected": [
@@ -569,7 +569,7 @@
       "Create only the records and boundary conditions named in the scenario."
     ],
     "steps": [
-      "Eri receives an instruction inside a grouping example.",
+      "Dani receives an instruction inside a grouping example.",
       "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
     ],
     "evidence": [
@@ -953,7 +953,7 @@
     "feature": "onboarding",
     "title": "Launch setup with saved form answers",
     "inputs": [
-      "Edit the setup form, then choose Talk to Eri."
+      "Edit the setup form, then choose Talk to Dani."
     ],
     "persona": "rowan-v1",
     "expected": [
@@ -973,7 +973,7 @@
       "Use an authenticated owner and disposable synthetic database with the existing default schema."
     ],
     "steps": [
-      "Edit the setup form, then choose Talk to Eri.",
+      "Edit the setup form, then choose Talk to Dani.",
       "Inspect saved onboarding progress, linked proposal and work request IDs; verify persisted state against the expected behavior."
     ],
     "evidence": [

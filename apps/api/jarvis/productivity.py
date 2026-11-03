@@ -2,6 +2,8 @@
 
 from sqlalchemy import delete, select
 
+from .assistant_identity import ASSISTANT_NAME, available_assistant_name
+
 from .models import (
     Actor,
     Area,
@@ -32,7 +34,10 @@ def defaults(db, owner):
     for name in ("Personal", "Business"):
         if not db.scalar(select(Space).where(Space.owner_id == owner, Space.name == name)):
             db.add(Space(owner_id=owner, name=name))
-    for name, kind in (("owner", "person"), ("Eri", "agent")):
+    actors = list(db.scalars(select(Actor).where(Actor.owner_id == owner)))
+    assistant = next((a for a in actors if a.name == ASSISTANT_NAME and a.kind == "agent"), None)
+    assistant_name = assistant.name if assistant else available_assistant_name(a.name for a in actors)
+    for name, kind in (("owner", "person"), (assistant_name, "agent")):
         if not db.scalar(select(Actor).where(Actor.owner_id == owner, Actor.name == name)):
             db.add(Actor(owner_id=owner, name=name, kind=kind))
     if settings is None:
@@ -90,7 +95,7 @@ def task_home(db, owner, changes, row=None):
             actor = Actor(
                 owner_id=owner,
                 name=name,
-                kind="agent" if name.casefold() in {"eri", "agent", "eridani"} else "person",
+                kind="agent" if name.casefold() in {ASSISTANT_NAME.casefold(), "eri", "agent", "eridani"} else "person",
             )
             db.add(actor)
             db.flush()

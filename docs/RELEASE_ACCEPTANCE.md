@@ -34,7 +34,7 @@ provider items; retain IDs until both local and remote cleanup are verified.
 | Voice clarification | Incomplete to-do asks once; partial answer remains one waiting card; complete answer resolves it | Pending |
 | Independent / dependent requests | Call Alex + buy milk can run independently; “make that call tomorrow” updates the correct request | Typed task + note + task correction passed Oct 27; voice/restart pending |
 | Optional offer / unrelated request | “Anything else?” never captures or drops a separate next request | Pending |
-| Voice lifecycle | Eri / Hey Eri, explicit and natural goodbye, 120-second silence, no premature timeout while work runs | Pending |
+| Voice lifecycle | Dani / Hey Dani, explicit and natural goodbye, 120-second silence, no premature timeout while work runs | Pending |
 | Connection recovery | Wi-Fi/cellular change, offline/reconnect, close/reopen; accepted work persists; Send/Discard is explicit | Pending |
 | Physical UX | Pixel folded/unfolded and desktop; Back, keyboard, scroll, focus, controls and screen reader | Pending |
 | Activity | Compact cards stay in conversation order; Edit/Revert preserves later unrelated edits; stale history clears safely | Typed receipts, detail readback and date Revert pass Oct 27; note-indexing creation-Revert repaired and regression-tested; finishing deployment tracked in GitHub |
@@ -42,7 +42,7 @@ provider items; retain IDs until both local and remote cleanup are verified.
 | Notes/search/learning | Film reuse, misfiled results, alias corrections, source-backed memory and separate rule interview | Real dream outcomes inspected Oct 27; quality gaps in TODO; broader flows pending |
 | Memory review | No microphone opens by itself; questions offered only in the appropriate conversation | Pending |
 | Google / Linear | Local and remote edits agree after readback; source tags, recurrence/all-day boundaries, retry/conflict and local notes correct | Pending |
-| Notifications | Locked phone receives correct item; snooze/quiet hours/urgent settings and morning summary; no Eri completion spam | Pending |
+| Notifications | Locked phone receives correct item; snooze/quiet hours/urgent settings and morning summary; no Dani completion spam | Pending |
 | New user | Invited person completes or skips/resumes setup on a phone without developer explanation; own Personal data stays separate | Pending |
 | Operations | Pending synthetic work survives cloud restart with home PC off; backup/restore/PITR evidence; Google consent readiness | Pending |
 

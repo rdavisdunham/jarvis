@@ -12,7 +12,7 @@ COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/web/ ./
 # Keep the repository layout for shared fixtures imported during TypeScript checks.
-COPY tests/fixtures/voice-ending.json /build/tests/fixtures/voice-ending.json
+COPY tests/fixtures/voice-ending.json tests/fixtures/assistant-wake.json /build/tests/fixtures/
 # Railway supplies the deployed commit; the web build shows it in Report a bug (vite.config.ts).
 ARG RAILWAY_GIT_COMMIT_SHA=""
 RUN npm run build

@@ -126,7 +126,7 @@ async def test_exact_calendar_entry_requires_detail_target_and_is_bounded():
 
 def test_every_web_view_is_a_valid_device_context():
     """The browser reports its current page as device context; a page the backend does not know (remotea was
-    missing) made every chat message from that page fail validation before Eri saw it."""
+    missing) made every chat message from that page fail validation before Dani saw it."""
     from jarvis.ui_contracts import VIEWS
     from jarvis.ui_control import View
     from typing import get_args
@@ -144,9 +144,9 @@ async def test_ui_show_says_remotea_is_off():
 
 
 async def test_ui_show_opens_remotea_and_one_of_your_runs(host):  # noqa: F811
-    """Eri can open the remotea page or one run (what the push deep link ?run= opens), not another
+    """Dani can open the remotea page or one run (what the push deep link ?run= opens), not another
     namespace's run or an unknown one."""
-    run_id = start(host, create("task", "Open from Eri")["task_id"])["id"]
+    run_id = start(host, create("task", "Open from Dani")["task_id"])["id"]
     action = (await call_tool("davin", "turn", 0, "ui_show", {"view": "remotea", "entity_id": run_id}))["ui_action"]
     assert (action["view"], action["entity_id"]) == ("remotea", run_id)
     page = (await call_tool("davin", "turn", 0, "ui_show", {"view": "remotea"}))["ui_action"]

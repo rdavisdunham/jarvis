@@ -53,8 +53,8 @@ The existing five browser suites are runnable through the harness. Their success
 
 Record actual voice/wake/shutdown scenarios with device, OS/browser, permission state, foreground/background state, mic route, network condition and timestamps.
 
-- Test Eri and hey Eri, false wakes, background noise, interruption, transcript timing, voice selection and deliberate silence.
-- Measure the 30-second timeout from the end of Eri’s response. Verify speech resets the appropriate deadline.
+- Test Dani and hey Dani, false wakes, background noise, interruption, transcript timing, voice selection and deliberate silence.
+- Measure the 30-second timeout from the end of Dani’s response. Verify speech resets the appropriate deadline.
 - Test explicit goodbye and a natural anything else? → no exchange. Verify the actual voice_end effect and microphone shutdown, not just a farewell.
 - Interrupt a spoken acknowledgement after background work is accepted; work must finish and appear once.
 - Test network loss/reconnect with no duplicate task or stale false error banner.

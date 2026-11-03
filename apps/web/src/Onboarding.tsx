@@ -129,9 +129,9 @@ export function Onboarding({ compact = false, onChanged, onTalk }: {
     editVersion.current += 1; dirtyRef.current = false; setDirty(false); setError("");
     await load();
   };
-  return <section className="setup-panel" aria-label="Set up with Eri">
+  return <section className="setup-panel" aria-label="Set up with Dani">
     <h2>{progress.status === "completed" ? "Your setup" : "Make Eridani yours"}</h2>
-    <p>Eri can help design your types, fields and homes, one question at a time. You review the structure before it changes.</p>
+    <p>Dani can help design your types, fields and homes, one question at a time. You review the structure before it changes.</p>
     {error && <div role="alert"><p>{error}</p>
       {open && <button className="btn" disabled={blocked} onClick={() => void reloadSaved().catch(e => setError(e.message))}>
         {dirty ? "Discard local changes and reload" : "Reload saved progress"}
@@ -139,22 +139,22 @@ export function Onboarding({ compact = false, onChanged, onTalk }: {
     </div>}
     {!open ? <div className="setup-actions">
       <button className="btn btn-primary" disabled={blocked} onClick={() => void talk()}>
-        {starting ? "Starting setup…" : progress.status === "not_started" ? "Set up with Eri" :
-          progress.status === "completed" ? "Refine with Eri" : "Resume with Eri"}
+        {starting ? "Starting setup…" : progress.status === "not_started" ? "Set up with Dani" :
+          progress.status === "completed" ? "Refine with Dani" : "Resume with Dani"}
       </button>
       <button className="btn" disabled={blocked} onClick={() => setOpen(true)}>Use setup form</button>
       {progress.status === "not_started" && <button className="btn" disabled={blocked}
         onClick={() => void save("skipped").catch(() => {})}>Skip for now</button>}
     </div> : <>
       <SetupGuard dirty={dirty} busy={blocked} save={() => save()} close={() => setOpen(false)}/>
-      <p>Fill this in yourself, or save these answers and continue with Eri. Example names do not create real work.</p>
-      <button className="btn" disabled={blocked} onClick={() => void talk()}>{starting ? "Starting setup…" : "Talk to Eri"}</button>
-      <fieldset disabled={blocked}><legend>What should Eri know first?</legend>
+      <p>Fill this in yourself, or save these answers and continue with Dani. Example names do not create real work.</p>
+      <button className="btn" disabled={blocked} onClick={() => void talk()}>{starting ? "Starting setup…" : "Talk to Dani"}</button>
+      <fieldset disabled={blocked}><legend>What should Dani know first?</legend>
         <label className="field">Preferred name<input aria-label="Setup name" value={draft.preferred_name} maxLength={100} onChange={e => field("preferred_name", e.target.value)}/></label>
         <label className="field">Time zone<input aria-label="Setup timezone" value={draft.timezone} onChange={e => field("timezone", e.target.value)}/></label>
         <label className="field">What do you want to track?<textarea aria-label="Setup purpose" value={draft.purpose} placeholder="Personal plans, work for clients, courses…" onChange={e => field("purpose", e.target.value)}/></label>
         <details open={draft.step !== "profile" || !!draft.classification_name}><summary>How would you like to organize it?</summary>
-          <p>The form keeps your existing structure and can add one grouping. Talk to Eri to design several types, reusable fields and relationships.</p>
+          <p>The form keeps your existing structure and can add one grouping. Talk to Dani to design several types, reusable fields and relationships.</p>
           <label className="field">Optional grouping name<input aria-label="Grouping name" placeholder="Course, Client, Property…" maxLength={80} value={draft.classification_name} onChange={e => field("classification_name", e.target.value)}/></label>
           {draft.classification_name && <>
             <label className="field">What belongs in this group?<textarea aria-label="Grouping description" minLength={20} maxLength={4500} value={draft.description} onChange={e => field("description", e.target.value)}/></label>

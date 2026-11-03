@@ -703,7 +703,7 @@ async def interrupt(session_id: str, user: User):
 async def submit(session_id: str, user: User):
     c = control(session_id, user)
     if not c.can_submit():
-        raise DomainError("INVALID_ARGUMENT", "Wait until Eri is listening, then speak a new request.")
+        raise DomainError("INVALID_ARGUMENT", "Wait until Dani is listening, then speak a new request.")
     await c.interrupt()
     c.state = "thinking"
     await c.request("plan", output_modalities=["text"])

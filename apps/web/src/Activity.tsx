@@ -167,7 +167,7 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
       {!item.actions.length && disclosure}
     </div>
     {details && !!item.clarification_history?.length && <details className="work-original"><summary>Clarification history</summary>
-      {item.clarification_history.map((turn, index) => <div key={index}><p><strong>Eri:</strong> {turn.question}</p><p><strong>You:</strong> {turn.answer}</p></div>)}
+      {item.clarification_history.map((turn, index) => <div key={index}><p><strong>Dani:</strong> {turn.question}</p><p><strong>You:</strong> {turn.answer}</p></div>)}
     </details>}
     {details && !!item.request && item.request !== "Request" && <details className="work-original"><summary>Original request</summary>
       <p>{item.request}</p></details>}
@@ -189,7 +189,7 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   const attention = items.filter(workAttention).length, active = items.filter(workActive).length;
-  return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel" aria-label="Eri activity"
+  return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel" aria-label="Dani activity"
       onKeyDown={event => {if(event.key === "Escape") onClose();}}>
       <header><div><h2>Activity</h2><p>Saved changes and work in progress.</p></div>
         <button ref={close} className="btn-icon" aria-label="Close activity" onClick={onClose}><X size={20}/></button></header>
@@ -205,7 +205,7 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
         finally { setClearing(false); }
       }}>{clearing ? "Clearing…" : "Clear activity history"}</button></div>}
       {(error || clearError) && <p role="alert">{error || clearError}</p>}
-      {!items.length && <p className="activity-empty">Ask Eri to do something. Its progress and saved changes will appear here.</p>}
+      {!items.length && <p className="activity-empty">Ask Dani to do something. Its progress and saved changes will appear here.</p>}
       <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
     </Dialog>;
 }

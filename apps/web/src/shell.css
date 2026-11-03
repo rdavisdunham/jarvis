@@ -1,4 +1,4 @@
-/* App shell: sidebar, top bar, phone tab bar, Eri orb and the floating conversation.
+/* App shell: sidebar, top bar, phone tab bar, Dani orb and the floating conversation.
    Layout tiers mirror ux.tsx: COMPACT ≤1000, PHONE ≤700, NARROW ≤600. */
 
 /* ---- Frame ---------------------------------------------------------------------------- */
@@ -429,7 +429,7 @@
   display: none;
 }
 
-/* ---- Report a bug (BugReport.tsx): bottom-left of the page area, clear of Eri's launcher, the
+/* ---- Report a bug (BugReport.tsx): bottom-left of the page area, clear of Dani's launcher, the
    composer and Approve, which sit on the right. Left of the content column, not over the sidebar. --- */
 .bug-report-launcher {
   position: fixed;
@@ -548,7 +548,7 @@ body:has(.modal-backdrop) .bug-report-launcher {
   overflow-wrap: anywhere;
 }
 
-/* ---- Eri launcher (pill; becomes a round close button while the chat is open) --------- */
+/* ---- Dani launcher (pill; becomes a round close button while the chat is open) --------- */
 .chat-launcher {
   position: fixed;
   /* Left of the run panel while one is open (runs.css sets --run-panel-inset on .app-shell). */
@@ -1260,7 +1260,7 @@ body:has(.modal-backdrop) .bug-report-launcher {
     right: 16px;
     bottom: calc(var(--tabbar-height) + 12px + env(safe-area-inset-bottom));
   }
-  /* Phone: no sidebar; the same row as Eri's launcher, on the other side, lifted above the voice dock
+  /* Phone: no sidebar; the same row as Dani's launcher, on the other side, lifted above the voice dock
      while voice is on. */
   .bug-report-launcher {
     left: max(16px, env(safe-area-inset-left));

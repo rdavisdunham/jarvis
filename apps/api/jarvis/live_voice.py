@@ -330,7 +330,7 @@ class LiveController(Controller):
                 return
             code = str(event.get("error", {}).get("code", "unknown"))[:100]
             logging.getLogger("jarvis.voice").warning("Live command rejected (%s)", code)
-            self.error = "Eri could not apply a voice control. You can keep talking or end this session."
+            self.error = "Dani could not apply a voice control. You can keep talking or end this session."
 
     def save_group(self, group):
         if group["saved"] or not group["content"].strip():
@@ -660,13 +660,11 @@ class LiveController(Controller):
                 await self.send({"type": "session.instructions.append", "event_id": uid(), "delegation_id": None,
                     "content": "Cancel the startup greeting now. Do not greet or repeat it later. Keep listening and handle real user requests; preserve accepted work."})
             return {"accepted": True}
-        from .voice_end_policy import normalize
-        wake_only = {prefix + name for prefix in ("", "hey ", "hi ", "ok ", "okay ")
-                     for name in ("eri", "erie", "airy", "eridani")}
+        from .assistant_identity import wake_request
         if (current["cancelled"] or current["sent"] or not self.ready.is_set()
                 or self.pending_work or self.pending_question or self.unclaimed or self.input_speaking
                 or time.monotonic() - self.last_user_delta < .75
-                or normalize(self.end_policy.text) not in wake_only):
+                or wake_request(self.end_policy.text) != ""):
             return {"accepted": False}
         current["sent"] = True
         self.startup_pending = False

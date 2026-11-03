@@ -75,7 +75,7 @@ async def test_startup_greeting_uses_only_current_account_and_cancellation_is_mo
     from uuid import uuid4
     from jarvis.models import OwnerSettings,UserAccount
     c=controller;c.account=account;c.attempt_id=str(uuid4());c.ready.set()
-    c.end_policy.text="Hey Eri";c.last_user_delta=0
+    c.end_policy.text="Hey Dani";c.last_user_delta=0
     with session_scope() as db:
         db.add(UserAccount(id=account,name=name))
         db.add(OwnerSettings(owner_id=account,values={"preferred_name":name}))
@@ -90,12 +90,27 @@ async def test_startup_greeting_uses_only_current_account_and_cancellation_is_mo
     await c.close()
 
 
+@pytest.mark.parametrize("text,accepted", [
+    ("Hey Dani", True), ("Hey Danny", True), ("Danni!", True), ("Hey Donny", True), ("Donnie", True),
+    ("Eri", False), ("Hey Erie", False), ("Airy", False), ("Hey Eridani", False), ("Dani add milk", False),
+])
+async def test_startup_only_accepts_current_wake_names(controller, text, accepted):
+    from uuid import uuid4
+    c = controller
+    c.attempt_id = str(uuid4())
+    c.ready.set()
+    c.end_policy.text, c.last_user_delta = text, 0
+    assert (await c.startup_control(c.attempt_id, 1, "ready"))["accepted"] is accepted
+    assert c.send.await_count == int(accepted)
+    await c.close()
+
+
 async def test_startup_cancel_before_ready_and_substantive_speech_never_greet(controller):
     from uuid import uuid4
-    c=controller;c.attempt_id=str(uuid4());c.ready.set();c.end_policy.text="Eri add milk";c.last_user_delta=0
+    c=controller;c.attempt_id=str(uuid4());c.ready.set();c.end_policy.text="Dani add milk";c.last_user_delta=0
     assert not (await c.startup_control(c.attempt_id,1,"ready"))["accepted"]
     assert (await c.startup_control(c.attempt_id,2,"cancel"))["accepted"]
-    c.end_policy.text="Eri"
+    c.end_policy.text="Dani"
     assert not (await c.startup_control(c.attempt_id,2,"ready"))["accepted"]
     c.send.assert_not_awaited();await c.close()
 

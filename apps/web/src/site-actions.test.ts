@@ -11,7 +11,7 @@ import {
 } from "./work-views";
 import type { Task } from "./types";
 describe("site control contract", () => {
-  it("accepts the remotea page Eri can name (ui_show, ui_workspace, ui_search)", () => {
+  it("accepts the remotea page Dani can name (ui_show, ui_workspace, ui_search)", () => {
     for (const action of [
       { id: "show", kind: "show", view: "remotea" },
       { id: "run", kind: "show", view: "remotea", entity_id: "0b6f0f43-6a39-4f4a-9d0e-2f1c1f0a7b11" },
@@ -93,7 +93,7 @@ describe("site control contract", () => {
       due_date: "2030-01-05",
       due_time: "12:00",
       priority: 3,
-      assignee: "Eri",
+      assignee: "Dani",
       assignee_id: "eri",
     } as Task;
     const b = { ...a, id: "b", title: "B", due_date: "2030-01-04" };

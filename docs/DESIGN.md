@@ -1,10 +1,10 @@
 # Eridani design system — "Orbit"
 
-Eridani is a personal planner, task tracker, linked notebook and calendar with a conversational assistant (Eri). People open it to see what today holds, capture something quickly, or find and change a piece of their work. The interface should feel calm and legible like a well-kept paper planner, with one distinctive touch taken from the brand mark: the iridescent orbit (lavender → sky → mint → blush) around a small central star.
+Eridani is a personal planner, task tracker, linked notebook and calendar with a conversational assistant (Dani). People open it to see what today holds, capture something quickly, or find and change a piece of their work. The interface should feel calm and legible like a well-kept paper planner, with one distinctive touch taken from the brand mark: the iridescent orbit (lavender → sky → mint → blush) around a small central star.
 
 **Spend the boldness in one place.** The iridescent orbit appears only in three spots:
 - the day ring on Today,
-- Eri: the chat launcher's pastel gradient and the assistant avatar orb in the chat panel,
+- Dani: the chat launcher's pastel gradient and the assistant avatar orb in the chat panel,
 - the brand mark.
 
 Everything else is quiet: paper surfaces, charcoal ink, a single violet action color, and hairlines. Never use gradient washes as decoration on cards, buttons or backgrounds.
@@ -101,7 +101,7 @@ desktop ≥ 1000px
 │ ✎ Notes    │                                                       │
 │            │                                                       │
 │ workspace ▾│                                                       │
-│ (D) Davin ▴│                                             ( 💬 Eri ) │
+│ (D) Davin ▴│                                             ( 💬 Dani ) │
 └────────────┴───────────────────────────────────────────────────────┘
 ```
 
@@ -111,8 +111,8 @@ desktop ≥ 1000px
   - Counts (open tasks, inbox) appear as small ink-3 tabular numbers.
   - The workspace switcher is a compact select near the bottom, above the profile.
 - **Phones:** the sidebar becomes a bottom tab bar (Today, Tasks, Calendar, Notes, More). The top bar shows only the page title, search and notifications.
-- **Eri launcher:** the original pill, kept by request. It is 58px tall with a chat-bubble icon and the label "Eri", on a mint → lavender → blush linear gradient (`#b5e1cf`, `#d8d0ef`, `#efcfdc`), sitting bottom-right. While the chat is open it becomes a 58px round close button with an X that rotates in. Its shadow and border come from `--launcher-shadow` and `--launcher-line`, which have separate light and dark values. It is the only gradient-filled control. The chat panel is a floating surface (380×min(720px, 100vh − 120px)) anchored just above it, and becomes a full sheet on phones.
-- **Report a bug:** a 44px round solid red (`--report`) button with a bug icon (`BugReport.tsx`, `.bug-report-launcher` in `shell.css`), on every signed-in page, bottom-left of the page area (right of the sidebar), so it never covers the Eri launcher, the composer or Approve on the right. On phones it sits on the Eri launcher's row at the left edge, above the tab bar (higher while the voice dock shows), hides while the navigation drawer is open, and becomes a left-edge tab mid-height while the run sheet or the conversation covers the page. It sits above dialogs (z-index 1050; toasts are 1100) and moves to the bottom-left corner while one is open. Shortcut: **Alt+Shift+B** (Option+Shift+B on macOS; matched by key position). The button hides while it captures the screenshot and while its dialog is open.
+- **Dani launcher:** the original pill, kept by request. It is 58px tall with a chat-bubble icon and the label "Dani", on a mint → lavender → blush linear gradient (`#b5e1cf`, `#d8d0ef`, `#efcfdc`), sitting bottom-right. While the chat is open it becomes a 58px round close button with an X that rotates in. Its shadow and border come from `--launcher-shadow` and `--launcher-line`, which have separate light and dark values. It is the only gradient-filled control. The chat panel is a floating surface (380×min(720px, 100vh − 120px)) anchored just above it, and becomes a full sheet on phones.
+- **Report a bug:** a 44px round solid red (`--report`) button with a bug icon (`BugReport.tsx`, `.bug-report-launcher` in `shell.css`), on every signed-in page, bottom-left of the page area (right of the sidebar), so it never covers the Dani launcher, the composer or Approve on the right. On phones it sits on the Dani launcher's row at the left edge, above the tab bar (higher while the voice dock shows), hides while the navigation drawer is open, and becomes a left-edge tab mid-height while the run sheet or the conversation covers the page. It sits above dialogs (z-index 1050; toasts are 1100) and moves to the bottom-left corner while one is open. Shortcut: **Alt+Shift+B** (Option+Shift+B on macOS; matched by key position). The button hides while it captures the screenshot and while its dialog is open.
 
 ## Pages
 

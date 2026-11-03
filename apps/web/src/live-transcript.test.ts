@@ -60,14 +60,16 @@ test("a long pause creates a new display bubble, not a tool event", () => {
   captions.dispose();
 });
 test("wake phrase is explicit, not a mention in ordinary conversation", () => {
-  expect(isWakePhrase("Hey, Eri!")).toBe(true);
-  expect(isWakePhrase("hey Erie")).toBe(true);
-  expect(isWakePhrase("Eri")).toBe(true);
-  expect(isWakePhrase("Eridani!")).toBe(true);
-  expect(isWakePhrase("I wonder what Eri thinks")).toBe(false);
-  expect(isWakePhrase("I told her hey Eri yesterday")).toBe(false);
+  expect(isWakePhrase("Hey, Dani!")).toBe(true);
+  expect(isWakePhrase("hey Danny")).toBe(true);
+  expect(isWakePhrase("hey Donnie")).toBe(true);
+  expect(isWakePhrase("Dani")).toBe(true);
+  expect(isWakePhrase("Eridani!")).toBe(false);
+  expect(isWakePhrase("hey Erie")).toBe(false);
+  expect(isWakePhrase("I wonder what Dani thinks")).toBe(false);
+  expect(isWakePhrase("I told her hey Dani yesterday")).toBe(false);
   expect(isWakePhrase("very interesting")).toBe(false);
-  expect(isWakePhrase("Hey Eri delete everything")).toBe(false);
+  expect(isWakePhrase("Hey Dani delete everything")).toBe(false);
 });
 
 test("large assistant chunks reveal words while input captions remain immediate", () => {

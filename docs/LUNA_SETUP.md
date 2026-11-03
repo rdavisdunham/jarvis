@@ -12,7 +12,7 @@ effort, Fast processing, and an 8,192-token generation allowance (including reas
 Use `JARVIS_AGENT_SERVICE_TIER=default` on API and worker to use Standard instead.
 Settings also offers an explicit Luna no-reasoning profile. Profile and service
 tier are captured when work is accepted; old jobs without a tier retain Standard. Reasoning is
-enabled even though the UI shows only Eri's answer and saved actions.
+enabled even though the UI shows only Dani's answer and saved actions.
 
 ## How it fits
 
@@ -25,7 +25,7 @@ They are not written to the transcript, memories or durable job results.
 The loop starts with common read/navigation/task tools and loads other groups on
 demand. Responses uses strict mode for compatible read schemas; sparse updates
 explicitly remain non-strict to preserve omitted fields versus deliberate nulls.
-Server validation remains authoritative. Eri's authorization, revision checks,
+Server validation remains authoritative. Dani's authorization, revision checks,
 action receipts, action limits and no-replay recovery still run in the same loop.
 An incomplete model response cannot launch partially generated tool calls.
 

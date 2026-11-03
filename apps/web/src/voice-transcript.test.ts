@@ -23,17 +23,17 @@ test("speech creates an ordered bubble, streams deltas, and reconciles corrected
   expect(messages.get("session:first")?.content).toBe("Hello Erie");
   expect(messages.get("session:first")?.pending).toBe(true);
   send("conversation.item.input_audio_transcription.completed", "first", {
-    transcript: "Hello Eri.",
+    transcript: "Hello Dani.",
   });
   send("conversation.item.input_audio_transcription.completed", "first", {
-    transcript: "Hello Eri.",
+    transcript: "Hello Dani.",
   });
   send("conversation.item.input_audio_transcription.delta", "first", {
     delta: " late duplicate",
   });
   expect([...messages.keys()]).toEqual(["session:first", "session:second"]);
   expect(messages.get("session:first")).toMatchObject({
-    content: "Hello Eri.",
+    content: "Hello Dani.",
     pending: false,
   });
 });

@@ -308,9 +308,9 @@
   {
     "id": "quick_capture.10",
     "feature": "quick_capture",
-    "title": "Ask Eri what remains on the Houston list.",
+    "title": "Ask Dani what remains on the Houston list.",
     "inputs": [
-      "Ask Eri what remains on the Houston list."
+      "Ask Dani what remains on the Houston list."
     ],
     "persona": "rowan-v1",
     "expected": [
@@ -331,7 +331,7 @@
       "Create only the records and boundary conditions named in the scenario."
     ],
     "steps": [
-      "Ask Eri what remains on the Houston list.",
+      "Ask Dani what remains on the Houston list.",
       "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
     ],
     "evidence": [
@@ -818,9 +818,9 @@
   {
     "id": "quick_capture.25",
     "feature": "quick_capture",
-    "title": "Ask Eri to promote to an ambiguous project name.",
+    "title": "Ask Dani to promote to an ambiguous project name.",
     "inputs": [
-      "Ask Eri to promote to an ambiguous project name."
+      "Ask Dani to promote to an ambiguous project name."
     ],
     "persona": "rowan-v1",
     "expected": [
@@ -841,7 +841,7 @@
       "Create only the records and boundary conditions named in the scenario."
     ],
     "steps": [
-      "Ask Eri to promote to an ambiguous project name.",
+      "Ask Dani to promote to an ambiguous project name.",
       "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
     ],
     "evidence": [

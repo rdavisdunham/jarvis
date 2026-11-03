@@ -124,7 +124,7 @@ def test_main_home_filter_includes_every_task_of_a_project(semantic):
         assert in_home(by_title[title]), title
     assert not in_home(by_title["Roadmap: elsewhere"])
     assert by_title[child["title"]]["parent_id"] == by_title[parent["title"]]["id"]
-    # The same rule on the server (Eri's search_records and the bot search route).
+    # The same rule on the server (Dani's search_records and the bot search route).
     index()
     result = search("roadmap", capability="work", home_id=project["id"], limit=100)
     assert set(found(result)) == {

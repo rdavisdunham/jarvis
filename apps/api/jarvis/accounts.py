@@ -191,9 +191,10 @@ def create_workspace(body: WorkspaceCreate, user: User):
         actor = Actor(
             owner_id=workspace.id, name=preferences(db, user.owner_id)["preferred_name"], kind="person"
         )
-        if actor.name == "Eri":
-            actor.name = "Eri (person)"
-        db.add_all([root, actor, Actor(owner_id=workspace.id, name="Eri", kind="agent")])
+        from .assistant_identity import available_assistant_name
+
+        db.add_all([root, actor, Actor(owner_id=workspace.id,
+                                     name=available_assistant_name([actor.name]), kind="agent")])
         db.flush()
         workspace.root_id = root.id
         if body.kind == "project":

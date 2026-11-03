@@ -49,7 +49,7 @@ def test_home_and_assignment_follow_project_without_changing_deadline(client):
         project_id=project["id"],
         planned_date="2030-01-02",
         due_date="2030-01-10",
-        assignee="Eri",
+        assignee="Dani",
     )
     assert task["space_id"] == personal["id"] and task["assignee_id"]
     cmd(

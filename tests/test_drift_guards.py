@@ -184,7 +184,7 @@ def test_every_needs_you_reason_has_text():
 
 def test_every_control_tool_is_gated_on_remotea():
     """tools.py adds every control.* command to VOICE_MUTATIONS; tool_policy.CONTROL_TOOLS is what is dropped
-    while remotea is off. A new control command missing from CONTROL_TOOLS would reach Eri with remotea off."""
+    while remotea is off. A new control command missing from CONTROL_TOOLS would reach Dani with remotea off."""
     from jarvis.tool_policy import CONTROL_TOOLS
     from jarvis.tools import registry
 

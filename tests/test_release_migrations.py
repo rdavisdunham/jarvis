@@ -12,6 +12,70 @@ from jarvis.models import Task, OwnerSettings
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def test_dani_migration_preserves_ids_assignments_history_and_collisions(test_database):
+    from jarvis.models import Actor
+    name = "jarvis_dani_" + uuid4().hex
+    supplied = make_url(test_database)
+    admin = create_engine(supplied.set(database="postgres"), isolation_level="AUTOCOMMIT")
+    target = supplied.set(database=name)
+    trial = None
+    with admin.connect() as connection:
+        connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env = {**os.environ, "JARVIS_DATABASE_URL": target.render_as_string(hide_password=False), "JARVIS_ENV_FILE": ""}
+        def migrate(*args):
+            result = subprocess.run([sys.executable, "-m", "alembic", *args], cwd=ROOT, env=env, capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        migrate("upgrade", "0045_durable_runs")
+        trial = create_engine(target)
+        with Session(trial) as db, db.begin():
+            db.add_all([
+                Actor(id="default", owner_id="personal", name="Eri", kind="agent", revision=3),
+                Actor(id="archived", owner_id="shared", name="Eri", kind="agent", archived=True),
+                Actor(id="person", owner_id="shared", name="Dani", kind="person"),
+                Actor(id="custom", owner_id="shared", name="Dani (assistant)", kind="agent"),
+                Actor(id="old-person", owner_id="other", name="Eri", kind="person"),
+                Actor(id="renamed", owner_id="custom-workspace", name="My helper", kind="agent"),
+            ])
+            db.flush()
+            db.add_all([
+                Task(id="active", owner_id="personal", title="Ask Eri about this", notes="Eri wrote the old plan.",
+                     assignee_id="default", assignee="Eri", revision=4),
+                Task(id="finished", owner_id="shared", title="History", assignee_id="archived", assignee="Eri",
+                     archived=True, status="completed", revision=6),
+                Task(id="person-task", owner_id="other", title="Person", assignee_id="old-person", assignee="Eri"),
+            ])
+        migrate("upgrade", "head")
+        migrate("upgrade", "head")
+        migrate("check")
+        with Session(trial) as db:
+            assert (db.get(Actor, "default").name, db.get(Actor, "default").revision) == ("Dani", 4)
+            assert db.get(Actor, "archived").name == "Dani (assistant 2)"
+            assert db.get(Actor, "archived").archived
+            assert db.get(Actor, "person").name == "Dani"
+            assert db.get(Actor, "custom").name == "Dani (assistant)"
+            assert db.get(Actor, "renamed").name == "My helper"
+            active = db.get(Task, "active")
+            assert (active.assignee_id, active.assignee, active.revision) == ("default", "Dani", 5)
+            assert active.title == "Ask Eri about this" and active.notes == "Eri wrote the old plan."
+            finished = db.get(Task, "finished")
+            assert (finished.assignee_id, finished.assignee, finished.revision) == ("archived", "Dani (assistant 2)", 7)
+            assert finished.archived and finished.status == "completed"
+            assert db.get(Task, "person-task").assignee == "Eri"
+        # Rolling back the app must not rewrite names again or lose actor relationships.
+        migrate("downgrade", "0045_durable_runs")
+        migrate("upgrade", "head")
+        with Session(trial) as db:
+            assert db.get(Task, "active").assignee_id == "default"
+            assert db.get(Actor, "default").revision == 4
+    finally:
+        if trial:
+            trial.dispose()
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()
+
+
 def test_n_minus_one_data_upgrade_old_writer_and_downgrade(test_database):
     name='jarvis_release_'+uuid4().hex
     supplied=make_url(test_database)

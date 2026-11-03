@@ -63,11 +63,11 @@ describe("Types & fields entry into guided setup", () => {
     expect(typesFieldsRequest(" Client ")).toContain("Start with my Client type.");
     expect(typesFieldsRequest("  ")).toBe(typesFieldsRequest());
   });
-  it("offers Refine with Eri only where the interview can run", () => {
+  it("offers Refine with Dani only where the interview can run", () => {
     const schema: Schema = { revision: 3, types: [type("client", "Client")], relationships: [], field_library: [], understandings: [] };
     const editor = (onTalk?: () => Promise<void>) => renderToStaticMarkup(
       <StructureEditor schema={schema} onClose={() => {}} onApplied={async () => {}} onTalk={onTalk}/>);
-    expect(editor(async () => {})).toContain("Refine with Eri");
-    expect(editor()).not.toContain("Refine with Eri");
+    expect(editor(async () => {})).toContain("Refine with Dani");
+    expect(editor()).not.toContain("Refine with Dani");
   });
 });

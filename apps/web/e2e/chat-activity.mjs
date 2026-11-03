@@ -17,11 +17,11 @@ await page.route("**/api/v1/work",async route=>{
  const response=await route.fetch({url:base+"/api/v1/__test_work"});const json=await response.json();if(!response.ok())throw Error(JSON.stringify(json));requests.push(json);await route.fulfill({response,json});
 });
 async function finish(item,body){return page.evaluate(async({id,body})=>{const boot=await(await fetch("/api/v1/bootstrap")).json();const r=await fetch("/api/v1/__test_work/"+id+"/finish",{method:"POST",headers:{"Content-Type":"application/json","X-CSRF-Token":boot.csrf},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(JSON.stringify(data));window.dispatchEvent(new Event("eri-work-changed"));return data;},{id:item.id,body});}
-async function send(text){const count=requests.length;await page.getByRole("textbox",{name:"Message Eridani"}).fill(text);await page.getByRole("button",{name:"Send message",exact:true}).click();await expect.poll(()=>requests.length).toBe(count+1);return requests.at(-1);}
+async function send(text){const count=requests.length;await page.getByRole("textbox",{name:"Message Dani"}).fill(text);await page.getByRole("button",{name:"Send message",exact:true}).click();await expect.poll(()=>requests.length).toBe(count+1);return requests.at(-1);}
 const card=id=>page.locator(`.messages [data-work-id="${id}"]`);
 async function order(){return page.locator(".messages").evaluate(el=>[...el.children].filter(e=>e.matches(".message,.work-card")).map(e=>e.getAttribute("data-work-id")?"card:"+e.getAttribute("data-work-id"):e.querySelector("p")?.textContent));}
 try{
- await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Eridani",exact:true}).click();
+ await page.goto(base);await page.getByLabel("Pairing code").fill("planner-fixture");await page.locator(".login-card button.primary").click();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Dani",exact:true}).click();
  const navigation=await send("Show me my calendar");await expect(card(navigation.id)).toHaveCount(0);await finish(navigation,{navigation:true});await expect(page.locator(".message.assistant").filter({hasText:"Here is your calendar."})).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);
  await expect.poll(()=>timingResponses.some(t=>t.id===navigation.id && t.stage==="work_reply_rendered" && t.status===200)).toBe(true);
  const first=await send("Add a task to call Alex");const second=await send("Add a task to buy milk");await finish(second,{title:"Buy milk"});await expect(card(second.id)).toBeVisible();await finish(first,{title:"Call Alex"});await expect(card(first.id)).toBeVisible();
@@ -33,7 +33,7 @@ try{
  const third=await send("And a task to read tonight");entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
  await card(first.id).getByRole("button",{name:"Revert",exact:true}).click();await expect(card(first.id).getByRole("button",{name:"Reverted",exact:true})).toBeDisabled();
  const measuredBeforeReload=timingResponses.length;
- await page.reload();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Eridani",exact:true}).click();await expect(card(first.id)).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("Add a task to buy milk"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
+ await page.reload();await expect(page.getByRole("region",{name:"Today",exact:true})).toBeVisible();await page.getByRole("button",{name:"Open Dani",exact:true}).click();await expect(card(first.id)).toBeVisible();await expect(card(navigation.id)).toHaveCount(0);entries=await order();expect(entries.indexOf("card:"+first.id)).toBeLessThan(entries.indexOf("Add a task to buy milk"));expect(entries.indexOf("card:"+second.id)).toBeLessThan(entries.indexOf("And a task to read tonight"));
  expect(timingResponses.length).toBe(measuredBeforeReload);
  const notices=await page.evaluate(async()=>(await(await fetch("/api/v1/notifications")).json()).items);expect(notices.some(n=>n.category==="work_result")).toBe(false);
 
@@ -55,7 +55,7 @@ try{
  await makeDraft("Bring the packing checklist tomorrow");
  const recovered=page.getByRole("region",{name:"Unsent voice draft"});
  await expect(recovered).toBeVisible();
- await page.reload(); await page.getByRole("button",{name:"Open Eridani",exact:true}).click();
+ await page.reload(); await page.getByRole("button",{name:"Open Dani",exact:true}).click();
  await expect(recovered).toBeVisible();
  await recovered.getByRole("textbox").fill("Add a task to bring the packing checklist tomorrow");
  await recovered.getByRole("button",{name:"Send",exact:true}).click();

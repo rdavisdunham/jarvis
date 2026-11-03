@@ -27,7 +27,7 @@ def test_projects_metadata_and_parent_cycles(client):
         parent_task_id=parent["id"],
         project_id=project["id"],
         tags=["garden", "garden"],
-        assignee="Eri",
+        assignee="Dani",
         work_type="Planning",
     )
     assert child["tags"] == ["garden"] and child["project"] == "Home"
@@ -165,7 +165,7 @@ async def test_eri_project_and_calendar_tools_share_api_contract():
         "task-turn",
         0,
         "task_create",
-        {"title": "From Eri", "project_id": project["data"]["id"], "due_date": "2030-09-01"},
+        {"title": "From Dani", "project_id": project["data"]["id"], "due_date": "2030-09-01"},
     )
     result = await call_tool(
         "davin", "calendar-turn", 0, "calendar_list", {"start": "2030-09-01", "end": "2030-09-02"}

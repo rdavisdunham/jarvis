@@ -918,7 +918,7 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const [n, h] of run.history.entries()) {
     const id = "history:" + n;
     if (h.event === "sent" && h.text) {
-      // Every text sent to the agent, with who sent it (stage F): you on this page, Eri after your confirmation,
+      // Every text sent to the agent, with who sent it (stage F): you on this page, Dani after your confirmation,
       // or Eridani itself (interview answers as the planning prompt, the judge's gap).
       // A text Eridani wrote carries the `kind` that triggered it (run_coordinator.say), even when your action caused it.
       const reason = h.kind ? SENT_REASON[h.kind] : undefined;
@@ -928,7 +928,7 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       }
       const confirmed = !!h.actor?.reason?.startsWith("confirmed:");
       const human = h.actor?.kind === "human";
-      const who = confirmed ? (human ? "Eri, confirmed by you" : "Eri, after your yes") : human ? "you" : ["run_judge", "eridani"].includes(h.actor?.kind ?? "") ? "Eridani" : h.actor?.kind ?? "";
+      const who = confirmed ? (human ? "Dani, confirmed by you" : "Dani, after your yes") : human ? "you" : ["run_judge", "eridani"].includes(h.actor?.kind ?? "") ? "Eridani" : h.actor?.kind ?? "";
       entries.push({ id, at: h.at, kind: "command", title: "Sent by " + who, detail: h.text, tone: "plain", who: human && !confirmed ? "you" : "eridani" });
       continue;
     }
@@ -1191,7 +1191,7 @@ export function removalPlan(rows: WorktreeRow[], selected: ReadonlySet<string>) 
 /** States where the run waits on the human; the panel rail, row chips and the Runs badge highlight them. */
 export const ATTENTION_STATES: RunState[] = ["needs_you", "waiting_answer", "awaiting_approval", "awaiting_integration", "interviewing"];
 
-/** A proposal from Eri (control_start / control_message) waiting for the owner; a start also carries what still
+/** A proposal from Dani (control_start / control_message) waiting for the owner; a start also carries what still
  * stands in its way (no target chosen, server offline). */
 export type PendingControl = { id: string; tool: string; summary: string; run_id: string | null; expires_at: string;
   task_id?: string | null; needs_target?: boolean; need?: NeedsTarget | null; problems?: { code: string; message: string }[] };
@@ -1244,7 +1244,7 @@ export function runChip(run: Run | undefined, hosts: Host[]):
 export type AttentionKey = "confirm" | "answer" | "review_plan" | "repair" | "inspect" | "approve" | "unmerged" | "working" | "done";
 /** Groups in the order a human acts on them; `action` groups count toward the Runs badge. */
 export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolean }[] = [
-  { key: "confirm", verb: "Confirm Eri's proposal", action: true },
+  { key: "confirm", verb: "Confirm Dani's proposal", action: true },
   { key: "answer", verb: "Answer a question", action: true },
   { key: "review_plan", verb: "Review the plan", action: true },
   { key: "repair", verb: "Repair the host or setup", action: true },
@@ -1288,7 +1288,7 @@ export function attentionKey(run: Run, hosts: Host[] = [], unmerged: UnmergedWor
 }
 
 export type AttentionGroup = { key: AttentionKey; verb: string; action: boolean; count: number; runs: Run[]; pending: PendingControl[] };
-/** Runs (and Eri's proposals) grouped by the next human action, in the order to act on them; empty groups left out.
+/** Runs (and Dani's proposals) grouped by the next human action, in the order to act on them; empty groups left out.
  * Within a group the run that changed most recently comes first. */
 export function attentionGroups(runs: Run[], pending: PendingControl[], hosts: Host[] = [], unmerged: UnmergedWork[] = []): AttentionGroup[] {
   const sorted = [...runs].sort((a, b) => new Date(b.state_since).getTime() - new Date(a.state_since).getTime());

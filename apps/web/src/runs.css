@@ -158,7 +158,7 @@
 .run-dialog-stepper output { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
 .run-dialog-setup .text-button { display: inline-flex; align-items: center; gap: 4px; }
 
-/* ---- Chat drawer: Eri's proposals waiting for a tap ----------------------------------------- */
+/* ---- Chat drawer: Dani's proposals waiting for a tap ----------------------------------------- */
 .chat-pending { display: grid; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
 .chat-pending .remotea-pending-card { padding: 10px; }
 .chat-pending .footnote { margin: 0; }

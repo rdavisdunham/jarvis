@@ -22,7 +22,7 @@ with httpx.Client(base_url=config["JARVIS_ORIGIN"],timeout=70) as client:
     title="Acceptance check — model tool "+turn[:8]
     body={"turn_id":turn,"conversation_id":conv["id"],"message":"Create exactly one task titled '"+title+"' with no due date. This is a synthetic integration test."}
     def work(body):
-        # Eri's requests run through the work queue (POST /api/v1/chat was removed in stage F).
+        # Dani's requests run through the work queue (POST /api/v1/chat was removed in stage F).
         accepted=client.post("/api/v1/work",json=body)
         accepted.raise_for_status()
         for _ in range(60):
