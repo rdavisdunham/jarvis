@@ -34,6 +34,8 @@ class RoleSpec(Input):
 
     harness: Literal["claude", "codex"] = "claude"
     model: str | None = Field(default=None, max_length=80)
+    effort: str | None = Field(default=None, max_length=40)
+    permission_profile: Literal["read-only", "workspace-write"] | None = None
 
 
 class ControlStart(Input):
@@ -41,6 +43,8 @@ class ControlStart(Input):
     task: str | None = Field(default=None, min_length=1, max_length=300)
     harness: Literal["claude", "codex"] = "claude"
     model: str | None = Field(default=None, max_length=80)
+    effort: str | None = Field(default=None, max_length=40)
+    permission_profile: Literal["read-only", "workspace-write"] | None = None
     # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer turns it on; a worker that differs from the
     # planner (harness/model above) hands the approved plan to a fresh session.
     reviewer: RoleSpec | None = None

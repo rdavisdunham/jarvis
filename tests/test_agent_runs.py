@@ -89,6 +89,10 @@ def attached(host, run_id, session_id="sess-1"):
         row = db.get(AgentRun, run_id)
         coordinator.attach(db, host.id, run_id, row.generation, "claude", session_id,
                            surf=coordinator.surf_for(run_id, 1, 1), incarnation=1)
+        # Coordinator fixtures exercise already approved manual plans. Production attach leaves them parked.
+        plan = coordinator.frozen(db, row)
+        if plan and row.plan_pending and plan.approval_status == "pending" and not row.roles:
+            coordinator.approve_plan(db, row, actor=HUMAN)
     with session_scope() as db:
         return db.get(AgentRun, run_id)
 
@@ -381,7 +385,7 @@ def test_uncertain_delivery_moves_the_run_to_needs_you(host):
     attached(host, result["id"])
     with session_scope() as db:
         control.send_message(db, OWNER, result["id"], control.MessageInput(text="Also update the docs"), actor=HUMAN)
-    [message] = commands(result["id"], "input")
+    message = commands(result["id"], "input")[-1]
     assert message.payload["mode"] == "queue" and message.generation == 1
     with session_scope() as db:
         coordinator.on_outcome(db, db.get(AgentCommand, message.id), "uncertain", "server restarted mid-paste")
@@ -500,7 +504,7 @@ def test_stale_answers_are_refused(host):
     assert stale.value.code == "STALE_GENERATION"
 
 
-def test_failed_answer_reopens_the_question(host):
+def test_failed_answer_keeps_saved_answer_and_delivery_failure(host):
     result = start(host, task()["id"])
     attached(host, result["id"])
     qid, _ = asked(host, result["id"])
@@ -508,8 +512,10 @@ def test_failed_answer_reopens_the_question(host):
     [sent] = commands(result["id"], "answer")
     with session_scope() as db:
         coordinator.on_outcome(db, db.get(AgentCommand, sent.id), "rejected", "stale: answered elsewhere")
-        assert db.get(AgentQuestion, qid).status == "open"
-    assert answer(qid, choice_ids=["lite"])["status"] == "submitted"
+        assert db.get(AgentQuestion, qid).status == "submitted"
+    with pytest.raises(DomainError) as pending:
+        answer(qid, choice_ids=["lite"])
+    assert pending.value.code == "ANSWER_PENDING"
 
 
 # ---------------------------------------------------------------- reconcile
@@ -540,7 +546,7 @@ def test_reconcile_rejects_stale_commands_and_settles_runs(host):
     with session_scope() as db:
         runs = coordinator.reconcile(db, OWNER, host.id, [
             surface(live["id"], generation=2), surface(unacked["id"], run_id=None, provider_session_id=None)])
-    queued, steered = commands(live["id"], "input")
+    queued, steered = commands(live["id"], "input")[-2:]
     assert queued.status == "rejected" and "older generation" in queued.outcome["detail"]
     assert steered.status == "queued"
     assert state(lost["id"]) == ("needs_you", "surface_lost")
@@ -560,12 +566,12 @@ def test_uncertain_journal_entries_after_a_host_restart(host):
     attached(host, result["id"])
     with session_scope() as db:
         control.send_message(db, OWNER, result["id"], control.MessageInput(text="go"), actor=HUMAN)
-    [message] = commands(result["id"], "input")
+    message = commands(result["id"], "input")[-1]
     with session_scope() as db:
         db.get(AgentCommand, message.id).status = "acked"
         coordinator.reconcile(db, OWNER, host.id, [surface(result["id"])], {"pending": [], "uncertain": [message.op_id]})
     assert state(result["id"]) == ("needs_you", "delivery_uncertain")
-    assert commands(result["id"], "input")[0].status == "uncertain"
+    assert commands(result["id"], "input")[-1].status == "uncertain"
 
 
 # ---------------------------------------------------------------- approve and context
@@ -598,7 +604,7 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
     with session_scope() as db:
         assert coordinator.run_for_token(db, OWNER, reply["run_token"]).id == result["id"]
         assert coordinator.run_for_token(db, "someone-else", reply["run_token"]) is None
-    assert state(result["id"])[0] == "executing"  # SessionStart named the provider session: observed start.
+    assert state(result["id"]) == ("needs_you", "plan_approval")  # Observed start still waits for actual approval.
     unlinked = agent_link.ContextRequest.model_validate({"req_id": "r2", "provider": "claude", "provider_session_id": "s9",
                                                           "cwd": "/tmp"})
     with session_scope() as db:
@@ -675,7 +681,7 @@ def test_a_repeated_message_with_the_same_action_id_acts_once(host, client):
         generation = db.get(AgentRun, run_id).generation
     again = client.post(url, json=body)  # The response was lost; the drawer retries with the same id.
     assert again.status_code == 200 and again.json() == first.json()
-    assert len(commands(run_id, "input")) == 1  # One prompt queued, one steer generation.
+    assert len(commands(run_id, "input")) == 2  # Approved execution prompt plus exactly one steered message.
     with session_scope() as db:
         assert db.get(AgentRun, run_id).generation == generation
         receipt = db.get(AgentActionReceipt, (OWNER, action_id))
@@ -684,11 +690,11 @@ def test_a_repeated_message_with_the_same_action_id_acts_once(host, client):
     assert other.status_code == 409 and other.json()["error"]["code"] == "ACTION_MISMATCH"
     elsewhere = client.post(f"/api/v1/remotea/runs/{run_id}/stop", json={"action_id": action_id})
     assert elsewhere.status_code == 409 and elsewhere.json()["error"]["code"] == "ACTION_MISMATCH"
-    assert len(commands(run_id, "input")) == 1 and not commands(run_id, "stop")
+    assert len(commands(run_id, "input")) == 2 and not commands(run_id, "stop")
     fresh = client.post(url, json={**body, "action_id": str(uuid.uuid4())})  # A new id is a new message.
-    assert fresh.status_code == 200 and len(commands(run_id, "input")) == 2
+    assert fresh.status_code == 200 and len(commands(run_id, "input")) == 3
     plain = client.post(url, json={"text": "No id: acts every time."})
-    assert plain.status_code == 200 and len(commands(run_id, "input")) == 3
+    assert plain.status_code == 200 and len(commands(run_id, "input")) == 4
     assert client.post(url, json={"text": "x", "action_id": "not-a-uuid"}).status_code == 422
 
 

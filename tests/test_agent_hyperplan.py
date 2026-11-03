@@ -129,7 +129,7 @@ def test_the_loop_runs_n_fresh_reviews_then_waits_for_approval(roles_host, round
         assert row.roles == {"planner": {"harness": "claude", "model": "fable"}, "reviewer": REVIEWER, "worker": None,
                              "rounds": rounds, "approve_final": True}
         assert row.tool == "claude" and row.model == "fable" and row.plan_round == 0
-        # Same worker as the planner: the planner is writable (no mode) and keeps its session into execution.
+        # Legacy same-session planners keep their native mode; managed runs use a separate read-only planner.
         assert planner_spawn.payload["role"] == "planner" and "mode" not in planner_spawn.payload
         assert "A reviewer reads your plan" in planner_spawn.payload["prompt"] and "verify" not in planner_spawn.payload
         assert "A different model executes" not in planner_spawn.payload["prompt"]
@@ -255,12 +255,12 @@ def test_the_operator_sends_the_final_plan_back_with_a_note(roles_host):
     assert len(reviews(run_id)) == 1
 
 
-def test_without_approve_final_execution_starts_after_the_last_review(roles_host):
+def test_universal_approval_overrides_legacy_approve_final_false(roles_host):
     created, run_id = hyper(roles_host, rounds=1, approve_final=False)
     submit(run_id, created["id"])
     turn(run_id, 1)
     one_round(roles_host, created, run_id)
-    assert turn(run_id, 2) == ("executing", "plan_frozen")
+    assert turn(run_id, 2) == ("needs_you", "plan_approval")
 
 
 # ---------------------------------------------------------------- the reviewer's scope
@@ -488,7 +488,10 @@ def test_a_busy_host_delays_the_reviewer_then_needs_you(roles_host):
 def test_a_busy_host_delays_the_worker_then_needs_you(roles_host):
     created, run_id = hyper(roles_host, reviewer=None, worker=WORKER, approve_final=False)
     submit(run_id, created["id"])
-    assert turn(run_id, 1) == ("handing_off", "handoff")
+    assert turn(run_id, 1) == ("needs_you", "plan_approval")
+    with session_scope() as db:
+        coordinator.approve_plan(db, db.get(AgentRun, run_id), actor=HUMAN)
+    assert state(run_id) == ("handing_off", "handoff")
     busy = {"limit": 2, "running": 2}
     worker_spawn = commands(run_id, "spawn")[-1]
     with session_scope() as db:

@@ -109,7 +109,9 @@ class AgentCommand(Base):
     payload: Mapped[dict] = mapped_column(JSONB, default=dict)
     digest: Mapped[str] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), default="queued")
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     outcome: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -144,17 +146,24 @@ class AgentTurn(Base):
 class AgentQuestion(Base):
     """A structured question an agent asked (stage C answers it); kept here so the schema lands once."""
     __tablename__ = "agent_questions"
-    __table_args__ = (UniqueConstraint("session_pk", "provider_request_id", name="uq_agent_question"),)
+    __table_args__ = (UniqueConstraint("session_pk", "provider_request_id", name="uq_agent_question"),
+                      Index("uq_agent_question_durable", "host_id", "question_id", unique=True,
+                            postgresql_where=text("durable = true")),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     session_pk: Mapped[str] = mapped_column(ForeignKey("agent_sessions.id"))
     host_id: Mapped[str] = mapped_column(ForeignKey("agent_hosts.id"), index=True)
     run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     generation: Mapped[int] = mapped_column(Integer, default=0)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     question_id: Mapped[str] = mapped_column(String(100))
     provider_request_id: Mapped[str] = mapped_column(String(200))
     group_id: Mapped[str] = mapped_column(String(100), default="")
     kind: Mapped[str] = mapped_column(String(30), default="")
+    action: Mapped[dict | None] = mapped_column(JSONB)
+    request_digest: Mapped[str | None] = mapped_column(String(64))
+    durable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    recovery: Mapped[str] = mapped_column(String(30), default="", server_default="")
     items: Mapped[list] = mapped_column(JSONB, default=list)
     status: Mapped[str] = mapped_column(String(20), default="open")
     answers: Mapped[list | None] = mapped_column(JSONB)
@@ -256,6 +265,10 @@ class AgentRun(Base):
     state_reason: Mapped[str] = mapped_column(String(300), default="")
     state_since: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     plan_revision: Mapped[int] = mapped_column(Integer, default=0)
+    paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    effort: Mapped[str | None] = mapped_column(String(40))
+    permission_profile: Mapped[str | None] = mapped_column(String(40))
+    activity: Mapped[dict | None] = mapped_column(JSONB)
     worktree: Mapped[str] = mapped_column(Text, default="")
     branch: Mapped[str] = mapped_column(String(200), default="")
     base_branch: Mapped[str] = mapped_column(String(200), default="")
@@ -267,7 +280,7 @@ class AgentRun(Base):
     surf: Mapped[str] = mapped_column(String(120), default="")
     incarnation: Mapped[int] = mapped_column(Integer, default=0)
     turn_count: Mapped[int] = mapped_column(Integer, default=0)
-    turn_cap: Mapped[int] = mapped_column(Integer, default=15)
+    turn_cap: Mapped[int] = mapped_column(Integer, default=0)
     # The host's seq of the root turn the run is on: verify and judge attempts are bound to it.
     turn_seq: Mapped[int] = mapped_column(Integer, default=0)
     # submit_plan froze a revision; executing starts once the planning turn settles.
@@ -280,7 +293,7 @@ class AgentRun(Base):
     roles: Mapped[dict | None] = mapped_column(JSONB)
     # Reviews completed so far (agent_plan_reviews rows with status done).
     plan_round: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    wall_clock_limit: Mapped[int] = mapped_column(Integer, default=6 * 3600)  # seconds
+    wall_clock_limit: Mapped[int] = mapped_column(Integer, default=0)  # seconds
     # The wall clock measures the agent's working time (0043): time spent waiting on the owner (an open interview,
     # waiting_answer, needs_you) is excluded. owner_wait_since: the current wait began; owner_wait_total_s: the
     # seconds of finished waits (run_coordinator.wall_clock_deadline).
@@ -336,6 +349,8 @@ class AgentRunPlan(Base):
     required_children: Mapped[list] = mapped_column(JSONB, default=list)
     # code_ready | pr_open | pr_merged: what "done" means for this plan (agent_judge hard rules).
     completion_policy: Mapped[str] = mapped_column(String(20), default="code_ready", server_default="code_ready")
+    approval_status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     frozen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -418,6 +433,8 @@ class AgentInterview(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     generation: Mapped[int] = mapped_column(Integer, default=0)
+    plan_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    answer_op_id: Mapped[str | None] = mapped_column(String(100))
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     answered_via: Mapped[str] = mapped_column(String(20), default="")
     questions: Mapped[list] = mapped_column(JSONB, default=list)
@@ -458,7 +475,7 @@ class AgentPendingControl(Base):
     decided_via: Mapped[str] = mapped_column(String(20), default="")
     result: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

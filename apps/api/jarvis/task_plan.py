@@ -40,6 +40,8 @@ def normalize(db, owner, task, changes):
     """Validate plan fields in place; advance plan_revision when the plan actually changes."""
     if not any(key in changes for key in PLAN_FIELDS):
         return changes
+    if "completion_policy" in changes:
+        changes["completion_policy_explicit"] = True
     if "steps" in changes:
         previous = {s.get("id"): s for s in task.steps or []}
         steps = []

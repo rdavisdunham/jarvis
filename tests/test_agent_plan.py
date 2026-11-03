@@ -48,6 +48,11 @@ def call(fn, model, run_id, **body):
         return fn(db, BOT, model.model_validate({"run_token": token(run_id), **body}))
 
 
+def approve_plan(run_id):
+    with session_scope() as db:
+        coordinator.approve_plan(db, db.get(AgentRun, run_id), actor=HUMAN)
+
+
 def turn(run_id, seq):
     with session_scope() as db:
         row = db.get(AgentRun, run_id, with_for_update=True)
@@ -118,11 +123,12 @@ def test_interview_answers_planning_and_execution_after_settle(host):  # noqa: F
         frozen = coordinator.frozen(db, row)
         prd = db.get(Note, plan["prd_note_id"])
         refreshed = db.get(Task, created["id"])
-        assert row.state == "planning" and row.plan_pending  # Not executing until the planning turn settles.
+        assert row.state == "needs_you" and row.plan_pending  # Visible and awaiting approval before turn end.
         assert prd.title == "PRD: Speed up widgets" and "prd" in prd.tags and refreshed.prd_note_id == prd.id
         assert frozen.revision == 1 and frozen.criteria[0]["text"] == "p95 under 50 ms" and len(frozen.steps) == 2
         assert frozen.task_plan_revision == refreshed.plan_revision
-    assert turn(run_id, 2) == ("executing", "plan_frozen")
+    assert turn(run_id, 2) == ("needs_you", "plan_approval")
+    approve_plan(run_id)
     assert "Your plan is frozen" in inputs(run_id)[-1]
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
@@ -130,7 +136,7 @@ def test_interview_answers_planning_and_execution_after_settle(host):  # noqa: F
         # Every text Eridani wrote is on the timeline with why it was sent (docs/AGENT_CONTROL.md, Messages Eridani
         # sends to the agent): the answers as the planning prompt (your action), then the execute prompt (automatic).
         sent = [h for h in row.history if h.get("event") == "sent"]
-        assert [(h["kind"], h["actor"]["kind"]) for h in sent] == [("interview_answers", "human"), ("execute", "eridani")]
+        assert [(h["kind"], h["actor"]["kind"]) for h in sent] == [("interview_answers", "human"), ("execute", "human")]
         assert sent[-1]["text"] == inputs(run_id)[-1][:2000]
     with pytest.raises(DomainError) as locked:
         call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **{**PLAN, "expected_plan_revision": 1})
@@ -150,7 +156,7 @@ def test_planning_turn_with_a_pending_question_waits(host):  # noqa: F811
     with session_scope() as db:
         question = db.scalar(select(coordinator.AgentQuestion).where(coordinator.AgentQuestion.run_id == run_id))
         question.status = "accepted"
-    assert turn(run_id, 2) == ("executing", "plan_frozen")
+    assert turn(run_id, 2) == ("needs_you", "plan_approval")
 
 
 def test_a_planning_turn_without_a_plan_needs_you(host):  # noqa: F811
@@ -216,6 +222,7 @@ def test_submit_plan_is_run_scoped_and_checks_revision_and_verify(verifying_host
         row = db.get(AgentRun, run_id)
         assert coordinator.desired(db, row).get("verify") is None  # Pending: the host learns it once executing.
     turn(run_id, 1)
+    approve_plan(run_id)
     with session_scope() as db:
         assert coordinator.desired(db, db.get(AgentRun, run_id))["verify"] == {"verify_id": "tests", "plan_revision": 1}
 
@@ -228,12 +235,12 @@ def test_a_task_with_a_prd_skips_the_interview_and_spawns_with_its_verify(verify
         note_id = note.id
     created = task("Planned", prd_note_id=note_id, success_criteria=[{"text": "done", "kind": "verify", "verify_id": "tests"}],
                    verify={"target_id": "jarvis", "verify_id": "tests"})
-    result = start(verifying_host, created["id"])
+    result = start(verifying_host, created["id"], interview=False)
     attached(verifying_host, result["id"])
-    assert state(result["id"]) == ("executing", "started")
+    assert state(result["id"]) == ("executing", "plan_approved")
     with session_scope() as db:
         spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == result["id"], AgentCommand.kind == "spawn"))
-        assert spawn.payload["verify"] == {"verify_id": "tests", "plan_revision": 1}
+        assert "verify" not in spawn.payload  # Planning is read-only; verify is installed after approval.
 
 
 def test_children_seed_linked_steps_and_are_frozen_as_required(host):  # noqa: F811
@@ -265,6 +272,7 @@ def test_replan_advances_the_generation_and_freezes_the_next_revision(host):  # 
     created, run_id = interviewing(host)
     call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN)
     turn(run_id, 1)
+    approve_plan(run_id)
     with session_scope() as db:
         before = db.get(AgentRun, run_id).generation
         control.replan(db, OWNER, run_id, control.ReplanInput(reason="Scope changed"), actor=HUMAN)
@@ -372,11 +380,12 @@ def test_proposed_changes_to_human_criteria_pause_for_the_operators_review(host)
         out = agent_plan.review_plan(db, OWNER, run_id, agent_plan.PlanReviewInput(decisions=[
             {"id": "c1", "accept": True, "text": "compares resume.cmd and resume.url only"}, {"id": "c3", "accept": False}],
             expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
-    assert out["state"] == "executing" and out["plan"]["revision"] == 2 and out["plan"]["proposals"] is None
+    assert out["state"] == "needs_you" and out["plan"]["revision"] == 2 and out["plan"]["proposals"] is None
     texts = [c["text"] for c in out["plan"]["criteria"]]
     assert texts[0] == "compares resume.cmd and resume.url only" and "docs updated" in texts
     assert out["plan"]["criteria"][0].get("by") != "agent"  # Still the operator's criterion, in their wording.
-    assert "accepted c1; kept as written c3" in inputs(run_id)[-1] and "Your plan is frozen" in inputs(run_id)[-1]
+    approve_plan(run_id)
+    assert "Your plan is frozen" in inputs(run_id)[-1]
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert not row.plan_pending and row.plan_revision == 2
@@ -397,7 +406,7 @@ def test_a_plan_that_only_adds_or_omits_human_criteria_never_pauses(host):  # no
     plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
                 **{**PLAN, "expected_plan_revision": plan_revision})  # Does not even list c1.
     assert plan["proposals"] is None and [c["text"] for c in plan["success_criteria"]] == ["Tests pass", "p95 under 50 ms"]
-    assert turn(run_id, 1) == ("executing", "plan_frozen")
+    assert turn(run_id, 1) == ("needs_you", "plan_approval")
 
 
 # ---------------------------------------------------------------- verify by default, and set mid-run (run 75661a23)
@@ -416,7 +425,7 @@ def test_criteria_that_ask_for_tests_get_the_targets_verify_by_default(verifying
         plan = coordinator.frozen(db, db.get(AgentRun, result["id"]))
         assert plan.verify == {"target_id": verifying_host.target_id, "verify_id": "tests", "by": "default"}
         spawn = db.scalar(select(AgentCommand).where(AgentCommand.run_id == result["id"], AgentCommand.kind == "spawn"))
-        assert spawn.payload["verify"] == {"verify_id": "tests", "plan_revision": 1}
+        assert "verify" not in spawn.payload  # Planning is read-only; verify is installed after approval.
     # The interview path: submit_plan without verify, criteria about tests → the default is frozen (one id offered: no proposal).
     _, run_id = interviewing(verifying_host)
     plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
@@ -436,7 +445,7 @@ def test_a_default_verify_among_several_is_proposed_for_review(verifying_host): 
                 **{**PLAN, "success_criteria": [{"text": "the test suite passes"}]})
     proposal = plan["proposals"]["verify"]
     assert proposal["current"] is None and proposal["proposed"]["verify_id"] == "tests" and proposal["options"] == ["lint", "tests"]
-    assert state(run_id)[0] == "planning"
+    assert state(run_id) == ("needs_you", "plan_review")
 
 
 def test_the_operator_sets_a_verify_command_mid_run(verifying_host, client):  # noqa: F811

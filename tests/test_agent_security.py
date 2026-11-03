@@ -163,7 +163,8 @@ def test_start_skips_the_interview_for_a_task_a_human_already_planned(host):  # 
         body = control.StartInput(task_id=created["id"], execution_target_id=host.target_id)
         result = control.start_run(db, OWNER, host.account_id, body, actor=HUMAN)
     with session_scope() as db:
-        assert db.get(AgentRun, result["id"]).plan_revision  # Frozen from the human's plan; no interview.
+        row = db.get(AgentRun, result["id"])
+        assert row.plan_revision == 0 and row.sync_state["start_phase"] == "planning"  # No implicit execution.
 
 
 # ---------------------------------------------------------------- M4: fences cannot be closed from inside

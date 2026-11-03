@@ -131,7 +131,7 @@ class TaskChanges(Args):
     prd_note_id: str | None = None
     success_criteria: list[Criterion] | None = Field(default=None, max_length=50)
     verify: VerifyConfig | None = None
-    turn_cap: int | None = Field(default=None, ge=1, le=100)
+    turn_cap: int | None = Field(default=None, ge=0, le=100)
     completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     execution_target_id: str | None = Field(default=None, max_length=36)
 

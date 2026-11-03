@@ -97,6 +97,12 @@ class ReviewResolution(BaseModel):
 
 
 class SubmitPlanInput(Input):
+    submission_id: UUID | None = None
+
+    @property
+    def action_id(self):
+        return self.submission_id
+
     task_id: UUID | None = None
     prd: str = Field(min_length=1, max_length=28_000)
     steps: list[PlanStepInput] = Field(default_factory=list, max_length=100)
@@ -145,6 +151,7 @@ class PlanDecision(BaseModel):
 
 
 class PlanReviewInput(BaseModel):
+    action_id: UUID | None = None
     model_config = ConfigDict(extra="forbid")
     decisions: list[PlanDecision] = Field(default_factory=list, max_length=50)
     verify: Literal["accept", "keep"] = "keep"
@@ -157,6 +164,8 @@ class PlanReviewInput(BaseModel):
 
 
 class InterviewAnswers(BaseModel):
+    action_id: UUID | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
     # question id -> the chosen option label(s) or free text
     answers: dict[str, str | list[str]] = Field(max_length=12)
@@ -199,6 +208,8 @@ def task_plan(db, bot, body):
     gate(db, bot.owner_id)  # With remotea off, no in-session tool answers (stage F, L1).
     actor, run = binding(db, bot, body)
     task_id = str(body.task_id) if body.task_id else (run.task_id if run else None)
+    if run is not None and actor.verified and task_id != run.task_id:
+        raise DomainError("RUN_NOT_BOUND", "This token only reads its own task.", 403)
     if not task_id:
         raise DomainError("INVALID_ARGUMENT", "Name the task_id, or pass the run token from your session context.")
     task = owned(db, Task, task_id, bot.owner_id)
@@ -207,7 +218,7 @@ def task_plan(db, bot, body):
         "task_id": task.id, "title": task.title, "status": task.status, "revision": task.revision,
         "plan_revision": task.plan_revision, "prd": note.content if note and not note.archived else task.notes,
         "steps": [{k: s.get(k) for k in ("id", "title", "status", "note", "task_id", "revision")} for s in task.steps or []],
-        "success_criteria": task.success_criteria or [], "completion_policy": task.completion_policy,
+        "success_criteria": task.success_criteria or [], "completion_policy": run.completion_policy if run else task.completion_policy,
         "actor": actor.record(),
     }
     if run is not None and run.task_id == task.id:
@@ -323,7 +334,8 @@ def task_interview(db, bot, body):
         item = q.model_dump()
         item["free_text"] = q.free_text or not q.options  # A question without options takes free text.
         questions.append(item)
-    row = AgentInterview(owner_id=run.owner_id, run_id=run.id, generation=run.generation, questions=questions,
+    row = AgentInterview(owner_id=run.owner_id, run_id=run.id, generation=run.generation,
+                         plan_revision=run.plan_revision, questions=questions,
                          answers={}, status="open")
     db.add(row)
     db.flush()
@@ -339,7 +351,7 @@ def task_interview(db, bot, body):
 def public_interview(row):
     return encode({"id": row.id, "run_id": row.run_id, "generation": row.generation, "questions": row.questions,
                    "answers": row.answers, "status": row.status, "answered_at": row.answered_at,
-                   "answered_via": row.answered_via, "created_at": row.created_at})
+                   "answered_via": row.answered_via, "answer_op_id": row.answer_op_id, "created_at": row.created_at})
 
 
 def clean_answers(questions, given):
@@ -377,14 +389,15 @@ def answer_interview(db, owner, interview_id, body, *, actor):
         raise DomainError("INTERVIEW_CLOSED", "These questions were already answered.", 409, data={"status": row.status})
     run = coordinator.load(db, owner, row.run_id)
     parked = run.state == "needs_you" and run.state_reason in ANSWERABLE_PARKED
-    if (run.state != "interviewing" and not parked) or row.generation != run.generation:
+    if (run.state != "interviewing" and not parked) or row.generation != run.generation or row.plan_revision != run.plan_revision:
         raise DomainError("STALE_GENERATION", "The run moved on since these questions were asked.", 409,
                           data={"state": run.state})
     row.answers = clean_answers(row.questions, body.answers)
     row.status, row.answered_at, row.answered_via, row.updated_at = "answered", now(), actor.kind, now()
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
-    coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1], round=run.plan_round, roles=run.roles),
-                    "interview_answers", actor=actor)
+    command = coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1], round=run.plan_round, roles=run.roles),
+                              "interview_answers", actor=actor)
+    row.answer_op_id = command.op_id
     return public_interview(row)
 
 
@@ -477,7 +490,7 @@ def pick_verify(offered, ready=None):
     for name in PREFERRED_VERIFY:
         if name in usable:
             return name
-    return sorted(usable)[0] if usable else None
+    return min(usable) if usable else None
 
 
 def verify_ready(db, run):
@@ -493,7 +506,7 @@ def default_verify(db, run, criteria, verify):
     Returns (verify, proposal): the proposal, when the target offers several, lets the operator pick or decline."""
     if verify or not needs_evidence(criteria):
         return verify, None
-    targets, offered = verify_ids(db, run)
+    _targets, offered = verify_ids(db, run)
     chosen = pick_verify(offered, verify_ready(db, run))
     if not chosen:
         return None, None
@@ -555,7 +568,7 @@ def plan_proposals(task, criteria, verify, policy):
     return result or None
 
 
-def submit_plan(db, bot, body):
+def _submit_plan(db, bot, body):
     """Planning only: write the PRD note and the task's template plan, then freeze run plan revision N+1.
     Changes the agent proposes to human-authored criteria are stored beside the frozen plan, not applied
     (plan_proposals); the coordinator asks the operator before execution starts."""
@@ -586,9 +599,13 @@ def submit_plan(db, bot, body):
         coordinator.sync_wait(db, run)
     agent_verify = {**body.verify.model_dump(), "by": "agent"} if body.verify else None
     proposals = plan_proposals(task, body.success_criteria, agent_verify, body.completion_policy)
+    selected_policy = body.completion_policy or run.completion_policy
+    if not task.completion_policy_explicit and run.completion_policy == "pr_open" and selected_policy == "code_ready":
+        proposals = {**(proposals or {}), "completion_policy": {"current": "pr_open", "proposed": "code_ready"}}
+        selected_policy = "pr_open"
     if default_proposal and not (proposals or {}).get("verify"):
         proposals = {**(proposals or {}), "verify": default_proposal}
-    criteria, verify, policy = plan_floor(task, [c for c in body.success_criteria if not c.drop], verify, body.completion_policy)
+    criteria, verify, policy = plan_floor(task, [c for c in body.success_criteria if not c.drop], verify, selected_policy)
     writer = Actor("run_session", credential_id=actor.credential_id, run_id=run.id, generation=run.generation,
                    capability="plan_write")
     with acting(writer):
@@ -618,6 +635,9 @@ def submit_plan(db, bot, body):
     coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record(),
                      **({"proposals": coordinator.proposal_summary(proposals)} if proposals else {}),
                      **({"review_round": last_review.round} if last_review is not None else {}))
+    db.flush()  # The complete plan is visible before the tool response or provider turn ends.
+    if not coordinator.reviewer_role(run) or run.plan_round >= coordinator.rounds_of(run):
+        coordinator.conclude_planning(db, run, coordinator.frozen(db, run))
     emit(db, run.owner_id, "agent.changed", run.id)
     if proposals:
         next_step = ("Stop now. The operator will accept or keep each change you proposed to their criteria; Eridani "
@@ -625,7 +645,7 @@ def submit_plan(db, bot, body):
     elif coordinator.reviewer_role(run) and run.plan_round < coordinator.rounds_of(run) \
             and not coordinator.review_settled(last_review):
         next_step = "Stop now. A reviewer reads this revision next; its findings arrive as your next prompt."
-    elif run.roles and run.roles.get("approve_final", True):
+    elif not run.freestyle:
         next_step = "Stop now. The operator approves the final plan before the work starts."
     else:
         next_step = "Stop now. Eridani starts execution when this turn ends."
@@ -692,7 +712,7 @@ def review_plan(db, owner, run_id, body, *, actor):
     run = coordinator.load(db, owner, run_id)
     coordinator.check_revision(run, body.expected_revision)
     plan = coordinator.frozen(db, run)
-    if run.state == "needs_you" and run.state_reason == "plan_approval":
+    if plan is not None and plan.approval_status == "pending" and run.plan_pending and not plan.proposals:
         from .agent_control import public_run
 
         if body.action is None:
@@ -750,7 +770,8 @@ def review_plan(db, owner, run_id, body, *, actor):
     coordinator.note(run, "plan_reviewed", plan_revision=revision, accepted=accepted, kept=kept, actor=actor.record())
     preface = ("The operator reviewed your proposed changes: accepted " + (", ".join(accepted) or "none") +
                "; kept as written " + (", ".join(kept) or "none") + ". The plan below is what you are judged against.")
-    coordinator.begin_execution(db, run, reason="plan_reviewed", preface=preface, actor=actor)
+    run.sync_state = {**(run.sync_state or {}), "plan_review_preface": preface}
+    coordinator.conclude_planning(db, run, coordinator.frozen(db, run))
     from .agent_control import public_run
 
     return public_run(db, run, detail=True)
@@ -778,7 +799,7 @@ def set_verify(db, owner, run_id, body, *, actor):
     plan = coordinator.frozen(db, run)
     if run.state not in VERIFY_SETTABLE or plan is None:
         raise DomainError("RUN_SETTLED", f"A run that is {run.state} cannot change its verify command.", 409)
-    targets, offered = verify_ids(db, run)
+    _targets, offered = verify_ids(db, run)
     if body.verify_id not in offered:
         raise DomainError("VERIFY_UNKNOWN", "Name a verify id this run's execution target offers.", 400,
                           data={"verify_ids": sorted(offered)})
@@ -872,3 +893,17 @@ def set_criteria(db, owner, run_id, body, *, actor):
                      verify_id=verify_id, actor=actor.record())
     emit(db, run.owner_id, "agent.changed", run.id)
     return public_run(db, run, detail=True)
+
+
+def submit_plan(db, bot, body):
+    """The submission receipt is committed atomically with the visible plan and approval decision."""
+    if body.submission_id is None:
+        return _submit_plan(db, bot, body)
+    from . import agent_receipts
+    if not body.run_token:
+        raise DomainError("RUN_TOKEN_REQUIRED", "A plan submission needs its run token.", 403)
+    run = coordinator.run_for_token(db, bot.owner_id, body.run_token)
+    if run is None:
+        raise DomainError("RUN_TOKEN_INVALID", "That run token expired or the run has finished.", 401)
+    return agent_receipts.once(db, bot.owner_id, run.id, "submit_plan", body,
+                               lambda: _submit_plan(db, bot, body))

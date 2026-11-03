@@ -39,15 +39,22 @@ from starlette.concurrency import run_in_threadpool
 
 from . import agent_retention as retention
 from . import agent_sessions as sessions
-from . import bot_access
-from . import remotea_release
+from . import bot_access, remotea_release
 from . import run_coordinator as coordinator
 from .config import get_settings
 from .db import engine, session_scope
 from .domain import DomainError, advisory, emit, encode
 from .models import OwnerSettings, now
 from .redaction import redact
-from .session_models import AgentCommand, AgentHost, AgentParity, AgentParityDay, AgentSession, AgentTurn
+from .session_models import (
+    AgentCommand,
+    AgentHost,
+    AgentParity,
+    AgentParityDay,
+    AgentRun,
+    AgentSession,
+    AgentTurn,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -80,9 +87,9 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                # (UserPromptSubmit), not only on the following turn's Stop.
                "prompt",
                # The host's `remotea doctor` summary: in hello (`doctor`), and as a `doctor` frame when it changes.
-               "doctor"]
+               "doctor", "decisions.durable", "commands.durable", "run.pause", "role.options", "managed.sessions", "activity"]
 # Command kind -> host capability it needs.
-COMMANDS: dict[str, str] = {"spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
+COMMANDS: dict[str, str] = {"run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
                             "worktrees.scan": "worktrees.scan",
                             # Bring the run's terminal tab to the front in the host's desktop app(s).
@@ -275,6 +282,7 @@ class Hello(Frame):
     version: str | None = Field(default=None, max_length=40)
     caps: list[str] = Field(default_factory=list, max_length=100)
     harnesses: dict[str, dict] = Field(default_factory=dict, max_length=10)
+    model_catalog: list[dict] = Field(default_factory=list, max_length=300)
     # Optional: execution targets configured on the host, offered in the page's target picker. S-Q3 adds each
     # target's `template {ready, problems}` and `prepare` step ids (hello_targets).
     targets: Annotated[list[dict], BeforeValidator(hello_targets)] = Field(default_factory=list, max_length=100)
@@ -429,6 +437,28 @@ class Question(Frame):
     group_id: str = Field(default="", max_length=200)
     items: list[QuestionItem] = Field(min_length=1, max_length=16)
     hold_until: WireTime | None = None
+    durable: bool = False
+    plan_revision: int | None = Field(default=None, ge=0)
+    action: dict | None = None
+    request_digest: str | None = Field(default=None, max_length=64)
+    recovery: Literal["pending", "attention_required"] | None = None
+
+    @model_validator(mode="after")
+    def full_action(self):
+        if self.action is not None:
+            if len(json.dumps(self.action).encode()) > 131072:
+                raise ValueError("Permission action exceeds the inspectable action limit")
+            def clean(value):
+                if isinstance(value, str):
+                    return redact(value)
+                if isinstance(value, list):
+                    return [clean(v) for v in value]
+                if isinstance(value, dict):
+                    return {k: clean(v) for k, v in value.items()}
+                return value
+            self.action = clean(self.action)
+        return self
+
 
 
 class QuestionResolved(Frame):
@@ -1012,6 +1042,7 @@ def admit(credential_id, hello):
                   else {})
         host.caps = {**{k: v for k, v in previous.items() if k == "worktrees"}, **doctor,
                      "caps": hello.caps, "harnesses": hello.harnesses, "targets": hello.targets,
+                     "model_catalog": hello.model_catalog,
                      "build": {k: getattr(hello, k) for k in BUILD_FIELDS if getattr(hello, k) is not None},
                      # When these facts were sent: the setup page's probe says how old they are.
                      "hello_at": now().isoformat()}
@@ -1089,12 +1120,30 @@ def drain(db, host, epoch):
         return []
     rows = list(db.scalars(
         select(AgentCommand)
-        .where(AgentCommand.host_id == host.id, AgentCommand.kind.in_(kinds), AgentCommand.expires_at > clock,
-               (AgentCommand.status == "queued") | ((AgentCommand.status == "sent") & (AgentCommand.updated_at <= clock - RESEND)))
+        .where(AgentCommand.host_id == host.id, AgentCommand.kind.in_(kinds),
+               (AgentCommand.expires_at.is_(None)) | (AgentCommand.expires_at > clock),
+               (AgentCommand.status.in_(("queued", "deferred"))) | ((AgentCommand.status == "sent") & (AgentCommand.updated_at <= clock - RESEND)))
         .order_by(AgentCommand.created_at).limit(20).with_for_update(skip_locked=True)
     ))
     frames = []
     for row in rows:
+        run = db.get(AgentRun, row.run_id) if row.run_id else None
+        if run is not None:
+            if row.status == "deferred" and run.surf:
+                row.payload = {**row.payload, "surf": run.surf, "incarnation": run.incarnation}
+                row.digest = digest(row.payload)
+                row.status = "queued"
+            stale = coordinator.stale(db, row, run) if row.kind not in coordinator.QUIET_COMMANDS else None
+            if stale:
+                coordinator.settle_command(db, row, "canceled", stale)
+                continue
+            if not run.surf and row.kind in ("input", "answer"):
+                continue
+            if run.paused and row.kind in ("input", "answer", "spawn", "verify", "run.resume"):
+                continue
+            plan = coordinator.frozen(db, run)
+            if row.kind == "input" and plan and plan.approval_status == "pending" and run.plan_pending:
+                continue
         row.status, row.updated_at = "sent", clock
         frames.append({**row.payload, "op_id": row.op_id, "digest": row.digest})
     return frames
@@ -1332,6 +1381,8 @@ class Link:
             self.reconciled = True
             self.wakeup.set()  # Resend what is still authorized, now that both sides agree.
             return result
+        if kind == "activity":
+            return await self.effect(record_activity, Activity.model_validate(frame))
         if kind == "question":
             return await self.effect(question, Question.model_validate(frame))
         if kind == "question.resolved":
@@ -1536,3 +1587,33 @@ async def shutdown():
     await asyncio.gather(*(link.close(1012, "restart", {"reason": "restart"}) for link in list(LINKS.values())),
                          return_exceptions=True)
     LINKS.clear()
+
+
+class Activity(Frame):
+    run_id: str = Field(max_length=36)
+    generation: int = Field(ge=0)
+    surf: str = Field(default="", max_length=120)
+    incarnation: int = Field(default=0, ge=0)
+    kind: Literal["thinking", "tool", "searching", "editing", "testing", "waiting", "idle", "unknown"]
+    label: str = Field(default="", max_length=300)
+    sequence: int = Field(ge=0)
+    session_id: str = Field(max_length=100)
+    turn_id: str | None = Field(default=None, max_length=200)
+    at: WireTime
+
+
+def record_activity(db, bot, host_id, frame):
+    run = coordinator.bound(db, host_id, frame.run_id)
+    review = coordinator.review_for_surface(db, run, frame.surf) if frame.surf and run.state == "plan_reviewing" else None
+    expected_surf = review.surf if review and review.status == "reviewing" else run.surf
+    expected_incarnation = review.incarnation if review and review.status == "reviewing" else run.incarnation
+    if frame.generation != run.generation or (frame.surf and expected_surf and frame.surf != expected_surf) \
+            or (frame.incarnation and frame.incarnation != expected_incarnation) or run.state in coordinator.TERMINAL:
+        return {"ignored": True}
+    previous = run.activity or {}
+    if previous.get("session_id") == frame.session_id and previous.get("sequence", -1) >= frame.sequence:
+        return {"duplicate": True}
+    run.activity = {"kind": frame.kind, "label": redact(frame.label), "at": frame.at.isoformat(),
+                    "sequence": frame.sequence, "session_id": frame.session_id, "turn_id": frame.turn_id}
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return {"saved": True}
