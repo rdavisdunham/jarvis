@@ -11,6 +11,9 @@
 !apps/web/**
 !migrations
 !migrations/**
+!tests
+!tests/fixtures
+!tests/fixtures/voice-ending.json
 **/node_modules
 **/dist
 **/__pycache__
