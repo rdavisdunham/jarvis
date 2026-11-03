@@ -1,5 +1,50 @@
 import { expect, test } from "vitest";
 import { AudioQueue, CaptureProcessor } from "./voice-audio";
+test.each([0,2,5,15].flatMap(delay => [0,.0001,.1].map(noise => ({delay,noise}))))(
+  "startup completes with continuous capture after $delay seconds setup at noise $noise", ({delay,noise}) => {
+    const messages:Record<string,any>[]=[];
+    const processor=new CaptureProcessor(1000,message=>messages.push(message));
+    const output=new Float32Array(100),captured:number[]=[],heard:number[]=[];
+    const process=(value:number,delivering=false)=>{
+      const input=new Float32Array(100).fill(value);
+      captured.push(...input);processor.process(input,output);
+      if(delivering)heard.push(...output);
+      else expect(output.every(sample=>sample===0)).toBe(true);
+    };
+    process(.3);processor.command({type:"confirm",generation:0});
+    for(let i=0;i<delay*10;i++)process(noise);
+    processor.command({type:"ready",generation:0});
+    for(let i=0;i<delay*10+32;i++)process(noise,true);
+    expect(messages.filter(message=>message.type==="activity").at(-1)?.startupDrained).toBe(true);
+    // A replenished queue may retain silence or normal transport delay after startup.
+    expect(processor.queue.backlog).toBeGreaterThan(0);
+    expect(heard.filter(sample=>sample!==0)).toEqual(captured.slice(0,heard.length).filter(sample=>sample!==0));
+  },
+);
+
+test("repeated ready commands keep the initial delivery boundary; reset starts a fresh one",()=>{
+  const messages:Record<string,any>[]=[];
+  const processor=new CaptureProcessor(1000,message=>messages.push(message));
+  const input=new Float32Array(100).fill(.3),output=new Float32Array(100);
+  processor.process(input,output);processor.process(input,output);
+  processor.command({type:"confirm",generation:0});processor.command({type:"ready",generation:0});
+  processor.process(input,output);
+  processor.command({type:"ready",generation:0});
+  processor.process(input,output);
+  expect(processor.queue.startupDrained).toBe(true);
+  processor.command({type:"reset",generation:1});
+  processor.command({type:"ready",generation:0});
+  processor.process(new Float32Array(100),output);processor.process(new Float32Array(100),output);
+  for(let i=0;i<16;i++)processor.process(input,output);
+  expect(messages.at(-1)?.startupDrained).toBe(false);
+  processor.command({type:"confirm",generation:1});processor.command({type:"ready",generation:1});
+  processor.process(input,output);
+  expect(processor.queue.startupDrained).toBe(false);
+  for(let i=0;i<18;i++)processor.process(input,output);
+  expect(processor.queue.startupDrained).toBe(true);
+  expect(messages.some(message=>message.type==="failure")).toBe(false);
+});
+
 test.each([0,2,5,15])("ordered voiced frames through %s seconds startup, including live append", delay => {
   const rate = 1000, q = new AudioQueue(rate);
   const expected:number[] = [];
@@ -85,10 +130,12 @@ test("bundled worklet adapter uses the tested processor core and drops old-gener
 test("startup cue barge-in holds the very first voiced frame until stale output drains",()=>{
  const messages:Record<string,any>[]=[];const p=new CaptureProcessor(1000,m=>messages.push(m));
  p.command({type:"confirm",generation:0});p.command({type:"ready",generation:0});
+ p.process(new Float32Array(100),new Float32Array(100));expect(p.queue.startupDrained).toBe(true);
  p.command({type:"cue_arm",generation:0,epoch:0});expect(messages.at(-1)?.type).toBe("cue_armed");
  const request=Float32Array.from({length:100},(_,i)=>(i+1)/1000),out=new Float32Array(100);
  p.process(request,out);expect(out.every(x=>x===0)).toBe(true);expect(messages.some(x=>x.type==="cue_cancel")).toBe(true);
  p.command({type:"cue_disarm",generation:0});p.command({type:"ready",generation:0});
+ expect(p.queue.startupDrained).toBe(true);
  expect(p.queue.read(100)).toEqual(request);
 });
 

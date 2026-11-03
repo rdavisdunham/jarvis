@@ -1,6 +1,6 @@
 import { voiceCount } from "./voice-timing";
 import workletUrl from "./voice-worklet.ts?worker&url";
-export type CaptureActivity = {type:string; generation:number; active:boolean; epoch:number; captured:number; delivered:number; sent:number; backlog:number; level:number};
+export type CaptureActivity = {type:string; generation:number; active:boolean; epoch:number; captured:number; delivered:number; sent:number; backlog:number; startupDrained:boolean; level:number};
 export class VoiceCapture {
   private node: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { POLL_ACTIVE_MS, POLL_HIDDEN_MS, POLL_STABLE_MS, Voice } from "./voice";
 import { api, post } from "./api";
+import { CaptureProcessor } from "./voice-audio";
+import { VoiceCoordinator } from "./voice-coordinator";
 
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
@@ -567,3 +569,63 @@ test("accepted contextual close stops local audio before final provider usage se
  await vi.advanceTimersByTimeAsync(1200);expect(stopped).toHaveBeenCalledOnce();expect(Peer.current.close).not.toHaveBeenCalled();
  settle({closed:true});await vi.advanceTimersByTimeAsync(0);expect(Peer.current.close).toHaveBeenCalledOnce();
 });
+
+test.each(["manual","wake"].flatMap(mode=>[0,.0001].map(noise=>({mode,noise}))))(
+  "$mode voice completes startup with ongoing capture at noise $noise and stays open past its deadline",async({mode,noise})=>{
+    const listeners=new Set<(value:any)=>void>(),changed=vi.fn(),status=vi.fn();
+    let latest:any=null,generation=0,wake:(request:string)=>void=()=>{},voice:Voice|null=null;
+    const processor=new CaptureProcessor(1000,value=>{
+      if(value.type==="activity")latest=value;
+      for(const listener of listeners)listener(value);
+    });
+    const track={enabled:true,stop:vi.fn()};
+    const capture={
+      stream:{getTracks:()=>[track],getAudioTracks:()=>[track]},microphone:null,context:null,
+      get latest(){return latest;},open:vi.fn(async()=>{}),close:vi.fn(),
+      subscribe:(listener:(value:any)=>void)=>{listeners.add(listener);return()=>listeners.delete(listener);},
+      command:(type:string,epoch?:number)=>processor.command({type,generation,epoch}),
+      reset:()=>{generation++;latest=null;processor.command({type:"reset",generation});},
+      confirm:()=>processor.command({type:"confirm",generation}),
+      ready:()=>processor.command({type:"ready",generation}),
+      pause:()=>processor.command({type:"pause",generation}),
+    };
+    const coordinator=new VoiceCoordinator("account","device",{
+      capture:()=>capture as never,
+      detector:(activate,options)=>{wake=activate;return{start:()=>options.started(),stop:()=>{}};},
+      start:async(prepared,attempt)=>{
+        voice=new Voice(changed,()=>{},()=>{},draining=>coordinator.draining(draining));
+        await voice.start("conversation",undefined,{provider:"live",voice:"marin"},prepared,attempt);
+      },
+      cancel:async()=>{await voice?.stop();},status,visible:()=>true,
+      storage:{getItem:()=>null,setItem:()=>{}},
+    });
+    const heard:number[]=[];
+    const process=async(value:number)=>{
+      const output=new Float32Array(100);
+      processor.process(new Float32Array(100).fill(value),output);
+      heard.push(...output);await vi.advanceTimersByTimeAsync(100);
+    };
+    let manual:Promise<void>|undefined;
+    if(mode==="wake"){
+      await coordinator.enable(true,true);
+      for(let i=0;i<16;i++)await process(.3);
+      wake("");
+    }else{
+      manual=coordinator.manual();await vi.advanceTimersByTimeAsync(0);
+      await process(.3);
+    }
+    // Keep capturing during provider setup, then replay while capture continues.
+    for(let i=0;i<20;i++)await process(noise);
+    expect(heard.every(sample=>sample===0)).toBe(true);
+    event({type:"session.started"});await vi.advanceTimersByTimeAsync(0);await manual;
+    if(mode==="wake")event({type:"session.input_transcript.delta",event_id:"wake",delta:"Hey Eri",start_ms:0,end_ms:1600});
+    for(let i=0;i<350;i++)await process(noise);
+    expect(coordinator.state).toBe("active_voice");
+    expect(capture.close).not.toHaveBeenCalled();
+    expect(changed.mock.calls.some(([state])=>state.closed)).toBe(false);
+    expect(changed.mock.calls.some(([state])=>typeof state.idle_seconds==="number" && state.idle_seconds<120)).toBe(true);
+    expect(heard.filter(sample=>sample>.012)).toEqual(Array((mode==="wake"?16:1)*100).fill(Math.fround(.3)));
+    if(mode==="wake")expect(vi.mocked(post).mock.calls.filter(([path,body])=>path.endsWith("/startup") && (body as any)?.state==="ready")).toHaveLength(1);
+    await coordinator.dispose();
+  },
+);

@@ -6,7 +6,7 @@ class CaptureFake {
   open=vi.fn(async()=>{});close=vi.fn();reset=vi.fn();confirm=vi.fn();pause=vi.fn();command=vi.fn();
   listeners=new Set<(a:CaptureActivity)=>void>();
   subscribe=(fn:(a:CaptureActivity)=>void)=>{this.listeners.add(fn);return ()=>this.listeners.delete(fn);};
-  flow(){this.latest={type:"activity",generation:0,active:false,epoch:0,captured:128,delivered:0,sent:0,backlog:0,level:0};for(const l of this.listeners)l(this.latest);}
+  flow(){this.latest={type:"activity",generation:0,active:false,epoch:0,captured:128,delivered:0,sent:0,backlog:0,startupDrained:false,level:0};for(const l of this.listeners)l(this.latest);}
 }
 function harness(account="a",storage=new Map<string,string>()) {
  const capture=new CaptureFake(),status=vi.fn(),start=vi.fn(async()=>{}),cancel=vi.fn(async()=>{});

@@ -18,6 +18,12 @@ submission runs beside the audio handoff. Browser speech recognition uses the
 browser speech service; standby is not described as offline. Constructor presence
 does not prove capture/recognition coexistence or shared-track recognition.
 
+Startup completes after delivery passes the sample position captured at first
+provider readiness. Ongoing microphone input and residual transport buffering do
+not extend that boundary. The worklet reports the same completion to the startup
+deadline, greeting eligibility and idle countdown; resets clear it for the next
+session, while greeting interruption/resume preserves it.
+
 Timing boundaries (content-free, local monotonic clocks only): detection, capture,
 preparation, SDP, create request/response, sideband, data channel, session.started,
 first sent sample, drain complete, first audible output. Client/server durations

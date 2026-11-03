@@ -137,12 +137,13 @@ export class Voice {
         this.unsubscribeCapture=capture.subscribe(activity=> {
           if(this.stopped)return;
           const now=performance.now();
+          const draining=!activity.startupDrained;
           if(this.lastLocalEpoch!==null && this.lastLocalEpoch!==activity.epoch)this.idle.touch(now);
           this.lastLocalEpoch=activity.epoch;
           if(activity.type==="cue_cancel"){
             this.ending.captured(activity.active,activity.epoch,now);
             this.idle.speech(activity.active,now);
-            this.cue?.activity(activity.active,activity.epoch,activity.backlog>0,false,now);
+            this.cue?.activity(activity.active,activity.epoch,draining,false,now);
             this.cue?.cancel(now);return;
           }
           if(activity.type==="cue_armed"){
@@ -152,10 +153,9 @@ export class Voice {
           this.ending.captured(activity.active,activity.epoch,now);
           this.idle.speech(activity.active,now);
           this.level(activity.level);
-          this.cue?.activity(activity.active,activity.epoch,activity.backlog>0,activity.sent>0 && activity.backlog===0,now);
+          this.cue?.activity(activity.active,activity.epoch,draining,activity.startupDrained,now);
           if(this.mediaReady) {
             if(!this.firstFrame && activity.sent>0){this.firstFrame=true;this.timing?.mark("first_frame");}
-            const draining=activity.backlog>0 || activity.sent===0;
             if(this.draining!==draining){this.draining=draining;this.startup(draining);if(!draining)this.timing?.mark("drained");}
             this.idle.backlog(draining,now);
             if(!draining && !this.cue?.eligible && !this.cue?.handled)this.notifyStartup("cancel",activity.epoch);

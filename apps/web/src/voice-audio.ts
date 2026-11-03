@@ -10,9 +10,17 @@ export class AudioQueue {
   confirmed = false;
   ready = false;
   failed = false;
+  private startupEnd: number | null = null;
   constructor(readonly rate: number, readonly maxBytes = 16 * 1024 * 1024) {}
   get retained() { return this.written - (this.blocks[0]?.start ?? this.written); }
   get backlog() { return this.confirmed ? Math.max(0, this.written - this.cursor) : 0; }
+  get startupDrained() { return this.startupEnd !== null && this.cursor >= this.startupEnd && this.sent > 0; }
+  startDelivery() {
+    // Capture continues during replay. Only audio already queued at first readiness
+    // belongs to startup; waiting for the growing live queue to empty never finishes.
+    this.startupEnd ??= this.written;
+    this.ready = true;
+  }
   push(samples: Float32Array, voiced: boolean) {
     if (this.failed) return;
     const start = this.written;
@@ -69,7 +77,7 @@ export class AudioQueue {
   private trim(before: number) {
     while (this.blocks.length && this.blocks[0].start + this.blocks[0].samples.length <= before) this.blocks.shift();
   }
-  clear() { this.blocks = []; this.pinned = null; this.confirmed = this.ready = false; this.cursor = this.written;this.sent=0; }
+  clear() { this.blocks = []; this.pinned = null; this.confirmed = this.ready = false; this.cursor = this.written;this.sent=0;this.startupEnd=null; }
 }
 
 // Processor core is independent of AudioWorklet globals so tests execute the real path.
@@ -104,7 +112,7 @@ export class CaptureProcessor {
       try {this.queue.confirm(this.utteranceStart===null?undefined:Math.max(0,this.utteranceStart-Math.round(this.rate*.2)));}
       catch {this.publish({type:"failure",generation:this.generation,reason:"continuity"});}
     }
-    if (message.type === "ready") this.queue.ready = true;
+    if (message.type === "ready") this.queue.startDelivery();
     if (message.type === "release" && !this.queue.confirmed) {this.queue.release();this.awaitOnset=true;}
     if (message.type === "pause") this.queue.clear();
   }
@@ -134,7 +142,8 @@ export class CaptureProcessor {
   }
   private status(type:string,level=0) {
     this.publish({type,generation:this.generation,active:this.active,epoch:this.epoch,
-      captured:this.queue.written,delivered:this.queue.cursor,sent:this.queue.sent,backlog:this.queue.backlog,level});
+      captured:this.queue.written,delivered:this.queue.cursor,sent:this.queue.sent,backlog:this.queue.backlog,
+      startupDrained:this.queue.startupDrained,level});
   }
 
 }
