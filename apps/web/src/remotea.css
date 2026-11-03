@@ -270,12 +270,14 @@
 .run-role-effort { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
 .run-role-effort select { flex: 1; }
 
-/* Drawer: fixed compact chrome and one scrolling middle, independent of chat visibility. */
+/* Drawer: fixed compact chrome and one scrolling middle, independent of chat visibility.
+   Constrain the grid track so a long nowrap title cannot push the header controls offscreen. */
 .run-drawer { min-width: 0; overflow: hidden; }
-.run-view.run-drawer > header.remotea-chat-head { gap: 3px; padding: 10px 12px 8px; max-height: none; overflow: visible; }
+.run-view.run-drawer > header.remotea-chat-head { grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 10px 12px 8px; max-height: none; overflow: visible; }
 .run-drawer .remotea-chat-title { flex-wrap: nowrap; gap: 5px; }
 .run-drawer .remotea-chat-title h2 { flex: 1; margin: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .run-drawer .btn-icon { flex: none; width: 30px; height: 30px; }
+.run-drawer .run-drawer-close { width: 44px; height: 44px; min-width: 44px; }
 .run-drawer-status { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
 .run-drawer-middle { display: flex; flex-direction: column; gap: 12px; padding: 12px; font-family: inherit; overscroll-behavior: contain; overflow-x: hidden; }
 .run-drawer-middle > * { flex: none; min-width: 0; }

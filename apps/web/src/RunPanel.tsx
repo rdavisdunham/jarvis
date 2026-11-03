@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
-import { ChevronLeft } from "lucide-react";
+import { lazy, Suspense, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useDialogFocus } from "./ux";
 import { railDot } from "./remotea-model";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
@@ -19,6 +19,26 @@ function SheetFocus({ onEscape }: { onEscape: () => void }) {
 export function RunPanel({ phone }: { phone: boolean }) {
   const { panel, activeRuns } = useRemotea();
   const { closePanel, setCollapsed } = useRemoteaActions();
+  const bodyId = useId();
+  const root = useRef<HTMLElement>(null), rail = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const previousRun = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (panel.run && !previousRun.current) opener.current = document.activeElement as HTMLElement | null;
+    previousRun.current = panel.run;
+  }, [panel.run]);
+  useEffect(() => {
+    if (!panel.run) return;
+    if (panel.collapsed) rail.current?.focus({ preventScroll: true });
+    else {
+      // The eager shell remains focusable while the drawer chunk is loading.
+      (root.current?.querySelector<HTMLElement>(".run-drawer-close") ?? root.current)?.focus({ preventScroll: true });
+    }
+  }, [panel.run, panel.collapsed]);
+  const close = () => {
+    closePanel();
+    if (opener.current?.isConnected) opener.current.focus({ preventScroll: true });
+  };
   useEffect(() => {
     const root = document.querySelector<HTMLElement>(".app-shell");
     if (root) root.dataset.runPanel = panel.run ? (panel.collapsed ? "rail" : "open") : "closed";
@@ -38,20 +58,24 @@ export function RunPanel({ phone }: { phone: boolean }) {
   const run = activeRuns.find(r => r.id === panel.run);
   const dot = railDot(run);
   const open = !panel.collapsed;
-  return <aside className="run-panel" data-state={open ? "open" : "rail"} aria-label="Agent run panel"
+  return <aside ref={root} tabIndex={-1} className="run-panel" data-state={open ? "open" : "rail"} aria-label="Agent run panel"
     style={viewport ? { "--run-viewport-height": `${viewport.height}px`, "--run-viewport-top": `${viewport.top}px` } as CSSProperties : undefined}
     {...(phone && open ? { role: "dialog", "aria-modal": true } : {})}>
-    {!open && <button type="button" className={"run-panel-rail tone-" + dot.tone} aria-expanded={false}
+    {!open && <button type="button" ref={rail} className={"run-panel-rail tone-" + dot.tone} aria-expanded={false} aria-controls={bodyId}
       aria-label={"Expand run panel, " + dot.label} title={dot.label} onClick={() => setCollapsed(false)}>
       <ChevronLeft size={18} aria-hidden="true"/><i className="run-dot" aria-hidden="true"/><span className="run-panel-rail-label">{dot.label}</span>
     </button>}
-    {(open || !phone) && <div className="run-panel-body" hidden={!open}>
+    {open && <button type="button" className="run-panel-collapse" aria-label="Collapse run panel" title="Collapse run panel"
+      aria-expanded={true} aria-controls={bodyId} onClick={() => setCollapsed(true)}>
+      <ChevronRight size={20} aria-hidden="true"/>
+    </button>}
+    <div id={bodyId} className="run-panel-body" hidden={!open}>
       {phone && open && <SheetFocus onEscape={() => setCollapsed(true)}/>}
-      <Suspense fallback={<p role="status" className="run-panel-loading">Loading run…</p>}>
+      <Suspense fallback={<><button type="button" className="btn-icon run-panel-loading-close" aria-label="Close run" title="Close run" onClick={close}><X size={20} aria-hidden="true"/></button><p role="status" className="run-panel-loading">Loading run…</p></>}>
         {/* Keyed by run: switching runs remounts the drawer, so draft text, busy state, scroll and in-flight
             requests never carry over from the previous run. */}
-        <RunDrawer key={panel.run} id={panel.run} onClose={closePanel} onCollapse={() => setCollapsed(true)}/>
+        <RunDrawer key={panel.run} id={panel.run} onClose={close}/>
       </Suspense>
-    </div>}
+    </div>
   </aside>;
 }
