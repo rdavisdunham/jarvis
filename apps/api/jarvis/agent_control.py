@@ -1182,6 +1182,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_cap": run.turn_cap, "paused": bool(run.paused), "effort": run.effort,
         "execution_mode": (run.sync_state or {}).get("execution_mode", "legacy"),
         "controller": (run.sync_state or {}).get("controller", "eridani"),
+        "terminal_exited": (run.sync_state or {}).get("controller") == "terminal" and coordinator.native_exit_verified(run),
         "pause_reason": (run.sync_state or {}).get("automatic_pause"),
         "host_attention": (run.sync_state or {}).get("host_attention"),
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,

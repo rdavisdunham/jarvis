@@ -627,11 +627,13 @@ def test_terminal_administrative_settlement_requires_verified_exit_and_never_con
         coordinator.terminal_control(db, run)
         row = db.get(control.AgentSession, run.session_pk)
         row.state, row.state_detail = "exited", {"reason": "absent_from_snapshot"}
+        assert not control.public_run(db, run)["terminal_exited"]
         with pytest.raises(DomainError) as missing_proof:
             control.stop_run(db, OWNER, run_id, control.StopInput(), actor=HUMAN)
         assert missing_proof.value.code == "TERMINAL_CONTROL"
         agent_link.exited(db, BOT, durable.id, agent_link.Exit(surf=run.surf, incarnation=run.incarnation,
             provider="claude", provider_session_id=row.session_id, code=0, exited_at=now()))
+        assert control.public_run(db, run)["terminal_exited"]
         if accept:
             result = control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=run.state_revision), actor=HUMAN)
             assert result["state"] == "completed" and result["task"]["status"] == "completed"
