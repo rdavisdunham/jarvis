@@ -1039,5 +1039,158 @@
       "Tool/API result or browser/device recording",
       "Assertion results and any provider/fault evidence"
     ]
+  },
+  {
+    "id": "agent_control.26",
+    "feature": "agent_control",
+    "title": "Retain and explicitly approve a plan across followups, reload, revision and pause.",
+    "inputs": [
+      "Retain and explicitly approve a plan across followups, reload, revision and pause."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The latest plan and prior revision remain inspectable after a followup and reload.",
+      "Approving a paused plan saves the approval without starting execution; only Resume starts work."
+    ],
+    "invariants": [
+      "A followup message never approves the plan.",
+      "No paid model calls or external service writes."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "browser",
+      "protocol": "scripts/validate_durable_runs.py"
+    },
+    "setup": [
+      "Create a disposable local PostgreSQL database with migrations and built web assets.",
+      "Use synthetic authenticated owner and managed host fixtures; disable worker and external services."
+    ],
+    "steps": [
+      "Run scripts/validate_durable_runs.py against the real isolated API.",
+      "Inspect recorded browser assertions, screenshots and provider-event/API evidence."
+    ],
+    "evidence": [
+      "artifacts/durable-runs/result.json",
+      "Desktop and mobile reduced-motion screenshots",
+      "Real persisted run, decision, command and receipt IDs"
+    ]
+  },
+  {
+    "id": "agent_control.27",
+    "feature": "agent_control",
+    "title": "Answer shared interview and native permission requests with durable drafts.",
+    "inputs": [
+      "Answer shared interview and native permission requests with durable drafts."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Interview choices and free text survive reload before Send answers.",
+      "The permission card shows complete command, directory and scope.",
+      "A sole Approved response sends allow_once and never an interview answer or permanent grant."
+    ],
+    "invariants": [
+      "Typed consent must refer to one unambiguous selected-run request.",
+      "No paid model calls or external service writes."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "browser",
+      "protocol": "scripts/validate_durable_runs.py"
+    },
+    "setup": [
+      "Create a disposable local PostgreSQL database with migrations and built web assets.",
+      "Use synthetic authenticated owner and managed host fixtures; disable worker and external services."
+    ],
+    "steps": [
+      "Run scripts/validate_durable_runs.py against the real isolated API.",
+      "Inspect recorded browser assertions, screenshots and provider-event/API evidence."
+    ],
+    "evidence": [
+      "artifacts/durable-runs/result.json",
+      "Desktop and mobile reduced-motion screenshots",
+      "Real persisted run, decision, command and receipt IDs"
+    ]
+  },
+  {
+    "id": "agent_control.28",
+    "feature": "agent_control",
+    "title": "Queue an offline run message, reload and reconnect without duplicate delivery.",
+    "inputs": [
+      "Queue an offline run message, reload and reconnect without duplicate delivery."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The browser shows Queued while offline and retains the draft and action ID through reload.",
+      "Reconnection stores the original action ID and creates exactly one input command.",
+      "The receipt changes to delivered only after provider acknowledgement."
+    ],
+    "invariants": [
+      "An API acknowledgement alone is not displayed as agent delivery.",
+      "No paid model calls or external service writes."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "browser",
+      "protocol": "scripts/validate_durable_runs.py"
+    },
+    "setup": [
+      "Create a disposable local PostgreSQL database with migrations and built web assets.",
+      "Use synthetic authenticated owner and managed host fixtures; disable worker and external services."
+    ],
+    "steps": [
+      "Run scripts/validate_durable_runs.py against the real isolated API.",
+      "Inspect recorded browser assertions, screenshots and provider-event/API evidence."
+    ],
+    "evidence": [
+      "artifacts/durable-runs/result.json",
+      "Desktop and mobile reduced-motion screenshots",
+      "Real persisted run, decision, command and receipt IDs"
+    ]
+  },
+  {
+    "id": "agent_control.29",
+    "feature": "agent_control",
+    "title": "Inspect real work stage and activity on mobile, and retain supported role efforts across devices.",
+    "inputs": [
+      "Inspect real work stage and activity on mobile, and retain supported role efforts across devices."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The top stage distinguishes Working, Checking results, Ready for review and confirmed Complete from bottom activity.",
+      "Reduced motion disables thinking animation and the mobile page has no horizontal overflow.",
+      "Pause, Resume and Cancel have distinct visible effects.",
+      "Advertised GPT-6.1 Sol and planner, reviewer and worker efforts persist for a second browser context.",
+      "Terminal takeover stays explicit and disables Eridani input, approval, resume and cancellation while keeping terminal navigation."
+    ],
+    "invariants": [
+      "Activity animation requires an actual fresh provider event.",
+      "No paid model calls or external service writes."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "browser",
+      "protocol": "scripts/validate_durable_runs.py"
+    },
+    "setup": [
+      "Create a disposable local PostgreSQL database with migrations and built web assets.",
+      "Use synthetic authenticated owner and managed host fixtures; disable worker and external services."
+    ],
+    "steps": [
+      "Run scripts/validate_durable_runs.py against the real isolated API.",
+      "Inspect recorded browser assertions, screenshots and provider-event/API evidence."
+    ],
+    "evidence": [
+      "artifacts/durable-runs/result.json",
+      "Desktop and mobile reduced-motion screenshots",
+      "Real persisted run, decision, command and receipt IDs"
+    ]
   }
 ]

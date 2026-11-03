@@ -116,7 +116,7 @@ def main(path):
                 else:
                     env["JARVIS_BROWSER_FIXTURE"] = job["target"]
                     env["ERIDANI_EVAL_ARTIFACT_DIR"] = str(attempt / "browser")
-                    command = [sys.executable, "scripts/validate_custom_planner.py"]
+                    command = [sys.executable, "scripts/validate_durable_runs.py" if job["target"] == "durable-runs.mjs" else "scripts/validate_custom_planner.py"]
                 with (attempt / "suite.log").open("w") as log:
                     completed = subprocess.run(
                         command, cwd=ROOT, env=env, stdout=log, stderr=log, check=False

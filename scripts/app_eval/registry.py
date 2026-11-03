@@ -28,6 +28,7 @@ BROWSERS = {
     "note_organization": ["note-lists.mjs"],
     "search": ["semantic-search.mjs"],
     "search_aliases": ["semantic-search.mjs"],
+    "agent_control": ["durable-runs.mjs"],
     "receipts": ["chat-activity.mjs"],
     "clarifications": ["chat-activity.mjs"],
     "budget": ["usage-report.mjs"],
