@@ -5736,5 +5736,68 @@
       ],
       "scope": "Real browser and migrated API; synthetic host events replace paid agents and terminal execution. Provider execution correctness is outside this browser binding."
     }
+  ],
+  "agent_control.30": [
+    {
+      "id": "direct-literal-hold",
+      "adapter": "pytest",
+      "target": "tests/test_run_automation.py::test_direct_approved_is_literal_and_saved_once_with_atomic_hold",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "invariants.1",
+        "invariants.2"
+      ],
+      "scope": "Exact persisted API/control contract in a disposable synthetic database. Does not claim browser, provider execution, language quality or physical-device acceptance."
+    },
+    {
+      "id": "direct-suppresses-followup",
+      "adapter": "pytest",
+      "target": "tests/test_run_automation.py::test_hold_suppresses_old_automatic_prompts_and_new_followup",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.2"
+      ],
+      "scope": "Exact persisted API/control contract in a disposable synthetic database. Does not claim browser, provider execution, language quality or physical-device acceptance."
+    }
+  ],
+  "agent_control.31": [
+    {
+      "id": "resume-handoff-and-release-receipt",
+      "adapter": "pytest",
+      "target": "tests/test_run_automation.py::test_resume_waits_for_handoff_not_model_read_and_release_ack_is_authoritative",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.1",
+        "expected.2"
+      ],
+      "scope": "Exact persisted API/control contract in a disposable synthetic database. Does not claim browser, provider execution, language quality or physical-device acceptance."
+    },
+    {
+      "id": "resume-newer-message-and-uncertainty",
+      "adapter": "pytest",
+      "target": "tests/test_run_automation.py::test_two_devices_and_old_release_cannot_unhold_new_message",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.3",
+        "invariants.1"
+      ],
+      "scope": "Exact persisted API/control contract in a disposable synthetic database. Does not claim browser, provider execution, language quality or physical-device acceptance."
+    },
+    {
+      "id": "resume-persisted-snapshot-fence",
+      "adapter": "pytest",
+      "target": "tests/test_run_automation.py::test_resume_reconciles_only_matching_host_release_snapshot_after_restart",
+      "mode": "offline",
+      "level": "acceptance",
+      "criteria": [
+        "expected.4"
+      ],
+      "scope": "Exact persisted API/control contract in a disposable synthetic database. Does not claim browser, provider execution, language quality or physical-device acceptance."
+    }
   ]
 }
