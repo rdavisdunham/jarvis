@@ -92,6 +92,8 @@ def attached(host, run_id, session_id="sess-1"):
         # Coordinator fixtures exercise already approved manual plans. Production attach leaves them parked.
         plan = coordinator.frozen(db, row)
         if plan and row.plan_pending and plan.approval_status == "pending" and not row.roles:
+            # This execution-ready fixture represents a planner that already ended its read-only authoring turn.
+            row.sync_state = {**row.sync_state, "planning_turn_pending": False}
             coordinator.approve_plan(db, row, actor=HUMAN)
     with session_scope() as db:
         return db.get(AgentRun, run_id)

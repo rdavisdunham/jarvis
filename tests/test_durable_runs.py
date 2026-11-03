@@ -546,3 +546,99 @@ def test_confirmed_start_keeps_role_options_and_receipt_tracks_created_run(durab
         receipt.created_at = now() - timedelta(days=30)
         agent_retention.sweep(db)
         assert db.get(AgentActionReceipt, (OWNER, str(body.action_id)))
+
+
+def test_unsent_answer_waits_for_verified_recreated_callback_without_transient_failure(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        frame = agent_link.Question(run_id=run_id, generation=run.generation, provider_session_id="sess-1",
+            question_id="held-answer", provider_request_id="old", durable=True, recovery="pending",
+            request_digest="a" * 64, surf=run.surf, incarnation=1, items=[{"id": "a", "text": "Scope?"}])
+        question, _ = coordinator.record_question(db, OWNER, durable.id, frame)
+        coordinator.answer(db, question, [{"item_id": "a", "text": "This scope"}], actor=HUMAN)
+        command = db.scalar(select(AgentCommand).where(AgentCommand.op_id == question.answer_op_id))
+        db.get(control.AgentSession, question.session_pk).incarnation = 2
+        run.incarnation = 2
+        assert not [f for f in agent_link.drain(db, db.get(AgentHost, durable.id), 1) if f["t"] == "answer"]
+        assert command.status == "queued"
+        attention = frame.model_copy(update={"provider_request_id": "new", "incarnation": 2, "recovery": "attention_required"})
+        coordinator.record_question(db, OWNER, durable.id, attention)
+        assert not [f for f in agent_link.drain(db, db.get(AgentHost, durable.id), 1) if f["t"] == "answer"]
+        assert command.status == "queued"
+        coordinator.record_question(db, OWNER, durable.id, attention.model_copy(update={"recovery": "pending"}))
+        # The callback identity changed during attention; pending proof creates a safe NEW operation now.
+        assert question.status == "submitted" and question.answer_op_id != command.op_id
+        frames = [f for f in agent_link.drain(db, db.get(AgentHost, durable.id), 1) if f["t"] == "answer"]
+        assert len(frames) == 1 and frames[0]["provider_request_id"] == "new" and frames[0]["incarnation"] == 2
+
+
+def test_active_run_keeps_full_saved_command_payload_after_seven_days(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        control.send_message(db, OWNER, run_id, control.MessageInput(text="Full saved context " * 400), actor=HUMAN)
+        command = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id, AgentCommand.kind == "input"))
+        command.status, command.updated_at = "uncertain", now() - timedelta(days=30)
+        agent_retention.sweep(db)
+        db.refresh(command)
+        assert command.payload["text"] == ("Full saved context " * 400).strip()
+        run.state, run.finished_at = "completed", now() - timedelta(days=10)
+        agent_retention.sweep(db)
+        db.refresh(command)
+        assert command.payload == {}  # Finished-run replay retention keeps its prior policy.
+
+
+@pytest.mark.parametrize("approve_before_stop", [True, False])
+def test_native_authoring_stop_cannot_verify_an_approved_plan_as_implementation(durable, approve_before_stop):
+    from types import SimpleNamespace
+    run_id, _, _ = plan(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        generation, token_before = run.generation, coordinator.run_token(run)
+        stop = SimpleNamespace(generation=generation, seq=1, interim=False, synthetic=False)
+        if not approve_before_stop:
+            coordinator.record_turn(db, run, stop)
+        coordinator.approve_plan(db, run, actor=HUMAN)
+        if approve_before_stop:
+            coordinator.record_turn(db, run, stop)
+        assert run.state == "executing" and run.turn_count == 0
+        assert run.generation == generation and coordinator.run_token(run) == token_before
+        assert not db.scalar(select(coordinator.AgentAttempt.id).where(coordinator.AgentAttempt.run_id == run_id))
+        coordinator.record_turn(db, run, SimpleNamespace(generation=generation, seq=2, interim=False, synthetic=False))
+        assert run.turn_count == 1 and run.turn_seq == 2 and run.state == "judging"
+
+
+def test_early_native_plan_revision_does_not_treat_old_authoring_stop_as_missing_plan(durable):
+    from types import SimpleNamespace
+    run_id, _, _ = plan(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        coordinator.revise_plan(db, run, "Add measurements", actor=HUMAN)
+        coordinator.record_turn(db, run, SimpleNamespace(generation=run.generation, seq=1, interim=False, synthetic=False))
+        assert run.state == "planning" and run.turn_count == 0
+
+
+@pytest.mark.parametrize("accept", [False, True])
+def test_terminal_administrative_settlement_requires_verified_exit_and_never_controls_host(durable, accept):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        coordinator.terminal_control(db, run)
+        row = db.get(control.AgentSession, run.session_pk)
+        row.state, row.state_detail = "exited", {"reason": "absent_from_snapshot"}
+        with pytest.raises(DomainError) as missing_proof:
+            control.stop_run(db, OWNER, run_id, control.StopInput(), actor=HUMAN)
+        assert missing_proof.value.code == "TERMINAL_CONTROL"
+        agent_link.exited(db, BOT, durable.id, agent_link.Exit(surf=run.surf, incarnation=run.incarnation,
+            provider="claude", provider_session_id=row.session_id, code=0, exited_at=now()))
+        if accept:
+            result = control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=run.state_revision), actor=HUMAN)
+            assert result["state"] == "completed" and result["task"]["status"] == "completed"
+        else:
+            result = control.stop_run(db, OWNER, run_id, control.StopInput(), actor=HUMAN)
+            assert result["state"] == "stopped"
+        assert not result["paused"] and run.owner_wait_since is None
+        assert not db.scalar(select(AgentCommand.id).where(AgentCommand.run_id == run_id, AgentCommand.kind == "stop"))
+        with pytest.raises(DomainError):
+            coordinator.ensure_eridani_control(run)  # Exit does not grant permission to execute or approve another plan.

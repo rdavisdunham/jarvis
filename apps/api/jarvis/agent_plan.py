@@ -639,6 +639,9 @@ def _submit_plan(db, bot, body):
                         completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids],
                         proposals=proposals, migration=migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
+    if (run.sync_state or {}).get("execution_mode") != "managed":
+        run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
+                          "planning_turn_generation": run.generation}
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
     coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record(),

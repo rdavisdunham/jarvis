@@ -208,6 +208,8 @@ def sweep(db, clock=None):
         counts["redacted_runs"] += 1
     counts["command_payloads"] = db.execute(update(AgentCommand).where(
         AgentCommand.status.in_(SETTLED), AgentCommand.updated_at < clock - COMMAND_PAYLOADS,
+        or_(AgentCommand.run_id.is_(None), AgentCommand.run_id.not_in(select(AgentRun.id).where(
+            AgentRun.state.not_in(TERMINAL_RUN_STATES)))),
         AgentCommand.payload != {}).values(payload={})).rowcount
     counts["parity"] = db.execute(delete(AgentParity).where(AgentParity.updated_at < clock - PARITY)).rowcount
     counts["parity_days"] = db.execute(delete(AgentParityDay).where(

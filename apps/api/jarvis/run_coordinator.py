@@ -545,8 +545,11 @@ def finish(db, run, *, detail=""):
     """stopping → stopped (or completed after an approval), once termination is confirmed."""
     if run.state != "stopping":
         return run
+    run.paused = False
+    run.sync_state = {k: v for k, v in (run.sync_state or {}).items()
+                      if k not in ("automatic_pause", "host_attention", "paused_since", "operator_paused")}
     transition(db, run, run.stop_final if run.stop_final in TERMINAL else "stopped", reason=run.stop_reason, detail=detail)
-    for row in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.status == "queued")):
+    for row in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.status.in_(("queued", "deferred")))):
         settle_command(db, row, "canceled", "the run settled")
     run.run_token_hash = None
     return run
@@ -556,8 +559,16 @@ def request_stop(db, run, *, actor, mode="interrupt", reason="stopped", final="s
     """Stop is desired state: recorded now, settled only when termination is confirmed."""
     if run.state in TERMINAL:
         return run
-    ensure_eridani_control(run)
+    ensure_eridani_control(run, allow_verified_exit=True)
     check_revision(run, expected_revision)
+    if (run.sync_state or {}).get("controller") == "terminal":
+        run.generation += 1
+        run.stop_requested_at, run.stop_mode, run.stop_reason, run.stop_final = now(), mode, reason, final
+        if run.state != "stopping":
+            transition(db, run, "stopping", actor=actor, reason=reason)
+        for review in live_reviews(db, run):
+            review.status, review.finished_at, review.token_hash = "skipped", now(), None
+        return finish(db, run, detail="native exit was already verified")
     if run.state == "stopping":
         if mode == "kill" and run.stop_mode != "kill" and run.surf:
             run.stop_mode = "kill"
@@ -733,12 +744,22 @@ def resume_phase(run):
 def record_turn(db, run, frame):
     """A root turn of this run's generation ended. Execution turns count toward the cap and start the loop;
     interview and planning turns never count (decision 11)."""
-    if run.paused or run.state in TERMINAL or getattr(frame, "interim", False) or getattr(frame, "synthetic", False):
+    if run.state in TERMINAL or getattr(frame, "interim", False) or getattr(frame, "synthetic", False):
         return
     if frame.generation != run.generation:
         return  # A late turn from before a steer or stop (F07).
-    run.last_progress_at = now()
-    summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
+    if not run.paused:
+        run.last_progress_at = now()
+        summaries.touch(db, run)  # Every root turn of the run's generation, whatever the state does next.
+    sync = run.sync_state or {}
+    if sync.get("planning_turn_pending") and sync.get("planning_turn_generation") == run.generation:
+        wait_for_old_stop = sync.get("execution_waits_for_planning_stop") or sync.get("planning_continuation_pending")
+        run.sync_state = {**sync, "planning_turn_pending": False,
+                          "execution_waits_for_planning_stop": False, "planning_continuation_pending": False}
+        if wait_for_old_stop:
+            return  # The authoring turn ended after approval/revision; it is never an execution turn or a new-plan failure.
+    if run.paused:
+        return
     if run.state == "waiting_answer":
         transition(db, run, "planning" if run.plan_pending else resume_phase(run), reason="turn")
     if run.state in ("plan_reviewing", "handing_off"):
@@ -811,7 +832,12 @@ def on_exit(db, row, detail="", host_id=None):
         return
     if run.state == "stopping":
         finish(db, run, detail=detail or "the agent process exited")
-    elif run.state != "needs_you" or run.state_reason != "exited":
+    elif run.state == "needs_you":
+        if run.state_reason != "exited":
+            run.state_reason, run.state_revision, run.updated_at = "exited", run.state_revision + 1, now()
+            note(run, "exited", detail=detail[:300])
+            emit(db, run.owner_id, "agent.changed", run.id)
+    else:
         transition(db, run, "needs_you", reason="exited", detail=detail)
 
 
@@ -827,6 +853,8 @@ def record_question(db, owner, host_id, frame):
     from .agent_link import host_session
 
     row = host_session(db, owner, host_id, frame.provider, frame.provider_session_id)
+    if frame.surf and frame.incarnation >= (row.incarnation or 0):
+        row.surf, row.incarnation = frame.surf, frame.incarnation
     db.flush()
     run = bound(db, host_id, frame.run_id) if frame.run_id else run_for_session(db, row, host_id=host_id)
     if run is not None and run.roles and frame.surf and review_for_surface(db, run, frame.surf) is not None:
@@ -850,7 +878,7 @@ def record_question(db, owner, host_id, frame):
         owner_id=owner, session_pk=row.id, host_id=host_id, run_id=run.id if run else None,
         generation=frame.generation, plan_revision=run.plan_revision if run else 0, question_id=frame.question_id, provider_request_id=frame.provider_request_id,
         group_id=frame.group_id, kind=frame.kind, action=getattr(frame, "action", None), request_digest=getattr(frame, "request_digest", None),
-        durable=durable, recovery=getattr(frame, "recovery", None) or "", items=[i.model_dump(exclude_none=True) for i in frame.items],
+        durable=durable, recovery=getattr(frame, "recovery", None) or ("pending" if durable else ""), items=[i.model_dump(exclude_none=True) for i in frame.items],
         status="open", surf=frame.surf, incarnation=frame.incarnation, provider_turn_id=frame.provider_turn_id or "",
         hold_until=None if getattr(frame, "durable", False) and host_cap(db, host_id, "decisions.durable") else frame.hold_until, remote_answerable=True)
     db.add(question)
@@ -1065,6 +1093,8 @@ def begin_execution(db, run, reason="plan_frozen", preface="", actor=None):
         transition(db, run, "planning", actor=actor, reason="plan_frozen")
     if worker_role(run) and not (run.sync_state or {}).get("handoff"):
         return hand_off(db, run, plan, actor=actor)
+    if (run.sync_state or {}).get("planning_turn_pending"):
+        run.sync_state = {**(run.sync_state or {}), "execution_waits_for_planning_stop": True}
     transition(db, run, "executing", actor=actor, reason=reason)
     say(db, run, prompts.execute(render_plan(db, run, plan), preface), "execute", actor=actor)
 
@@ -1392,7 +1422,7 @@ def approve_plan(db, run, *, actor):
         raise DomainError("DECISION_CLOSED", "This plan is no longer awaiting approval.", 409)
     plan.approval_status, plan.approved_at = "approved", now()
     note(run, "plan_approved", plan_revision=run.plan_revision, actor=actor.record())
-    if run.paused:
+    if run.paused or not run.surf:
         emit(db, run.owner_id, "agent.changed", run.id)
         return
     begin_execution(db, run, reason="plan_approved", actor=actor)
@@ -1407,6 +1437,8 @@ def revise_plan(db, run, note_text, *, actor):
     if plan is not None:
         plan.approval_status = "revised"
     run.plan_pending = False
+    if (run.sync_state or {}).get("planning_turn_pending"):
+        run.sync_state = {**(run.sync_state or {}), "planning_continuation_pending": True}
     note(run, "plan_revise", plan_revision=run.plan_revision, actor=actor.record())
     transition(db, run, "planning", actor=actor, reason="plan_revise")
     say(db, run, prompts.plan_revise(note_text), "plan_critique", actor=actor)
@@ -2580,7 +2612,7 @@ def rebind_question(db, question, session, run, frame):
         return
     question.provider_request_id, question.incarnation = frame.provider_request_id, frame.incarnation
     question.provider_turn_id, question.surf = frame.provider_turn_id or "", frame.surf
-    question.recovery = getattr(frame, "recovery", None) or ""
+    question.recovery = getattr(frame, "recovery", None) or ("attention_required" if changed else question.recovery)
     question.hold_until, question.remote_answerable, question.updated_at = None, True, now()
     if frame.action is not None:
         question.action = frame.action
@@ -2588,10 +2620,12 @@ def rebind_question(db, question, session, run, frame):
         run.incarnation = max(run.incarnation, frame.incarnation)
     old = db.scalar(select(AgentCommand).where(AgentCommand.host_id == question.host_id,
                                              AgentCommand.op_id == question.answer_op_id)) if question.answer_op_id else None
-    if old and question.status == "submitted" and question.recovery == "attention_required" and old.status != "executed":
+    if old and question.status == "submitted" and question.recovery == "attention_required" and old.status in ("sent", "acked", "uncertain"):
         settle_command(db, old, "uncertain", "The adapter requires reconciliation before consent can be delivered.")
+    callback_changed = old is None or (old.payload or {}).get("provider_request_id") != question.provider_request_id \
+        or (old.payload or {}).get("incarnation") != question.incarnation
     if question.status == "submitted" and question.answers and question.recovery == "pending" \
-            and (changed or old is None):
+            and (changed or callback_changed):
         # pending is adapter proof: it fsyncs submitted BEFORE ever writing consent. It never emits pending after
         # a submitted/uncertain write. A new callback gets a fresh immutable operation, tied to the same receipt.
         from .agent_receipts import action_context
@@ -2612,9 +2646,28 @@ def rebind_question(db, question, session, run, frame):
     emit(db, question.owner_id, "agent.changed", question.run_id or question.session_pk)
 
 
-def ensure_eridani_control(run):
-    if (run.sync_state or {}).get("controller") == "terminal":
-        raise DomainError("TERMINAL_CONTROL", "The terminal has control of this session. Continue there.", 409)
+def ensure_eridani_control(run, *, allow_verified_exit=False):
+    if (run.sync_state or {}).get("controller") != "terminal":
+        return
+    if allow_verified_exit and native_exit_verified(run):
+        return
+    raise DomainError("TERMINAL_CONTROL", "The terminal has control of this session. Continue there.", 409)
+
+
+def native_exit_verified(run):
+    db = object_session(run)
+    if db is None or not run.session_pk:
+        return False
+    session = db.get(AgentSession, run.session_pk)
+    def exited(row, incarnation):
+        detail = row.state_detail or {} if row else {}
+        return bool(row and row.host_id == run.host_id and row.state == "exited" and row.incarnation >= incarnation
+                    and "exit_code" in detail and detail["exit_code"] != -1
+                    and detail.get("reason") != "absent_from_snapshot")
+    if not exited(session, run.incarnation):
+        return False
+    return all(exited(db.get(AgentSession, review.session_pk), review.incarnation)
+               for review in live_reviews(db, run))
 
 
 def terminal_control(db, run):
@@ -2713,3 +2766,22 @@ def refresh_control_fence(db, row, run):
     row.outcome = {**(row.outcome or {}), "proof": "verified newer surface incarnation",
                    **({"superseded_by": replacement.op_id} if replacement else {})}
     return True
+
+
+def answer_waits_for_callback(db, row, run):
+    """Keep saved consent queued while the managed adapter recreates the exact live callback."""
+    if row.kind != "answer":
+        return False
+    question = db.scalar(select(AgentQuestion).where(AgentQuestion.host_id == row.host_id,
+                                                    AgentQuestion.answer_op_id == row.op_id))
+    if question is None or not question.durable or question.status != "submitted":
+        return False
+    session = db.get(AgentSession, question.session_pk)
+    incarnation = session.incarnation if session else question.incarnation
+    if run and question.surf == run.surf:
+        incarnation = max(incarnation, run.incarnation)
+    elif run and (review := review_for_surface(db, run, question.surf)):
+        incarnation = max(incarnation, review.incarnation)
+    return (question.recovery != "pending" or question.incarnation != incarnation
+            or (row.payload or {}).get("incarnation") != question.incarnation
+            or (row.payload or {}).get("provider_request_id") != question.provider_request_id)

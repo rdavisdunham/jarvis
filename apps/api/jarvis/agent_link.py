@@ -1139,6 +1139,8 @@ def drain(db, host, epoch):
     frames = []
     for row in rows:
         run = db.get(AgentRun, row.run_id) if row.run_id else None
+        if coordinator.answer_waits_for_callback(db, row, run):
+            continue
         if run is not None:
             if row.status == "deferred" and run.surf:
                 row.payload = {**row.payload, "surf": run.surf, "incarnation": run.incarnation}

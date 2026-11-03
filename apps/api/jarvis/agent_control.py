@@ -665,6 +665,8 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         if manual_plan:
             plan = freeze(db, owner, run, task)
             run.plan_pending = True
+            run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
+                              "planning_turn_generation": run.generation}
             migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
             prompt = ("The existing task plan below is awaiting human approval. Read it without editing code; "
                       "wait for the approval decision before execution.\n\n" + coordinator.render_plan(db, run, plan))[:PROMPT_CHARS]
@@ -841,7 +843,7 @@ def approve(db, owner, run_id, body, *, actor):
     from .domain import execute
 
     run = coordinator.load(db, owner, run_id)
-    coordinator.ensure_eridani_control(run)
+    coordinator.ensure_eridani_control(run, allow_verified_exit=True)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
