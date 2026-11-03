@@ -164,3 +164,10 @@ was checked with 84 backend policy/startup/controller tests and the complete web
 path (TypeScript plus 537 Vitest passes, one existing skip). That small follow-up
 still needs Eridani's fresh full record on the final commit. All local checks used
 synthetic provider fakes and the isolated test PostgreSQL service.
+
+PR validation follow-up: CI also runs `pytest -q evals`, outside the repository
+`full` path. The catalog's expected counts now reflect the eleven new voice
+protocols (1,122 total), and the surface inventory includes the session-bound
+`/startup` route. All 98 offline eval meta-tests pass, with the two explicit local
+synthetic-PG integration tests skipped. Catalog assertions still distinguish
+supporting evidence from acceptance; this update marks no physical case passed.
