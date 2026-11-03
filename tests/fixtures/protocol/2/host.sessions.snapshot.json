@@ -116,6 +116,22 @@
          ]
         }
        },
+       "automation_hold": {
+        "required": false,
+        "shape": {
+         "types": [
+          "boolean"
+         ]
+        }
+       },
+       "automation_hold_revision": {
+        "required": false,
+        "shape": {
+         "types": [
+          "integer"
+         ]
+        }
+       },
        "branch": {
         "required": true,
         "shape": {

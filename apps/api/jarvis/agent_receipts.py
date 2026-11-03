@@ -68,6 +68,12 @@ def lookup(db, owner, action_id):
     states = {c.status for c in commands if c.status != "superseded"}
     status = ("uncertain" if "uncertain" in states else "failed" if states & {"failed", "rejected", "expired", "canceled"}
               else "queued" if states & {"deferred", "queued", "sent", "acked"} else "delivered" if states else "saved")
+    direct = [command for command in commands if (command.payload or {}).get("mode") == "direct"]
+    stages = [((command.outcome or {}).get("result") or {}).get("receipt_stage") or
+              ((command.outcome or {}).get("result") or {}).get("receipt") or
+              ("uncertain" if command.status == "uncertain" else "handed_to_harness" if command.status == "executed" else "saved")
+              for command in direct]
     return encode({"action_id": str(action_id), "run_id": receipt.run_id, "kind": receipt.kind,
                    "status": status, "terminal": status != "queued", "result": receipt.result,
+                   **({"delivery_stage": stages[-1]} if stages else {}),
                    "commands": [{"op_id": c.op_id, "kind": c.kind, "status": c.status, "outcome": c.outcome} for c in commands]})

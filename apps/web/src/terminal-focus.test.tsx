@@ -16,7 +16,7 @@ const detail = (id: string, values: Partial<RunDetail> = {}): RunDetail => ({
 });
 
 function button(html: string, label: string) {
-  const found = [...html.matchAll(/<button[^>]*>(?:(?!<\/button>).)*<\/button>/g)].map(m => m[0]).find(b => b.replace(/<[^>]+>/g, "").trim() === label);
+  const found = [...html.matchAll(/<button[^>]*>(?:(?!<\/button>).)*<\/button>/g)].map(m => m[0]).find(b => b.replace(/<[^>]+>/g, "").trim() === label || b.includes('aria-label="Open terminal in Remotea"') && label === "Open terminal in remotea");
   if (!found) throw new Error("no button " + label);
   return found.slice(0, found.indexOf(">") + 1);
 }

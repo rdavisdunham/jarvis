@@ -127,6 +127,8 @@ def redact(db, run, *, actor, reason="retention", attempts=False):
     if history != before:
         run.history = history[-HISTORY_LIMIT:]
         run.updated_at = now()
+    run.sync_state = {key: value for key, value in (run.sync_state or {}).items()
+                      if key not in ("live_messages", "live_sequences", "live_floors", "automation_pending")}
     for plan in db.scalars(select(AgentRunPlan).where(AgentRunPlan.run_id == run.id)):
         if plan.prd_text not in ("", MARKER) or plan.proposals is not None:
             plan.prd_text = MARKER if plan.prd_text else ""

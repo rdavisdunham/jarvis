@@ -87,9 +87,9 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                # (UserPromptSubmit), not only on the following turn's Stop.
                "prompt",
                # The host's `remotea doctor` summary: in hello (`doctor`), and as a `doctor` frame when it changes.
-               "doctor", "decisions.durable", "commands.durable", "run.pause", "run.cleanup", "run.cleanup.handoff", "role.options", "managed.sessions", "activity"]
+               "doctor", "decisions.durable", "commands.durable", "run.pause", "run.cleanup", "run.cleanup.handoff", "input.direct", "output.live", "role.options", "managed.sessions", "activity"]
 # Command kind -> host capability it needs.
-COMMANDS: dict[str, str] = {"run.cleanup": "run.cleanup", "run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
+COMMANDS: dict[str, str] = {"automation.hold": "input.direct", "run.cleanup": "run.cleanup", "run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
                             "worktrees.scan": "worktrees.scan",
                             # Bring the run's terminal tab to the front in the host's desktop app(s).
@@ -388,6 +388,8 @@ class SnapshotSurface(Status):
     generation: int = Field(default=0, ge=0)
     stop_requested: bool = False
     questions: list[str] = Field(default_factory=list, max_length=100)
+    automation_hold: bool | None = None
+    automation_hold_revision: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def merged(self):
@@ -1166,14 +1168,15 @@ def drain(db, host, epoch):
                 continue
             stale = coordinator.stale(db, row, run) if row.kind not in coordinator.QUIET_COMMANDS else None
             if stale:
-                coordinator.settle_command(db, row, "canceled", stale)
+                coordinator.settle_command(db, row, "superseded" if row.kind == "automation.hold" or
+                    (row.payload or {}).get("origin") == "automation" else "canceled", stale)
                 continue
             if not run.surf and row.kind in ("input", "answer"):
                 continue
             if run.paused and row.kind in ("input", "answer", "spawn", "verify", "run.resume"):
                 continue
             plan = coordinator.frozen(db, run)
-            if row.kind == "input" and plan and plan.approval_status == "pending" and run.plan_pending:
+            if row.kind == "input" and (row.payload or {}).get("mode") != "direct" and plan and plan.approval_status == "pending" and run.plan_pending:
                 continue
         row.status, row.updated_at = "sent", clock
         frames.append({**row.payload, "op_id": row.op_id, "digest": row.digest})
@@ -1414,6 +1417,10 @@ class Link:
             return result
         if kind == "activity":
             return await self.effect(record_activity, Activity.model_validate(frame))
+        if kind == "output.live":
+            return await self.effect(record_live_output, LiveOutput.model_validate(frame))
+        if kind == "input.receipt":
+            return await self.effect(record_input_receipt, InputReceipt.model_validate(frame))
         if kind == "question":
             return await self.effect(question, Question.model_validate(frame))
         if kind == "question.resolved":
@@ -1647,4 +1654,102 @@ def record_activity(db, bot, host_id, frame):
     run.activity = {"kind": frame.kind, "label": redact(frame.label), "at": frame.at.isoformat(),
                     "sequence": frame.sequence, "session_id": frame.session_id, "turn_id": frame.turn_id}
     emit(db, run.owner_id, "agent.changed", run.id)
+    return {"saved": True}
+
+
+class LiveOutput(Frame):
+    run_id: str = Field(max_length=36)
+    generation: int = Field(ge=0)
+    surf: str = Field(min_length=1, max_length=120)
+    incarnation: int = Field(ge=1)
+    session_id: str = Field(min_length=1, max_length=100)
+    turn_id: str | None = Field(default=None, max_length=200)
+    message_id: str = Field(min_length=1, max_length=200)
+    sequence: int = Field(ge=0)
+    at: WireTime
+    kind: Literal["commentary", "response"]
+    text: str = Field(max_length=32768)
+    complete: bool
+    truncated: bool = False
+    bounded: bool = True
+
+
+def record_live_output(db, bot, host_id, frame):
+    run = coordinator.bound(db, host_id, frame.run_id)
+    review = coordinator.review_for_surface(db, run, frame.surf)
+    active_review = review and review.status in ("spawning", "reviewing")
+    surf, incarnation, session_pk = ((review.surf, review.incarnation, review.session_pk) if active_review else
+                                    (run.surf, run.incarnation, run.session_pk))
+    session = db.get(AgentSession, session_pk) if session_pk else None
+    if frame.generation != run.generation or frame.surf != surf or frame.incarnation != incarnation or (
+            not session or session.session_id != frame.session_id) or run.state in coordinator.TERMINAL:
+        return {"ignored": True}
+    messages = list((run.sync_state or {}).get("live_messages") or [])
+    floors = dict((run.sync_state or {}).get("live_floors") or {})
+    key = (frame.session_id, frame.message_id)
+    previous = next((message for message in messages if (message["session_id"], message["message_id"]) == key), None)
+    if previous and previous["sequence"] >= frame.sequence:
+        return {"duplicate": True}
+    # A distinct message may arrive behind another message's newer snapshot. Only
+    # evicted history establishes a session floor; retained messages use their own fence.
+    if previous is None and floors.get(frame.session_id, -1) >= frame.sequence:
+        return {"duplicate": True}
+    value = frame.model_dump(exclude={"t", "id", "v", "conn_epoch"})
+    value["at"], value["text"] = frame.at.isoformat(), redact(frame.text)
+    messages = [message for message in messages if (message["session_id"], message["message_id"]) != key] + [value]
+    messages.sort(key=lambda message: (message["at"], message["sequence"], message["session_id"], message["message_id"]))
+    while len(messages) > 32 or (len(messages) > 1 and sum(len(message["text"].encode()) for message in messages) > 131072):
+        evicted = messages.pop(0)
+        floors[evicted["session_id"]] = max(floors.get(evicted["session_id"], -1), evicted["sequence"])
+    owner = db.get(AgentSession, run.session_pk) if run.session_pk else None
+    retained_sessions = {message["session_id"] for message in messages} | {frame.session_id}
+    if owner:
+        retained_sessions.add(owner.session_id)
+    if run.roles:
+        for live_review in coordinator.live_reviews(db, run):
+            reviewer = db.get(AgentSession, live_review.session_pk) if live_review.session_pk else None
+            if reviewer:
+                retained_sessions.add(reviewer.session_id)
+    floors = {identity: sequence for identity, sequence in floors.items() if identity in retained_sessions}
+    run.sync_state = {**{name: value for name, value in (run.sync_state or {}).items() if name != "live_sequences"},
+                      "live_messages": messages, "live_floors": floors}
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return {"saved": True}
+
+
+class InputReceipt(Frame):
+    run_id: str = Field(max_length=36)
+    generation: int = Field(ge=0)
+    surf: str = Field(min_length=1, max_length=120)
+    incarnation: int = Field(ge=1)
+    input_id: str = Field(min_length=1, max_length=200)
+    session_id: str = Field(min_length=1, max_length=100)
+    turn_id: str | None = Field(default=None, max_length=200)
+    stage: Literal["handed_to_harness", "provider_acknowledged", "uncertain"]
+    at: WireTime
+
+
+def record_input_receipt(db, bot, host_id, frame):
+    run = coordinator.bound(db, host_id, frame.run_id)
+    command = db.scalar(select(AgentCommand).where(AgentCommand.host_id == host_id,
+        AgentCommand.run_id == run.id, AgentCommand.op_id == frame.input_id,
+        AgentCommand.kind == "input").with_for_update())
+    payload = command.payload if command else {}
+    if not command or command.generation != frame.generation or payload.get("surf") != frame.surf or payload.get("incarnation") != frame.incarnation:
+        return {"ignored": True}
+    result = (command.outcome or {}).get("result") or {}
+    known_session = db.get(AgentSession, run.session_pk) if run.session_pk and frame.surf == run.surf else None
+    expected_session = result.get("session_id") or (known_session.session_id if known_session else None)
+    if expected_session and expected_session != frame.session_id:
+        return {"ignored": True}
+    previous = result.get("receipt_stage")
+    if previous == "provider_acknowledged" or previous == frame.stage:
+        return {"duplicate": True}
+    if previous == "uncertain" and frame.stage != "provider_acknowledged":
+        return {"ignored": True}
+    result = {**result, "receipt_stage": frame.stage, "receipt_at": frame.at.isoformat(),
+              "session_id": frame.session_id, "turn_id": frame.turn_id,
+              "provider_ack": "confirmed" if frame.stage == "provider_acknowledged" else "pending"}
+    coordinator.settle_command(db, command, "uncertain" if frame.stage == "uncertain" else "executed", result=result)
+    emit(db, bot.owner_id, "agent.changed", run.id)
     return {"saved": True}

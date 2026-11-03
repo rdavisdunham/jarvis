@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useDialogFocus } from "./ux";
 import { railDot } from "./remotea-model";
@@ -24,11 +24,22 @@ export function RunPanel({ phone }: { phone: boolean }) {
     if (root) root.dataset.runPanel = panel.run ? (panel.collapsed ? "rail" : "open") : "closed";
     return () => { if (root) root.dataset.runPanel = "closed"; };
   }, [panel.run, panel.collapsed]);
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
+  useEffect(() => {
+    const visible = window.visualViewport;
+    if (!phone || !visible || !panel.run || panel.collapsed) { setViewport(null); return; }
+    const update = () => setViewport({ height: visible.height, top: visible.offsetTop });
+    update();
+    visible.addEventListener("resize", update);
+    visible.addEventListener("scroll", update);
+    return () => { visible.removeEventListener("resize", update); visible.removeEventListener("scroll", update); };
+  }, [phone, panel.run, panel.collapsed]);
   if (!panel.run) return null;
   const run = activeRuns.find(r => r.id === panel.run);
   const dot = railDot(run);
   const open = !panel.collapsed;
   return <aside className="run-panel" data-state={open ? "open" : "rail"} aria-label="Agent run panel"
+    style={viewport ? { "--run-viewport-height": `${viewport.height}px`, "--run-viewport-top": `${viewport.top}px` } as CSSProperties : undefined}
     {...(phone && open ? { role: "dialog", "aria-modal": true } : {})}>
     {!open && <button type="button" className={"run-panel-rail tone-" + dot.tone} aria-expanded={false}
       aria-label={"Expand run panel, " + dot.label} title={dot.label} onClick={() => setCollapsed(false)}>

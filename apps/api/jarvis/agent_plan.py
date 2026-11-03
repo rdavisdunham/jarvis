@@ -783,7 +783,7 @@ def review_plan(db, owner, run_id, body, *, actor):
     preface = ("The operator reviewed your proposed changes: accepted " + (", ".join(accepted) or "none") +
                "; kept as written " + (", ".join(kept) or "none") + ". The plan below is what you are judged against.")
     run.sync_state = {**(run.sync_state or {}), "plan_review_preface": preface}
-    coordinator.conclude_planning(db, run, coordinator.frozen(db, run))
+    coordinator.conclude_planning(db, run, coordinator.frozen(db, run), actor=actor)
     from .agent_control import public_run
 
     return public_run(db, run, detail=True)

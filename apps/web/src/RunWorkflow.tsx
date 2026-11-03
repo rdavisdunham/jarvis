@@ -16,7 +16,9 @@ export function useReceipts() { return useSyncExternalStore(subscribeActions, ac
 export function DeliveryReceipt({ receipt }: { receipt?: ActionReceipt }) {
   if (!receipt) return null;
   const labels = { queued: "Queued on this device · waiting for connection", saved: "Saved by Eridani · waiting for agent acknowledgement", delivered: "Delivered to the agent", applied: "Applied by Eridani", uncertain: "Delivery unconfirmed · your response is retained for retry", rejected: receipt.error || "Response was not accepted" };
-  return <p className={"run-delivery delivery-" + receipt.status} role="status">{labels[receipt.status]}{receipt.retention === "tab" ? " · available in this tab only" : ""}{["queued", "uncertain"].includes(receipt.status) && <> · <button type="button" className="text-button" onClick={() => { void postAction(receipt.url, receipt.body).catch(() => {}); }}>Retry delivery</button></>}</p>;
+  const stages = { saved: "Saved by Eridani · waiting for worker runtime", handed_to_harness: "Handed to worker runtime · provider acknowledgement pending", provider_acknowledged: "Provider acknowledged the message", uncertain: "Delivery unconfirmed · review before retrying" };
+  const label = receipt.delivery_stage && receipt.status !== "queued" && receipt.status !== "rejected" ? stages[receipt.delivery_stage] : labels[receipt.status];
+  return <p className={"run-delivery delivery-" + receipt.status} role="status">{label}{receipt.retention === "tab" ? " · available in this tab only" : ""}{["queued", "uncertain"].includes(receipt.status) && <> · <button type="button" className="text-button" onClick={() => { void postAction(receipt.url, receipt.body).catch(() => {}); }}>Retry delivery</button></>}</p>;
 }
 /** Shared visual and delivery language for every request, with controls supplied by the request's type. */
 export function DecisionCard({ title, task, agent, reason, children, receipt, className = "", label }: {
