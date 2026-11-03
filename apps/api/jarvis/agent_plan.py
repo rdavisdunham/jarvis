@@ -55,7 +55,8 @@ class InterviewQuestion(BaseModel):
     header: str = Field(default="", max_length=40)
     options: list[Option] = Field(default_factory=list, max_length=8)
     multi: bool = False
-    free_text: bool = False
+    # Kept for older callers; operators can always write their own answer or add notes.
+    free_text: bool = True
 
 
 class InterviewInput(Input):
@@ -168,14 +169,15 @@ class InterviewAnswers(BaseModel):
     action_id: UUID | None = None
     expected_revision: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
-    # question id -> the chosen option label(s) or free text
+    # question id -> the chosen option label(s) or free text, including optional notes
     answers: dict[str, str | list[str]] = Field(max_length=12)
 
     @model_validator(mode="after")
     def bounded(self):
         for value in self.answers.values():
             items = value if isinstance(value, list) else [value]
-            if len(items) > 8 or any(len(v) > 4000 for v in items):
+            # Up to 4000 characters of notes plus eight 200-character option labels.
+            if len(items) > 8 or any(len(v) > 6000 for v in items):
                 raise ValueError("Answers are too long.")
         return self
 
@@ -340,7 +342,7 @@ def task_interview(db, bot, body):
     questions = []
     for q in body.questions:
         item = q.model_dump()
-        item["free_text"] = q.free_text or not q.options  # A question without options takes free text.
+        item["free_text"] = True  # Every interview accepts an operator's own answer or notes.
         questions.append(item)
     row = AgentInterview(owner_id=run.owner_id, run_id=run.id, generation=run.generation,
                          plan_revision=run.plan_revision, questions=questions,
@@ -369,11 +371,9 @@ def clean_answers(questions, given):
         values = [v.strip() for v in (value if isinstance(value, list) else [value] if value else []) if v and v.strip()]
         if not values:
             raise DomainError("INVALID_ARGUMENT", "Answer every question.", data={"question_id": question["id"]})
-        labels = {o["label"] for o in question.get("options") or []}
         if len(values) > 1 and not question.get("multi"):
             raise DomainError("INVALID_ARGUMENT", "Choose one answer.", data={"question_id": question["id"]})
-        if not question.get("free_text") and any(v not in labels for v in values):
-            raise DomainError("INVALID_ARGUMENT", "Choose from the offered options.", data={"question_id": question["id"]})
+        # Older open interviews may say free_text=false; text is still an operator choice.
         clean[question["id"]] = values if question.get("multi") else values[0]
     if set(given) - {q["id"] for q in questions}:
         raise DomainError("INVALID_ARGUMENT", "Answer the questions that were asked.")

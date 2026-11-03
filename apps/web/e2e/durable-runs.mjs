@@ -64,13 +64,25 @@ try {
   await open(run);
   const interview = view.getByRole("region", { name: "Planning questions", exact: true });
   await expect(interview).toBeVisible();
+  const scopeNotes = "Include charts first.\nKeep the admin widgets unchanged.";
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Or type anything here");
   await interview.getByRole("button", { name: "All widgets", exact: true }).click();
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Add notes");
+  await interview.getByLabel("Answer: Which widgets should we improve?", { exact: true }).fill(scopeNotes);
   await interview.getByLabel("Answer: What latency target?", { exact: true }).fill("50 milliseconds");
   await page.reload();
   await expect(interview.getByLabel("Answer: What latency target?", { exact: true })).toHaveValue("50 milliseconds");
   await expect(interview.getByRole("button", { name: "All widgets", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveValue(scopeNotes);
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Add notes");
+  await expect(interview.getByRole("button", { name: "Send answers", exact: true })).toBeEnabled();
+  const interviewDecisionId = (await readRun(run)).interviews[0].id;
+  const interviewSubmit = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith(`/remotea/decisions/${interviewDecisionId}/respond`));
   await interview.getByRole("button", { name: "Send answers", exact: true }).click();
+  expect((await interviewSubmit).postDataJSON().answers).toEqual({ scope: `All widgets\n\nNotes: ${scopeNotes}`, target: "50 milliseconds" });
   await expect.poll(async () => (await readRun(run)).interviews[0].status).toBe("answered");
+  expect((await readRun(run)).interviews[0].answers).toEqual({ scope: `All widgets\n\nNotes: ${scopeNotes}`, target: "50 milliseconds" });
+  await expect.poll(async () => (await readRun(run)).commands.some(command => command.kind === "input" && command.text?.includes("All widgets") && command.text.includes("Include charts first.") && command.text.includes("Keep the admin widgets unchanged."))).toBeTruthy();
   mark("shared_interview_and_reloaded_drafts", { run_id: run, task_id: task.id });
 
   const planText = "Measure widget latency, implement the focused fix, and open a pull request.";

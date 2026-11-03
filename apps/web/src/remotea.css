@@ -45,6 +45,7 @@
 .remotea-question fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
 .remotea-question legend { padding: 0; color: var(--ink); overflow-wrap: anywhere; }
 .remotea-question input { width: 100%; }
+.remotea-interview textarea { width: 100%; min-height: 72px; resize: vertical; font: inherit; line-height: 1.5; }
 .remotea-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .remotea-plan summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
 .remotea-plan .step-done { color: var(--ink-3); text-decoration: line-through; }

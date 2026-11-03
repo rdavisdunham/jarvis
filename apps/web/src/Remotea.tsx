@@ -359,7 +359,7 @@ export function InterviewForm({ interview, onDone, run }: { interview: Interview
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   };
   return <DecisionCard title="Planning questions" task={run?.task?.title} agent={run ? actorChip(run) : undefined} className="remotea-interview" receipt={receipts.filter(r => r.url.includes(interview.id)).at(-1)}>
-    <p className="footnote">The agent needs these answers to write the plan. Pick an option or type your own.</p>
+    <p className="footnote">The agent needs these answers to write the plan. Choose options and add notes, or type your own answer.</p>
     {interview.questions.map(q => <fieldset key={q.id} disabled={busy || run?.controller === "terminal"}>
       <legend>{q.header ? <strong>{q.header}: </strong> : null}{q.question}{q.multi && <small> (choose any)</small>}</legend>
       {!!q.options.length && <div className="remotea-choices">{orderOptions(q.options).map(o => {
@@ -368,7 +368,8 @@ export function InterviewForm({ interview, onDone, run }: { interview: Interview
           className={"btn btn-sm" + (on ? " btn-primary" : recommended(o) ? " btn-recommended" : "")}
           onClick={() => toggle(q.id, o.label, q.multi)}>{o.label}</button>;
       })}</div>}
-      <input aria-label={"Answer: " + q.question} placeholder={q.options.length ? "Or type an answer" : "Your answer"}
+      <textarea aria-label={"Answer: " + q.question} rows={3} maxLength={4000}
+        placeholder={q.options.some(option => (picked[q.id] ?? []).includes(option.label)) ? "Add notes" : "Or type anything here"}
         value={typed[q.id] ?? ""} onChange={e => setTyped({ ...typed, [q.id]: e.target.value })}/>
     </fieldset>)}
     <button className="btn btn-primary btn-sm" disabled={!answers || busy || run?.controller === "terminal"} onClick={() => void send()}>{busy ? "Sending…" : "Send answers"}</button>

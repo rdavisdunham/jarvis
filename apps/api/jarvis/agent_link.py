@@ -87,9 +87,9 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                # (UserPromptSubmit), not only on the following turn's Stop.
                "prompt",
                # The host's `remotea doctor` summary: in hello (`doctor`), and as a `doctor` frame when it changes.
-               "doctor", "decisions.durable", "commands.durable", "run.pause", "role.options", "managed.sessions", "activity"]
+               "doctor", "decisions.durable", "commands.durable", "run.pause", "run.cleanup", "run.cleanup.handoff", "role.options", "managed.sessions", "activity"]
 # Command kind -> host capability it needs.
-COMMANDS: dict[str, str] = {"run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
+COMMANDS: dict[str, str] = {"run.cleanup": "run.cleanup", "run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
                             "worktrees.scan": "worktrees.scan",
                             # Bring the run's terminal tab to the front in the host's desktop app(s).
@@ -375,6 +375,8 @@ class Status(Surface):
     paused: bool | None = None
     pause_reason: Literal["permission_denied", "receipt_uncertain"] | None = None
     attention: dict | None = None
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int | None = Field(default=None, ge=0)
 
 
 class SnapshotSurface(Status):
@@ -401,6 +403,8 @@ class Exit(Surface):
     code: int | None = None
     # Stage F remotea: why a run surface ended without a resume (a lost run is reported as exit, code -1).
     reason: str = Field(default="", max_length=300)
+    run_id: str | None = Field(default=None, max_length=36)
+    generation: int | None = Field(default=None, ge=0)
 
 
 class Snapshot(Frame):
@@ -745,15 +749,27 @@ def status(db, bot, host_id, frame):
 
 def attach_by_surface(db, host_id, row, frame):
     """A status naming the provider session on a run's spawned surface confirms that run's start."""
-    if row.run_id or not (frame.surf and frame.tool and frame.session_id):
+    if row.run_id or not (frame.surf and frame.tool and frame.session_id) or frame.state not in LIVE_STATES:
         return
     from .session_models import AgentRun
 
-    run = db.scalar(select(AgentRun).where(AgentRun.host_id == host_id, AgentRun.surf == frame.surf,
-                                           AgentRun.session_pk.is_(None), AgentRun.state == "spawning"))
-    if run is not None:
-        coordinator.attach(db, host_id, run.id, run.generation, frame.tool, frame.session_id,
-                           surf=frame.surf, incarnation=frame.incarnation)
+    query = select(AgentRun).where(AgentRun.host_id == host_id, AgentRun.session_pk.is_(None),
+                                  AgentRun.state.in_(("spawning", "handing_off", "needs_you")))
+    if frame.run_id:
+        query = query.where(AgentRun.id == frame.run_id)
+    candidates = db.scalars(query.with_for_update())
+    for run in candidates:
+        if frame.run_id and frame.run_id != run.id:
+            continue
+        handoff = (run.sync_state or {}).get("handoff") or {}
+        if handoff and not handoff.get("done"):
+            if frame.surf != coordinator.handoff_surf(run) or frame.generation != run.generation:
+                continue
+        elif run.state != "spawning" or run.surf != frame.surf:
+            continue
+        coordinator.attach(db, host_id, run.id, frame.generation if frame.generation is not None else run.generation,
+                           frame.tool, frame.session_id, surf=frame.surf, incarnation=frame.incarnation)
+        break
 
 
 def exited(db, bot, host_id, frame):
@@ -766,7 +782,7 @@ def exited(db, bot, host_id, frame):
                           frame.incarnation, frame.surf, detail)
     if applied:
         said = "; ".join(filter(None, (f"exit code {frame.code}" if frame.code is not None else "", frame.reason)))
-        coordinator.on_exit(db, row, detail=said, host_id=host_id)
+        coordinator.on_exit(db, row, detail=said, host_id=host_id, frame=frame)
     return {"session_id": row.id, "applied": applied}
 
 
@@ -1205,7 +1221,7 @@ def acked(db, host_id, frame):
         from .session_models import AgentRun
 
         run = db.get(AgentRun, row.run_id, with_for_update=True)
-        if run is not None and not run.surf:
+        if run is not None and not run.surf and coordinator.current_spawn(run, row, facts["surf"]):
             run.surf, run.incarnation = str(facts["surf"])[:120], int(facts.get("incarnation") or 0)
 
 

@@ -78,7 +78,7 @@ SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2),
+       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
        "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
@@ -230,9 +230,11 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
     emit(db, run.owner_id, "agent.changed", run.id, run.state_revision)
     summaries.touch(db, run)
     if to in TERMINAL:
+        from . import agent_cleanup
         from .migration_numbers import on_run_end
 
         on_run_end(db, run)  # Stopped, failed or capped: the reserved migration number goes back if it can.
+        agent_cleanup.queue(db, run)
     if to == "completed":
         from .agent_sync import queue_comment
 
@@ -401,13 +403,23 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     from .agent_link import digest, notify_host
     from .agent_receipts import action_context
 
-    if run and kind not in QUIET_COMMANDS and kind != "worktrees.scan":
+    if kind == "run.cleanup":
+        from . import agent_cleanup
+
+        if body.get("scope") == "retired_planner":
+            host = db.get(AgentHost, host_id or run.host_id) if run else None
+            if not agent_cleanup.permits_retired(run, body) or not host or "run.cleanup.handoff" not in ((host.caps or {}).get("caps") or []):
+                raise DomainError("HANDOFF_UNCONFIRMED", "Only a confirmed separate worker can retire its planner.", 409)
+        elif run is None or run.state not in TERMINAL:
+            raise DomainError("RUN_ACTIVE", "Only an ended run can close its terminal sessions.", 409)
+    if run and kind not in QUIET_COMMANDS and kind not in ("worktrees.scan", "run.cleanup"):
         ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
     indefinite = kind in ("input", "answer", "run.pause", "run.resume") or (
         kind == "spawn" and run and (run.sync_state or {}).get("execution_mode") == "managed")
-    expires = None if durable and indefinite else expires_at or now() + (ttl or TTL[kind])
+    cleanup = bool(kind == "run.cleanup" and host and "run.cleanup" in ((host.caps or {}).get("caps") or []))
+    expires = None if cleanup or durable and indefinite else expires_at or now() + (ttl or TTL[kind])
     op_id = op_id or f"{kind}-{uuid.uuid4()}"
     frame = {"t": kind, "command_id": op_id, **({"run_id": run.id, "generation": run.generation, "plan_revision": run.plan_revision} if run else {}),
              **body, "expires_at": epoch_ms(expires)}
@@ -462,6 +474,17 @@ def on_outcome(db, row, state, detail="", result=None):
     if run is None:
         return
     role = (row.payload or {}).get("role")
+    if (row.kind in ("spawn", "stop") or row.kind == "input" and state == "executed") and result and result.get("surf"):
+        from . import agent_cleanup
+
+        agent_cleanup.remember(run, result["surf"], result.get("incarnation") or (row.payload or {}).get("incarnation"),
+                               result.get("generation") or (row.generation if row.kind == "spawn" else None),
+                               "exited" if row.kind == "stop" and result.get("exited") else None)
+        if row.kind == "input" and state == "executed":
+            agent_cleanup.confirm_handoff(run, result["surf"],
+                                          result.get("incarnation") or (row.payload or {}).get("incarnation"),
+                                          result.get("generation"))
+        agent_cleanup.queue(db, run)
     note(run, "outcome", kind=row.kind, op_id=row.op_id, state=state, **({"detail": detail[:300]} if detail else {}),
          **({"role": role} if role else {}))
     emit(db, run.owner_id, "agent.changed", run.id)
@@ -469,6 +492,8 @@ def on_outcome(db, row, state, detail="", result=None):
         return review_outcome(db, run, row, state, detail, result or {})
     if row.kind == "stop" and role == "planner":
         return  # The retired planner's surface (handoff): whatever the host did with it, the worker owns the run now.
+    if row.kind == "spawn" and not current_spawn(run, row, (result or {}).get("surf")):
+        return  # SessionStart can attach before its spawn receipt; a retired planner cannot reclaim the worker's run.
     if row.kind == "verify":
         if state != "executed":  # The result arrives as verify.result; a refusal is a non-pass.
             attempt = db.get(AgentAttempt, (row.payload or {}).get("attempt_id"), with_for_update=True)
@@ -476,7 +501,7 @@ def on_outcome(db, row, state, detail="", result=None):
                 settle_verify(db, run, attempt, "uncertain" if state == "uncertain" else "refused",
                               {"detail": detail[:300]})
         return
-    if row.kind == "worktrees.scan":
+    if row.kind in ("worktrees.scan", "run.cleanup"):
         return  # Only a request for fresh evidence: the held judge's wait bounds it, whatever the host did.
     if state == "uncertain" and run.state not in TERMINAL and run.state != "stopping":
         transition(db, run, "needs_you", reason="delivery_uncertain", detail=detail)
@@ -549,7 +574,8 @@ def finish(db, run, *, detail=""):
     run.sync_state = {k: v for k, v in (run.sync_state or {}).items()
                       if k not in ("automatic_pause", "host_attention", "paused_since", "operator_paused")}
     transition(db, run, run.stop_final if run.stop_final in TERMINAL else "stopped", reason=run.stop_reason, detail=detail)
-    for row in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.status.in_(("queued", "deferred")))):
+    for row in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind != "run.cleanup",
+                                                    AgentCommand.status.in_(("queued", "deferred")))):
         settle_command(db, row, "canceled", "the run settled")
     run.run_token_hash = None
     return run
@@ -602,6 +628,16 @@ def run_spawn(db, run):
                  if (c.payload or {}).get("role") != "reviewer"), None)
 
 
+def current_spawn(run, row, surf=None):
+    """A receipt may bind only the run's current role/attempt, never a retired planner or reviewer."""
+    payload = row.payload or {}
+    if payload.get("role") == "reviewer":
+        return False
+    handoff = (run.sync_state or {}).get("handoff") or {}
+    return not handoff or (payload.get("role") == "worker" and payload.get("attempt") == handoff.get("attempt")
+                           and (not surf or surf == handoff_surf(run)))
+
+
 def review_spawns(db, run, review, statuses):
     return [c for c in db.scalars(select(AgentCommand).where(
         AgentCommand.run_id == run.id, AgentCommand.kind == "spawn", AgentCommand.status.in_(statuses)))
@@ -644,7 +680,7 @@ def mark_in_progress(db, run):
             note(run, "sync_failed", code=outcome.get("code"))
 
 
-def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="", incarnation=None):
+def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="", incarnation=None, confirmed=True):
     """Bind the provider session the host confirmed; the run's observed start."""
     run = bound(db, host_id, run_id)
     if generation != run.generation and not run.session_pk:
@@ -653,9 +689,12 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
         return run
     row = sessions.claim(db, run.owner_id, sessions_tool(tool), provider_session_id)
     db.flush()
+    from . import agent_cleanup
+
     review = review_for_surface(db, run, surf) if surf else None
     if review is not None:
         # A reviewer session (hyperplan): it reads and reviews, it never owns the run.
+        agent_cleanup.remember(run, surf, incarnation, generation)
         review.session_pk, row.host_id = row.id, host_id
         if incarnation is not None:
             review.incarnation = incarnation
@@ -667,6 +706,7 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
     handoff = (run.sync_state or {}).get("handoff") or {}
     if not run.session_pk and handoff and not handoff.get("done") and surf != handoff_surf(run):
         return run  # Only the worker spawned for this handoff may take the run (not the retired planner).
+    agent_cleanup.remember(run, surf, incarnation, generation)
     row.run_id, row.host_id = run.id, host_id
     if row.binding_source not in ("explicit", "manual"):
         row.task_id, row.record_id = run.task_id, sessions.record_for_task(db, run.owner_id, run.task_id)
@@ -676,6 +716,9 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
     if incarnation is not None:
         run.incarnation = incarnation
     if run.session_pk:
+        if confirmed:
+            agent_cleanup.confirm_handoff(run, surf, incarnation, generation)
+            agent_cleanup.queue(db, run)
         return run
     for spawn in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id, AgentCommand.kind == "spawn",
                                                        AgentCommand.status.in_(("queued", "sent")))):
@@ -691,6 +734,9 @@ def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="
         run.sync_state = {**(run.sync_state or {}), "handoff": {**handoff, "done": True, "attached_at": now().isoformat()}}
         if run.state == "handing_off":
             transition(db, run, "executing", reason="handoff")
+        if confirmed:
+            agent_cleanup.confirm_handoff(run, surf, incarnation, generation)
+            agent_cleanup.queue(db, run)
     elif run.state == "spawning":
         # No frozen plan yet: the interview phase (a task without a PRD), or planning for a hyperplan run that has one.
         transition(db, run, "planning" if run.plan_pending else "executing" if run.plan_revision else start_phase(run), reason="started")
@@ -799,7 +845,12 @@ def owns(run, row):
 
 def on_status(db, row, frame, host_id=None):
     run = run_for_session(db, row, host_id=host_id)
-    if run is None or run.state in TERMINAL:
+    if run is None:
+        return
+    from . import agent_cleanup
+
+    agent_cleanup.observed(db, run, frame, exited=frame.state == "exited")
+    if run.state in TERMINAL:
         return
     if getattr(frame, "controller", None) == "terminal":
         review = review_for_surface(db, run, frame.surf) if frame.surf else None
@@ -826,8 +877,12 @@ def on_status(db, row, frame, host_id=None):
         on_exit(db, row, detail=frame.reason, host_id=host_id)
 
 
-def on_exit(db, row, detail="", host_id=None):
+def on_exit(db, row, detail="", host_id=None, frame=None):
     run = run_for_session(db, row, host_id=host_id)
+    if run is not None and frame is not None:
+        from . import agent_cleanup
+
+        agent_cleanup.observed(db, run, frame, exited=True)
     if run is None or run.state in TERMINAL or not owns(run, row):
         return
     if run.state == "stopping":
@@ -1371,12 +1426,16 @@ def hand_off(db, run, plan, *, actor=None):
     """The worker differs from the planner: stop the planner's surface, revoke its token, spawn the worker on the
     frozen plan with the decisions digest, and wait for exactly that attempt to attach (planning → handing_off)."""
     worker = worker_role(run)
+    from . import agent_cleanup
+
+    planner_binding = agent_cleanup.binding(((run.sync_state or {}).get("cleanup_surfaces") or {}).get(run.surf))
     if run.surf:
         command(db, run, "stop", {"surf": run.surf, "incarnation": run.incarnation, "mode": "kill", "role": "planner"})
     run.attempt += 1
     run.sync_state = {**(run.sync_state or {}), "handoff": {
         "attempt": run.attempt, "surf": surf_for(run.id, run.generation, run.attempt), "at": now().isoformat(),
-        "from_session_pk": run.session_pk, "from_surf": run.surf, "planner": {"harness": run.tool, "model": run.model},
+        "from_session_pk": run.session_pk, "from_surf": run.surf, "from_binding": planner_binding,
+        "planner": {"harness": run.tool, "model": run.model},
         "worker": {"harness": worker["harness"], "model": worker.get("model") or run.model}}}
     run.session_pk, run.surf, run.incarnation = None, "", 0
     run.tool, run.model = worker["harness"], worker.get("model") or run.model
@@ -2350,6 +2409,18 @@ def stale(db, row, run):
     """Why a queued command must not run after a reconnect, or None (C08)."""
     if row.kind in QUIET_COMMANDS:
         return "a focus request does not outlive its connection"
+    if row.kind == "run.cleanup":
+        from . import agent_cleanup
+
+        if (row.payload or {}).get("scope") == "retired_planner":
+            host = db.get(AgentHost, row.host_id)
+            if not agent_cleanup.permits_retired(run, row.payload or {}) or not host or "run.cleanup.handoff" not in ((host.caps or {}).get("caps") or []):
+                return "planner cleanup requires the confirmed separate worker binding"
+        elif run is None or run.state not in TERMINAL or (row.payload or {}).get("terminal_state") != run.state:
+            return "cleanup requires the recorded terminal run state"
+        if row.host_id != run.host_id or row.generation != run.generation:
+            return "cleanup belongs to a different host or run generation"
+        return None  # The host verifies each exact binding and protects operator-owned processes.
     if run is None:
         return None
     if (run.sync_state or {}).get("controller") == "terminal" and row.kind not in QUIET_COMMANDS and row.kind != "worktrees.scan":
@@ -2382,6 +2453,9 @@ def stale(db, row, run):
 
 def reconcile(db, owner, host_id, surfaces, journal=None):
     """After welcome: settle each of the host's unsettled runs against what the host has, reject stale commands."""
+    from . import agent_cleanup
+
+    agent_cleanup.snapshot(db, owner, host_id, surfaces)
     by_run, by_surf = {}, {s.surf: s for s in surfaces if s.surf}
     for surface in surfaces:
         if surface.run_id:
@@ -2404,12 +2478,18 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
             reconcile_reviews(db, run, reviews, by_surf)
         handoff = (run.sync_state or {}).get("handoff") or {}
         retired = {r.surf for r in reviews if r.surf} | ({handoff["from_surf"]} if handoff.get("from_surf") else set())
-        surface = next((x for x in mine if run.surf and x.surf == run.surf), None) \
-            or next((x for x in mine if x.surf not in retired), None)
+        if handoff and not handoff.get("done"):
+            surface = by_surf.get(handoff_surf(run))
+            if run.surf in retired and not run.session_pk:
+                run.surf, run.incarnation = "", 0  # Repair a previously stored late planner receipt.
+        else:
+            surface = next((x for x in mine if run.surf and x.surf == run.surf and x.surf not in retired), None) \
+                or next((x for x in mine if x.surf not in retired), None)
         spawn = run_spawn(db, run)
+        spawned_surf = surf_for(run.id, spawn.generation, (spawn.payload or {}).get("attempt") or run.attempt) if spawn else None
         if surface is None and spawn is not None:
-            surface = by_surf.get(surf_for(run.id, spawn.generation, (spawn.payload or {}).get("attempt") or run.attempt))
-        if surface is not None and spawn is not None and spawn.status in ("queued", "sent"):
+            surface = by_surf.get(spawned_surf) if spawned_surf not in retired else None
+        if surface is not None and spawn is not None and surface.surf == spawned_surf and spawn.status in ("queued", "sent"):
             # The host has the spawned surface, so it took the spawn even if its ack was lost.
             spawn.status, spawn.outcome = "acked", {"state": "accepted", "surf": surface.surf, "via": "reconcile"}
         if surface is not None and not run.surf:
@@ -2422,7 +2502,7 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
         if surface is not None and surface.session_id and not run.session_pk:
             try:
                 attach(db, host_id, run.id, surface.generation, surface.tool, surface.session_id,
-                       surf=surface.surf, incarnation=surface.incarnation)
+                       surf=surface.surf, incarnation=surface.incarnation, confirmed=present)
             except DomainError:
                 pass
         if present:

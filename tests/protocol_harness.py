@@ -173,9 +173,10 @@ class EridaniApp:
 # ---------------------------------------------------------------- the recording relay
 
 
-OLD_HOST_CAPS_DROPPED = {"prompt", "worktrees.scan", "digest", "context.scope", "verify.auto"}
+OLD_HOST_CAPS_DROPPED = {"prompt", "worktrees.scan", "digest", "context.scope", "verify.auto",
+                         "run.cleanup", "run.cleanup.handoff"}
 OLD_HOST_FIELDS_DROPPED = {"caps_version", "build_sha", "build_dirty", "hook_version"}
-OLD_ERIDANI_CAPS_DROPPED = {"prompt", "context.scope"}
+OLD_ERIDANI_CAPS_DROPPED = {"prompt", "context.scope", "run.cleanup", "run.cleanup.handoff"}
 
 
 def older_host(hello):

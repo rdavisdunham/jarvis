@@ -103,7 +103,7 @@ def test_interview_answers_planning_and_execution_after_settle(host):  # noqa: F
     assert turn(run_id, 1) == ("interviewing", "started")  # The interview turn ends; the operator has the move.
     with session_scope() as db, pytest.raises(DomainError) as bad:
         agent_plan.answer_interview(db, OWNER, asked["interview_id"], agent_plan.InterviewAnswers(
-            answers={"scope": "Some", "budget": "50ms", "where": ["Web"]}), actor=HUMAN)
+            answers={"scope": ["All", "Only charts"], "budget": "50ms", "where": ["Web"]}), actor=HUMAN)
     assert bad.value.code == "INVALID_ARGUMENT"
     with session_scope() as db:
         answered = agent_plan.answer_interview(db, OWNER, asked["interview_id"], agent_plan.InterviewAnswers(

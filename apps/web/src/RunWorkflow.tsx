@@ -67,8 +67,12 @@ export function activityStatus(run: Run, now = Date.now()): { label: string; ani
   const attention = workflowAttention(run);
   if (attention) return { label: ["Paused", "Terminal has control", "Terminal session ended", "Permission needs review", "Delivery unconfirmed"].includes(attention) ? attention : "Waiting for you", animate: false };
   const activity = run.activity;
-  if (!activity || !activity.at || now - Date.parse(activity.at) > 90_000 || !Number.isFinite(Date.parse(activity.at))) return { label: "Activity unconfirmed", animate: false };
+  if (!activity || !activity.at || !Number.isFinite(Date.parse(activity.at))) return { label: "Activity unconfirmed", animate: false };
   const labels: Record<string, string> = { thinking: "Thinking…", deliberating: "Deliberating…", reading: "Reading files", searching: "Reading files", editing: "Editing", testing: "Running tests", tool: "Using tools" };
+  if (now - Date.parse(activity.at) > 90_000) {
+    const previous = activity.label || (labels[activity.kind] ?? activity.kind.replaceAll("_", " ")).replace(/…$/, "").toLowerCase();
+    return { label: `No recent output · last reported ${previous}`, animate: false };
+  }
   return { label: activity.label || labels[activity.kind] || "Working", animate: ["thinking", "deliberating", "reading", "searching", "editing", "testing", "tool"].includes(activity.kind) };
 }
 export function RunActivity({ run, now }: { run: Run; now?: number }) {

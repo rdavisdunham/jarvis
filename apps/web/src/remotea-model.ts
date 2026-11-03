@@ -491,9 +491,11 @@ export function interviewAnswers(interview: Interview, picked: Record<string, st
     const labels = new Set(q.options.map(o => o.label));
     const chosen = (picked[q.id] ?? []).filter(l => labels.has(l));
     const text = (typed[q.id] ?? "").trim();
-    const values = [...chosen, ...(text ? [text] : [])];  // Typing an answer is always allowed.
-    if (!values.length || (!q.multi && values.length > 1)) return null;
-    answers[q.id] = q.multi ? values : values[0];
+    if ((!chosen.length && !text) || (!q.multi && chosen.length > 1)) return null;
+    if (chosen.length && text) {
+      const answer = `${q.multi ? "Selected options: " : ""}${chosen.join("; ")}\n\nNotes: ${text}`;
+      answers[q.id] = q.multi ? [answer] : answer;
+    } else answers[q.id] = q.multi ? (chosen.length ? chosen : [text]) : (chosen[0] ?? text);
   }
   return answers;
 }

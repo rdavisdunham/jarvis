@@ -35,6 +35,14 @@
      ]
     }
    },
+   "generation": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
    "id": {
     "required": true,
     "shape": {
@@ -88,6 +96,14 @@
     "shape": {
      "types": [
       "integer"
+     ]
+    }
+   },
+   "run_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
      ]
     }
    },
