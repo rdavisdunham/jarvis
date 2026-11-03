@@ -665,6 +665,7 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         if manual_plan:
             plan = freeze(db, owner, run, task)
             run.plan_pending = True
+            migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
             prompt = ("The existing task plan below is awaiting human approval. Read it without editing code; "
                       "wait for the approval decision before execution.\n\n" + coordinator.render_plan(db, run, plan))[:PROMPT_CHARS]
     else:
@@ -1179,6 +1180,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "turn_cap": run.turn_cap, "paused": bool(run.paused), "effort": run.effort,
         "execution_mode": (run.sync_state or {}).get("execution_mode", "legacy"),
         "controller": (run.sync_state or {}).get("controller", "eridani"),
+        "pause_reason": (run.sync_state or {}).get("automatic_pause"),
+        "host_attention": (run.sync_state or {}).get("host_attention"),
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
@@ -1977,7 +1980,7 @@ def proposal(db, owner, result):
     for problem in ready["problems"]:
         if problem.get("blocking", True):
             told.append(f"Tell the owner: {problem['message']} ({problem['code']}) Confirming fails until that is "
-                        "fixed; the proposal stays open until it expires.")
+                        "fixed; the proposal stays open until you confirm or decline it.")
         else:
             told.append(f"Tell the owner: {problem['message']} ({problem['code']}) The run can still start, but its "
                         "verification will not pass until that is fixed on the host.")
@@ -2038,6 +2041,10 @@ def propose(db, owner, account, tool, args, actor):
         arguments, run_id = {"task_id": task.id, "harness": args.harness}, None
         if args.model:
             arguments["model"] = args.model
+        if args.effort:
+            arguments["effort"] = args.effort
+        if args.permission_profile:
+            arguments["permission_profile"] = args.permission_profile
         # Hyperplan roles travel with the proposal; the summary names them so the owner's yes covers them.
         extras = []
         if args.reviewer is not None:
@@ -2485,7 +2492,7 @@ def spoken_run(db, run):
     spoken = {"run_id": run.id, "task": item["task"], "state": run.state, "why": item["reason_text"],
               # What the agent is doing now in one line, as of summary_at; say it as "the agent is …".
               "doing": run.summary or None, "doing_as_of": run.summary_at if run.summary else None,
-              "turns": f"{run.turn_count}/{run.turn_cap}", "tool": run.tool, "branch": run.branch,
+              "turns": f"{run.turn_count}/{run.turn_cap}" if run.turn_cap else str(run.turn_count), "tool": run.tool, "branch": run.branch,
               "host_connected": (item["host"] or {}).get("connected"), "since": item["state_since"],
               "questions": questions,
               "interview": {k: v for k, v in public_interview(interview).items() if k in ("id", "questions")}

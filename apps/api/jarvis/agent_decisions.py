@@ -64,7 +64,7 @@ def present(db, row, kind, run=None):
                                    "proposals": row.proposals, "completion_policy": row.completion_policy},
                        "actions": ["review"] if row.proposals else ["approve", "revise"]})
     payload = (control.public_question(row) if kind == "question" else agent_plan.public_interview(row)
-               if kind == "interview" else control.public_pending(row))
+               if kind == "interview" else {**control.public_pending(row), **control.readiness(db, row.owner_id, row)})
     status = row.status
     if run and kind != "control" and (row.generation != run.generation or row.plan_revision != run.plan_revision):
         status = "superseded"
@@ -194,12 +194,25 @@ def set_paused(db, owner, run_id, body, paused, *, actor):
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
     if not coordinator.host_cap(db, run.host_id, "run.pause"):
         raise DomainError("HOST_TOO_OLD", "Update Remotea to pause and resume runs.", 409)
+    automatic = (run.sync_state or {}).get("automatic_pause")
+    if not paused and automatic:
+        raise DomainError(automatic.upper(), coordinator.REASONS[automatic], 409)
+    state = run.sync_state or {}
+    run.sync_state = {**state, "operator_paused": paused,
+                      **({"paused_since": state.get("paused_since") or now().isoformat()} if paused else {})}
+    if not paused:
+        coordinator.resume_paused_timers(db, run)
+    session = db.get(coordinator.AgentSession, run.session_pk) if run.session_pk else None
+    if session and session.surf == run.surf:
+        run.incarnation = max(run.incarnation, session.incarnation)
     run.paused = paused
+    coordinator.sync_wait(db, run)
     run.state_revision += 1
     run.updated_at = now()
     coordinator.note(run, "paused" if paused else "resumed", actor=actor.record())
-    coordinator.command(db, run, "run.pause" if paused else "run.resume",
-                        {"surf": run.surf, "incarnation": run.incarnation})
+    if run.surf:
+        coordinator.command(db, run, "run.pause" if paused else "run.resume",
+                            {"surf": run.surf, "incarnation": run.incarnation})
     for review in coordinator.live_reviews(db, run):
         if review.surf:
             coordinator.command(db, run, "run.pause" if paused else "run.resume",

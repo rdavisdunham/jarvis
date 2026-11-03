@@ -907,6 +907,9 @@ def set_criteria(db, owner, run_id, body, *, actor):
 def submit_plan(db, bot, body):
     """The submission receipt is committed atomically with the visible plan and approval decision."""
     if body.submission_id is None:
+        run = coordinator.run_for_token(db, bot.owner_id, body.run_token) if body.run_token else None
+        if run and (run.sync_state or {}).get("execution_mode") == "managed":
+            raise DomainError("SUBMISSION_ID_REQUIRED", "Include a stable submission_id UUID and reuse it across retries.", 400)
         return _submit_plan(db, bot, body)
     from . import agent_receipts
     if not body.run_token:

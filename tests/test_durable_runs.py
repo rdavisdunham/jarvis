@@ -284,7 +284,10 @@ def test_managed_planner_defaults_to_host_model_and_approval_spawns_separate_wor
                            surf=coordinator.surf_for(run_id, 1, 1), incarnation=1)
         assert control.public_run(db, row)["structured_answers"]
         planner_token = coordinator.run_token(row)
-    call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN)
+    with pytest.raises(DomainError) as missing:
+        call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN)
+    assert missing.value.code == "SUBMISSION_ID_REQUIRED"
+    call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, submission_id=uuid4(), **PLAN)
     result, _ = respond(f"plan:{run_id}:1")
     assert result["result"]["state"] == "handing_off"
     with session_scope() as db:
@@ -449,3 +452,39 @@ def test_queued_text_survives_phase_revision_but_steer_and_approval_remain_fence
         receipt = agent_plan.task_plan(db, BOT, agent_plan.PlanQuery(submission_id=submission_id,
                                                                     run_token="ert_retired_token"))
         assert receipt["submission"]["run_id"] == run_id and receipt["submission"]["kind"] == "submit_plan"
+
+
+def test_late_exact_receipt_clears_only_automatic_pause_and_denial_cannot_be_overridden(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        row = db.get(control.AgentSession, run.session_pk)
+        frame = agent_link.Status(surf=run.surf, incarnation=1, state="needs_you", since=now(), paused=True,
+            pause_reason="receipt_uncertain", attention={"kind": "receipt_uncertain", "question_id": "q"})
+        coordinator.on_status(db, row, frame, host_id=durable.id)
+        assert run.paused and control.public_run(db, run)["pause_reason"] == "receipt_uncertain"
+        pause = decisions.PauseInput(action_id=uuid4(), expected_revision=run.state_revision)
+        decisions.set_paused(db, OWNER, run_id, pause, True, actor=HUMAN)
+        coordinator.clear_receipt_pause(db, run, "q")
+        assert run.paused and run.sync_state["operator_paused"] and not run.sync_state.get("automatic_pause")
+        denied = frame.model_copy(update={"pause_reason": "permission_denied", "attention": {"kind": "permission_denied"}})
+        coordinator.on_status(db, row, denied, host_id=durable.id)
+        resume = decisions.PauseInput(action_id=uuid4(), expected_revision=run.state_revision)
+        with pytest.raises(DomainError) as forbidden:
+            decisions.set_paused(db, OWNER, run_id, resume, False, actor=HUMAN)
+        assert forbidden.value.code == "PERMISSION_DENIED" and run.paused
+
+
+def test_pause_resume_rebinding_uses_new_operation_after_verified_incarnation_change(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        run.paused = False
+        old = coordinator.command(db, run, "run.resume", {"surf": run.surf, "incarnation": 1})
+        original_digest = old.digest
+        run.incarnation = 2  # A verified host snapshot arrived after this intent was saved.
+        assert coordinator.refresh_control_fence(db, old, run)
+        newer = db.scalar(select(AgentCommand).where(AgentCommand.op_id == old.outcome["superseded_by"]))
+        assert old.status == "superseded" and old.digest == original_digest
+        assert newer.op_id != old.op_id and newer.payload["incarnation"] == 2
+        assert newer.payload["plan_revision"] == run.plan_revision

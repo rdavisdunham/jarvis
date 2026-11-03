@@ -372,6 +372,9 @@ class Status(Surface):
     effective_permission_mode: str = Field(default="", max_length=40)
     execution: Literal["managed"] | None = None
     controller: Literal["eridani", "terminal"] | None = None
+    paused: bool | None = None
+    pause_reason: Literal["permission_denied", "receipt_uncertain"] | None = None
+    attention: dict | None = None
 
 
 class SnapshotSurface(Status):
@@ -735,6 +738,7 @@ def status(db, bot, host_id, frame):
     applied = apply_state(db, bot.owner_id, host_id, row, frame.state, frame.since, frame.incarnation, frame.surf, detail)
     if applied:
         attach_by_surface(db, host_id, row, frame)
+    if applied or ((frame.controller == "terminal" or frame.paused) and frame.incarnation >= row.incarnation):
         coordinator.on_status(db, row, frame, host_id=host_id)
     return {"session_id": row.id, "applied": applied}
 
@@ -1140,6 +1144,8 @@ def drain(db, host, epoch):
                 row.payload = {**row.payload, "surf": run.surf, "incarnation": run.incarnation}
                 row.digest = digest(row.payload)
                 row.status = "queued"
+            if coordinator.refresh_control_fence(db, row, run):
+                continue
             stale = coordinator.stale(db, row, run) if row.kind not in coordinator.QUIET_COMMANDS else None
             if stale:
                 coordinator.settle_command(db, row, "canceled", stale)

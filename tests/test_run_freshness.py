@@ -225,6 +225,7 @@ def test_a_later_plan_without_the_migration_releases_it(host):  # noqa: F811
 
     with session_scope() as db:
         expected = db.get(Task, created["id"]).plan_revision
+        coordinator.revise_plan(db, db.get(AgentRun, run_id), "No migration is needed.", actor=control.Actor("human"))
     call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **{**PLAN, "expected_plan_revision": expected})
     assert reservation(run_id) == (33, "released")
 

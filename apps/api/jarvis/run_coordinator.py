@@ -116,6 +116,9 @@ REVIEW_SETTLED = ("failed", "skipped")
 # SessionStart text for a surface not bound to a run: the fenced candidate list only (stage F, D6).
 CANDIDATES_CHARS = 4000
 REASONS = {
+    "permission_denied": "The session permissions denied an action. Review it in the terminal; Resume cannot override permissions.",
+    "receipt_uncertain": "The answer was saved, but the agent has not confirmed consuming it. Waiting for a receipt.",
+    "paused": "Paused by the operator.",
     "terminal_control": "The terminal has control of this session. Continue there.",
     "delivery_uncertain": "Delivery uncertain: the host could not tell whether the input reached the agent.",
     "host_offline": "The remotea server went offline during the run.",
@@ -254,7 +257,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
 def awaiting_owner(db, run):
     """Whether the run's next move is the owner's: needs_you, waiting_answer, or an open interview for its current
     generation (plan_reviewing never: the reviewer is working)."""
-    if run.state in OWNER_WAIT_STATES:
+    if run.paused or run.state in OWNER_WAIT_STATES:
         return True
     if run.state in TERMINAL or run.state in ("stopping", "plan_reviewing"):
         return False
@@ -404,7 +407,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
     expires = None if durable and kind in ("input", "answer", "run.pause", "run.resume") else expires_at or now() + (ttl or TTL[kind])
     op_id = op_id or f"{kind}-{uuid.uuid4()}"
-    frame = {"t": kind, "command_id": op_id, **({"run_id": run.id, "generation": run.generation} if run else {}),
+    frame = {"t": kind, "command_id": op_id, **({"run_id": run.id, "generation": run.generation, "plan_revision": run.plan_revision} if run else {}),
              **body, "expires_at": epoch_ms(expires)}
     row = AgentCommand(owner_id=(run.owner_id if run else body["owner_id"]), host_id=host_id or run.host_id,
                        op_id=op_id, kind=kind, run_id=run.id if run else None,
@@ -782,6 +785,7 @@ def on_status(db, row, frame, host_id=None):
         return
     if not owns(run, row):
         return
+    record_host_pause(db, run, frame)
     if frame.effective_permission_mode:
         run.effective_permission_mode = frame.effective_permission_mode[:40]
     if frame.surf == run.surf and frame.incarnation > run.incarnation:
@@ -952,6 +956,8 @@ def question_resolved(db, host_id, frame):
             settle_command(db, answer_command, "executed", "answer consumption confirmed by adapter")
     run = db.get(AgentRun, question.run_id, with_for_update=True) if question.run_id else None
     if run is not None and run.state not in TERMINAL:
+        if question.status == "accepted":
+            clear_receipt_pause(db, run, question.question_id)
         summaries.touch(db, run)  # The open question is part of the summary's evidence.
         waiting = run.state == "waiting_answer" or (run.state == "needs_you" and run.state_reason == "question_timed_out")
         if question.status in {"accepted", "answered_locally", "canceled"} and waiting \
@@ -2272,6 +2278,8 @@ def desired(db, run):
         config = verify_config(frozen(db, run) if run.plan_revision and not run.plan_pending else None)
         if config or run.plan_revision > 1:
             entry["verify"] = config  # null clears an older plan's config after a re-plan; absent keeps it.
+    if (run.sync_state or {}).get("execution_mode") == "managed":
+        entry["plan_revision"] = run.plan_revision
     if not run.roles:
         return entry
     handoff = (run.sync_state or {}).get("handoff") or {}
@@ -2352,6 +2360,9 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
                ((review := review_for_surface(db, run, s.surf)) and review.status == "reviewing"))
                for s in by_run.get(run.id, [])):
             terminal_control(db, run)
+        for reported in by_run.get(run.id, []):
+            if reported.generation == run.generation and reported.surf == run.surf:
+                record_host_pause(db, run, reported)
         # The run's own surface first: a run with roles may also have a reviewer's (or a retired planner's) surface.
         mine = by_run.get(run.id) or []
         reviews = list(db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id))) if run.roles else []
@@ -2447,6 +2458,8 @@ def sweep(db, clock=None):
                                                          AgentAttempt.deadline_at <= clock)
                               .with_for_update(skip_locked=True)):
         run = db.get(AgentRun, attempt.run_id, with_for_update=True)
+        if run and run.paused:
+            continue
         if attempt.kind == "verify":
             # timed_out is its own non-pass; a result that arrives later is discarded.
             settle_verify(db, run, attempt, "timed_out", {"detail": "No result within the deadline."})
@@ -2490,6 +2503,8 @@ def sweep_reviews(db, clock):
         if run is None or run.state in TERMINAL:
             review.status, review.finished_at, review.token_hash = "skipped", clock, None  # Its surfaces went with the run.
             continue
+        if run.paused:
+            continue
         if review.status == "spawning" and review.blocked_since is not None and (
                 run.state == "plan_reviewing" or (run.state == "needs_you" and run.state_reason == "host_busy")):
             # The host refused it as busy: send it again (needs you once REVIEW_BUSY_LIMIT has passed).
@@ -2503,6 +2518,8 @@ def sweep_reviews(db, clock):
                     else "the host did not start the reviewer in time")
     for run in db.scalars(select(AgentRun).where(AgentRun.state.in_(("handing_off", "needs_you")),
                                                  AgentRun.roles.is_not(None)).with_for_update(skip_locked=True)):
+        if run.paused:
+            continue
         handoff = (run.sync_state or {}).get("handoff") or {}
         retry_at = handoff.get("retry_at")
         if handoff.get("done") or not retry_at or datetime.fromisoformat(retry_at) > clock:
@@ -2613,3 +2630,84 @@ def terminal_control(db, run):
         run.state_reason, run.state_revision, run.updated_at = "terminal_control", run.state_revision + 1, now()
     note(run, "terminal_control", actor={"kind": "human"})
     emit(db, run.owner_id, "agent.changed", run.id)
+
+
+def resume_paused_timers(db, run):
+    since = (run.sync_state or {}).get("paused_since")
+    if not since:
+        return
+    elapsed = max(timedelta(0), now() - datetime.fromisoformat(since))
+    if run.last_progress_at:
+        run.last_progress_at += elapsed
+    for review in live_reviews(db, run):
+        if review.deadline_at:
+            review.deadline_at += elapsed
+    for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id,
+                                                        AgentAttempt.status.in_(("queued", "running")))):
+        if attempt.deadline_at:
+            attempt.deadline_at += elapsed
+    run.sync_state = {k: v for k, v in (run.sync_state or {}).items() if k != "paused_since"}
+
+
+def record_host_pause(db, run, frame):
+    reason = getattr(frame, "pause_reason", None)
+    if not getattr(frame, "paused", False) or reason not in ("permission_denied", "receipt_uncertain") \
+            or (run.sync_state or {}).get("controller") == "terminal":
+        return
+    previous = run.sync_state or {}
+    same = run.paused and previous.get("automatic_pause") == reason
+    run.sync_state = {**previous, "automatic_pause": reason,
+                      "operator_paused": previous.get("operator_paused", bool(run.paused)),
+                      "paused_since": previous.get("paused_since") or now().isoformat(),
+                      "host_attention": getattr(frame, "attention", None) or {"kind": reason}}
+    run.paused = True
+    if not same:
+        if "needs_you" in TRANSITIONS.get(run.state, set()):
+            transition(db, run, "needs_you", reason=reason)
+        else:
+            run.state_reason, run.state_revision = reason, run.state_revision + 1
+        sync_wait(db, run)
+        emit(db, run.owner_id, "agent.changed", run.id)
+
+
+def clear_receipt_pause(db, run, question_id):
+    state = run.sync_state or {}
+    attention = state.get("host_attention") or {}
+    if state.get("automatic_pause") != "receipt_uncertain" or attention.get("question_id") != question_id:
+        return
+    run.sync_state = {k: v for k, v in state.items() if k not in ("automatic_pause", "host_attention")}
+    run.paused = bool(state.get("operator_paused"))
+    if not run.paused:
+        resume_paused_timers(db, run)
+        if run.state == "needs_you" and run.state_reason == "receipt_uncertain":
+            transition(db, run, phase(run), reason="answered")
+    elif run.state_reason == "receipt_uncertain":
+        run.state_reason, run.state_revision = "paused", run.state_revision + 1
+    sync_wait(db, run)
+    emit(db, run.owner_id, "agent.changed", run.id)
+
+
+def refresh_control_fence(db, row, run):
+    """Idempotent pause/resume intent can get a fresh immutable op after a verified incarnation change."""
+    if row.kind not in ("run.pause", "run.resume") or (run.sync_state or {}).get("controller") == "terminal":
+        return False
+    payload = row.payload or {}
+    review = review_for_surface(db, run, payload.get("surf")) if payload.get("role") == "reviewer" else None
+    incarnation = review.incarnation if review else run.incarnation
+    surf = review.surf if review else run.surf
+    if payload.get("surf") != surf or payload.get("incarnation", 0) >= incarnation:
+        return False
+    intended_pause = row.kind == "run.pause"
+    replacement = None
+    if intended_pause == bool(run.paused):
+        from .agent_receipts import action_context
+        token = action_context.set(row.action_id)
+        try:
+            replacement = command(db, run, row.kind, {"surf": surf, "incarnation": incarnation,
+                **({"role": payload["role"]} if payload.get("role") else {})})
+        finally:
+            action_context.reset(token)
+    row.status, row.updated_at = "superseded", now()
+    row.outcome = {**(row.outcome or {}), "proof": "verified newer surface incarnation",
+                   **({"superseded_by": replacement.op_id} if replacement else {})}
+    return True

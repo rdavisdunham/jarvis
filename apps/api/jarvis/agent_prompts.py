@@ -14,7 +14,10 @@ from sqlalchemy.orm import object_session
 PROMPT_VERSION = "loop-v2"
 
 TOOLS = ("Use the Eridani tools with the run_token from your session context: task_plan reads the task, "
-         "task_interview asks the operator, submit_plan saves the plan, task_step ticks steps.")
+         "task_interview asks the operator, submit_plan saves the plan, task_step ticks steps. "
+         "Every submit_plan must include a fresh submission_id UUID. Reuse that UUID and the same body on retry; "
+         "task_plan(submission_id=...) retrieves its receipt if the response was lost. "
+         "After submitting, wait for human approval before any implementation.")
 REVIEW_TOOLS = ("You are this run's plan reviewer (Eridani hyperplan). Your session is read-only. Use the Eridani tools "
                 "with the run_token from your session context: task_plan reads the task and plan; submit_plan_review "
                 "records your review (call it exactly once, then stop). You cannot change the plan or the code.")
