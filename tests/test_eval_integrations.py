@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import expert_eval_cases as cases
 from jarvis import tools
 from jarvis.db import session_scope
-from jarvis.models import Job
+from jarvis.models import Job, Task
 from sqlalchemy import select
 
 
@@ -170,3 +170,21 @@ def test_calendar_adapter_keeps_original_tracked_seed_hash(name):
     fixture = cases.seed_case(name, 1)
     assert fixture["fixture_hash"] == original["fixture_hash"]
     assert fixture["prompts"] == original["prompts"]
+
+
+def test_fixture_hash_normalizes_only_default_execution_metadata_without_mutating_snapshot():
+    from copy import deepcopy
+
+    original = {"tasks": {"fixture": {"title": "Calendar work"}}}
+    current = deepcopy(original)
+    current["tasks"]["fixture"].update(turn_cap=Task.__table__.c.turn_cap.default.arg,
+                                         completion_policy="code_ready", completion_policy_explicit=False)
+    before = deepcopy(current)
+    assert cases.fingerprint(current) == cases.fingerprint(original)
+    assert current == before  # The full oracle snapshot still checks these fields.
+    changed = deepcopy(current)
+    changed["tasks"]["fixture"]["turn_cap"] = 7
+    assert cases.fingerprint(changed) != cases.fingerprint(original)
+    explicit = deepcopy(current)
+    explicit["tasks"]["fixture"]["completion_policy_explicit"] = True
+    assert cases.fingerprint(explicit) != cases.fingerprint(original)

@@ -209,6 +209,8 @@ def snapshot():
 
 def fingerprint(data):
     # Preserve the frozen pre-notification fixture identity when new columns carry defaults.
+    # Use the current task cap default: a newly seeded uncapped task is the same fixture
+    # identity as the historical default-capped task; explicit caps remain hash-visible.
     # Full snapshots still retain these fields for unexpected-mutation checks.
     import copy
     baseline=copy.deepcopy(data)
@@ -221,8 +223,9 @@ def fingerprint(data):
         if row.get("alert_urgent") is False:row.pop("alert_urgent")
         for field,default in (("is_quick_list",False),("quick_section",""),("quick_order",0),
                               ("steps",[]),("prd_note_id",None),("success_criteria",[]),("verify",None),
-                              ("turn_cap",15),("execution_target_id",None),("plan_revision",0),
-                              ("completion_policy","code_ready")):
+                              ("turn_cap", Task.__table__.c.turn_cap.default.arg),
+                              ("execution_target_id",None),("plan_revision",0),
+                              ("completion_policy","code_ready"),("completion_policy_explicit",False)):
             if row.get(field)==default:row.pop(field,None)
     return hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
 
