@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, PanelRightClose, Play, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
@@ -655,8 +655,8 @@ export function TerminalFallback({ run, result }: { run: Pick<Run, "host" | "wor
 }
 
 /** The run detail as a chat. Rendered inside the app shell's RunPanel (a layout column, or a sheet on phones). */
-export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
-  id: string; onClose: () => void; onCollapse?: () => void;
+export function RunDrawer({ id, onClose, preloaded }: {
+  id: string; onClose: () => void;
   /** A run already in hand (tests); the drawer still loads `id` and binds its controls to whichever run is shown. */
   preloaded?: RunDetail;
 }) {
@@ -818,8 +818,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         <h2>{run?.task?.title ?? "Run"}</h2>
         {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title="Open terminal in Remotea"
           disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
-        {onCollapse && <button className="btn-icon" aria-label="Collapse run panel" title="Collapse" onClick={onCollapse}><PanelRightClose size={18}/></button>}
-        <button className="btn-icon" aria-label="Close run" onClick={onClose}><X size={18}/></button>
+        <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}
       {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}

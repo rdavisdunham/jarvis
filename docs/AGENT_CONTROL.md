@@ -66,6 +66,11 @@ not imply verification or the whole run has finished. **Expand plan** reveals th
 in place. Pending questions and approvals remain beside the plan even when chat is hidden. Technical
 identifiers, worktree/base facts, detailed verification and diagnostics live under **Details**.
 
+The top-right **X** closes the run drawer. The arrow on its left edge collapses it to a status rail
+(or an edge pill on phones); select that rail to reopen it. These controls never pause, cancel, send a
+message, or hold automation. Collapse preserves the mounted drawer, unsent draft and expanded details.
+On phones, Escape also collapses the drawer and keyboard focus moves to its reopen control.
+
 **Show chat** and **Hide chat** affect only the local view. They neither hold automation nor interrupt the
 worker. The conversation includes published assistant commentary and responses while the turn is still
 running, plus completed turns and user messages. Provider reasoning is not sent to the browser. Live
