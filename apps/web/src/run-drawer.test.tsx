@@ -99,6 +99,23 @@ describe("the run drawer's controls", () => {
     for (const label of ["Re-plan", "Verify now", "Pause", "Cancel run"]) expect(button(html, label), label).not.toContain("disabled");
   });
 
+  it("enables only administrative Cancel after backend-verified terminal exit", () => {
+    const terminal = detail(A, "Terminal task", { state: "awaiting_approval", controller: "terminal", paused: true, terminal_exited: true });
+    const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={terminal} onClose={() => {}}/>);
+    expect(button(html, "Cancel run")).not.toContain("disabled");
+    for (const label of ["Message", "Steer", "Resume", "Re-plan", "Verify now", "Accept results"]) expect(button(html, label), label).toContain("disabled");
+    expect(html).toContain("Terminal session ended. Cancel this run to close its record.");
+  });
+
+  it("does not infer verified exit from a missing or exited session snapshot", () => {
+    for (const session of [null, { id: "session", state: "exited", since: "2026-10-30T10:00:00Z" }]) {
+      const terminal = detail(A, "Terminal task", { state: "needs_you", controller: "terminal", paused: true, session });
+      const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={terminal} onClose={() => {}}/>);
+      expect(button(html, "Cancel run")).toContain("disabled");
+      expect(html).toContain("Terminal has control");
+    }
+  });
+
   it("post to the loaded run with the revision the reader saw, except Stop", () => {
     const run = detail(A, "Task A");
     const actions: [RunAction, Record<string, unknown>, string, object][] = [

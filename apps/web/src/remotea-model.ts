@@ -140,7 +140,7 @@ export type RunState =
   | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
-  execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani";
+  execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani"; terminal_exited?: boolean;
   pause_reason?: "permission_denied" | "receipt_uncertain" | null;
   host_attention?: { kind: string; tool?: string; reason?: string; action?: unknown; question_id?: string } | null;
   stage?: string; attention?: "none" | "decision" | "paused" | "error"; connectivity?: "online" | "offline"; paused?: boolean;
@@ -414,7 +414,7 @@ export function workflowStage(run: Run): string {
   return STAGES[run.state] ?? "Working";
 }
 export function workflowAttention(run: Run): string | null {
-  if (run.controller === "terminal") return "Terminal has control";
+  if (run.controller === "terminal") return run.terminal_exited ? "Terminal session ended" : "Terminal has control";
   if (run.pause_reason === "permission_denied") return "Permission needs review";
   if (run.pause_reason === "receipt_uncertain") return "Delivery unconfirmed";
   if (run.paused || run.attention === "paused") return "Paused";

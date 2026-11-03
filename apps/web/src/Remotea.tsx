@@ -793,7 +793,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}{run.turn_cap > 0 && <>/{run.turn_cap}</>}
       </p>}
       {run?.host_attention?.reason && run.host_attention.reason !== run.reason_text && <p role="status" className="footnote">{run.host_attention.reason}</p>}
-      {run?.controller === "terminal" && <p role="status" className="footnote">Terminal has control. Continue in the terminal; Eridani controls are paused.</p>}
+      {run?.controller === "terminal" && <p role="status" className="footnote">{run.terminal_exited ? "Terminal session ended. Cancel this run to close its record." : "Terminal has control. Continue in the terminal; Eridani controls are paused."}</p>}
       {run && executionModeLabel(run) && <p className="footnote">{executionModeLabel(run)} · native approvals may require the terminal.</p>}
       {run && <div className="remotea-control-row remotea-terminal-row">
         <button className="btn btn-sm btn-ghost" disabled={!!busy || !bound || !run.surf}
@@ -898,7 +898,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
         {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={off || !run.surf} title="Run the plan's verification now"
           onClick={() => void act("verify")}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
         <button className="btn btn-sm btn-ghost" disabled={off || run.state === "stopping" || run.controller === "terminal" || !!run.pause_reason} onClick={() => void lifecycle(run.paused ? "resume" : "pause")}>{run.paused ? "Resume" : "Pause"}</button>
-        <button className="btn btn-sm btn-danger" disabled={off || run.state === "stopping" || run.controller === "terminal"} onClick={() => void lifecycle("cancel")}><Square size={14}/>Cancel run</button>
+        <button className="btn btn-sm btn-danger" disabled={!!busy || !bound || run.state === "stopping" || (run.controller === "terminal" && !run.terminal_exited)} onClick={() => void lifecycle("cancel")}><Square size={14}/>Cancel run</button>
 
       </div>
       {run.state === "awaiting_approval" && <DecisionCard title="Final acceptance" task={run.task?.title} agent={actorChip(run)} reason="Review the results, then accept the completed task."><button className="btn btn-sm btn-primary" disabled={off || run.controller === "terminal"} onClick={() => void acceptResults()}>Accept results</button></DecisionCard>}

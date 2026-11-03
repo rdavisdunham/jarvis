@@ -107,6 +107,13 @@ def event_fixture(run_id: str, event: str, body: dict, user: User):
                 surf=run.surf, incarnation=run.incarnation, tool=run.tool,
                 session_id="synthetic-" + run.id + "-" + str(run.attempt), state="needs_you", since=now(),
                 execution="managed", controller="terminal"), host_id=host.id)
+        elif event == "absent":
+            agent_link.snapshot(db, bot_for(run), host.id, agent_link.Snapshot(surfaces=[], complete=True, at=now()))
+        elif event == "exit":
+            session = db.get(AgentSession, run.session_pk)
+            agent_link.exited(db, bot_for(run), host.id, agent_link.Exit(
+                surf=run.surf, incarnation=run.incarnation, provider=run.tool, provider_session_id=session.session_id,
+                code=0, exited_at=now()))
         elif event == "state":
             # Fixture-only provider/coordinator boundary; UI lifecycle actions always use production routes.
             state = body["state"]
