@@ -333,6 +333,7 @@ export type RunDetail = Run & {
   plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null } | null;
+  plan_history?: (NonNullable<RunDetail["plan"]> & { approval_status?: string; frozen_at?: string | null })[];
   history: HistoryEntry[];
   /** `role` "user" is the message typed in the terminal (host `prompt` frame); absent or "assistant" is the agent's
    *  final response, whose `prompt` carries the typed message when the host only sent it with the Stop (older hosts).
@@ -394,6 +395,25 @@ const RUN_LABELS: Partial<Record<RunState, string>> = {
 };
 export function runLabel(state: RunState) {
   return RUN_LABELS[state] ?? state;
+}
+const STAGES: Record<string, string> = {
+  starting: "Starting", queued: "Starting", spawning: "Starting", interviewing: "Interviewing", planning: "Planning", replanning: "Planning",
+  plan_reviewing: "Reviewing plan", reviewing_plan: "Reviewing plan", handing_off: "Starting", executing: "Working", working: "Working",
+  verifying: "Checking results", judging: "Checking results", checking_results: "Checking results", awaiting_approval: "Ready for review", ready_for_review: "Ready for review",
+  completed: "Complete", complete: "Complete", stopped: "Stopped", failed: "Failed", capped: "Needs attention", stopping: "Stopping",
+};
+export function workflowStage(run: Run): string {
+  if (run.stage) return STAGES[run.stage] ?? run.stage.replaceAll("_", " ");
+  if (run.state === "needs_you" && ["plan_approval", "plan_review"].includes(run.state_reason)) return "Reviewing plan";
+  if (run.state === "waiting_answer") return "Interviewing";
+  if (run.state === "needs_you") return run.plan_revision ? "Working" : "Planning";
+  return STAGES[run.state] ?? "Working";
+}
+export function workflowAttention(run: Run): string | null {
+  if (run.paused || run.attention === "paused") return "Paused";
+  if (run.attention === "error") return "Needs attention";
+  if (run.attention === "decision" || ["needs_you", "waiting_answer", "awaiting_approval"].includes(run.state)) return run.state_reason === "plan_approval" || run.state === "awaiting_approval" ? "Needs your approval" : "Waiting for you";
+  return null;
 }
 export function isSettled(run: Pick<Run, "state">) {
   return TERMINAL_RUN_STATES.includes(run.state);
@@ -1182,6 +1202,7 @@ export function runsByTask(runs: Run[]): Map<string, Run> {
 /** The collapsed rail's dot: what the open run needs right now. */
 export function railDot(run: Run | undefined): { tone: "attention" | "working" | "settled" | "unknown"; label: string } {
   if (!run) return { tone: "unknown", label: "Run" };
+  if (run.stage || run.paused) return { tone: isSettled(run) ? "settled" : workflowAttention(run) ? "attention" : "working", label: [workflowStage(run), workflowAttention(run)].filter(Boolean).join(" · ") };
   if (run.state === "needs_you" && run.state_reason === "plan_approval") return { tone: "attention", label: "Approve plan" };
   if (ATTENTION_STATES.includes(run.state)) return { tone: "attention", label: runLabel(run.state) };
   if (isSettled(run)) return { tone: "settled", label: runLabel(run.state) };
@@ -1191,8 +1212,9 @@ export function railDot(run: Run | undefined): { tone: "attention" | "working" |
 /** A task row's Run control: start a run, or open the one that exists (labelled by what it needs). */
 export function runChip(run: Run | undefined, hosts: Host[]):
   { kind: "start"; label: "Run"; disabled: boolean; reason: string } |
-  { kind: "open"; label: "Running" | "Needs you" | "Approve" | "Approve plan" | "Starting"; tone: "attention" | "working"; run: string } {
+  { kind: "open"; label: string; attention?: string | null; tone: "attention" | "working"; run: string } {
   if (run && !isSettled(run)) {
+    if (run.stage || run.paused) return { kind: "open", label: workflowStage(run), attention: workflowAttention(run), tone: workflowAttention(run) ? "attention" : "working", run: run.id };
     if (run.state === "awaiting_approval") return { kind: "open", label: "Approve", tone: "attention", run: run.id };
     if (run.state === "needs_you" && run.state_reason === "plan_approval") return { kind: "open", label: "Approve plan", tone: "attention", run: run.id };
     if (ATTENTION_STATES.includes(run.state)) return { kind: "open", label: "Needs you", tone: "attention", run: run.id };

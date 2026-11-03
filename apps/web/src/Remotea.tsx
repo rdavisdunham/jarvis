@@ -461,6 +461,13 @@ export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDo
       {!!plan.criteria.length && <details open><summary>Success criteria · {plan.criteria.length}</summary>
         <ul>{plan.criteria.map(c => <li key={c.id}>{c.text}{c.kind === "verify" && <small> · needs {c.verify_id} to pass</small>}</li>)}</ul></details>}
     </> : <p className="footnote">The plan is still loading.</p>}
+    {!!run.plan_history?.filter(p => p.revision !== plan?.revision).length && <details className="run-plan-history"><summary>Previous plans</summary>
+      {run.plan_history.filter(p => p.revision !== plan?.revision).map(p => <details key={p.revision}><summary>Revision {p.revision} · {p.title}</summary>
+        <p className="remotea-plan-text">{p.prd_text}</p>
+        {!!p.steps.length && <ol>{p.steps.map(step => <li key={step.id}>{step.title}</li>)}</ol>}
+        {!!p.criteria.length && <ul>{p.criteria.map(criterion => <li key={criterion.id}>{criterion.text}</li>)}</ul>}
+      </details>)}
+    </details>}
     {!!reviews.length && <ul className="remotea-review-history" aria-label="Review history">{reviews.map(r => <li key={r.id}>{reviewTitle(r)}</li>)}</ul>}
     {awaiting && <><label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
       <textarea rows={3} maxLength={4000} value={note} disabled={!!busy} onChange={e => setNote(e.target.value)}/></label>

@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import { api } from "./api";
+import { api, durableScope, durableStorageKey } from "./api";
 import { HARNESSES, type RoleChoice, type HarnessId } from "./remotea-model";
 export type ModelOption = { host_id: string; harness: string; model: string; label?: string; efforts: string[]; permission_profiles: string[]; default?: boolean };
 /** null means a legacy server; [] means this host advertises no supported models. */
@@ -50,18 +50,20 @@ export type RolePreferences = { planner: RoleChoice | null; reviewer: RoleChoice
 const ROLE_PREFS_PENDING = "eri-role-preferences-pending";
 let roleTimer: ReturnType<typeof setTimeout> | null = null;
 export function pendingRolePreferences(): RolePreferences | null {
-  try { return JSON.parse(localStorage.getItem(ROLE_PREFS_PENDING) || "null"); } catch { return null; }
+  try { const key = durableStorageKey(ROLE_PREFS_PENDING); return key ? JSON.parse(localStorage.getItem(key) || "null") : null; } catch { return null; }
 }
 export async function flushRolePreferences() {
+  const scope = durableScope();
   const pending = pendingRolePreferences();
   if (!pending) return;
   try {
     await api("/remotea/role-preferences", { method: "PUT", body: JSON.stringify(pending) });
-    if (JSON.stringify(pendingRolePreferences()) === JSON.stringify(pending)) localStorage.removeItem(ROLE_PREFS_PENDING);
+    const key = durableStorageKey(ROLE_PREFS_PENDING);
+    if (durableScope() === scope && key && JSON.stringify(pendingRolePreferences()) === JSON.stringify(pending)) localStorage.removeItem(key);
   } catch { /* Keep the local choices for reconnection. */ }
 }
 export function queueRolePreferences(preferences: RolePreferences) {
-  try { localStorage.setItem(ROLE_PREFS_PENDING, JSON.stringify(preferences)); } catch { /* The current draft remains available. */ }
+  try { const key = durableStorageKey(ROLE_PREFS_PENDING); if (key) localStorage.setItem(key, JSON.stringify(preferences)); } catch { /* The current draft remains available. */ }
   if (roleTimer) clearTimeout(roleTimer);
   roleTimer = setTimeout(() => { roleTimer = null; void flushRolePreferences(); }, 500);
 }

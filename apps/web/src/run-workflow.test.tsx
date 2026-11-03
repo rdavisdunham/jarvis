@@ -4,9 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activityStatus, approvalShortcut, DecisionCard, DeliveryReceipt, RunActivity, useRunDraft, workflowAttention, workflowStage, type RunDecision } from "./RunWorkflow";
+import { setDurableScope } from "./api";
 import { QuestionCard } from "./Remotea";
 import { modelOptions, unsupportedRole } from "./RunModels";
-import { restoreDraft, startBody, storedDraft, type RunDetail, type RunQuestion } from "./remotea-model";
+import { runChip, railDot, restoreDraft, startBody, storedDraft, type RunDetail, type RunQuestion } from "./remotea-model";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const run = (values: Partial<RunDetail> = {}) => ({ id: "r1", state: "planning", state_reason: "", plan_revision: 1, host: { connected: true }, ...values } as RunDetail);
@@ -16,6 +17,8 @@ it("keeps stage, attention and connection independent", () => {
   const planning = run({ stage: "planning", attention: "decision" });
   expect(workflowStage(planning)).toBe("Planning");
   expect(workflowAttention(planning)).toBe("Waiting for you");
+  expect(runChip(planning, [])).toMatchObject({ label: "Planning", attention: "Waiting for you" });
+  expect(railDot(planning).label).toBe("Planning · Waiting for you");
   expect(workflowStage(run({ state: "needs_you", state_reason: "plan_approval" }))).toBe("Reviewing plan");
   expect(workflowStage(run({ state: "verifying" }))).toBe("Checking results");
   expect(workflowStage(run({ state: "awaiting_approval" }))).toBe("Ready for review");
@@ -65,7 +68,7 @@ describe("durable drafts", () => {
   let host: HTMLDivElement, root: Root;
   const values: ((value: string) => void)[] = [];
   function Draft({ name }: { name: string }) { const [text, setText] = useRunDraft(name, ""); values.push(setText); return <output>{text}</output>; }
-  beforeEach(() => { localStorage.clear(); host = document.createElement("div"); root = createRoot(host); vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline"))); });
+  beforeEach(() => { localStorage.clear(); setDurableScope("test-owner:personal"); host = document.createElement("div"); root = createRoot(host); vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline"))); });
   afterEach(() => { act(() => root.unmount()); vi.unstubAllGlobals(); });
   it("preserves text through run navigation and reload while offline", () => {
     act(() => root.render(<Draft name="composer:r1"/>));
@@ -83,7 +86,7 @@ describe("durable drafts", () => {
 
 describe("native permission decisions", () => {
   let host: HTMLDivElement, root: Root;
-  beforeEach(() => { localStorage.clear(); host = document.createElement("div"); root = createRoot(host); });
+  beforeEach(() => { localStorage.clear(); setDurableScope("test-owner:personal"); host = document.createElement("div"); root = createRoot(host); });
   afterEach(() => { act(() => root.unmount()); vi.unstubAllGlobals(); });
   it("shows the complete action and submits the explicit allow-once choice immediately", async () => {
     const request = { id: "q1", kind: "permission", status: "open", generation: 1, remote_answerable: true, detail: "The tool needs permission",

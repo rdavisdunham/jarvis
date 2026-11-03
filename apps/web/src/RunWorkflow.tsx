@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { actionReceipts, api, postAction, subscribeActions, type ActionReceipt } from "./api";
-import { isSettled, type Run, type RunDetail } from "./remotea-model";
+import { actionReceipts, api, durableScope, durableStorageKey, postAction, subscribeActions, type ActionReceipt } from "./api";
+import "./runs.css";
+import { isSettled, workflowStage, workflowAttention, type Run, type RunDetail } from "./remotea-model";
 
 export type RunDecision = { id: string; kind: "question" | "interview" | "control" | "plan_approval" | "plan_review" | "final_acceptance"; run_id: string | null; revision: number; status: string; payload: Record<string, unknown>; actions: string[]; generation: number; plan_revision: number };
 export function respondDecision<T>(decision: RunDecision, action: string, values: Record<string, unknown> = {}) {
@@ -13,7 +14,7 @@ const EMPTY_RECEIPTS: ActionReceipt[] = [];
 export function useReceipts() { return useSyncExternalStore(subscribeActions, actionReceipts, () => EMPTY_RECEIPTS); }
 export function DeliveryReceipt({ receipt }: { receipt?: ActionReceipt }) {
   if (!receipt) return null;
-  const labels = { queued: "Queued on this device · waiting for connection", saved: "Saved by Eridani · waiting for agent acknowledgement", delivered: "Delivered to the agent", uncertain: "Delivery unconfirmed · your response is retained for retry", rejected: receipt.error || "Response was not accepted" };
+  const labels = { queued: "Queued on this device · waiting for connection", saved: "Saved by Eridani · waiting for agent acknowledgement", delivered: "Delivered to the agent", applied: "Applied by Eridani", uncertain: "Delivery unconfirmed · your response is retained for retry", rejected: receipt.error || "Response was not accepted" };
   return <p className={"run-delivery delivery-" + receipt.status} role="status">{labels[receipt.status]}{receipt.retention === "tab" ? " · available in this tab only" : ""}{["queued", "uncertain"].includes(receipt.status) && <> · <button type="button" className="text-button" onClick={() => { void postAction(receipt.url, receipt.body).catch(() => {}); }}>Retry delivery</button></>}</p>;
 }
 /** Shared visual and delivery language for every request, with controls supplied by the request's type. */
@@ -36,29 +37,35 @@ const memoryDrafts = new Map<string, DraftRecord<unknown>>();
 const draftSaving = new Set<string>();
 function readDraft<T>(key: string, initial: T): DraftRecord<T> {
   try {
-    const stored = localStorage.getItem(DRAFT_PREFIX + key);
+    const storageKey = durableStorageKey(DRAFT_PREFIX);
+    const stored = storageKey ? localStorage.getItem(storageKey + ":" + key) : null;
     if (stored === null) return { value: initial, dirty: false, revision: 0 };
     const parsed = JSON.parse(stored);
     return parsed && typeof parsed === "object" && "dirty" in parsed && "value" in parsed ? parsed : { value: parsed, dirty: true, revision: 0 };
-  } catch { return (memoryDrafts.get(key) as DraftRecord<T> | undefined) ?? { value: initial, dirty: false, revision: 0 }; }
+  } catch { return (memoryDrafts.get((durableScope() ?? "unbound") + ":" + key) as DraftRecord<T> | undefined) ?? { value: initial, dirty: false, revision: 0 }; }
 }
 function storeDraft<T>(key: string, record: DraftRecord<T>) {
-  memoryDrafts.set(key, record);
-  try { localStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(record)); } catch { /* Editing remains available in memory. */ }
+  memoryDrafts.set((durableScope() ?? "unbound") + ":" + key, record);
+  try { const storageKey = durableStorageKey(DRAFT_PREFIX); if (storageKey) localStorage.setItem(storageKey + ":" + key, JSON.stringify(record)); } catch { /* Editing remains available in memory. */ }
 }
 async function saveDraftKey(key: string) {
+  const scope = durableScope();
+  if (!scope) return;
   const record = readDraft<unknown>(key, null);
   if (!record.dirty || draftSaving.has(key)) return;
   draftSaving.add(key);
   try {
     const saved = await api<{ revision: number }>(`/remotea/drafts/${encodeURIComponent(key)}`, { method: "PUT", body: JSON.stringify({ value: record.value }) });
+    if (durableScope() !== scope) return;
     const latest = readDraft<unknown>(key, null);
     if (JSON.stringify(latest.value) === JSON.stringify(record.value)) storeDraft(key, { ...latest, dirty: false, revision: saved.revision });
   } catch { /* Dirty local copies are retried by the existing run provider after reconnection. */ }
   finally { draftSaving.delete(key); }
 }
 export async function flushDrafts() {
-  try { await Promise.all([...new Set([...Object.keys(localStorage).filter(key => key.startsWith(DRAFT_PREFIX)).map(key => key.slice(DRAFT_PREFIX.length)), ...memoryDrafts.keys()])].map(saveDraftKey)); } catch { await Promise.all([...memoryDrafts.keys()].map(saveDraftKey)); }
+  const prefix = durableStorageKey(DRAFT_PREFIX);
+  if (!prefix) return;
+  try { await Promise.all(Object.keys(localStorage).filter(key => key.startsWith(prefix + ":")).map(key => saveDraftKey(key.slice(prefix.length + 1)))); } catch { /* Browser storage can be unavailable. */ }
 }
 export function useRunDraft<T>(key: string, initial: T): [T, (value: T | ((current: T) => T)) => void] {
   const [draft, setDraft] = useState<T>(() => readDraft(key, initial).value);
@@ -66,9 +73,10 @@ export function useRunDraft<T>(key: string, initial: T): [T, (value: T | ((curre
   useEffect(() => {
     currentKey.current = key; edited.current = false;
     const local = readDraft(key, initial); setDraft(local.value);
+    const scope = durableScope();
     let live = true;
     void api<{ value: T | null; revision: number }>(`/remotea/drafts/${encodeURIComponent(key)}`).then(result => {
-      if (!live || edited.current || readDraft(key, initial).dirty) return;
+      if (!live || durableScope() !== scope || edited.current || readDraft(key, initial).dirty) return;
       const value = result.value ?? initial;
       storeDraft(key, { value, dirty: false, revision: result.revision }); setDraft(value);
     }).catch(() => {});
@@ -89,25 +97,7 @@ export function useRunDraft<T>(key: string, initial: T): [T, (value: T | ((curre
   return [draft, update];
 }
 
-const STAGES: Record<string, string> = {
-  starting: "Starting", queued: "Starting", spawning: "Starting", interviewing: "Interviewing", planning: "Planning", replanning: "Planning",
-  plan_reviewing: "Reviewing plan", reviewing_plan: "Reviewing plan", handing_off: "Starting", executing: "Working", working: "Working",
-  verifying: "Checking results", judging: "Checking results", checking_results: "Checking results", awaiting_approval: "Ready for review", ready_for_review: "Ready for review",
-  completed: "Complete", complete: "Complete", stopped: "Stopped", failed: "Failed", capped: "Needs attention", stopping: "Stopping",
-};
-export function workflowStage(run: Run): string {
-  if (run.stage) return STAGES[run.stage] ?? run.stage.replaceAll("_", " ");
-  if (run.state === "needs_you" && ["plan_approval", "plan_review"].includes(run.state_reason)) return "Reviewing plan";
-  if (run.state === "waiting_answer") return "Interviewing";
-  if (run.state === "needs_you") return run.plan_revision ? "Working" : "Planning";
-  return STAGES[run.state] ?? "Working";
-}
-export function workflowAttention(run: Run): string | null {
-  if (run.paused || run.attention === "paused") return "Paused";
-  if (run.attention === "error") return "Needs attention";
-  if (run.attention === "decision" || ["needs_you", "waiting_answer", "awaiting_approval"].includes(run.state)) return run.state_reason === "plan_approval" || run.state === "awaiting_approval" ? "Needs your approval" : "Waiting for you";
-  return null;
-}
+export { workflowStage, workflowAttention } from "./remotea-model";
 export function activityStatus(run: Run, now = Date.now()): { label: string; animate: boolean } {
   if (isSettled(run)) return { label: workflowStage(run), animate: false };
   if (run.connectivity === "offline" || run.host?.connected === false) return { label: "Reconnecting…", animate: false };

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RemoteaDataContext, type RemoteaData } from "./remotea-context";
 import { Bubble, PlanApproval, RunDrawer } from "./Remotea";
+import { setDurableScope } from "./api";
 import { RunButton } from "./RunButton";
 import { RunRow } from "./RunsPanel";
 import { RoleControls, RunTaskDialog } from "./RunTaskDialog";
@@ -120,7 +121,8 @@ describe("the Run dialog", () => {
   });
 
   it("opens with the remembered choices", () => {
-    vi.stubGlobal("localStorage", { getItem: (key: string) => key === DRAFT_STORAGE_KEY
+    setDurableScope("test-owner:personal");
+    vi.stubGlobal("localStorage", { getItem: (key: string) => key.startsWith(DRAFT_STORAGE_KEY)
       ? storedDraft({ ...DEFAULT_DRAFT, hyperplan: true, rounds: 3, reviewer: { harness: "codex", model: "gpt-6-astra" } }) : null });
     const html = renderToStaticMarkup(<RemoteaDataContext.Provider value={data()}>
       <RunTaskDialog taskId="t1" onClose={() => {}} onStarted={() => {}}/></RemoteaDataContext.Provider>);

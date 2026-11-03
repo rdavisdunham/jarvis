@@ -1,6 +1,6 @@
 import { type Dispatch, type SetStateAction, useEffect, useId, useState, useRef } from "react";
 import { FolderGit2, Minus, Play, Plus, Wrench } from "lucide-react";
-import { api, ApiError, postAction } from "./api";
+import { api, ApiError, durableStorageKey, postAction } from "./api";
 import { Dialog } from "./ux";
 import {
   afterTargetSaved, DRAFT_STORAGE_KEY, effectiveDraft, HARNESSES, harnessChoice, needsTargetData, preflightLine, preflightNotes, preflightUrl,
@@ -16,10 +16,10 @@ const message = (e: unknown) => (e as Error).message || "Something went wrong.";
 
 /** The remembered choices (DRAFT_STORAGE_KEY); storage may be missing or refuse (private mode), which is no error. */
 function readDraft(): RunDraft {
-  try { return restoreDraft(localStorage.getItem(DRAFT_STORAGE_KEY)); } catch { return restoreDraft(null); }
+  try { return restoreDraft(localStorage.getItem(durableStorageKey(DRAFT_STORAGE_KEY) ?? "eri-unbound-run-draft")); } catch { return restoreDraft(null); }
 }
 function saveDraft(draft: RunDraft) {
-  try { localStorage.setItem(DRAFT_STORAGE_KEY, storedDraft(draft)); } catch { /* Remembering is a convenience only. */ }
+  try { const key = durableStorageKey(DRAFT_STORAGE_KEY); if (key) localStorage.setItem(key, storedDraft(draft)); } catch { /* Remembering is a convenience only. */ }
 }
 
 type Choice = (id: HarnessId) => { ok: boolean; reason?: string };

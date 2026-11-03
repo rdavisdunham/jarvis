@@ -5,13 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoteaDataContext, type RemoteaData } from "./remotea-context";
 import { PlanApproval } from "./Remotea";
 import { RunTaskDialog } from "./RunTaskDialog";
+import { durableStorageKey, setDurableScope } from "./api";
 import { DRAFT_STORAGE_KEY, ROLES_UNAVAILABLE, type RunDetail } from "./remotea-model";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const ID = "11111111-1111-4111-8111-111111111111";
 let host: HTMLDivElement, root: Root;
-beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); localStorage.clear(); });
+beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); localStorage.clear(); setDurableScope("test-owner:personal"); });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 /** A fetch that answers by method and path, and records every call. */
@@ -52,11 +53,11 @@ describe("the Run dialog's Start", () => {
     await settle();
     expect(calls.at(-1)).toMatchObject({ method: "POST", url: "/api/v1/remotea/runs",
       body: { task_id: "t1", harness: "claude", reviewer: { harness: "codex" }, rounds: 2, approve_final: true } });
-    expect(JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY)!)).toMatchObject({ hyperplan: true, rounds: 2 });
+    expect(JSON.parse(localStorage.getItem(durableStorageKey(DRAFT_STORAGE_KEY)!)!)).toMatchObject({ hyperplan: true, rounds: 2 });
   });
 
   it("starts classic and turns the roles off while the host cannot spawn them", async () => {
-    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ hyperplan: true, worker: { harness: "claude", model: "sonnet" } }));
+    localStorage.setItem(durableStorageKey(DRAFT_STORAGE_KEY)!, JSON.stringify({ hyperplan: true, worker: { harness: "claude", model: "sonnet" } }));
     const calls = stubFetch((method) => method === "POST" ? { body: { id: ID } } : preflight(false));
     await open();
     expect(host.textContent).toContain(ROLES_UNAVAILABLE);
