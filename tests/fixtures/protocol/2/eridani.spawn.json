@@ -108,6 +108,14 @@
      ]
     }
    },
+   "plan_revision": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
    "prompt": {
     "required": true,
     "shape": {

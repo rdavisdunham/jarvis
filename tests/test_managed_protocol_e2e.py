@@ -120,5 +120,4 @@ def test_paused_question_survives_real_host_restart_and_receipt_replay(stack):
     events = [json.loads(line) for line in provider_log.read_text().splitlines()]
     assert len([e for e in events if "answer" in e]) == 1, events
     assert any(e.get("start") == "thread/resume" for e in events)
-    current = eri.get(run_path)
-    eri.post(run_path + "/cancel", {"action_id": str(uuid4()), "expected_revision": current["state_revision"]})
+    eri.post(run_path + "/cancel", {"action_id": str(uuid4())})

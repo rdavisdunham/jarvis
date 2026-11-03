@@ -36,6 +36,10 @@ New runs have no default duration or turn cap. Explicit limits remain visible wh
 
 Saved decisions outlive human delays and browser reconnects. A provider process restart can invalidate its original callback, so Remotea restores the conversation and binds the saved decision only to a verified recreation of the same pending action. Changed actions require a new decision. Submitted actions with uncertain effects require reconciliation rather than replay.
 
+Automatic callback recreation currently handles one unapproved request at a time. Claude's deferred question continuation supports its documented single-tool case. Multiple lost callbacks and unsupported provider requests remain visible for manual review. An automatic permission denial pauses with its tool and reason; it does not silently change permissions or repeat the action. Native review is available through explicit terminal takeover.
+
+The 30-second confirmation deadline begins only after an answer is submitted to the provider. It never limits how long the owner may consider a question. A missing consumption receipt shows **Delivery unconfirmed**; a later exact confirmation resolves it without repeating the response or clearing an explicit operator pause.
+
 Pending runs, their decisions, and unresolved command identities are protected from routine retention cleanup. This does not recover manually deleted provider history or revoked access; those conditions are surfaced without pretending the agent is still working.
 
 The API, host, and desktop negotiate managed-session capabilities. The initial verified Linux transports are Codex 0.166.x and Claude Code 2.1.312–2.1.317. Other installed versions require adapter verification before managed execution; their existing native sessions remain available. Legacy terminal sessions are labeled explicitly and retain their provider's native approval limits. No Windows or macOS local Eridani control is enabled by this work.
