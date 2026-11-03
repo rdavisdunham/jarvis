@@ -64,6 +64,95 @@
      ]
     }
    },
+   "doctor": {
+    "required": false,
+    "shape": {
+     "keys": {
+      "at": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "fail": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "items": {
+       "required": true,
+       "shape": {
+        "items": {
+         "keys": {
+          "fix": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          },
+          "id": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          },
+          "level": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          },
+          "summary": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          }
+         },
+         "types": [
+          "object"
+         ]
+        },
+        "types": [
+         "array"
+        ]
+       }
+      },
+      "ok": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "warn": {
+       "required": true,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      }
+     },
+     "types": [
+      "object"
+     ]
+    }
+   },
    "harnesses": {
     "required": true,
     "shape": {
@@ -109,6 +198,30 @@
            ]
           }
          },
+         "loop": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed_questions": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
+           ]
+          }
+         },
          "observe": {
           "required": true,
           "shape": {
@@ -130,6 +243,14 @@
           "shape": {
            "types": [
             "boolean"
+           ]
+          }
+         },
+         "question_kinds": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
            ]
           }
          },
@@ -199,6 +320,14 @@
            ]
           }
          },
+         "launch_error": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
          "launch_flags": {
           "required": true,
           "shape": {
@@ -212,6 +341,30 @@
            ]
           }
          },
+         "loop": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed_questions": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
+           ]
+          }
+         },
          "observe": {
           "required": true,
           "shape": {
@@ -220,11 +373,27 @@
            ]
           }
          },
+         "permission": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
          "question": {
           "required": true,
           "shape": {
            "types": [
             "boolean"
+           ]
+          }
+         },
+         "question_kinds": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
            ]
           }
          },
@@ -256,7 +425,129 @@
           "required": true,
           "shape": {
            "types": [
+            "null"
+           ]
+          }
+         }
+        },
+        "types": [
+         "object"
+        ]
+       }
+      },
+      "opencode": {
+       "required": true,
+       "shape": {
+        "keys": {
+         "capture": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "context": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "installed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "launch_error": {
+          "required": true,
+          "shape": {
+           "types": [
             "string"
+           ]
+          }
+         },
+         "loop": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed_questions": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
+           ]
+          }
+         },
+         "observe": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "permission": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "question": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "question_kinds": {
+          "required": true,
+          "shape": {
+           "types": [
+            "array"
+           ]
+          }
+         },
+         "resume": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "spawn": {
+          "required": true,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "version": {
+          "required": true,
+          "shape": {
+           "types": [
+            "null"
            ]
           }
          }
@@ -301,6 +592,14 @@
     "shape": {
      "types": [
       "string"
+     ]
+    }
+   },
+   "model_catalog": {
+    "required": true,
+    "shape": {
+     "types": [
+      "array"
      ]
     }
    },
@@ -375,6 +674,14 @@
            "required": true,
            "shape": {
             "keys": {
+             "managed": {
+              "required": true,
+              "shape": {
+               "types": [
+                "boolean"
+               ]
+              }
+             },
              "ready": {
               "required": true,
               "shape": {
@@ -414,14 +721,6 @@
              "boolean"
             ]
            }
-          },
-          "reason": {
-           "required": true,
-           "shape": {
-            "types": [
-             "string"
-            ]
-           }
           }
          },
          "types": [
@@ -434,6 +733,24 @@
         "shape": {
          "types": [
           "string"
+         ]
+        }
+       },
+       "template": {
+        "required": true,
+        "shape": {
+         "keys": {
+          "ready": {
+           "required": true,
+           "shape": {
+            "types": [
+             "boolean"
+            ]
+           }
+          }
+         },
+         "types": [
+          "object"
          ]
         }
        },
@@ -463,11 +780,35 @@
              ]
             }
            },
+           "isolated": {
+            "required": true,
+            "shape": {
+             "types": [
+              "boolean"
+             ]
+            }
+           },
+           "isolation": {
+            "required": true,
+            "shape": {
+             "types": [
+              "string"
+             ]
+            }
+           },
            "ready": {
             "required": true,
             "shape": {
              "types": [
               "boolean"
+             ]
+            }
+           },
+           "timeout_s": {
+            "required": true,
+            "shape": {
+             "types": [
+              "integer"
              ]
             }
            }

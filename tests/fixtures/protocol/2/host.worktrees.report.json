@@ -212,6 +212,33 @@
           "null"
          ]
         }
+       },
+       "writer": {
+        "required": true,
+        "shape": {
+         "keys": {
+          "run_id": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          },
+          "surf": {
+           "required": true,
+           "shape": {
+            "types": [
+             "string"
+            ]
+           }
+          }
+         },
+         "types": [
+          "null",
+          "object"
+         ]
+        }
        }
       },
       "types": [

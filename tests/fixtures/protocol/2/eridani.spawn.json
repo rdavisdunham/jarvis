@@ -205,32 +205,6 @@
       "integer"
      ]
     }
-   },
-   "verify": {
-    "required": true,
-    "shape": {
-     "keys": {
-      "plan_revision": {
-       "required": true,
-       "shape": {
-        "types": [
-         "integer"
-        ]
-       }
-      },
-      "verify_id": {
-       "required": true,
-       "shape": {
-        "types": [
-         "string"
-        ]
-       }
-      }
-     },
-     "types": [
-      "object"
-     ]
-    }
    }
   },
   "types": [

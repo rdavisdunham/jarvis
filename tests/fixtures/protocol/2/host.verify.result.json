@@ -4,7 +4,7 @@
  "shape": {
   "keys": {
    "adopted": {
-    "required": true,
+    "required": false,
     "shape": {
      "types": [
       "string"
@@ -84,6 +84,22 @@
     }
    },
    "initiator": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "isolated": {
+    "required": true,
+    "shape": {
+     "types": [
+      "boolean"
+     ]
+    }
+   },
+   "isolation": {
     "required": true,
     "shape": {
      "types": [
@@ -221,11 +237,27 @@
      ]
     }
    },
+   "workspace_complete": {
+    "required": true,
+    "shape": {
+     "types": [
+      "boolean"
+     ]
+    }
+   },
    "workspace_fingerprint": {
     "required": true,
     "shape": {
      "types": [
       "string"
+     ]
+    }
+   },
+   "workspace_reasons": {
+    "required": true,
+    "shape": {
+     "types": [
+      "array"
      ]
     }
    }

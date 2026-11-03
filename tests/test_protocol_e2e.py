@@ -110,6 +110,8 @@ def planned_task():
     with session_scope() as db:
         execute(db, OWNER, str(uuid.uuid4()), "task.update", {
             "task_id": created["id"], "expected_revision": created["revision"], "prd_note_id": note_id,
+            # This fixture exercises verification/acceptance without publishing a real pull request.
+            "completion_policy": "code_ready",
             "success_criteria": [{"id": "c1", "text": "the test suite passes", "kind": "verify",
                                   "verify_id": RemoteaHost.VERIFY_ID}],
             "verify": {"target_id": RemoteaHost.TARGET, "verify_id": RemoteaHost.VERIFY_ID}})
@@ -142,9 +144,11 @@ def stack(tmp_path, monkeypatch):
 def test_real_remotea_drives_a_run_through_the_real_eridani(stack):
     started = time.monotonic()
     eri = stack.eridani.start()
-    token = eri.post("/api/v1/remotea/enable")["token"]
+    enabled = eri.post("/api/v1/remotea/enable")
+    token = enabled["token"]
     stack.proxy = proxy = LinkProxy(f"ws://127.0.0.1:{eri.port}{LINK_PATH}").start()
     stack.host = host = RemoteaHost(remotea_checkout(), stack.tmp, proxy.url, token)
+    host.configure_mcp(enabled["setup_code"], eri.base)
     host.start()
     update = os.environ.get("UPDATE_FIXTURES") == "1"
     try:
@@ -221,7 +225,21 @@ def drive(eri, proxy, host):
     turn = proxy.wait("host", "turn", lambda f: f.get("run_id") == run_id, timeout=STEP)["frame"]
     assert prompt["seq"] == turn["seq"] and turn["root"] is True and turn["text"].startswith("Stub turn 1")
     assert prompt["text"] == spawn["prompt"][:4000], (prompt["text"][:300], spawn["prompt"][:300])
-    until(lambda: run_state(run_id).turn_count == 1, STEP, "Eridani to count the first turn")
+    until(lambda: run_state(run_id).reason == "plan_approval", STEP, "the plan approval decision")
+    assert run_state(run_id).turn_count == 0, "planning is not approved execution"
+    decision = next(d for d in eri.get(f"/api/v1/remotea/runs/{run_id}")["decisions"]
+                    if d["kind"] == "plan_approval")
+    mark_approved = len(proxy.records)
+    eri.post(f"/api/v1/remotea/decisions/{decision['id']}/respond", {
+        "action_id": str(uuid.uuid4()), "expected_revision": decision["revision"], "action": "approve"})
+    execute_prompt = proxy.wait("eridani", "input", lambda f: f["run_id"] == run_id,
+                                timeout=STEP, since=mark_approved)["frame"]
+    assert "plan" in execute_prompt["text"].lower()
+    turn = proxy.wait("host", "turn", lambda f: f.get("run_id") == run_id and f["seq"] > turn["seq"],
+                      timeout=STEP, since=mark_approved)["frame"]
+    prompt = proxy.wait("host", "prompt", lambda f: f.get("run_id") == run_id and f["seq"] == turn["seq"],
+                        timeout=STEP, since=mark_approved)["frame"]
+    until(lambda: run_state(run_id).turn_count == 1, STEP, "Eridani to count the approved execution turn")
 
     # 5. verify: Eridani asks for the plan's verify command; the host runs it in the worktree (one run).
     verify = proxy.wait("eridani", "verify", lambda f: f["run_id"] == run_id, timeout=STEP)["frame"]
@@ -311,9 +329,10 @@ def drive(eri, proxy, host):
 
     # The agent saw exactly what Eridani sent, once each; the verify command ran once per turn.
     prompts = [e["prompt"] for e in host.stub_entries("prompt")]
-    assert len(prompts) == 2 and prompts[0] == spawn["prompt"] and GAP in prompts[1], prompts
+    assert len(prompts) == 3 and prompts[0] == spawn["prompt"] and prompts[1] == execute_prompt["text"] and GAP in prompts[2], prompts
     assert host.stub_entries("exit")[-1]["why"] in ("Ctrl-C", "SIGINT")
-    assert host.verify_runs() == 2, host.verify_runs()
+    # Verification runs in an isolated filesystem, so its private log is intentionally not host-visible.
+    assert len({f["frame"]["attempt_id"] for f in proxy.frames("host", "verify.result")}) == 2
     assert OLD_ERIDANI_CAPS_DROPPED <= set(welcome2["caps"])  # Recorded before the rewrite: Eridani sent them.
 
     # Neither side refused anything the other sent, and Eridani never answered an ack with an ack.

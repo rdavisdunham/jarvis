@@ -1,0 +1,138 @@
+{
+ "direction": "host",
+ "frame": "doctor",
+ "shape": {
+  "keys": {
+   "at": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "conn_epoch": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "digest": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "fail": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "items": {
+    "required": true,
+    "shape": {
+     "items": {
+      "keys": {
+       "fix": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "id": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "level": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       },
+       "summary": {
+        "required": true,
+        "shape": {
+         "types": [
+          "string"
+         ]
+        }
+       }
+      },
+      "types": [
+       "object"
+      ]
+     },
+     "types": [
+      "array"
+     ]
+    }
+   },
+   "ok": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "t": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "v": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
+   "warn": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   }
+  },
+  "types": [
+   "object"
+  ]
+ }
+}
