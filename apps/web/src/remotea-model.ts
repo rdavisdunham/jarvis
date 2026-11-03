@@ -140,6 +140,7 @@ export type RunState =
   | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
+  execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani";
   stage?: string; attention?: "none" | "decision" | "paused" | "error"; connectivity?: "online" | "offline"; paused?: boolean;
   activity?: { kind: string; label?: string; at: string } | null; decisions?: RunDecision[];
   id: string; task: { id: string; title: string; status: string } | null; state: RunState; state_revision: number;
@@ -332,7 +333,7 @@ export type Proposals = {
 export type RunDetail = Run & {
   plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
-    proposals?: Proposals | null } | null;
+    proposals?: Proposals | null; approval_status?: string } | null;
   plan_history?: (NonNullable<RunDetail["plan"]> & { approval_status?: string; frozen_at?: string | null })[];
   history: HistoryEntry[];
   /** `role` "user" is the message typed in the terminal (host `prompt` frame); absent or "assistant" is the agent's
@@ -402,6 +403,7 @@ const STAGES: Record<string, string> = {
   verifying: "Checking results", judging: "Checking results", checking_results: "Checking results", awaiting_approval: "Ready for review", ready_for_review: "Ready for review",
   completed: "Complete", complete: "Complete", stopped: "Stopped", failed: "Failed", capped: "Needs attention", stopping: "Stopping",
 };
+export function executionModeLabel(run: Run): string | null { return run.execution_mode === "legacy" ? "Legacy terminal session" : null; }
 export function workflowStage(run: Run): string {
   if (run.stage) return STAGES[run.stage] ?? run.stage.replaceAll("_", " ");
   if (run.state === "needs_you" && ["plan_approval", "plan_review"].includes(run.state_reason)) return "Reviewing plan";
@@ -410,6 +412,7 @@ export function workflowStage(run: Run): string {
   return STAGES[run.state] ?? "Working";
 }
 export function workflowAttention(run: Run): string | null {
+  if (run.controller === "terminal") return "Terminal has control";
   if (run.paused || run.attention === "paused") return "Paused";
   if (run.attention === "error") return "Needs attention";
   if (run.attention === "decision" || ["needs_you", "waiting_answer", "awaiting_approval"].includes(run.state)) return run.state_reason === "plan_approval" || run.state === "awaiting_approval" ? "Needs your approval" : "Waiting for you";
@@ -423,19 +426,19 @@ export function isSettled(run: Pick<Run, "state">) {
 export function runControls(run: Run) {
   const settled = isSettled(run), stopping = run.state === "stopping";
   const offline = !run.host?.connected;
-  const started = !!run.surf;
-  const why = settled ? "This run has finished." : stopping ? "The run is stopping." : offline ? "The remotea server is offline; it will receive this when it reconnects."
+  const started = !!run.surf, terminal = run.controller === "terminal";
+  const why = terminal ? "Terminal has control. Continue in the terminal." : settled ? "This run has finished." : stopping ? "The run is stopping." : offline ? "The remotea server is offline; it will receive this when it reconnects."
     : !started ? "The agent has not started yet." : "";
   return {
-    message: { enabled: !settled && !stopping && started, reason: why },
-    steer: { enabled: !settled && !stopping && started, reason: why },
+    message: { enabled: !terminal && !settled && !stopping && started, reason: why },
+    steer: { enabled: !terminal && !settled && !stopping && started, reason: why },
     stop: { enabled: !settled, label: stopping ? (run.stop_mode === "kill" ? "Stopping…" : "Force stop") : "Stop", mode: stopping ? "kill" as const : "interrupt" as const },
     // At the final-plan stop the card's Approve starts the work; this one would complete the task unworked, so it
     // says so instead of reading as a second plan approval.
-    approve: { enabled: !settled && !stopping, primary: run.state === "awaiting_approval",
+    approve: { enabled: !terminal && !settled && !stopping, primary: run.state === "awaiting_approval",
       label: run.state === "needs_you" && run.state_reason === "plan_approval" ? "Complete task" : "Approve",
       reason: settled ? "This run has finished." : stopping ? "The run is stopping." : "" },
-    replan: { enabled: started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
+    replan: { enabled: !terminal && started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
       reason: !started ? "The agent has not started yet." : "Re-plan works while the run is working, waiting for you or awaiting approval." },
     offline,
   };
@@ -451,10 +454,10 @@ export function runButton(enabled: boolean, hosts: Host[], active: Run | null) {
 }
 
 /** How the questions card treats a question: answer here, waiting for the agent, terminal only, or done. */
-export function questionMode(q: RunQuestion, run: Pick<Run, "structured_answers" | "generation" | "state">) {
+export function questionMode(q: RunQuestion, run: Pick<Run, "structured_answers" | "generation" | "state" | "controller">) {
   if (["accepted", "answered_locally", "canceled", "expired"].includes(q.status)) return "closed" as const;
   if (q.status === "submitted") return "pending" as const;
-  if (!run.structured_answers || !q.remote_answerable || q.status === "timed_out" || q.status === "failed") return "terminal" as const;
+  if (run.controller === "terminal" || !run.structured_answers || !q.remote_answerable || q.status === "timed_out" || q.status === "failed") return "terminal" as const;
   if (q.generation !== run.generation || isSettled(run as Run) || run.state === "stopping") return "closed" as const;
   return "answer" as const;
 }
@@ -682,6 +685,7 @@ export const PLAN_STOPS = ["plan_review", "plan_approval"];
 
 /** "Fable", "GPT-6 Astra": a model's label from HARNESSES, else its id (else the harness's label). */
 export function modelLabel(harness: string, model: string) {
+  if (model === "gpt-6.1-sol") return "GPT-6.1 Sol";
   const h = HARNESSES.find(x => x.id === harness);
   return (h?.models as readonly { id: string; label: string }[] | undefined)?.find(m => m.id === model)?.label || model || h?.label || harness;
 }

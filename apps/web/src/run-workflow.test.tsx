@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activityStatus, approvalShortcut, DecisionCard, DeliveryReceipt, RunActivity, useRunDraft, workflowAttention, workflowStage, type RunDecision } from "./RunWorkflow";
 import { setDurableScope } from "./api";
-import { QuestionCard } from "./Remotea";
+import { PlanApproval, QuestionCard } from "./Remotea";
 import { modelOptions, unsupportedRole } from "./RunModels";
 import { runChip, railDot, restoreDraft, startBody, storedDraft, type RunDetail, type RunQuestion } from "./remotea-model";
 
@@ -37,6 +37,7 @@ it("animates only fresh reported work and keeps waiting/reconnection separate", 
 });
 
 it("Approved resolves a sole primary request and never invents answers or permanent permission", () => {
+  expect(approvalShortcut(run({ controller: "terminal", decisions: [decision()] }), "Approved")).toBeNull();
   expect(approvalShortcut(run({ decisions: [decision()] }), "Approved")?.action).toBe("approve");
   expect(approvalShortcut(run({ decisions: [decision(), decision({ id: "p2" })] }), "Approved")).toBeNull();
   expect(approvalShortcut(run({ decisions: [decision({ kind: "interview", actions: ["answer"] })] }), "Approved")).toBeNull();
@@ -106,4 +107,12 @@ describe("native permission decisions", () => {
     expect(posts).toEqual([{ action_id: expect.any(String), expected_revision: 7, action: "answer", answers: [{ item_id: "permission", choice_ids: ["allow_once"] }] }]);
     expect(host.textContent).toContain("waiting for agent acknowledgement");
   });
+});
+
+it("keeps an approved paused plan visible without offering a second approval", () => {
+  const paused = run({ paused: true, state: "needs_you", state_reason: "plan_approval", plan_revision: 1,
+    plan: { revision: 1, title: "Widget plan", prd_text: "Preserve this plan", steps: [], criteria: [], approval_status: "approved" } });
+  const html = renderToStaticMarkup(<PlanApproval run={paused} onDone={() => {}}/>);
+  expect(html).toContain("Plan approved · paused"); expect(html).toContain("Preserve this plan");
+  expect(html).not.toContain("Request changes");
 });

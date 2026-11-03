@@ -102,7 +102,7 @@ export function activityStatus(run: Run, now = Date.now()): { label: string; ani
   if (isSettled(run)) return { label: workflowStage(run), animate: false };
   if (run.connectivity === "offline" || run.host?.connected === false) return { label: "Reconnecting…", animate: false };
   const attention = workflowAttention(run);
-  if (attention) return { label: attention === "Paused" ? "Paused" : "Waiting for you", animate: false };
+  if (attention) return { label: ["Paused", "Terminal has control"].includes(attention) ? attention : "Waiting for you", animate: false };
   const activity = run.activity;
   if (!activity || !activity.at || now - Date.parse(activity.at) > 90_000 || !Number.isFinite(Date.parse(activity.at))) return { label: "Activity unconfirmed", animate: false };
   const labels: Record<string, string> = { thinking: "Thinking…", deliberating: "Deliberating…", reading: "Reading files", searching: "Reading files", editing: "Editing", testing: "Running tests", tool: "Using tools" };
@@ -117,7 +117,7 @@ export function RunActivity({ run, now }: { run: Run; now?: number }) {
 
 /** A short approval only resolves one open request on the selected run. It cannot invent interview answers. */
 export function approvalShortcut(run: RunDetail, text: string): { decision: RunDecision; action: string; values: Record<string, unknown> } | null {
-  if (!/^approved[.!]?$/i.test(text.trim())) return null;
+  if (run.controller === "terminal" || !/^approved[.!]?$/i.test(text.trim())) return null;
   const open = (run.decisions ?? []).filter(d => ["open", "pending"].includes(d.status));
   if (open.length !== 1) return null;
   const decision = open[0];
