@@ -23,12 +23,12 @@ def digest(kind, run_id, body):
     return hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def once(db, owner, run_id, kind, body, act):
+def once(db, owner, run_id, kind, body, act, *, scope_id=None):
     """Run `act()` once per (owner, body.action_id); a repeat with the same body returns the first result."""
     if body.action_id is None:
         return act()
     action_id = str(body.action_id)
-    request = digest(kind, run_id, body)
+    request = digest(kind, scope_id or run_id, body)
     # Serializes concurrent repeats: the second waits for the first's transaction, then reads its receipt.
     advisory(db, f"agent-action:{owner}:{action_id}")
     previous = db.get(AgentActionReceipt, (owner, action_id))
@@ -41,8 +41,13 @@ def once(db, owner, run_id, kind, body, act):
         result = act()
     finally:
         action_context.reset(token)
-    receipt_run_id = (result.get("id", run_id) if kind == "start" else
-                      result.get("run_id", run_id) if kind in ("interview", "answer") else run_id)
+    receipt_run_id = run_id
+    if kind == "start":
+        receipt_run_id = result.get("id", run_id)
+    elif kind in ("interview", "answer"):
+        receipt_run_id = result.get("run_id", run_id)
+    elif kind.startswith("decision:"):
+        receipt_run_id = (result.get("decision") or {}).get("run_id") or run_id
     db.add(AgentActionReceipt(owner_id=owner, action_id=action_id, run_id=receipt_run_id, kind=kind,
                               digest=request, result=result))
     db.flush()

@@ -5,7 +5,7 @@ An answer being saved and an adapter confirming consumption are deliberately sep
 """
 import hashlib
 from typing import Literal
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -134,11 +134,12 @@ def respond(db, owner, identity, body, *, actor, journal=True):
     from . import agent_plan
     # Serialize before taking domain row locks; recover a receipt even after the decision was superseded.
     kind_key = "decision:" + hashlib.sha256(identity.encode()).hexdigest()[:20]
+    scope_id = str(uuid5(NAMESPACE_URL, "eridani-decision:" + identity))
     if journal:
         advisory(db, f"agent-action:{owner}:{body.action_id}")
         previous = db.get(AgentActionReceipt, (owner, str(body.action_id)))
         if previous:
-            if previous.kind != kind_key or previous.digest != actions.digest(kind_key, previous.run_id, body):
+            if previous.kind != kind_key or previous.digest != actions.digest(kind_key, scope_id, body):
                 raise DomainError("ACTION_MISMATCH", "This action id already belongs to a different request.", 409)
             return {**previous.result, "receipt": actions.lookup(db, owner, body.action_id)}
     def act():
@@ -181,7 +182,7 @@ def respond(db, owner, identity, body, *, actor, journal=True):
     if not journal:
         return act()
     row, _kind, run = load(db, owner, identity)
-    result = actions.once(db, owner, run.id if run else row.id, kind_key, body, act)
+    result = actions.once(db, owner, run.id if run else row.id, kind_key, body, act, scope_id=scope_id)
     return {**result, "receipt": actions.lookup(db, owner, body.action_id)}
 
 

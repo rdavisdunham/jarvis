@@ -2182,7 +2182,7 @@ def decide(db, owner, pending_id, *, confirm, via, actor, execution_target_id=No
         result = start_run(db, owner, row.account_id or account(db, owner),
                            StartInput(task_id=args["task_id"], harness=args.get("harness", "claude"),
                                       execution_target_id=execution_target_id or args.get("execution_target_id"),
-                                      **{k: args[k] for k in ("model", "reviewer", "worker", "rounds", "approve_final")
+                                      **{k: args[k] for k in ("model", "effort", "permission_profile", "reviewer", "worker", "rounds", "approve_final")
                                          if k in args}),
                            actor=confirmed)
         run = coordinator.load(db, owner, result["id"])

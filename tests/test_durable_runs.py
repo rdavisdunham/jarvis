@@ -516,3 +516,33 @@ def test_managed_spawn_survives_days_paused_before_attach_and_resume_uses_same_o
         assert frames[0]["expires_at"] == 0
         assert not list(db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id,
             AgentCommand.kind.in_(("run.pause", "run.resume", "input")))))
+
+
+def test_confirmed_start_keeps_role_options_and_receipt_tracks_created_run(durable):
+    from jarvis.session_models import AgentPendingControl
+    with session_scope() as db:
+        host_row = db.get(AgentHost, durable.id)
+        host_row.caps = {**host_row.caps, "caps": [*host_row.caps["caps"], "role.options"],
+            "model_catalog": [{"harness": "claude", "model": "selected", "efforts": ["high"],
+                               "permission_profiles": ["workspace-write"]}]}
+    created = task()
+    with session_scope() as db:
+        pending = AgentPendingControl(owner_id=OWNER, account_id=durable.account_id, tool="control.start",
+            arguments={"task_id": created["id"], "execution_target_id": durable.target_id,
+                       "harness": "claude", "model": "selected", "effort": "high", "permission_profile": "workspace-write"},
+            summary="Start selected task", status="pending", actor=HUMAN.record(), expires_at=None)
+        db.add(pending)
+        db.flush()
+        identity = pending.id
+    result, body = respond(identity, "confirm")
+    run_id = result["decision"]["run_id"]
+    assert result["receipt"]["run_id"] == run_id
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        assert run.effort == "high" and run.permission_profile == "workspace-write"
+        repeated = decisions.respond(db, OWNER, identity, body, actor=HUMAN)
+        assert repeated["receipt"]["run_id"] == run_id and repeated["result"] == result["result"]
+        receipt = db.get(AgentActionReceipt, (OWNER, str(body.action_id)))
+        receipt.created_at = now() - timedelta(days=30)
+        agent_retention.sweep(db)
+        assert db.get(AgentActionReceipt, (OWNER, str(body.action_id)))
