@@ -105,8 +105,16 @@ def test_paused_question_survives_real_host_restart_and_receipt_replay(stack):
     assert saved["receipt"]["action_id"] == action_id
     current = eri.get(run_path)
     eri.post(run_path + "/resume", {"action_id": str(uuid4()), "expected_revision": current["state_revision"]})
-    until(lambda: eri.get(f"/api/v1/remotea/actions/{action_id}")["status"] == "delivered", 45,
-          "saved answer delivered to recreated callback")
+    try:
+        until(lambda: eri.get(f"/api/v1/remotea/actions/{action_id}")["status"] == "delivered", 45,
+              "saved answer delivered to recreated callback")
+    except AssertionError:
+        receipt = eri.get(f"/api/v1/remotea/actions/{action_id}")
+        current = eri.get(run_path)
+        print("delivery diagnostic", {"receipt": receipt, "state": current["state"],
+              "reason": current.get("state_reason"), "paused": current["paused"],
+              "incarnation": current.get("incarnation"), "plan_revision": current.get("plan_revision")})
+        raise
     repeated = eri.post(answer_path, body)
     assert repeated["receipt"]["status"] == "delivered"
     events = [json.loads(line) for line in provider_log.read_text().splitlines()]

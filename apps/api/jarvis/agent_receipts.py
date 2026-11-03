@@ -4,7 +4,8 @@ The run drawer may retry an action whose response was lost. Each action body car
 `action_id`; the first request acts and stores a receipt (digest of the route and body, and the response) in
 the same transaction as the effect. A repeat with the same id and body returns the stored response without
 acting again; the same id with a different body is refused with 409 ACTION_MISMATCH. Without an action_id the
-action runs as before. A receipt only has to outlive a retry: it is kept 7 days (agent_retention.py).
+action runs as before. Receipts for active runs or unsettled commands survive routine retention;
+settled history follows the retention policy in agent_retention.py.
 """
 
 import hashlib

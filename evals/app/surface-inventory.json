@@ -991,6 +991,13 @@
       "feature": "agent_control"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/external/agents/session/submissions/{submission_id}",
+      "handler": "plan_submission_receipt",
+      "source": "apps/api/jarvis/external_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/external/agents/session/submit_plan",
       "handler": "agent_submit_plan",
@@ -1439,6 +1446,13 @@
       "feature": "quick_capture"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/remotea/actions/{action_id}",
+      "handler": "action_receipt",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/remotea/auto-complete",
       "handler": "set_auto_complete",
@@ -1446,9 +1460,37 @@
       "feature": "agent_control"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/remotea/decisions",
+      "handler": "decisions",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/decisions/{identity}/respond",
+      "handler": "respond_decision",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/remotea/disable",
       "handler": "disable",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/drafts/{key}",
+      "handler": "draft",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/remotea/drafts/{key}",
+      "handler": "save_draft",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -1484,6 +1526,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/migrations",
       "handler": "set_migration_settings",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/remotea/model-catalog",
+      "handler": "model_catalog",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -1538,6 +1587,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/role-preferences",
+      "handler": "role_preferences",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/remotea/role-preferences",
+      "handler": "save_role_preferences",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/runs",
       "handler": "runs",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -1568,6 +1631,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/approve",
       "handler": "approve",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/cancel",
+      "handler": "cancel_run",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -1608,6 +1678,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/pause",
+      "handler": "pause_run",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/plan-review",
       "handler": "plan_review",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -1624,6 +1701,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/replan",
       "handler": "replan",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/resume",
+      "handler": "resume_run",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
