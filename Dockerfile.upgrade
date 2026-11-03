@@ -7,10 +7,12 @@
 # Base images are pinned by tag and multi-arch index digest; Dependabot (docker) keeps them current.
 
 FROM node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS web
-WORKDIR /build
+WORKDIR /build/apps/web
 COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/web/ ./
+# Keep the repository layout for shared fixtures imported during TypeScript checks.
+COPY tests/fixtures/voice-ending.json /build/tests/fixtures/voice-ending.json
 # Railway supplies the deployed commit; the web build shows it in Report a bug (vite.config.ts).
 ARG RAILWAY_GIT_COMMIT_SHA=""
 RUN npm run build
@@ -27,7 +29,7 @@ COPY apps/api ./apps/api
 RUN uv sync --frozen --no-dev
 COPY migrations ./migrations
 COPY alembic.ini ./
-COPY --from=web /build/dist ./apps/web/dist
+COPY --from=web /build/apps/web/dist ./apps/web/dist
 RUN useradd --uid 10001 --create-home jarvis && chown -R jarvis:jarvis /app
 USER jarvis
 EXPOSE 8765
