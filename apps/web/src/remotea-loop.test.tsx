@@ -42,6 +42,18 @@ describe("interview form", () => {
     expect(interviewAnswers(interview, { scope: ["Charts"], where: ["Web", "iOS"] }, { budget: " 50 ms " }))
       .toEqual({ scope: "Charts", where: ["Web", "iOS"], budget: "50 ms" });
   });
+  it("includes selected options and notes in the existing text answer, including all multi-choice options", () => {
+    expect(interviewAnswers(interview, { scope: ["Charts"], where: ["Web", "iOS"] },
+      { scope: "  Start with the slowest chart.\nKeep the other widgets.  ", where: "Mobile first", budget: "50 ms" }))
+      .toEqual({ scope: "Charts\n\nNotes: Start with the slowest chart.\nKeep the other widgets.",
+        where: ["Selected options: Web; iOS\n\nNotes: Mobile first"], budget: "50 ms" });
+    expect(interviewAnswers(interview, { scope: ["Charts"], where: ["Web"] }, { scope: "  ", budget: "50 ms" }))
+      .toEqual({ scope: "Charts", where: ["Web"], budget: "50 ms" });
+    const options = Array.from({ length: 8 }, (_, i) => ({ label: `Option ${i}` }));
+    expect(interviewAnswers({ ...interview, questions: [{ ...interview.questions[1], options }] },
+      { where: options.map(o => o.label) }, { where: "Keep all eight" }))
+      .toEqual({ where: [`Selected options: ${options.map(o => o.label).join("; ")}\n\nNotes: Keep all eight`] });
+  });
   it("renders every question as one form with its options", () => {
     const html = renderToStaticMarkup(<InterviewForm interview={interview} onDone={() => {}}/>);
     expect(html).toContain("Planning questions");

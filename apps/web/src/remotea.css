@@ -45,6 +45,7 @@
 .remotea-question fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
 .remotea-question legend { padding: 0; color: var(--ink); overflow-wrap: anywhere; }
 .remotea-question input { width: 100%; }
+.remotea-interview textarea { width: 100%; min-height: 72px; resize: vertical; font: inherit; line-height: 1.5; }
 .remotea-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .remotea-plan summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
 .remotea-plan .step-done { color: var(--ink-3); text-decoration: line-through; }
@@ -268,3 +269,43 @@
 .run-request-action dt { color: var(--ink-3); font-size: 12px; }
 .run-role-effort { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
 .run-role-effort select { flex: 1; }
+
+/* Drawer: fixed compact chrome and one scrolling middle, independent of chat visibility. */
+.run-drawer { min-width: 0; overflow: hidden; }
+.run-view.run-drawer > header.remotea-chat-head { gap: 3px; padding: 10px 12px 8px; max-height: none; overflow: visible; }
+.run-drawer .remotea-chat-title { flex-wrap: nowrap; gap: 5px; }
+.run-drawer .remotea-chat-title h2 { flex: 1; margin: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-drawer .btn-icon { flex: none; width: 30px; height: 30px; }
+.run-drawer-status { margin: 0; font-size: 12px; line-height: 18px; color: var(--ink-2); overflow-wrap: anywhere; }
+.run-drawer-middle { display: flex; flex-direction: column; gap: 12px; padding: 12px; font-family: inherit; overscroll-behavior: contain; overflow-x: hidden; }
+.run-drawer-middle > * { flex: none; min-width: 0; }
+.run-drawer-decisions { display: grid; gap: 10px; }
+.run-drawer-decisions:empty { display: none; }
+.run-plan-progress { display: grid; gap: 7px; }
+.run-plan-progress p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-plan-progress strong { font-size: 14px; font-weight: 600; }
+.run-plan-progress small { color: var(--ink-3); font-size: 12px; }
+.run-plan-expanded > summary, .run-drawer-details > summary, .run-system-events > summary { cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.run-plan-expanded[open] > summary { margin-bottom: 10px; }
+.run-drawer .remotea-plan-text, .run-drawer .remotea-reason-box p { max-height: none; overflow: visible; }
+.run-drawer .remotea-plan-approval .footnote { margin: 0; }
+.run-drawer-details { padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; }
+.run-drawer-details[open] { display: grid; gap: 10px; }
+.run-drawer-details dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; margin: 0; }
+.run-drawer-details dt { color: var(--ink-3); }
+.run-drawer-details dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-drawer-details p { margin: 0; white-space: pre-wrap; }
+.run-conversation { min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+.run-system-events { margin-top: 12px; }
+.run-drawer-footer { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 5px; }
+.run-drawer-footer .run-delivery { margin: 0; font-size: 12px; line-height: 16px; }
+.run-drawer-footer .work-error, .run-drawer-footer .footnote { margin: 0; }
+.run-direct-composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 8px; align-items: end; }
+.run-drawer-footer textarea { min-width: 0; min-height: 44px; height: clamp(44px, 9dvh, 80px); max-height: 112px; resize: none; overflow-y: auto; }
+.run-direct-composer small { grid-column: 1 / -1; color: var(--ink-3); font-size: 11px; line-height: 15px; }
+.run-hold-explanation { margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--sunken); color: var(--ink-2); font-size: 12px; line-height: 18px; }
+@media (max-height: 500px) {
+  .run-view.run-drawer > header.remotea-chat-head { padding-top: 5px; padding-bottom: 5px; }
+  .run-drawer-footer { padding-top: 5px; padding-bottom: calc(5px + env(safe-area-inset-bottom)); }
+  .run-drawer-footer textarea { height: 44px; }
+}

@@ -1088,10 +1088,10 @@
     "expected": [
       "Interview choices and free text survive reload before Send answers.",
       "The permission card shows complete command, directory and scope.",
-      "A sole Approved response sends allow_once and never an interview answer or permanent grant."
+      "A direct Approved message stays literal; only the explicit Approve once button sends allow_once, while automation remains held."
     ],
     "invariants": [
-      "Typed consent must refer to one unambiguous selected-run request.",
+      "Direct chat never grants permission, and a hidden chat pane never hides the explicit permission card.",
       "No paid model calls or external service writes."
     ],
     "partition": "development",
@@ -1126,10 +1126,10 @@
     "expected": [
       "The browser shows Queued while offline and retains the draft and action ID through reload.",
       "Reconnection stores the original action ID and creates exactly one input command.",
-      "The receipt changes to delivered only after provider acknowledgement."
+      "The receipt distinguishes saved input, handoff to the worker runtime and provider acknowledgement without claiming that the model read it."
     ],
     "invariants": [
-      "An API acknowledgement alone is not displayed as agent delivery.",
+      "An API acknowledgement alone is not displayed as a provider handoff or provider acknowledgement.",
       "No paid model calls or external service writes."
     ],
     "partition": "development",
@@ -1191,6 +1191,80 @@
       "artifacts/durable-runs/result.json",
       "Desktop and mobile reduced-motion screenshots",
       "Real persisted run, decision, command and receipt IDs"
+    ]
+  },
+  {
+    "feature": "agent_control",
+    "persona": "rowan-v1",
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use the existing synthetic host and authenticated owner fixtures in a disposable migrated test database.",
+      "Disable external services and paid inference; fake provider receipts are contract evidence, not model-quality or terminal-execution evidence."
+    ],
+    "evidence": [
+      "Exact pytest node results and persisted run, decision, command and action receipt IDs.",
+      "Before/after hold revision, literal input payload, command status and delivery stage."
+    ],
+    "id": "agent_control.30",
+    "title": "API contract: direct messages remain literal and hold automatic followup.",
+    "inputs": [
+      "Send Approved directly while a plan decision is pending, then finish an active worker turn under the hold."
+    ],
+    "expected": [
+      "An accepted direct Approved message is stored literally once and atomically holds automation without pausing the run.",
+      "Queued automatic prompts are superseded, and a completed worker turn is recorded without starting verification or judging while held."
+    ],
+    "invariants": [
+      "Direct text never approves the pending plan decision.",
+      "The saved message receipt remains distinct from handoff to the worker or provider acknowledgement."
+    ],
+    "steps": [
+      "Retry the same direct action ID and inspect the saved literal payload, unchanged decision and automation revision.",
+      "Exercise queued and in-transit automatic prompts, then complete the current worker turn and inspect commands and attempts."
+    ]
+  },
+  {
+    "feature": "agent_control",
+    "persona": "rowan-v1",
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use the existing synthetic host and authenticated owner fixtures in a disposable migrated test database.",
+      "Disable external services and paid inference; fake provider receipts are contract evidence, not model-quality or terminal-execution evidence."
+    ],
+    "evidence": [
+      "Exact pytest node results and persisted run, decision, command and action receipt IDs.",
+      "Before/after hold revision, literal input payload, command status and delivery stage."
+    ],
+    "id": "agent_control.31",
+    "title": "API contract: automation release requires handed input and the current confirmed hold revision.",
+    "inputs": [
+      "Request automation resume before and after message handoff, including a newer message and a simulated API restart."
+    ],
+    "expected": [
+      "Merely saved input refuses resume with DELIVERY_PENDING; handed input permits a release request while provider acknowledgement is still pending.",
+      "Requesting release advances the revision but keeps the effective hold until the matching host execution receipt.",
+      "A newer direct message supersedes an older release, and a stale automation revision cannot clear the newer hold.",
+      "After reopening the persisted run, only a matching current-revision host snapshot confirms a requested release."
+    ],
+    "invariants": [
+      "Uncertain delivery keeps automation held instead of replaying the input."
+    ],
+    "steps": [
+      "Attempt resume with saved input, then record handoff and request release without claiming model read.",
+      "Deliver the release receipt, race an older release with a newer message, and inspect revision checks and uncertain delivery.",
+      "Reopen the database session and reconcile old and current host hold snapshots."
     ]
   }
 ]

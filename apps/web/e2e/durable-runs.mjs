@@ -30,7 +30,50 @@ async function createTask(title, target) {
   return task;
 }
 const event = (run, name, body = {}) => api(`/__test_durable/runs/${run}/${name}`, body);
-async function refresh() { await page.evaluate(() => dispatchEvent(new CustomEvent("eri-agents-changed"))); }
+async function refresh() {
+  const run = new URL(page.url()).searchParams.get("run");
+  const response = run ? page.waitForResponse(reply => new URL(reply.url()).pathname === `/api/v1/remotea/runs/${run}` && reply.request().method() === "GET") : null;
+  await page.evaluate(() => dispatchEvent(new CustomEvent("eri-agents-changed")));
+  if (response) {
+    const current = await (await response).json();
+    await expect(view).toHaveAttribute("data-run-id", run);
+    await expect.poll(() => view.getAttribute("data-state-revision").then(value => Number(value))).toBeGreaterThanOrEqual(current.state_revision);
+  }
+}
+async function showChat() { const show = view.getByRole("button", { name: "Show chat", exact: true }); if (await show.isVisible()) await show.click(); await expect(composer()).toBeVisible(); }
+async function resumeAutomation(run) {
+  await event(run, "consume"); await refresh();
+  if (!(await readRun(run)).automation?.held) return;
+  await showChat();
+  const requestResume = async () => {
+    const response = page.waitForResponse(reply => reply.url().endsWith(`/remotea/runs/${run}/automation/resume`) && reply.request().method() === "POST");
+    await view.getByRole("button", { name: "Resume automation", exact: true }).click();
+    expect((await response).ok()).toBeTruthy();
+  };
+  await requestResume();
+  await expect(composer()).toBeVisible();
+  if ((await readRun(run)).automation.recovery === "worker_starting") {
+    await expect(view.locator(".run-drawer-status")).toContainText("Restoring worker");
+    await expect(composer()).toBeVisible();
+    await event(run, "attach"); await event(run, "consume"); await refresh();
+    await requestResume();
+  }
+  await expect.poll(async () => (await readRun(run)).automation.releasing).toBe(true);
+  await event(run, "automation_release"); await refresh();
+  await expect.poll(async () => (await readRun(run)).automation.held).toBe(false);
+  await expect(composer()).toHaveCount(0);
+}
+async function assertLayout(name) {
+  const bounds = await view.evaluate(node => {
+    const box = element => { const r = element.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height, right: r.right }; };
+    return { viewport: { width: innerWidth, height: visualViewport?.height ?? innerHeight }, drawer: box(node), head: box(node.querySelector("header")), middle: box(node.querySelector(".run-drawer-middle")), footer: box(node.querySelector("footer")), horizontal: document.documentElement.scrollWidth };
+  });
+  expect(bounds.drawer.bottom, name).toBeLessThanOrEqual(bounds.viewport.height + 1);
+  expect(bounds.footer.bottom, name).toBeLessThanOrEqual(bounds.viewport.height + 1);
+  expect(bounds.middle.height, name).toBeGreaterThan(24);
+  expect(bounds.horizontal, name).toBeLessThanOrEqual(bounds.viewport.width + 1);
+  await expect(view.getByRole("button", { name: "Cancel run", exact: true })).toBeInViewport();
+}
 async function open(run) { await page.goto(`${base}?view=tasks&tab=all&run=${run}`); await expect(view).toBeVisible(); }
 async function login(target) {
   await target.goto(base);
@@ -64,13 +107,25 @@ try {
   await open(run);
   const interview = view.getByRole("region", { name: "Planning questions", exact: true });
   await expect(interview).toBeVisible();
+  const scopeNotes = "Include charts first.\nKeep the admin widgets unchanged.";
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Or type anything here");
   await interview.getByRole("button", { name: "All widgets", exact: true }).click();
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Add notes");
+  await interview.getByLabel("Answer: Which widgets should we improve?", { exact: true }).fill(scopeNotes);
   await interview.getByLabel("Answer: What latency target?", { exact: true }).fill("50 milliseconds");
   await page.reload();
   await expect(interview.getByLabel("Answer: What latency target?", { exact: true })).toHaveValue("50 milliseconds");
   await expect(interview.getByRole("button", { name: "All widgets", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveValue(scopeNotes);
+  await expect(interview.getByLabel("Answer: Which widgets should we improve?", { exact: true })).toHaveAttribute("placeholder", "Add notes");
+  await expect(interview.getByRole("button", { name: "Send answers", exact: true })).toBeEnabled();
+  const interviewDecisionId = (await readRun(run)).interviews[0].id;
+  const interviewSubmit = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith(`/remotea/decisions/${interviewDecisionId}/respond`));
   await interview.getByRole("button", { name: "Send answers", exact: true }).click();
+  expect((await interviewSubmit).postDataJSON().answers).toEqual({ scope: `All widgets\n\nNotes: ${scopeNotes}`, target: "50 milliseconds" });
   await expect.poll(async () => (await readRun(run)).interviews[0].status).toBe("answered");
+  expect((await readRun(run)).interviews[0].answers).toEqual({ scope: `All widgets\n\nNotes: ${scopeNotes}`, target: "50 milliseconds" });
+  await expect.poll(async () => (await readRun(run)).commands.some(command => command.kind === "input" && command.text?.includes("All widgets") && command.text.includes("Include charts first.") && command.text.includes("Keep the admin widgets unchanged."))).toBeTruthy();
   mark("shared_interview_and_reloaded_drafts", { run_id: run, task_id: task.id });
 
   const planText = "Measure widget latency, implement the focused fix, and open a pull request.";
@@ -78,7 +133,7 @@ try {
   const plan = view.getByRole("region", { name: "Final plan approval", exact: true });
   await expect(plan).toContainText(planText);
   await composer().fill("Please include the benchmark command in the final notes.");
-  await view.getByRole("button", { name: "Message", exact: true }).click();
+  await view.getByRole("button", { name: "Send", exact: true }).click();
   await expect.poll(async () => (await readRun(run)).decisions.some(d => d.kind === "plan_approval" && d.status === "pending")).toBeTruthy();
   await page.reload();
   await expect(plan).toContainText(planText);
@@ -98,43 +153,74 @@ try {
   await expect(plan.getByRole("button", { name: "Approve", exact: true })).toHaveCount(0);
   await view.getByRole("button", { name: "Resume", exact: true }).click();
   await expect.poll(async () => (await readRun(run)).paused).toBe(false);
+  await resumeAutomation(run);
   if ((await readRun(run)).state === "handing_off") await event(run, "attach");
   await refresh();
   await expect(plan).toContainText("Latest plan");
   mark("plan_retained_after_followup_reload_and_explicit_paused_approval");
 
-  await event(run, "activity", { kind: "thinking", label: "Thinking…", sequence: 1 }); await refresh();
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toHaveText("Working");
-  await expect(view.locator(".run-activity")).toContainText("Thinking…");
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect.poll(() => view.locator(".run-activity-mark i").first().evaluate(node => getComputedStyle(node).animationName)).toBe("none");
-  await event(run, "activity", { kind: "testing", label: "Running tests", sequence: 2 }); await refresh();
-  await expect(view.locator(".run-activity")).toContainText("Running tests");
-  await event(run, "state", { state: "verifying" }); await refresh();
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toHaveText("Checking results");
-  await event(run, "state", { state: "awaiting_approval" }); await refresh();
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toHaveText("Ready for review");
-  await expect(view.getByRole("region", { name: "Final acceptance", exact: true })).toBeVisible();
-  mark("truthful_stage_activity_and_reduced_motion");
+  await expect(composer()).toHaveCount(0);
+  await expect(view.getByRole("button", { name: "Show chat", exact: true })).toBeVisible();
+  await event(run, "step", { index: 0, status: "doing", note: "Inspect the measured bottleneck" }); await refresh();
+  await expect(plan.getByLabel("Plan progress")).toContainText("Working on");
+  await expect(plan.getByLabel("Plan progress")).toContainText("Inspect the measured bottleneck");
+  await page.screenshot({ path: resolve(artifacts, "desktop-compact-plan.png"), fullPage: true });
+  await event(run, "output", { message_id: "published-commentary", kind: "commentary", text: "I found the widget bottleneck.", sequence: 1, turn_id: "visible-turn", complete: false }); await refresh();
+  await expect(composer()).toHaveCount(0);
+  await showChat();
+  await expect(view.getByRole("region", { name: "Conversation", exact: true })).toContainText("I found the widget bottleneck.");
+  await event(run, "output", { message_id: "published-commentary", kind: "commentary", text: "I found the widget bottleneck. Applying the focused change.", sequence: 2, turn_id: "visible-turn", complete: false }); await refresh();
+  await expect(view.getByRole("region", { name: "Conversation", exact: true })).toContainText("Applying the focused change.");
+  await expect(view.locator('[data-entry^="live:"]')).toHaveCount(1);
+  await page.screenshot({ path: resolve(artifacts, "desktop-live-chat.png"), fullPage: true });
+  const publishedLines = Array.from({ length: 65 }, (_, index) => `Published progress line ${index}`).join("\n");
+  await event(run, "output", { message_id: "scroll-commentary", kind: "commentary", text: publishedLines, sequence: 3, turn_id: "visible-turn", complete: false }); await refresh();
+  const middle = view.locator(".run-drawer-middle");
+  await expect(view.getByRole("region", { name: "Conversation", exact: true })).toContainText("Published progress line 64");
+  await expect.poll(() => middle.evaluate(node => node.scrollHeight - node.scrollTop - node.clientHeight)).toBeLessThan(48);
+  await middle.evaluate(node => { node.scrollTop = Math.max(0, node.scrollTop - 240); node.dispatchEvent(new Event("scroll")); });
+  const readingAt = await middle.evaluate(node => node.scrollTop);
+  await event(run, "output", { message_id: "scroll-commentary", kind: "commentary", text: publishedLines + "\nA newer published update", sequence: 4, turn_id: "visible-turn", complete: false }); await refresh();
+  await expect(view.getByRole("region", { name: "Conversation", exact: true })).toContainText("A newer published update");
+  await expect.poll(() => middle.evaluate(node => node.scrollTop)).toBeCloseTo(readingAt, 0);
 
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await view.locator(".run-activity").count()).toBe(0);
+  await view.getByRole("button", { name: "Hide chat", exact: true }).click();
+  await event(run, "state", { state: "verifying" }); await refresh();
+  await expect(view.locator(".run-drawer-status")).toContainText("Checking results");
+  await event(run, "state", { state: "awaiting_approval" }); await refresh();
+  await expect(view.locator(".run-drawer-status")).toContainText("Ready for review");
+  await expect(view.getByRole("region", { name: "Final acceptance", exact: true })).toBeVisible();
+  await expect(composer()).toHaveCount(0);
+  mark("compact_plan_live_published_chat_and_single_status");
+  await showChat();
   await composer().fill("Please run one final check before acceptance.");
-  await view.getByRole("button", { name: "Message", exact: true }).click();
-  await expect.poll(async () => (await readRun(run)).state).toBe("executing");
+  await view.getByRole("button", { name: "Send", exact: true }).click();
+  await expect.poll(async () => (await readRun(run)).automation.held).toBe(true);
+  await event(run, "state", { state: "executing" });
   await event(run, "permission"); await refresh();
   const permission = view.getByRole("region", { name: "Agent question", exact: true });
   await expect(permission).toContainText("npm test"); await expect(permission).toContainText("/synthetic/repo");
   await composer().fill("Approved");
-  await view.getByRole("button", { name: "Message", exact: true }).click();
+  await view.getByRole("button", { name: "Send", exact: true }).click();
+  expect((await readRun(run)).questions.at(-1)?.status).toBe("open");
+  await expect(permission.getByRole("button", { name: "Approve once", exact: true })).toBeVisible();
+  await view.getByRole("button", { name: "Hide chat", exact: true }).click();
+  await expect(permission).toBeVisible(); await expect(composer()).toHaveCount(0);
+  await permission.getByRole("button", { name: "Approve once", exact: true }).click();
   await expect.poll(async () => (await readRun(run)).questions.at(-1)?.status).toBe("submitted");
   expect((await readRun(run)).questions.at(-1).answers).toEqual([{ item_id: "permission", choice_ids: ["allow_once"] }]);
+  expect((await readRun(run)).automation.held).toBe(true);
+  await showChat();
   await event(run, "consume"); await refresh();
   await expect(permission).toHaveCount(0);
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toHaveText("Working");
-  mark("native_permission_inspection_and_unambiguous_approved");
+  await expect(view.locator(".run-drawer-status")).toContainText("Working");
+  mark("literal_approved_and_explicit_permission_beside_plan");
 
   await context.setOffline(true);
   await composer().fill("Retain the offline benchmark instruction.");
-  await view.getByRole("button", { name: "Message", exact: true }).click();
+  await view.getByRole("button", { name: "Send", exact: true }).click();
   await expect(view.getByText("Queued on this device · waiting for connection", { exact: false })).toBeVisible();
   const queued = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith("eri-remotea-actions-v1:")).flatMap(([, value]) => JSON.parse(value)).find(r => r.body.text === "Retain the offline benchmark instruction."));
   expect(queued?.status).toBe("queued");
@@ -150,20 +236,32 @@ try {
   await expect(view.locator(".remotea-composer .run-delivery")).toContainText("Saved by Eridani");
   await event(run, "consume"); await refresh();
   await expect.poll(async () => (await api(`/remotea/actions/${queued.id}`)).status).toBe("delivered");
-  await expect(view.locator(".remotea-composer .run-delivery")).toContainText("Delivered to the agent");
+  await expect(view.locator(".remotea-composer .run-delivery")).toContainText("Handed to worker runtime");
+  await event(run, "provider_ack", { action_id: queued.id }); await refresh();
+  await expect.poll(async () => (await readRun(run)).message_deliveries.find(delivery => delivery.action_id === queued.id)?.stage).toBe("provider_acknowledged");
+  await expect(view.locator(".remotea-composer .run-delivery")).toContainText("Provider acknowledged the message");
   await expect(composer()).toHaveValue("");
   expect((await readRun(run)).commands.filter(c => c.text === "Retain the offline benchmark instruction.")).toHaveLength(1);
   mark("offline_outbox_reload_and_same_action_delivery", { action_id: queued.id });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toBeVisible();
-  await expect(view.locator(".run-activity")).toBeVisible();
+  await expect(view.locator(".run-drawer-status")).toBeVisible();
+  await assertLayout("mobile chat");
   await page.screenshot({ path: resolve(artifacts, "mobile-reduced-motion.png"), fullPage: true });
+  await page.evaluate(() => { Object.defineProperty(visualViewport, "height", { configurable: true, get: () => 360 }); visualViewport.dispatchEvent(new Event("resize")); });
+  await expect.poll(() => view.evaluate(node => Math.round(node.getBoundingClientRect().bottom))).toBeLessThanOrEqual(361);
+  await assertLayout("phone visual keyboard viewport");
+  await page.evaluate(() => { delete visualViewport.height; visualViewport.dispatchEvent(new Event("resize")); });
+  await page.setViewportSize({ width: 1280, height: 420 }); await assertLayout("short desktop");
+  await page.setViewportSize({ width: 390, height: 360 }); await assertLayout("phone keyboard-sized viewport");
+  await page.setViewportSize({ width: 720, height: 450 }); await assertLayout("200-percent desktop equivalent CSS viewport");
+  await page.screenshot({ path: resolve(artifacts, "short-zoom-drawer.png"), fullPage: true });
+  mark("desktop_short_mobile_and_zoom_viewport_sizing");
   await page.setViewportSize({ width: 1440, height: 1000 });
   await context.setOffline(true);
   await composer().fill("A second offline instruction.");
-  await view.getByRole("button", { name: "Message", exact: true }).click();
+  await view.getByRole("button", { name: "Send", exact: true }).click();
   await expect(view.getByText("Queued on this device · waiting for connection", { exact: false })).toBeVisible();
   const secondQueued = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith("eri-remotea-actions-v1:")).flatMap(([, value]) => JSON.parse(value)).find(r => r.body.text === "A second offline instruction."));
   await composer().fill("A newer unsent draft must stay here.");
@@ -180,7 +278,7 @@ try {
   await expect(composer()).toHaveValue("A newer unsent draft must stay here.");
   mark("acknowledgement_preserves_newer_draft_after_reload", { action_id: secondQueued.id });
   await view.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(view.locator(".run-activity")).toHaveText("Paused");
+  await expect(view.locator(".run-drawer-status")).toContainText("Paused");
   await view.getByRole("button", { name: "Resume", exact: true }).click();
   await expect.poll(async () => (await readRun(run)).paused).toBe(false);
   await view.getByRole("button", { name: "Cancel run", exact: true }).click();
@@ -221,7 +319,7 @@ try {
   await view.getByRole("button", { name: "Accept results", exact: true }).click();
   await expect.poll(async () => (await readRun(acceptance.id)).state).toBe("stopping");
   await event(acceptance.id, "finish"); await refresh();
-  await expect(view.locator(".remotea-chat-title .remotea-state")).toHaveText("Complete");
+  await expect(view.locator(".run-drawer-status")).toContainText("Complete");
   await expect(view.getByRole("region", { name: "Final plan approval", exact: true })).toContainText("Latest plan");
   expect((await api(`/tasks/${acceptanceTask.id}`)).status).toBe("completed");
   mark("final_acceptance_and_confirmed_complete");
@@ -230,11 +328,11 @@ try {
   const takeover = await api("/remotea/runs", { task_id: takeoverTask.id, execution_target_id: host.target_id, harness: "codex", model: "gpt-6.1-sol", effort: "high", action_id: crypto.randomUUID() });
   await event(takeover.id, "attach"); await open(takeover.id);
   await event(takeover.id, "takeover"); await refresh();
-  await expect(view.locator(".run-activity")).toHaveText("Terminal has control");
+  await expect(view.locator(".run-drawer-status")).toContainText("Terminal has control");
   await expect(view.getByRole("button", { name: "Resume", exact: true })).toBeDisabled();
-  await expect(view.getByRole("button", { name: "Message", exact: true })).toBeDisabled();
+  await expect(view.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   await expect(view.getByRole("button", { name: "Cancel run", exact: true })).toBeDisabled();
-  await expect(view.getByRole("button", { name: "Open terminal in remotea", exact: true })).toBeEnabled();
+  await expect(view.getByRole("button", { name: "Open terminal in Remotea", exact: true })).toBeEnabled();
   await event(takeover.id, "permission"); await refresh();
   await expect(view.getByRole("region", { name: "Agent question", exact: true })).toContainText("Open the terminal");
   await expect(view.getByRole("button", { name: "Approve once", exact: true })).toHaveCount(0);
@@ -244,9 +342,9 @@ try {
   await expect(view.getByRole("button", { name: "Cancel run", exact: true })).toBeDisabled();
   await event(takeover.id, "exit"); await refresh();
   await expect.poll(async () => (await readRun(takeover.id)).terminal_exited).toBe(true);
-  await expect(view.locator(".run-activity")).toHaveText("Terminal session ended");
+  await expect(view.locator(".run-drawer-status")).toContainText("Terminal session ended");
   await expect(view.getByRole("button", { name: "Cancel run", exact: true })).toBeEnabled();
-  for (const label of ["Resume", "Message", "Steer"]) await expect(view.getByRole("button", { name: label, exact: true })).toBeDisabled();
+  for (const label of ["Resume", "Send"]) await expect(view.getByRole("button", { name: label, exact: true })).toBeDisabled();
   await expect(view.getByRole("button", { name: "Approve once", exact: true })).toHaveCount(0);
   const beforeCleanup = (await readRun(takeover.id)).commands.map(command => command.id);
   await view.getByRole("button", { name: "Cancel run", exact: true }).click();

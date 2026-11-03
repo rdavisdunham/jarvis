@@ -362,6 +362,9 @@ def test_a_different_worker_takes_over_after_approval(roles_host):
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert row.session_pk is None and row.tool == "claude" and row.model == "sonnet"
+        assert row.sync_state["handoff"]["from_binding"] == {
+            "surf": planner_surf, "incarnation": 1, "generation": 1}
+        assert not row.sync_state["handoff"].get("attached_binding")
         assert coordinator.run_for_token(db, OWNER, planner_token) is None  # The planner's token is revoked.
         assert coordinator.desired(db, row)["attempt"] == 2 and "surf" not in coordinator.desired(db, row)
         kills = [e for e in coordinator.desired_entries(db, row) if e.get("surf") == planner_surf]
@@ -386,6 +389,8 @@ def test_a_different_worker_takes_over_after_approval(roles_host):
         row = db.get(AgentRun, run_id)
         worker_pk = row.session_pk
         assert row.surf == worker_surf and (row.sync_state["handoff"]["done"] is True)
+        assert row.sync_state["handoff"]["attached_binding"] == {
+            "surf": worker_surf, "incarnation": 1, "generation": 1}
         assert coordinator.desired(db, row)["surf"] == worker_surf
         public = control.public_run(db, row)
         assert public["handoff"]["done"] is True and public["handoff"]["planner"] == {"harness": "claude", "model": "fable"}

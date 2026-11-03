@@ -31,7 +31,7 @@ it("animates only fresh reported work and keeps waiting/reconnection separate", 
   expect(activityStatus(active, now)).toEqual({ label: "Thinking…", animate: true });
   expect(activityStatus({ ...active, attention: "decision" }, now)).toEqual({ label: "Waiting for you", animate: false });
   expect(activityStatus({ ...active, connectivity: "offline" }, now)).toEqual({ label: "Reconnecting…", animate: false });
-  expect(activityStatus(active, now + 100_000)).toEqual({ label: "Activity unconfirmed", animate: false });
+  expect(activityStatus(active, now + 100_000)).toEqual({ label: "No recent output · last reported thinking", animate: false });
   expect(activityStatus(run(), now).animate).toBe(false);
   expect(activityStatus({ ...active, paused: true, pause_reason: "receipt_uncertain" }, now)).toEqual({ label: "Delivery unconfirmed", animate: false });
   expect(activityStatus({ ...active, paused: true, pause_reason: "permission_denied" }, now)).toEqual({ label: "Permission needs review", animate: false });
@@ -117,4 +117,16 @@ it("keeps an approved paused plan visible without offering a second approval", (
   const html = renderToStaticMarkup(<PlanApproval run={paused} onDone={() => {}}/>);
   expect(html).toContain("Plan approved · paused"); expect(html).toContain("Preserve this plan");
   expect(html).not.toContain("Request changes");
+});
+
+
+it("keeps stale output separate from explicit offline, paused and human-wait states", () => {
+  const now = Date.parse("2026-11-02T12:05:00Z");
+  const old = { kind: "testing", at: "2026-11-02T12:00:00Z" };
+  expect(activityStatus(run({ activity: old }), now)).toEqual({ label: "No recent output · last reported running tests", animate: false });
+  expect(activityStatus(run({ activity: { ...old, label: "Writing a response" } }), now)).toEqual({ label: "No recent output · last reported Writing a response", animate: false });
+  expect(activityStatus(run({ activity: old, connectivity: "offline" }), now).label).toBe("Reconnecting…");
+  expect(activityStatus(run({ activity: old, paused: true }), now).label).toBe("Paused");
+  expect(activityStatus(run({ activity: old, state: "waiting_answer" }), now).label).toBe("Waiting for you");
+  expect(activityStatus(run({ activity: { ...old, at: "invalid" } }), now).label).toBe("Activity unconfirmed");
 });

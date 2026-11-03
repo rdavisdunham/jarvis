@@ -43,6 +43,14 @@
      ]
     }
    },
+   "generation": {
+    "required": true,
+    "shape": {
+     "types": [
+      "integer"
+     ]
+    }
+   },
    "id": {
     "required": true,
     "shape": {
@@ -60,6 +68,14 @@
     }
    },
    "op_id": {
+    "required": true,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
+   "run_id": {
     "required": true,
     "shape": {
      "types": [

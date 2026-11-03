@@ -1,12 +1,15 @@
 """Real API/link/host recovery with a deterministic JSONL provider (no model calls)."""
 import json
 import os
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 from jarvis.db import session_scope
 from jarvis.domain import execute
+from jarvis.session_models import AgentSession, AgentTurn
 from protocol_harness import LinkProxy, RemoteaHost, missing, remotea_checkout, until
+from sqlalchemy import select
 from test_protocol_e2e import stack as stack  # noqa: F401
 
 REASON = missing()
@@ -120,4 +123,26 @@ def test_paused_question_survives_real_host_restart_and_receipt_replay(stack):
     events = [json.loads(line) for line in provider_log.read_text().splitlines()]
     assert len([e for e in events if "answer" in e]) == 1, events
     assert any(e.get("start") == "thread/resume" for e in events)
+    registry = json.loads((host.config / "registry.json").read_text())
+    surfaces = [row for row in registry["sessions"].values() if row.get("eridani", {}).get("runId") == run["id"]]
+    assert surfaces
+    worktrees = [Path(row["cwd"]) for row in surfaces]
+    assert all(path.exists() for path in worktrees)
     eri.post(run_path + "/cancel", {"action_id": str(uuid4())})
+    until(lambda: eri.get(run_path)["state"] == "stopped", 30, "run reached its final state")
+    proxy.wait("eridani", "run.cleanup", lambda f: f["run_id"] == run["id"], timeout=30)
+
+    def closed():
+        saved = json.loads((host.config / "registry.json").read_text())
+        return all(row["id"] not in saved["sessions"] and "s:" + row["id"] in saved["tombstones"]
+                   for row in surfaces)
+
+    until(closed, 30, "finalized terminals removed from registry")
+    assert all(path.exists() for path in worktrees), "closing a terminal must preserve its worktree"
+    saved_conversations = [json.loads(path.read_text()) for path in (host.config / "managed").glob("*.json")]
+    assert any(row["sessionId"] == "durable-conversation" for row in saved_conversations)
+    assert provider_log.exists(), "provider history remains available"
+    with session_scope() as db:
+        assert db.scalar(select(AgentSession.id).where(AgentSession.run_id == run["id"]))
+        assert db.scalar(select(AgentTurn.id).where(AgentTurn.run_id == run["id"]))
+    assert eri.get(run_path)["history"], "Eridani history remains readable after terminal cleanup"

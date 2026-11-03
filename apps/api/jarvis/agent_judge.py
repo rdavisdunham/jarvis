@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import select
 
 from . import run_coordinator as coordinator
+from . import agent_automation as automation
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError
@@ -466,10 +467,14 @@ def process(job_id, model=None):
                 attempt.status = "stale"
             job.status, job.finished_at = "cancelled", now()
             return
+        if automation.blocked(run) and attempt.status == "queued" and not (attempt.result or {}).get("human_authorized"):
+            automation.defer(run, "judge", attempt_id=attempt.id)
+            job.status, job.finished_at = "cancelled", now()
+            return
         attempt.status, job.status = "running", "running"
         held = (attempt.result or {}).get("held") or None
         evidence = evidence_for(db, attempt)
-        owner, attempt_id = attempt.owner_id, attempt.id
+        owner, attempt_id, run_id = attempt.owner_id, attempt.id, run.id
     meta, failure = {}, None
     ask_model = model or (lambda e: ask(owner, e))
 
@@ -481,6 +486,11 @@ def process(job_id, model=None):
 
     assessed, tries = (held or {}).get("final"), 0
     while assessed is None and tries <= RETRIES:
+        if tries:
+            with session_scope() as db:
+                live_run = db.get(AgentRun, run_id)
+                if live_run and automation.held(live_run):
+                    break
         tries += 1
         try:
             assessed = assess(evidence, model_call)

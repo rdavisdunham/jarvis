@@ -140,6 +140,10 @@ export type RunState =
   | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
+  automation?: { held: boolean; revision: number; reason: "direct_message" | null; held_at: string | null; releasing: boolean; recovery?: "worker_starting" | null };
+  direct_supported?: boolean;
+  live_messages?: { run_id: string; generation: number; surf: string; incarnation: number; session_id: string; turn_id: string | null; message_id: string; sequence: number; at: string; kind: "commentary" | "response"; text: string; complete: boolean; truncated: boolean }[];
+  message_deliveries?: { action_id: string; op_id: string; text: string; status: string; stage: "saved" | "handed_to_harness" | "provider_acknowledged" | "uncertain" }[];
   execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani"; terminal_exited?: boolean;
   pause_reason?: "permission_denied" | "receipt_uncertain" | null;
   host_attention?: { kind: string; tool?: string; reason?: string; action?: unknown; question_id?: string } | null;
@@ -333,7 +337,7 @@ export type Proposals = {
   completion_policy?: { current: string; proposed: string };
 };
 export type RunDetail = Run & {
-  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string }[];
+  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; updated_at?: string; revision?: number; by?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null; approval_status?: string } | null;
   plan_history?: (NonNullable<RunDetail["plan"]> & { approval_status?: string; frozen_at?: string | null })[];
@@ -343,7 +347,7 @@ export type RunDetail = Run & {
    *  `clipped`: the text is cut at 4,000 characters for display and the turn route returns it whole; `truncated`: the
    *  host cut the final response (or the daily quota dropped it), so the rest was never stored. */
   turns: { id: string; seq: number; text: string; clipped: boolean; truncated: boolean; generation: number; at: string; prompt: string;
-    role?: "assistant" | "user" }[];
+    role?: "assistant" | "user"; provider_turn_id?: string; provider_session_id?: string }[];
   commands: RunCommand[]; questions: RunQuestion[]; attempts?: Attempt[]; interviews?: Interview[];
   /** Verify ids the run's execution target offers (Set verify). */
   verify_options?: string[];
@@ -491,9 +495,11 @@ export function interviewAnswers(interview: Interview, picked: Record<string, st
     const labels = new Set(q.options.map(o => o.label));
     const chosen = (picked[q.id] ?? []).filter(l => labels.has(l));
     const text = (typed[q.id] ?? "").trim();
-    const values = [...chosen, ...(text ? [text] : [])];  // Typing an answer is always allowed.
-    if (!values.length || (!q.multi && values.length > 1)) return null;
-    answers[q.id] = q.multi ? values : values[0];
+    if ((!chosen.length && !text) || (!q.multi && chosen.length > 1)) return null;
+    if (chosen.length && text) {
+      const answer = `${q.multi ? "Selected options: " : ""}${chosen.join("; ")}\n\nNotes: ${text}`;
+      answers[q.id] = q.multi ? [answer] : answer;
+    } else answers[q.id] = q.multi ? (chosen.length ? chosen : [text]) : (chosen[0] ?? text);
   }
   return answers;
 }

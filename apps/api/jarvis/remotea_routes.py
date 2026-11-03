@@ -740,6 +740,18 @@ def resume_run(identity: UUID, body: PauseInput, user: User):
             db, user.owner_id, str(identity), body, False, actor=actor_for(user)))
 
 
+from .agent_automation import ResumeInput as AutomationResumeInput
+
+
+@router.post("/runs/{identity}/automation/resume")
+def resume_automation(identity: UUID, body: AutomationResumeInput, user: User):
+    from . import agent_automation
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "automation_resume", body,
+            lambda: agent_automation.resume(db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
 @router.post("/runs/{identity}/cancel")
 def cancel_run(identity: UUID, body: control.StopInput, user: User):
     with session_scope() as db:

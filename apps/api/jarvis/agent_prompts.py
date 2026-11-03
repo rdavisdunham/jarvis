@@ -163,7 +163,8 @@ FLOOR = ("The operator's own success criteria (those without by: agent in task_p
 def execute(plan_text, preface=""):
     return "\n\n".join(filter(None, [
         preface,
-        "Your plan is frozen. Execute it now in this worktree. Tick steps with task_step as you go; Eridani checks "
+        "Your plan is frozen. Execute it now in this worktree. Before starting work on a step, use task_step to mark it doing. "
+        "Use task_step again for meaningful milestone notes and mark it done only after completing it. Eridani checks "
         "every turn against the success criteria and tells you what is still missing.",
         plan_text,
     ]))
@@ -268,7 +269,8 @@ def worker(plan_text, digest):
         plan_text,
         ("Decisions already made (do not re-open them):\n" + fence("ERIDANI_DECISIONS", "\n".join(digest)[:6000]))
         if digest else "",
-        "Follow the plan step by step and tick steps with task_step as you go; Eridani checks every turn against the "
+        "Follow the plan step by step. Before starting work on a step, use task_step to mark it doing; add meaningful "
+        "milestone notes with task_step and mark it done only when finished. Eridani checks every turn against the "
         "success criteria. Do not re-plan settled points. If a step is genuinely impossible as written, say so plainly "
         "in your final message and ask the operator for a re-plan instead of improvising around it.",
     ]))

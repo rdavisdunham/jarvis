@@ -2,7 +2,7 @@
 
 Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davin's desktop through
 **remotea**, the always-on terminal host in WSL. This page is the Eridani side; the host side is remotea's
-`docs/remotea/eridani-link.md`. What ships today (2026-10-30):
+`docs/remotea/eridani-link.md`. Current behavior (2026-11-03):
 
 - **The link.** remotea opens one outbound WebSocket to Eridani (nothing on the desktop listens to the
   internet) and reports every Claude Code and Codex session it runs, with turns, status and questions.
@@ -34,9 +34,11 @@ Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davi
   or the same rules three verdicts in a row). The turn cap, the 6-hour wall clock and the 45-minute
   no-progress timer park it too ([The judge](#the-judge-agent_judgepy), [Verify by default, and set
   mid-run](#verify-by-default-and-set-mid-run)).
-- **Freestyle** switches the judge, verification, gap prompts and the turn cap off while the owner talks to
-  the agent directly; **Approve** completes the task as a human; Message (queue), Steer, Re-plan, Verify
-  now, Set verify and Stop / Force stop are on every run ([Freestyle](#freestyle)).
+- **Run progress and chat.** Planning keeps the conversation visible. Approved work defaults to one plan
+  progress card; **Show chat** reveals the conversation without changing the run. **Send** hands a literal
+  message to the harness and holds Eridani's automatic follow-up while the worker continues. **Resume
+  automation** reconciles delivery and returns to the plan view. The separate legacy **Freestyle** execution
+  policy still exists under Details ([Freestyle](#freestyle)); it is not the chat visibility toggle.
 - **Where you see it.** The remotea page (runs, unmerged work, hosts, parity), the **side run panel** (a
   column beside any page, opened from a task's run chip or the topbar Runs panel; a sheet on phones), and
   the run timeline, which names who sent every text ([Messages Eridani sends to the
@@ -54,6 +56,47 @@ Code: [`agent_link.py`](../apps/api/jarvis/agent_link.py) (socket, ingestion, pa
 [`task_plan.py`](../apps/api/jarvis/task_plan.py) (task plan fields); web
 [`Remotea.tsx`](../apps/web/src/Remotea.tsx), [`RunPanel.tsx`](../apps/web/src/RunPanel.tsx) and
 [`remotea-model.ts`](../apps/web/src/remotea-model.ts).
+
+### Run progress, chat, and automation hold
+
+The drawer has one stage/model status and one plan card. During approved execution, the card shows steps
+the agent has explicitly marked `doing`, their latest progress notes and when they were reported. If no
+step is marked `doing`, the card labels the first unfinished step **Next step**. A completed checklist does
+not imply verification or the whole run has finished. **Expand plan** reveals the full plan and criteria
+in place. Pending questions and approvals remain beside the plan even when chat is hidden. Technical
+identifiers, worktree/base facts, detailed verification and diagnostics live under **Details**.
+
+**Show chat** and **Hide chat** affect only the local view. They neither hold automation nor interrupt the
+worker. The conversation includes published assistant commentary and responses while the turn is still
+running, plus completed turns and user messages. Provider reasoning is not sent to the browser. Live
+messages have stable identities and sequence numbers; replayed snapshots replace earlier versions and
+do not become additional completed turns or trigger the judge.
+
+The drawer's **Send** uses `mode: "direct"`. Accepted messages are stored in the same transaction as a
+durable automation hold. Opening chat, typing, or a rejected request does not create a hold. While held,
+the worker can continue and report progress, but Eridani does not launch automatic judging, verification,
+retries, prompts or handoffs. Explicit interview answers, approvals and other human actions can perform
+their own authorized effect without silently releasing the hold. The hold is separate from **Pause**, which
+interrupts the worker, and from the legacy freestyle execution policy. Existing permissions and hard limits
+continue to apply.
+
+Direct delivery requires a managed host advertising the negotiated capability. Codex receives an active
+turn message through `turn/steer`, with its expected turn ID, without interrupting it; an idle conversation
+uses `turn/start`. Claude receives the message through its existing streaming input immediately and chooses
+when to consume it. A receipt distinguishes a message saved by Eridani, handed to the harness, and
+acknowledged by the provider. None of these claims that the model has read the message. While the host is
+offline, accepted messages and the hold remain saved for reconnection. Older hosts require an update;
+the drawer does not silently switch to next-turn queueing.
+
+**Resume automation** first reconciles delivery and current run state. Pending or uncertain delivery keeps
+the hold in place. If an already-approved worker has a confirmed unsent or rejected handoff, an explicit
+Resume can restore that worker while retaining the hold; after the saved message reaches it, Resume again
+to release automation. An uncertain spawn is not retried. Once the hold is released, the drawer returns to
+the compact plan view. Superseded
+automatic inputs that have not reached the harness are not replayed; inputs already handed to it cannot be
+retracted. The hold persists across reloads, devices and service restarts. Chat visibility stays local.
+Legacy API `queue` and interrupting `steer` modes retain their existing behavior for older clients and
+messages already queued under those modes.
 
 **History.** The feature shipped in stages, and the section headings below keep the stage that introduced
 them; they describe current behaviour unless they say otherwise. A was remotea's own spike (launching and
@@ -865,7 +908,8 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `GET /runs/preflight?task_id=&harness=&execution_target_id=` | yes | the Run dialog's read-only look at a start: `target` or `needs_target`+`need`, `problems`, `active_run`, `interview`, `harnesses` (what the task's target can start), `harness_reasons`, `harness_note`, `verify_status`, `verify_ready`, `verify_reasons`, `mcp`, `template`, `task` |
 | `GET /runs/{id}?limit=&offset=` | no | detail: plan, history, turns, commands with outcomes, questions, attempts, `verify_readiness`, and `changes` (the review packet's PR links and branch state, under "The review packet"); turns and commands page newest first (`more`, `retention`: see "Reading runs") |
 | `GET /runs/{id}/turns/{turn_id}` | no | one turn whole, `{id, seq, text, truncated}`, for the "Full response" of a `clipped` turn. Owner only, like detail. 404 `NOT_FOUND` for an unknown id or a turn of another run or owner; 404 `TURN_EXPIRED` once retention deleted the run's turns |
-| `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | queue or steer |
+| `POST /runs/{id}/message {text, mode, expected_revision?, action_id?}` | yes | direct sends literal text and holds automation (`action_id` required for direct); legacy queue or interrupting steer remain supported |
+| `POST /runs/{id}/automation/resume {action_id, expected_automation_revision}` | yes | reconcile pending delivery and request a new explicit automation-hold revision; effective hold remains until the host confirms release |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/focus` | yes | "Open terminal in remotea": queues `terminal.focus` for the run's current surface and waits up to 6 s for the host's answer. `{sent: true, desktops}`, or `{sent: false, reason, detail?}` with `reason` `no_surface` (no terminal yet, or the host says it is gone), `host_offline`, `host_too_old` (the host does not advertise `terminal.focus`), `no_desktop` (no desktop app connected to the host), `no_answer` (no answer in time; a still-queued request is canceled) or `failed`. The first three are answered without queuing anything. Changes nothing on the run (no revision, no timeline entry) and takes no `action_id`: a repeat only raises the tab again |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |

@@ -83,14 +83,14 @@ function button(html: string, label: string) {
 }
 
 describe("the run drawer's controls", () => {
-  const labels = ["Message", "Steer", "Re-plan", "Verify now", "Pause", "Cancel run"];
+  const labels = ["Re-plan", "Verify now", "Pause", "Cancel run"];
 
   it("are all disabled while the loaded run is not the run the panel asked for", () => {
     const html = renderToStaticMarkup(<RunDrawer id={B} preloaded={detail(A, "Task A", { state: "executing" })} onClose={() => {}}/>);
     expect(html).toContain("Loading the selected run");
     for (const label of labels) expect(button(html, label), label).toContain("disabled");
     expect(html).toMatch(/<input type="checkbox"[^>]*disabled/);  // Freestyle
-    expect(html).toMatch(/<textarea[^>]*disabled/);
+    expect(html).not.toContain('aria-label="Message the agent"');  // Compact plan has no composer.
   });
 
   it("are enabled once the loaded run is the panel's run", () => {
@@ -103,7 +103,7 @@ describe("the run drawer's controls", () => {
     const terminal = detail(A, "Terminal task", { state: "awaiting_approval", controller: "terminal", paused: true, terminal_exited: true });
     const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={terminal} onClose={() => {}}/>);
     expect(button(html, "Cancel run")).not.toContain("disabled");
-    for (const label of ["Message", "Steer", "Resume", "Re-plan", "Verify now", "Accept results"]) expect(button(html, label), label).toContain("disabled");
+    for (const label of ["Resume", "Re-plan", "Verify now", "Accept results"]) expect(button(html, label), label).toContain("disabled");
     expect(html).toContain("Terminal session ended. Cancel this run to close its record.");
   });
 

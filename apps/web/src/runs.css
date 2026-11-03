@@ -13,8 +13,8 @@
   flex: 0 0 var(--run-panel-width);
   width: var(--run-panel-width);
   position: sticky;
-  top: 0;
-  height: 100dvh;
+  top: var(--topbar-height);
+  height: calc(100dvh - var(--topbar-height));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -151,9 +151,9 @@
   .app-shell { --run-panel-inset: 0px; }
   .run-panel[data-state="open"] {
     position: fixed;
-    inset: 0;
+    inset: var(--run-viewport-top, 0px) 0 auto;
     width: auto;
-    height: auto;
+    height: var(--run-viewport-height, 100dvh);
     z-index: 62;
     border-left: 0;
   }

@@ -97,7 +97,8 @@ export function post<T>(url: string, data: unknown = {}) {
 }
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export type SubmittedDraft = { scope: string; key: string; edit_id: string };
-export type ActionReceipt = { id: string; url: string; body: Record<string, unknown>; status: "queued" | "saved" | "delivered" | "applied" | "uncertain" | "rejected"; error?: string; updatedAt: string; retention?: "tab"; terminal?: boolean; draft?: SubmittedDraft };
+export type DeliveryStage = "saved" | "handed_to_harness" | "provider_acknowledged" | "uncertain";
+export type ActionReceipt = { delivery_stage?: DeliveryStage; id: string; url: string; body: Record<string, unknown>; status: "queued" | "saved" | "delivered" | "applied" | "uncertain" | "rejected"; error?: string; updatedAt: string; retention?: "tab"; terminal?: boolean; draft?: SubmittedDraft };
 const ACTION_STORAGE = "eri-remotea-actions-v1";
 let actionCache: ActionReceipt[] | null = null;
 const actionListeners = new Set<() => void>();
@@ -140,10 +141,10 @@ export async function postAction<T>(url: string, data: Record<string, unknown> =
       if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("NETWORK", "Queued on this device until the connection returns.");
       const result = await post<T>(url, body);
       // An API acknowledgement proves storage, not that the host applied the command.
-      const acknowledgement = (result as { receipt?: { status?: string; terminal?: boolean } })?.receipt;
+      const acknowledgement = (result as { receipt?: { status?: string; terminal?: boolean; delivery_stage?: DeliveryStage } })?.receipt;
       const reported = acknowledgement?.status;
       if (durableScope() !== scope) return result;
-      saveAction({ ...receipt, terminal: acknowledgement?.terminal, status: reported === "saved" && acknowledgement?.terminal ? "applied" : reported === "delivered" ? "delivered" : reported === "uncertain" ? "uncertain" : "saved", updatedAt: new Date().toISOString() });
+      saveAction({ ...receipt, delivery_stage: acknowledgement?.delivery_stage, terminal: acknowledgement?.terminal, status: reported === "saved" && acknowledgement?.terminal ? "applied" : reported === "delivered" ? "delivered" : reported === "uncertain" ? "uncertain" : "saved", updatedAt: new Date().toISOString() });
       return result;
     } catch (error) {
       if (durableScope() !== scope) throw error;
@@ -164,8 +165,9 @@ export function flushActions(): Promise<void> {
     for (const receipt of [...actionReceipts()].filter(x => !x.terminal && ["queued", "uncertain", "saved"].includes(x.status))) {
       if (durableScope() !== scope) break;
       try {
-        const status = await api<{ status?: string; terminal?: boolean; delivery_status?: string; command_status?: string }>(`/remotea/actions/${receipt.id}`);
+        const status = await api<{ status?: string; terminal?: boolean; delivery_stage?: DeliveryStage; delivery_status?: string; command_status?: string }>(`/remotea/actions/${receipt.id}`);
         if (durableScope() !== scope) break;
+        receipt.delivery_stage = status.delivery_stage;
         const delivery = status.delivery_status ?? status.command_status ?? status.status;
         if (delivery === "saved" && status.terminal) saveAction({ ...receipt, status: "applied", error: undefined, updatedAt: new Date().toISOString() });
         else if (["delivered", "applied", "done", "taken"].includes(delivery ?? "")) saveAction({ ...receipt, status: "delivered", error: undefined, updatedAt: new Date().toISOString() });

@@ -99,7 +99,7 @@ class ReplanInput(Input):
 
 class MessageInput(Input):
     text: str = Field(min_length=1, max_length=PROMPT_CHARS)
-    mode: str = Field(default="queue", pattern=r"^(queue|steer)$")
+    mode: str = Field(default="queue", pattern=r"^(queue|steer|direct)$")
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
@@ -680,6 +680,7 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
+        **({"origin": "human"} if coordinator.host_cap(db, run.host_id, "input.direct") else {}),
         "target": {"id": target.host_target, **({"repo": target.repo} if target.repo else {}), "branch": branch,
                    "base": run.base_branch},
         "task_id": task.id, "title": task.title[:200].replace("\n", " "), "group": "Eridani",
@@ -706,16 +707,38 @@ def coordinator_active(db, task_id):
 
 
 def send_message(db, owner, run_id, body, *, actor):
+    from . import agent_automation
+
     run = coordinator.load(db, owner, run_id)
     coordinator.ensure_eridani_control(run)
-    semantic_approval = body.text.strip().lower().rstrip(".! ") == "approved"
+    direct = body.mode == "direct"
+    semantic_approval = not direct and body.text.strip().lower().rstrip(".! ") == "approved"
     if body.mode == "steer" or semantic_approval:
         coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    if direct:
+        if run.state_reason in ("wall_clock", "turn_cap") or coordinator.past_wall_clock(run, now()) or (
+                run.turn_cap and run.turn_count >= run.turn_cap):
+            raise DomainError("RUN_LIMIT", "This run reached a configured limit; extend it explicitly before sending direct input.", 409)
+        if not body.action_id:
+            raise DomainError("ACTION_ID_REQUIRED", "Direct messages need a stable action id.")
+        if not body.text.strip():
+            raise DomainError("INVALID_ARGUMENT", "Write a message before sending.")
+        if actor.kind != "human" or not actor.verified:
+            raise DomainError("HUMAN_REQUIRED", "Direct messages require an authenticated human.", 403)
+        if not coordinator.host_cap(db, run.host_id, "input.direct") or not coordinator.host_cap(db, run.host_id, "commands.durable") or (run.sync_state or {}).get("execution_mode") != "managed":
+            raise DomainError("DIRECT_UNSUPPORTED", "This host cannot deliver direct messages; update Remotea and use a managed run.", 409)
+        agent_automation.hold(db, run, actor=actor)
+        if run.state in ("verifying", "judging"):
+            coordinator.transition(db, run, "executing", actor=actor, reason="direct_message")
+        coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
+            "text": body.text, "mode": "direct", "origin": "human"})
+        sent(run, actor, body.text, mode="direct", action_id=str(body.action_id))
+        return public_run(db, run, detail=True)
     if not run.surf and not coordinator.host_cap(db, run.host_id, "commands.durable"):
         raise DomainError("NOT_STARTED", "The agent has not started yet; send this once it is running.", 409)
-    if actor.kind == "human" and body.text.strip().lower().rstrip(".! ") == "approved":
+    if actor.kind == "human" and semantic_approval:
         from uuid import uuid4
 
         from . import agent_decisions
@@ -747,7 +770,7 @@ def send_message(db, owner, run_id, body, *, actor):
     elif body.mode == "steer":
         coordinator.sync_wait(db, run)  # A steer moves past an open interview of the old generation.
     coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation, "text": body.text,
-                                           "mode": body.mode})
+                                           "mode": body.mode, **({"origin": "human"} if coordinator.host_cap(db, run.host_id, "input.direct") else {})})
     sent(run, actor, body.text, mode=body.mode)
     run.last_progress_at = now()
     return public_run(db, run)
@@ -1167,6 +1190,7 @@ def changes_info(db, run, host, session):
 
 
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
+    from . import agent_automation
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
     session = db.get(AgentSession, run.session_pk) if run.session_pk else None
@@ -1180,6 +1204,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "branch": run.branch, "base_branch": run.base_branch, "worktree": run.worktree,
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
         "turn_cap": run.turn_cap, "paused": bool(run.paused), "effort": run.effort,
+        "automation": agent_automation.public(run),
+        "direct_supported": coordinator.host_cap(db, run.host_id, "input.direct") and coordinator.host_cap(db, run.host_id, "commands.durable") and (run.sync_state or {}).get("execution_mode") == "managed",
         "execution_mode": (run.sync_state or {}).get("execution_mode", "legacy"),
         "controller": (run.sync_state or {}).get("controller", "eridani"),
         "terminal_exited": (run.sync_state or {}).get("controller") == "terminal" and coordinator.native_exit_verified(run),
@@ -1229,6 +1255,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                   connectivity="online" if host and agent_link.connected(host) else "offline",
                   activity=run.activity)
     if detail:
+        result.update(live_messages=(run.sync_state or {}).get("live_messages") or [],
+                      message_deliveries=agent_automation.deliveries(db, run))
         plan = coordinator.frozen(db, run)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
         turns, more_turns, older_turns = page(db, run_turns(run), AgentTurn.created_at, limit, offset)
@@ -1255,7 +1283,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
             # "user" (the typed message itself, sent by the host as a `prompt` frame when the turn started).
             # `clipped`: cut here for display, fetchable whole; `truncated`: the host cut it, the rest was never stored.
             turns=[{"id": t.id, "seq": t.seq, "role": t.role, "text": t.text[:TURN_CLIP], "clipped": len(t.text) > TURN_CLIP,
-                    "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500]}
+                    "truncated": t.truncated, "generation": t.generation, "at": t.created_at, "prompt": t.prompt[:500],
+                    "provider_turn_id": t.provider_turn_id, "provider_session_id": t.provider_session_id}
                    for t in turns],
             commands=[public_command(c) for c in commands],
             verify_options=sorted(agent_plan_verify_ids(db, run)),

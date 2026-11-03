@@ -10,9 +10,15 @@ The activity line above the message input describes current model or tool activi
 
 One decision card presents interviews, plans, execution permissions, proposed starts, and final acceptance. Its buttons reflect the decision: answer questions, approve a plan, request changes, allow an action once, or deny it. Complete redacted permission details are expandable. Typing **Approved** acts on the one unambiguous approval in the selected run; it does not choose interview answers or create a permanent permission grant.
 
+Planning questions accept selected options with optional notes, or a typed answer alone. The text box says **Add notes** while an option is selected and **Or type anything here** otherwise. Changing a selection keeps the typed notes. Options and notes reach the agent together in the existing answer text; saved drafts use the same keys and format as before.
+
 The latest plan remains available after follow-up messages, with prior revisions retained. Plan approval authorizes its agreed scope; changed scope, criteria, target, or permissions requires a new decision. Sending a message does not approve a plan.
 
 **Pause** preserves the conversation, workspace, and decisions. **Resume** continues after reconciling any interrupted work. **Cancel** ends execution without discarding the work or its history. A pause remains a pause after reconnecting.
+
+Final acceptance, cancellation, failure, and a reached run limit close the run's server terminal windows after their processes have actually exited. Approving a plan, answering a question, waiting, pausing, or losing the connection does not close them. Cleanup preserves worktrees, saved provider conversations, and Eridani's run history. A live session taken over in the terminal remains under the operator's control.
+
+When planning hands off to a separate worker, the planner's terminal closes once that worker has attached successfully. The worker's terminal stays open, and the planner conversation and worktree remain available. A pending or failed worker start does not authorize planner cleanup; a planner that continues as the worker keeps its terminal.
 
 ## Saving and delivery
 
@@ -25,6 +31,8 @@ Submitting a plan saves a version and returns a receipt. Managed submissions use
 ## Managed harnesses
 
 New managed runs use structured Codex or Claude controls. Remotea displays their transcript, while Eridani controls messages and decisions. **Take over in terminal** explicitly stops managed control before continuing the same conversation in its native terminal. A session has one controller at a time.
+
+The desktop shows a persistent Eridani control notice and a disabled input beneath the transcript. Scrolling, selecting, copying, and finding text remain available. **Take over** or **Ctrl+Shift+Space** requests terminal control; the shortcut yields to a conflicting custom binding. Input becomes available only after the host confirms terminal ownership. If confirmation is uncertain, a fresh connected registry update can enable an explicit retry.
 
 Planner and reviewer profiles restrict repository changes and permit the necessary task coordination tools. Worker profiles use supported automatic review within the approved workspace and scope. Publishing interview questions, submitting a plan, and reporting progress do not require redundant permission to communicate with Eridani. Additional execution permissions remain separate decisions.
 
@@ -46,9 +54,15 @@ The API, host, and desktop negotiate managed-session capabilities. The initial v
 
 Terminal takeover is exclusive and persistent: Eridani records that the terminal has control and disables automatic continuation for that conversation. Opening the same run on another device does not take control back.
 
+Terminal cleanup uses the additive `run.cleanup` capability. Commands identify the finalized run and each known surface's generation and incarnation. They survive an offline host, reconcile against actual exit evidence and registry tombstones, and never infer permission to close a session from its absence in a snapshot. Hosts without this capability retain their existing behavior.
+
+Retiring a separate planner additionally negotiates `run.cleanup.handoff`. Its command names only the old planner and the exact attached worker; it does not finalize the run. Both sides verify the handoff, and the host must still confirm that the distinct worker is live before closing the planner.
+
 ## Incident that motivated this change
 
 For “Thank you in voice mode ends the chat prematurely,” the first native permission authorized `task_interview`; the later one authorized `submit_plan`, rather than execution of the proposed plan. The unanswered submission permission prevented a saved plan revision. A retry's `task_plan` request completed promptly, but its surrounding execution stalled. The new profiles remove redundant coordination approvals, and separate request, persistence, and delivery receipts identify which boundary has stalled.
+
+The later managed-run investigation is documented in [Interview planning activity investigation](INCIDENT_INTERVIEW_ACTIVITY.md). That run saved its plan before processing the queued check-in; its long drafting gap had made the activity display stale. Separate regression tests cover the input receipt/turn-completion race and ensure new follow-up questions are not answered from an earlier interview.
 
 ## Verification
 

@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 CAPS = ["session.report", "turn", "status", "exit", "sessions.snapshot", "command.outcome", "question", "context",
         "spawn", "input", "answer", "stop", "runs.snapshot", "decisions.durable", "commands.durable", "run.pause",
-        "role.options", "managed.sessions", "activity", "spawn.roles"]
+        "role.options", "managed.sessions", "activity", "spawn.roles", "input.direct", "output.live"]
 CATALOG = [{"harness": "codex", "model": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "default": True,
             "efforts": ["low", "medium", "high"], "permission_profiles": ["ask"]},
            {"harness": "claude", "model": "opus", "label": "Opus", "default": True,
@@ -78,6 +78,22 @@ def event_fixture(run_id: str, event: str, body: dict, user: User):
                 run_id=run.id, generation=run.generation, surf=run.surf, incarnation=run.incarnation,
                 kind=body.get("kind", "editing"), label=body.get("label", "Editing"), sequence=body.get("sequence", 1),
                 session_id="synthetic-" + run.id + "-" + str(run.attempt), at=now()))
+        elif event == "output":
+            session = db.get(AgentSession, run.session_pk)
+            agent_link.record_live_output(db, bot_for(run), host.id, agent_link.LiveOutput(
+                run_id=run.id, generation=run.generation, surf=run.surf, incarnation=run.incarnation,
+                session_id=session.session_id, turn_id=body.get("turn_id", "synthetic-turn"),
+                message_id=body.get("message_id", "synthetic-message"), sequence=body.get("sequence", 1),
+                kind=body.get("kind", "commentary"), text=body.get("text", "Measuring widget latency now."),
+                complete=body.get("complete", False), at=now()))
+        elif event == "step":
+            task = owned(db, Task, run.task_id, user.owner_id)
+            step = next((item for item in task.steps if item["id"] == body.get("id")), None)
+            step = step or task.steps[body.get("index", 0)]
+            return agent_plan.task_step(db, bot_for(run), agent_plan.StepInput(
+                run_token=coordinator.run_token(run), task_id=task.id, step_id=step["id"],
+                status=body.get("status", "doing"), note=body.get("note", "Recorded the baseline; checking the slow path."),
+                expected_revision=step.get("revision", 0)))
         elif event == "permission":
             question, _ = coordinator.record_question(db, user.owner_id, host.id, agent_link.Question(
                 run_id=run.id, generation=run.generation, provider=run.tool, provider_session_id="synthetic-" + run.id + "-" + str(run.attempt),
@@ -90,13 +106,31 @@ def event_fixture(run_id: str, event: str, body: dict, user: User):
                     {"id": "allow_once", "label": "Approve once"}, {"id": "deny", "label": "Deny"}]}]))
             db.flush()
             return {"question_id": question.id}
-        elif event == "consume":
+        elif event in ("consume", "automation_release"):
             for command in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id,
-                                      AgentCommand.status.in_(["queued", "sent", "acked", "deferred"]), AgentCommand.kind.in_(["input", "answer"]))):
-                coordinator.on_outcome(db, command, "executed", "Synthetic provider acknowledgement")
+                                      AgentCommand.status.in_(["queued", "sent", "acked", "deferred"]),
+                                      AgentCommand.kind.in_(["input", "answer", "automation.hold"]))
+                                      .order_by(AgentCommand.created_at)):
+                result = ({"surf": run.surf, "incarnation": run.incarnation, "generation": run.generation,
+                           "receipt": "handed_to_harness", "provider_ack": "pending"}
+                          if command.kind == "input" and command.payload.get("mode") == "direct" else None)
+                coordinator.on_outcome(db, command, "executed", "Synthetic provider acknowledgement", result=result)
             for question in db.scalars(select(AgentQuestion).where(AgentQuestion.run_id == run.id, AgentQuestion.status == "submitted")):
                 coordinator.question_resolved(db, host.id, agent_link.QuestionResolved(
                     question_id=question.question_id, generation=question.generation, outcome="accepted"))
+        elif event == "provider_ack":
+            commands = db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id,
+                                 AgentCommand.kind == "input").order_by(AgentCommand.created_at.desc()))
+            command = next((item for item in commands if item.payload.get("mode") == "direct"
+                            and (not body.get("action_id") or item.action_id == body["action_id"])), None)
+            if command is None:
+                raise ValueError("No synthetic direct input to acknowledge")
+            session = db.get(AgentSession, run.session_pk)
+            agent_link.record_input_receipt(db, bot_for(run), host.id, agent_link.InputReceipt(
+                run_id=run.id, generation=command.generation, surf=command.payload["surf"],
+                incarnation=command.payload["incarnation"], session_id=session.session_id,
+                turn_id=body.get("turn_id", "synthetic-turn"), input_id=command.op_id,
+                stage="provider_acknowledged", at=now()))
         elif event == "finish":
             for command in db.scalars(select(AgentCommand).where(AgentCommand.run_id == run.id,
                                       AgentCommand.kind == "stop", AgentCommand.status.in_(["queued", "sent", "acked"]))):
@@ -117,7 +151,7 @@ def event_fixture(run_id: str, event: str, body: dict, user: User):
         elif event == "state":
             # Fixture-only provider/coordinator boundary; UI lifecycle actions always use production routes.
             state = body["state"]
-            if state not in {"verifying", "awaiting_approval", "completed"}:
+            if state not in {"executing", "verifying", "awaiting_approval", "completed"}:
                 raise ValueError("Unsupported synthetic state")
             run.state = state
             run.state_revision += 1

@@ -16,7 +16,9 @@ export function useReceipts() { return useSyncExternalStore(subscribeActions, ac
 export function DeliveryReceipt({ receipt }: { receipt?: ActionReceipt }) {
   if (!receipt) return null;
   const labels = { queued: "Queued on this device · waiting for connection", saved: "Saved by Eridani · waiting for agent acknowledgement", delivered: "Delivered to the agent", applied: "Applied by Eridani", uncertain: "Delivery unconfirmed · your response is retained for retry", rejected: receipt.error || "Response was not accepted" };
-  return <p className={"run-delivery delivery-" + receipt.status} role="status">{labels[receipt.status]}{receipt.retention === "tab" ? " · available in this tab only" : ""}{["queued", "uncertain"].includes(receipt.status) && <> · <button type="button" className="text-button" onClick={() => { void postAction(receipt.url, receipt.body).catch(() => {}); }}>Retry delivery</button></>}</p>;
+  const stages = { saved: "Saved by Eridani · waiting for worker runtime", handed_to_harness: "Handed to worker runtime · provider acknowledgement pending", provider_acknowledged: "Provider acknowledged the message", uncertain: "Delivery unconfirmed · review before retrying" };
+  const label = receipt.delivery_stage && receipt.status !== "queued" && receipt.status !== "rejected" ? stages[receipt.delivery_stage] : labels[receipt.status];
+  return <p className={"run-delivery delivery-" + receipt.status} role="status">{label}{receipt.retention === "tab" ? " · available in this tab only" : ""}{["queued", "uncertain"].includes(receipt.status) && <> · <button type="button" className="text-button" onClick={() => { void postAction(receipt.url, receipt.body).catch(() => {}); }}>Retry delivery</button></>}</p>;
 }
 /** Shared visual and delivery language for every request, with controls supplied by the request's type. */
 export function DecisionCard({ title, task, agent, reason, children, receipt, className = "", label }: {
@@ -67,8 +69,12 @@ export function activityStatus(run: Run, now = Date.now()): { label: string; ani
   const attention = workflowAttention(run);
   if (attention) return { label: ["Paused", "Terminal has control", "Terminal session ended", "Permission needs review", "Delivery unconfirmed"].includes(attention) ? attention : "Waiting for you", animate: false };
   const activity = run.activity;
-  if (!activity || !activity.at || now - Date.parse(activity.at) > 90_000 || !Number.isFinite(Date.parse(activity.at))) return { label: "Activity unconfirmed", animate: false };
+  if (!activity || !activity.at || !Number.isFinite(Date.parse(activity.at))) return { label: "Activity unconfirmed", animate: false };
   const labels: Record<string, string> = { thinking: "Thinking…", deliberating: "Deliberating…", reading: "Reading files", searching: "Reading files", editing: "Editing", testing: "Running tests", tool: "Using tools" };
+  if (now - Date.parse(activity.at) > 90_000) {
+    const previous = activity.label || (labels[activity.kind] ?? activity.kind.replaceAll("_", " ")).replace(/…$/, "").toLowerCase();
+    return { label: `No recent output · last reported ${previous}`, animate: false };
+  }
   return { label: activity.label || labels[activity.kind] || "Working", animate: ["thinking", "deliberating", "reading", "searching", "editing", "testing", "tool"].includes(activity.kind) };
 }
 export function RunActivity({ run, now }: { run: Run; now?: number }) {

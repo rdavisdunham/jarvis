@@ -251,7 +251,8 @@ describe("the final-plan approval", () => {
   it("renders in the drawer with the actor chip and the footer relabelled", () => {
     const html = renderToStaticMarkup(<RunDrawer id={ID} preloaded={waiting} onClose={() => {}}/>);
     expect(html).toContain('aria-label="Final plan approval"');
-    expect(html).toContain('<span class="run-actor" title="Who acts on this run now">Planning · Fable</span>');
+    expect(html).toContain('class="run-drawer-status" role="status">Reviewing plan · Fable');
+    expect(html).not.toContain('class="run-actor"');
     expect(html).toContain("Needs your approval");
     expect(html).not.toContain("Complete task");
     expect(html).not.toContain('aria-label="Review packet"');
