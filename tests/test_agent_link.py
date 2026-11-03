@@ -717,7 +717,15 @@ def test_manual_control_round_trip_over_the_link(client):
         assert context["t"] == "context.response" and context["req_id"] == "ctx-1"
         assert context["run_token"] in context["text"] and "/home/davin/wt/task" in context["text"]
         detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
-        assert detail["state"] == "executing" and detail["worktree"] == "/home/davin/wt/task"
+        assert detail["state"] == "needs_you" and detail["state_reason"] == "plan_approval"
+        approved = client.post(f"/api/v1/remotea/runs/{run_id}/plan-review", json={
+            "action": "approve", "expected_revision": detail["state_revision"]})
+        assert approved.status_code == 200 and approved.json()["state"] == "executing"
+        execute = ws.receive_json()
+        assert execute["t"] == "input" and "Your plan is frozen" in execute["text"]
+        ws.send_json(frame("ack", acked_id=execute["id"], op_id=execute["op_id"], ok=True,
+                           outcome={"state": "executed"}))
+        assert approved.json()["worktree"] == "/home/davin/wt/task"
         typed = put(ws, "prompt", tool="claude_code", provider="claude", surf=surf, incarnation=1, run_id=run_id,
                     generation=1, provider_session_id="sess-c", seq=1, text="Build the drawer.", truncated=False)
         assert typed["ok"] and "turn_id" in typed["outcome"]
@@ -753,7 +761,7 @@ def test_manual_control_round_trip_over_the_link(client):
             provider="claude", provider_session_id="sess-c")
     detail = client.get(f"/api/v1/remotea/runs/{run_id}").json()
     assert detail["state"] == "stopped"
-    assert [c["kind"] for c in detail["commands"]] == ["spawn", "answer", "stop"]
+    assert [c["kind"] for c in detail["commands"]] == ["spawn", "input", "answer", "stop"]
     assert detail["commands"][0]["status"] == "executed" and detail["questions"][0]["status"] == "accepted"
     # The typed prompt is a user row bound to the run; the Stop frame's copy is not kept on the assistant row.
     assert [(t["role"], t["seq"], t["text"], t["prompt"]) for t in detail["turns"]] == [

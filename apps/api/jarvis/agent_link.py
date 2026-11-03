@@ -370,6 +370,8 @@ class Status(Surface):
     since: WireTime
     reason: str = Field(default="", max_length=300)
     effective_permission_mode: str = Field(default="", max_length=40)
+    execution: Literal["managed"] | None = None
+    controller: Literal["eridani", "terminal"] | None = None
 
 
 class SnapshotSurface(Status):
@@ -462,6 +464,11 @@ class Question(Frame):
 
 
 class QuestionResolved(Frame):
+    provider_request_id: str | None = Field(default=None, max_length=200)
+    surf: str | None = Field(default=None, max_length=120)
+    incarnation: int | None = Field(default=None, ge=0)
+    request_digest: str | None = Field(default=None, max_length=64)
+    plan_revision: int | None = Field(default=None, ge=0)
     REDACT: ClassVar[tuple[str, ...]] = ("detail", "answer_echo")
     question_id: str = Field(min_length=1, max_length=200)
     generation: int = Field(default=0, ge=0)
@@ -1604,7 +1611,7 @@ class Activity(Frame):
 
 def record_activity(db, bot, host_id, frame):
     run = coordinator.bound(db, host_id, frame.run_id)
-    review = coordinator.review_for_surface(db, run, frame.surf) if frame.surf and run.state == "plan_reviewing" else None
+    review = coordinator.last_review(db, run) if run.state == "plan_reviewing" else None
     expected_surf = review.surf if review and review.status == "reviewing" else run.surf
     expected_incarnation = review.incarnation if review and review.status == "reviewing" else run.incarnation
     if frame.generation != run.generation or (frame.surf and expected_surf and frame.surf != expected_surf) \

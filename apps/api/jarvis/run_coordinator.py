@@ -116,6 +116,7 @@ REVIEW_SETTLED = ("failed", "skipped")
 # SessionStart text for a surface not bound to a run: the fenced candidate list only (stage F, D6).
 CANDIDATES_CHARS = 4000
 REASONS = {
+    "terminal_control": "The terminal has control of this session. Continue there.",
     "delivery_uncertain": "Delivery uncertain: the host could not tell whether the input reached the agent.",
     "host_offline": "The remotea server went offline during the run.",
     "surface_lost": "The agent's terminal was lost in a host restart.",
@@ -397,6 +398,8 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
     from .agent_link import digest, notify_host
     from .agent_receipts import action_context
 
+    if run and kind not in QUIET_COMMANDS and kind != "worktrees.scan":
+        ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
     expires = None if durable and kind in ("input", "answer", "run.pause", "run.resume") else expires_at or now() + (ttl or TTL[kind])
@@ -548,6 +551,7 @@ def request_stop(db, run, *, actor, mode="interrupt", reason="stopped", final="s
     """Stop is desired state: recorded now, settled only when termination is confirmed."""
     if run.state in TERMINAL:
         return run
+    ensure_eridani_control(run)
     check_revision(run, expected_revision)
     if run.state == "stopping":
         if mode == "kill" and run.stop_mode != "kill" and run.surf:
@@ -769,7 +773,14 @@ def owns(run, row):
 
 def on_status(db, row, frame, host_id=None):
     run = run_for_session(db, row, host_id=host_id)
-    if run is None or run.state in TERMINAL or not owns(run, row):
+    if run is None or run.state in TERMINAL:
+        return
+    if getattr(frame, "controller", None) == "terminal":
+        review = review_for_surface(db, run, frame.surf) if frame.surf else None
+        if owns(run, row) or (review and review.status == "reviewing"):
+            terminal_control(db, run)
+        return
+    if not owns(run, row):
         return
     if frame.effective_permission_mode:
         run.effective_permission_mode = frame.effective_permission_mode[:40]
@@ -865,11 +876,14 @@ def answer(db, question, answers, *, actor):
     if question.hold_until and question.hold_until <= now():
         raise DomainError("QUESTION_CLOSED", "The agent stopped waiting; answer in the terminal.", 409)
     run = db.get(AgentRun, question.run_id, with_for_update=True) if question.run_id else None
+    if run is not None:
+        ensure_eridani_control(run)
     if run is not None and (run.state in TERMINAL or run.state == "stopping" or question.generation != run.generation or question.plan_revision != run.plan_revision):
         raise DomainError("STALE_GENERATION", "The run moved on since this question was asked.", 409)
     host = db.get(AgentHost, question.host_id)
     session = db.get(AgentSession, question.session_pk)
-    harness = "codex" if session and session.tool in ("codex", "codex-cli") else "claude"
+    harness = run.tool if run and run.tool in ("claude", "codex") else (
+        "codex" if session and session.tool.startswith("codex") else "claude")
     harness_info = (host.caps or {}).get("harnesses", {}).get(harness, {})
     if not (harness_info.get("question") or (harness_info.get("managed") and harness_info.get("managed_questions"))):
         raise DomainError("TERMINAL_ONLY", "This host does not take structured answers; open the terminal.", 409)
@@ -912,6 +926,12 @@ def question_resolved(db, host_id, frame):
                                                      AgentQuestion.question_id == frame.question_id).with_for_update())
     if question is None:
         raise DomainError("UNKNOWN_QUESTION", "No such question from this host.", 404)
+    if ((getattr(frame, "provider_request_id", None) is not None and frame.provider_request_id != question.provider_request_id)
+            or (getattr(frame, "incarnation", None) is not None and frame.incarnation != question.incarnation)
+            or (getattr(frame, "request_digest", None) is not None and frame.request_digest != question.request_digest)
+            or (getattr(frame, "plan_revision", None) is not None and frame.plan_revision != question.plan_revision)
+            or ((question.durable or frame.generation) and frame.generation != question.generation)):
+        return question  # Delayed resolutions cannot consume a newer callback or generation.
     if question.status in {"accepted", "answered_locally", "canceled"}:
         return question  # Settled; a late or duplicate resolution changes nothing.
     question.updated_at, question.detail = now(), (frame.detail or "")[:300]
@@ -1358,6 +1378,7 @@ def retry_handoff(db, run):
 
 def approve_plan(db, run, *, actor):
     """needs_you(plan_approval): the operator approves the final plan; execution (or the handoff) starts."""
+    ensure_eridani_control(run)
     plan = frozen(db, run)
     if plan is None or plan.approval_status != "pending":
         raise DomainError("DECISION_CLOSED", "This plan is no longer awaiting approval.", 409)
@@ -1373,6 +1394,7 @@ def revise_plan(db, run, note_text, *, actor):
     """needs_you(plan_approval): the operator sends the plan back with a note; the planner revises and resubmits."""
     from . import agent_prompts as prompts
 
+    ensure_eridani_control(run)
     plan = frozen(db, run)
     if plan is not None:
         plan.approval_status = "revised"
@@ -2240,7 +2262,10 @@ def verify_config(plan):
 def desired(db, run):
     """The run's own runs.snapshot entry: for a run with roles it names the owner's surface (`surf`, or the
     handoff's `attempt` before the worker has one); desired_entries adds the run's other surfaces."""
-    entry = {"run_id": run.id, "generation": run.generation, "desired": "stop" if run.state == "stopping" else "pause" if run.paused else "continue"}
+    entry = {"run_id": run.id, "generation": run.generation, "desired": "pause" if (run.sync_state or {}).get("controller") == "terminal" else
+             "stop" if run.state == "stopping" else "pause" if run.paused else "continue"}
+    if (run.sync_state or {}).get("controller") == "terminal":
+        entry["controller"] = "terminal"
     if run.state == "stopping":
         entry["stop_mode"] = run.stop_mode or "interrupt"
     else:
@@ -2285,6 +2310,8 @@ def stale(db, row, run):
         return "a focus request does not outlive its connection"
     if run is None:
         return None
+    if (run.sync_state or {}).get("controller") == "terminal" and row.kind not in QUIET_COMMANDS and row.kind != "worktrees.scan":
+        return "the terminal owns this session"
     if run.state in TERMINAL:
         return "the run settled"
     if row.kind in {"input", "answer"} and run.state == "stopping":
@@ -2303,6 +2330,11 @@ def stale(db, row, run):
         question = db.scalar(select(AgentQuestion).where(AgentQuestion.answer_op_id == row.op_id))
         if question is None or question.status != "submitted":
             return "the question is no longer open"
+        if question.recovery == "attention_required":
+            return "the adapter requires reconciliation before consent"
+        if (row.payload or {}).get("provider_request_id") != question.provider_request_id or (
+                (row.payload or {}).get("incarnation") is not None and row.payload["incarnation"] != question.incarnation):
+            return "the provider callback was superseded"
     return None
 
 
@@ -2316,6 +2348,10 @@ def reconcile(db, owner, host_id, surfaces, journal=None):
     runs = list(db.scalars(select(AgentRun).where(AgentRun.owner_id == owner, AgentRun.host_id == host_id,
                                                   AgentRun.state.not_in(TERMINAL_RUN_STATES)).with_for_update()))
     for run in runs:
+        if any(getattr(s, "controller", None) == "terminal" and (s.surf == run.surf or
+               ((review := review_for_surface(db, run, s.surf)) and review.status == "reviewing"))
+               for s in by_run.get(run.id, [])):
+            terminal_control(db, run)
         # The run's own surface first: a run with roles may also have a reviewer's (or a retired planner's) surface.
         mine = by_run.get(run.id) or []
         reviews = list(db.scalars(select(AgentPlanReview).where(AgentPlanReview.run_id == run.id))) if run.roles else []
@@ -2533,6 +2569,8 @@ def rebind_question(db, question, session, run, frame):
         run.incarnation = max(run.incarnation, frame.incarnation)
     old = db.scalar(select(AgentCommand).where(AgentCommand.host_id == question.host_id,
                                              AgentCommand.op_id == question.answer_op_id)) if question.answer_op_id else None
+    if old and question.status == "submitted" and question.recovery == "attention_required" and old.status != "executed":
+        settle_command(db, old, "uncertain", "The adapter requires reconciliation before consent can be delivered.")
     if question.status == "submitted" and question.answers and question.recovery == "pending" \
             and (changed or old is None):
         # pending is adapter proof: it fsyncs submitted BEFORE ever writing consent. It never emits pending after
@@ -2553,3 +2591,25 @@ def rebind_question(db, question, session, run, frame):
                            "proof": "adapter pending: no consent attempted"}
         question.answer_op_id = replacement.op_id
     emit(db, question.owner_id, "agent.changed", question.run_id or question.session_pk)
+
+
+def ensure_eridani_control(run):
+    if (run.sync_state or {}).get("controller") == "terminal":
+        raise DomainError("TERMINAL_CONTROL", "The terminal has control of this session. Continue there.", 409)
+
+
+def terminal_control(db, run):
+    """Explicit terminal takeover is durable and sticky; reconnect and Resume never steal control back."""
+    if (run.sync_state or {}).get("controller") == "terminal":
+        return
+    run.paused = True
+    run.sync_state = {**(run.sync_state or {}), "controller": "terminal"}
+    for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.run_id == run.id,
+                                                        AgentAttempt.status.in_(("queued", "running")))):
+        attempt.status, attempt.updated_at = "superseded", now()
+    if "needs_you" in TRANSITIONS.get(run.state, set()):
+        transition(db, run, "needs_you", reason="terminal_control")
+    else:
+        run.state_reason, run.state_revision, run.updated_at = "terminal_control", run.state_revision + 1, now()
+    note(run, "terminal_control", actor={"kind": "human"})
+    emit(db, run.owner_id, "agent.changed", run.id)

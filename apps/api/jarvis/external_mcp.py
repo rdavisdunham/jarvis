@@ -130,7 +130,9 @@ def definitions(scopes):
 
         add("task_plan",
             "Read the task you are working on: PRD, steps with ids and revisions, success criteria and the run you belong to. "
-            "Pass run_token from your session context; task_id is optional when the token names the run.",
+            "Pass run_token from your session context; task_id is optional when the token names the run. "
+            "To reconcile a lost submit_plan response, pass its stable submission_id to retrieve the saved submission receipt "
+            "(also available after the planner token has been retired).",
             agent_plan.PlanQuery.model_json_schema())
         add("task_step",
             "Set one step's status (todo, doing, done, skipped) with an optional note. expected_revision is the step's "

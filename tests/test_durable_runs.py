@@ -229,7 +229,8 @@ def test_typed_approved_requires_human_and_one_unambiguous_decision(durable):
         control.send_message(db, OWNER, run_id, control.MessageInput(text="Approved"), actor=Actor("run_session"))
         assert coordinator.frozen(db, db.get(AgentRun, run_id)).approval_status == "pending"
     with session_scope() as db:
-        result = control.send_message(db, OWNER, run_id, control.MessageInput(text="Approved"), actor=HUMAN)
+        result = control.send_message(db, OWNER, run_id, control.MessageInput(
+            text="Approved", expected_revision=db.get(AgentRun, run_id).state_revision), actor=HUMAN)
         assert result["state"] == "executing"
         assert coordinator.frozen(db, db.get(AgentRun, run_id)).approval_status == "approved"
 
@@ -377,3 +378,74 @@ def test_recreated_question_keeps_one_decision_and_rebinds_current_callback(dura
                                                 "recovery": "attention_required"})
         coordinator.record_question(db, OWNER, durable.id, attention)
         assert question.answer_op_id == old_op and question.status == "submitted"
+
+
+def test_terminal_takeover_is_sticky_and_blocks_resume_cancel_and_queued_effects(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        control.send_message(db, OWNER, run_id, control.MessageInput(text="queued before takeover"), actor=HUMAN)
+        frame = agent_link.Status(surf=run.surf, incarnation=1, state="needs_you", since=now(),
+                                  execution="managed", controller="terminal", reason="Terminal has control")
+        coordinator.on_status(db, db.get(control.AgentSession, run.session_pk), frame, host_id=durable.id)
+        assert run.paused and control.public_run(db, run)["controller"] == "terminal"
+        assert coordinator.desired(db, run)["desired"] == "pause"
+        for act in (lambda: control.send_message(db, OWNER, run_id, control.MessageInput(text="must not send"), actor=HUMAN),
+                    lambda: decisions.set_paused(db, OWNER, run_id, decisions.PauseInput(
+                        action_id=uuid4(), expected_revision=run.state_revision), False, actor=HUMAN),
+                    lambda: control.stop_run(db, OWNER, run_id, control.StopInput(), actor=HUMAN)):
+            with pytest.raises(DomainError) as manual:
+                act()
+            assert manual.value.code == "TERMINAL_CONTROL"
+        assert not [f for f in agent_link.drain(db, db.get(AgentHost, durable.id), 1) if f["t"] in ("input", "stop")]
+        ordinary = frame.model_copy(update={"controller": "eridani", "state": "working"})
+        coordinator.on_status(db, db.get(control.AgentSession, run.session_pk), ordinary, host_id=durable.id)
+        assert run.paused and run.sync_state["controller"] == "terminal"
+
+
+def test_managed_codex_answer_does_not_require_legacy_claude_question_hook(durable):
+    run_id = new_run(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        run.tool = "codex"
+        host_row = db.get(AgentHost, durable.id)
+        host_row.caps = {**host_row.caps, "harnesses": {"claude": {"question": False},
+            "codex": {"question": False, "managed": True, "managed_questions": ["ask", "approval"]}}}
+        frame = agent_link.Question(run_id=run_id, generation=run.generation, provider="codex",
+            provider_session_id="managed-codex-thread", question_id="codex-q", provider_request_id="codex-request",
+            durable=True, surf=run.surf, incarnation=1, items=[{"id": "a", "text": "Which scope?"}])
+        question, _ = coordinator.record_question(db, OWNER, durable.id, frame)
+        coordinator.answer(db, question, [{"item_id": "a", "text": "This scope"}], actor=HUMAN)
+        assert question.status == "submitted"
+
+
+def test_managed_catalog_without_authoritative_default_requires_explicit_model(durable):
+    with session_scope() as db:
+        host_row = db.get(AgentHost, durable.id)
+        host_row.caps = {**host_row.caps, "caps": [*host_row.caps["caps"], "managed.sessions", "role.options"],
+            "harnesses": {**host_row.caps["harnesses"], "claude": {**host_row.caps["harnesses"]["claude"], "managed": True}},
+            "model_catalog": [{"harness": "claude", "model": "first-is-not-default", "efforts": []}]}
+    created = task()
+    with session_scope() as db, pytest.raises(DomainError) as unavailable:
+        control.start_run(db, OWNER, durable.account_id, control.StartInput(
+            task_id=created["id"], execution_target_id=durable.target_id), actor=HUMAN)
+    assert unavailable.value.code == "MODEL_DEFAULT_UNAVAILABLE"
+
+
+def test_queued_text_survives_phase_revision_but_steer_and_approval_remain_fenced(durable):
+    run_id, submission_id, _ = plan(durable)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        before = run.state_revision
+        run.state_revision += 1
+        saved = control.send_message(db, OWNER, run_id, control.MessageInput(
+            text="An offline note", expected_revision=before), actor=HUMAN)
+        assert saved["state_reason"] == "plan_approval"
+        for text, mode in (("steer", "steer"), ("Approved", "queue")):
+            with pytest.raises(DomainError) as stale:
+                control.send_message(db, OWNER, run_id, control.MessageInput(
+                    text=text, mode=mode, expected_revision=before), actor=HUMAN)
+            assert stale.value.code == "REVISION_CONFLICT"
+        receipt = agent_plan.task_plan(db, BOT, agent_plan.PlanQuery(submission_id=submission_id,
+                                                                    run_token="ert_retired_token"))
+        assert receipt["submission"]["run_id"] == run_id and receipt["submission"]["kind"] == "submit_plan"

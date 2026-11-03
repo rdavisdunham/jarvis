@@ -30,6 +30,7 @@ class Input(BaseModel):
 
 
 class PlanQuery(Input):
+    submission_id: UUID | None = None
     task_id: UUID | None = None
 
 
@@ -206,6 +207,12 @@ def task_plan(db, bot, body):
     from .agent_link import gate
 
     gate(db, bot.owner_id)  # With remotea off, no in-session tool answers (stage F, L1).
+    if body.submission_id:
+        from .agent_receipts import lookup
+        receipt = lookup(db, bot.owner_id, body.submission_id)
+        if receipt["kind"] != "submit_plan":
+            raise DomainError("NOT_FOUND", "That plan submission was not found.", 404)
+        return {"submission": receipt}
     actor, run = binding(db, bot, body)
     task_id = str(body.task_id) if body.task_id else (run.task_id if run else None)
     if run is not None and actor.verified and task_id != run.task_id:
@@ -287,6 +294,7 @@ def run_scoped(db, bot, body, states):
     if body.task_id and str(body.task_id) != run.task_id:
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
     run = coordinator.load(db, run.owner_id, run.id)
+    coordinator.ensure_eridani_control(run)
     if run.state not in states:
         raise DomainError("PLAN_LOCKED", f"The run is {run.state}; ask for a re-plan to change the plan.", 409,
                           data={"state": run.state})
@@ -388,6 +396,7 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     if row.status != "open":
         raise DomainError("INTERVIEW_CLOSED", "These questions were already answered.", 409, data={"status": row.status})
     run = coordinator.load(db, owner, row.run_id)
+    coordinator.ensure_eridani_control(run)
     parked = run.state == "needs_you" and run.state_reason in ANSWERABLE_PARKED
     if (run.state != "interviewing" and not parked) or row.generation != run.generation or row.plan_revision != run.plan_revision:
         raise DomainError("STALE_GENERATION", "The run moved on since these questions were asked.", 409,

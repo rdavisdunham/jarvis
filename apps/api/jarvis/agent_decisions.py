@@ -188,6 +188,7 @@ def respond(db, owner, identity, body, *, actor, journal=True):
 def set_paused(db, owner, run_id, body, paused, *, actor):
     from .agent_control import public_run
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in coordinator.TERMINAL or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)

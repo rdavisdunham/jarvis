@@ -593,9 +593,12 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     for spec in [body, body.reviewer, body.worker]:
         if spec and not spec.model:
             candidates = [m for m in catalog if m.get("harness") == spec.harness]
-            chosen = next((m for m in candidates if m.get("default")), candidates[0] if candidates else None)
+            chosen = next((m for m in candidates if m.get("default") or m.get("is_default") or m.get("isDefault")), None)
             if chosen:
                 spec.model = chosen.get("model")
+            elif candidates or managed_start:
+                raise DomainError("MODEL_DEFAULT_UNAVAILABLE", "This host has not reported the provider default model. Choose an advertised model explicitly.", 409,
+                                  data={"harness": spec.harness})
     roles = run_roles(body)
     check_host(owner, task, host, body.harness, target.host_target,
                roles={"reviewer": roles["reviewer"], "worker": roles["worker"]} if roles else None)
@@ -701,7 +704,10 @@ def coordinator_active(db, task_id):
 
 def send_message(db, owner, run_id, body, *, actor):
     run = coordinator.load(db, owner, run_id)
-    coordinator.check_revision(run, body.expected_revision)
+    coordinator.ensure_eridani_control(run)
+    semantic_approval = body.text.strip().lower().rstrip(".! ") == "approved"
+    if body.mode == "steer" or semantic_approval:
+        coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
     if not run.surf and not coordinator.host_cap(db, run.host_id, "commands.durable"):
@@ -712,6 +718,8 @@ def send_message(db, owner, run_id, body, *, actor):
         from . import agent_decisions
         waiting = [d for d in agent_decisions.for_run(db, run) if d["status"] in ("open", "pending")]
         if len(waiting) == 1 and "approve" in waiting[0]["actions"]:
+            if body.expected_revision is None:
+                raise DomainError("REVISION_REQUIRED", "Review this decision and approve it with its current revision.", 409)
             decision = waiting[0]
             return agent_decisions.respond(db, owner, decision["id"], agent_decisions.RespondInput(
                 action_id=body.action_id or uuid4(), expected_revision=decision["revision"], action="approve"),
@@ -752,6 +760,7 @@ def replan(db, owner, run_id, body, *, actor):
     from . import agent_prompts as prompts
 
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state not in {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"}:
         raise DomainError("RUN_SETTLED", f"A run that is {run.state} cannot re-plan.", 409)
@@ -774,6 +783,7 @@ def replan(db, owner, run_id, body, *, actor):
 def verify_now(db, owner, run_id, body=None, *, actor):
     """On-demand verification: the same attempt machinery, bound to the current tuple; it never moves the run."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision if body else None)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -800,6 +810,7 @@ def judge_again(db, owner, run_id, body, *, actor):
     """Judge again: verify (when the plan has a verify command) and judge the last turn against the plan as frozen
     now, typically after Edit criteria (agent_plan.set_criteria). The verdict moves the run as after any turn."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state not in JUDGE_AGAIN_STATES or run.state_reason in ("plan_review", "plan_approval"):
         raise DomainError("RUN_NOT_PARKED", f"Judge again works while the run needs you or awaits approval (not during a "
@@ -829,6 +840,7 @@ def approve(db, owner, run_id, body, *, actor):
     from .domain import execute
 
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -849,6 +861,7 @@ def set_freestyle(db, owner, run_id, body, *, actor):
     toward the cap, and no gap prompts are sent. A run the judge parked goes back to executing so the conversation
     can continue; turning freestyle off makes the next turn judged again."""
     run = coordinator.load(db, owner, run_id)
+    coordinator.ensure_eridani_control(run)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
@@ -1165,6 +1178,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "effective_permission_mode": run.effective_permission_mode, "turn_count": run.turn_count,
         "turn_cap": run.turn_cap, "paused": bool(run.paused), "effort": run.effort,
         "execution_mode": (run.sync_state or {}).get("execution_mode", "legacy"),
+        "controller": (run.sync_state or {}).get("controller", "eridani"),
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
@@ -2355,6 +2369,10 @@ def control_dispatch(db, owner, tool, args):
                        if d["status"] in ("open", "pending")]
             if len(waiting) == 1 and "approve" in waiting[0]["actions"]:
                 decision = waiting[0]
+                row, _kind, _run = agent_decisions.load(db, owner, decision["id"])
+                asked_at = getattr(row, "frozen_at", getattr(row, "state_since", None))
+                if asked_at is not None and work.created_at < asked_at:
+                    raise DomainError("DECISION_STALE", "The decision changed after this approval message was written.", 409)
                 return agent_decisions.respond(db, owner, decision["id"], agent_decisions.RespondInput(
                     action_id=ActionUUID(work.id), expected_revision=decision["revision"], action="approve"),
                     actor=Actor("human"))["result"]
@@ -2668,7 +2686,7 @@ def open_proposal(db, owner, account):
 
 def validate_role_options(host, harness, model, effort, permission_profile):
     catalog = [m for m in (host.caps or {}).get("model_catalog", []) if m.get("harness") == harness]
-    if model and catalog and not any(m.get("model") == model for m in catalog):
+    if model and (catalog or "role.options" in ((host.caps or {}).get("caps") or [])) and not any(m.get("model") == model for m in catalog):
         raise DomainError("MODEL_UNAVAILABLE", "This host does not advertise the selected model; choose an available model.", 409)
     if not effort and not permission_profile:
         return
