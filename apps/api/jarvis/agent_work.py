@@ -55,6 +55,7 @@ def enqueue(
     dependencies=None,
     resources=None,
     credential_id=None,
+    voice_source=None,
 ):
     conv = owned(db, Conversation, conversation_id, owner)
     if conv.device_id != device:
@@ -94,7 +95,7 @@ def enqueue(
         voice_session_id=voice_session_id,
         credential_id=credential_id,
         input_hash=identity,
-        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus}),
+        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus, **({"voice_source": voice_source} if voice_source else {})}),
         revision=1,
         dependencies=list(dict.fromkeys(deps)),
         resources=resources or [],

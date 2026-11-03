@@ -1,104 +1,97 @@
-// Browser recognition is opt-in and foreground-only. No local model is downloaded.
-export const isWakePhrase = (text: string) =>
-  /^(?:(?:hey|hi|okay|ok)[,\s]+)?(?:eri|erie|airy|eridani)[.!?,\s]*$/i.test(
-    text.trim(),
-  );
-
+import { startRecognition, validatesAudioTrack } from "./voice-recognition";
+// Foreground browser speech service. Detection hints never execute a task.
+export const isWakePhrase = (text: string) => wakeRequest(text) === "";
 export function wakeRequest(text: string): string | null {
   const match = text.trim().match(/^(?:(?:hey|hi|okay|ok)[,\s]+)?(?:eri|erie|airy|eridani)(?=$|[.!?,\s])(?:[.!?,\s]*)(.*)$/i);
   return match ? match[1].trim() : null;
 }
-
-type Recognition = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  processLocally?: boolean;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  abort(): void;
+export type Recognition = {
+  continuous:boolean; interimResults:boolean; maxAlternatives:number; lang:string;
+  processLocally?:boolean; phrases?:unknown[];
+  onstart:(()=>void)|null; onresult:((event:any)=>void)|null;
+  onerror:((event:any)=>void)|null; onend:(()=>void)|null;
+  start(track?:MediaStreamTrack):void; abort():void;
 };
 export function recognitionType(): (new () => Recognition) | undefined {
+  if (typeof window === "undefined") return undefined;
   const browser = window as any;
   return browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
 }
 export class WakeWord {
-  private recognition: Recognition | null = null;
+  private recognition:Recognition|null = null;
   private enabled = false;
-  private timer: ReturnType<typeof setTimeout> | null = null;
-  constructor(
-    private wake: (request: string) => void,
-    private status: (message: string) => void,
-  ) {}
+  private stable:ReturnType<typeof setTimeout>|null = null;
+  private candidate = "";
+  private request = "";
+  private bias = true;
+  constructor(private wake:(request:string)=>void, private status:(message:string)=>void,
+    private options:{started?:()=>void; failed?:(reason:string)=>void; ended?:()=>void; negative?:()=>void;
+      track?:MediaStreamTrack; sharedTrackValidated?:boolean} = {}) {}
   start() {
+    this.stop();
     const Type = recognitionType();
-    if (!Type) {
-      this.status("Wake word is unavailable in this browser.");
-      return;
-    }
+    if (!Type) { this.options.failed?.("unavailable"); this.status("Wake unavailable. Tap voice to talk."); return; }
     this.enabled = true;
-    const recognition = new Type();
-    this.recognition = recognition;
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = "en-US";
+    const sharedTrackValidated = this.options.sharedTrackValidated ?? validatesAudioTrack(Type,this.options.track);
+    const recognition = new Type(); this.recognition = recognition;
+    recognition.continuous = true; recognition.interimResults = true; recognition.maxAlternatives = 3; recognition.lang = "en-US";
     if ("processLocally" in recognition) recognition.processLocally = false;
-    recognition.onresult = (event) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+    // Bias is optional and must not prevent the existing browser-service path.
+    const Phrase = (window as any).SpeechRecognitionPhrase;
+    if (this.bias && "phrases" in recognition && Phrase) {
+      try { recognition.phrases = [new Phrase("Eri",5), new Phrase("Hey Eri",5)]; } catch { /* optional */ }
+    }
+    recognition.onstart = () => { if (this.recognition === recognition && this.enabled) this.options.started?.(); };
+    recognition.onresult = event => {
+      for (let i=event.resultIndex; i<event.results.length; i++) {
         if (!this.enabled || this.recognition !== recognition) return;
-        const request = wakeRequest(event.results[i][0].transcript);
-        if (event.results[i].isFinal && request !== null) {
-          this.stop();
-          this.wake(request);
-          break;
+        const result = event.results[i];
+        let request:string|null = null, prefix = "";
+        for (let a=0; a<Math.min(result.length ?? 1,3); a++) {
+          const text = result[a].transcript;
+          request = wakeRequest(text);
+          if (request !== null) { prefix = text.trim().slice(0,text.trim().length-request.length).toLowerCase().replace(/[^a-z]/g,""); break; }
+        }
+        if (request === null) {
+          this.cancelCandidate();
+          if (result.isFinal) this.options.negative?.();
+          continue;
+        }
+        this.request = request;
+        // Stability belongs to the wake prefix, not the still-growing request suffix.
+        const key = String(i)+":"+prefix;
+        if (result.isFinal) { this.activate(); return; }
+        if (key !== this.candidate) {
+          this.cancelCandidate(); this.candidate = key;
+          this.stable = setTimeout(()=> { if (this.enabled && this.recognition === recognition) this.activate(); },200);
         }
       }
     };
-    recognition.onerror = (event) => {
-      if (event.error === "no-speech" || event.error === "aborted") return;
-      this.stop();
-      this.status(
-        "Wake word paused: " +
-          (event.error === "not-allowed"
-            ? "allow microphone access, then enable it again."
-            : "browser recognition is unavailable. Tap voice to talk."),
-      );
+    recognition.onerror = event => {
+      if (!this.enabled || this.recognition !== recognition) return;
+      this.cancelCandidate();
+      if (event.error === "phrases-not-supported" && this.bias) { this.bias=false; this.start(); return; }
+      if (event.error === "audio-capture" && sharedTrackValidated) { this.options.sharedTrackValidated=false; this.start(); return; }
+      if (["no-speech","aborted"].includes(event.error)) { this.options.negative?.(); return; }
+      this.stop(); this.options.failed?.(event.error);
     };
     recognition.onend = () => {
-      if (this.enabled && document.visibilityState === "visible") {
-        this.timer = setTimeout(() => {
-          if (!this.enabled) return;
-          try {
-            recognition.start();
-          } catch {
-            this.stop();
-            this.status("Enable wake word again to resume listening.");
-          }
-        }, 500);
-      }
+      if (!this.enabled || this.recognition !== recognition) return;
+      this.stop(); this.options.ended?.();
     };
-    try {
-      recognition.start();
-      this.status(
-        "Listening for “Eri” or “Hey, Eri” while this page is visible.",
-      );
-    } catch {
-      this.stop();
-      this.status("Wake word could not start. Tap voice to talk.");
-    }
+    try { startRecognition(recognition,this.options.track,sharedTrackValidated); }
+    catch (e) {
+      if(sharedTrackValidated && (e as Error).name!=="NotAllowedError") { this.options.sharedTrackValidated=false; this.start();return; }
+      this.stop(); this.options.failed?.((e as Error).name === "NotAllowedError" ? "not-allowed" : "start_failed"); }
   }
+  private activate() { const request = this.request; this.stop(); this.wake(request); }
+  private cancelCandidate() { if (this.stable) clearTimeout(this.stable); this.stable = null; this.candidate = ""; }
   stop() {
-    this.enabled = false;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
+    this.enabled = false; this.cancelCandidate();
     if (this.recognition) {
-      this.recognition.onend = null;
-      this.recognition.onresult = null;
-      this.recognition.onerror = null;
-      this.recognition.abort();
-      this.recognition = null;
+      const r = this.recognition; this.recognition = null;
+      r.onstart = r.onresult = r.onerror = r.onend = null;
+      try { r.abort(); } catch { /* already ended */ }
     }
   }
 }

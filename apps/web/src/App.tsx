@@ -113,7 +113,9 @@ import { Workspace } from "./Workspace";
 import { ScheduleDialog } from "./ScheduleDialog";
 import type { Project } from "./types";
 import { MemoryReviewCard } from "./MemoryReviewCard";
-import { WakeWord, recognitionType } from "./wake-word";
+import { recognitionType } from "./wake-word";
+import { VoiceCoordinator, type VoiceAttempt, type ForegroundVoiceState } from "./voice-coordinator";
+import type { VoiceCapture } from "./voice-capture";
 import { useSiteControl } from "./copilot";
 import { ensurePushSubscription, watchPushSubscription } from "./push-subscription";
 import type {
@@ -504,8 +506,9 @@ export default function App() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const [wakeEnabled, setWakeEnabled] = useState(false);
   const [wakeStatus, setWakeStatus] = useState("");
-  const wake = useRef<WakeWord | null>(null);
-  const wakeStart = useRef<(request: string) => void>(() => {});
+  const [wakeRuntime,setWakeRuntime]=useState<ForegroundVoiceState>("off");
+  const coordinator=useRef<VoiceCoordinator|null>(null);
+  const startVoiceRef=useRef<(capture?:VoiceCapture,attempt?:VoiceAttempt)=>Promise<void>>(async()=>{});
   const glowRef = useRef<HTMLDivElement>(null);
   const displayedActions = useRef(new Set<string>());
   const voiceGeneration = useRef(0);
@@ -546,6 +549,7 @@ export default function App() {
     const recover = (event: Event) => {
       if (recovering || workspaceSwitching.current) return;
       recovering = true;
+      const closing=coordinator.current?.dispose();
       setTasks([]);
       setProjects([]);
       setMemories([]);
@@ -554,6 +558,7 @@ export default function App() {
       setBoot(null);
       void (async () => {
         try {
+          await closing;
           await voice.current?.stop();
           if ((event as CustomEvent).detail !== "WORKSPACE_CHANGED")
             await post("/accounts/switch", { workspace_id: null });
@@ -1103,11 +1108,10 @@ export default function App() {
         localStorage.setItem("eri-voice-live", action.voice);
       }
       if (action.wake_enabled !== undefined) {
-        setWakeEnabled(action.wake_enabled);
-        setWakeStatus("");
+        await coordinator.current?.enable(action.wake_enabled);
       }
       if (action.density !== undefined) setDensity(action.density);
-      return { outcome: "device_preferences_updated", saved: true };
+      return { outcome: "device_preferences_updated", saved: action.wake_enabled===undefined ? true : coordinator.current?.preferenceSaved ?? false };
     }
     const kind = action.kind ?? "show";
     if (kind === "activity") {
@@ -1712,9 +1716,10 @@ export default function App() {
     setActivityOpen(false);
     if (mobile) setCompanion(false);
   }
-  async function startVoice() {
+  async function startVoice(capture?:VoiceCapture, attempt?:VoiceAttempt) {
     if (voice.current) {
-      voiceGeneration.current += 1;
+      const generation=++voiceGeneration.current;
+      const owner=coordinator.current;
       const previous = voice.current;
       voice.current = null;
       setVoiceState({
@@ -1724,17 +1729,22 @@ export default function App() {
         closed: false,
         receipts: [],
       });
+      owner?.localEnd();
       await previous.stop();
+      if(generation!==voiceGeneration.current || coordinator.current!==owner)return;
       setVoiceState(null);
+      await owner?.ended();
       setMessages((items) =>
         items.map((item) => ({ ...item, pending: false })),
       );
       return;
     }
-    if (voiceState && ["connecting", "closing"].includes(voiceState.state))
+    if(!capture && wakeRuntime==="connecting_voice" && coordinator.current){await coordinator.current.cancelStartup();return;}
+    if (!capture && voiceState && ["connecting", "closing"].includes(voiceState.state))
       return;
+    if(!capture && coordinator.current){await coordinator.current.manual();return;}
     const generation = ++voiceGeneration.current;
-    wake.current?.stop();
+    const owner=coordinator.current;
     setError("");
     setCompanion(true);
     setVoiceState({
@@ -1745,12 +1755,17 @@ export default function App() {
       receipts: [],
     });
     try {
-      const id = await ensureConversation();
-      if (generation !== voiceGeneration.current) return;
+      const identity=ensureConversation();
+      const uiReady=syncUIRef.current();
       const controller = new Voice(
         (state) => {
           if (voice.current !== controller) return;
-          if (state.closed) voice.current = null;
+          if (state.closed) {
+            voice.current = null;
+            void controller.stop().then(()=> {
+              if(generation===voiceGeneration.current && coordinator.current===owner && !voice.current)void owner?.ended();
+            });
+          }
           setVoiceState(state);
           void showActions(state.ui_actions);
           if (state.text && state.text_id) {
@@ -1784,70 +1799,56 @@ export default function App() {
         },
         (level) =>
           glowRef.current?.style.setProperty("--voice-level", String(level)),
+        draining=>{if(generation===voiceGeneration.current && coordinator.current===owner)owner?.draining(draining);},
+        ()=>{if(generation===voiceGeneration.current && coordinator.current===owner)owner?.localEnd();},
       );
       voice.current = controller;
-      await syncUIRef.current();
-      await controller.start(id, selected?.id, {
+      await controller.start(identity, selected?.id, {
         provider: voiceProvider,
         voice: voiceName,
-      });
+      },capture,attempt,uiReady);
     } catch (e) {
       if (generation !== voiceGeneration.current) return;
       voice.current = null;
       setVoiceState(null);
       setError((e as Error).message);
+      if(attempt)throw e;
     }
   }
-  wakeStart.current = (request) => {
-    if (voice.current || thinking) return;
-    void (async () => {
-      if (request) {
-        const id = crypto.randomUUID();
-        try {
-          const conversation_id = await ensureConversation();
-          await post("/work", {turn_id:id, conversation_id, message:request});
-          setMessages(items => [...items, {id, role:"user", content:request, created_at:new Date().toISOString()}]);
-          await work.refresh();
-        } catch (e) { setError((e as Error).message); return; }
+  startVoiceRef.current=startVoice;
+  useEffect(()=> {
+    if(!boot?.account_id)return;
+    const controller=new VoiceCoordinator(boot.account_id,boot.device_id,{
+      start:(capture,attempt)=>startVoiceRef.current(capture,attempt),
+      cancel:async()=> {
+        voiceGeneration.current++;
+        const current=voice.current;voice.current=null;
+        setVoiceState(null);
+        await current?.stop();
+      },
+      status:(state,message,desired)=>{
+        setWakeRuntime(state);setWakeStatus(message);setWakeEnabled(desired);
+        if(state==="connecting_voice" && !voice.current)setVoiceState({state:"connecting",error:null,text:"",closed:false,receipts:[]});
+        if(["needs_gesture","permission_blocked"].includes(state))setError(message);
+      },
+    });
+    coordinator.current=controller;setWakeEnabled(controller.desired);
+    void controller.resume();
+    const foreground=()=> {if(document.visibilityState==="visible")void controller.resume();else controller.suspend();};
+    const online=()=> {if(controller.state==="recovering" || controller.state==="needs_gesture")void controller.resume();};
+    const accountChanged=(event:StorageEvent)=> {
+      const scope=boot.account_id+":"+(boot.workspace?.id ?? "personal");
+      if(event.key==="eri-auth-scope" && event.newValue!==scope){
+        controller.dispose();if(coordinator.current===controller)coordinator.current=null;
+        setWakeRuntime("needs_gesture");setWakeStatus("Wake paused after an account change. Reload to continue.");
       }
-      await startVoice();
-    })();
-  };
-  useEffect(() => {
-    if (
-      !wakeEnabled ||
-      !boot ||
-      (voiceState && !voiceState.closed) ||
-      thinking
-    ) {
-      wake.current?.stop();
-      return;
-    }
-    let listener: WakeWord | null = null;
-    const begin = () => {
-      listener?.stop();
-      if (document.visibilityState !== "visible") {
-        setWakeStatus("Wake word paused while this page is hidden.");
-        return;
-      }
-      listener = new WakeWord(
-        (request) => wakeStart.current(request),
-        (message) => {
-          setWakeStatus(message);
-          if (!message.startsWith("Listening")) setWakeEnabled(false);
-        },
-      );
-      wake.current = listener;
-      listener.start();
     };
-    const timer = setTimeout(begin, 300);
-    document.addEventListener("visibilitychange", begin);
-    return () => {
-      clearTimeout(timer);
-      listener?.stop();
-      document.removeEventListener("visibilitychange", begin);
+    document.addEventListener("visibilitychange",foreground);window.addEventListener("online",online);window.addEventListener("storage",accountChanged);
+    return()=> {
+      document.removeEventListener("visibilitychange",foreground);window.removeEventListener("online",online);window.removeEventListener("storage",accountChanged);
+      controller.dispose();if(coordinator.current===controller)coordinator.current=null;
     };
-  }, [wakeEnabled, !!boot, !!voiceState && !voiceState.closed, thinking]);
+  },[boot?.account_id,boot?.device_id,boot?.workspace?.id]);
   const pushKey = boot?.capabilities.push ? boot.vapid_public_key : null;
   useEffect(() => {
     if (!pushKey) return;
@@ -2442,12 +2443,14 @@ export default function App() {
                 throw new Error(
                   "Finish or discard the current form before switching workspaces.",
                 );
+              await coordinator.current?.suspendContext();
               await voice.current?.stop();
               workspaceSwitching.current = true;
               try {
                 await post("/accounts/switch", { workspace_id: id });
               } catch (e) {
                 workspaceSwitching.current = false;
+                void coordinator.current?.resume();
                 throw e;
               }
               sessionStorage.removeItem("jarvis-conversation");
@@ -2466,6 +2469,7 @@ export default function App() {
               conversationEpoch.current += 1;
               guidedRetries.current.clear(); retryRef.current = null;
               chatSubmitLock.current = false; setThinking(false);
+              await coordinator.current?.dispose();
               await voice.current?.stop();
               await post("/auth/logout");
               setBoot(null);
@@ -2908,7 +2912,7 @@ export default function App() {
                 )}
                 {settingsSection === "voice" && (
                   <SettingsGroup className="voice-settings" title="Voice & conversation"
-                    description={"Choose how Eri sounds on this device. Changes apply to the next voice session. Voice ends after " + VOICE_IDLE_SECONDS + " quiet seconds following the last response."}>
+                    description={"Choose how Eri sounds on this device. Changes apply to the next voice session. Voice ends after " + VOICE_IDLE_SECONDS + " quiet seconds after speech, playback and task activity finish."}>
                     {voiceState && !voiceState.closed && (
                       <p className="settings-callout">
                         End the active voice session before changing its voice.
@@ -2961,7 +2965,7 @@ export default function App() {
                       </select>
                     </SettingRow>
                     <SettingRow as="label" className="switch-row" label="Wake word"
-                      hint={<>Say “Eri” or “Hey, Eri”. {wakeEnabled
+                      hint={<>Remembered for this account on this device. Uses the browser speech service and microphone while foreground wake is enabled. Say “Eri” or “Hey, Eri”. {wakeEnabled
                           ? voiceState && !voiceState.closed
                             ? "Paused during voice."
                             : wakeStatus
@@ -2975,13 +2979,15 @@ export default function App() {
                         role="switch"
                         aria-label="“Eri” or “Hey, Eri”"
                         checked={wakeEnabled}
-                        disabled={!recognitionType()}
+                        disabled={!recognitionType() && !wakeEnabled}
                         onChange={(e) => {
                           setWakeEnabled(e.target.checked);
-                          if (!e.target.checked) setWakeStatus("");
+                          void coordinator.current?.enable(e.target.checked,true);
                         }}
                       />
                     </SettingRow>
+                    {wakeEnabled && ["needs_gesture","permission_blocked"].includes(wakeRuntime) &&
+                      <button type="button" onClick={()=>{if(coordinator.current)void coordinator.current.enable(true,true);else location.reload();}}>Retry wake</button>}
                   </SettingsGroup>
                 )}
                 {settingsSection === "integrations" && <BotSettings canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
@@ -3138,6 +3144,7 @@ export default function App() {
                 >
                   <VolumeX size={17} />
                 </button>
+                {companion && voiceState.needs_audio && <button type="button" onClick={()=>void voice.current?.resumeAudio()}>Enable audio</button>}
                 {voiceProvider === "realtime" && (
                   <button
                     className="text-button"
@@ -3187,9 +3194,8 @@ export default function App() {
                   }
                   disabled={
                     !boot.capabilities.voice ||
-                    thinking ||
-                    (!!voiceState &&
-                      ["connecting", "closing"].includes(voiceState.state))
+                    (thinking && !voice.current) ||
+                    voiceState?.state === "closing"
                   }
                   onClick={() => void startVoice()}
                   title={
@@ -3198,8 +3204,8 @@ export default function App() {
                       : "Voice is unavailable. Check Settings."
                   }
                 >
-                  {voice.current ? <Square size={15} /> : <Mic size={17} />}
-                  <span>{voice.current ? "End voice" : "Talk to Eridani"}</span>
+                  {voice.current || wakeRuntime==="connecting_voice" ? <Square size={15} /> : <Mic size={17} />}
+                  <span>{voice.current || wakeRuntime==="connecting_voice" ? "End voice" : "Talk to Eridani"}</span>
                 </button>
                 <button
                   className="send-button"
@@ -3280,6 +3286,7 @@ export default function App() {
               ? "Listening, " + voiceState.idle_seconds + "s left"
               : voiceLabel(voiceState.state)}
           </button>
+          {voiceState.needs_audio && <button type="button" onClick={()=>void voice.current?.resumeAudio()}>Enable audio</button>}
           <button
             className="icon-button"
             aria-label="Stop speaking"
@@ -3633,6 +3640,7 @@ function voiceLabel(state: string) {
         disconnected: "Voice disconnected",
         closed: "Voice ended",
         ended: "Voice ended. Say Hey Eri when you need me.",
+        draining_startup_audio: "Finishing startup audio…",
         idle_timeout: `Voice ended after ${VOICE_IDLE_SECONDS} quiet seconds`,
       } as Record<string, string>
     )[state] ?? "Voice is on"

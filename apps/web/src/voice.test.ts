@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { POLL_ACTIVE_MS, POLL_HIDDEN_MS, POLL_STABLE_MS, Voice } from "./voice";
 import { api, post } from "./api";
+import { CaptureProcessor } from "./voice-audio";
+import { VoiceCoordinator } from "./voice-coordinator";
 
 vi.mock("./api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./api")>()),
@@ -225,7 +227,7 @@ test("GPT-Live releases the mic immediately while its peer collects final usage"
 });
 
 test.each(["live"] as const)(
-  "spoken thanks ends %s, releases the mic and allows a fresh session",
+  "spoken thanks keeps %s open until manual end",
   async (provider) => {
     const changed = vi.fn();
     const voice = new Voice(changed);
@@ -258,10 +260,9 @@ test.each(["live"] as const)(
       new MessageEvent("message", { data: JSON.stringify(event) }),
     );
     await vi.advanceTimersByTimeAsync(3000);
-    expect(stopped).toHaveBeenCalled();
-    expect(changed).toHaveBeenCalledWith(
-      expect.objectContaining({ state: "ended", closed: true, error: null }),
-    );
+    expect(stopped).not.toHaveBeenCalled();
+    expect(changed.mock.calls.some(([state]) => state.closed)).toBe(false);
+    await voice.stop();
     const next = await startVoice("live");
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
     await next.stop();
@@ -365,6 +366,9 @@ test.each(["live"] as const)(
       "Saved. Anything else I can help you with?",
     );
     userReply(provider, "No.");
+    vi.mocked(api).mockResolvedValue({state:"listening", closed:false, text:"", error:null, receipts:[],
+      end_candidate:{id:"candidate",source:{sequence:1,event_id:"reply",end_ms:2400},category:"confirm"}});
+    vi.mocked(post).mockResolvedValue({closed:true});
     await vi.advanceTimersByTimeAsync(3000);
     expect(stopped).toHaveBeenCalledOnce();
     expect(Peer.current.close).toHaveBeenCalledOnce();
@@ -413,10 +417,10 @@ test.each(["live"] as const)(
 );
 
 
-test("the default idle window keeps listening for 30 seconds then releases the microphone", async () => {
+test("the default idle window keeps listening for 120 seconds then releases the microphone", async () => {
   const changed = vi.fn();
   await startVoice("live", changed);
-  await vi.advanceTimersByTimeAsync(29999);
+  await vi.advanceTimersByTimeAsync(119999);
   expect(stopped).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(251);
   expect(stopped).toHaveBeenCalledOnce();
@@ -437,7 +441,7 @@ test("a server-side voice_end closes media and allows a fresh wake session", asy
 });
 
 
-test("queued backend work suspends idle shutdown and completion starts a fresh 30 seconds", async () => {
+test("queued backend work suspends idle shutdown and completion starts a fresh 120 seconds", async () => {
   const changed = vi.fn();
   vi.mocked(api).mockResolvedValue({
     state: "working", closed: false, error: null, text: "", receipts: [],
@@ -451,7 +455,7 @@ test("queued backend work suspends idle shutdown and completion starts a fresh 3
   });
   // Stable status backs off to the slower lease cadence before noticing completion.
   await vi.advanceTimersByTimeAsync(POLL_STABLE_MS);
-  await vi.advanceTimersByTimeAsync(29000);
+  await vi.advanceTimersByTimeAsync(119000);
   expect(stopped).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(1200);
   expect(stopped).toHaveBeenCalledOnce();
@@ -520,3 +524,108 @@ test("a hidden tab polls slowly but well inside the 30 second lease", async () =
   expect(POLL_HIDDEN_MS).toBeLessThanOrEqual(10_000);
   await voice.stop();
 });
+
+test.each([0,2,5,15])("prepared capture carries samples once through %s-second setup without reacquiring or text submission",async delay=>{
+ const {CaptureProcessor}=await import("./voice-audio");
+ const listeners=new Set<(value:any)=>void>();
+ const processor=new CaptureProcessor(1000,value=>{for(const l of listeners)l(value);});
+ processor.command({type:"confirm",generation:0});
+ const expected:number[]=[],heard:number[]=[];
+ const track={enabled:true,stop:vi.fn()};
+ const capture={stream:{getTracks:()=>[track],getAudioTracks:()=>[track]},context:null,
+   subscribe:(fn:(value:any)=>void)=>{listeners.add(fn);return()=>listeners.delete(fn);},
+   command:(type:string,epoch?:number)=>processor.command({type,generation:0,epoch}),
+   ready:vi.fn(()=>processor.command({type:"ready",generation:0})),pause:vi.fn(()=>processor.command({type:"pause",generation:0}))};
+ let identity!:(id:string)=>void,ui!:(value:void)=>void;
+ const id=new Promise<string>(resolve=>{identity=resolve;}),uiReady=new Promise<void>(resolve=>{ui=resolve;});
+ const voice=new Voice(vi.fn());
+ const start=voice.start(id,undefined,{provider:"live",voice:"marin"},capture as never,
+   {id:crypto.randomUUID(),generation:1,wake:true,wakeOnly:false,detectedAt:performance.now(),epoch:1},uiReady);
+ await vi.advanceTimersByTimeAsync(0);
+ expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();expect(post).not.toHaveBeenCalled();
+ for(let i=0;i<Math.max(1,delay*10);i++){
+   const input=Float32Array.from({length:100},(_,j)=>(i*100+j+1)/20000),out=new Float32Array(100);
+   expected.push(...input);processor.process(input,out);expect(out.every(x=>x===0)).toBe(true);
+ }
+ identity("conversation");ui();await vi.advanceTimersByTimeAsync(0);
+ event({type:"session.started"});await start;
+ expect(capture.ready).toHaveBeenCalledOnce();
+ while(processor.queue.backlog){heard.push(...processor.queue.read(Math.min(100,processor.queue.backlog)));}
+ expect(heard).toEqual(expected);
+ expect(vi.mocked(post).mock.calls.filter(([path])=>path==="/voice/sessions")).toHaveLength(1);
+ expect(vi.mocked(post).mock.calls.some(([path])=>path==="/work")).toBe(false);
+ await voice.stop();expect(track.stop).not.toHaveBeenCalled();expect(capture.pause).toHaveBeenCalledOnce();
+});
+
+test("accepted contextual close stops local audio before final provider usage settles",async()=>{
+ const changed=vi.fn();await startVoice("live",changed);
+ userReply("live","No.");
+ vi.mocked(api).mockImplementation(async(path,options)=>{
+   if(path.endsWith("/stop") && options?.method==="POST")return await new Promise(resolve=>{settle=resolve;});
+   return {state:"listening",closed:false,text:"",error:null,receipts:[],end_candidate:{id:"candidate",source:{sequence:1,event_id:"reply",end_ms:2400},category:"confirm"}};
+ });
+ let settle!:(value:unknown)=>void;
+ vi.mocked(post).mockResolvedValue({closed:false,accepted:true,status:"closing"});
+ await vi.advanceTimersByTimeAsync(1200);expect(stopped).toHaveBeenCalledOnce();expect(Peer.current.close).not.toHaveBeenCalled();
+ settle({closed:true});await vi.advanceTimersByTimeAsync(0);expect(Peer.current.close).toHaveBeenCalledOnce();
+});
+
+test.each(["manual","wake"].flatMap(mode=>[0,.0001].map(noise=>({mode,noise}))))(
+  "$mode voice completes startup with ongoing capture at noise $noise and stays open past its deadline",async({mode,noise})=>{
+    const listeners=new Set<(value:any)=>void>(),changed=vi.fn(),status=vi.fn();
+    let latest:any=null,generation=0,wake:(request:string)=>void=()=>{},voice:Voice|null=null;
+    const processor=new CaptureProcessor(1000,value=>{
+      if(value.type==="activity")latest=value;
+      for(const listener of listeners)listener(value);
+    });
+    const track={enabled:true,stop:vi.fn()};
+    const capture={
+      stream:{getTracks:()=>[track],getAudioTracks:()=>[track]},microphone:null,context:null,
+      get latest(){return latest;},open:vi.fn(async()=>{}),close:vi.fn(),
+      subscribe:(listener:(value:any)=>void)=>{listeners.add(listener);return()=>listeners.delete(listener);},
+      command:(type:string,epoch?:number)=>processor.command({type,generation,epoch}),
+      reset:()=>{generation++;latest=null;processor.command({type:"reset",generation});},
+      confirm:()=>processor.command({type:"confirm",generation}),
+      ready:()=>processor.command({type:"ready",generation}),
+      pause:()=>processor.command({type:"pause",generation}),
+    };
+    const coordinator=new VoiceCoordinator("account","device",{
+      capture:()=>capture as never,
+      detector:(activate,options)=>{wake=activate;return{start:()=>options.started(),stop:()=>{}};},
+      start:async(prepared,attempt)=>{
+        voice=new Voice(changed,()=>{},()=>{},draining=>coordinator.draining(draining));
+        await voice.start("conversation",undefined,{provider:"live",voice:"marin"},prepared,attempt);
+      },
+      cancel:async()=>{await voice?.stop();},status,visible:()=>true,
+      storage:{getItem:()=>null,setItem:()=>{}},
+    });
+    const heard:number[]=[];
+    const process=async(value:number)=>{
+      const output=new Float32Array(100);
+      processor.process(new Float32Array(100).fill(value),output);
+      heard.push(...output);await vi.advanceTimersByTimeAsync(100);
+    };
+    let manual:Promise<void>|undefined;
+    if(mode==="wake"){
+      await coordinator.enable(true,true);
+      for(let i=0;i<16;i++)await process(.3);
+      wake("");
+    }else{
+      manual=coordinator.manual();await vi.advanceTimersByTimeAsync(0);
+      await process(.3);
+    }
+    // Keep capturing during provider setup, then replay while capture continues.
+    for(let i=0;i<20;i++)await process(noise);
+    expect(heard.every(sample=>sample===0)).toBe(true);
+    event({type:"session.started"});await vi.advanceTimersByTimeAsync(0);await manual;
+    if(mode==="wake")event({type:"session.input_transcript.delta",event_id:"wake",delta:"Hey Eri",start_ms:0,end_ms:1600});
+    for(let i=0;i<350;i++)await process(noise);
+    expect(coordinator.state).toBe("active_voice");
+    expect(capture.close).not.toHaveBeenCalled();
+    expect(changed.mock.calls.some(([state])=>state.closed)).toBe(false);
+    expect(changed.mock.calls.some(([state])=>typeof state.idle_seconds==="number" && state.idle_seconds<120)).toBe(true);
+    expect(heard.filter(sample=>sample>.012)).toEqual(Array((mode==="wake"?16:1)*100).fill(Math.fround(.3)));
+    if(mode==="wake")expect(vi.mocked(post).mock.calls.filter(([path,body])=>path.endsWith("/startup") && (body as any)?.state==="ready")).toHaveLength(1);
+    await coordinator.dispose();
+  },
+);

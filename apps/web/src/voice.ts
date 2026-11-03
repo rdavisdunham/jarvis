@@ -3,7 +3,11 @@ import type { ChatMessage, UIAction, VoiceProvider } from "./types";
 import { VoiceTranscript } from "./voice-transcript";
 import { LiveTranscript } from "./live-transcript";
 import { VoiceIdle } from "./voice-idle";
-import { VoiceEnding } from "./voice-ending";
+import { VoiceEnding, type EndCandidate } from "./voice-ending";
+import type { VoiceCapture } from "./voice-capture";
+import type { VoiceAttempt } from "./voice-coordinator";
+import { VoiceTiming, voiceCount } from "./voice-timing";
+import { StartupCue } from "./voice-startup-cue";
 export interface VoiceState {
   state: string;
   error: string | null;
@@ -16,6 +20,8 @@ export interface VoiceState {
   ui_actions?: UIAction[];
   idle_seconds?: number | null;
   awaiting_answer?: boolean;
+  end_candidate?: EndCandidate | null;
+  needs_audio?: boolean;
 }
 // Status doubles as the server lease (30 s cutoff); every interval stays well under it.
 export const POLL_ACTIVE_MS = 400;
@@ -33,11 +39,26 @@ export class Voice {
   private poll: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
   private ending = new VoiceEnding();
-  private endingTimer: ReturnType<typeof setTimeout> | null = null;
   private idle = new VoiceIdle();
   private idleTimer: ReturnType<typeof setInterval> | null = null;
   private outputAnalyser: AnalyserNode | null = null;
+  private outputSource:MediaStreamAudioSourceNode|null=null;
   private inputAnalyser: AnalyserNode | null = null;
+  private capture:VoiceCapture|null = null;
+  private unsubscribeCapture:(()=>void)|null = null;
+  private draining = false;
+  private mediaReady = false;
+  private lastLocalEpoch:number|null=null;
+  private timing:VoiceTiming|null = null;
+  private firstFrame = false;
+  private cue:StartupCue|null=null;
+  private startupAttempt:VoiceAttempt|null=null;
+  private startupControls=new Set<string>();
+  private startupMuted=false;
+  private pendingCueEpoch:number|null=null;
+  private audioBlocked=false;
+  private seenProviderEvents=new Set<string>();
+  private declinedCandidates = new Set<string>();
   private latestState: VoiceState = {
     state: "connecting",
     error: null,
@@ -62,9 +83,12 @@ export class Voice {
     changed: (state: VoiceState) => void,
     message: (value: ChatMessage) => void = () => {},
     private level: (value: number) => void = () => {},
+    private startup: (draining:boolean) => void = () => {},
+    private localStopped:()=>void=()=>{},
   ) {
     // Only publish real changes; pollers and the idle ticker otherwise rerender the app.
     this.changed = (state) => {
+      state={...state,state:this.draining && this.mediaReady && !state.closed ? "draining_startup_audio" : state.state,needs_audio:this.audioBlocked};
       const key = JSON.stringify(state);
       if (key === this.published) return;
       this.published = key;
@@ -72,58 +96,72 @@ export class Voice {
     };
     const transcriptMessage = (value: ChatMessage) => {
       message(value);
-      if (this.stopped || value.role !== "user") return;
-      if (this.endingTimer) clearTimeout(this.endingTimer);
-      this.endingTimer = null;
-      this.pollSoon();
-      if (this.ending.user(value, Date.now(), this.busy())) {
-        this.endingTimer = setTimeout(() => {
-          this.endingTimer = null;
-          if (this.stopped) return;
-          this.changed({
-            ...this.latestState,
-            state: "closing",
-            closed: false,
-            error: null,
-          });
-          void this.stop().then(() =>
-            this.changed({
-              ...this.latestState,
-              state: "ended",
-              closed: true,
-              error: null,
-              idle_seconds: null,
-            }),
-          );
-        }, 1000);
-      }
+      if (!this.stopped && value.role === "user") this.pollSoon();
     };
-    this.liveTranscript = new LiveTranscript(
-      "live:" + crypto.randomUUID() + ":",
-      transcriptMessage,
-      (value) => {
-        if (this.stopped) return;
-        if (value.role === "assistant")
-          this.ending.assistant(value.id, value.content);
-        else this.ending.user(value, Date.now(), this.busy());
-      },
-    );
+    this.liveTranscript = new LiveTranscript("live:" + crypto.randomUUID() + ":", transcriptMessage);
     this.transcript = new VoiceTranscript(
       "voice-input:" + crypto.randomUUID() + ":",
       transcriptMessage,
     );
   }
   async start(
-    conversation_id: string,
+    conversation_id: string | Promise<string>,
     focus?: string,
     options: { provider: VoiceProvider; voice: string } = {
       provider: "live",
       voice: "marin",
     },
+    capture?: VoiceCapture,
+    attempt?: VoiceAttempt,
+    uiReady: Promise<void> = Promise.resolve(),
   ) {
     this.provider = options.provider;
+    this.capture = capture ?? null;
+    this.startupAttempt=attempt ?? null;
+    if(attempt?.wake)this.cue=new StartupCue(attempt.wakeOnly,attempt.epoch,{
+      send:(state,epoch)=>this.notifyStartup(state,epoch),
+      chime:()=>this.chime(), interrupt:()=>{},
+      gate:muted=>{
+        this.startupMuted=muted;if(this.audio && !this.stopped)this.audio.muted=muted;
+        if(!muted && !this.stopped){this.capture?.command("cue_disarm");this.capture?.ready();}
+      },
+    });
+    this.timing = new VoiceTiming(attempt?.id ?? crypto.randomUUID(), attempt?.detectedAt);
+    const prepared = Promise.all([conversation_id,uiReady]);
+    void prepared.catch(()=>{}); // keep rejection observed while independent local SDP is prepared
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      if(capture) {
+        if(!capture.stream)throw new Error("Microphone capture is not ready. Please retry.");
+        this.stream=capture.stream;
+        this.draining=true;
+        this.unsubscribeCapture=capture.subscribe(activity=> {
+          if(this.stopped)return;
+          const now=performance.now();
+          const draining=!activity.startupDrained;
+          if(this.lastLocalEpoch!==null && this.lastLocalEpoch!==activity.epoch)this.idle.touch(now);
+          this.lastLocalEpoch=activity.epoch;
+          if(activity.type==="cue_cancel"){
+            this.ending.captured(activity.active,activity.epoch,now);
+            this.idle.speech(activity.active,now);
+            this.cue?.activity(activity.active,activity.epoch,draining,false,now);
+            this.cue?.cancel(now);return;
+          }
+          if(activity.type==="cue_armed"){
+            if(this.pendingCueEpoch===activity.epoch && this.cue?.eligible)this.sendStartup("ready",activity.epoch);
+            return;
+          }
+          this.ending.captured(activity.active,activity.epoch,now);
+          this.idle.speech(activity.active,now);
+          this.level(activity.level);
+          this.cue?.activity(activity.active,activity.epoch,draining,activity.startupDrained,now);
+          if(this.mediaReady) {
+            if(!this.firstFrame && activity.sent>0){this.firstFrame=true;this.timing?.mark("first_frame");}
+            if(this.draining!==draining){this.draining=draining;this.startup(draining);if(!draining)this.timing?.mark("drained");}
+            this.idle.backlog(draining,now);
+            if(!draining && !this.cue?.eligible && !this.cue?.handled)this.notifyStartup("cancel",activity.epoch);
+          }
+        });
+      } else this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -131,25 +169,30 @@ export class Voice {
         },
       });
       if (this.stopped) {
-        this.stream.getTracks().forEach((t) => t.stop());
+        if(!this.capture)this.stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      this.stream.getTracks().forEach((t) => (t.enabled = false));
+      if(!this.capture)this.stream.getTracks().forEach((t) => (t.enabled = false));
+      this.timing.mark("capture");
       this.startMeter();
       this.pc = new RTCPeerConnection();
       this.audio = new Audio();
       this.audio.autoplay = true;
       this.pc.ontrack = (event) => {
-        if (this.audio) this.audio.srcObject = event.streams[0];
+        if(this.stopped)return;
+        if (this.audio) {
+          this.audio.srcObject = event.streams[0];
+          void this.audio.play?.().catch(()=>this.blockedAudio());
+        }
         if (this.audioContext) {
           this.outputAnalyser = this.audioContext.createAnalyser();
           this.outputAnalyser.fftSize = 512;
-          this.audioContext
-            .createMediaStreamSource(event.streams[0])
-            .connect(this.outputAnalyser);
+          this.outputSource=this.audioContext.createMediaStreamSource(event.streams[0]);
+          this.outputSource.connect(this.outputAnalyser);
         }
       };
       this.pc.onconnectionstatechange = () => {
+        if(this.stopped)return;
         const state = this.pc?.connectionState;
         if (state === "connected" && this.disconnectTimer) {
           clearTimeout(this.disconnectTimer);
@@ -183,26 +226,28 @@ export class Voice {
         if (this.stopped) return;
         try {
           const event = JSON.parse(message.data);
+          if(event.event_id && this.seenProviderEvents.has(event.event_id))return;
+          if(event.event_id)this.seenProviderEvents.add(event.event_id);
           if (event.type === "session.started") {
             liveStarted = true;
+            this.timing?.mark("session_started");
             liveReady.dispatchEvent(new Event("ready"));
           }
           const now = performance.now();
-          if (
-            event.type === "input_audio_buffer.speech_started" &&
-            this.endingTimer
-          ) {
-            clearTimeout(this.endingTimer);
-            this.endingTimer = null;
+          this.ending.observe(event, now);
+          if(event.type==="session.input_transcript.delta") {
+            this.cue?.input(event.delta ?? "");
+            if(this.mediaReady && !this.draining && !this.cue?.eligible && !this.cue?.handled)this.notifyStartup("cancel",this.capture?.latest?.epoch ?? 0);
           }
-          if (event.type === "input_audio_buffer.speech_started")
-            this.idle.speech(true, now);
-          if (event.type === "input_audio_buffer.speech_stopped")
-            this.idle.speech(false, now);
+          if (event.type === "input_audio_buffer.speech_started" && !this.capture) {
+            this.idle.speech(true, now);this.ending.speech(true,now);
+          }
+          if (event.type === "input_audio_buffer.speech_stopped" && !this.capture) {
+            this.idle.speech(false, now);this.ending.speech(false,now);
+          }
           if (
             [
               "session.input_transcript.delta",
-              "session.output_transcript.delta",
               "output_audio_buffer.started",
               "output_audio_buffer.stopped",
               "output_audio_buffer.cleared",
@@ -240,17 +285,22 @@ export class Voice {
           changed();
         });
       }
+      this.timing.mark("sdp");
+      const [identity]=await prepared;
       if (this.stopped) return;
+      this.timing.mark("preparation");this.timing.mark("create_request");
       const data = await post<{
         session_id: string;
         sdp: string;
         ready: boolean;
       }>("/voice/sessions", {
-        conversation_id,
+        conversation_id:identity,
+        attempt_id:attempt?.id,
         ...options,
         focus: focus ?? null,
         sdp: this.pc.localDescription!.sdp,
       });
+      this.timing.mark("create_response");
       this.session = data.session_id;
       if (this.stopped) {
         await post("/voice/sessions/" + data.session_id + "/stop").catch(
@@ -283,6 +333,7 @@ export class Voice {
         channel.addEventListener("close", closed);
         channel.addEventListener("error", closed);
       });
+      this.timing.mark("data_channel");
       if (this.provider === "live" && !liveStarted) {
         await new Promise<void>((resolve, reject) => {
           const finish = () => {
@@ -293,7 +344,7 @@ export class Voice {
             liveReady.removeEventListener("ready", finish);
             reject(
               new Error(
-                "GPT-Live did not become ready. Try Realtime or start again.",
+                "GPT-Live did not become ready. Please retry voice.",
               ),
             );
           }, 20000);
@@ -301,8 +352,12 @@ export class Voice {
         });
       }
       if (this.stopped) return;
-      this.stream.getTracks().forEach((t) => (t.enabled = true));
+      this.mediaReady=true;
+      this.cue?.sessionReady();
+      if(this.capture){this.capture.ready();this.startup(true);}
+      else this.stream.getTracks().forEach((t) => (t.enabled = true));
       this.idle.start(performance.now());
+      this.idle.backlog(this.draining,performance.now());
       this.idleTimer = setInterval(() => this.checkIdle(), 200);
       if (typeof document !== "undefined")
         document.addEventListener("visibilitychange", this.pollSoon);
@@ -322,9 +377,12 @@ export class Voice {
       const status = JSON.stringify(state);
       this.unchangedPolls = status === this.lastStatus ? this.unchangedPolls + 1 : 0;
       this.lastStatus = status;
+      if((state.text && state.text!==this.latestState.text) ||
+        state.receipts.some(receipt=>!this.latestState.receipts.includes(receipt)) ||
+        state.ui_actions?.some(action=>!this.latestState.ui_actions?.some(previous=>previous.id===action.id)))
+        this.idle.touch(performance.now());
       this.latestState = state;
-      if (this.provider === "realtime" && state.text_id && state.text)
-        this.ending.assistant(state.text_id, state.text);
+
       this.idle.state(state.state, performance.now());
       this.changed({
         ...state,
@@ -366,18 +424,13 @@ export class Voice {
     clearTimeout(this.poll);
     this.poll = setTimeout(this.check, POLL_ACTIVE_MS);
   };
-  // Work is running or its question awaits an answer: "thanks" must not hang up.
-  private busy() {
-    return (
-      this.latestState.state === "working" || !!this.latestState.awaiting_answer
-    );
-  }
   private startMeter() {
     if (typeof AudioContext === "undefined" || !this.stream) return;
     try {
-      const context = new AudioContext();
+      const context = this.capture?.context ?? new AudioContext();
       this.audioContext = context;
-      void context.resume().catch(() => {});
+      void context.resume().then(()=>{if(context.state!=="running")this.blockedAudio();}).catch(()=>this.blockedAudio());
+      if(this.capture)return;
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
       this.inputAnalyser = analyser;
@@ -413,7 +466,21 @@ export class Voice {
         samples.reduce((sum, x) => sum + ((x - 128) / 128) ** 2, 0) /
           samples.length,
       );
-      if (rms > 0.012) this.idle.touch(now);
+      if(analyser===this.outputAnalyser) {
+        const audible=rms>.012 && !this.audio?.muted && !this.audio?.paused;
+        this.cue?.output(rms>.012,now,audible);
+        if(audible){this.idle.touch(now);this.timing?.mark("first_audible");}
+      }else if(rms>.012)this.idle.touch(now);
+      if (analyser === this.inputAnalyser) this.ending.speech(rms > 0.012, now);
+    }
+    this.cue?.tick(now);
+    if (this.ending.explicit(now, this.draining)) {
+      void this.endAutomatically();
+      return;
+    }
+    if (this.latestState.end_candidate && !this.declinedCandidates.has(this.latestState.end_candidate.id) && this.ending.accepts(this.latestState.end_candidate, now, this.draining)) {
+      void this.endAutomatically(this.latestState.end_candidate.id);
+      return;
     }
     if (this.idle.expired(now)) {
       this.changed({
@@ -438,11 +505,58 @@ export class Voice {
       });
     }
   }
+  private confirmingEnd = false;
+  private async endAutomatically(candidate_id?: string) {
+    if (this.confirmingEnd || this.stopped || !this.session) return;
+    this.confirmingEnd = true;
+    try {
+      if (candidate_id) {
+        const result = await post<{closed:boolean;accepted?:boolean}>("/voice/sessions/" + this.session + "/stop", {candidate_id});
+        if ((!result.closed && !result.accepted) || this.stopped) {this.declinedCandidates.add(candidate_id);voiceCount("stale_ending");return;}
+      }
+      this.changed({...this.latestState,state:"closing",closed:false});
+      await this.stop();
+      this.changed({...this.latestState, state:"ended", closed:true, error:null, idle_seconds:null});
+    } catch {if(candidate_id)this.declinedCandidates.add(candidate_id);} finally { this.confirmingEnd = false; }
+  }
+  private notifyStartup(state:"ready"|"cancel",epoch:number) {
+    if(!this.session || !this.startupAttempt || this.stopped || this.startupControls.has(state))return;
+    if(state==="ready" && this.capture){this.pendingCueEpoch=epoch;this.capture.command("cue_arm",epoch);return;}
+    this.sendStartup(state,epoch);
+  }
+  private sendStartup(state:"ready"|"cancel",epoch:number) {
+    if(!this.session || !this.startupAttempt || this.stopped || this.startupControls.has(state))return;
+    this.startupControls.add(state);
+    if(state==="cancel")this.pendingCueEpoch=null;
+    void post("/voice/sessions/"+this.session+"/startup",{attempt_id:this.startupAttempt.id,activity_epoch:epoch,state}).catch(()=>{});
+  }
+  private blockedAudio() {
+    if(this.stopped)return;
+    this.audioBlocked=true;this.changed({...this.latestState,needs_audio:true});
+  }
+  async resumeAudio() {
+    try {
+      await this.audioContext?.resume();
+      await this.audio?.play();
+      if(this.stopped)return;
+      this.audioBlocked=false;this.changed({...this.latestState,needs_audio:false});
+    }catch{this.blockedAudio();}
+  }
+  private chime() {
+    const context=this.audioContext;
+    if(!context || context.state!=="running"){this.blockedAudio();return;}
+    const oscillator=context.createOscillator(),gain=context.createGain();
+    oscillator.frequency.value=740;gain.gain.value=.035;
+    gain.gain.exponentialRampToValueAtTime(.001,context.currentTime+.1);
+    oscillator.connect(gain).connect(context.destination);oscillator.start();oscillator.stop(context.currentTime+.12);
+    oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+    this.idle.touch(performance.now()+120);this.timing?.mark("first_audible");
+  }
   async interrupt() {
     if (this.audio) {
       this.audio.muted = true;
       setTimeout(() => {
-        if (this.audio) this.audio.muted = false;
+        if (this.audio) this.audio.muted = this.startupMuted;
       }, 400);
     }
     if (this.session)
@@ -458,14 +572,15 @@ export class Voice {
   }
   private async cleanup() {
     this.stopped = true;
-    if (this.endingTimer) clearTimeout(this.endingTimer);
-    this.endingTimer = null;
     if (this.idleTimer) clearInterval(this.idleTimer);
     this.idleTimer = null;
+    this.cue?.dispose();this.cue=null;
     this.liveTranscript.dispose();
+    this.outputSource?.disconnect();this.outputSource=null;
+    this.outputAnalyser?.disconnect();this.outputAnalyser=null;
     if (this.meterFrame !== null) cancelAnimationFrame(this.meterFrame);
     this.meterFrame = null;
-    void this.audioContext?.close().catch(() => {});
+    if(!this.capture)void this.audioContext?.close().catch(() => {});
     this.audioContext = null;
     this.level(0);
     if (this.poll) clearTimeout(this.poll);
@@ -474,11 +589,11 @@ export class Voice {
       document.removeEventListener("visibilitychange", this.pollSoon);
     if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
     this.disconnectTimer = null;
-    // Release microphone capture immediately. The transport can still receive final usage.
-    this.stream?.getTracks().forEach((t) => {
-      t.enabled = false;
-      t.stop();
-    });
+    this.unsubscribeCapture?.();this.unsubscribeCapture=null;
+    // Detach sending audio immediately; retain the transport for final usage settlement.
+    this.capture?.pause();this.localStopped();
+    for(const sender of this.pc?.getSenders?.() ?? [])void sender.replaceTrack(null).catch(()=>{});
+    if(!this.capture)this.stream?.getTracks().forEach(t=>{t.enabled=false;t.stop();});
     if (this.audio) {
       this.audio.pause();
       this.audio.srcObject = null;

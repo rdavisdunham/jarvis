@@ -68,11 +68,13 @@ async def lifespan(app):
         listener.cancel()
         with suppress(asyncio.CancelledError):
             await listener
-    await agent_link.shutdown()
-    from .voice import controllers
+        await agent_link.shutdown()
+        from .voice import controllers
 
-    await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
+        await asyncio.gather(*(c.close() for c in list(controllers.values())), return_exceptions=True)
 
+        from .live_http import close as close_live_http
+        await close_live_http()
 
 app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
 app.include_router(google_router)

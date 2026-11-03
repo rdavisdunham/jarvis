@@ -525,32 +525,42 @@
     "title": "GPT-Live sessions",
     "description": "Live creation, captions, delegation, interruption, context updates and session recovery.",
     "order": 33,
-    "target_cases": 25,
+    "target_cases": 28,
     "source_files": [
       "apps/api/jarvis/live_voice.py",
-      "apps/api/jarvis/voice_control.py"
+      "apps/api/jarvis/voice_control.py",
+      "apps/api/jarvis/voice_end_policy.py",
+      "apps/web/src/voice-capture.ts",
+      "apps/web/src/voice-coordinator.ts"
     ],
     "regression_files": [
       "tests/test_live_voice.py",
       "tests/test_voice_settlement.py",
       "tests/test_voice.py",
-      "tests/test_voice_drafts.py"
+      "tests/test_voice_drafts.py",
+      "tests/test_voice_startup.py",
+      "tests/test_voice_end_policy.py"
     ],
     "status": "active"
   },
   {
     "id": "wake_shutdown",
     "title": "Wake words and voice shutdown",
-    "description": "Hey Eri/Eri detection, 30-second quiet timeout, natural goodbye and wake-up recovery.",
+    "description": "Hey Eri/Eri detection, 120-second quiet timeout, natural goodbye and wake-up recovery.",
     "order": 34,
-    "target_cases": 25,
+    "target_cases": 33,
     "source_files": [
       "apps/api/jarvis/voice_control.py",
-      "apps/api/jarvis/live_voice.py"
+      "apps/api/jarvis/live_voice.py",
+      "apps/api/jarvis/voice_end_policy.py",
+      "apps/web/src/voice-capture.ts",
+      "apps/web/src/voice-coordinator.ts"
     ],
     "regression_files": [
       "tests/test_live_voice.py",
-      "tests/test_voice.py"
+      "tests/test_voice.py",
+      "tests/test_voice_startup.py",
+      "tests/test_voice_end_policy.py"
     ],
     "status": "active"
   },

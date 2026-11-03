@@ -857,7 +857,8 @@ async def test_direct_voice_backend_ends_voice_and_hides_conversation_only_cards
     responder(monkeypatch, [response([("voice_end", {})])])
     await work_runner.run(work["id"])
     with session_scope() as db:
-        assert db.get(VoiceInbox, sid).end_requested
+        assert not db.get(VoiceInbox, sid).end_requested  # no accepted source marker: reject unsafe closure
+        assert "still listening" in db.get(AgentWork, work["id"]).result["message"]
         assert db.get(Job, work["id"]).status == "succeeded"
         assert db.get(AgentWork, work["id"]).result["quiet"]
     assert not client.get("/api/v1/work").json()["items"]
@@ -1182,3 +1183,34 @@ async def test_lean_keeps_long_reference_context_and_current_request(client, mon
         return response(message="No changes made.")
     monkeypatch.setattr(work_runner, "request_model", model)
     await work_runner.run(work["id"])
+
+
+@pytest.mark.asyncio
+async def test_final_action_is_durably_accepted_before_end_candidate_can_close(client, monkeypatch):
+    from jarvis.live_voice import LiveController
+    from jarvis.domain import preferences
+    from jarvis.work_crypto import seal
+    from jarvis.voice_end_policy import candidate_valid
+    work, _ = accept(client, "Add milk, then end voice")
+    with session_scope() as db:
+        row=db.get(AgentWork,work["id"])
+        c=LiveController(row.owner_id,row.device_id,row.conversation_id,None,preferences(db,row.owner_id))
+        inbox=work_intake.open_voice(db,c.id,row.owner_id,row.account_id,row.device_id,row.conversation_id)
+        work_intake.append_voice(db,c.id,"last-user","user","Add milk, then end voice",0,1000,
+                               end_context={"text":"Add milk, then end voice"})
+        data=unseal(inbox.content_ciphertext)
+        body=unseal(row.input_ciphertext)
+        body["voice_source"]={"marker":data["user_marker"],"context":data["end_context"]}
+        row.input_ciphertext=seal(body);row.voice_session_id=c.id
+    responder(monkeypatch,[response([("task_create",{"title":"milk"}),("voice_end",{})])])
+    await work_runner.run(work["id"])
+    with session_scope() as db:
+        inbox=db.get(VoiceInbox,c.id);data=unseal(inbox.content_ciphertext)
+        assert db.scalar(select(Task.title))=="milk"
+        assert db.get(Job,work["id"]).status=="succeeded"
+        assert data["end_intent"]["category"]=="final_action"
+        assert candidate_valid(db,inbox,data,data["end_intent"])
+    from unittest.mock import AsyncMock
+    c.send=AsyncMock();await c.report_work()
+    assert c.end_candidate and c.confirm_end(c.end_candidate["id"])
+    await c.close()
