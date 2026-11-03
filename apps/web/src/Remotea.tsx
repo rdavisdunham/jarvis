@@ -16,6 +16,7 @@ import {
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
 } from "./remotea-model";
 import { postAction } from "./api";
+import { DecisionCard, DeliveryReceipt, RunActivity, approvalShortcut, decisionFor, respondDecision, useReceipts, useRunDraft, workflowAttention, workflowStage } from "./RunWorkflow";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { SwarmList } from "./Swarm";
@@ -290,49 +291,61 @@ function UnmergedList({ items }: { items: UnmergedWork[] }) {
   </details>;
 }
 
-function QuestionCard({ question, run, onDone }: { question: RunQuestion; run: RunDetail; onDone: () => void }) {
+export function QuestionCard({ question, run, onDone }: { question: RunQuestion; run: RunDetail; onDone: () => void }) {
   const mode = questionMode(question, run);
-  const [picked, setPicked] = useState<Record<string, string[]>>({}), [typed, setTyped] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useRunDraft<Record<string, string[]>>("question-picks:" + question.id, {}), [typed, setTyped] = useRunDraft<Record<string, string>>("question-text:" + question.id, {});
+  const receipts = useReceipts();
+  const decision = decisionFor(run, "question", question.id);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   if (mode === "closed") return null;
   const answers = buildAnswers(question, picked, typed);
+  const requestedAction = question.action ?? decision?.payload.action as RunQuestion["action"];
   const toggle = (item: string, choice: string, multi: boolean) => setPicked(current => {
     const now = current[item] ?? [];
     return { ...current, [item]: multi ? (now.includes(choice) ? now.filter(c => c !== choice) : [...now, choice]) : [choice] };
   });
-  const send = async () => {
-    if (!answers) return;
+  const send = async (response = answers) => {
+    if (!response) return;
     setBusy(true); setError("");
-    try { await post(`/remotea/questions/${question.id}/answer`, { answers }); onDone(); }
+    try { if (decision) await respondDecision(decision, "answer", { answers: response }); else await postAction(`/remotea/questions/${question.id}/answer`, { answers: response }); onDone(); }
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   };
-  return <section className={"remotea-question mode-" + mode} aria-label="Agent question">
-    <p className="remotea-card-kicker">The agent asks</p>
+  return <DecisionCard title={question.kind === "permission" ? "Permission request" : "The agent asks"} label="Agent question" task={run.task?.title} agent={actorChip(run)} reason={question.detail} className={"mode-" + mode}
+    receipt={receipts.filter(r => r.url.includes(question.id)).at(-1)}>
+    {requestedAction && <details className="run-request-action" open={question.kind === "permission"}>
+      <summary>Requested action · {requestedAction.tool}</summary>
+      <dl><dt>Working directory</dt><dd><code>{requestedAction.cwd || "Not reported"}</code></dd>
+        {requestedAction.digest && <><dt>Request digest</dt><dd><code>{requestedAction.digest}</code></dd></>}</dl>
+      <pre>{JSON.stringify(requestedAction.input, null, 2)}</pre>
+      {requestedAction.permissions != null && <><p className="footnote">Permission scope</p><pre>{JSON.stringify(requestedAction.permissions, null, 2)}</pre></>}
+    </details>}
     {question.items.map(item => <fieldset key={item.id} disabled={mode !== "answer" || busy}>
       <legend>{item.header ? <strong>{item.header}: </strong> : null}{item.text}</legend>
       {mode === "answer" && !!item.choices?.length && <div className="remotea-choices">{orderOptions(item.choices).map(c => {
         const on = (picked[item.id] ?? []).includes(c.id);
         return <button key={c.id} type="button" aria-pressed={on} title={c.description}
           className={"btn btn-sm" + (on ? " btn-primary" : recommended(c) ? " btn-recommended" : "")}
-          onClick={() => toggle(item.id, c.id, !!item.multi)}>{c.label}</button>;
+          onClick={() => question.kind === "permission" && question.items.length === 1 && ["allow_once", "deny"].includes(c.id) ? void send([{ item_id: item.id, choice_ids: [c.id] }]) : toggle(item.id, c.id, !!item.multi)}>{c.id === "allow_once" ? "Approve once" : c.id === "deny" ? "Deny" : c.label}</button>;
       })}</div>}
       {mode === "answer" && <input aria-label={"Answer: " + item.text} placeholder={item.choices?.length ? "Or type an answer" : "Your answer"}
         value={typed[item.id] ?? ""} onChange={e => setTyped({ ...typed, [item.id]: e.target.value })}/>}
     </fieldset>)}
-    {mode === "answer" && <button className="btn btn-primary btn-sm" disabled={!answers || busy} onClick={() => void send()}>{busy ? "Sending…" : "Send answer"}</button>}
+    {mode === "answer" && <button className="btn btn-primary btn-sm" disabled={!answers || busy} onClick={() => void send()}>{busy ? "Sending…" : question.kind === "permission" ? "Reply" : "Send answer"}</button>}
     {mode === "pending" && <p role="status" className="footnote">Answer sent; waiting for the agent to take it.</p>}
     {mode === "terminal" && <p className="footnote">{question.status === "timed_out" ? "This question timed out here. " : ""}Open the terminal on your remotea server to answer.</p>}
     {error && <p role="alert" className="work-error">{error}</p>}
-  </section>;
+  </DecisionCard>;
 }
 
 /** The interview forms the run can take answers for now (answerableInterviews). */
 export function OpenInterviews({ run, onDone }: { run: RunDetail; onDone: () => void }) {
-  return <>{answerableInterviews(run).map(i => <InterviewForm key={i.id} interview={i} onDone={onDone}/>)}</>;
+  return <>{answerableInterviews(run).map(i => <InterviewForm key={i.id} interview={i} onDone={onDone} run={run}/>)}</>;
 }
 
-export function InterviewForm({ interview, onDone }: { interview: Interview; onDone: () => void }) {
-  const [picked, setPicked] = useState<Record<string, string[]>>({}), [typed, setTyped] = useState<Record<string, string>>({});
+export function InterviewForm({ interview, onDone, run }: { interview: Interview; onDone: () => void; run?: RunDetail }) {
+  const [picked, setPicked] = useRunDraft<Record<string, string[]>>("interview-picks:" + interview.id, {}), [typed, setTyped] = useRunDraft<Record<string, string>>("interview-text:" + interview.id, {});
+  const receipts = useReceipts();
+  const decision = run && decisionFor(run, "interview", interview.id);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const answers = interviewAnswers(interview, picked, typed);
   const toggle = (q: string, label: string, multi: boolean) => setPicked(current => {
@@ -342,11 +355,10 @@ export function InterviewForm({ interview, onDone }: { interview: Interview; onD
   const send = async () => {
     if (!answers) return;
     setBusy(true); setError("");
-    try { await post(`/remotea/interviews/${interview.id}/answers`, { answers }); onDone(); }
+    try { if (decision) await respondDecision(decision, "answer", { answers }); else await postAction(`/remotea/interviews/${interview.id}/answers`, { answers }); onDone(); }
     catch (e) { setError(message(e)); } finally { setBusy(false); }
   };
-  return <section className="remotea-question remotea-interview" aria-label="Planning questions">
-    <p className="remotea-card-kicker">Planning questions</p>
+  return <DecisionCard title="Planning questions" task={run?.task?.title} agent={run ? actorChip(run) : undefined} className="remotea-interview" receipt={receipts.filter(r => r.url.includes(interview.id)).at(-1)}>
     <p className="footnote">The agent needs these answers to write the plan. Pick an option or type your own.</p>
     {interview.questions.map(q => <fieldset key={q.id} disabled={busy}>
       <legend>{q.header ? <strong>{q.header}: </strong> : null}{q.question}{q.multi && <small> (choose any)</small>}</legend>
@@ -361,21 +373,21 @@ export function InterviewForm({ interview, onDone }: { interview: Interview; onD
     </fieldset>)}
     <button className="btn btn-primary btn-sm" disabled={!answers || busy} onClick={() => void send()}>{busy ? "Sending…" : "Send answers"}</button>
     {error && <p role="alert" className="work-error">{error}</p>}
-  </section>;
+  </DecisionCard>;
 }
 
 /** The agent proposed changes to criteria you wrote: accept or keep each one, then the plan freezes and work starts. */
 export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
   const proposals = run.plan?.proposals;
-  const [decisions, setDecisions] = useState<Record<string, PlanDecision>>(() =>
+  const [decisions, setDecisions] = useRunDraft<Record<string, PlanDecision>>("plan-review:" + run.id + ":" + run.plan_revision,
     Object.fromEntries((proposals?.criteria ?? []).map(c => [c.id, { accept: true, text: c.proposed ?? "" }])));
-  const [verify, setVerify] = useState<"accept" | "keep">("accept"), [policy, setPolicy] = useState<"accept" | "keep">("accept");
+  const [verify, setVerify] = useRunDraft<"accept" | "keep">("plan-verify:" + run.id + ":" + run.plan_revision, "accept"), [policy, setPolicy] = useRunDraft<"accept" | "keep">("plan-policy:" + run.id + ":" + run.plan_revision, "accept");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   if (!proposals || run.state_reason !== "plan_review" || run.state !== "needs_you") return null;
   const decide = (id: string, accept: boolean) => setDecisions(d => ({ ...d, [id]: { ...(d[id] ?? { text: "" }), accept } }));
   const send = async () => {
     setBusy(true); setError("");
-    try { await post(`/remotea/runs/${run.id}/plan-review`, planReviewBody(proposals, decisions, verify, policy, run.state_revision)); onDone(); }
+    try { await postAction(`/remotea/runs/${run.id}/plan-review`, planReviewBody(proposals, decisions, verify, policy, run.state_revision)); onDone(); }
     catch (e) {
       if (!isRevisionConflict(e)) setError(message(e));
       else if (onConflict) onConflict();
@@ -384,8 +396,7 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
   };
   const choice = (on: boolean, label: string, good: boolean, onClick: () => void) =>
     <button type="button" aria-pressed={on} className={"btn btn-sm" + (on ? " btn-primary" : good ? " btn-recommended" : "")} onClick={onClick}>{label}</button>;
-  return <section className="remotea-question remotea-plan-review" aria-label="Plan review">
-    <p className="remotea-card-kicker">Plan review</p>
+  return <DecisionCard title="Plan review" task={run.task?.title} agent={actorChip(run)} className="remotea-plan-review">
     <p className="footnote">The agent wants to change what you set. Accept or keep each change; nothing changes until you tap Start.</p>
     {(proposals.criteria ?? []).map(c => {
       const d = decisions[c.id] ?? { accept: true, text: c.proposed ?? "" };
@@ -419,17 +430,20 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
     </fieldset>}
     <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void send()}>{busy ? "Starting…" : "Freeze the plan and start"}</button>
     {error && <p role="alert" className="work-error">{error}</p>}
-  </section>;
+  </DecisionCard>;
 }
 
 /** Hyperplan's final-plan stop (needs_you(plan_approval)): the frozen plan and the review history; Approve starts the
  * work (or hands the plan to the worker), Revise with note sends it back to the planner. */
 export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
-  const [note, setNote] = useState(""), [busy, setBusy] = useState<"" | "approve" | "revise">(""), [error, setError] = useState("");
-  if (run.state !== "needs_you" || run.state_reason !== "plan_approval") return null;
+  const [note, setNote] = useRunDraft("plan-note:" + run.id + ":" + run.plan_revision, ""), [busy, setBusy] = useState<"" | "approve" | "revise">(""), [error, setError] = useState("");
+  const receipts = useReceipts();
+  const decision = decisionFor(run, "plan_approval");
+  const awaiting = !!decision || (run.state === "needs_you" && run.state_reason === "plan_approval");
+  if (!run.plan && !awaiting) return null;
   const send = async (action: "approve" | "revise") => {
     setBusy(action); setError("");
-    try { await post(`/remotea/runs/${run.id}/plan-review`, planApprovalBody(action, note, run.state_revision)); setNote(""); onDone(); }
+    try { if (decision) await respondDecision(decision, action, note.trim() ? { text: note.trim() } : {}); else await postAction(`/remotea/runs/${run.id}/plan-review`, planApprovalBody(action, note, run.state_revision)); setNote(""); onDone(); }
     catch (e) {
       if (!isRevisionConflict(e)) setError(message(e));
       else if (onConflict) onConflict();
@@ -437,10 +451,9 @@ export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDo
     } finally { setBusy(""); }
   };
   const plan = run.plan, reviews = run.reviews ?? [], worker = run.roles?.worker;
-  return <section className="remotea-question remotea-plan-approval" aria-label="Final plan approval">
-    <p className="remotea-card-kicker">Final plan</p>
-    <p className="footnote">{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}Approve to start the work
-      {worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}, or send it back to the planner with a note.</p>
+  return <DecisionCard title={awaiting ? "Final plan" : "Latest plan"} label="Final plan approval" task={run.task?.title} agent={actorChip(run)} className="remotea-plan-approval" receipt={receipts.filter(r => r.url.includes(decision ? encodeURIComponent(decision.id) : `/runs/${run.id}/plan-review`)).at(-1)}>
+    <p className="footnote">{!awaiting ? "The latest submitted plan remains available as work continues. " : ""}{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}{awaiting ? "Approve to start the work" : ""}
+      {awaiting && worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}{awaiting ? ", or send it back to the planner with a note." : ""}</p>
     {plan ? <>
       <p><strong>{plan.title}</strong> <small>revision {plan.revision}</small></p>
       {plan.prd_text && <details open><summary>Plan</summary><p className="remotea-plan-text">{plan.prd_text}</p></details>}
@@ -449,14 +462,15 @@ export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDo
         <ul>{plan.criteria.map(c => <li key={c.id}>{c.text}{c.kind === "verify" && <small> · needs {c.verify_id} to pass</small>}</li>)}</ul></details>}
     </> : <p className="footnote">The plan is still loading.</p>}
     {!!reviews.length && <ul className="remotea-review-history" aria-label="Review history">{reviews.map(r => <li key={r.id}>{reviewTitle(r)}</li>)}</ul>}
-    <label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
+    {awaiting && <><label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
       <textarea rows={3} maxLength={4000} value={note} disabled={!!busy} onChange={e => setNote(e.target.value)}/></label>
     <div className="remotea-control-row">
-      <button className="btn btn-sm" disabled={!!busy || !note.trim()} onClick={() => void send("revise")}>{busy === "revise" ? "Sending…" : "Revise with note"}</button>
+      <button className="btn btn-sm" disabled={!!busy || !note.trim()} onClick={() => void send("revise")}>{busy === "revise" ? "Sending…" : "Request changes"}</button>
       <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void send("approve")}><Check size={14}/>{busy === "approve" ? "Approving…" : "Approve"}</button>
     </div>
+    </>}
     {error && <p role="alert" className="work-error">{error}</p>}
-  </section>;
+  </DecisionCard>;
 }
 
 const DECISION_TEXT = { accepted: "accepted", rejected: "rejected", deferred: "deferred" } as const;
@@ -636,7 +650,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   preloaded?: RunDetail;
 }) {
   const [run, setRun] = useState<RunDetail | null>(preloaded ?? null), [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const [text, setText] = useState(""), [busy, setBusy] = useState("");
+  const [text, setText] = useRunDraft("composer:" + id, ""), [busy, setBusy] = useState("");
+  const receipts = useReceipts();
   // "Open terminal in remotea": the host's answer (null until asked); a refusal shows where the terminal is instead.
   const [focus, setFocus] = useState<FocusResult | null>(null);
   // Older pages of turns and commands the reader loaded (merged); kept across polls, which reload only the newest page.
@@ -683,6 +698,25 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
+  const lifecycle = async (action: "pause" | "resume" | "cancel") => {
+    if (!run || !bound) return;
+    setBusy(action); setError("");
+    try { await postAction(`/remotea/runs/${run.id}/${action}`, { expected_revision: run.state_revision }); refresh(); }
+    catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
+    finally { setBusy(""); }
+  };
+  const sendMessage = async (mode: "queue" | "steer") => {
+    if (!run || !bound) return;
+    const primary = approvalShortcut(run, text);
+    if (primary) {
+      setBusy("decision"); setError("");
+      try { await respondDecision(primary.decision, primary.action, primary.values); setText(""); refresh(); }
+      catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
+      finally { setBusy(""); }
+      return;
+    }
+    await act(mode === "queue" ? "message" : "steer", { text, mode });
+  };
   // Not a run action: it changes nothing on the run and stores no receipt, so a plain post (a repeat only raises the
   // tab again). The route waits a few seconds for the host's answer.
   const openTerminal = async () => {
@@ -693,6 +727,15 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       setFocus(result);
       if (result.sent) setNotice(focusSentText(run, result));
     } catch (e) { setError(message(e)); }
+    finally { setBusy(""); }
+  };
+  const acceptResults = async () => {
+    if (!run || !bound) return;
+    const decision = decisionFor(run, "final_acceptance");
+    if (!decision) { await act("approve"); return; }
+    setBusy("approve"); setError("");
+    try { await respondDecision(decision, "approve"); refresh(); }
+    catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
     finally { setBusy(""); }
   };
   const shown = run && earlier ? mergeDetail(run, earlier) : run;
@@ -726,7 +769,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
   return <section className="run-view remotea-chat" aria-label="Agent run">
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
-        {run && <span className={"remotea-state run-state-" + run.state}>{runLabel(run.state)}</span>}
+        {run && <span className={"remotea-state run-state-" + run.state}>{workflowStage(run)}</span>}
+        {run && workflowAttention(run) && <span className="run-attention">· {workflowAttention(run)}</span>}
         {actor && <span className="run-actor" title="Who acts on this run now">{actor}</span>}
         <h2>{run?.task?.title ?? "Run"}</h2>
         {onCollapse && <button className="btn-icon" aria-label="Collapse run panel" title="Collapse" onClick={onCollapse}><PanelRightClose size={18}/></button>}
@@ -734,7 +778,7 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       </div>
       {run && <p className="remotea-place">
         {run.tool}{run.branch && <> · <code>{run.branch}</code></>}{run.base_branch && <> from <code>{run.base_branch}</code></>}
-        {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}/{run.turn_cap}
+        {run.host && <> · {run.host.name || "remotea"}{!run.host.connected && " (offline)"}</>} · turn {run.turn_count}{run.turn_cap > 0 && <>/{run.turn_cap}</>}
       </p>}
       {run && <div className="remotea-control-row remotea-terminal-row">
         <button className="btn btn-sm btn-ghost" disabled={off || !run.surf}
@@ -814,6 +858,8 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
       </>}
     </div>
     {run && controls && !isSettled(run) && <footer className="remotea-composer">
+      <RunActivity run={run} now={now}/>
+      <DeliveryReceipt receipt={receipts.filter(r => r.url.includes(run.id) || r.body.run_id === run.id || (!!run.task && r.body.task_id === run.task.id) || [...(run.questions ?? []), ...(run.interviews ?? []), ...(run.decisions ?? [])].some(d => r.url.includes(encodeURIComponent(d.id)))).at(-1)}/>
       {/* What Approve rests on: the verification, its workspace and sandbox, the host, anything unconfirmed. */}
       {run.state === "awaiting_approval" && <Facts facts={fresh.filter(APPROVAL_FACTS)} label="What approval rests on" className="remotea-approve-facts"/>}
       <textarea aria-label="Message the agent" rows={2} placeholder={controls.message.enabled ? "Message the agent" : controls.message.reason}
@@ -824,24 +870,23 @@ export function RunDrawer({ id, onClose, onCollapse, preloaded }: {
           if (!action || !text.trim() || off) return;
           if (action === "queue" ? !controls.message.enabled : !controls.steer.enabled) { if (action === "queue") e.preventDefault(); return; }
           e.preventDefault();
-          void act(action === "queue" ? "message" : "steer", { text, mode: action });
+          void sendMessage(action);
         }}/>
       <div className="remotea-control-row">
         <button className="btn btn-sm" disabled={!controls.message.enabled || !text.trim() || off} title="Queued for after the current turn (Enter)"
-          onClick={() => void act("message", { text, mode: "queue" })}>Message</button>
+          onClick={() => void sendMessage("queue")}>Message</button>
         <button className="btn btn-sm" disabled={!controls.steer.enabled || !text.trim() || off} title="Interrupts the current turn (Ctrl+Enter)"
-          onClick={() => void act("steer", { text, mode: "steer" })}>Steer</button>
+          onClick={() => void sendMessage("steer")}>Steer</button>
         <span className="remotea-control-gap"/>
         <button className="btn btn-sm btn-ghost" disabled={!controls.replan.enabled || off} title={controls.replan.reason}
           onClick={() => void act("replan", { reason: text })}>{busy === "replan" ? "Re-planning…" : "Re-plan"}</button>
         {run.plan?.verify && <button className="btn btn-sm btn-ghost" disabled={off || !run.surf} title="Run the plan's verification now"
           onClick={() => void act("verify")}>{busy === "verify" ? "Starting…" : "Verify now"}</button>}
-        {/* Stop sends no revision (runAction): it is the emergency path and must work from a stale view. */}
-        <button className="btn btn-sm btn-danger" disabled={!controls.stop.enabled || off || controls.stop.label === "Stopping…"}
-          onClick={() => void act("stop", { mode: controls.stop.mode })}><Square size={14}/>{busy === "stop" ? "Stopping…" : controls.stop.label}</button>
-        <button className={"btn btn-sm" + (controls.approve.primary ? " btn-primary" : "")} disabled={!controls.approve.enabled || off}
-          title="Your decision: mark the task complete as you and end the run" onClick={() => void act("approve")}><Check size={14}/>{controls.approve.label}</button>
+        <button className="btn btn-sm btn-ghost" disabled={off || run.state === "stopping"} onClick={() => void lifecycle(run.paused ? "resume" : "pause")}>{run.paused ? "Resume" : "Pause"}</button>
+        <button className="btn btn-sm btn-danger" disabled={off || run.state === "stopping"} onClick={() => void lifecycle("cancel")}><Square size={14}/>Cancel run</button>
+
       </div>
+      {run.state === "awaiting_approval" && <DecisionCard title="Final acceptance" task={run.task?.title} agent={actorChip(run)} reason="Review the results, then accept the completed task."><button className="btn btn-sm btn-primary" disabled={off} onClick={() => void acceptResults()}>Accept results</button></DecisionCard>}
       {packet && run.state === "awaiting_approval" && <p className="review-beside-approve" role="note">
         <strong>{packet.text}.</strong> {packet.decision?.text}</p>}
       {controls.offline && <p className="footnote">The remotea server is offline; commands wait until it reconnects.</p>}

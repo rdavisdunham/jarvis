@@ -1,3 +1,4 @@
+import type { RunDecision } from "./RunWorkflow";
 // Pure helpers for the remotea page: live agent sessions reported over the agent link.
 
 export type LiveState = { state: string; since: string | null; host_id: string | null; reason: string };
@@ -139,6 +140,8 @@ export type RunState =
   | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
+  stage?: string; attention?: "none" | "decision" | "paused" | "error"; connectivity?: "online" | "offline"; paused?: boolean;
+  activity?: { kind: string; label?: string; at: string } | null; decisions?: RunDecision[];
   id: string; task: { id: string; title: string; status: string } | null; state: RunState; state_revision: number;
   state_reason: string; reason_text: string; state_since: string; generation: number; plan_revision: number;
   tool: string; model: string; branch: string; base_branch: string; worktree: string; effective_permission_mode: string;
@@ -172,7 +175,7 @@ export type Run = {
   handoff?: { attempt: number; at: string; done?: boolean; attached_at?: string; planner: RoleSpec; worker: RoleSpec;
     retry_at?: string; blocked_since?: string; retries?: number } | null;
 };
-export type RoleSpec = { harness: string; model: string };
+export type RoleSpec = { harness: string; model: string; effort?: string; permission_profile?: string };
 export type RunRoles = { planner: RoleSpec; reviewer: RoleSpec | null; worker: RoleSpec | null; rounds: number; approve_final: boolean };
 export type RunActor = RoleSpec & { role: "agent" | "planner" | "reviewer" | "worker"; round?: number; rounds?: number };
 export type ReviewFinding = { id: string; severity: "blocking" | "major" | "minor"; area: string; issue: string; suggestion: string };
@@ -273,6 +276,7 @@ export const POLICY_TEXT: Record<string, string> = { code_ready: "Done when the 
 
 export type QuestionItem = { id: string; text: string; header?: string; choices?: { id: string; label: string; description?: string }[]; multi?: boolean };
 export type RunQuestion = {
+  kind?: string; action?: { tool: string; input: unknown; cwd: string; permissions?: unknown; digest?: string };
   id: string; question_id: string; run_id: string | null; generation: number; items: QuestionItem[];
   status: "open" | "submitted" | "accepted" | "timed_out" | "failed" | "canceled" | "answered_locally" | "expired";
   answers: unknown; answered_via: string; remote_answerable: boolean; hold_until: string | null; detail: string;
@@ -1270,18 +1274,17 @@ export function runsBadge(runs: Run[], pending: PendingControl[], hosts: Host[] 
   return { count, attention: count > 0, aria: "Runs" + (parts.length ? ", " + parts.join(", ") : "") };
 }
 
-// The Run modal's choices. Mirrors agent_control.HARNESSES (harness → default model, the first one here); a drift
-// guard reads both. Any other model id the backend's MODEL pattern accepts may be listed after the default.
+// Legacy-server model choices. Current hosts supply the supported catalog, effort options and actual defaults.
 export const HARNESSES = [
   { id: "claude", label: "Claude Code", models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "fable", label: "Fable" }] },
   { id: "codex", label: "Codex", models: [{ id: "gpt-5.6-sol", label: "GPT-5.6 Sol" }, { id: "gpt-6-astra", label: "GPT-6 Astra" }] },
 ] as const;
 export type HarnessId = typeof HARNESSES[number]["id"];
 /** A role's harness and model (hyperplan): the reviewer, or a worker apart from the planner. */
-export type RoleChoice = { harness: HarnessId; model: string };
+export type RoleChoice = { harness: HarnessId; model: string; effort?: string; permission_profile?: string };
 /** `harness` / `model` are the planner (the only agent of a classic run). The hyperplan fields are optional so a
  * draft without them is a classic run. */
-export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | "skip"; target: string | null;
+export type RunDraft = { harness: HarnessId; model: string; effort?: string; permission_profile?: string; interview: "auto" | "skip"; target: string | null;
   /** Start in freestyle: no interview, no judge; the only way to start where agents have no Eridani tools. */
   freestyle?: boolean;
   /** Who executes the approved plan; null: the planner's own session ("Same as planner"). */
@@ -1290,41 +1293,38 @@ export type RunDraft = { harness: HarnessId; model: string; interview: "auto" | 
   hyperplan?: boolean; reviewer?: RoleChoice; rounds?: number;
   /** Pause in needs_you(plan_approval) before the work starts (a role run only). */
   approveFinal?: boolean };
-export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "opus", interview: "auto", target: null,
-  worker: null, hyperplan: false, reviewer: { harness: "codex", model: "gpt-5.6-sol" }, rounds: 2, approveFinal: true };
+export const DEFAULT_DRAFT: RunDraft = { harness: "claude", model: "", interview: "auto", target: null,
+  worker: null, hyperplan: false, reviewer: { harness: "codex", model: "" }, rounds: 2, approveFinal: true };
 export const ROUNDS_MIN = 1, ROUNDS_MAX = 10;
 /** Where the Run dialog remembers the last agent, worker and hyperplan choices (never the target or freestyle). */
 export const DRAFT_STORAGE_KEY = "eri-run-draft";
 
-const defaultModel = (harness: string) => (HARNESSES.find(h => h.id === harness) ?? HARNESSES[0]).models[0].id;
-const knownModel = (harness: string, model: unknown): model is string =>
-  !!HARNESSES.find(h => h.id === harness)?.models.some(m => m.id === model);
 function roleChoice(value: unknown): RoleChoice | null {
   const v = value as Partial<RoleChoice> | null;
   if (!v || !HARNESSES.some(h => h.id === v.harness)) return null;
   const harness = v.harness as HarnessId;
-  return { harness, model: knownModel(harness, v.model) ? v.model : defaultModel(harness) };
+  return { harness, model: typeof v.model === "string" ? v.model : "", ...(typeof v.effort === "string" ? { effort: v.effort } : {}), ...(typeof v.permission_profile === "string" ? { permission_profile: v.permission_profile } : {}) };
 }
 /** The draft the dialog opens with: the remembered choices where they are still offered, else the defaults. */
 export function restoreDraft(stored: string | null): RunDraft {
   let saved: Record<string, unknown> = {};
   try { saved = stored ? JSON.parse(stored) ?? {} : {}; } catch { saved = {}; }
   if (typeof saved !== "object" || Array.isArray(saved)) saved = {};
-  const planner = roleChoice({ harness: saved.harness, model: saved.model });
+  const planner = roleChoice({ harness: saved.harness, model: saved.model, effort: saved.effort, permission_profile: saved.permission_profile });
   const rounds = typeof saved.rounds === "number" && Number.isInteger(saved.rounds) ? Math.min(ROUNDS_MAX, Math.max(ROUNDS_MIN, saved.rounds)) : DEFAULT_DRAFT.rounds;
   return { ...DEFAULT_DRAFT, ...(planner ?? {}), worker: roleChoice(saved.worker), hyperplan: saved.hyperplan === true,
     reviewer: roleChoice(saved.reviewer) ?? DEFAULT_DRAFT.reviewer, rounds,
     approveFinal: typeof saved.approveFinal === "boolean" ? saved.approveFinal : DEFAULT_DRAFT.approveFinal };
 }
 export function storedDraft(draft: RunDraft): string {
-  const { harness, model, worker, hyperplan, reviewer, rounds, approveFinal } = draft;
-  return JSON.stringify({ harness, model, worker: worker ?? null, hyperplan: !!hyperplan, reviewer, rounds, approveFinal });
+  const { harness, model, effort, permission_profile, worker, hyperplan, reviewer, rounds, approveFinal } = draft;
+  return JSON.stringify({ harness, model, effort, permission_profile, worker: worker ?? null, hyperplan: !!hyperplan, reviewer, rounds, approveFinal });
 }
 /** The worker apart from the planner, or null when it is the planner itself (same harness and model). */
 export function splitWorker(draft: RunDraft): RoleChoice | null {
   const w = draft.worker;
   if (!w) return null;
-  const same = w.harness === draft.harness && (w.model || defaultModel(w.harness)) === (draft.model || defaultModel(draft.harness));
+  const same = w.harness === draft.harness && w.model === draft.model && w.effort === draft.effort && w.permission_profile === draft.permission_profile;
   return same ? null : w;
 }
 /** Whether the draft starts a run with roles (a reviewer, or a worker apart from the planner). */
@@ -1341,19 +1341,19 @@ export function harnessAvailable(hosts: Host[], id: HarnessId) {
   return hosts.some(h => h.connected && !!(h.harnesses?.[id] as { spawn?: boolean } | undefined)?.spawn);
 }
 
-const rolePart = (c: RoleChoice) => ({ harness: c.harness, ...(c.model && c.model !== defaultModel(c.harness) ? { model: c.model } : {}) });
+const rolePart = (c: RoleChoice) => ({ harness: c.harness, ...(c.model ? { model: c.model } : {}), ...(c.effort ? { effort: c.effort } : {}), ...(c.permission_profile ? { permission_profile: c.permission_profile } : {}) });
 
 /** The body for POST /remotea/runs. "Auto" leaves `interview` to the backend (interview unless the task is planned).
  * `reviewer` (with `rounds`), `worker` and `approve_final` are sent only when they make it a role run; a classic
  * run's body is what it always was. */
 export function startBody(taskId: string, draft: RunDraft) {
-  const model = draft.model && draft.model !== defaultModel(draft.harness) ? draft.model : undefined;
+  const model = draft.model || undefined;
   const worker = splitWorker(draft), reviewer = draft.hyperplan ? draft.reviewer ?? DEFAULT_DRAFT.reviewer! : null;
   const roles = roleRun(draft) ? {
     ...(reviewer ? { reviewer: rolePart(reviewer), rounds: draft.rounds ?? DEFAULT_DRAFT.rounds } : {}),
     ...(worker ? { worker: rolePart(worker) } : {}), approve_final: draft.approveFinal ?? true,
   } : {};
-  return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}),
+  return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), ...(draft.permission_profile ? { permission_profile: draft.permission_profile } : {}),
     ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}),
     ...(draft.freestyle ? { freestyle: true } : {}), ...roles };
 }
@@ -1362,7 +1362,7 @@ export function startBody(taskId: string, draft: RunDraft) {
  * target can start (the union over the offered targets while none is chosen, with `harness_note`);
  * `harness_reasons` says why one cannot. */
 export type Preflight = {
-  target: { id: string; name: string; repo: string } | null; needs_target: boolean; need: NeedsTarget | null;
+  target: { id: string; name: string; repo: string; host_id?: string } | null; needs_target: boolean; need: NeedsTarget | null;
   problems: PreflightProblem[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
   harness_reasons?: Record<string, string>; harness_note?: string | null;

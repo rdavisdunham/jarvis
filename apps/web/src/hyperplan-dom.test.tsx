@@ -43,7 +43,7 @@ describe("the Run dialog's Start", () => {
   };
 
   it("starts a hyperplan run, asks the preflight about the reviewer, and remembers the choices", async () => {
-    const calls = stubFetch((method, url) => method === "POST" ? { body: { id: ID } } : preflight(true));
+    const calls = stubFetch((method, url) => method === "POST" ? { body: { id: ID } } : url.includes("/model-catalog") ? { body: { models: [] } } : url.includes("/role-preferences") ? { body: { planner: null, reviewer: null, worker: null } } : preflight(true));
     await open();
     act(() => byText("label", "Hyperplan").querySelector("input")!.click());
     await settle();
@@ -65,7 +65,7 @@ describe("the Run dialog's Start", () => {
     expect(calls.at(-1)!.url).not.toContain("reviewer_harness");
     act(() => byText("button", "Start").click());
     await settle();
-    expect(calls.at(-1)!.body).toEqual({ task_id: "t1", harness: "claude" });
+    expect(calls.at(-1)!.body).toMatchObject({ task_id: "t1", harness: "claude", action_id: expect.any(String) });
   });
 
   it("shows a HOST_NO_ROLES refusal inline and offers a classic start", async () => {
@@ -81,7 +81,7 @@ describe("the Run dialog's Start", () => {
     expect(byText("label", "Hyperplan").querySelector("input")!.disabled).toBe(true);
     act(() => byText("button", "Start").click());
     await settle();
-    expect(calls.at(-1)!.body).toEqual({ task_id: "t1", harness: "claude" });
+    expect(calls.at(-1)!.body).toMatchObject({ task_id: "t1", harness: "claude", action_id: expect.any(String) });
   });
 });
 
@@ -94,13 +94,13 @@ describe("the final-plan approval card", () => {
     const done = vi.fn();
     act(() => root.render(<PlanApproval run={run} onDone={done}/>));
     act(() => type(host.querySelector("textarea")!, "Split step 2."));
-    act(() => byText("button", "Revise with note").click());
+    act(() => byText("button", "Request changes").click());
     await settle();
-    expect(calls[0]).toMatchObject({ method: "POST", url: `/api/v1/remotea/runs/${ID}/plan-review`,
+    expect(calls.find(c => c.method === "POST")).toMatchObject({ method: "POST", url: `/api/v1/remotea/runs/${ID}/plan-review`,
       body: { action: "revise", note: "Split step 2.", expected_revision: 7 } });
     act(() => byText("button", "Approve").click());
     await settle();
-    expect(calls[1].body).toEqual({ action: "approve", expected_revision: 7 });
+    expect(calls.filter(c => c.method === "POST")[1].body).toMatchObject({ action: "approve", expected_revision: 7, action_id: expect.any(String) });
     expect(done).toHaveBeenCalledTimes(2);
   });
 

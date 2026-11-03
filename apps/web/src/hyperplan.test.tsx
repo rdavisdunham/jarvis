@@ -59,7 +59,7 @@ describe("startBody", () => {
   it("leaves a classic run's body as it was: no role fields", () => {
     expect(startBody("t1", DEFAULT_DRAFT)).toEqual({ task_id: "t1", harness: "claude" });
     // A worker that is the planner itself (same harness and model) is "Same as planner".
-    expect(startBody("t1", { ...DEFAULT_DRAFT, worker: { harness: "claude", model: "opus" } })).toEqual({ task_id: "t1", harness: "claude" });
+    expect(startBody("t1", { ...DEFAULT_DRAFT, worker: { harness: "claude", model: "" } })).toEqual({ task_id: "t1", harness: "claude" });
     // Rounds and approval alone do not make a role run.
     expect(startBody("t1", { ...DEFAULT_DRAFT, rounds: 5, approveFinal: false })).toEqual({ task_id: "t1", harness: "claude" });
   });
@@ -89,7 +89,7 @@ describe("startBody", () => {
 });
 
 describe("the remembered choices", () => {
-  it("restore what is still offered and fall back to the defaults", () => {
+  it("preserve remembered model IDs until host capabilities can validate them", () => {
     expect(restoreDraft(null)).toEqual(DEFAULT_DRAFT);
     expect(restoreDraft("{not json")).toEqual(DEFAULT_DRAFT);
     expect(restoreDraft("[1]")).toEqual(DEFAULT_DRAFT);
@@ -98,7 +98,7 @@ describe("the remembered choices", () => {
     // The target, freestyle and the interview choice belong to one start and are never remembered.
     expect(restoreDraft(storedDraft(saved))).toEqual({ ...saved, target: null, freestyle: undefined, interview: "auto" });
     const odd = restoreDraft(JSON.stringify({ harness: "opencode", model: "x", worker: { harness: "codex", model: "gone" }, rounds: 99, reviewer: 3 }));
-    expect(odd).toMatchObject({ harness: "claude", model: "opus", worker: { harness: "codex", model: "gpt-5.6-sol" }, rounds: 10, reviewer: DEFAULT_DRAFT.reviewer });
+    expect(odd).toMatchObject({ harness: "claude", model: "", worker: { harness: "codex", model: "gone" }, rounds: 10, reviewer: DEFAULT_DRAFT.reviewer });
     expect(restoreDraft(JSON.stringify({ rounds: 0 })).rounds).toBe(1);
   });
 });
@@ -216,15 +216,15 @@ describe("the final-plan approval", () => {
   const waiting = detail({ state: "needs_you", state_reason: "plan_approval", reviews: [review(), review({ id: "r2", round: 2, verdict: "approve",
     counts: { blocking: 0, major: 0, minor: 0 } })] });
 
-  it("shows the frozen plan, the review history, Approve and Revise with note", () => {
+  it("shows the frozen plan, the review history, Approve and Request changes", () => {
     const html = renderToStaticMarkup(<PlanApproval run={waiting} onDone={() => {}}/>);
     for (const text of ["Final plan", "Ship it safely", "Do the thing in two steps.", "Add the flag", "Tests pass",
       "Review 1 · GPT-6 Astra: revise — 2 blocking, 3 minor", "Review 2 · GPT-6 Astra: approved", "Reviewed 2 times.", "with Sonnet in a fresh session"])
       expect(html).toContain(text);
-    expect(html).toMatch(/<button class="btn btn-sm" disabled="">Revise with note<\/button>/);  // Needs a note first.
+    expect(html).toMatch(/<button class="btn btn-sm" disabled="">Request changes<\/button>/);  // Needs a note first.
     expect(html).toMatch(/<button class="btn btn-sm btn-primary">.*Approve<\/button>/);
-    expect(renderToStaticMarkup(<PlanApproval run={{ ...waiting, state_reason: "plan_review" }} onDone={() => {}}/>)).toBe("");
-    expect(renderToStaticMarkup(<PlanApproval run={{ ...waiting, state: "planning" }} onDone={() => {}}/>)).toBe("");
+    expect(renderToStaticMarkup(<PlanApproval run={{ ...waiting, state_reason: "plan_review" }} onDone={() => {}}/>)).toContain("Latest plan");
+    expect(renderToStaticMarkup(<PlanApproval run={{ ...waiting, state: "planning" }} onDone={() => {}}/>)).toContain("Latest plan");
   });
 
   it("posts approve, or revise with the note, at the revision the reader saw", () => {
@@ -250,7 +250,8 @@ describe("the final-plan approval", () => {
     const html = renderToStaticMarkup(<RunDrawer id={ID} preloaded={waiting} onClose={() => {}}/>);
     expect(html).toContain('aria-label="Final plan approval"');
     expect(html).toContain('<span class="run-actor" title="Who acts on this run now">Planning · Fable</span>');
-    expect(html).toContain("Complete task");
+    expect(html).toContain("Needs your approval");
+    expect(html).not.toContain("Complete task");
     expect(html).not.toContain('aria-label="Review packet"');
   });
 });

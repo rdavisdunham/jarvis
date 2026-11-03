@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, ApiError, post } from "./api";
+import { api, ApiError, postAction, flushActions } from "./api";
+import { respondDecision, flushDrafts, type RunDecision } from "./RunWorkflow";
+import { flushRolePreferences } from "./RunModels";
 import { useAgentRefresh } from "./remotea-refresh";
 import {
   needsTargetData, PANEL_STORAGE_KEY, restorePanel, runsByTask, storedPanel,
@@ -16,6 +18,7 @@ export type RemoteaData = {
   activeRuns: Run[];
   runsByTask: ReadonlyMap<string, Run>;
   pending: PendingControl[];
+  decisions?: RunDecision[];
   cards: Record<string, PendingCardState>;
   error: string;
   panel: PanelState;
@@ -40,7 +43,7 @@ export type RemoteaActions = {
   cancelPicker: (id: string) => void;
 };
 
-const OFF: RemoteaData = { enabled: false, status: null, activeRuns: [], runsByTask: new Map(), pending: [], cards: {}, error: "",
+const OFF: RemoteaData = { enabled: false, status: null, activeRuns: [], runsByTask: new Map(), pending: [], decisions: [], cards: {}, error: "",
   panel: { run: null, collapsed: false }, start: null };
 const noop = () => {};
 const NO_ACTIONS: RemoteaActions = { refresh: noop, setEnabled: noop, openRun: noop, closePanel: noop, setCollapsed: noop, openStart: noop, closeStart: noop,
@@ -66,6 +69,7 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<RemoteaStatus | null>(null);
   const [activeRuns, setActiveRuns] = useState<Run[]>([]);
   const [pending, setPending] = useState<PendingControl[]>([]);
+  const [decisions, setDecisions] = useState<RunDecision[]>([]);
   const [cards, setCards] = useState<Record<string, PendingCardState>>({});
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<PanelState>(() => restorePanel(location.search, readStored()));
@@ -74,11 +78,16 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(() => {
     if (!enabled) return;
+    void flushActions();
+    void flushDrafts();
+    void flushRolePreferences();
     void Promise.allSettled([
       api<RemoteaStatus>("/remotea/status"),
       api<{ items: Run[] }>("/remotea/runs?active=true&limit=100"),
       api<{ items: PendingControl[] }>("/remotea/pending"),
-    ]).then(([s, r, p]) => {
+      api<{ items: RunDecision[] }>("/remotea/decisions"),
+    ]).then(([s, r, p, d]) => {
+      if (d.status === "fulfilled") setDecisions(d.value.items);
       if (s.status === "fulfilled") setStatus(s.value);
       if (r.status === "fulfilled") setActiveRuns(r.value.items);
       if (p.status === "fulfilled") {
@@ -90,8 +99,9 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
       setError(failed ? message(failed.reason) : "");
     });
   }, [enabled]);
-  useEffect(() => { if (!enabled) { setStatus(null); setActiveRuns([]); setPending([]); } refresh(); }, [enabled, refresh]);
+  useEffect(() => { if (!enabled) { setStatus(null); setActiveRuns([]); setPending([]); setDecisions([]); } refresh(); }, [enabled, refresh]);
   useAgentRefresh(refresh);
+  useEffect(() => { window.addEventListener("online", refresh); return () => window.removeEventListener("online", refresh); }, [refresh]);
 
   const byTask = useMemo(() => runsByTask(activeRuns), [activeRuns]);
   const actions = useMemo<RemoteaActions>(() => ({
@@ -108,7 +118,10 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
     decide: async (id, decision, target) => {
       setCards(c => ({ ...c, [id]: { busy: true, error: "", need: c[id]?.need } }));
       try {
-        const result = await post<{ run?: Run | null }>(`/remotea/pending/${id}/${decision}`, target ? { execution_target_id: target } : {});
+        const shared = decisions.find(d => d.id === id);
+        const values = target ? { execution_target_id: target } : {};
+        const response = shared ? await respondDecision<{ result?: { run?: Run | null } }>(shared, decision, values) : null;
+        const result = response ? response.result : await postAction<{ run?: Run | null }>(`/remotea/pending/${id}/${decision}`, values);
         setCards(c => { const { [id]: _, ...rest } = c; return rest; });
         return result?.run ?? null;
       } catch (e) {
@@ -117,8 +130,8 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
         return null;
       } finally { refresh(); }
     },
-  }), [refresh]);
-  const data = useMemo<RemoteaData>(() => ({ enabled, status, activeRuns, runsByTask: byTask, pending, cards, error, panel, start, swarm }),
-    [enabled, status, activeRuns, byTask, pending, cards, error, panel, start, swarm]);
+  }), [refresh, decisions]);
+  const data = useMemo<RemoteaData>(() => ({ enabled, status, activeRuns, runsByTask: byTask, pending, decisions, cards, error, panel, start, swarm }),
+    [enabled, status, activeRuns, byTask, pending, decisions, cards, error, panel, start, swarm]);
   return <RemoteaActionsContext.Provider value={actions}><RemoteaDataContext.Provider value={data}>{children}</RemoteaDataContext.Provider></RemoteaActionsContext.Provider>;
 }

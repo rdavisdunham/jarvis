@@ -51,7 +51,7 @@ describe("the run drawer's latest-only loading", () => {
     // Title, controls and the next action's URL all refer to B.
     const html = renderToStaticMarkup(<RunDrawer id={B} preloaded={shown} onClose={() => {}}/>);
     expect(html).toContain("Task B");
-    expect(button(html, "Approve")).not.toContain("disabled");
+    expect(button(html, "Accept results")).not.toContain("disabled");
     const next = runAction(shown, B, "approve")!;
     expect(next).toEqual({ url: `/remotea/runs/${B}/approve`, body: { expected_revision: 7 } });
   });
@@ -83,7 +83,7 @@ function button(html: string, label: string) {
 }
 
 describe("the run drawer's controls", () => {
-  const labels = ["Message", "Steer", "Re-plan", "Verify now", "Stop", "Approve"];
+  const labels = ["Message", "Steer", "Re-plan", "Verify now", "Pause", "Cancel run"];
 
   it("are all disabled while the loaded run is not the run the panel asked for", () => {
     const html = renderToStaticMarkup(<RunDrawer id={B} preloaded={detail(A, "Task A", { state: "executing" })} onClose={() => {}}/>);
@@ -96,7 +96,7 @@ describe("the run drawer's controls", () => {
   it("are enabled once the loaded run is the panel's run", () => {
     const html = renderToStaticMarkup(<RunDrawer id={A} preloaded={detail(A, "Task A", { state: "executing" })} onClose={() => {}}/>);
     expect(html).not.toContain("Loading the selected run");
-    for (const label of ["Re-plan", "Verify now", "Stop", "Approve"]) expect(button(html, label), label).not.toContain("disabled");
+    for (const label of ["Re-plan", "Verify now", "Pause", "Cancel run"]) expect(button(html, label), label).not.toContain("disabled");
   });
 
   it("post to the loaded run with the revision the reader saw, except Stop", () => {
