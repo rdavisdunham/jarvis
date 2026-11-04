@@ -241,7 +241,8 @@ and `granola.json` (Granola's next steps, same item shape). `import-granola` als
   `candidate_recall` (matched whoever owns them), `recall_waiting` (others' items with the right owner; an item
   without an owner in the key matches on its title alone) and `candidate_recall_waiting`, `parts_recall` and `full_recall` (every
   part covered), precision, owner accuracy (email when both sides have one, else full name, else a first name no
-  two participants share), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
+  two participants share), `inferred_owner_share` (matched proposals whose owner the engine inferred without
+  proof: owned for recall and owner accuracy, right when unchecked), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
   proposals that are the user's real todos, unmatched ones included), `unmatched_checked`, checked `must_not`
   items and cost per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. The terminal shows the
   match tables; `--out` (default `evals/context/reports/actions-lab-<date>.md`) gets numbered aggregates only.

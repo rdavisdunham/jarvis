@@ -540,6 +540,8 @@ def collect(owner: str, source_id: str, owner_actor: str, user: dict) -> dict:
                       else (p.payload or {}).get("responsible_mention"),
                       "responsible_email": emails.get(p.responsible) if p.responsible else None,
                       "mine": p.responsible == owner_actor, "checked": bool(p.preselected),
+                      "owner_basis": (p.payload or {}).get("owner_basis") or (p.payload or {}).get("basis"),
+                      "inferred": inferred_owner(p.payload or {}),
                       "disposition": p.disposition, "reason": (p.payload or {}).get("reason"),
                       "due": (p.payload or {}).get("due_date")}
                      for p in db.scalars(select(ContextProposal).where(ContextProposal.owner_id == owner)
@@ -558,6 +560,13 @@ def collect(owner: str, source_id: str, owner_actor: str, user: dict) -> dict:
     return {"source_status": status, "speakers": list(speakers.values()), "runs": runs, "extract": extract,
             "assertions": assertions, "proposals": proposals,
             "cost_usd": round(sum(r["cost_usd"] for r in runs), 6)}
+
+
+def inferred_owner(payload: dict) -> bool:
+    """Whether the engine inferred the owner without proof (`owner_basis: inferred`): unchecked proposals whose
+    reason starts "Likely yours" / "Likely <name>"."""
+    basis = payload.get("owner_basis") or payload.get("basis")
+    return basis == "inferred" or str(payload.get("reason") or "").startswith("Likely ")
 
 
 def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: str | None = None,
@@ -651,7 +660,10 @@ def report_md(run: dict) -> str:
             for item in actions.get("items") or []:
                 out.append(f"- {_md(json.dumps(item, ensure_ascii=False))}")
             if actions.get("rejected"):
-                out += ["", "Rejected:", ""]
+                codes: dict[str, int] = {}
+                for r in actions["rejected"]:
+                    codes[str(r.get("code"))] = codes.get(str(r.get("code")), 0) + 1
+                out += ["", f"Rejected ({', '.join(f'{c} {n}' for c, n in sorted(codes.items()))}):", ""]
                 out += [f"- `{r.get('code')}` {_md(r.get('title'))}: {_md(r.get('reason'))} "
                         f"(segments {r.get('segments')})" for r in actions["rejected"]]
         out += ["", f"### Engine actions ({len(extract['actions'])})", ""]
@@ -849,14 +861,16 @@ def judge_call(profile_id: str) -> Callable[[dict], tuple[str, float | None]]:
 def predictions_from_run(run: dict) -> list[dict]:
     return [{"id": f"P{i + 1}", "title": p["title"], "description": p.get("description") or "",
              "owner": p.get("responsible"), "owner_email": p.get("responsible_email"), "mine": bool(p.get("mine")),
-             "checked": bool(p.get("checked"))}
+             "checked": bool(p.get("checked")),
+             "inferred": bool(p["inferred"]) if "inferred" in p else inferred_owner(p)}
             for i, p in enumerate(run.get("proposals") or [])]
 
 
 def predictions_from_items(items: list[dict]) -> list[dict]:
     """Granola's next steps as predictions: "mine" from its kind; it has no checked state."""
     return [{"id": f"P{i + 1}", "title": it["title"], "description": it.get("notes") or "", "owner": it.get("owner"),
-             "owner_email": it.get("owner_email"), "mine": it.get("kind") == "mine", "checked": None}
+             "owner_email": it.get("owner_email"), "mine": it.get("kind") == "mine", "checked": None,
+             "inferred": False}
             for i, it in enumerate(items)]
 
 
@@ -923,7 +937,11 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
         "full_items": len(full), "parts_total": parts_total, "parts_covered": parts_covered,
         "predictions": len(preds), "matched_predictions": len(matched_preds),
         "owner_correct": sum(owner_correct(g, p, people) for g, p in pairs), "owner_judged": len(pairs),
-        "checked_correct": sum((g["kind"] == "mine") == p["checked"] for g, p in checked_pairs),
+        # An inferred owner is the proposal's owner for recall and owner accuracy, but is never checked:
+        # an inferred "mine" item is right unchecked.
+        "checked_correct": sum((g["kind"] == "mine" and not p.get("inferred")) == p["checked"]
+                               for g, p in checked_pairs),
+        "inferred_owners": sum(bool(p.get("inferred")) for _, p in pairs),
         "checked_judged": len(checked_pairs),
         "checked_predictions": len(checked),
         "checked_mine": sum(1 for g, p in pairs if p["checked"] and g["kind"] == "mine"),
@@ -933,8 +951,9 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
 
 
 COUNTS = ("gold_items", "gold_mine", "gold_waiting", "matched_items", "matched_mine", "matched_mine_owner",
-          "matched_waiting", "matched_waiting_owner", "full_items", "parts_total", "parts_covered", "predictions", "matched_predictions",
-          "owner_correct", "owner_judged", "checked_correct", "checked_judged", "checked_predictions", "checked_mine")
+          "matched_waiting", "matched_waiting_owner", "full_items", "parts_total", "parts_covered", "predictions",
+          "matched_predictions", "owner_correct", "owner_judged", "inferred_owners", "checked_correct",
+          "checked_judged", "checked_predictions", "checked_mine")
 OPTIONAL_COUNTS = ("unmatched_checked", "checked_must_not")
 
 
@@ -954,6 +973,7 @@ def metrics(counts: dict) -> dict:
             "parts_recall": _ratio(counts["parts_covered"], counts["parts_total"]),
             "precision": _ratio(counts["matched_predictions"], counts["predictions"]),
             "owner_accuracy": _ratio(counts["owner_correct"], counts["owner_judged"]),
+            "inferred_owner_share": _ratio(counts["inferred_owners"], counts["owner_judged"]),
             "checked_accuracy": _ratio(counts["checked_correct"], counts["checked_judged"]),
             "checked_precision": _ratio(counts["checked_mine"], counts["checked_predictions"]),
             "unmatched_checked": counts.get("unmatched_checked"),
@@ -1067,7 +1087,8 @@ METRIC_COLUMNS = (("recall mine", "recall_mine"), ("cand. recall mine", "candida
                   ("recall waiting", "recall_waiting"), ("cand. recall waiting", "candidate_recall_waiting"),
                   ("cand. recall", "candidate_recall"),
                   ("parts recall", "parts_recall"), ("full recall", "full_recall"), ("precision", "precision"),
-                  ("owner", "owner_accuracy"), ("checked acc.", "checked_accuracy"),
+                  ("owner", "owner_accuracy"), ("inferred owner", "inferred_owner_share"),
+                  ("checked acc.", "checked_accuracy"),
                   ("checked prec.", "checked_precision"))
 
 
@@ -1100,8 +1121,9 @@ def aggregate_md(result: dict, *, today: date | None = None) -> str:
             "are marked and excluded from the verified pool and the ship gate. `recall mine` needs the right owner; "
             "`recall waiting` too (a waiting item without an owner in the key matches on its title alone); `cand.` "
             "recalls count a match whoever it is assigned to; `parts recall` counts the parts of grouped "
-            "items (an ungrouped item is one part); `checked prec.` is the share of checked proposals that are the "
-            "user's real todos."), "",
+            "items (an ungrouped item is one part); `inferred owner` is the share of matched proposals whose owner the "
+            "engine inferred without proof (they count as owned for recall and owner accuracy and are right "
+            "unchecked); `checked prec.` is the share of checked proposals that are the user's real todos."), "",
            "## Pooled, all meetings", ""]
     out += table([(s, result["pooled"][s]["all"]) for s in result["systems"]])
     verified = [(s, result["pooled"][s]["verified"]) for s in result["systems"] if result["pooled"][s]["verified"]]

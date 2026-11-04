@@ -653,3 +653,51 @@ def test_recall_waiting_needs_the_owner_unless_the_key_has_none():
     assert m["owner_accuracy"] == 0.0  # owner accuracy still counts the user taking an unowned item
     right = preds(("Send the calls", "Kai", False, False))
     assert lab.metrics(lab.score_meeting(g, right, match(("w1", "P1"))))["recall_waiting"] == 0.5
+
+
+# ---------------------------------------------------------------- inferred owners and new rejection codes
+
+
+def test_inferred_owners_count_as_owners_and_are_right_unchecked():
+    g = lab.gold_with_ids(gold())
+    p = [{**x, "inferred": inferred} for x, inferred in zip(
+        preds(("Update the rubric to 1-5", "Robin Vale (you)", True, False),  # inferred mine, unchecked: right
+              ("Send the 50 calls", "Kai Moreno", False, False),  # inferred Kai, unchecked
+              ("Build annotation admin", "Robin Vale (you)", True, True)),  # proven mine, checked
+        (True, True, False), strict=True)]
+    m = lab.metrics(lab.score_meeting(g, p, match(("g1", "P1"), ("g2", "P2"), ("g3", "P3"))))
+    assert m["recall_mine"] == 1.0 and m["recall_waiting"] == 1.0 and m["owner_accuracy"] == 1.0
+    assert m["checked_accuracy"] == 1.0 and m["inferred_owner_share"] == pytest.approx(2 / 3)
+    checked_inferred = [{**p[0], "checked": True}, *p[1:]]
+    wrong = lab.metrics(lab.score_meeting(g, checked_inferred, match(("g1", "P1"), ("g2", "P2"), ("g3", "P3"))))
+    assert wrong["checked_accuracy"] == pytest.approx(2 / 3)
+    assert "inferred owner" in "\n".join(lab.table([("x", lab.pool([{**lab.score_meeting(g, p, match(
+        ("g1", "P1"))), "cost_usd": None}]))]))
+
+
+def test_inferred_owner_detection_from_proposals():
+    assert lab.inferred_owner({"reason": "Likely yours, inferred from the discussion. Check it if so."})
+    assert lab.inferred_owner({"reason": "Likely Kai Moreno, inferred from the discussion."})
+    assert lab.inferred_owner({"owner_basis": "inferred", "reason": ""})
+    assert not lab.inferred_owner({"reason": "Waiting on Kai Moreno. Track it only if you need to."})
+    run = {"proposals": [{"title": "t", "responsible": "Kai", "mine": False, "checked": False,
+                          "reason": "Likely Kai, inferred from the discussion."}]}
+    assert lab.predictions_from_run(run)[0]["inferred"] is True
+    assert lab.predictions_from_items([{"title": "t", "kind": "mine"}])[0]["inferred"] is False
+
+
+def test_report_renders_progress_report_rejections():
+    run = {"slug": "m", "model": "terra", "started_at": "2026-11-04T10:00:00+00:00", "wall_ms": 1000,
+           "cost_usd": 0.01, "source_status": "ready", "errors": [], "speakers": [], "runs": [], "assertions": [],
+           "meeting": {"segments": 3, "private_notes": False},
+           "extract": {"diagnostics": {"model": "x", "actions": {"model": "terra", "items": [], "rejected": [
+               {"code": "progress_report", "title": "Shared the dashboard status", "reason": "a status update",
+                "segments": [4]},
+               {"code": "not_a_follow_up", "title": "Lunch", "reason": "no", "segments": [5]}]}},
+               "candidates": [], "actions": [], "refused": [], "admitted": 0},
+           "proposals": [{"title": "Update the rubric", "responsible": "Robin Vale (you)", "checked": False,
+                          "due": None, "reason": "Likely yours, inferred from the discussion. Check it if so."}]}
+    page = lab.report_md(run)
+    assert "Rejected (not_a_follow_up 1, progress_report 1):" in page
+    assert "- `progress_report` Shared the dashboard status: a status update (segments [4])" in page
+    assert "Likely yours" in page
