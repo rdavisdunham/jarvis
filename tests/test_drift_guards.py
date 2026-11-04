@@ -84,7 +84,7 @@ async def test_ui_show_opens_every_page_in_its_enum():
 def test_meeting_review_reads_only_the_context_api():
     """The Meetings view and the meeting review reach the server only through context-api.ts, and that module only
     through the owner's session routes under /api/v1/context (plan section 2; never /api/v1/external)."""
-    for name in ("context/Meetings.tsx", "context/MeetingReview.tsx", "context/context-model.ts"):
+    for name in ("context/Meetings.tsx", "context/MeetingReview.tsx", "context/PersonPage.tsx", "context/context-model.ts"):
         page = web(name)
         assert not re.search(r'from "\.\./api"|\bfetch\(', page), f"apps/web/src/{name}: fetch through context-api.ts"
     client = web("context/context-api.ts")

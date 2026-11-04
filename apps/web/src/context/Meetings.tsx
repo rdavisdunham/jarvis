@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronRight, RefreshCw, UserRound } from "lucide-react";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { isUnavailable, listMeetings, reviewSummaries, useContextChanged } from "./context-api";
 import { meetingDate, meetingStatus, type MeetingSource, type ReviewSummary, type SourceStatus } from "./context-model";
 import { MeetingReview } from "./MeetingReview";
@@ -77,14 +77,4 @@ function MeetingRow({ source, review, zone, onOpen }: { source: MeetingSource; r
     </span>
     <ChevronRight size={18} aria-hidden/>
   </button>;
-}
-
-/** The person page until it ships (D4 replaces this one import in App.tsx). */
-export function PersonPlaceholder({ actorId, onMeetings }: {
-  actorId: string | null; onMeetings: () => void; onMeeting?: (sourceId: string) => void;
-}) {
-  return <section className="meetings-page" aria-label="Person">
-    <p className="empty"><UserRound size={20} aria-hidden/>{actorId ? "Person pages are coming soon. Until then, this person's context appears in each meeting's review." : "Choose a person from a meeting to see what you know about them."}
-      <button className="btn btn-sm" onClick={onMeetings}>Open Meetings</button></p>
-  </section>;
 }

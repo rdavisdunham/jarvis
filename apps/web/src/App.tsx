@@ -2829,7 +2829,7 @@ export default function App() {
             {view === "meetings" && <Suspense fallback={<p role="status">Loading meetings…</p>}><Meetings sourceId={meetingSource} zone={boot.preferences.timezone}
               onOpen={setMeetingSource} onPerson={openPerson}/></Suspense>}
             {view === "person" && <Suspense fallback={<p role="status">Loading…</p>}><PersonPage actorId={personActor}
-              onMeetings={() => { setMeetingSource(null); setView("meetings"); }} onMeeting={openMeeting}/></Suspense>}
+              onMeetings={() => { setMeetingSource(null); setView("meetings"); }} onMeeting={openMeeting} onPerson={openPerson}/></Suspense>}
             {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision} people={organization.actors}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
             {view === "memory" && (
