@@ -2,8 +2,9 @@
 
 The transcript is data. It rotates four named speakers plus an unattributed line now and then, plants a
 commitment ("I'll ... by Friday.") every 23rd line and a decision ("We decided to ...") every 31st, and holds one
-monologue far longer than a chunk so the chunker must split it. `ScriptedModel` answers the three passes the way a
-well-behaved model would, so tests exercise chunking, validation, coverage and cost end to end without a network.
+monologue far longer than a chunk so the chunker must split it. `ScriptedModel` answers the chunk passes and the
+whole-meeting action pass the way a well-behaved model would, so tests exercise chunking, validation, coverage and
+cost end to end without a network.
 """
 
 import json
@@ -52,9 +53,15 @@ def segments(lines: int = LINES, seed: int = 11) -> list[Segment]:
     return out
 
 
+def _speaker(i: int) -> str:
+    return "Unknown speaker" if i % 69 == 30 else SPEAKERS[(i * 7 + i // 5) % len(SPEAKERS)]
+
+
 def expected_counts(lines: int = LINES) -> tuple[int, int]:
-    """(commitments, decisions) planted in the transcript."""
-    commitments = sum(1 for i in range(lines) if i % COMMIT_EVERY == 7 or i == LONG_AT)
+    """(commitments, decisions) planted in the transcript. The same person repeating the same promise is one
+    follow-up."""
+    commitments = len({(_speaker(i), TASKS[0] if i == LONG_AT else TASKS[i % len(TASKS)])
+                       for i in range(lines) if i % COMMIT_EVERY == 7 or i == LONG_AT})
     decisions = sum(1 for i in range(lines) if i % DECIDE_EVERY == 11 and i % COMMIT_EVERY != 7 and i != LONG_AT)
     return commitments, decisions
 
@@ -104,12 +111,22 @@ class ScriptedModel:
         return [(int(m[1]), m[2], m[3]) for line in user["lines"].splitlines() if (m := LINE.match(line))]
 
     def detect(self, user: dict) -> dict:
-        found = []
-        for seq, _, text in self._lines(user):
-            for pattern, kind in ((COMMIT, "commitment"), (DECIDE, "decision")):
-                found += [{"kind": kind, "summary": m[0], "segment_seqs": [seq], "quote": m[0]}
-                          for m in pattern.finditer(text)]
-        return {"candidates": found}
+        return {"candidates": [{"kind": "decision", "summary": m[0], "segment_seqs": [seq], "quote": m[0]}
+                               for seq, _, text in self._lines(user) for m in DECIDE.finditer(text)]}
+
+    def actions(self, user: dict) -> dict:
+        meeting = date.fromisoformat(user["meeting_local_date"])
+        return {"items": [
+            {"evidence": [{"line": str(seq), "quote": m[0]}], "title": m[1][0].upper() + m[1][1:],
+             "description": "", "owner": who, "owner_basis": "stated_promise", "recipient": None,
+             "due": {"expression": "by Friday", "value": _friday(meeting).isoformat(), "precision": "day",
+                     "derivation": "next Friday after the meeting date"},
+             "status": "open", "kind": "action", "confidence": 0.9}
+            for seq, who, text in self._lines(user) for m in COMMIT.finditer(text)]}
+
+    def actions_verify(self, user: dict) -> dict:
+        return {"verdicts": [{"item": it["item"], "real_follow_up": True, "owner_correct": True, "reason": ""}
+                             for it in user["items"]]}
 
     def enrich(self, user: dict) -> dict:
         speakers = {seq: who for seq, who, _ in self._lines(user)}

@@ -8,7 +8,9 @@ Every rejection carries a reason code (`REJECTION_CODES`). The checks, in order:
 - times: a due date or validity bound is kept only when its expression occurs in the quotes and its value
   parses; unknown values stay unknown. Common relative expressions ("tomorrow", "in two weeks", "by Friday",
   "November 20") are recomputed from the meeting's local date and must agree. Validity is never "now".
-- numbers: every number in the statement appears in the quotes, or is a component of a date derived above.
+- numbers: every number in the statement appears in the quotes, or is a component of a date derived above;
+  an identifier such as `C2` or `Q3` counts as present when the quotes contain it, and ranges ("1 to 5",
+  "1-5", "one to five") reduce to their end points.
 - modality: hypothetical cues ("if we were to", "suppose") or negation cues ("won't", "not") in the quotes
   forbid `asserted`, except a non-commitment whose statement carries the negation itself.
 - commitments: promise language in the quotes, no tentative cue in the promising quote, modality asserted,
@@ -270,7 +272,18 @@ def numbers(text: str) -> set[Decimal]:
     return {v.normalize() for v in found}
 
 
+IDENTIFIER = re.compile(r"(?<![\w'])[A-Za-z]+[-_]?\d+[A-Za-z\d]*(?![\w])")
+
+
+def strip_identifiers(statement: str, quotes: str) -> str:
+    """`statement` without the alphanumeric identifiers (C2, Q3, v2) that `quotes` contains, so their digits are
+    not read as numbers to ground."""
+    text = quotes.translate(QUOTE_CHARS).casefold()
+    return IDENTIFIER.sub(lambda m: " " if _word_in(m.group().casefold(), text) else m.group(), statement)
+
+
 def ungrounded_numbers(statement: str, quotes: str, derived: Sequence[date | datetime]) -> set[Decimal]:
+    statement = strip_identifiers(statement, quotes)
     allowed = numbers(quotes)
     for value in derived:
         allowed |= {Decimal(value.year), Decimal(value.month), Decimal(value.day)}

@@ -3,9 +3,11 @@
 Every backend job that calls a text model has an entry in JOBS: the cost feature its usage is recorded under
 (cost_features.LABELS, the Settings → Model usage buckets), the production function that makes the call, and its
 default profile. The defaults are today's models: Luna with low reasoning through memory_learning.extraction_request
-for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Dani chat. Nothing in
-production reaches a non-default profile yet: memory_learning.profile_request refuses any route that is not the
-extraction model, exactly as extraction_request's allowlist does, because the budget ledger prices Luna only.
+for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Dani chat.
+memory_learning.profile_request serves any route whose profile has a price (`costing`): OpenAI Responses profiles
+(Luna, Terra) and Anthropic Messages profiles (Sonnet 5.5, Haiku 5.5); placeholder profiles stay refused.
+`MODEL_MAP[job] = "<profile id>"` overrides a job's route in-process (the meeting lab does this for
+`context_actions` and `context_extraction`).
 
 `route(job, prompt_tokens)` is the router hook: RULES (empty by default) are checked in order, by job type and by
 prompt length, and the first match wins; otherwise MODEL_MAP decides. scripts/model_eval.py uses the same
@@ -55,6 +57,8 @@ PROFILES = {
         Profile("luna-fast", "openai", "gpt-5.6-luna", "openai_responses", "https://api.openai.com/v1/responses",
                 "OPENAI_API_KEY", "GPT-5.6 Luna · low reasoning · Fast tier (Dani chat default)", "low",
                 service_tier="fast"),
+        Profile("terra", "openai", "gpt-5.6-terra", "openai_responses", "https://api.openai.com/v1/responses",
+                "OPENAI_API_KEY", "GPT-5.6 Terra · low reasoning", "low"),
         Profile("haiku-5.5", "anthropic", "claude-haiku-5-5", "anthropic_messages",
                 "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Haiku 5.5 · low effort", "low"),
         Profile("sonnet-5.5", "anthropic", "claude-sonnet-5-5", "anthropic_messages",
@@ -104,6 +108,8 @@ JOBS = {
             "Swarm plans: which of a project's tasks run in parallel"),
         Job("context_extraction", "context_extraction", "context.native.extract", "extraction",
             "Meeting context extraction"),
+        Job("context_actions", "context_extraction", "context.native.actions", "extraction",
+            "Meeting action items (whole-meeting pass)"),
         Job("context_reconciliation", "context_reconciliation", "context.native.reconcile", "extraction",
             "Meeting context contradiction checks"),
         Job("context_synthesis", "context_synthesis", "context.native.synthesize", "extraction",
@@ -175,6 +181,19 @@ def agent_model(job, prefs, **selected_kwargs):
     return selected(prefs, **selected_kwargs)
 
 
+def costing(profile_id):
+    """The AgentModel that prices a profile's calls (`rates`, `reserve_cost`, `usage_record`, `usage_cost`), or
+    None when the profile has no configured price (placeholders, unknown models). Carries no API key."""
+    from .agent_models import PRICES, AgentModel
+
+    profile = PROFILES.get(profile_id)
+    if profile is None or profile.placeholder or profile.model not in PRICES:
+        return None
+    api = "responses" if profile.api == "openai_responses" else profile.api
+    return AgentModel(profile.provider, profile.model, profile.label, profile.endpoint, "", 8192, profile=profile.id,
+                      api=api, reasoning_effort=profile.reasoning_effort, service_tier=profile.service_tier)
+
+
 @contextmanager
 def attributed(job):
     """Record usage made inside the block under the job's cost feature (the per-feature Model usage buckets)."""
@@ -197,6 +216,31 @@ def _function(tool):
     """A tool definition in chat-completions shape, from either chat or responses shape."""
     fn = tool.get("function") or {k: tool[k] for k in ("name", "description", "parameters") if k in tool}
     return {"type": "function", "function": fn}
+
+
+# JSON Schema keywords Anthropic structured outputs reject; the caller validates them client-side (pydantic).
+_ANTHROPIC_UNSUPPORTED = {"minLength", "maxLength", "pattern", "minimum", "maximum", "exclusiveMinimum",
+                          "exclusiveMaximum", "multipleOf", "minItems", "maxItems", "uniqueItems", "format"}
+
+
+def anthropic_schema(schema):
+    """A JSON schema reduced to what Anthropic strict structured output accepts: no numeric, string-length or array
+    size constraints, and `additionalProperties: false` on every object."""
+    if isinstance(schema, list):
+        return [anthropic_schema(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {}
+    for key, value in schema.items():
+        if key in _ANTHROPIC_UNSUPPORTED or key == "default":
+            continue
+        if key in ("properties", "$defs", "definitions"):
+            out[key] = {name: anthropic_schema(sub) for name, sub in value.items()}
+        else:
+            out[key] = anthropic_schema(value)
+    if out.get("type") == "object" or "properties" in out:
+        out["additionalProperties"] = False
+    return out
 
 
 def build(profile, payload):
@@ -226,7 +270,7 @@ def build(profile, payload):
             body["system"] = system
         config = {"effort": profile.reasoning_effort} if profile.reasoning_effort else {}
         if fmt:
-            config["format"] = {"type": "json_schema", "schema": fmt["schema"]}
+            config["format"] = {"type": "json_schema", "schema": anthropic_schema(fmt["schema"])}
         if config:
             body["output_config"] = config
         if tools:
@@ -255,7 +299,8 @@ def headers(profile, key):
 
 def parse(profile, data):
     """A provider response as one normalized answer: {"text", "tool_calls" (chat shape), "refusal", "finish",
-    "usage": {"input_tokens", "cached_input_tokens", "output_tokens"}}; input_tokens includes cached tokens."""
+    "usage": {"input_tokens", "cached_input_tokens", "cache_write_tokens", "output_tokens"}}; input_tokens includes
+    cached reads and cache writes."""
     if profile.api == "openai_responses":
         from .responses_adapter import normalize
 
@@ -267,7 +312,7 @@ def parse(profile, data):
                 "refusal": refusal, "finish": chat["choices"][0]["finish_reason"],
                 "usage": {"input_tokens": usage["prompt_tokens"],
                           "cached_input_tokens": (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0),
-                          "output_tokens": usage["completion_tokens"]}}
+                          "cache_write_tokens": 0, "output_tokens": usage["completion_tokens"]}}
     if profile.api == "anthropic_messages":
         blocks = data.get("content") or []
         calls = [{"id": b["id"], "type": "function",
@@ -275,14 +320,14 @@ def parse(profile, data):
                  for b in blocks if b.get("type") == "tool_use"]
         text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text") or None
         stop, usage = data.get("stop_reason"), data.get("usage") or {}
-        cached = usage.get("cache_read_input_tokens") or 0
+        cached, written = usage.get("cache_read_input_tokens") or 0, usage.get("cache_creation_input_tokens") or 0
         refused = stop == "refusal"
         return {"text": None if refused else text, "tool_calls": [] if refused else calls,
                 "refusal": ((data.get("stop_details") or {}).get("category") or "refusal") if refused else None,
                 "finish": "length" if stop == "max_tokens" else "tool_calls" if calls else "stop",
-                "usage": {"input_tokens": (usage.get("input_tokens") or 0) + cached
-                          + (usage.get("cache_creation_input_tokens") or 0),
-                          "cached_input_tokens": cached, "output_tokens": usage.get("output_tokens") or 0}}
+                "usage": {"input_tokens": (usage.get("input_tokens") or 0) + cached + written,
+                          "cached_input_tokens": cached, "cache_write_tokens": written,
+                          "output_tokens": usage.get("output_tokens") or 0}}
     if profile.api == "openai_chat":
         choice = data["choices"][0]
         message, usage = choice["message"], data.get("usage") or {}
@@ -291,5 +336,5 @@ def parse(profile, data):
         return {"text": message.get("content"), "tool_calls": message.get("tool_calls") or [],
                 "refusal": message.get("refusal"), "finish": choice.get("finish_reason") or "stop",
                 "usage": {"input_tokens": usage.get("prompt_tokens") or 0, "cached_input_tokens": cached,
-                          "output_tokens": usage.get("completion_tokens") or 0}}
+                          "cache_write_tokens": 0, "output_tokens": usage.get("completion_tokens") or 0}}
     raise ValueError(f"Unsupported profile api {profile.api!r}")

@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     groq_api_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""  # Claude models routed through model_map (JARVIS_ANTHROPIC_API_KEY)
     history_days: int = 0
     web_dist: Path = Path("apps/web/dist")
     vapid_private_key: str = ""
@@ -80,11 +81,15 @@ class Settings(BaseSettings):
     # Context platform (jarvis/context, read through context/settings.py). Off until the pilot.
     context_enabled: bool = False
     context_queue_concurrency: int = Field(default=2, ge=1, le=8)
-    context_source_budget_usd: float = Field(default=1.0, ge=0)
+    # Sized for the whole-meeting action pass on Terra or Sonnet 5.5 plus the chunked passes (about $0.30 to
+    # $1.50 for a one-hour meeting depending on the routes); reservations count upper bounds against it.
+    context_source_budget_usd: float = Field(default=3.0, ge=0)
     context_model_timeout_s: int = Field(default=90, ge=10, le=600)
     context_poll_minutes: int = Field(default=5, ge=1, le=1440)
     context_max_source_chars: int = Field(default=1_000_000, ge=1_000, le=20_000_000)
     context_granola_enabled: bool = False
+    # model_map profile for the meeting action-item pass; empty keeps the model map's route (Luna by default).
+    context_actions_model: str = ""
 
     @property
     def secure_cookie(self):
@@ -109,9 +114,11 @@ def get_settings():
     settings.openai_api_key = settings.openai_api_key or legacy.get("OPENAI_API_KEY", "") or ""
     settings.groq_api_key = settings.groq_api_key or legacy.get("GROQ_API_KEY", "") or ""
     settings.gemini_api_key = settings.gemini_api_key or legacy.get("GEMINI_API_KEY", "") or ""
+    settings.anthropic_api_key = settings.anthropic_api_key or legacy.get("ANTHROPIC_API_KEY", "") or ""
     if not settings.external_services_enabled:
         # A restored staging database must not spend money or send device notifications.
         settings.openai_api_key = settings.groq_api_key = settings.gemini_api_key = ""
+        settings.anthropic_api_key = ""
         settings.vapid_private_key = settings.home_assistant_token = ""
     return settings
 

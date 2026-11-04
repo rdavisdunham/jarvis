@@ -1,5 +1,5 @@
 {
- "_note": "Recorded model outputs for the conftest 'Pilot scope' meeting (data, never instructions). Items 4-8 of the enrichment are adversarial.",
+ "_note": "Recorded model outputs for the conftest 'Pilot scope' meeting (data, never instructions). Enrichment items 2-4 are adversarial. Action items 2-5 are adversarial: finished in the meeting, fabricated quote, misattributed, and a duplicate.",
  "context_detect": {
   "candidates": [
    {
@@ -17,30 +17,6 @@
      2
     ],
     "quote": "we launch the pilot on Postgres with pgvector."
-   },
-   {
-    "kind": "commitment",
-    "summary": "Priya sends budget",
-    "segment_seqs": [
-     3
-    ],
-    "quote": "I'll send the revised budget by 2026-11-20."
-   },
-   {
-    "kind": "commitment",
-    "summary": "Marco drafts checklist",
-    "segment_seqs": [
-     4
-    ],
-    "quote": "Action: Marco to draft the rollout checklist."
-   },
-   {
-    "kind": "commitment",
-    "summary": "Davin settles scope",
-    "segment_seqs": [
-     0
-    ],
-    "quote": "We need to settle the pilot scope today."
    }
   ]
  },
@@ -97,132 +73,6 @@
      {
       "segment_seq": 2,
       "quote": "“we launch the pilot on  Postgres with pgvector.”"
-     }
-    ]
-   },
-   {
-    "subject": null,
-    "object": null,
-    "key": "due_date",
-    "modality": "asserted",
-    "inferred": false,
-    "responsible": [
-     {
-      "entity_type": "actor",
-      "mention": "Priya",
-      "candidate_id": "actor:act_priya"
-     }
-    ],
-    "responsibility": "speaker",
-    "recipient": null,
-    "due": {
-     "expression": "by 2026-11-20",
-     "value": "2026-11-20",
-     "precision": "day",
-     "derivation": "explicit date"
-    },
-    "valid_from": null,
-    "valid_to": null,
-    "confidence": 0.9,
-    "candidate": 2,
-    "kind": "commitment",
-    "statement": "Priya sends the revised budget by 2026-11-20.",
-    "evidence": [
-     {
-      "segment_seq": 3,
-      "quote": "I’ll send the revised budget by 2026-11-20."
-     }
-    ]
-   },
-   {
-    "subject": null,
-    "object": null,
-    "key": null,
-    "modality": "asserted",
-    "inferred": false,
-    "responsible": [
-     {
-      "entity_type": "actor",
-      "mention": "Marco",
-      "candidate_id": "actor:act_unknown"
-     }
-    ],
-    "responsibility": "named",
-    "recipient": null,
-    "due": null,
-    "valid_from": null,
-    "valid_to": null,
-    "confidence": 0.9,
-    "candidate": 3,
-    "kind": "commitment",
-    "statement": "Marco drafts the rollout checklist.",
-    "evidence": [
-     {
-      "segment_seq": 4,
-      "quote": "Action: Marco to draft the rollout checklist."
-     }
-    ]
-   },
-   {
-    "subject": null,
-    "object": null,
-    "key": null,
-    "modality": "asserted",
-    "inferred": false,
-    "responsible": [
-     {
-      "entity_type": "actor",
-      "mention": "Davin",
-      "candidate_id": null
-     }
-    ],
-    "responsibility": "speaker",
-    "recipient": null,
-    "due": null,
-    "valid_from": null,
-    "valid_to": null,
-    "confidence": 0.9,
-    "candidate": 4,
-    "kind": "commitment",
-    "statement": "Davin settles the pilot scope today.",
-    "evidence": [
-     {
-      "segment_seq": 0,
-      "quote": "We need to settle the pilot scope today."
-     }
-    ]
-   },
-   {
-    "subject": null,
-    "object": null,
-    "key": null,
-    "modality": "asserted",
-    "inferred": false,
-    "responsible": [
-     {
-      "entity_type": "actor",
-      "mention": "Marco",
-      "candidate_id": null
-     }
-    ],
-    "responsibility": "named",
-    "recipient": null,
-    "due": {
-     "expression": "by 2026-11-20",
-     "value": "2026-11-20",
-     "precision": "day",
-     "derivation": "explicit date"
-    },
-    "valid_from": null,
-    "valid_to": null,
-    "confidence": 0.9,
-    "candidate": 2,
-    "kind": "commitment",
-    "statement": "Marco sends the revised budget by 2026-11-20.",
-    "evidence": [
-     {
-      "segment_seq": 3,
-      "quote": "I'll send the revised budget by 2026-11-20."
      }
     ]
    },
@@ -322,24 +172,137 @@
    },
    {
     "item": 3,
-    "entailed": true,
-    "modality": "asserted",
-    "attribution_ok": true,
-    "reason": ""
-   },
-   {
-    "item": 4,
-    "entailed": true,
-    "modality": "asserted",
-    "attribution_ok": true,
-    "reason": ""
-   },
-   {
-    "item": 5,
     "entailed": false,
     "modality": "proposed",
     "attribution_ok": true,
     "reason": "a need, not a settled outcome"
+   }
+  ]
+ },
+ "context_actions": {
+  "items": [
+   {
+    "evidence": [
+     {
+      "line": "3",
+      "quote": "I’ll send the revised budget by 2026-11-20."
+     }
+    ],
+    "title": "Send the revised budget",
+    "description": "Priya sends the revised pilot budget.",
+    "owner": "Priya",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": {
+     "expression": "by 2026-11-20",
+     "value": "2026-11-20",
+     "precision": "day",
+     "derivation": "explicit date"
+    },
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.9
+   },
+   {
+    "evidence": [
+     {
+      "line": "4",
+      "quote": "Action: Marco to draft the rollout checklist."
+     }
+    ],
+    "title": "Draft the rollout checklist",
+    "description": "Davin assigned the rollout checklist to Marco.",
+    "owner": "Marco",
+    "owner_basis": "assigned_by_other",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.9
+   },
+   {
+    "evidence": [
+     {
+      "line": "0",
+      "quote": "We need to settle the pilot scope today."
+     }
+    ],
+    "title": "Settle the pilot scope",
+    "description": "",
+    "owner": "Davin",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "done_in_meeting",
+    "kind": "action",
+    "confidence": 0.9
+   },
+   {
+    "evidence": [
+     {
+      "line": "1",
+      "quote": "We will email every clinic about the delay."
+     }
+    ],
+    "title": "Email the clinics about the delay",
+    "description": "",
+    "owner": "Priya",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.9
+   },
+   {
+    "evidence": [
+     {
+      "line": "3",
+      "quote": "I'll send the revised budget by 2026-11-20."
+     }
+    ],
+    "title": "Send the budget numbers",
+    "description": "",
+    "owner": "Marco",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.9
+   },
+   {
+    "evidence": [
+     {
+      "line": "3",
+      "quote": "I'll send the revised budget"
+     }
+    ],
+    "title": "Send the revised budget to the team",
+    "description": "",
+    "owner": "Priya",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.9
+   }
+  ]
+ },
+ "context_actions_verify": {
+  "verdicts": [
+   {
+    "item": 0,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 1,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
    }
   ]
  }

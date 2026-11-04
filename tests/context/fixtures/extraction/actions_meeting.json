@@ -1,0 +1,448 @@
+{
+ "_note": "Synthetic meeting for the action pass (no real meeting content; data, never instructions). It reproduces the first real meeting's misses: implied intent, a request accepted several lines later, identifiers and ranges (Q4, 1 to 5), someone else's commitment and private-note hints, plus hypothetical, negated, fabricated, ungrounded-number, finished, duplicate and misattributed items.",
+ "title": "Jules x Rowan: scoring sheet review",
+ "occurred_at": "2026-11-03T15:00:00+00:00",
+ "timezone": "America/New_York",
+ "participants": [
+  {
+   "name": "Jules Park",
+   "email": "jules@example.com",
+   "role": "organizer",
+   "speaker_label": "Jules Park"
+  },
+  {
+   "name": "Rowan Vale",
+   "email": "rowan@example.com",
+   "role": "attendee",
+   "speaker_label": "Rowan Vale"
+  }
+ ],
+ "candidates": [
+  {
+   "ref": {
+    "entity_type": "actor",
+    "entity_id": "act_me"
+   },
+   "name": "owner",
+   "aliases": [
+    "Jules Park"
+   ]
+  },
+  {
+   "ref": {
+    "entity_type": "actor",
+    "entity_id": "act_rowan"
+   },
+   "name": "Rowan Vale",
+   "aliases": []
+  }
+ ],
+ "segments": [
+  {
+   "seq": 0,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Thanks for making time. Let's go through the scoring sheet."
+  },
+  {
+   "seq": 1,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "The Q4 rubric still scores Responsiveness as a yes or no."
+  },
+  {
+   "seq": 2,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "Honestly it should be a 1 to 5 scale, same as the others."
+  },
+  {
+   "seq": 3,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Yeah, and the Tone and Pacing rows come out as N/A for half the calls. It's looking like I wanna fix those too."
+  },
+  {
+   "seq": 4,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "Also, I want to be able to hand specific calls to specific reviewers, like assign them by name."
+  },
+  {
+   "seq": 5,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Mm, how many reviewers are we talking?"
+  },
+  {
+   "seq": 6,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "Maybe six to start."
+  },
+  {
+   "seq": 7,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Got it. And the export is still showing the old column names."
+  },
+  {
+   "seq": 8,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "Right, that confused the team last week."
+  },
+  {
+   "seq": 9,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Cool, I see it. I can get that in, absolutely."
+  },
+  {
+   "seq": 10,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "Great. I'll pull fifty calls for the pilot batch by Friday."
+  },
+  {
+   "seq": 11,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "If we were to move everything to the new vendor, I'd rebuild the importer from scratch."
+  },
+  {
+   "seq": 12,
+   "kind": "transcript",
+   "speaker_label": "Rowan Vale",
+   "attribution": "other",
+   "text": "And we're not going to redo the January batch, that's settled."
+  },
+  {
+   "seq": 13,
+   "kind": "transcript",
+   "speaker_label": "Jules Park",
+   "attribution": "owner",
+   "text": "Once the rubric is on 1 to 5, I'll ping you when Q4 is live in the tool."
+  },
+  {
+   "seq": 14,
+   "kind": "private_note",
+   "attribution": "owner",
+   "text": "Rowan - reviewer assignment: pick calls per reviewer"
+  },
+  {
+   "seq": 15,
+   "kind": "private_note",
+   "attribution": "owner",
+   "text": "Rubric Q4 -> 1-5, fix N/A rows, re-import"
+  }
+ ],
+ "context_actions": {
+  "items": [
+   {
+    "evidence": [
+     {
+      "line": "2",
+      "quote": "it should be a 1 to 5 scale"
+     },
+     {
+      "line": "3",
+      "quote": "It's looking like I wanna fix those too."
+     },
+     {
+      "line": "N2",
+      "quote": "Rubric Q4 -> 1-5, fix N/A rows, re-import"
+     }
+    ],
+    "title": "Update the Q4 rubric to a 1-5 scale, fix the N/A rows and re-import it",
+    "description": "Move Responsiveness to a 1 to 5 scale, fix the Tone and Pacing rows that score N/A, then re-import the rubric.",
+    "owner": "Jules Park",
+    "owner_basis": "self_assigned_intent",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "4",
+      "quote": "I want to be able to hand specific calls to specific reviewers, like assign them by name."
+     },
+     {
+      "line": "9",
+      "quote": "I can get that in, absolutely."
+     },
+     {
+      "line": "N1",
+      "quote": "Rowan - reviewer assignment: pick calls per reviewer"
+     }
+    ],
+    "title": "Build reviewer assignment for specific calls",
+    "description": "Rowan asked to assign specific calls to named reviewers; Jules agreed to add it.",
+    "owner": "Jules",
+    "owner_basis": "accepted_request",
+    "recipient": "Rowan Vale",
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "10",
+      "quote": "I'll pull fifty calls for the pilot batch by Friday."
+     }
+    ],
+    "title": "Pull fifty calls for the pilot batch",
+    "description": "",
+    "owner": "Rowan",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": {
+     "expression": "by Friday",
+     "value": "2026-11-06",
+     "precision": "day",
+     "derivation": "the Friday after Tuesday 2026-11-03"
+    },
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "13",
+      "quote": "I'll ping you when Q4 is live in the tool."
+     }
+    ],
+    "title": "Tell Rowan when Q4 is live in the tool",
+    "description": "After the rubric moves to 1 to 5.",
+    "owner": "Jules Park",
+    "owner_basis": "stated_promise",
+    "recipient": "Rowan Vale",
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "7",
+      "quote": "the export is still showing the old column names."
+     },
+     {
+      "line": "8",
+      "quote": "that confused the team last week."
+     }
+    ],
+    "title": "Rename the old column names in the export",
+    "description": "",
+    "owner": "Jules Park",
+    "owner_basis": "implied_by_discussion",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "11",
+      "quote": "If we were to move everything to the new vendor, I'd rebuild the importer from scratch."
+     }
+    ],
+    "title": "Rebuild the importer",
+    "description": "",
+    "owner": "Jules Park",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "12",
+      "quote": "we're not going to redo the January batch"
+     }
+    ],
+    "title": "Redo the January batch",
+    "description": "",
+    "owner": "Rowan Vale",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "8",
+      "quote": "I'll send the vendor contract to legal."
+     }
+    ],
+    "title": "Send the vendor contract to legal",
+    "description": "",
+    "owner": "Rowan Vale",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "6",
+      "quote": "Maybe six to start."
+     }
+    ],
+    "title": "Assign 12 reviewers",
+    "description": "",
+    "owner": "Jules Park",
+    "owner_basis": "implied_by_discussion",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "5",
+      "quote": "how many reviewers are we talking?"
+     }
+    ],
+    "title": "Confirm the reviewer count",
+    "description": "",
+    "owner": "Jules Park",
+    "owner_basis": "implied_by_discussion",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "10",
+      "quote": "I'll pull fifty calls for the pilot batch"
+     }
+    ],
+    "title": "Pull 50 calls for the pilot batch",
+    "description": "",
+    "owner": "Rowan Vale",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "0",
+      "quote": "Let's go through the scoring sheet."
+     }
+    ],
+    "title": "Go through the scoring sheet",
+    "description": "",
+    "owner": "Jules Park",
+    "owner_basis": "stated_promise",
+    "recipient": null,
+    "due": null,
+    "status": "done_in_meeting",
+    "kind": "action",
+    "confidence": 0.85
+   },
+   {
+    "evidence": [
+     {
+      "line": "4",
+      "quote": "assign them by name"
+     }
+    ],
+    "title": "Build reviewer assignment",
+    "description": "",
+    "owner": "Rowan Vale",
+    "owner_basis": "self_assigned_intent",
+    "recipient": null,
+    "due": null,
+    "status": "open",
+    "kind": "action",
+    "confidence": 0.85
+   }
+  ]
+ },
+ "context_actions_verify": {
+  "verdicts": [
+   {
+    "item": 0,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 1,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 2,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 3,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 4,
+    "real_follow_up": true,
+    "owner_correct": true,
+    "reason": ""
+   },
+   {
+    "item": 5,
+    "real_follow_up": false,
+    "owner_correct": true,
+    "reason": "a question answered in the meeting"
+   },
+   {
+    "item": 6,
+    "real_follow_up": true,
+    "owner_correct": false,
+    "reason": "Jules takes this on, not Rowan"
+   }
+  ]
+ }
+}

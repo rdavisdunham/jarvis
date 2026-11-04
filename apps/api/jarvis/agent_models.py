@@ -7,6 +7,33 @@ from .config import get_settings
 
 
 @dataclass(frozen=True)
+class Price:
+    """USD per million tokens. Cached reads and cache writes are fractions of the input rate; prompts longer than
+    `long_above` input tokens are billed at the long-context multipliers for the whole request; `fast` scales
+    both rates on the fast or priority tier."""
+
+    input: float
+    output: float
+    cached_input: float = 0.10
+    cache_write: float = 1.25
+    long_above: int | None = None
+    long_input: float = 1.0
+    long_output: float = 1.0
+    fast: float = 1.0
+
+
+# Standard API rates (docs/archive/2026-10-02/BACKGROUND_MODEL_COMPARISON.md for GPT-5.6; Anthropic's published
+# pricing for Claude, checked 2026-11-04). The GPT-5.6 family shares Luna's cache-write premium and 272K
+# long-context rates. Claude cache writes are the 5-minute TTL rate; Sonnet 5.5 has no long-context premium.
+PRICES = {
+    "gpt-5.6-luna": Price(0.20, 1.20, long_above=272_000, long_input=2, long_output=1.5, fast=2),
+    "gpt-5.6-terra": Price(2.00, 12.00, long_above=272_000, long_input=2, long_output=1.5),
+    "claude-sonnet-5-5": Price(2.00, 10.00),
+    "claude-haiku-5-5": Price(0.10, 0.50, long_above=100_000, long_input=5, long_output=5),
+}
+
+
+@dataclass(frozen=True)
 class AgentModel:
     provider: str
     model: str
@@ -37,28 +64,37 @@ class AgentModel:
             "available": self.available,
         }
 
+    @property
+    def price(self):
+        return PRICES.get(self.model)
+
     def rates(self, today=None, *, service_tier=None):
-        if self.model == "gpt-5.6-luna":
+        if price := self.price:
             tier = self.service_tier if service_tier is None else service_tier
-            return (0.40, 2.40) if tier in {"fast", "priority"} else (0.20, 1.20)
+            fast = price.fast if tier in {"fast", "priority"} else 1
+            return price.input * fast, price.output * fast
         if self.provider == "gemini":
             today = today or datetime.now(UTC).date()
             # Published introductory pricing expires at the end of 2026.
             return (0.75, 3.75) if today < date(2027, 1, 1) else (1.50, 7.50)
         return (0.75, 4.50) if self.provider == "openai" else (0.15, 0.60)
 
+    def _long(self, prompt_tokens, incoming, outgoing):
+        price = self.price
+        if price and price.long_above is not None and prompt_tokens > price.long_above:
+            return incoming * price.long_input, outgoing * price.long_output
+        return incoming, outgoing
+
     def reserve_cost(self, input_bound):
-        incoming, outgoing = self.rates()
-        # Luna charges a cache-write premium; this remains an upper bound.
-        if self.model == "gpt-5.6-luna" and input_bound > 272000:
-            incoming, outgoing = incoming * 2, outgoing * 1.5
-        incoming *= 1.25 if self.model == "gpt-5.6-luna" else 1
+        incoming, outgoing = self._long(input_bound, *self.rates())
+        # Every input token could be a cache write (a premium over plain input); this remains an upper bound.
+        incoming *= self.price.cache_write if self.price else 1
         return (input_bound * incoming + self.max_output_tokens * outgoing) / 1_000_000
 
     def usage_record(self, data):
         """Retain tier provenance with token accounting; missing tier is an estimate."""
         usage = dict(data.get("usage") or {})
-        if self.model == "gpt-5.6-luna":
+        if self.price and self.price.fast != 1:
             served = data.get("service_tier")
             verified = isinstance(served, str) and served in {"default", "fast", "priority"}
             usage.update(
@@ -69,16 +105,16 @@ class AgentModel:
         return usage
 
     def usage_cost(self, usage):
-        incoming, outgoing = self.rates(service_tier=usage.get("served_service_tier"))
+        """`prompt_tokens` includes cached reads (`prompt_tokens_details.cached_tokens`) and cache writes
+        (`cache_write_tokens`), which are repriced at the model's cache rates."""
         prompt = usage["prompt_tokens"]
-        if self.model == "gpt-5.6-luna" and prompt > 272000:
-            incoming, outgoing = incoming * 2, outgoing * 1.5
+        incoming, outgoing = self._long(prompt, *self.rates(service_tier=usage.get("served_service_tier")))
         cost = prompt * incoming + usage["completion_tokens"] * outgoing
-        if self.model == "gpt-5.6-luna":
+        if price := self.price:
             details = usage.get("prompt_tokens_details") or {}
-            cached = max(0, min(prompt, details.get("cached_tokens", 0)))
-            written = max(0, min(prompt - cached, details.get("cache_write_tokens", 0)))
-            cost += written * incoming * 0.25 - cached * incoming * 0.90
+            cached = max(0, min(prompt, details.get("cached_tokens") or 0))
+            written = max(0, min(prompt - cached, details.get("cache_write_tokens") or 0))
+            cost += written * incoming * (price.cache_write - 1) - cached * incoming * (1 - price.cached_input)
         return cost / 1_000_000
 
     def normalize(self, data):
