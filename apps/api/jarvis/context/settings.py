@@ -5,7 +5,7 @@ Railway PITR is unavailable on the pgvector image; pgvector stays and another ba
 no JSONB fallback.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..config import get_settings
 
@@ -24,7 +24,6 @@ class ContextSettings:
     poll_minutes: int
     max_source_chars: int
     granola_enabled: bool
-    granola_api_key: str = field(repr=False)
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
     embedding_storage: str = EMBEDDING_STORAGE
 
@@ -39,7 +38,6 @@ def current():
         poll_minutes=s.context_poll_minutes,
         max_source_chars=s.context_max_source_chars,
         granola_enabled=s.context_granola_enabled,
-        granola_api_key=s.context_granola_api_key,
     )
 
 

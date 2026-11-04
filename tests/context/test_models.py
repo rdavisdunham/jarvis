@@ -208,7 +208,7 @@ def test_settings_record_the_pgvector_decision_and_defaults():
     assert (current.embedding_storage, current.embedding_dimensions, m.DIMENSIONS) == ("pgvector", 512, 512)
     assert (current.enabled, current.queue_concurrency, current.source_budget_usd, current.model_timeout_s,
             current.poll_minutes, current.granola_enabled) == (False, 2, 1.0, 90, 5, False)
-    assert current.max_source_chars >= 100_000 and "granola_api_key" not in repr(current)
+    assert current.max_source_chars >= 100_000 and not hasattr(current, "granola_api_key")
     assert context_settings.enabled() is False
 
 

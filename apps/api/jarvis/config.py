@@ -85,7 +85,6 @@ class Settings(BaseSettings):
     context_poll_minutes: int = Field(default=5, ge=1, le=1440)
     context_max_source_chars: int = Field(default=1_000_000, ge=1_000, le=20_000_000)
     context_granola_enabled: bool = False
-    context_granola_api_key: str = ""
 
     @property
     def secure_cookie(self):
@@ -113,7 +112,7 @@ def get_settings():
     if not settings.external_services_enabled:
         # A restored staging database must not spend money or send device notifications.
         settings.openai_api_key = settings.groq_api_key = settings.gemini_api_key = ""
-        settings.vapid_private_key = settings.home_assistant_token = settings.context_granola_api_key = ""
+        settings.vapid_private_key = settings.home_assistant_token = ""
     return settings
 
 

@@ -297,8 +297,9 @@ brief is rebuilt or served as the deterministic current view marked stale, never
 
 **Server flags** (`config.py`, env prefix `JARVIS_`): `context_enabled` (false), `context_queue_concurrency` (2),
 `context_source_budget_usd` (1.0), `context_model_timeout_s` (90), `context_poll_minutes` (5),
-`context_max_source_chars` (1,000,000; at most 20,000 segments), `context_granola_enabled` (false),
-`context_granola_api_key` (server-wide fallback; connections store their own sealed key).
+`context_max_source_chars` (1,000,000; at most 20,000 segments), `context_granola_enabled` (false). There is no
+server-wide Granola key: each connection stores its owner's own sealed key, since a key reads every note its
+account can see.
 
 **Per-owner settings** (`context_owner_state.settings` JSON; there is no UI or route for them, set them from a
 shell as the release note shows): `synthesize_briefs` (model-written briefs; default off), `engine: "double"`

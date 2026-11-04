@@ -336,14 +336,15 @@ def seal_credential(api_key: str) -> str:
 
 
 def open_credential(connection: ContextConnection) -> str | None:
-    """The connection's API key, else the server-wide `context_granola_api_key`. Raises DomainError when the
+    """The connection's own API key, or None. There is deliberately no server-wide fallback: a key reads every note
+    its Granola account can see, so it must belong to the owner who connected it. Raises DomainError when the
     ciphertext cannot be opened."""
     if connection.credential_ciphertext:
         from ...work_crypto import unseal
         key = unseal(connection.credential_ciphertext).get("api_key")
         if isinstance(key, str) and key:
             return key
-    return context_settings.current().granola_api_key or None
+    return None
 
 
 # ---------------------------------------------------------------- poller

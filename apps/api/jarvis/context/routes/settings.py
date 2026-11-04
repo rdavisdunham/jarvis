@@ -291,7 +291,7 @@ def granola_remove(connection_id: str, user: User):
 
 
 def queue(db, owner: str, connection: ContextConnection, kind: str, payload: dict) -> dict:
-    if not connection.credential_ciphertext and not context_settings.current().granola_api_key:
+    if not connection.credential_ciphertext:
         raise DomainError("GRANOLA_NO_KEY", "This connection has no API key. Connect Granola again.", 409)
     advisory(db, f"context-connection:{owner}:granola")
     pending = db.scalar(select(Job).where(
