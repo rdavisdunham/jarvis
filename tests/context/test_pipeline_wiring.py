@@ -108,7 +108,7 @@ def test_bridge_submission_through_the_real_route_feeds_the_pipeline(client, tmp
         assert db.scalar(select(Actor.id).where(Actor.name == "Priya")) is None
     kinds = drain()
     assert kinds.count("context_ingest") == 2 and kinds.count("context_reconcile") == 2
-    assert set(kinds) <= {*STAGES, "context_brief"}
+    assert set(kinds) <= {*STAGES, "context_proposals", "context_brief"}
     assert all(status == "succeeded" for _, status, *_ in jobs())
     with session_scope() as db:
         assert {r.status for r in db.scalars(select(m.ContextSource))} == {"ready"}
@@ -340,3 +340,44 @@ def test_a_revised_meeting_retracts_what_it_no_longer_says_unless_supported_else
     assert (checklist, head) in events()  # views.changes sees the retraction
     with session_scope() as db:
         assert pipeline.apply.retire_old_revisions(db, OWNER, first.source_id, revised.revision_id)["retracted"] == []
+
+
+def test_a_statement_said_again_after_a_revision_dropped_it_comes_back_unless_marked_wrong(envelope, vectors):
+    use_doubles()
+    first = receive(envelope)
+    drain()
+    with session_scope() as db:
+        checklist = db.scalar(select(m.ContextAssertion.id).where(
+            m.ContextAssertion.statement.like("%rollout checklist%")))
+    full = list(envelope.segments)
+    dropped = [s.model_copy(update={"seq": i}) for i, s in enumerate(full[:4])]  # without Marco's action
+
+    def revise(tag, segments):
+        receipt = receive(envelope.model_copy(update={"external_revision": tag, "segments": segments}))
+        assert receipt.source_id == first.source_id
+        drain()
+
+    def head():
+        with session_scope() as db:
+            row = db.get(m.ContextAssertion, checklist)
+            return row.lifecycle, row.current_version
+
+    revise("rev-2", dropped)
+    assert head() == ("retracted", 2)
+    revise("rev-3", full)  # said again: restored with a new version and an event
+    assert head() == ("current", 3)
+    assert (checklist, 3) in events() and runs("extract")[-1][3]["revived"] == [checklist]
+    with session_scope() as db:
+        assert evidence.support_status(db, OWNER, db.get(m.ContextAssertion, checklist)) == "supported"
+    before = (head(), len(events()))
+    for (job_id,) in _job_ids():  # replaying every job revives nothing twice
+        pipeline.perform(job_id)
+    assert (head(), len(events())) == before
+
+    with session_scope() as db:  # the owner says it is wrong: dropping and restating never revives it
+        decisions.wrong(db, OWNER, checklist, 3, command_id=None, principal=OWNER)
+    assert head() == ("retracted", 4)
+    revise("rev-4", dropped)
+    revise("rev-5", full)
+    assert head() == ("retracted", 4)
+    assert runs("extract")[-1][3]["revived"] == []

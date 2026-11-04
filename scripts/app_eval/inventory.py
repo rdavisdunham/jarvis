@@ -193,16 +193,17 @@ def routes():
                 "",
             )
             mounted[aliases.get(node.args[0].id, "")] = prefix
-    # Modules included into owner_router are session routes under /api/v1/context; the rest ride on external.
-    owner_modules = {
-        "context.routes." + node.args[0].value.id
+    # Routers included into owner_router are session routes under /api/v1/context; the rest ride on external.
+    # Keyed by (module, router variable), since one module may hold both a session router and a bot-key twin.
+    owner_routers = {
+        ("context.routes." + node.args[0].value.id, node.args[0].attr)
         for node in ast.walk(ast.parse((ROOT / "apps/api/jarvis/context/routes/__init__.py").read_text()))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
         and node.func.attr == "include_router" and isinstance(node.func.value, ast.Name)
         and node.func.value.id == "owner_router" and node.args and isinstance(node.args[0], ast.Attribute)
         and isinstance(node.args[0].value, ast.Name)
     }
-    mounted.update({m: "/api/v1/context" if m in owner_modules else "/api/v1/external" for m in context_routes})
+    mounted.update({m: "/api/v1/external" for m in context_routes})
     modules.update(context_routes)
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}
@@ -233,7 +234,8 @@ def routes():
                 )
                 for target in node.targets:
                     if isinstance(target, ast.Name):
-                        prefixes[target.id] = mounted.get(module, "") + prefix
+                        base = "/api/v1/context" if (module, target.id) in owner_routers else mounted.get(module, "")
+                        prefixes[target.id] = base + prefix
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue

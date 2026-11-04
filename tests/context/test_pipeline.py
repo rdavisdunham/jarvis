@@ -146,11 +146,12 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
     receipt = receive(envelope)
-    assert drain() == [*STAGES, "context_brief"]  # Priya's brief: her commitment links to her actor
-    assert [(k, s) for k, s, *_ in jobs()] == [(k, "succeeded") for k in [*STAGES, "context_brief"]]
+    after = [*STAGES, "context_proposals", "context_brief"]  # Priya's brief: her commitment links to her actor
+    assert drain() == after
+    assert [(k, s) for k, s, *_ in jobs()] == [(k, "succeeded") for k in after]
     assert [(stage, status) for stage, status, *_ in runs()] == [
         ("ingest", "succeeded"), ("extract", "succeeded"), ("link", "succeeded"), ("reconcile", "succeeded"),
-        ("embed", "succeeded"), ("brief", "succeeded")]
+        ("embed", "succeeded"), ("proposals", "succeeded"), ("brief", "succeeded")]
     with session_scope() as db:
         source = db.get(m.ContextSource, receipt.source_id)
         assert source.status == "ready"
@@ -212,14 +213,11 @@ def test_seeding_runs_as_the_owner_even_under_a_bot_credential(envelope, vectors
         assert set(db.scalars(select(Actor.name).where(Actor.owner_id == OWNER))) >= {"owner", "Davin", "Priya"}
 
 
-def test_unknown_and_placeholder_kinds(vectors):
+def test_unknown_kind_fails(vectors):
     with session_scope() as db:
-        lint = enqueue_job(db, OWNER, "context_proposals", {}).id
         odd = enqueue_job(db, OWNER, "context_nonsense", {}).id
-    pipeline.perform(lint)
     pipeline.perform(odd)
     with session_scope() as db:
-        assert (db.get(Job, lint).status, db.get(Job, lint).result) == ("succeeded", {"skipped": "not implemented yet"})
         assert db.get(Job, odd).status == "failed"
 
 
