@@ -174,7 +174,7 @@ def test_contested_items_reach_the_questions_inbox_and_resolve():
         deferred = review_questions.find(db, OWNER, key, result["data"]["revision"])
         assert deferred["status"] == "deferred"
         later = db.scalar(select(ContextDecision).where(ContextDecision.operation == "later"))
-        assert later.target_type == "question" and later.origin == "system"
+        assert later.target_type == "question" and later.origin == "human"  # a browser command ID with no bot credential
     with session_scope() as db:
         with pytest.raises(DomainError):
             decisions.resolve_question(db, OWNER, question_key=key, expected_revision=revision, action="keep",

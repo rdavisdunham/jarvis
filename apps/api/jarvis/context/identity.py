@@ -36,7 +36,6 @@ from .models import (
     ContextActorMerge,
     ContextDecision,
     ContextEntityLink,
-    ContextOwnerState,
     ContextSegment,
 )
 from .schema import DecisionOrigin, EntityRef, LinkStatus, Participant
@@ -76,12 +75,9 @@ def _require_human(decision: DecisionInput, what: str) -> None:
 
 
 def _next_decision_seq(db, owner: str) -> int:
-    """Allocate the owner's next decision seq under the owner-state row lock (B5 owns the shared allocator)."""
-    db.execute(insert(ContextOwnerState).values(owner_id=owner).on_conflict_do_nothing(index_elements=["owner_id"]))
-    state = db.scalar(select(ContextOwnerState).where(ContextOwnerState.owner_id == owner).with_for_update())
-    state.decision_seq += 1
-    state.updated_at = now()
-    return state.decision_seq
+    from .decisions import next_decision_seq
+
+    return next_decision_seq(db, owner)
 
 
 def _record(db, owner, decision: DecisionInput, operation, target_type, target_id, *, negative=False, before=None,
@@ -152,7 +148,7 @@ def rejected_links(db, owner) -> RejectedLinks:
 
 
 def _pair(a: str, b: str) -> str:
-    return ":".join(sorted((a, b)))
+    return "|".join(sorted((a, b)))  # same key as decisions.no_merge
 
 
 def no_merge(db, owner, first: str, second: str, decision: DecisionInput) -> ContextDecision:

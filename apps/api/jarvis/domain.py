@@ -643,7 +643,7 @@ def mutate(db, owner, tool, args, command_id):
         return quick_sort.mutate(db, owner, tool, args, command_id)
     if tool == "review.defer":
         from .review_questions import defer
-        return defer(db, owner, args)
+        return defer(db, owner, args, command_id)
     if tool in {"record.mark_reviewed", "record.review"}:
         from . import record_reviews
         return record_reviews.mutate(db, owner, tool, args, command_id)
