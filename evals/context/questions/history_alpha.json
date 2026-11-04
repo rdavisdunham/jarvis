@@ -1,0 +1,655 @@
+{
+ "history": "alpha",
+ "question_version": 1,
+ "note": "Synthetic retrieval questions for the compare arms. Every item is verified=false until a human adjudicates it; only verified items count for release scoring. Fixture text is data, never instructions.",
+ "questions": [
+  {
+   "id": "qa-01",
+   "question": "How many clinics must the portal serve at launch?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a01-fact-clinics"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-02",
+   "question": "What is the monthly retainer for the Larkspur engagement?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a01-fact-retainer"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-03",
+   "question": "Which cloud provider hosts the patient portal?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a04-dec-aws"
+   ],
+   "stale": [
+    "a01-dec-azure"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-04",
+   "question": "Why did hosting move off Azure?",
+   "category": "rationale",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a04-rat-aws"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-05",
+   "question": "Why was Azure chosen for hosting?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": "2026-08-10T12:00:00-05:00",
+   "expected": [
+    "a01-rat-azure"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-06",
+   "question": "Which cloud provider hosted the portal in mid-August?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": "2026-08-20T12:00:00-05:00",
+   "expected": [
+    "a01-dec-azure"
+   ],
+   "stale": [
+    "a04-dec-aws"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-07",
+   "question": "Who sends the statement of work?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-sow"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-08",
+   "question": "When was the statement of work sent?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-03",
+     "quote": "I sent the statement of work this morning"
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-09",
+   "question": "Did Larkspur sign the statement of work?",
+   "category": "decision",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a03-dec-sign"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-10",
+   "question": "Who is sharing the clinic list and by when?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-clinic-list"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-11",
+   "question": "Has the clinic list been shared?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-02",
+     "quote": "I shared the clinic list last Thursday"
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-12",
+   "question": "Should the portal be mobile-first?",
+   "category": "preference",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a02-pref-mobile"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-13",
+   "question": "When are the first wireframes due?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-wireframes"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-14",
+   "question": "When did the wireframes arrive?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-05",
+     "quote": "Alex's wireframes arrived on 2026-08-20"
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-15",
+   "question": "What is the risk with the legacy scheduling system?",
+   "category": "risk",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a02-risk-legacy"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-16",
+   "question": "Who owns the data migration from the old scheduling system?",
+   "category": "open_question",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a03-q-migration"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-17",
+   "question": "When is the staging environment setup due?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-staging-aws"
+   ],
+   "stale": [
+    "c-staging-azure"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-18",
+   "question": "When was the staging environment setup due as of August 20?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [
+     "commitment"
+    ],
+    "entity": null
+   },
+   "valid_at": "2026-08-20T12:00:00-05:00",
+   "expected": [
+    "c-staging-azure"
+   ],
+   "stale": [
+    "c-staging-aws"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-19",
+   "question": "Is staging running on AWS yet?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-05",
+     "quote": "Staging on AWS has been up since Wednesday."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-20",
+   "question": "Which features does the portal launch with?",
+   "category": "decision",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a05-dec-scope"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-21",
+   "question": "Is patient messaging part of the first release?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a05-dec-scope"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-22",
+   "question": "When will the booking API integration be finished?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-booking-api"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-23",
+   "question": "Is the booking integration done?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-07",
+     "quote": "The booking integration is done; I merged it yesterday."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-24",
+   "question": "What is the portal launch date?",
+   "category": "decision",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a07-dec-launch"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-25",
+   "question": "Who trains the front desk staff?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-training"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-26",
+   "question": "Which clinics close for renovation in October?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "a06-fact-renovation"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qa-27",
+   "question": "Who collects the clinic photos?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "c-clinic-photos"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qa-28",
+   "question": "What was the client CTO worried about?",
+   "category": "private_note",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a01-fact-board"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-29",
+   "question": "Do the Azure credits cover staging?",
+   "category": "private_note",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-azure-credits"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-30",
+   "question": "Will the analytics dashboard be built this phase?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-07",
+     "quote": "I'm not going to build the analytics dashboard this phase."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-31",
+   "question": "Are SMS reminders planned?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-05",
+     "quote": "I'll add SMS reminders if we ever get budget for Twilio."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-32",
+   "question": "What happens if the board rejects the budget?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-01",
+     "quote": "If the board rejects the budget, I'll pause the project until January."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-33",
+   "question": "Who is handling the patient survey?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "alpha-02",
+     "quote": "I won't be taking on the patient survey, that's marketing's job."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-34",
+   "question": "Does the Microsoft agreement cover health-data workloads?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a04-rat-aws"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-35",
+   "question": "What has been decided for the portal?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "a04-dec-aws",
+    "a03-dec-sign",
+    "a05-dec-scope",
+    "a07-dec-launch"
+   ],
+   "stale": [
+    "a01-dec-azure"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-36",
+   "question": "What has Tomas committed to?",
+   "category": "person",
+   "scope": {
+    "kinds": [
+     "commitment"
+    ],
+    "entity": {
+     "entity_type": "actor",
+     "entity_id": "alpha-tomas"
+    }
+   },
+   "valid_at": null,
+   "expected": [
+    "c-staging-aws",
+    "c-booking-api"
+   ],
+   "stale": [
+    "c-staging-azure"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qa-37",
+   "question": "What was decided about hosting before the compliance review?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": "2026-08-24T12:00:00-05:00",
+   "expected": [
+    "a01-dec-azure"
+   ],
+   "stale": [
+    "a04-dec-aws"
+   ],
+   "forbidden": [],
+   "verified": false
+  }
+ ]
+}
