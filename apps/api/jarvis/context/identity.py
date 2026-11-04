@@ -29,7 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from ..domain import DomainError, advisory, execute
-from ..models import Actor, SharedWorkspace, Task, WorkspaceMember, now
+from ..models import Actor, GoogleIdentity, SharedWorkspace, Task, WorkspaceMember, now
 from .models import (
     AMBIGUOUS_NAMESPACES,
     ContextActorIdentity,
@@ -216,6 +216,13 @@ def owner_actor(db, owner) -> str:
     return execute(db, owner, "context-owner-actor", "actor.create", {"name": OWNER_ACTOR_NAME})["data"]["id"]
 
 
+def _owner_email(db, owner) -> str | None:
+    """The note-taker's signed-in Google email (the workspace creator's, in a shared workspace)."""
+    workspace = db.get(SharedWorkspace, owner)
+    account = db.get(GoogleIdentity, workspace.creator_id if workspace is not None else owner)
+    return normalize("email", account.email) if account is not None and account.email else None
+
+
 def _create_actor(db, owner, name: str, email: str) -> str:
     from ..assignees import active_actors_named
     from ..models import Command
@@ -322,9 +329,12 @@ def seed_candidates(db, owner, source_id, participants, calendar_attendees) -> l
     """Resolve a meeting's attendees to actors (see the module docstring). Records email, alias, calendar-name
     and source-scoped speaker-label identities for resolved people. Idempotent for the same inputs."""
     me = owner_actor(db, owner)
+    own_email = _owner_email(db, owner)
     out = []
     for person in _people(participants, calendar_attendees):
         name = _display_name(person)
+        # Participants carry no calendar `self` flag; the owner's own sign-in email marks them instead.
+        person.is_self = person.is_self or bool(person.email and normalize("email", person.email) == own_email)
         provenance = {"source_id": source_id, "via": "seed_candidates"}
         created = False
         if person.email:
