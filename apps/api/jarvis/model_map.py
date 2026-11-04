@@ -59,10 +59,14 @@ PROFILES = {
                 service_tier="fast"),
         Profile("terra", "openai", "gpt-5.6-terra", "openai_responses", "https://api.openai.com/v1/responses",
                 "OPENAI_API_KEY", "GPT-5.6 Terra · low reasoning", "low"),
+        Profile("terra-high", "openai", "gpt-5.6-terra", "openai_responses", "https://api.openai.com/v1/responses",
+                "OPENAI_API_KEY", "GPT-5.6 Terra · high reasoning", "high"),
         Profile("haiku-5.5", "anthropic", "claude-haiku-5-5", "anthropic_messages",
                 "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Haiku 5.5 · low effort", "low"),
         Profile("sonnet-5.5", "anthropic", "claude-sonnet-5-5", "anthropic_messages",
                 "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Sonnet 5.5 · low effort", "low"),
+        Profile("sonnet-5.5-high", "anthropic", "claude-sonnet-5-5", "anthropic_messages",
+                "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Sonnet 5.5 · high effort", "high"),
         # Generic OpenAI-compatible adapter. Model ids are placeholders: override them for a real run
         # (scripts/model_eval.py: MODEL_EVAL_<ID>_MODEL / _ENDPOINT / _PRICE).
         Profile("deepseek", "deepseek", "deepseek-chat", "openai_chat", "https://api.deepseek.com/chat/completions",

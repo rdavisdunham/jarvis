@@ -218,6 +218,7 @@ class ActionDraft:
     verdict: str = ""
     action_index: int | None = None
     assertion_index: int | None = None
+    status: str = "open"  # open | ongoing (a status update the checker judges)
 
     @property
     def seqs(self) -> list[int]:
@@ -225,7 +226,7 @@ class ActionDraft:
 
     def describe(self, meeting: Meeting) -> dict[str, Any]:
         return {"action_index": self.action_index, "assertion_index": self.assertion_index, "kind": self.kind,
-                "title": self.title, "description": self.description, "owner": self.owner,
+                "status": self.status, "title": self.title, "description": self.description, "owner": self.owner,
                 "owner_basis": self.basis, "model_owner_basis": self.model_basis, "recipient": self.recipient,
                 "responsible": [r.model_dump(exclude_none=True) for r in self.responsible],
                 "due": self.due.model_dump(mode="json") if self.due else None, "confidence": self.confidence,
@@ -479,7 +480,8 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
     if dropped:
         signals["dropped_quotes"] = dropped
     responsible = [r for r in (resolve(owner, meeting),) if r]
-    draft = ActionDraft(kind=item.kind, title=title, description=" ".join(description), owner=owner, basis=basis,
+    draft = ActionDraft(kind=item.kind, status=item.status, title=title, description=" ".join(description),
+                        owner=owner, basis=basis,
                         model_basis=item.owner_basis, recipient=(item.recipient or "").strip()[:300] or None,
                         evidence=evidence, responsible=responsible, due=due,
                         confidence=max(0.0, min(1.0, item.confidence)), derivations=derivations, signals=signals)
@@ -567,7 +569,7 @@ def review(drafts: list[ActionDraft], meeting: Meeting) -> dict[str, Any]:
     return {"title": meeting.request.title, "meeting_local_date": meeting.ctx.local_date.isoformat(),
             "recorded_by": meeting.recorder or "unknown", "people": meeting.people(), "context": "\n".join(context),
             "items": [{"item": i, "title": d.title, "description": d.description, "owner": d.owner,
-                       "owner_basis": d.basis, "kind": d.kind,
+                       "owner_basis": d.basis, "kind": d.kind, "status": d.status,
                        "evidence": [{"line": meeting.ref(e.segment_seq), "speaker": meeting.speaker(e.segment_seq),
                                      "quote": e.quote} for e in d.evidence]}
                       for i, d in enumerate(drafts)]}
@@ -661,7 +663,7 @@ class ActionRun:
                           for d in blocked]
 
 
-DRAFT_FIELDS = ("kind", "title", "description", "owner", "basis", "model_basis", "recipient", "confidence",
+DRAFT_FIELDS = ("kind", "status", "title", "description", "owner", "basis", "model_basis", "recipient", "confidence",
                 "derivations", "signals", "verified", "verdict")
 
 
