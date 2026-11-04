@@ -11,6 +11,7 @@ from jarvis.context.models import (
     ContextEntityLink,
     ContextOwnerState,
     ContextProposal,
+    ContextSegment,
 )
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute
@@ -220,3 +221,16 @@ def test_unresolved_responsible_links_ask_who_and_low_stakes_contests_do_not():
                                    action="link", entity_id="actor-sam", **HUMAN)
         assert (link.status, link.target_id) == ("confirmed", "actor-sam")
         assert decisions.question_items(db, OWNER) == []
+
+
+def test_segment_link_rejection_is_scoped_to_its_source():
+    with session_scope() as db:
+        w = World(db)
+        source, revision = w.source("Priya will send it.")
+        segment = db.scalar(select(ContextSegment).where(ContextSegment.revision_id == revision.id))
+        link = ContextEntityLink(owner_id=OWNER, subject_type="segment", subject_id=segment.id, mention="Priya",
+                                 role="speaker", status="inferred", target_type="actor", target_id="actor-a")
+        db.add(link)
+        db.flush()
+        rejected = decisions.reject_link(db, OWNER, link.id, 1, **HUMAN)
+        assert rejected.before["scope"] == source.id
