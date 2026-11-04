@@ -148,7 +148,7 @@ def rejected_links(db, owner) -> RejectedLinks:
 
 
 def _pair(a: str, b: str) -> str:
-    return "|".join(sorted((a, b)))  # same key as decisions.no_merge
+    return ":".join(sorted((a, b)))  # same key as decisions.no_merge
 
 
 def no_merge(db, owner, first: str, second: str, decision: DecisionInput) -> ContextDecision:
