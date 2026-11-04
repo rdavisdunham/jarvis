@@ -184,6 +184,7 @@ def notification_url(notification):
     from urllib.parse import urlencode
     target=notification.target or {}
     if target.get("view")=="remotea":return "/?"+urlencode({"view":"remotea","run":target.get("run_id") or ""})
+    if target.get("view")=="meetings":return "/?"+urlencode({"view":"meetings",**({"source":target["source_id"]} if target.get("source_id") else {})})
     if notification.task_id:return "/?"+urlencode({"view":"tasks","tab":"all","record":"task:"+notification.task_id,"workspace":"personal"})
     if target.get("view")=="activity":return "/?view=tasks&activity=1"
     if target.get("view")=="tasks":return "/?view=tasks&tab=today"
@@ -314,6 +315,8 @@ def housekeeping():
         )
     for owner in owners:
         isolated("housekeeping_owner", in_session, housekeeping_owner, owner)
+    if get_settings().context_enabled:
+        isolated("context_scheduler", in_session, context_tick)
     with session_scope() as db:
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
@@ -334,6 +337,13 @@ def housekeeping():
                 "message": "The connection ended before a reply was saved. Check your saved tasks before repeating the request.",
             }
             budget.close(db, job.owner_id, job.id, uncertain=True)
+
+
+def context_tick(db):
+    """Context schedules, weekly lint and meeting notices (context/scheduler.py)."""
+    from .context import scheduler
+
+    return scheduler.tick(db, now())
 
 
 def reap_agent_work():

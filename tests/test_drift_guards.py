@@ -96,6 +96,7 @@ def test_push_and_in_app_notifications_open_the_same_place():
         opened = case["open"]
         expected = {
             "run": {"view": "remotea", "run": opened.get("run") or ""},
+            "meetings": {"view": "meetings", **({"source": opened["source"]} if opened.get("source") else {})},
             "task": {"view": "tasks", "tab": "all", "record": "task:" + str(opened.get("task")),
                      "workspace": "personal"},
             "activity": {"view": "tasks", "activity": "1"},
@@ -104,8 +105,10 @@ def test_push_and_in_app_notifications_open_the_same_place():
         }[opened["open"]]
         assert query == expected, case["name"]
     # Every target.view a notification is created with has a case.
-    creators = "".join((ROOT / "apps/api/jarvis" / f).read_text() for f in ("notices.py", "run_coordinator.py"))
+    creators = "".join((ROOT / "apps/api/jarvis" / f).read_text()
+                       for f in ("notices.py", "run_coordinator.py", "context/notices.py"))
     views = set(re.findall(r'target=\{\s*"view":\s*"([a-z_]+)"', creators))
+    assert "meetings" in views, "context notices parsed"
     assert views, "notification target parser"
     assert views <= {(c["notification"]["target"] or {}).get("view") for c in cases}, views
     # The page's Open button goes through the shared helper.
