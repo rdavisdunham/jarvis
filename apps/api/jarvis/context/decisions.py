@@ -17,6 +17,7 @@ through `resolve_question` and deferred through `defer_question`.
 """
 
 import hashlib
+import unicodedata
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
@@ -34,6 +35,8 @@ from .models import (
     ContextEvidence,
     ContextOwnerState,
     ContextProposal,
+    ContextSegment,
+    ContextSourceRevision,
 )
 from .schema import EXCLUSIVE_KEYS
 
@@ -231,12 +234,32 @@ def confirm_link(db, owner: str, link_id: str, expected_revision: int, *, comman
     return decision
 
 
+def mention_key(mention: str) -> str:
+    """Identity's mention normal form: NFKC, casefolded, single-spaced."""
+    return " ".join(unicodedata.normalize("NFKC", mention or "").casefold().split())
+
+
+def _link_scope(db, row) -> str | None:
+    """The source a segment-level link belongs to; other links are rejected everywhere (None)."""
+    if row.subject_type != "segment":
+        return None
+    return db.scalar(select(ContextSourceRevision.source_id).join(
+        ContextSegment, ContextSegment.revision_id == ContextSourceRevision.id).where(
+        ContextSegment.id == row.subject_id))
+
+
 def reject_link(db, owner: str, link_id: str, expected_revision: int, *, command_id: str | None, principal: str,
                 reason: str = "") -> ContextDecision:
-    """A durable negative: this mention does not refer to this target."""
+    """A durable negative in identity's shape (`identity.rejected_links` reads it): target
+    `<entity_type>:<entity_id>`, before {mention, scope, entity_type, entity_id, link_id} plus the link state."""
     row = _link(db, owner, link_id, expected_revision)
-    decision = record(db, owner, "reject_link", "link", row.id, command_id=command_id, principal=principal,
-                      expected_revision=expected_revision, reason=reason, negative=True, before=_link_state(row))
+    if not (row.target_type and row.target_id):
+        raise DomainError("INVALID_ARGUMENT", "There is no suggested match to reject.")
+    before = {**_link_state(row), "mention": mention_key(row.mention), "scope": _link_scope(db, row),
+              "entity_type": row.target_type, "entity_id": row.target_id, "link_id": row.id}
+    decision = record(db, owner, "reject_link", "link", f"{row.target_type}:{row.target_id}",
+                      command_id=command_id, principal=principal, expected_revision=expected_revision,
+                      reason=reason, negative=True, before=before)
     _set_link(db, owner, row, decision, status="rejected")
     return decision
 
@@ -244,7 +267,7 @@ def reject_link(db, owner: str, link_id: str, expected_revision: int, *, command
 def _pair(a: str, b: str) -> str:
     if a == b:
         raise DomainError("INVALID_ARGUMENT", "Choose two different people.")
-    return "|".join(sorted((a, b)))
+    return ":".join(sorted((a, b)))
 
 
 def no_merge(db, owner: str, actor_a: str, actor_b: str, *, command_id: str | None, principal: str,
@@ -254,16 +277,22 @@ def no_merge(db, owner: str, actor_a: str, actor_b: str, *, command_id: str | No
 
 
 def merge(db, owner: str, winner_id: str, loser_id: str, *, command_id: str | None, principal: str,
-          reason: str = "") -> ContextDecision:
+          merge_id: str | None = None, reason: str = "") -> ContextDecision:
+    """Identity's shape: target the loser, after {merge_id, winner}. Identity performs the merge."""
     _pair(winner_id, loser_id)
     return record(db, owner, "merge", "actor", loser_id, command_id=command_id, principal=principal, reason=reason,
-                  after={"winner_id": winner_id, "loser_id": loser_id})
+                  after={"merge_id": merge_id, "winner": winner_id})
 
 
-def unmerge(db, owner: str, merge_id: str, *, command_id: str | None, principal: str,
+def unmerge(db, owner: str, merge_id: str, merge_decision_id: str, *, command_id: str | None, principal: str,
             reason: str = "") -> ContextDecision:
+    """Identity's shape: target the ContextActorMerge, `undoes_id` the merge decision (which stops being live)."""
+    d = ContextDecision
+    if db.scalar(select(d.id).where(d.owner_id == owner, d.undoes_id == merge_decision_id)):
+        raise _conflict("This merge was already undone.")
+    _owned(db, ContextDecision, merge_decision_id, owner)
     return record(db, owner, "unmerge", "actor_merge", merge_id, command_id=command_id, principal=principal,
-                  reason=reason)
+                  reason=reason, undoes_id=merge_decision_id)
 
 
 # ---------------------------------------------------------------- proposals and deferral
@@ -309,12 +338,16 @@ def undo(db, owner: str, decision_id: str, *, command_id: str | None, principal:
          reason: str = "") -> ContextDecision:
     """Append a compensating decision and reverse the effect of `decision_id`."""
     original = _owned(db, ContextDecision, decision_id, owner)
-    if original.operation == "undo":
+    if original.operation in ("undo", "unmerge"):
         raise DomainError("INVALID_ARGUMENT", "Make the decision again instead of undoing an undo.")
+    if original.operation == "merge":
+        raise DomainError("INVALID_ARGUMENT", "Unmerge these people instead.")
     d = ContextDecision
     if db.scalar(select(d.id).where(d.owner_id == owner, d.undoes_id == original.id)):
         raise _conflict("This decision was already undone.")
-    targets = {original.target_id, original.after.get("successor_id")} - {None}
+    link_id = original.before.get("link_id") or original.target_id
+    targets = {original.target_id, original.after.get("successor_id"),
+               link_id if original.target_type == "link" else None} - {None}
     later_ids = set(db.scalars(temporal.active_decisions(owner).where(d.seq > original.seq, d.target_id.in_(targets))))
     if later_ids:
         raise _conflict("A later decision depends on this one. Undo that first.")
@@ -334,7 +367,7 @@ def undo(db, owner: str, decision_id: str, *, command_id: str | None, principal:
                                     valid_to=datetime.fromisoformat(before["valid_to"]) if before["valid_to"] else None)
             touched += [row.id, *_rechain(db, owner, row, decision)]
     elif original.target_type == "link":
-        row = _owned(db, ContextEntityLink, original.target_id, owner)
+        row = _owned(db, ContextEntityLink, link_id, owner)
         _set_link(db, owner, row, decision, status=before["status"], target_type=before["target_type"],
                   target_id=before["target_id"])
     elif original.target_type == "proposal":
