@@ -44,6 +44,7 @@ from jarvis.context.models import (
     ContextSource,
     ContextSourceRevision,
 )
+from jarvis.context.schema import Participant, Segment, SourceEnvelope
 from sqlalchemy import insert
 
 NOW = datetime(2026, 11, 1, 12, tzinfo=UTC)
@@ -596,3 +597,49 @@ def queries(corpus: Corpus, n: int, *, seed: int = 7) -> list[BenchQuery]:
         out.append(BenchQuery(owner=owner, text=" ".join(words), vector=_noisy(rng, series.centroid, 1.2),
                               entity=entity, known_at=known_at))
     return out
+
+
+# ---------------------------------------------------------------- one synthetic meeting
+
+WORDS_PER_MINUTE = 150  # conversational speech: about 9,000 words in an hour
+TASKS = ("send the revised budget", "draft the rollout checklist", "book the training rooms", "share the vendor shortlist",
+         "update the migration plan", "review the clinic contract", "write up the pricing options",
+         "schedule the security review")
+DECISIONS = ("we keep the pilot on the current vendor", "we run training on Thursdays",
+             "we move reporting into the dashboard", "we start with the northern clinics",
+             "we freeze scope until the audit", "we pay the supplier quarterly")
+
+
+def meeting(minutes: int = 60, *, seed: int = 60, owner_email: str = "owner@example.com") -> SourceEnvelope:
+    """A synthetic transcript of `minutes` of speech from four participants (the first is the note owner): utterances
+    of 6-40 words at WORDS_PER_MINUTE (0.4 s between turns), with a commitment ("I'll <task> by <ISO date>.") about every five minutes and
+    a decision ("Decision: ...") about every ten, which both the rule-based double and a model would pick up."""
+    rng = random.Random(seed)
+    at = NOW - timedelta(days=1)
+    people = [("Alex Morgan", owner_email, "owner"), ("Priya Natarajan", None, "other"),
+              ("Marco Rossi", None, "other"), ("Lena Weber", None, "other")]
+    words = rng.sample(TOPIC_WORDS, 16)
+    names = [p[0].split()[0] for p in people]
+    builder = _Builder(CorpusSpec(seed=seed))
+    segments, ms, seq = [], 0, 0
+    while ms < minutes * 60_000:
+        name, _, attribution = people[0] if rng.random() < 0.3 else rng.choice(people[1:])
+        n = rng.randint(6, 40)
+        text = " ".join(builder.sentence(words, names, max(4, n // 2)) for _ in range(2 if n > 20 else 1))
+        if seq % 37 == 11:
+            due = (at + timedelta(days=rng.randint(2, 21))).date().isoformat()
+            text += f" I'll {rng.choice(TASKS)} by {due}."
+        elif seq % 73 == 29:
+            text = f"Decision: {rng.choice(DECISIONS)}. " + text
+        count = len(text.split())
+        duration = round(count * 60_000 / WORDS_PER_MINUTE)
+        segments.append(Segment(seq=seq, speaker_label=name.split()[0], attribution=attribution, text=text,
+                                start_ms=ms, end_ms=ms + duration))
+        ms, seq = ms + duration + 400, seq + 1
+    return SourceEnvelope(
+        connector="api", external_id=f"synthetic-{minutes}m-{seed}", title="Pilot rollout working session",
+        occurred_at=at, ended_at=at + timedelta(minutes=minutes), timezone="America/New_York",
+        participants=[Participant(name=n, email=e, role="organizer" if a == "owner" else "attendee",
+                                  speaker_label=n.split()[0]) for n, e, a in people],
+        segments=segments, external_revision="rev-1", upstream_owner_email=owner_email,
+        upstream_owner_name=people[0][0])
