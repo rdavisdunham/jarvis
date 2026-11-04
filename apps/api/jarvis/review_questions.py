@@ -138,6 +138,10 @@ def items(db, owner):
     from .record_reviews import inbox_items
 
     result.extend(inbox_items(db, owner))
+    from .context.decisions import question_items
+
+    # Contested meeting context and consequential link ambiguity (kind "context").
+    result.extend(question_items(db, owner))
     return result
 
 
@@ -180,7 +184,7 @@ def listing(db, owner, *, category="all", status="open", offset=0, limit=40):
         for r in rows
         if (
             category == "all"
-            or (r["kind"] != "memory" if category == "organization" else r["kind"] == category)
+            or (r["kind"] not in {"memory", "context"} if category == "organization" else r["kind"] == category)
         )
         and (status == "all" or r["status"] in ({"pending", "deferred"} if status == "open" else {status}))
     ]
@@ -217,11 +221,15 @@ def find(db, owner, key, revision):
     return row
 
 
-def defer(db, owner, args):
+def defer(db, owner, args, command_id=None):
     advisory(db, "workspace:" + owner)
     advisory(db, "review-delivery:" + owner)
     q = find(db, owner, args.question_key, args.expected_revision)
     delta = {"today": timedelta(hours=3), "tomorrow": timedelta(days=1), "week": timedelta(days=7)}[args.until]
+    if q["kind"] == "context":
+        from .context.decisions import defer_question
+
+        return defer_question(db, owner, q["key"], args.expected_revision, delta, command_id=command_id)
     if q["kind"] == "record_review":
         from .record_reviews import defer as snooze
 
@@ -314,8 +322,8 @@ def reserve(db, owner, device, conversation_id, channel):
         r
         for r in items(db, owner)
         if r["status"] == "pending"
-        # Due record reviews wait in Questions and on Today; they never interrupt a conversation.
-        and r["kind"] != "record_review"
+        # Due record reviews and meeting-context questions wait in Questions; they never interrupt a conversation.
+        and r["kind"] not in {"record_review", "context"}
         and (
             prefs["deep_sleep_enabled"] and prefs["memory_learning"]
             if r["kind"] == "memory"
