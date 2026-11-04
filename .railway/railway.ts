@@ -11,7 +11,8 @@
 //   3. Confirm the active database with the provider first (do not trust this file alone).
 //
 // Inventory read back Oct 2, 2026 (re-verify before any plan/apply):
-//   - Postgres16 / postgres16-volume: ACTIVE, image PostgreSQL 16.15.
+//   - Postgres16 / postgres16-volume: ACTIVE, image PostgreSQL 16.15 + pgvector 0.8.6 (built from
+//     deploy/railway/Dockerfile.postgres on Railway's postgres-ssl:16.15 base; swapped 2026-11-04).
 //   - The old Postgres (PG18) SERVICE IS DELETED. Do not recreate it.
 //   - postgres-volume still exists DETACHED (5 GB). Preserve it; deletion was not
 //     authorized. A declaration is not proof of how a future plan will treat attachment.
@@ -23,7 +24,7 @@ import { bucket, defineRailway, github, postgres, preserve, project, service, vo
 
 export default defineRailway(() => {
   // ACTIVE production database (PG16). See header before changing anything here.
-  const Postgres16 = postgres("Postgres16", { image: "ghcr.io/railwayapp-templates/postgres-ssl:16.15", region: "us-west2" });
+  const Postgres16 = postgres("Postgres16", { image: "ghcr.io/rdavisdunham/eridani-postgres:16.15-pgvector0.8.6", region: "us-west2" });
   Postgres16.deploy = { ...Postgres16.deploy, overlapSeconds: 0, restartPolicyType: "ALWAYS", sleepApplication: false };
   Postgres16.networking = { privateNetworkEndpoint: "postgres16" };
   const postgres16Volume = volume("postgres16-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "us-west2", sizeMB: 5000 });

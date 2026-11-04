@@ -17,7 +17,7 @@ The private handoff file is `/home/davin/jarvis/.env.cloud` in WSL. It is ignore
 
 - `.railway/railway.ts`: the complete imported Railway project, including explicit PostgreSQL major versions, preserved secret variables, domain, API/worker commands, migrations and readiness. The reviewed plan matched live configuration with no changes before the disposable recovery drill.
 - `package.json` / `package-lock.json`: pinned Railway infrastructure SDK 3.11.0; independent of the frontend package.
-- `deploy/railway/Dockerfile.postgres`: deferred pgvector 0.8.6 candidate preserving Railway's TLS/pgBackRest wrapper. Production currently uses the official PostgreSQL 16 registry image.
+- `deploy/railway/Dockerfile.postgres`: the production PostgreSQL image since 2026-11-04 (pgvector 0.8.6 on Railway's `postgres-ssl:16.15` base, preserving the TLS/pgBackRest wrapper), published as `ghcr.io/rdavisdunham/eridani-postgres:16.15-pgvector0.8.6` (public package). See "2026-11-04 pgvector image swap" below.
 - `deploy/railway/Dockerfile.backup`: prepared independent encrypted export image. Add a cron service at **08:00 UTC** once R2 credentials are available; it is not currently deployed.
 - `python -m jarvis.deploy migrate`: serialized Alembic migrations. Both API and worker pre-deploy hooks can invoke it safely.
 - `python -m jarvis.deploy preflight --database`: read-only schema, DBOS presence, Google identity, encryption compatibility and pgvector availability checks.
@@ -226,4 +226,34 @@ Still required from the owner: actual Google browser sign-in, spoken voice/micro
 
 ## Keeping PostgreSQL versions aligned
 
-Keep the major version **16** in the local Compose image, backup client image and cloud infrastructure image. Railway's recovery-enabled image uses its supported major tag; development pins the tested minor (`16.15-bookworm`). Before redeploying PostgreSQL, check the candidate image's actual `SHOW server_version`, test migrations and a logical restore on that version, then update the development/backup minor pins in the same reviewed change. A major upgrade is a separate restore/upgrade procedure, never a tag swap against an existing volume. The pgvector candidate stays deferred until indexing is implemented and its native recovery behavior is verified.
+Keep the major version **16** in the local Compose image, backup client image and cloud infrastructure image. Railway's recovery-enabled image uses its supported major tag; development pins the tested minor (`16.15-bookworm`). Before redeploying PostgreSQL, check the candidate image's actual `SHOW server_version`, test migrations and a logical restore on that version, then update the development/backup minor pins in the same reviewed change. A major upgrade is a separate restore/upgrade procedure, never a tag swap against an existing volume. The pgvector image went live on 2026-11-04 (see the dated section below); extension, schema and index creation remain explicit Alembic migrations.
+
+## 2026-11-04 pgvector image swap
+
+Production `Postgres16` was switched from `ghcr.io/railwayapp-templates/postgres-ssl:16.15` to
+`ghcr.io/rdavisdunham/eridani-postgres:16.15-pgvector0.8.6` (built from `deploy/railway/Dockerfile.postgres`,
+base pinned to the same `16.15` tag production already ran; the floating `16` tag resolved to the same digest that day).
+Image digest `sha256:bf03a2d491be0f775640c9d09282162807e7722d91e24464622f037aa5178435`.
+
+Before the swap: an encrypted export in the backup tool's format plus a plain custom-format `pg_dump`, taken over
+Railway SSH from the Postgres container (no public endpoint was opened), restored locally through both
+`jarvis-backup.py restore` and plain `pg_restore`; all 103 tables (`public` + `dbos`) matched production row for row
+(146,875 rows). Kept outside the repository at `/home/davin/backups/eridani/2026-11-04-pre-pgvector/`.
+
+Swap: `railway service source connect --image ghcr.io/rdavisdunham/eridani-postgres:16.15-pgvector0.8.6 --service Postgres16`;
+deployment `04b5825a` was ready 12 s later. The API and worker logged one connection-timeout window and reconnected.
+
+Verified on the new container: `server_version` 16.15; `vector` 0.8.6 in `pg_available_extensions`; `CREATE EXTENSION vector`
+succeeds (tested in a rolled-back transaction; the extension is **not** installed yet, a migration will do that); `ssl=on`;
+`archive_mode=on`; pgBackRest reported stanza `main` already valid on the same repo path; `pg_stat_archiver` kept
+advancing (archive-push completed at 08:04:30 UTC) with no new failures; `/health/ready` 200; worker heartbeat fresh.
+
+Rollback (only while no `vector` columns exist): `railway service source connect --image ghcr.io/railwayapp-templates/postgres-ssl:16.15 --service Postgres16`.
+Once vector columns or indexes exist, rollback requires dropping them first.
+
+Dashboard outcome (checked by Davin, 2026-11-04): Railway's managed point-in-time restore is **not available** for the
+image-sourced service, even though pgBackRest inside the container still archives WAL. Decision: keep pgvector and add a
+different backup path later (scheduled encrypted exports with `scripts/backup.py` are the obvious first candidate).
+Until then the 2026-11-04 export above is the most recent verified restore point. The context platform uses
+`vector(512)` columns from its first migration, so the rollback command above no longer applies once those migrations run.
+A temporary SSH key (`eridani-backup-temp`) was registered for the dump and can be removed with `railway ssh keys remove`.
