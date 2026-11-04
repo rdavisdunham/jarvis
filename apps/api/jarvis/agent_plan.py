@@ -588,6 +588,7 @@ def _submit_plan(db, bot, body):
     Changes the agent proposes to human-authored criteria are stored beside the frozen plan, not applied
     (plan_proposals); the coordinator asks the operator before execution starts."""
     actor, run = run_scoped(db, bot, body, coordinator.PLAN_SUBMIT)
+    run.sync_state = {k: v for k, v in (run.sync_state or {}).items() if k not in ("coordination_failure", "planning_auto_generation")}
     task = owned(db, Task, run.task_id, run.owner_id, lock=True)
     if (task.plan_revision or 0) != body.expected_plan_revision:
         raise DomainError("REVISION_CONFLICT", "The task's plan changed; read it again with task_plan.", 409,

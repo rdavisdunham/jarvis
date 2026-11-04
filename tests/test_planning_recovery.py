@@ -103,3 +103,24 @@ def test_root_turn_automatically_retries_and_new_provider_ids_cannot_loop(durabl
         coordinator.settle_planning(db, run)
         assert run.state == 'needs_you'
         assert not run.sync_state['coordination_failure']['recovering']
+
+
+def test_mcp_header_binding_is_request_local(monkeypatch):
+    import asyncio
+
+    from jarvis import bot_access
+    monkeypatch.setattr(bot_access, 'authenticate', lambda request: 'credential')
+    observations = []
+    async def application(scope, receive, send):
+        before = external_mcp._run_binding.get()
+        await asyncio.sleep(0)
+        observations.append((before, external_mcp._run_binding.get()))
+    mount = external_mcp.MCPMount()
+    mount.app = application
+    async def invoke(value):
+        await mount({'type':'http', 'headers':[(b'x-eridani-run-token',value.encode())]}, None, None)
+    async def both():
+        await asyncio.gather(invoke('first-run'), invoke('second-run'))
+    asyncio.run(both())
+    assert sorted(observations) == [('first-run','first-run'),('second-run','second-run')]
+    assert external_mcp._run_binding.get() is None
