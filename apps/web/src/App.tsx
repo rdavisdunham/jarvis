@@ -174,8 +174,8 @@ const SwarmDialog = lazy(() => import("./Swarm").then((m) => ({ default: m.Swarm
 const TaskArchivePreferences = lazy(() => import("./TaskArchivePreferences").then(m => ({ default: m.TaskArchivePreferences })));
 const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
 const Meetings = lazy(() => viewChunks.meetings().then((m) => ({ default: m.Meetings })));
-// The person page (D4 replaces this placeholder import with its own module).
-const PersonPage = lazy(() => viewChunks.meetings().then((m) => ({ default: m.PersonPlaceholder })));
+// The person page (D4).
+const PersonPage = lazy(() => import("./context/PersonPage").then((m) => ({ default: m.PersonPage })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
   { id: "all", label: "Tasks", icon: ListChecks, tab: true },

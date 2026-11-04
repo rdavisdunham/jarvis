@@ -974,6 +974,48 @@
       "feature": "privacy"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/context/people",
+      "handler": "list_people",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/people/{actor_id}",
+      "handler": "get_person",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/links/{link_id}",
+      "handler": "settle_link",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/merge",
+      "handler": "merge",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/not-same",
+      "handler": "not_same",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/unmerge",
+      "handler": "unmerge",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "privacy"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/context/search",
       "handler": "search",
