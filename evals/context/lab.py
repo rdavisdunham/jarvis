@@ -45,6 +45,7 @@ KINDS = ("mine", "waiting")
 WORD = re.compile(r"[a-z0-9]+")
 BLOCK = re.compile(r"^\s*(?:\[(?:(\d+):)?(\d+):(\d{2})\]\s*)?"
                    r"(Microphone|System audio(?:\s*\(([^)]*)\))?|Speaker [A-Za-z0-9]+)\s*:\s?(.*)$")
+SPEAKER_MODES = ("auto", "recorder", "unknown")
 JACCARD_THRESHOLD = 0.2
 DEFAULT_BUDGET_USD = 3.0
 DEFAULT_TIMEOUT_S = 300
@@ -123,20 +124,40 @@ def _same(a: str | None, b: str | None) -> bool:
     return bool(a and b and a.strip().casefold() == b.strip().casefold())
 
 
-def to_envelope(meeting: dict, *, lab_email: str) -> SourceEnvelope:
+def separated(blocks: list[Block], meeting: dict) -> bool:
+    """Whether the transcript separates speakers. Granola gives room or mixed audio as all-`Microphone`
+    blocks; with more than one participant those lines are not the recorder's alone."""
+    if any(b.source != "microphone" for b in blocks):
+        return True
+    people = {(p.get("email") or p.get("name") or "").strip().casefold()
+              for p in [meeting.get("owner") or {}, *(meeting.get("participants") or [])]}
+    return len(people - {""}) <= 1
+
+
+def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto") -> SourceEnvelope:
     """The SourceEnvelope the Granola connector would deliver for this meeting folder.
 
     `Microphone:` is the note's recorder. When the recorder is the lab user it is the Eridani owner speaking
     (attribution `owner`, as the connector maps Granola's "me"); when someone else recorded the note it is that
     person (attribution `other`, labelled with their name), because Eridani's `owner` attribution always means
     the account owner. `System audio (Name):` is that participant, bare `System audio:` an unnamed other speaker.
-    Private notes travel only when the lab user wrote them: the pipeline attributes them to the owner."""
+    Private notes travel only when the lab user wrote them: the pipeline attributes them to the owner.
+
+    `speakers`: `recorder` maps `Microphone:` as above; `unknown` leaves those lines unattributed (no label, no
+    attribution); `auto` (default) is `unknown` when the speakers are not separated (see `separated`)."""
+    if speakers not in SPEAKER_MODES:
+        raise ValueError(f"speakers must be one of {', '.join(SPEAKER_MODES)}")
     owner = meeting.get("owner") or {}
     owner_label = (owner.get("name") or owner.get("email") or "Note owner").strip()[:200]
     recorder_is_user = _same(owner.get("email"), lab_email)
+    blocks = parse_transcript(meeting.get("transcript") or "")
+    split = separated(blocks, meeting)
+    unknown = speakers == "unknown" or (speakers == "auto" and not split)
     segments = []
-    for block in parse_transcript(meeting.get("transcript") or ""):
-        if block.source == "microphone":
+    for block in blocks:
+        if block.source == "microphone" and unknown:
+            label, attribution = None, None
+        elif block.source == "microphone":
             label, attribution = owner_label, ("owner" if recorder_is_user else "other")
         else:
             label, attribution = (block.name or None), "other"
@@ -172,7 +193,8 @@ def to_envelope(meeting: dict, *, lab_email: str) -> SourceEnvelope:
         participants=participants, segments=segments, private_notes=private,
         content_hash=content_hash([s.text for s in segments] + ([private] if private else [])),
         upstream_owner_email=owner.get("email") or None, upstream_owner_name=owner.get("name") or None,
-        metadata={"lab": {"recorder_is_lab_user": recorder_is_user,
+        metadata={"lab": {"recorder_is_lab_user": recorder_is_user, "speakers_separated": split,
+                          "microphone_as": "unknown" if unknown else "recorder",
                           "private_notes_dropped": bool(meeting.get("private_notes")) and private is None}})
 
 
@@ -210,7 +232,7 @@ def granola_meeting(note: dict, transcript: list[dict]) -> dict:
             "transcript": granola_transcript_text(transcript)}
 
 
-def import_file(ref: str, slug: str | None = None) -> tuple[Path, SourceEnvelope]:
+def import_file(ref: str, slug: str | None = None, *, speakers: str = "auto") -> tuple[Path, SourceEnvelope]:
     """Copy a loose meeting JSON into the lab (when given a file outside it), build and save `envelope.json`."""
     path = Path(ref)
     if path.is_file() and path.name != "meeting.json":
@@ -219,7 +241,8 @@ def import_file(ref: str, slug: str | None = None) -> tuple[Path, SourceEnvelope
         shutil.copyfile(path, folder / "meeting.json")
     else:
         folder = meeting_dir(ref)
-    envelope = to_envelope(read_json(folder / "meeting.json"), lab_email=lab_user(folder)["email"])
+    envelope = to_envelope(read_json(folder / "meeting.json"), lab_email=lab_user(folder)["email"],
+                           speakers=speakers)
     write_json(folder / "envelope.json", envelope.model_dump(mode="json"))
     return folder, envelope
 
@@ -402,7 +425,8 @@ def collect(owner: str, source_id: str, owner_actor: str, user: dict) -> dict:
             "cost_usd": round(sum(r["cost_usd"] for r in runs), 6)}
 
 
-def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: str | None = None) -> dict:
+def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: str | None = None,
+                speakers: str = "auto") -> dict:
     """One delivery of the meeting into the current database under a fresh owner, drained. Needs `live()` (or
     runner's `offline()` with the double engine) around it."""
     from jarvis.context import sources
@@ -410,7 +434,7 @@ def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: st
 
     meeting = read_json(folder / "meeting.json")
     user = lab_user(folder)
-    envelope = to_envelope(meeting, lab_email=user["email"])
+    envelope = to_envelope(meeting, lab_email=user["email"], speakers=speakers)
     owner = f"lab-{uuid4().hex[:12]}"
     owner_actor = seed_owner(owner, user, engine=engine)
     started_at, started = datetime.now(UTC), time.monotonic()
@@ -440,7 +464,9 @@ def report_md(run: dict) -> str:
            f"Started {run['started_at']}, wall {run['wall_ms'] / 1000:.1f}s, cost ${run['cost_usd']:.4f}, "
            f"source {run['source_status']}, {run['meeting']['segments']} transcript segments, private notes "
            f"{'yes' if run['meeting']['private_notes'] else 'no'}"
-           + (" (dropped: recorded by someone else)" if run["meeting"].get("private_notes_dropped") else "") + ".",
+           + (" (dropped: recorded by someone else)" if run["meeting"].get("private_notes_dropped") else "")
+           + ("" if run["meeting"].get("speakers_separated", True) else
+              f"; speakers not separated, Microphone lines treated as {run['meeting'].get('microphone_as')}") + ".",
            ""]
     if run["errors"]:
         out += [f"Errors while draining: {', '.join(run['errors'])}", ""]
@@ -516,7 +542,7 @@ def save_run(folder: Path, run: dict, suffix: str = "") -> Path:
 
 
 def run_lab(slugs: list[str], model: str, *, repeat: int = 1, budget_usd: float = DEFAULT_BUDGET_USD,
-            timeout_s: int = DEFAULT_TIMEOUT_S) -> list[Path]:
+            timeout_s: int = DEFAULT_TIMEOUT_S, speakers: str = "auto") -> list[Path]:
     profile = check_model(model)
     folders = [meeting_dir(s) for s in slugs]
     for folder in folders:
@@ -526,7 +552,7 @@ def run_lab(slugs: list[str], model: str, *, repeat: int = 1, budget_usd: float 
     with throwaway_database("jarvis_lab"), live(profile, budget_usd=budget_usd, timeout_s=timeout_s):
         for folder in folders:
             for n in range(repeat):
-                run = run_meeting(folder, profile, profile=profile)
+                run = run_meeting(folder, profile, profile=profile, speakers=speakers)
                 path = save_run(folder, run, f"-r{n + 1}" if repeat > 1 else "")
                 written.append(path)
                 print(f"{folder.name} {model} run {n + 1}/{repeat}: {len(run['proposals'])} proposals, "
@@ -938,6 +964,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("import-file", help="build the envelope for a meeting folder (or copy a loose meeting JSON)")
     p.add_argument("ref")
     p.add_argument("--slug")
+    p.add_argument("--speakers", choices=SPEAKER_MODES, default="auto",
+                   help="Microphone lines: the recorder, unknown, or auto (unknown when speakers are not separated)")
     p = sub.add_parser("import-granola", help="fetch a note through the Granola REST API (GRANOLA_API_KEY)")
     p.add_argument("note_id")
     p.add_argument("--slug", required=True)
@@ -948,6 +976,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD, help="per-meeting extraction budget")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="model timeout in seconds")
+    p.add_argument("--speakers", choices=SPEAKER_MODES, default="auto")
     p = sub.add_parser("score", help="score runs and Granola against the answer keys")
     p.add_argument("slugs", nargs="+")
     p.add_argument("--run", default="latest", help="latest (default), all, or a run directory name")
@@ -965,13 +994,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "import-file":
-        folder, envelope = import_file(args.ref, args.slug)
+        folder, envelope = import_file(args.ref, args.slug, speakers=args.speakers)
         counts: dict[str, int] = {}
         for s in envelope.segments or []:
             key = f"{s.speaker_label or '(unnamed)'} [{s.attribution}]"
             counts[key] = counts.get(key, 0) + 1
         print(f"{folder}: {len(envelope.segments or [])} segments, private notes "
               f"{'yes' if envelope.private_notes else 'no'}, {len(envelope.participants)} participants")
+        lab_meta = envelope.metadata["lab"]
+        if not lab_meta["speakers_separated"]:
+            print(f"  speakers not separated: Microphone lines treated as {lab_meta['microphone_as']}")
         for key, n in counts.items():
             print(f"  {n:4}  {key}")
         return 0
@@ -982,7 +1014,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         if args.repeat < 1:
             parser.error("--repeat must be at least 1")
-        run_lab(args.slugs, args.model, repeat=args.repeat, budget_usd=args.budget_usd, timeout_s=args.timeout)
+        run_lab(args.slugs, args.model, repeat=args.repeat, budget_usd=args.budget_usd, timeout_s=args.timeout,
+                speakers=args.speakers)
         return 0
     if args.command == "score":
         judge = None if args.no_judge else judge_call(args.judge)

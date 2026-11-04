@@ -83,7 +83,8 @@ def test_envelope_when_the_lab_user_recorded_the_meeting():
     assert people["robin@studio.example"].speaker_label == "Robin Vale"
     assert people["kai@client.example"].speaker_label is None and len(envelope.participants) == 2
     assert envelope.upstream_owner_email == "robin@studio.example" and envelope.content_hash
-    assert envelope.metadata["lab"] == {"recorder_is_lab_user": True, "private_notes_dropped": False}
+    assert envelope.metadata["lab"] == {"recorder_is_lab_user": True, "speakers_separated": True,
+                                        "microphone_as": "recorder", "private_notes_dropped": False}
 
 
 def test_envelope_when_someone_else_recorded_the_meeting():
@@ -95,6 +96,34 @@ def test_envelope_when_someone_else_recorded_the_meeting():
     assert envelope.private_notes is None and envelope.metadata["lab"]["private_notes_dropped"] is True
     assert {p.email for p in envelope.participants} == {"uma@studio.example", "kai@client.example",
                                                         "robin@studio.example"}
+
+
+def test_unseparated_speakers_stay_unknown():
+    """Room or mixed audio: every block is Microphone although several people spoke."""
+    mixed = {**meeting(owner={"name": "Uma Recorder", "email": "uma@studio.example"}),
+             "transcript": "Microphone: Let's start.\n\nMicrophone: I'll send the calls.\n\nMicrophone: Thanks."}
+    auto = lab.to_envelope(mixed, lab_email=ME["email"])
+    assert {(s.speaker_label, s.attribution) for s in auto.segments} == {(None, None)}
+    assert auto.metadata["lab"]["speakers_separated"] is False and auto.metadata["lab"]["microphone_as"] == "unknown"
+    assert not any(p.speaker_label for p in auto.participants)
+    forced = lab.to_envelope(mixed, lab_email=ME["email"], speakers="recorder")
+    assert {(s.speaker_label, s.attribution) for s in forced.segments} == {("Uma Recorder", "other")}
+    # One person alone, or both sources present: the recorder as before, unless forced unknown.
+    solo = {**mixed, "participants": []}
+    assert {s.speaker_label for s in lab.to_envelope(solo, lab_email=ME["email"]).segments} == {"Uma Recorder"}
+    split = lab.to_envelope(meeting(), lab_email=ME["email"], speakers="unknown")
+    assert [(s.speaker_label, s.attribution) for s in split.segments][:2] == [(None, None), ("Kai Moreno", "other")]
+    with pytest.raises(ValueError, match="speakers"):
+        lab.to_envelope(meeting(), lab_email=ME["email"], speakers="everyone")
+
+
+def test_import_file_reports_unseparated_speakers(lab_dir, capsys):
+    folder = lab_dir / "rubric-sync"
+    lab.write_json(folder / "meeting.json", {**meeting(), "transcript": "Microphone: a\n\nMicrophone: b"})
+    assert lab.main(["import-file", "rubric-sync"]) == 0
+    assert "speakers not separated" in capsys.readouterr().out
+    assert lab.main(["import-file", "rubric-sync", "--speakers", "recorder"]) == 0
+    assert "speakers not separated" in capsys.readouterr().out  # still reported, mapped to the recorder
 
 
 def test_envelope_needs_transcript_and_offset():
