@@ -1139,6 +1139,34 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/external/sources",
+      "handler": "list_sources",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/external/sources/{connector}/{external_id}",
+      "handler": "submit_source",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/external/sources/{source_id}",
+      "handler": "delete_source",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/sources/{source_id}",
+      "handler": "get_source",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/external/structure",
       "handler": "external_structure",
       "source": "apps/api/jarvis/external_routes.py",

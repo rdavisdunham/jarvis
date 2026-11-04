@@ -157,6 +157,11 @@ async def security(request, call_next):
         )
     # A bug report carries a screenshot; bug_reports.read_body enforces the same cap without a Content-Length.
     cap = bug_reports.BODY_MAX if request.method == "POST" and request.url.path == bug_reports.PATH else 100_000
+    if request.method == "PUT" and request.url.path.startswith("/api/v1/external/sources/"):
+        # Meeting transcripts; the route also caps bodies sent without Content-Length.
+        from .context.routes.sources import body_limit
+
+        cap = body_limit()
     if length < 0 or length > cap:
         return JSONResponse(
             {"error": {"code": "INVALID_ARGUMENT", "message": "Request is too large."}}, status_code=413

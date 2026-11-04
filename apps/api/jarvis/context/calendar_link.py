@@ -7,8 +7,10 @@ provisional (`inferred`) association with its score. The association is a `Conte
 is never overwritten, and a rejected event is never proposed again. Calendar tables are read with SQL here,
 without foreign keys (module boundary, plan section 2).
 
-Identity seeding calls `identity.seed_candidates(db, owner, source_id, participants, calendar_attendees)`
-(package B4) with `Participant` lists; calendar attendees are passed only for an exact match.
+Identity seeding (`seed_identities`) is a processing step for the `context_ingest` job, not part of receipt:
+`identity.seed_candidates` may create actors through the command path, which must not depend on the scopes of
+the bot key that delivered the transcript. It passes the current revision's participants and, only for an exact
+or confirmed calendar link, the event's attendees.
 """
 
 import re
@@ -21,7 +23,7 @@ from sqlalchemy import select, text
 
 from ..calendar_details import details
 from ..models import now
-from .models import ContextEntityLink
+from .models import ContextEntityLink, ContextSource, ContextSourceRevision
 from .schema import Participant, SourceEnvelope
 
 try:  # Package B4 implements this; until it lands, seeding is skipped.
@@ -120,35 +122,46 @@ def find_event(db, owner: str, envelope: SourceEnvelope, rejected: set[str] = fr
     return CalendarMatch(row.id, row.provider_id, "inferred", best) if best >= MIN_SCORE else None
 
 
-def link_source(db, owner: str, source_id: str, revision_id: str, envelope: SourceEnvelope) -> CalendarMatch | None:
-    """Record (or refresh) the source's calendar association, then seed identity candidates."""
-    links = list(db.scalars(select(ContextEntityLink).where(
+def _links(db, owner: str, source_id: str) -> list[ContextEntityLink]:
+    return list(db.scalars(select(ContextEntityLink).where(
         ContextEntityLink.owner_id == owner, ContextEntityLink.subject_type == "source",
         ContextEntityLink.subject_id == source_id, ContextEntityLink.role == ROLE)))
+
+
+def link_source(db, owner: str, source_id: str, revision_id: str, envelope: SourceEnvelope) -> CalendarMatch | None:
+    """Record (or refresh) the source's calendar association. Human decisions (confirmed or rejected links) stay;
+    a rejected event is not proposed again; an earlier automatic association is replaced."""
+    links = _links(db, owner, source_id)
     decided = [link for link in links if link.decision_id or link.status in ("confirmed", "rejected")]
-    rejected = {link.target_id for link in decided if link.status == "rejected"}
-    confirmed = next((link for link in decided if link.status == "confirmed"), None)
-    if confirmed:
-        row = db.execute(_EVENT_BY_ID, {"owner": owner, "event_id": confirmed.target_id}).first()
-        match = row and CalendarMatch(row.id, row.provider_id, "exact", 1.0, attendees(row.payload))
-    else:
-        match = find_event(db, owner, envelope, rejected)
-    if not confirmed:
-        for link in links:
-            if link not in decided and (match is None or link.target_id != match.event_id):
-                db.delete(link)
-        if match:
-            link = next((x for x in links if x not in decided and x.target_id == match.event_id), None)
-            if link is None:
-                link = ContextEntityLink(owner_id=owner, subject_type="source", subject_id=source_id,
-                                         target_type="calendar_event", target_id=match.event_id, role=ROLE)
-                db.add(link)
-            link.status, link.score, link.mention = match.status, match.score, envelope.title[:500]
-            link.evidence = [{"revision_id": revision_id, "provider_id": match.provider_id,
-                              "basis": "calendar_event_id" if match.status == "exact" else "title_and_time"}]
-            link.updated_at = now()
-        db.flush()
-    if seed_candidates is not None:
-        exact = match.attendees if match and match.status == "exact" else []
-        seed_candidates(db, owner, source_id, list(envelope.participants), exact)
+    if any(link.status == "confirmed" for link in decided):
+        return None
+    match = find_event(db, owner, envelope, {link.target_id for link in decided if link.status == "rejected"})
+    for link in links:
+        if link not in decided and (match is None or link.target_id != match.event_id):
+            db.delete(link)
+    if match:
+        link = next((x for x in links if x not in decided and x.target_id == match.event_id), None)
+        if link is None:
+            link = ContextEntityLink(owner_id=owner, subject_type="source", subject_id=source_id,
+                                     target_type="calendar_event", target_id=match.event_id, role=ROLE)
+            db.add(link)
+        link.status, link.score, link.mention = match.status, match.score, envelope.title[:500]
+        link.evidence = [{"revision_id": revision_id, "provider_id": match.provider_id,
+                          "basis": "calendar_event_id" if match.status == "exact" else "title_and_time"}]
+        link.updated_at = now()
+    db.flush()
     return match
+
+
+def seed_identities(db, owner: str, source_id: str):
+    """`context_ingest` step: seed actor identity candidates for the source's current revision. Returns
+    `seed_candidates`' result, or None when the identity module is absent or the source is gone."""
+    source = db.get(ContextSource, source_id)
+    if seed_candidates is None or source is None or source.owner_id != owner or source.status == "deleted":
+        return None
+    revision = db.scalar(select(ContextSourceRevision).where(ContextSourceRevision.source_id == source_id,
+                                                             ContextSourceRevision.revision == source.current_revision))
+    participants = [Participant.model_validate(p) for p in (revision.participants if revision else [])]
+    event = next((link for link in _links(db, owner, source_id) if link.status in ("exact", "confirmed")), None)
+    row = event and db.execute(_EVENT_BY_ID, {"owner": owner, "event_id": event.target_id}).first()
+    return seed_candidates(db, owner, source_id, participants, attendees(row.payload) if row else [])

@@ -74,11 +74,23 @@ def test_json_submission_is_idempotent_and_revises_on_changed_content(client):
         assert db.scalar(select(func.count()).select_from(Job).where(Job.kind == "context_ingest")) == 2
 
 
-def test_labels_namespace_external_ids(client):
+def test_known_connectors_keep_their_key_and_other_labels_fall_back_to_api(client):
+    from jarvis.context import sources
+    from jarvis.context.schema import SourceEnvelope
+
     writer = key(client, "sources:write")
     zoom = put(writer, "Zoom/123", body()).json()
     recorder = put(writer, "recorder/123", body()).json()
-    assert zoom["label"] == "zoom" and zoom["id"] != recorder["id"]
+    smuggled = put(writer, "api/123", body(metadata={"connector_label": "recorder"})).json()
+    assert (zoom["connector"], zoom["label"]) == ("zoom", "zoom")
+    assert (recorder["connector"], recorder["label"], recorder["external_id"]) == ("api", "recorder", "123")
+    assert len({zoom["id"], recorder["id"], smuggled["id"]}) == 3
+    bridged = put(writer, "granola/note-1", body()).json()
+    with session_scope() as db:  # the in-app poller delivering the same Granola note dedupes to one source
+        polled = sources.receive(db, "davin", SourceEnvelope.model_validate({
+            **{k: v for k, v in body().items() if k != "version"}, "connector": "granola", "external_id": "note-1"}))
+        assert db.get(m.ContextSource, recorder["id"]).external_id == "recorder:123"
+    assert (polled.source_id, polled.change) == (bridged["id"], "none")
     assert code(put(writer, "bad label/1", body())) == (400, "INVALID_ARGUMENT")
 
 
@@ -104,7 +116,8 @@ def test_raw_formats_dispatch_by_content_type(client):
     assert code(bad) == (400, "INVALID_ARGUMENT")
     reader = key(client, "context:read")
     with session_scope() as db:
-        source = db.scalar(select(m.ContextSource).where(m.ContextSource.external_id == "zoom:v1"))
+        source = db.scalar(select(m.ContextSource).where(m.ContextSource.connector == "zoom",
+                                                         m.ContextSource.external_id == "v1"))
     detail = TestClient(app).get(f"{BASE}/{source.id}", headers=reader).json()
     assert [(s["speaker_label"], s["text"], s["start_ms"]) for s in detail["segments"]] == [
         ("Davin", "Kick-off.", 1000), ("Priya", "Ready.", 4000)]
@@ -169,3 +182,24 @@ def test_routes_refuse_in_shared_workspaces(client):
     assert code(put(headers, payload=body())) == (403, "PERSONAL_WORKSPACE")
     assert code(TestClient(app).get(BASE, headers=headers)) == (403, "PERSONAL_WORKSPACE")
     assert count(m.ContextSource) == 0
+
+
+def test_transcript_route_has_its_own_body_cap(client, monkeypatch):
+    from jarvis.context.routes.sources import body_limit
+
+    writer = key(client, "sources:write")
+    large = body(segments=[{"seq": i, "speaker_label": "Davin", "text": f"Line {i}. " + "x" * 1000} for i in range(150)])
+    assert len(json.dumps(large)) > 150_000
+    accepted = put(writer, payload=large)
+    assert accepted.status_code == 200, accepted.text
+    session = TestClient(app).put("/api/v1/external/sessions/claude_code/s1", headers=writer,
+                                  json={"title": "x" * 150_000})
+    assert code(session) == (413, "INVALID_ARGUMENT")  # every other route keeps the 100 KB cap
+    monkeypatch.setenv("JARVIS_CONTEXT_MAX_SOURCE_CHARS", "1000")
+    get_settings.cache_clear()
+    assert body_limit() == 102_000
+    over = put(writer, "recorder/big", content=b"x" * 110_000, content_type="text/plain")
+    assert code(over) == (413, "INVALID_ARGUMENT")
+    chunked = put(writer, "recorder/big", content=iter([b"x" * 60_000, b"x" * 60_000]), content_type="text/plain",
+                  params={"occurred_at": MEETING_AT.isoformat()})
+    assert code(chunked) == (413, "SOURCE_TOO_LARGE")

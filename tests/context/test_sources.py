@@ -145,11 +145,22 @@ def test_chunker_packs_by_budget_and_splits_only_oversized_segments():
     assert chunks[1].text + chunks[2].text == "c" * 200 and chunks[0].token_count == 21
 
 
-def test_api_ids_are_namespaced_by_label():
-    assert sources.api_external_id("Zoom", "123") == "zoom:123"
+def test_only_api_fallback_labels_namespace_the_stored_external_id(envelope):
+    from jarvis.context import connectors
+
+    recorder = receive(connectors.prepare("recorder", envelope))
+    zoom = receive(connectors.prepare("zoom", envelope))
+    plain = receive(envelope)
+    with session_scope() as db:
+        stored = {r.id: (r.connector, r.external_id) for r in db.scalars(select(m.ContextSource))}
+        assert stored == {recorder.source_id: ("api", "recorder:meeting-001"), zoom.source_id: ("zoom", "meeting-001"),
+                          plain.source_id: ("api", "meeting-001")}
+        item = sources.get_source(db, OWNER, recorder.source_id)
+        assert (item["connector"], item["label"], item["external_id"]) == ("api", "recorder", "meeting-001")
+    sources.check_label("Zoom", "123")
     for label, external_id in (("bad label", "1"), ("", "1"), ("ok", ""), ("ok", "a\nb")):
         with pytest.raises(DomainError):
-            sources.api_external_id(label, external_id)
+            sources.check_label(label, external_id)
 
 
 def test_reads_hide_text_in_lists_and_exclude_deleted(envelope):

@@ -211,7 +211,7 @@ def envelope_from_json(data: str | bytes | dict, *, connector: str, external_id:
         raise bad('The JSON body needs "version": 1.')
     data.pop("connector", None)
     named = data.pop("external_id", None)
-    if named is not None and named != external_id.split(":", 1)[-1] and named != external_id:
+    if named is not None and named != external_id:
         raise bad("The body names a different external_id from the URL.")
     if data.get("segments") is not None and not (data.get("external_revision") or data.get("content_hash")):
         texts = [s.get("text", "") for s in data["segments"] if isinstance(s, dict)]

@@ -1,7 +1,9 @@
 """Source lifecycle: receipt, revisions, segments and chunks, reads, deletion and the purge job body.
 
-`receive` is the one ingestion entry point for every connector. Identity is (owner, connector, external_id);
-for the generic `api` connector the external ID is namespaced by the client's label (`zoom:123`) so labels
+`receive` is the one ingestion entry point for every connector. Identity is (owner, connector, external_id).
+The registry (`connectors.prepare`) keeps known connectors (`granola`, `zoom`, ...) as themselves, so a bridge
+delivery and the in-app poller dedupe to one source; any other label becomes connector `api` with
+`metadata["connector_label"]`, and its stored external ID is namespaced by that label (`recorder:123`) so labels
 never collide. A revision's text is its segment texts joined by newlines, so `content_hash(texts)` is the
 sha256 of that text and segment offsets index it. Receipt never calls a model. Transcript text is never logged.
 """
@@ -18,6 +20,7 @@ from ..models import now
 from ..redaction import redact
 from . import calendar_link
 from . import settings as context_settings
+from .connectors import LABEL_KEY
 from .imports import text_segments
 from .models import (
     ContextBrief,
@@ -68,21 +71,33 @@ class ReceiveResult:
         return self.change in ("none", "deleted")
 
 
-def api_external_id(label: str, external_id: str) -> str:
-    """The stored external ID of an `api` submission: the client's connector label namespaces it."""
-    label = label.strip().lower()
-    if not LABEL.match(label):
+def check_label(label: str, external_id: str) -> None:
+    """Refuse connector labels and external IDs that cannot be stored."""
+    if not LABEL.match(label.strip().lower()):
         raise DomainError("INVALID_ARGUMENT", "Connector labels are 1-40 lowercase letters, digits, - or _.")
     if not external_id or len(external_id) > 400 or any(c in external_id for c in "\x00\r\n"):
         raise DomainError("INVALID_ARGUMENT", "External IDs are 1-400 characters on one line.")
-    return f"{label}:{external_id}"
 
 
-def split_external_id(source: ContextSource) -> tuple[str, str]:
+def _label(connector: str, metadata: dict) -> str | None:
+    label = metadata.get(LABEL_KEY) if connector == "api" else None
+    return label if isinstance(label, str) and label else None
+
+
+def storage_id(envelope: SourceEnvelope) -> str:
+    """The stored external ID: the upstream one, namespaced by the client label for `api` fallback labels."""
+    label = _label(envelope.connector, envelope.metadata)
+    stored = f"{label}:{envelope.external_id}" if label else envelope.external_id
+    if len(stored) > 500:
+        raise DomainError("INVALID_ARGUMENT", "The external ID is too long.")
+    return stored
+
+
+def split_external_id(source: ContextSource, revision: ContextSourceRevision | None) -> tuple[str, str]:
     """(label, upstream external ID) as the client sent them."""
-    if source.connector == "api" and ":" in source.external_id:
-        label, _, external_id = source.external_id.partition(":")
-        return label, external_id
+    label = _label(source.connector, ((revision.payload if revision else None) or {}).get("metadata") or {})
+    if label and source.external_id.startswith(label + ":"):
+        return label, source.external_id[len(label) + 1:]
     return source.connector, source.external_id
 
 
@@ -211,8 +226,9 @@ def receive(db, owner: str, envelope: SourceEnvelope, connection_id: str | None 
             raise DomainError("NOT_FOUND", "That connector connection was not found.", 404)
     segments = build_segments(envelope)
     digest = content_hash(s.text for s in segments)
-    advisory(db, f"context-source:{owner}:{envelope.connector}:{envelope.external_id}")
-    source = _find(db, owner, envelope.connector, envelope.external_id)
+    external_id = storage_id(envelope)
+    advisory(db, f"context-source:{owner}:{envelope.connector}:{external_id}")
+    source = _find(db, owner, envelope.connector, external_id)
     stamp = now()
     if source is not None:
         current = _current(db, source)
@@ -240,7 +256,7 @@ def receive(db, owner: str, envelope: SourceEnvelope, connection_id: str | None 
             return ReceiveResult(source.id, source.current_revision, current.id, source.status, "metadata")
     created = source is None
     if created:
-        source = ContextSource(owner_id=owner, connector=envelope.connector, external_id=envelope.external_id,
+        source = ContextSource(owner_id=owner, connector=envelope.connector, external_id=external_id,
                                current_revision=0, created_at=stamp)
         db.add(source)
     source.connection_id = connection_id or source.connection_id
@@ -295,7 +311,7 @@ def _last_errors(db, source_ids: list[str]) -> dict[str, ContextRun]:
 
 def public(source: ContextSource, revision: ContextSourceRevision | None, run: ContextRun | None,
            failure: ContextRun | None, segment_count: int) -> dict:
-    label, external_id = split_external_id(source)
+    label, external_id = split_external_id(source, revision)
     return {
         "id": source.id,
         "connector": source.connector,

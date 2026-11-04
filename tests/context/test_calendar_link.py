@@ -1,5 +1,5 @@
 """Calendar association: exact provider-ID match, provisional title-and-time match, decisions respected,
-and attendee identity seeding through identity.seed_candidates (package B4; faked here)."""
+and attendee identity seeding (an ingest step) through identity.seed_candidates (package B4)."""
 
 from datetime import timedelta
 
@@ -58,13 +58,37 @@ def receive(envelope):
         return sources.receive(db, OWNER, envelope)
 
 
-def test_exact_calendar_event_id_links_exactly_and_seeds_attendees(calendar, envelope, monkeypatch):
+def seed(source_id):
+    with session_scope() as db:
+        return calendar_link.seed_identities(db, OWNER, source_id)
+
+
+def test_exact_calendar_event_id_links_exactly_and_seeds_attendees(calendar, envelope):
+    result = receive(envelope.model_copy(update={"calendar_event_id": "evt_20261103T150000Z"}))
+    assert links(result.source_id) == [(calendar["exact"], "exact", 1.0)]
+    with session_scope() as db:  # receipt alone creates no identities
+        assert db.scalar(select(m.ContextActorIdentity.id)) is None
+    candidates = seed(result.source_id)
+    assert {c.email for c in candidates if c.email} >= {"priya@example.com", "davin@example.com"}
+    with session_scope() as db:
+        emails = set(db.scalars(select(m.ContextActorIdentity.normalized).where(
+            m.ContextActorIdentity.owner_id == OWNER, m.ContextActorIdentity.namespace == "email")))
+    assert {"priya@example.com", "davin@example.com"} <= emails
+
+
+def fake_seeding(monkeypatch):
     seeded = []
     monkeypatch.setattr(calendar_link, "seed_candidates",
                         lambda db, owner, source_id, participants, attendees: seeded.append(
                             (owner, source_id, participants, attendees)))
+    return seeded
+
+
+def test_exact_match_passes_calendar_attendees_to_seeding(calendar, envelope, monkeypatch):
+    seeded = fake_seeding(monkeypatch)
     result = receive(envelope.model_copy(update={"calendar_event_id": "evt_20261103T150000Z"}))
-    assert links(result.source_id) == [(calendar["exact"], "exact", 1.0)]
+    assert seeded == []
+    seed(result.source_id)
     [(owner, source_id, participants, attendees)] = seeded
     assert (owner, source_id) == (OWNER, result.source_id) and [p.name for p in participants] == ["Davin", "Priya", "Marco"]
     assert attendees == [Participant(name="Priya", email="priya@example.com"),
@@ -72,12 +96,12 @@ def test_exact_calendar_event_id_links_exactly_and_seeds_attendees(calendar, env
 
 
 def test_title_and_time_give_a_provisional_match_without_attendee_seeding(calendar, envelope, monkeypatch):
-    seeded = []
-    monkeypatch.setattr(calendar_link, "seed_candidates", lambda *args: seeded.append(args[4]))
+    seeded = fake_seeding(monkeypatch)
     result = receive(envelope)
     [(target, status, score)] = links(result.source_id)
     assert (target, status) == (calendar["similar"], "inferred") and calendar_link.MIN_SCORE <= score < 1
-    assert seeded == [[]]
+    seed(result.source_id)
+    assert seeded[0][3] == []
 
 
 def test_unknown_event_id_falls_back_and_unrelated_titles_do_not_link(calendar, envelope):
@@ -98,9 +122,15 @@ def test_rejected_links_are_not_proposed_again_and_confirmed_ones_are_kept(calen
     assert [x[:2] for x in links(result.source_id)] == [(calendar["similar"], "confirmed")]
 
 
-def test_seeding_is_skipped_when_identity_module_is_absent(calendar, envelope, monkeypatch):
+def test_seeding_is_skipped_when_identity_module_is_absent_or_source_deleted(calendar, envelope, monkeypatch):
+    from jarvis.context import sources
+
+    result = receive(envelope)
+    with session_scope() as db:
+        sources.delete_source(db, OWNER, result.source_id)
+    assert seed(result.source_id) is None
     monkeypatch.setattr(calendar_link, "seed_candidates", None)
-    assert receive(envelope).change == "created"
+    assert seed(receive(envelope.model_copy(update={"external_id": "m2"})).source_id) is None
 
 
 def test_score_weights_title_and_time():

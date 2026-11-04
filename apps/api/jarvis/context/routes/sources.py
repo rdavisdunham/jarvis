@@ -16,7 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from ... import bot_access
 from ...db import session_scope
 from ...domain import DomainError
-from .. import imports, sources
+from .. import connectors, imports, sources
 from .. import settings as context_settings
 from ..schema import SOURCE_STATUSES
 
@@ -62,25 +62,29 @@ async def submit_source(
     title: str = Query("", max_length=500), occurred_at: AwareDatetime | None = None,
     timezone: str | None = Query(None, max_length=64), external_revision: str | None = Query(None, max_length=200),
 ):
-    """Submit a meeting under a client label (`recorder`, `zoom`, `granola`, ...): recorded as connector `api`
-    with the label kept. Idempotent by label and external ID; changed content creates a revision."""
+    """Submit a meeting under a connector label. Known connectors (`granola`, `zoom`, `upload`, `api`) keep their
+    own key; any other label (`recorder`, `other`, ...) is recorded as connector `api` with the label kept.
+    Idempotent by connector (and label) and external ID; changed content creates a revision."""
     def check():
         with session_scope() as db:
             authorize(db, "sources:write")
 
     await run_in_threadpool(check)
-    key = sources.api_external_id(connector, external_id)
+    sources.check_label(connector, external_id)
     raw = await read_body(request, body_limit())
     text = imports.decode(raw)
     fmt = imports.detect(request.headers.get("content-type"), data=text)
-    envelope = imports.parse(text, fmt, connector="api", external_id=key, title=title, occurred_at=occurred_at,
-                             timezone=timezone, external_revision=external_revision)
+    envelope = imports.parse(text, fmt, connector="api", external_id=external_id, title=title,
+                             occurred_at=occurred_at, timezone=timezone, external_revision=external_revision)
+    # The URL alone names the connector: a label smuggled in body metadata is dropped before the registry runs.
+    metadata = {k: v for k, v in envelope.metadata.items() if k != connectors.LABEL_KEY}
+    envelope = connectors.prepare(connector, envelope.model_copy(update={"metadata": metadata}))
 
     def save():
         with session_scope() as db:
             bot = authorize(db, "sources:write", write=True)
             result = sources.receive(db, bot.owner_id, envelope)
-            return {"id": result.source_id, "connector": "api", "label": connector.strip().lower(),
+            return {"id": result.source_id, "connector": envelope.connector, "label": connectors.normalize_label(connector),
                     "external_id": external_id, "revision": result.revision, "revision_id": result.revision_id,
                     "ingestion_status": result.change, "processing_status": result.status,
                     "job_id": result.job_id}

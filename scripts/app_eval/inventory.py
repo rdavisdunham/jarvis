@@ -161,6 +161,11 @@ def routes():
     items = []
     modules = {f.stem: (f, ast.parse(f.read_text())) for f in sorted((ROOT / "apps/api/jarvis").glob("*.py"))}
     api_tree = modules["api"][1]
+    # Context routes are mounted on the external bot router (external_routes.py) and carry its prefix.
+    context_routes = {
+        "context.routes." + f.stem: (f, ast.parse(f.read_text()))
+        for f in sorted((ROOT / "apps/api/jarvis/context/routes").glob("*.py"))
+    }
     aliases = {}
     for node in api_tree.body:
         if isinstance(node, ast.ImportFrom) and node.module:
@@ -184,6 +189,8 @@ def routes():
                 "",
             )
             mounted[aliases.get(node.args[0].id, "")] = prefix
+    mounted.update(dict.fromkeys(context_routes, "/api/v1/external"))
+    modules.update(context_routes)
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}
         # Module-level string constants, so @router.websocket(PATH) is seen like a literal path.

@@ -11,7 +11,7 @@ AT = datetime(2026, 11, 3, 15, 0, tzinfo=UTC)
 
 
 def parse(body, fmt, **values):
-    return imports.parse(body, fmt, connector="api", external_id="recorder:m1", occurred_at=AT, **values)
+    return imports.parse(body, fmt, connector="api", external_id="m1", occurred_at=AT, **values)
 
 
 def test_plain_text_reads_speakers_stamps_and_continuations():
@@ -74,7 +74,7 @@ def test_versioned_json_envelope():
     body = {"version": 1, "external_id": "m1", "title": "Pilot", "occurred_at": AT.isoformat(),
             "segments": [{"seq": 0, "speaker_label": "Davin", "text": "Hello"}], "private_notes": "Remember X."}
     envelope = parse(json.dumps(body), "json")
-    assert envelope.connector == "api" and envelope.external_id == "recorder:m1"
+    assert envelope.connector == "api" and envelope.external_id == "m1"
     assert envelope.content_hash and envelope.private_notes == "Remember X."
 
 
