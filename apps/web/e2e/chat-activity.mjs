@@ -60,8 +60,11 @@ try{
  await recovered.getByRole("textbox").fill("Add a task to bring the packing checklist tomorrow");
  await recovered.getByRole("button",{name:"Send",exact:true}).click();
  await expect(recovered).toHaveCount(0);
- const recoveredWork=await page.evaluate(async()=>(await(await fetch("/api/v1/work")).json()).items);
- expect(recoveredWork.filter(w=>w.request==="Add a task to bring the packing checklist tomorrow")).toHaveLength(1);
+ // The draft region can disappear before the async send has committed its work item.
+ await expect.poll(async()=>page.evaluate(async()=>{
+   const work=(await(await fetch("/api/v1/work")).json()).items;
+   return work.filter(w=>w.request==="Add a task to bring the packing checklist tomorrow").length;
+ })).toBe(1);
  await makeDraft("Actually never mind, I need to think about this");
  await expect(recovered).toBeVisible();
  await recovered.getByRole("button",{name:"Discard",exact:true}).click();
