@@ -9,13 +9,16 @@ Deterministic checks per item (`check`):
 - evidence: each quote must occur verbatim in the line it cites (`validate.ground_evidence`); quotes that do not
   are dropped and listed in the item's signals, and an item left with none is rejected (`quote_not_found`);
 - owner: the owner is the speaker of a cited line (a private note's speaker is the recorder), is named in the
-  quotes, or, for implied items, is someone in the meeting (`attribution_mismatch` otherwise);
-- numbers: digits in the title appear in the cited lines and digits in the description in the meeting;
-  identifiers like `C2` and ranges like "1 to 5" count when the cited text contains them (`ungrounded_number`);
+  quotes or the private notes, or, for implied items, is someone in the meeting (`attribution_mismatch`
+  otherwise). Owners the lines cannot show stay unassigned instead: "Unknown speaker", a guess on lines without
+  a speaker, and items cited only from shorthand notes (an explicit to-do note is the recorder's);
+- numbers: every number and identifier in the title and description occurs somewhere in the meeting (lines and
+  private notes); an identifier like `C2` is one token, never the number 2 (`ungrounded_number`);
 - due: resolved as in the chunked passes; an expression not in the quotes or a wrong derivation drops the due
   date (recorded), never the item;
 - modality: hypothetical cues or explicit declines in the owner's quotes, with no clean quote beside them, reject
-  (`hypothetical`, `negated`); promise and tentative cues are signals that adjust `owner_basis` (a "promise"
+  (`hypothetical`, `negated`), as does an owner's decline or withdrawal ("scrap that") with no later commitment;
+  a condition on planned work ("if approval arrives") is not a hypothetical; promise and tentative cues are signals that adjust `owner_basis` (a "promise"
   without promise language becomes intent or implied), not rejections;
 - work finished in the meeting (`done_in_meeting`) and prior Wrong/Dismiss decisions (`prior_decision`) reject.
 
@@ -50,9 +53,12 @@ from .validate import (
     COLLECTIVE,
     COLLECTIVE_CUE,
     HYPOTHETICAL,
+    IDENTIFIER,
     PROMISE,
     QUOTE_CHARS,
+    TENS,
     TENTATIVE,
+    UNITS,
     UNKNOWN,
     SourceContext,
     _word_in,
@@ -60,7 +66,7 @@ from .validate import (
     links_for,
     normalized,
     resolve_time,
-    ungrounded_numbers,
+    ungrounded_tokens,
 )
 
 JOB = "context_actions"
@@ -68,13 +74,23 @@ WHOLE_MEETING_TOKENS = 60_000
 CHUNK_TOKENS, CONTEXT_TOKENS = 20_000, 1_000
 MAX_EVIDENCE = 8
 VERIFY_NEIGHBOURS = 2
-MERGE = 0.6  # title-word Jaccard for the same owner's duplicate across chunks
+MERGE = 0.75  # title-word Jaccard (without STOPWORDS) for the same owner's duplicate across chunks
+STOPWORDS = {"the", "and", "for", "with", "from", "into", "onto", "that", "this", "then", "their", "our", "your"}
 COMMITTING = ("stated_promise", "accepted_request")
 
 NEGATED = re.compile(
     r"\b(won't|will not|not going to|no need to|don't need to|do not need to|let's not|lets not|"
-    r"we're not|we are not|i'm not|i am not|decided against|decided not to|not doing|skip that|drop that)\b",
+    r"we're not|we are not|i'm not|i am not|decided against|decided not to|not doing|skip that|drop that|"
+    r"i can't|i cannot|i can not|not able to|unable to|no time to)\b",
     re.IGNORECASE)
+TODO_NOTE = re.compile(r"(?:^|\n)\s*(?:[-*\u2022]\s*)?(?:\[\s?\]\s*)?(?:todo|to-?do|action item|my action)s?\b|"
+                       r"\b(?:i need to|i'll|i will|i must|i have to|i've got to|remind me to|note to self)\b",
+                       re.IGNORECASE)
+WITHDRAWN = re.compile(r"\b(scrap that|scratch that|never ?mind|forget (?:it|that|about it)|cancel that|"
+                       r"on second thought|ignore that)\b", re.IGNORECASE)
+# Taking work (back) on: firmer than PROMISE, which also counts a bare "yes", "sure" or "okay".
+RECOMMIT = re.compile(r"\b(i'll|i will|i can(?!'t|not| not)|i'm going to|i am going to|let me|happy to|will do|"
+                      r"on it|i've got (?:it|this)|leave it with me|i'll take|i'll handle)\b", re.IGNORECASE)
 NAMED_PROMISE = r"\b{}\b\s*(?:'ll|will|is going to|can|agreed to|to)\b"
 
 
@@ -253,14 +269,15 @@ def resolve(name: str | None, meeting: Meeting) -> EntityRef | None:
     return EntityRef(entity_type="actor", mention=mention)
 
 
-def _owner_quotes(owner: str | None, evidence: list[EvidenceRef], meeting: Meeting) -> list[str]:
+def _owner_evidence(owner: str | None, evidence: list[EvidenceRef], meeting: Meeting) -> list[EvidenceRef]:
+    """The cited lines the owner said (a private note is the recorder's)."""
     if not owner:
         return []
     key = owner.casefold().strip()
     if key in UNKNOWN:  # the unattributed lines
-        return [e.quote.translate(QUOTE_CHARS) for e in evidence if meeting.speaker(e.segment_seq) is None]
+        return [e for e in evidence if meeting.speaker(e.segment_seq) is None]
     if key in COLLECTIVE:
-        return [e.quote.translate(QUOTE_CHARS) for e in evidence if COLLECTIVE_CUE.search(e.quote)]
+        return [e for e in evidence if COLLECTIVE_CUE.search(e.quote)]
     names = _names(owner, meeting)
     firsts = _first(names)
     out = []
@@ -268,8 +285,26 @@ def _owner_quotes(owner: str | None, evidence: list[EvidenceRef], meeting: Meeti
         speaker = (meeting.speaker(e.segment_seq) or "").casefold()
         spoken = _names(speaker, meeting) if speaker else set()
         if spoken & names or _first(spoken) & firsts:
-            out.append(e.quote.translate(QUOTE_CHARS))
+            out.append(e)
     return out
+
+
+def _owner_quotes(owner: str | None, evidence: list[EvidenceRef], meeting: Meeting) -> list[str]:
+    return [e.quote.translate(QUOTE_CHARS) for e in _owner_evidence(owner, evidence, meeting)]
+
+
+def _same_person(a: str, b: str, meeting: Meeting) -> bool:
+    x, y = _names(a, meeting), _names(b, meeting)
+    return bool(x & y or _first(x) & _first(y))
+
+
+def _taken_back(owned: list[EvidenceRef]) -> bool:
+    """The owner's last word on it declines or withdraws ("No, I can't this week", "actually, scrap that") with no
+    later commitment; a bare "yes" about something else does not take it back up."""
+    said = sorted((e.segment_seq, e.quote.translate(QUOTE_CHARS)) for e in owned)
+    declined = [seq for seq, q in said if (NEGATED.search(q) or WITHDRAWN.search(q)) and not RECOMMIT.search(q)]
+    committed = [seq for seq, q in said if RECOMMIT.search(q)]
+    return bool(declined) and (not committed or max(declined) > max(committed))
 
 
 def _unattributed(evidence: list[EvidenceRef], meeting: Meeting) -> list[str]:
@@ -352,12 +387,25 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         # Unseparated speakers: the lines don't show who spoke and nothing names the model's owner, so it
         # stays unassigned (never guessed as the recorder) rather than dropped.
         owner, unassigned = None, {"owner_unverified": owner[:300]}
-    owner_quotes = _owner_quotes(owner, evidence, meeting)
+    if owner and not any(meeting.ctx.segments[e.segment_seq].kind == "transcript" for e in evidence):
+        # Only the recorder's shorthand notes: they assign nothing ("Cynthia annotation admin") unless a note is
+        # an explicit personal to-do ("todo: send Yvette the deck", "I need to..."), which is the recorder's.
+        notes = " ".join(meeting.ctx.segments[seq].text for seq in seqs)
+        if TODO_NOTE.search(notes) and meeting.recorder:
+            if not _same_person(owner, meeting.recorder, meeting):
+                unassigned = {"owner_from_note": owner[:300]}
+            owner = meeting.recorder
+        else:
+            owner, unassigned = None, {"note_only": owner[:300]}
+    owned = _owner_evidence(owner, evidence, meeting)
+    owner_quotes = [e.quote.translate(QUOTE_CHARS) for e in owned]
     primary = owner_quotes or [e.quote.translate(QUOTE_CHARS) for e in evidence]
     if any(HYPOTHETICAL.search(q) for q in primary) and not any(not HYPOTHETICAL.search(q) for q in primary):
         return rejection("hypothetical", "hypothetical cue in every quote", title, seqs)
     if any(NEGATED.search(q) for q in primary) and not any(not NEGATED.search(q) for q in primary):
         return rejection("negated", "declined or ruled out in every quote", title, seqs)
+    if item.owner_basis != "implied_by_discussion" and _taken_back(owned):
+        return rejection("negated", "the owner declined or withdrew it after", title, seqs)
     if owner and not _attributed(owner, item.owner_basis, evidence, meeting):
         return rejection("attribution_mismatch", owner, title, seqs)
 
@@ -369,13 +417,11 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
     if not code:
         due = bound
     derived = [due.at.astimezone(meeting.ctx.zone)] if due else []
-    cited_text = " ".join(meeting.ctx.segments[s].text for s in seqs)
-    if missing := ungrounded_numbers(title, cited_text, derived):
-        return rejection("ungrounded_number", "title: " + ", ".join(sorted(map(str, missing))), title, seqs)
-    everything = " ".join(s.text for s in meeting.request.segments)
+    everything = " ".join(s.text for s in meeting.request.segments)  # transcript and private notes
     description = " ".join(item.description.split())[:5000]
-    if missing := ungrounded_numbers(description, everything, derived):
-        return rejection("ungrounded_number", "description: " + ", ".join(sorted(map(str, missing))), title, seqs)
+    for field_name, text in (("title", title), ("description", description)):
+        if missing := ungrounded_tokens(text, everything, derived):
+            return rejection("ungrounded_number", f"{field_name}: " + ", ".join(missing), title, seqs)
     if normalized(title) in meeting.ctx.blocked:
         return rejection("prior_decision", "dismissed or marked wrong before", title, seqs)
 
@@ -412,18 +458,36 @@ def commitment_statement(owner: str, title: str, due: TimeBound | None) -> str:
 
 
 def _words(title: str) -> set[str]:
-    return {w for w in normalized(title).split() if len(w) > 2}
+    """Title words for near-matching: words over two letters, plus identifiers (C2, v2: anything with a digit)
+    and short uppercase words (QA, UI), which tell otherwise equal titles apart."""
+    tokens = re.findall(r"[A-Za-z0-9]+", title.translate(QUOTE_CHARS))
+    words = {t.casefold() for t in tokens if (len(t) > 2 and t.casefold() not in STOPWORDS)
+             or any(c.isdigit() for c in t) or (len(t) == 2 and t.isupper())}
+    return {str(UNITS.get(w, TENS.get(w, w))) for w in words}  # "fifty" and "50" are one word
+
+
+def _distinct(a: ActionDraft, b: ActionDraft) -> bool:
+    """Near-equal titles that are still separate deliverables: different identifiers (C2 vs C3), different
+    recipients, or two different due dates."""
+    ids = [{m.casefold() for m in IDENTIFIER.findall(d.title)} for d in (a, b)]
+    recipients = [(d.recipient or "").casefold().strip() for d in (a, b)]
+    return (ids[0] != ids[1] or (all(recipients) and recipients[0] != recipients[1])
+            or (a.due is not None and b.due is not None and a.due.at != b.due.at))
 
 
 def merge(drafts: list[ActionDraft]) -> tuple[list[ActionDraft], list[dict]]:
-    """One item per deliverable: the same owner's items with near-equal titles fold their evidence together."""
+    """One item per deliverable: the same owner's items with near-equal titles fold their evidence together,
+    unless `_distinct` tells them apart."""
     def who(d: ActionDraft) -> str:
         return (d.responsible[0].entity_id if d.responsible else None) or (d.owner or "").casefold()
 
     def same(a: ActionDraft, b: ActionDraft) -> bool:
         x, y = _words(a.title), _words(b.title)
         near = bool(x and y) and len(x & y) / len(x | y) >= MERGE
-        return who(a) == who(b) and a.kind == b.kind and (normalized(a.title) == normalized(b.title) or near)
+        # An unassigned copy of an owned item (a chunk that saw only the note) joins it when they share a line.
+        owners = who(a) == who(b) or ((not a.owner or not b.owner) and bool(set(a.seqs) & set(b.seqs)))
+        return (owners and a.kind == b.kind and (normalized(a.title) == normalized(b.title) or near)
+                and not _distinct(a, b))
 
     kept: list[ActionDraft] = []
     rejected = []
@@ -432,6 +496,8 @@ def merge(drafts: list[ActionDraft]) -> tuple[list[ActionDraft], list[dict]]:
         if twin is None:
             kept.append(draft)
             continue
+        if twin.owner is None and draft.owner:  # keep the owned one, fold the unassigned copy into it
+            kept[kept.index(twin)], twin, draft = draft, draft, twin
         seen = {(e.segment_seq, e.char_start) for e in twin.evidence}
         twin.evidence += [e for e in draft.evidence if (e.segment_seq, e.char_start) not in seen][
             :max(0, MAX_EVIDENCE - len(twin.evidence))]

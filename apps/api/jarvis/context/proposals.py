@@ -19,8 +19,9 @@ Matching existing work (similarity never authorizes mutation):
 2. reversible candidates: an open task whose title shares most content words becomes an unchecked link proposal.
 
 Recommendation (plan section 7 table): a clear unfinished action of the user's own with no match is a checked
-`create`, unless the action pass marked it `implied_by_discussion` ("Implied by the discussion", unchecked; the
-basis comes from the extract run's `diagnostics["actions"]["items"]` by action index); someone else's work an
+`create`, unless the action pass marked it `implied_by_discussion` ("Implied by the discussion", unchecked) or its
+checker did not confirm it (unchecked; basis and `verified` come from the extract run's
+`diagnostics["actions"]["items"]` by action index); someone else's work an
 unchecked "Waiting on <name>" `create`; unclear ownership an unchecked `create` with its reason; covered work a
 `link`;
 changed existing work (due date or assignee differ from the task) an unchecked `update` with `before` and `after`;
@@ -138,6 +139,7 @@ class Draft:
     reason: str = ""
     preselected: bool = False
     basis: str | None = None  # the action pass's owner_basis; None for older runs and bare commitments
+    verified: bool | None = None  # the action pass's checker confirmed the item (None: it did not answer)
 
     @property
     def responsible_key(self) -> str:
@@ -265,7 +267,8 @@ def _drafts(db, owner: str, source: ContextSource, revision: ContextSourceRevisi
             collective=bool(mention) and mention.casefold().strip() in views.COLLECTIVE, due=_local_date(due_at, tz),
             due_at=due_at, project_id=project_of(rows), assertion_ids=[r.id for r in rows], evidence=evidence,
             target=target, match="stable" if target else None,
-            work=f"task:{target}" if target and action.kind in ("update", "link") else None, basis=item.get("basis")))
+            work=f"task:{target}" if target and action.kind in ("update", "link") else None, basis=item.get("basis"),
+            verified=item.get("verified")))
     for row in live.values():
         if row.id in covered or row.kind != "commitment" or not usable(row):
             continue
@@ -336,6 +339,7 @@ MINE = {
     "assigned_by_other": "This was handed to you in the meeting, and no task covers it yet.",
 }
 IMPLIED = "Implied by the discussion. Check it if it is yours to do."
+UNCONFIRMED = "The checker did not confirm this one. Check it if it is yours."
 
 
 def _name(db, owner: str, draft: Draft) -> str:
@@ -375,9 +379,11 @@ def _recommend(db, owner: str, draft: Draft, me: str | None) -> Draft:
     if draft.collective or (unclear and not draft.responsible):
         draft.reason = "Who owns this is unclear."
     elif draft.responsible and draft.responsible == me:
-        draft.preselected = draft.basis != "implied_by_discussion"
-        draft.reason = IMPLIED if draft.basis == "implied_by_discussion" else MINE.get(draft.basis or "",
-                                                                                     MINE["stated_promise"])
+        # Action-pass items are checked only when the checker confirmed them; older runs carry no basis.
+        unconfirmed = draft.basis is not None and draft.verified is not True
+        draft.preselected = draft.basis != "implied_by_discussion" and not unconfirmed
+        draft.reason = IMPLIED if draft.basis == "implied_by_discussion" else UNCONFIRMED if unconfirmed else \
+            MINE.get(draft.basis or "", MINE["stated_promise"])
     else:
         draft.reason = f"Waiting on {_name(db, owner, draft)}. Track it only if you need to."
     return draft
@@ -529,11 +535,11 @@ def _upsert(db, owner: str, source: ContextSource, revision: ContextSourceRevisi
     return counts, used
 
 
-def _bases(run: ContextRun | None) -> dict[int, str]:
-    """action index -> owner_basis from the extract run's action-pass diagnostics."""
+def _bases(run: ContextRun | None) -> dict[int, dict]:
+    """action index -> {basis, verified} from the extract run's action-pass diagnostics."""
     result = ((run.stage_results or {}).get("result") or {}) if run else {}
     items = ((result.get("diagnostics") or {}).get("actions") or {}).get("items") or []
-    return {i["action_index"]: i["owner_basis"] for i in items
+    return {i["action_index"]: {"basis": i["owner_basis"], "verified": i.get("verified")} for i in items
             if isinstance(i.get("action_index"), int) and i.get("owner_basis")}
 
 
@@ -549,7 +555,8 @@ def generate(db, owner: str, source_id: str, revision_id: str, *, complete: bool
         ContextRun.status.in_(("succeeded", "partial"))).order_by(ContextRun.finished_at.desc().nulls_last(),
                                                                  ContextRun.created_at.desc()).limit(1))
     actions = list((run.stage_results or {}).get("actions") or []) if run else []
-    actions = [{**item, "basis": basis} if (basis := _bases(run).get(i)) else item for i, item in enumerate(actions)]
+    bases = _bases(run)
+    actions = [{**item, **bases.get(i, {})} for i, item in enumerate(actions)]
     if complete is None:
         complete = run is not None and run.status == "succeeded"
     me = views.me(db, owner)
