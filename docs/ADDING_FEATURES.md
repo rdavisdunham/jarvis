@@ -58,7 +58,7 @@ Web (`apps/web/src/`):
 
 - [ ] `types.ts` `View` union.
 - [ ] `App.tsx` `nav` (sidebar; `tab: true` also puts it in the phone `tabbar`) or a separate entry
-      like `remoteaNav` when it is gated; `titles: Record<View, string>` (the compiler enforces this
+      like `remoteaNav` (a preference) or `meetingsNav` (shown once `context-api.ts` `meetingsAvailable` answers) when it is gated; `titles: Record<View, string>` (the compiler enforces this
       one); the page body (`{view === "…" && …}`); and the `page-search` exclusion list near
       `className="page-search"` if the page has no search.
 - [ ] `task-presets.ts` `initialView`: the `?view=` deep-link allowlist. Not type-checked; a missing
@@ -69,12 +69,16 @@ Web (`apps/web/src/`):
       fix-remotea-wiring branch.
 - [ ] Lazy chunk: large pages go in `viewChunks` with `lazy()` + `<Suspense>` (as `Remotea` does).
 - [ ] Extra deep-link parameters (for example `?view=remotea&run=<id>`) are parsed inside the page
-      (`remotea-model.ts` `linkedRun`, validated as a UUID). The URL sync block in `App.tsx`
+      (`remotea-model.ts` `linkedRun`, validated as a UUID), or in `App.tsx` state when the shell owns them
+      (`?view=meetings&source=<id>` and `?view=person&actor=<id>`: `context-model.ts` `linkedId` into
+      `meetingSource`/`personActor`, which are also in the `navigation` snapshot and `restore` so back/forward
+      returns to the same meeting). The URL sync block in `App.tsx`
       (`navigationUrl.searchParams…`) sets/deletes only the parameters it knows; add yours there if
       back/forward should preserve it. In-app paths to the same place (a task row's Run, Dani's
       `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does:
       it opens the run in the shell's side panel (`RunPanel.tsx`, state in `remotea-context.tsx`) on
-      whatever page is open; `?run=` is kept in the URL by that same sync block.
+      whatever page is open; `?run=` is kept in the URL by that same sync block. Meetings and people open
+      through `App.tsx` `openMeeting(source)` and `openPerson(actor)`.
 - [ ] If Dani may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
       list and an `else if (action.view === "…")` that fetches the record first) and the model map in
       `tools.py` `call_tool` (below).
@@ -107,8 +111,16 @@ Backend (`apps/api/jarvis/`):
 - [ ] If the page has its own settings section, see section 8.
 - [ ] Personal-only pages: add the API prefix to `access.py` `PERSONAL_PATHS` (as `/api/v1/remotea`).
 
+Example: the Meetings and Person pages (context platform D2) touched `types.ts`, `App.tsx` (gated
+`meetingsNav`, `titles`, both page bodies, the `page-search` exclusion, the `meetings` lazy chunk shared by
+`Meetings` and the `PersonPage` placeholder, the URL sync for `source`/`actor`), `task-presets.ts`,
+`site-actions.ts`, `ui_control.py` and `ui_contracts.py`; nothing in `tools.py` (no `entity_id` support yet).
+The page stylesheet is `context/meetings.css`; its data comes only from `context/context-api.ts`
+(`test_meeting_review_reads_only_the_context_api`).
+
 Tests: `tests/test_drift_guards.py` (`test_web_pages_match_backend_views`,
-`test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`),
+`test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`,
+`test_meeting_and_person_deep_links_survive_navigation`),
 `tests/test_ui_control.py` (`test_every_web_view_is_a_valid_device_context`,
 `test_ui_show_opens_remotea_and_one_of_your_runs`), `apps/web/src/site-actions.test.ts`,
 `apps/web/src/calendar-tasks.test.ts` (`initialView`).
@@ -503,6 +515,9 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | Test | Asserts |
 |---|---|
 | `test_web_pages_match_backend_views` | `types.ts` `View` == `ui_control.View` == `ui_contracts.VIEWS` == `task-presets.ts` `initialView` list |
+| `test_meeting_review_reads_only_the_context_api` | `Meetings.tsx`, `MeetingReview.tsx` and `context-model.ts` never fetch; `context-api.ts` calls only `/api/v1/context/...` |
+| `test_meeting_types_match_the_context_schema` | `context-model.ts` `SourceStatus`, `Coverage`, `LinkStatus`, `ProposalKind`, `Disposition` == `context/schema.py` |
+| `test_meeting_and_person_deep_links_survive_navigation` | `App.tsx` reads `?source=`/`?actor=` with `linkedId` and its URL sync keeps them on their pages |
 | `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` == `ui_show`/`ui_search`/`ui_workspace` enums == `VIEWS`; `ui_filter` ⊆ `VIEWS` |
 | `test_ui_show_opens_every_page_in_its_enum` | `call_tool`'s `ui_show` branch checks the tool's enum (no copy) and opens every page in it |
 | `test_push_and_in_app_notifications_open_the_same_place` | `worker.notification_url` gives each `notice-targets.json` row's URL, the URL and the in-app destination agree, every created `target.view` has a row, and `App.tsx` Open calls `noticeDestination` (`notice-target.test.ts` checks the web side on the same rows) |
