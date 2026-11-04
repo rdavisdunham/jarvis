@@ -10,7 +10,7 @@ mounts it with `app.include_router(owner_router)`.
 
 from fastapi import APIRouter
 
-from . import admin, context, owner, settings, sources
+from . import admin, context, owner, people, settings, sources
 
 router = APIRouter()
 router.include_router(sources.router)
@@ -20,3 +20,4 @@ owner_router = APIRouter(prefix="/api/v1/context")
 owner_router.include_router(settings.router)
 owner_router.include_router(admin.router)
 owner_router.include_router(owner.router)
+owner_router.include_router(people.router)

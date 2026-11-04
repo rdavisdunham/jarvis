@@ -84,3 +84,52 @@ export const changed = (sourceId: string, assertionId: string, expectedRevision:
   write(review(sourceId, "changed"), { assertion_id: assertionId, expected_revision: expectedRevision, statement, effective_at: effective });
 export const speaker = (sourceId: string, linkId: string, expectedRevision: number, action: "confirm" | "reject" | "undo", decisionId?: string | null) =>
   write(review(sourceId, "speakers"), { link_id: linkId, expected_revision: expectedRevision, action, ...(decisionId ? { decision_id: decisionId } : {}) });
+
+// ---------------------------------------------------------------- person pages (D4)
+
+import type { Brief } from "./context-model";
+
+export type PersonCitation = { source_id: string; source_title: string | null; occurred_at: string | null; segment: number; speaker: string | null; quote: string };
+export type PersonIdentity = { namespace: string; value: string; status: string };
+export type PersonTask = { id: string; revision: number; title: string; status: string; due_date: string | null; completed_at: string | null };
+export type PersonView = {
+  actor: { id: string; name: string; kind: string; archived: boolean; revision: number; is_me: boolean };
+  identities: (PersonIdentity & { id: string; source_scope: string | null })[];
+  context: { assertion_id: string; revision: number; kind: string; statement: string; lifecycle: string; inferred: boolean;
+    modality: string; valid_from: string | null; citation: PersonCitation }[];
+  projects: { project_id: string; name: string; context_items: number; tasks: number }[];
+  tasks: PersonTask[];
+  meetings: { source_id: string; title: string | null; occurred_at: string | null }[];
+  links_to_review: { link_id: string; revision: number; mention: string | null; status: string; role: string | null;
+    assertion_id: string | null; score: number | null; statement: string | null }[];
+  merges: { merge_id: string; winner_actor_id: string; loser_actor_id: string; winner_name: string | null; loser_name: string | null;
+    undone_at: string | null; created_at: string | null }[];
+  merge_candidates: { actor_id: string; name: string | null; reason: string; identities: PersonIdentity[] }[];
+  gaps: string[];
+};
+export type LoopParty = { actor_id: string | null; name: string | null; is_me: boolean; resolved: boolean; collective: boolean };
+export type OpenLoop = {
+  assertion_id: string; revision: number; statement: string; bucket: "own" | "waiting_for" | "between_others" | "collective";
+  responsible: LoopParty[]; recipient: { actor_id: string; name: string | null; is_me: boolean } | null; due_at: string | null;
+  basis: "stated" | "inferred"; task_state: string; tasks?: PersonTask[]; citation: PersonCitation;
+};
+export type PersonBrief = Brief & { stale: boolean; built_at: string | null; notice?: string | null };
+export type PersonChoice = { id: string; name: string; is_me: boolean; identities: PersonIdentity[] };
+export type PersonResult = { person: PersonView };
+
+const people = (actorId: string, action = "") => `${BASE}/people/${id(actorId)}${action}`;
+export const person = (actorId: string) => api<PersonView>(people(actorId));
+export const personBrief = (actorId: string) =>
+  post<PersonBrief>(`${BASE}/brief`, { entity: { entity_type: "actor", entity_id: actorId } });
+export const personLoops = (actorId: string) =>
+  post<{ items: OpenLoop[]; gaps: string[] }>(`${BASE}/open-loops`, { entity: { entity_type: "actor", entity_id: actorId } });
+export const findPeople = (q: string) => api<{ items: PersonChoice[] }>(`${BASE}/people?${new URLSearchParams({ q, limit: "10" })}`);
+
+/** Identity corrections: human decisions, each with the client's command ID (reused on a retry). */
+const personWrite = async (path: string, body: Record<string, unknown>) => (await write(path, body)) as PersonResult;
+export const mergePeople = (actorId: string, winnerId: string, loserId: string) =>
+  personWrite(people(actorId, "/merge"), { winner_actor_id: winnerId, loser_actor_id: loserId });
+export const notSamePerson = (actorId: string, otherId: string) => personWrite(people(actorId, "/not-same"), { other_actor_id: otherId });
+export const unmergePeople = (actorId: string, mergeId: string) => personWrite(people(actorId, "/unmerge"), { merge_id: mergeId });
+export const settleLink = (actorId: string, linkId: string, expectedRevision: number, action: "confirm" | "reject") =>
+  personWrite(people(actorId, `/links/${id(linkId)}`), { action, expected_revision: expectedRevision });
