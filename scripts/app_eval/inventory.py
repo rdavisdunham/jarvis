@@ -79,6 +79,9 @@ def owner(name):
 
 
 def route_owner(path, source):
+    if path.startswith("/api/v1/context/"):
+        # Meeting context session routes; a dedicated eval feature arrives with the context docs package.
+        return "operations" if "/admin" in path else "privacy"
     if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
     if "/onboarding" in path:return "onboarding"
@@ -189,7 +192,16 @@ def routes():
                 "",
             )
             mounted[aliases.get(node.args[0].id, "")] = prefix
-    mounted.update(dict.fromkeys(context_routes, "/api/v1/external"))
+    # Modules included into owner_router are session routes under /api/v1/context; the rest ride on external.
+    owner_modules = {
+        "context.routes." + node.args[0].value.id
+        for node in ast.walk(ast.parse((ROOT / "apps/api/jarvis/context/routes/__init__.py").read_text()))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "include_router" and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "owner_router" and node.args and isinstance(node.args[0], ast.Attribute)
+        and isinstance(node.args[0].value, ast.Name)
+    }
+    mounted.update({m: "/api/v1/context" if m in owner_modules else "/api/v1/external" for m in context_routes})
     modules.update(context_routes)
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}

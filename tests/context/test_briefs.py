@@ -208,39 +208,63 @@ class Canned:
         return self.sections(request)
 
 
-def test_synthesis_is_grounded_upgrades_once_and_failures_keep_deterministic_sections():
+def test_split_synthesis_holds_no_session_grounds_claims_and_upgrades_once():
     with session_scope() as db:
         w = People(db)
-        made = pilot(w)
-        deterministic = briefs.build_brief(db, OWNER, "project", w.project)
+        made = {k: r.id for k, r in pilot(w).items()}
+        project = w.project
         retracted = w.say("An old idea.", kind="decision")
         decisions.wrong(db, OWNER, retracted.id, retracted.current_version, **HUMAN)
+        retracted = retracted.id
+        deterministic = briefs.build_brief(db, OWNER, "project", project)
+        deterministic_prep = deterministic.sections[2]
 
-        def sections(request):
-            assert {a.id for a in request.assertions} == {r.id for r in made.values()}
-            assert "next_meeting_prep" not in request.brief.sections
-            return [BriefSection(name="current_state_and_why", claims=[
-                BriefClaim(text="The pilot runs on Postgres because it keeps one database.",
-                           assertion_ids=[made["decision"].id, made["why"].id]),
-                BriefClaim(text="Invented.", assertion_ids=["not-an-assertion"]),
-                BriefClaim(text="Revived.", assertion_ids=[retracted.id])])]
+    def sections(request):
+        assert {a.id for a in request.assertions} == set(made.values())
+        assert "next_meeting_prep" not in request.brief.sections
+        return [BriefSection(name="current_state_and_why", claims=[
+            BriefClaim(text="The pilot runs on Postgres because it keeps one database.",
+                       assertion_ids=[made["decision"], made["why"]]),
+            BriefClaim(text="Invented.", assertion_ids=["not-an-assertion"]),
+            BriefClaim(text="Revived.", assertion_ids=[retracted])])]
 
-        model = Canned(sections)
-        upgraded = briefs.build_brief(db, OWNER, "project", w.project, synthesizer=model)
+    model = Canned(sections)
+    with session_scope() as db:
+        plan = briefs.prepare_brief(db, OWNER, "project", project)
+    result, error = briefs.run_synthesis(plan, model)  # no session open
+    assert error is None and model.calls == 1
+    with session_scope() as db:
+        upgraded = briefs.commit_brief(db, OWNER, plan, result, run_id=None)
         assert (upgraded.version, upgraded.watermarks["engine"]) == (2, "synthesized")
         state = upgraded.sections[0]
         assert [c["text"] for c in state["claims"]] == ["The pilot runs on Postgres because it keeps one database."]
         assert any("did not cite surviving evidence" in g for g in state["gaps"])
-        assert upgraded.sections[2] == deterministic.sections[2]  # next meeting prep stays deterministic
-        assert briefs.build_brief(db, OWNER, "project", w.project, synthesizer=model).id == upgraded.id
-        assert briefs.build_brief(db, OWNER, "project", w.project).id == upgraded.id
-        assert model.calls == 1
+        assert upgraded.sections[2] == deterministic_prep  # next meeting prep stays deterministic
+        assert briefs.prepare_brief(db, OWNER, "project", project) is None  # already synthesized
+        assert briefs.build_brief(db, OWNER, "project", project).id == upgraded.id
+        with pytest.raises(TypeError):
+            briefs.build_brief(db, OWNER, "project", project, synthesizer=model)
 
-        w.say("A new fact.")
-        failing = Canned(error=SynthesisFailed("source_budget"))
-        fallback = briefs.build_brief(db, OWNER, "project", w.project, synthesizer=failing)
-        assert (fallback.version, fallback.watermarks["engine"]) == (3, "deterministic")
+
+def test_commit_after_inputs_changed_stores_deterministic_and_flags_resynthesis():
+    with session_scope() as db:
+        w = People(db)
+        pilot(w)
+        plan = briefs.prepare_brief(db, OWNER, "project", w.project)
+        failed, reason = briefs.run_synthesis(plan, Canned(error=SynthesisFailed("source_budget")))
+        assert (failed, reason) == (None, "source_budget")
+        fallback = briefs.commit_brief(db, OWNER, plan, failed, error=reason)
+        assert (fallback.version, fallback.watermarks["engine"]) == (1, "deterministic")
         assert fallback.watermarks["synthesis_error"] == "source_budget"
+
+        plan = briefs.prepare_brief(db, OWNER, "project", w.project)
+        assert plan is not None  # a deterministic version can still be upgraded
+        added = w.say("A new fact arrived during the model call.")
+        changed = briefs.commit_brief(db, OWNER, plan, plan.deterministic)
+        assert (changed.version, changed.watermarks["engine"]) == (2, "deterministic")
+        assert changed.watermarks["resynthesize"] is True and added.id in changed.dependencies["assertions"]
+        with pytest.raises(ValueError):
+            briefs.commit_brief(db, "someone-else", plan, None)
 
 
 def test_unknown_entities_are_refused_and_actor_briefs_include_their_commitments():

@@ -203,24 +203,32 @@ def test_ten_runs_without_new_evidence_create_nothing_and_skip_the_model():
         assert counts(db) == before and len(check.calls) == 1
 
 
-def test_the_job_takes_one_model_call_per_transaction_and_ten_jobs_change_nothing():
-    synth = Synth()
+def test_the_job_runs_one_unit_per_transaction_and_ten_jobs_change_nothing():
     with session_scope() as db:
-        w, _ = world(db)
-        project = w.project
-        briefs.build_brief(db, OWNER, "project", project, synthesizer=synth)
+        world(db)
     check = Check()
-    first = lint.perform(OWNER, reconciler=engine(check), synthesizer=synth)
-    assert (first["status"], first["contested"], len(check.calls), synth.calls) == ("succeeded", 1, 1, 2)
+    first = lint.perform(OWNER, reconciler=engine(check))
+    assert (first["status"], first["contested"], first["briefs_rebuilt"], len(check.calls)) == ("succeeded", 1, 1, 1)
     with session_scope() as db:
-        assert briefs.latest(db, OWNER, "project", project).watermarks["engine"] == "synthesized"
         before = counts(db)
+        runs = db.scalar(select(func.count()).select_from(ContextRun))
     for _ in range(10):
-        result = lint.perform(OWNER, reconciler=engine(check), synthesizer=synth)
+        result = lint.perform(OWNER, reconciler=engine(check))
         assert result["status"] == "succeeded" and not result.get("proposals_created")
     with session_scope() as db:
         assert counts(db) == before
-    assert (len(check.calls), synth.calls) == (1, 2)
+        assert db.scalar(select(func.count()).select_from(ContextRun)) == runs + 10  # one row per pass
+    assert len(check.calls) == 1
+
+
+def test_the_owner_double_engine_setting_is_honoured():
+    with session_scope() as db:
+        world(db)
+        db.add(ContextOwnerState(owner_id=OWNER, settings={"engine": "double"}))
+        db.flush()
+        result = lint.run(db, OWNER)  # no model: the double compares statements only
+        assert result["status"] == "succeeded" and result.get("contested", 0) == 0
+        assert db.scalar(select(ContextRun.engine).where(ContextRun.stage == "lint")) == "DoubleReconciler"
 
 
 def test_contradictions_that_are_not_consequential_stay_out_of_questions():
@@ -276,30 +284,37 @@ def test_dismissed_findings_stay_dismissed_and_resolved_findings_are_superseded(
 
 
 class Synth:
-    def __init__(self):
-        self.calls, self.last_cost = 0, 0.0
-
     def synthesize(self, request):
-        self.calls += 1
-        self.last_cost = 0.02
         ids = [a.id for a in request.assertions][:1]
         return [BriefSection(name=name, claims=[BriefClaim(text="Synthesized.", assertion_ids=ids)] if ids else [],
                              gaps=[] if ids else ["Nothing."]) for name in request.brief.sections]
 
 
-def test_a_synthesized_brief_is_resynthesized_only_when_its_inputs_change():
+def synthesize(db, entity_type, entity_id):
+    plan = briefs.prepare_brief(db, OWNER, entity_type, entity_id)
+    sections, error = briefs.run_synthesis(plan, Synth())
+    return briefs.commit_brief(db, OWNER, plan, sections, error=error)
+
+
+def brief_jobs(db):
+    return list(db.scalars(select(Job).where(Job.kind == "context_brief")))
+
+
+def test_a_synthesized_brief_is_left_to_one_brief_job_when_its_inputs_change():
     with session_scope() as db:
         w = People(db)
         w.say("The pilot covers 40 clinics.")
-        synth = Synth()
-        briefs.build_brief(db, OWNER, "project", w.project, synthesizer=synth)
-        lint.run(db, OWNER, reconciler=engine(Check()), synthesizer=synth)
-        assert synth.calls == 1
+        assert synthesize(db, "project", w.project).watermarks["engine"] == "synthesized"
+        lint.run(db, OWNER, reconciler=engine(Check()))
+        assert brief_jobs(db) == []  # inputs unchanged: nothing to do
         w.say("The pilot adds a second region.")
-        result = lint.run(db, OWNER, reconciler=engine(Check()), synthesizer=synth)
+        for _ in range(10):
+            result = lint.run(db, OWNER, reconciler=engine(Check()))
+            assert result.get("briefs_rebuilt", 0) == 0
+        jobs = brief_jobs(db)
+        assert [j.payload for j in jobs] == [{"entity_type": "project", "entity_id": w.project}]
         latest = briefs.latest(db, OWNER, "project", w.project)
-        assert (synth.calls, latest.version, latest.watermarks["engine"]) == (2, 2, "synthesized")
-        assert result["spent_usd"] == pytest.approx(0.02)
+        assert (latest.version, latest.watermarks["engine"]) == (1, "synthesized")  # lint never downgrades it
 
 
 # ---------------------------------------------------------------- budget and resumption
@@ -361,9 +376,9 @@ def test_a_pass_stops_when_the_owner_is_paused_or_the_epoch_moves(monkeypatch):
         db.flush()
         real = lint._neighbourhood
 
-        def bump(db, job, entity, reconciled):
+        def bump(db, job, entity):
             db.get(ContextOwnerState, OWNER).epoch += 1
-            return real(db, job, entity, reconciled)
+            return real(db, job, entity)
 
         monkeypatch.setattr(lint, "_neighbourhood", bump)
         result = lint.run(db, OWNER, reconciler=engine(Check()))

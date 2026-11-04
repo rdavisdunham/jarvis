@@ -908,6 +908,83 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/context/admin/pause",
+      "handler": "post_pause",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/resume",
+      "handler": "post_resume",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/rollback-drill",
+      "handler": "post_rollback_drill",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/admin/status",
+      "handler": "get_status",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/settings",
+      "handler": "overview",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola",
+      "handler": "granola_connect",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/context/settings/granola/{connection_id}",
+      "handler": "granola_remove",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/backfill",
+      "handler": "granola_backfill",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/sync",
+      "handler": "granola_sync_now",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/test",
+      "handler": "granola_test",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/import",
+      "handler": "import_file",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/conversations",
       "handler": "create_conversation",
       "source": "apps/api/jarvis/api.py",

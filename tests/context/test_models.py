@@ -6,7 +6,7 @@ from jarvis.context import models as m
 from jarvis.context import settings as context_settings
 from jarvis.db import session_scope
 from jarvis.domain import enqueue_job
-from jarvis.models import Base, now
+from jarvis.models import Base, Job, now
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, StatementError
 
@@ -224,8 +224,10 @@ def test_context_jobs_route_to_their_queue_and_pipeline(monkeypatch):
 
     worker.dispatch_outbox(Client())
     assert sent == {context_job: "jarvis-context", other_job: "jarvis"}
-    with pytest.raises(NotImplementedError, match="B6"):
+    with pytest.raises(KeyError):  # the real pipeline: a payload without source_id fails and will retry
         worker.perform_job(context_job)
+    with session_scope() as db:
+        assert db.get(Job, context_job).status == "retrying"
     from jarvis.context import pipeline
 
     monkeypatch.setattr(pipeline, "perform", lambda job_id: ("pipeline", job_id))

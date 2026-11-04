@@ -1,4 +1,4 @@
-"""Weekly context lint and incremental synthesis (plan_final.md sections 5 and 8).
+"""Weekly context lint and incremental brief rebuilds (plan_final.md sections 5 and 8).
 
 `due` uses the owner-local memory dream slot (`memory_review.period`: Sunday 03:00 in the owner's timezone, DST
 included) gated the same way as the memory review (`memory_learning` and `deep_sleep_enabled`), plus the context
@@ -16,17 +16,20 @@ A pass:
 3. Each pending neighbourhood, under the slot's budget: live assertions about a changed subject go through the
    Reconciler and `temporal.apply_ops`, so conflicts become contested and `decisions.question_items` asks only
    when that is consequential. Assertions the owner confirmed by hand (a Question answered "both", or Confirm) are
-   never contested or superseded again. The entity's existing brief is rebuilt; it is synthesized again only when
-   it was synthesized before and its inputs changed. A digest of the subject's assertion versions taken after
-   processing lets an unchanged neighbourhood (lint's own writes included) skip the model next time.
+   never contested or superseded again. The entity's existing brief is brought up to date without a model: a
+   deterministic brief is rebuilt in place; a synthesized one whose inputs changed (or that is stale) gets one
+   `context_brief` job, so synthesis stays with the pipeline and outside any transaction. A digest of the
+   subject's assertion versions taken after processing lets an unchanged neighbourhood (lint's own writes
+   included) skip the model next time.
 
 `run` works in the caller's transaction and never commits. With `limit=None` it does the whole pass at once.
-`perform` (the `context_lint` job) calls `run(limit=1)` in a fresh transaction per unit, so every model call
-happens before that transaction takes a lock anyone else waits on, and an interruption loses one unit at
-most: the next run resumes from `pending`.
+`perform` (the `context_lint` job) calls `run(limit=1)` in a fresh transaction per unit: a unit makes at most one
+model call (the reconciler), before it takes any lock anyone else waits on, and an interruption loses one unit
+at most: the next run resumes from `pending`. The reconciler is the native one, or the double when the owner's
+settings say `"engine": "double"` (as in the pipeline).
 
 State lives in `ContextOwnerState.settings["lint"]`: `cursor` (high-water mark of the last finished pass), the
-pass in progress (`high`, `low`, `pending`, `run_id`, `split`, `checked`), `digests`, `spent`/`spent_slot` (the
+pass in progress (`high`, `low`, `pending`, `run_id`, `checked`), `digests`, `spent`/`spent_slot` (the
 slot's budget use), `completed` (slot of the last finished or budget-stopped pass) and `last` (the latest call's
 summary). A pass the budget stops marks the slot done and resumes next week.
 Ten runs without new evidence create no Questions, proposals or brief versions.
@@ -42,14 +45,15 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import array, insert
 
 from ..db import session_scope
-from ..domain import advisory, emit, preferences
+from ..domain import advisory, emit, enqueue_job, preferences
 from ..memory_review import period
-from ..models import Actor
+from ..models import Actor, Job
 from ..models import now as clock
 from . import briefs, decisions, identity, temporal, views
 from . import evidence as survival
 from . import settings as context_settings
-from .engine import Reconciler, Synthesizer
+from .doubles import DoubleReconciler
+from .engine import Reconciler
 from .models import (
     AMBIGUOUS_NAMESPACES,
     ContextActorIdentity,
@@ -64,7 +68,6 @@ from .models import (
     ContextSource,
 )
 from .native.reconcile import ALLOWANCE_USD, NativeReconciler
-from .native.synthesize import NativeSynthesizer
 from .schema import ENTITY_TYPES, EntityRef
 
 log = logging.getLogger(__name__)
@@ -72,7 +75,7 @@ log = logging.getLogger(__name__)
 CONFIG_VERSION = "lint-v1"
 DEFAULT_BUDGET_USD = 0.50  # per weekly slot; `ContextOwnerState.settings["lint_budget_usd"]` overrides
 RECONCILE_RESERVE_USD = ALLOWANCE_USD  # the native reconciler's cap per model call
-SYNTHESIS_RESERVE_USD = 0.10
+JOB_PENDING = ("queued", "dispatched", "running", "retrying")
 RECONCILE_LIMIT = 50  # changed assertions per reconcile request
 OVERLAP = timedelta(minutes=10)  # rows committed late by concurrent writers are still seen
 RECURRING_SOURCES = 2
@@ -321,11 +324,16 @@ def _brief_target(db, owner: str, entity: tuple[str, str]) -> ContextBrief | Non
     return briefs.latest(db, owner, *entity)
 
 
-def _brief_needs_model(db, owner: str, entity, brief: ContextBrief | None, at: datetime) -> bool:
-    if brief is None or brief.watermarks.get("engine") != "synthesized":
-        return False
+def _brief_outdated(db, owner: str, entity, brief: ContextBrief, at: datetime) -> bool:
     inputs = briefs.gather(db, owner, EntityRef(entity_type=entity[0], entity_id=entity[1]), at=at)
-    return brief.fingerprint != briefs.fingerprint(briefs.dependencies(inputs))
+    return brief.stale or brief.fingerprint != briefs.fingerprint(briefs.dependencies(inputs))
+
+
+def _brief_job_pending(db, owner: str, entity) -> bool:
+    return db.scalar(select(Job.id).where(
+        Job.owner_id == owner, Job.kind == "context_brief", Job.status.in_(JOB_PENDING),
+        Job.payload["entity_type"].astext == entity[0], Job.payload["entity_id"].astext == entity[1]).limit(1)) \
+        is not None
 
 
 @dataclass
@@ -335,28 +343,20 @@ class _Pass:
     low: datetime | None
     run_id: str
     reconciler: Reconciler
-    synthesizer: Synthesizer | None
     budget: _Budget
     digests: dict
     summary: Counter
-    split: bool  # one model call per unit: a synthesized rebuild after reconciling waits for the next unit
 
 
-def _neighbourhood(db, job: _Pass, entity: tuple[str, str], reconciled: bool) -> str:
-    """Process one entity: "done", "again" (reconciled; the brief needs a model call of its own) or "budget"
-    (the budget cannot cover it; nothing was changed)."""
+def _neighbourhood(db, job: _Pass, entity: tuple[str, str]) -> bool:
+    """Process one entity; False when the budget cannot cover it (nothing was changed)."""
     owner, at = job.owner, job.at
-    rows = [] if reconciled or job.digests.get(_key(entity)) == digest(db, owner, entity) else \
+    rows = [] if job.digests.get(_key(entity)) == digest(db, owner, entity) else \
         _reconcile_rows(db, owner, entity, job.low, at)
     request, work_keys = temporal.reconcile_request(db, owner, [r.id for r in rows]) if rows else (None, {})
-    brief = _brief_target(db, owner, entity)
-    synthesized = brief is not None and brief.watermarks.get("engine") == "synthesized"
-    reserve = RECONCILE_RESERVE_USD if request is not None else 0.0
-    if synthesized and (request is not None or _brief_needs_model(db, owner, entity, brief, at)):
-        reserve += SYNTHESIS_RESERVE_USD
-    if not job.budget.allows(reserve):
-        return "budget"
     if request is not None:
+        if not job.budget.allows(RECONCILE_RESERVE_USD):
+            return False
         before = getattr(job.reconciler, "calls", 0)
         ops = (job.reconciler.reconcile(request, work_keys) if isinstance(job.reconciler, NativeReconciler)
                else job.reconciler.reconcile(request))
@@ -368,19 +368,16 @@ def _neighbourhood(db, job: _Pass, entity: tuple[str, str], reconciled: bool) ->
         for name in ("contested", "merged", "shadow", "superseded", "stale"):
             job.summary["stale_ops" if name == "stale" else name] += len(applied.get(name, []))
         job.summary["reconciled"] += len(rows)
-        if synthesized and job.split:
-            return "again"
-    if brief is not None:
-        synthesizer = None
-        if synthesized:
-            synthesizer = job.synthesizer or NativeSynthesizer(budget_usd=job.budget.left())
-        built = briefs.build_brief(db, owner, *entity, synthesizer=synthesizer, run_id=job.run_id, at=at)
-        if built.version != brief.version:
-            job.summary["briefs_rebuilt"] += 1
-            if built.watermarks.get("engine") == "synthesized":
-                job.budget.spent += float(getattr(synthesizer, "last_cost", 0.0) or 0.0)
+    brief = _brief_target(db, owner, entity)
+    if brief is not None and brief.watermarks.get("engine") == "synthesized":
+        if _brief_outdated(db, owner, entity, brief, at) and not _brief_job_pending(db, owner, entity):
+            enqueue_job(db, owner, "context_brief", {"entity_type": entity[0], "entity_id": entity[1]})
+            job.summary["brief_jobs"] += 1
+    elif brief is not None:
+        built = briefs.build_brief(db, owner, *entity, run_id=job.run_id, at=at)
+        job.summary["briefs_rebuilt"] += built.version != brief.version
     job.digests[_key(entity)] = digest(db, owner, entity)
-    return "done"
+    return True
 
 
 def _queue(db, owner: str, lint: dict, since: datetime | None) -> list[tuple[str, str]]:
@@ -396,16 +393,20 @@ def _interrupted(db, owner: str, epoch: int) -> str | None:
     return "cancelled" if state.paused else "stale" if state.epoch != epoch else None
 
 
+def _engine(state: ContextOwnerState | None) -> Reconciler:
+    double = state is not None and (state.settings or {}).get("engine") == "double"
+    return DoubleReconciler() if double else NativeReconciler()
+
+
 # ---------------------------------------------------------------- run
 
 
 def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None = None,
-        reconciler: Reconciler | None = None, synthesizer: Synthesizer | None = None,
-        limit: int | None = None) -> dict:
+        reconciler: Reconciler | None = None, limit: int | None = None) -> dict:
     """Advance the owner's lint pass in the caller's transaction (never commits). `limit` bounds the units done
     (beginning a pass, the global checks, or one neighbourhood); status "more" asks for another call in a new
     transaction. `budget_usd` caps model spend per weekly slot (default: the owner's `lint_budget_usd` setting,
-    else DEFAULT_BUDGET_USD). `now` is the instant lint reasons about; the default engines are the native ones."""
+    else DEFAULT_BUDGET_USD). `now` is the instant lint reasons about."""
     at = now or clock()
     state = _state(db, owner)
     if state is not None and state.paused:
@@ -422,7 +423,7 @@ def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None
     record = db.get(ContextRun, lint["run_id"]) if lint.get("run_id") else None
     if not lint.get("high") or record is None:
         record = ContextRun(owner_id=owner, stage="lint", status="running", config_version=CONFIG_VERSION,
-                            engine="native" if reconciler is None else type(reconciler).__name__[:60], epoch=epoch,
+                            engine=type(reconciler or _engine(state)).__name__[:60], epoch=epoch,
                             decision_watermark=decisions.watermark(db, owner), started_at=clock())
         db.add(record)
         db.flush()
@@ -430,7 +431,7 @@ def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None
         high = clock()
         low = datetime.fromisoformat(lint["cursor"]) - OVERLAP if lint.get("cursor") else None
         lint |= {"high": high.isoformat(), "low": low.isoformat() if low else None, "run_id": record.id,
-                 "split": None, "checked": None, "pending": [list(e) for e in _queue(db, owner, {}, low)]}
+                 "checked": None, "pending": [list(e) for e in _queue(db, owner, {}, low)]}
         units += 1
     record.status = "running"
     if lint.get("checked") != week and (limit is None or units < limit):
@@ -442,23 +443,19 @@ def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None
         units += 1
     pending = [tuple(e) for e in lint.get("pending") or []]
     job = _Pass(owner=owner, at=at, low=datetime.fromisoformat(lint["low"]) if lint.get("low") else None,
-                run_id=record.id, reconciler=reconciler or NativeReconciler(), synthesizer=synthesizer,
-                budget=budget, digests=dict(lint.get("digests") or {}), summary=summary, split=limit is not None)
+                run_id=record.id, reconciler=reconciler or _engine(state), budget=budget,
+                digests=dict(lint.get("digests") or {}), summary=summary)
     status = None
     while pending and (limit is None or units < limit):
         if stopped := _interrupted(db, owner, epoch):
             status = stopped
             break
-        entity = pending[0]
-        outcome = _neighbourhood(db, job, entity, reconciled=lint.get("split") == _key(entity))
-        if outcome == "budget":
+        if not _neighbourhood(db, job, pending[0]):
             status, summary["budget_exhausted"] = "partial", 1
             break
         units += 1
-        lint["split"] = _key(entity) if outcome == "again" else None
-        if outcome == "done":
-            pending.pop(0)
-            summary["neighbourhoods"] += 1
+        pending.pop(0)
+        summary["neighbourhoods"] += 1
     status = status or ("succeeded" if not pending else "more")
     spent = budget.spent - already
     result = {"status": status, "run_id": record.id, "period": week, "pending": len(pending),
@@ -466,7 +463,7 @@ def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None
     lint |= {"pending": [list(e) for e in pending], "digests": job.digests, "spent": budget.spent,
              "spent_slot": week, "last": result}
     if status == "succeeded":
-        lint |= {"cursor": lint["high"], "high": None, "low": None, "run_id": None, "split": None}
+        lint |= {"cursor": lint["high"], "high": None, "low": None, "run_id": None}
     if status in ("succeeded", "partial"):
         lint["completed"] = week
     _save(db, owner, **lint)
@@ -480,16 +477,14 @@ def run(db, owner: str, *, budget_usd: float | None = None, now: datetime | None
     return result
 
 
-def perform(owner: str, *, budget_usd: float | None = None, reconciler: Reconciler | None = None,
-            synthesizer: Synthesizer | None = None) -> dict:
+def perform(owner: str, *, budget_usd: float | None = None, reconciler: Reconciler | None = None) -> dict:
     """The `context_lint` job: one transaction per unit until the pass finishes or stops. A failure marks the
     pass's run row failed and propagates; finished units stay done."""
     totals: Counter = Counter()
     while True:
         try:
             with session_scope() as db:
-                result = run(db, owner, budget_usd=budget_usd, reconciler=reconciler, synthesizer=synthesizer,
-                             limit=1)
+                result = run(db, owner, budget_usd=budget_usd, reconciler=reconciler, limit=1)
         except Exception as error:
             with session_scope() as db:
                 run_id = _lint(_state(db, owner)).get("run_id")
