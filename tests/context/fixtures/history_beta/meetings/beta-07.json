@@ -1,0 +1,72 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "beta-07",
+  "title": "Go/no-go",
+  "occurred_at": "2026-10-13T10:00:00+01:00",
+  "ended_at": "2026-10-13T10:30:00+01:00",
+  "timezone": "Europe/London",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@fernhill.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Jonas Weber",
+      "email": "jonas.weber@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Jonas Weber"
+    },
+    {
+      "name": "Sam Patel",
+      "email": "s.patel@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Sam Patel"
+    },
+    {
+      "name": "Mei Lin",
+      "email": "mei.lin@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Mei Lin"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Jonas Weber",
+      "text": "The regression plan for checkout went out on the 17th, and the full regression suite passed this morning.",
+      "start_ms": 0,
+      "end_ms": 8000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Sam Patel",
+      "text": "I sent the cohort analysis on the 24th.",
+      "start_ms": 9500,
+      "end_ms": 13500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Robin Hale",
+      "text": "Decision: we keep the analytics SDK and ship the tracking prompt.",
+      "start_ms": 15000,
+      "end_ms": 20000,
+      "attribution": "owner"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "I will send the release announcement to support on 2026-10-20.",
+      "start_ms": 21500,
+      "end_ms": 26500,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@fernhill.example",
+  "upstream_owner_name": "Robin Hale"
+}

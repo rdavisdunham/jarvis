@@ -1,0 +1,81 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "beta-01",
+  "title": "4.0 release planning",
+  "occurred_at": "2026-09-01T10:00:00+01:00",
+  "ended_at": "2026-09-01T11:00:00+01:00",
+  "timezone": "Europe/London",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@fernhill.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Sam Patel",
+      "email": "sam.patel@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Sam Patel"
+    },
+    {
+      "name": "Mei Lin",
+      "email": "mei.lin@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Mei Lin"
+    },
+    {
+      "name": "Jonas Weber",
+      "email": "jonas.weber@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Jonas Weber"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Robin Hale",
+      "text": "Let's lock the plan for the 4.0 release.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "owner"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Sam Patel",
+      "text": "Decision: the 4.0 release ships on 2026-10-14.",
+      "start_ms": 5500,
+      "end_ms": 9500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Jonas Weber",
+      "text": "Crash-free sessions are at 97.2 percent; we need 99 before release.",
+      "start_ms": 11000,
+      "end_ms": 16000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Mei Lin",
+      "text": "I'll migrate the app to the new navigation library in two weeks.",
+      "start_ms": 17500,
+      "end_ms": 22500,
+      "attribution": "other"
+    },
+    {
+      "seq": 4,
+      "speaker_label": "Sam Patel",
+      "text": "If legal blocks the tracking prompt, I'll drop the analytics SDK entirely.",
+      "start_ms": 24000,
+      "end_ms": 30000,
+      "attribution": "other"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@fernhill.example",
+  "upstream_owner_name": "Robin Hale",
+  "private_notes": "Mei is carrying both the navigation work and the on-call rotation."
+}

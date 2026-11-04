@@ -1,0 +1,109 @@
+{
+  "history": "beta",
+  "description": "Internal product team: Fernhill ships its 4.0 mobile release.",
+  "synthetic": true,
+  "owner_id": "fixture-owner",
+  "owner_actor": "beta-robin",
+  "actors": [
+    {
+      "id": "beta-robin",
+      "name": "Robin Hale",
+      "kind": "person",
+      "emails": [
+        "robin.hale@fernhill.example"
+      ],
+      "organization": "Fernhill",
+      "role": "owner, engineering manager"
+    },
+    {
+      "id": "beta-sam-pm",
+      "name": "Sam Patel",
+      "kind": "person",
+      "emails": [
+        "sam.patel@fernhill.example"
+      ],
+      "organization": "Fernhill",
+      "role": "product manager"
+    },
+    {
+      "id": "beta-sam-data",
+      "name": "Sam Patel",
+      "kind": "person",
+      "emails": [
+        "s.patel@fernhill.example"
+      ],
+      "organization": "Fernhill",
+      "role": "data analyst"
+    },
+    {
+      "id": "beta-mei",
+      "name": "Mei Lin",
+      "kind": "person",
+      "emails": [
+        "mei.lin@fernhill.example"
+      ],
+      "organization": "Fernhill",
+      "role": "iOS lead"
+    },
+    {
+      "id": "beta-jonas",
+      "name": "Jonas Weber",
+      "kind": "person",
+      "emails": [
+        "jonas.weber@fernhill.example"
+      ],
+      "organization": "Fernhill",
+      "role": "QA lead"
+    }
+  ],
+  "meetings": [
+    {
+      "key": "beta-01",
+      "file": "meetings/beta-01.json",
+      "received_at": "2026-09-01T11:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-02",
+      "file": "meetings/beta-02.json",
+      "received_at": "2026-09-08T11:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-03",
+      "file": "meetings/beta-03.json",
+      "received_at": "2026-09-15T15:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-04",
+      "file": "meetings/beta-04.json",
+      "received_at": "2026-09-22T11:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-05",
+      "file": "meetings/beta-05.json",
+      "received_at": "2026-10-07T09:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-06",
+      "file": "meetings/beta-06.json",
+      "received_at": "2026-10-06T11:00:00+01:00",
+      "deleted_at": "2026-10-08T09:00:00+01:00"
+    },
+    {
+      "key": "beta-07",
+      "file": "meetings/beta-07.json",
+      "received_at": "2026-10-13T11:00:00+01:00",
+      "deleted_at": null
+    },
+    {
+      "key": "beta-08",
+      "file": "meetings/beta-08.json",
+      "received_at": "2026-10-27T11:00:00+00:00",
+      "deleted_at": null
+    }
+  ]
+}

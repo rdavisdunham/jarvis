@@ -1,0 +1,599 @@
+{
+  "history": "alpha",
+  "label_version": 1,
+  "owner_actor": "alpha-robin",
+  "note": "Synthetic expected outcomes. Every label stays verified=false until a human adjudicates it; only verified labels count toward release scoring.",
+  "speakers": {
+    "alpha-02": {
+      "Speaker 1": "alpha-robin",
+      "Speaker 2": "alpha-alex-studio",
+      "Speaker 3": "alpha-priya"
+    },
+    "alpha-05": {
+      "Speaker 1": "alpha-robin",
+      "Speaker 2": "alpha-tomas",
+      "Speaker 3": "alpha-alex-larkspur"
+    }
+  },
+  "assertions": [
+    {
+      "id": "a01-fact-clinics",
+      "kind": "fact",
+      "statement": "The portal must serve 14 clinics at launch.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "The portal needs to serve 14 clinics at launch"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 14,
+          "unit": "clinics"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a01-dec-azure",
+      "kind": "decision",
+      "statement": "Host the portal on Azure.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "Decision: we host the portal on Azure"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a01-rat-azure",
+      "kind": "rationale",
+      "statement": "Azure was chosen because Larkspur already has a Microsoft agreement.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "because Larkspur already has a Microsoft agreement"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-sow",
+      "kind": "commitment",
+      "statement": "Robin sends Larkspur the statement of work.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "I'll send the statement of work in two weeks."
+        }
+      ],
+      "responsible": [
+        "alpha-robin"
+      ],
+      "due": "2026-08-18",
+      "due_expression": "in two weeks",
+      "fulfilled": {
+        "meeting": "alpha-03",
+        "quote": "I sent the statement of work this morning",
+        "at": "2026-08-18"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-clinic-list",
+      "kind": "commitment",
+      "statement": "Priya shares the clinic list.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "Action: Priya to share the clinic list by 2026-08-07."
+        }
+      ],
+      "responsible": [
+        "alpha-priya"
+      ],
+      "due": "2026-08-07",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "alpha-02",
+        "quote": "I shared the clinic list last Thursday",
+        "at": "2026-08-06"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a01-fact-retainer",
+      "kind": "fact",
+      "statement": "The monthly retainer is 18,500 dollars.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "the monthly retainer is 18,500 dollars"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 18500,
+          "unit": "USD per month"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a01-fact-board",
+      "kind": "fact",
+      "statement": "Alex Chen (Larkspur) seemed worried about the board vote.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "Alex seemed worried about the board vote."
+        }
+      ],
+      "segment_kind": "private_note",
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-azure-credits",
+      "kind": "commitment",
+      "statement": "Robin asks Tomas whether the Azure credits cover staging.",
+      "meeting": "alpha-01",
+      "evidence": [
+        {
+          "meeting": "alpha-01",
+          "quote": "I'll ask Tomas whether the Azure credits cover staging."
+        }
+      ],
+      "responsible": [
+        "alpha-robin"
+      ],
+      "due": null,
+      "due_expression": null,
+      "fulfilled": null,
+      "segment_kind": "private_note",
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a02-pref-mobile",
+      "kind": "preference",
+      "statement": "Larkspur wants the portal to be mobile-first.",
+      "meeting": "alpha-02",
+      "evidence": [
+        {
+          "meeting": "alpha-02",
+          "quote": "We want the portal to be mobile-first"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-wireframes",
+      "kind": "commitment",
+      "statement": "Alex Chen (Chen Studio) delivers the first wireframes.",
+      "meeting": "alpha-02",
+      "evidence": [
+        {
+          "meeting": "alpha-02",
+          "quote": "I'll deliver the first wireframes by 2026-08-21."
+        }
+      ],
+      "responsible": [
+        "alpha-alex-studio"
+      ],
+      "due": "2026-08-21",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "alpha-05",
+        "quote": "Alex's wireframes arrived on 2026-08-20",
+        "at": "2026-08-20"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a02-risk-legacy",
+      "kind": "risk",
+      "statement": "The legacy scheduling system has no API, which puts the integration at risk.",
+      "meeting": "alpha-02",
+      "evidence": [
+        {
+          "meeting": "alpha-02",
+          "quote": "the legacy scheduling system has no API, which is a risk for the integration"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a03-dec-sign",
+      "kind": "decision",
+      "statement": "Larkspur signs the statement of work as written.",
+      "meeting": "alpha-03",
+      "evidence": [
+        {
+          "meeting": "alpha-03",
+          "quote": "Decision: Larkspur signs the statement of work as written."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a03-q-migration",
+      "kind": "open_question",
+      "statement": "Who owns the data migration from the old scheduling system?",
+      "meeting": "alpha-03",
+      "evidence": [
+        {
+          "meeting": "alpha-03",
+          "quote": "Who owns the data migration from the old scheduling system?"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-staging-azure",
+      "kind": "commitment",
+      "statement": "Tomas sets up the staging environment on Azure.",
+      "meeting": "alpha-03",
+      "evidence": [
+        {
+          "meeting": "alpha-03",
+          "quote": "Action: Tomas to set up the staging environment on Azure by 2026-08-28."
+        }
+      ],
+      "responsible": [
+        "alpha-tomas"
+      ],
+      "due": "2026-08-28",
+      "due_expression": null,
+      "fulfilled": null,
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a04-dec-aws",
+      "kind": "decision",
+      "statement": "Host the portal on AWS instead of Azure.",
+      "meeting": "alpha-04",
+      "evidence": [
+        {
+          "meeting": "alpha-04",
+          "quote": "Decision: we move hosting to AWS instead of Azure"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a04-rat-aws",
+      "kind": "rationale",
+      "statement": "Hosting moved to AWS because the Microsoft agreement does not cover HIPAA workloads.",
+      "meeting": "alpha-04",
+      "evidence": [
+        {
+          "meeting": "alpha-04",
+          "quote": "because the Microsoft agreement does not cover HIPAA workloads"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-staging-aws",
+      "kind": "commitment",
+      "statement": "Tomas redoes the staging setup on AWS.",
+      "meeting": "alpha-04",
+      "evidence": [
+        {
+          "meeting": "alpha-04",
+          "quote": "I'll redo the staging setup on AWS by 2026-09-04."
+        }
+      ],
+      "responsible": [
+        "alpha-tomas"
+      ],
+      "due": "2026-09-04",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "alpha-05",
+        "quote": "Staging on AWS has been up since Wednesday.",
+        "at": "2026-08-26"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a05-dec-scope",
+      "kind": "decision",
+      "statement": "The portal launches with online booking and bill pay; messaging waits for phase two.",
+      "meeting": "alpha-05",
+      "evidence": [
+        {
+          "meeting": "alpha-05",
+          "quote": "Decision: the portal launches with online booking and bill pay"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-booking-api",
+      "kind": "commitment",
+      "statement": "Tomas finishes the booking API integration.",
+      "meeting": "alpha-05",
+      "evidence": [
+        {
+          "meeting": "alpha-05",
+          "quote": "I will finish the booking API integration by 2026-09-25."
+        }
+      ],
+      "responsible": [
+        "alpha-tomas"
+      ],
+      "due": "2026-09-25",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "alpha-07",
+        "quote": "The booking integration is done; I merged it yesterday.",
+        "at": "2026-09-21"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "a06-fact-renovation",
+      "kind": "fact",
+      "statement": "Two clinics will close for renovation in October.",
+      "meeting": "alpha-06",
+      "evidence": [
+        {
+          "meeting": "alpha-06",
+          "quote": "Two clinics will close for renovation in October."
+        }
+      ],
+      "from_deleted_source": true,
+      "numbers": [
+        {
+          "value": 2,
+          "unit": "clinics"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "c-clinic-photos",
+      "kind": "commitment",
+      "statement": "Priya collects clinic photos.",
+      "meeting": "alpha-06",
+      "evidence": [
+        {
+          "meeting": "alpha-06",
+          "quote": "Action: Priya to collect clinic photos by 2026-09-18."
+        }
+      ],
+      "responsible": [
+        "alpha-priya"
+      ],
+      "due": "2026-09-18",
+      "due_expression": null,
+      "fulfilled": null,
+      "from_deleted_source": true,
+      "verified": false
+    },
+    {
+      "id": "a07-dec-launch",
+      "kind": "decision",
+      "statement": "The portal launches on 2026-10-05.",
+      "meeting": "alpha-07",
+      "evidence": [
+        {
+          "meeting": "alpha-07",
+          "quote": "Decision: the portal launches on 2026-10-05."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-training",
+      "kind": "commitment",
+      "statement": "Priya trains the front desk staff before launch.",
+      "meeting": "alpha-07",
+      "evidence": [
+        {
+          "meeting": "alpha-07",
+          "quote": "Action: Priya to train the front desk staff before launch."
+        }
+      ],
+      "responsible": [
+        "alpha-priya"
+      ],
+      "due": null,
+      "due_expression": null,
+      "fulfilled": null,
+      "note": "'before launch' is not a supported due date even though a launch date was decided",
+      "from_deleted_source": false,
+      "verified": false
+    }
+  ],
+  "changes": [
+    {
+      "id": "x-alpha-hosting",
+      "from": "a01-dec-azure",
+      "to": "a04-dec-aws",
+      "key": "decision",
+      "effective_at": "2026-08-25T15:00:00-05:00",
+      "verified": false
+    },
+    {
+      "id": "x-alpha-staging",
+      "from": "c-staging-azure",
+      "to": "c-staging-aws",
+      "key": "due_date",
+      "effective_at": "2026-08-25T15:00:00-05:00",
+      "verified": false
+    }
+  ],
+  "must_not": [
+    {
+      "id": "n-alpha-board",
+      "kind": "commitment",
+      "meeting": "alpha-01",
+      "quote": "If the board rejects the budget, I'll pause the project until January.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-alpha-survey",
+      "kind": "commitment",
+      "meeting": "alpha-02",
+      "quote": "I won't be taking on the patient survey, that's marketing's job.",
+      "reason": "negated",
+      "verified": false
+    },
+    {
+      "id": "n-alpha-sms",
+      "kind": "commitment",
+      "meeting": "alpha-05",
+      "quote": "I'll add SMS reminders if we ever get budget for Twilio.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-alpha-dashboard",
+      "kind": "commitment",
+      "meeting": "alpha-07",
+      "quote": "I'm not going to build the analytics dashboard this phase.",
+      "reason": "negated",
+      "verified": false
+    }
+  ],
+  "open_loops": [
+    {
+      "id": "l-alpha-aug15",
+      "as_of": "2026-08-15T12:00:00-05:00",
+      "expected": [
+        "c-sow",
+        "c-azure-credits",
+        "c-wireframes"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-alpha-aug25",
+      "as_of": "2026-08-25T18:00:00-05:00",
+      "expected": [
+        "c-azure-credits",
+        "c-staging-aws"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-alpha-sep30",
+      "as_of": "2026-09-30T12:00:00-05:00",
+      "expected": [
+        "c-azure-credits",
+        "c-training"
+      ],
+      "verified": false
+    }
+  ],
+  "as_of": [
+    {
+      "id": "q-alpha-host-aug",
+      "question": "Which cloud provider hosts the portal?",
+      "valid_at": "2026-08-20T12:00:00-05:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "a01-dec-azure",
+        "a04-dec-aws"
+      ],
+      "expected": "a01-dec-azure",
+      "verified": false
+    },
+    {
+      "id": "q-alpha-host-sep",
+      "question": "Which cloud provider hosts the portal?",
+      "valid_at": "2026-09-05T12:00:00-05:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "a01-dec-azure",
+        "a04-dec-aws"
+      ],
+      "expected": "a04-dec-aws",
+      "verified": false
+    },
+    {
+      "id": "q-alpha-staging-aug20",
+      "question": "When is the staging environment setup due?",
+      "valid_at": "2026-08-20T12:00:00-05:00",
+      "kinds": [
+        "commitment"
+      ],
+      "family": [
+        "c-staging-azure",
+        "c-staging-aws"
+      ],
+      "expected": "c-staging-azure",
+      "verified": false
+    },
+    {
+      "id": "q-alpha-staging-aug27",
+      "question": "When is the staging environment setup due?",
+      "valid_at": "2026-08-27T12:00:00-05:00",
+      "kinds": [
+        "commitment"
+      ],
+      "family": [
+        "c-staging-azure",
+        "c-staging-aws"
+      ],
+      "expected": "c-staging-aws",
+      "verified": false
+    }
+  ],
+  "scenarios": {
+    "decision_change": "x-alpha-hosting",
+    "fulfilled_commitment": "c-sow",
+    "shared_display_name": [
+      "alpha-alex-larkspur",
+      "alpha-alex-studio"
+    ],
+    "reused_speaker_label": {
+      "label": "Speaker 2",
+      "meetings": [
+        "alpha-02",
+        "alpha-05"
+      ]
+    },
+    "late_arrival": "alpha-04",
+    "deleted_source": "alpha-06",
+    "private_note": "c-azure-credits",
+    "number": "a01-fact-retainer",
+    "relative_date": "c-sow",
+    "hypothetical": "n-alpha-board",
+    "negated": "n-alpha-survey"
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "alpha-01",
+  "title": "Larkspur portal kickoff",
+  "occurred_at": "2026-08-04T10:00:00-05:00",
+  "ended_at": "2026-08-04T11:00:00-05:00",
+  "timezone": "America/Chicago",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@halestudio.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Alex Chen",
+      "email": "alex.chen@larkspur.example",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+    },
+    {
+      "name": "Priya Nair",
+      "email": "priya.nair@larkspur.example",
+      "role": "attendee",
+      "speaker_label": "Priya Nair"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Robin Hale",
+      "text": "Thanks for making time. Today I want to agree on scope, hosting and next steps for the patient portal.",
+      "start_ms": 0,
+      "end_ms": 8000,
+      "attribution": "owner"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "text": "The portal needs to serve 14 clinics at launch, and patients should be able to book and pay online.",
+      "start_ms": 9500,
+      "end_ms": 17500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Alex Chen",
+      "text": "Decision: we host the portal on Azure because Larkspur already has a Microsoft agreement.",
+      "start_ms": 19000,
+      "end_ms": 26000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "Good. I'll send the statement of work in two weeks.",
+      "start_ms": 27500,
+      "end_ms": 31500,
+      "attribution": "owner"
+    },
+    {
+      "seq": 4,
+      "speaker_label": "Priya Nair",
+      "text": "Action: Priya to share the clinic list by 2026-08-07.",
+      "start_ms": 33000,
+      "end_ms": 37000,
+      "attribution": "other"
+    },
+    {
+      "seq": 5,
+      "speaker_label": "Alex Chen",
+      "text": "If the board rejects the budget, I'll pause the project until January.",
+      "start_ms": 38500,
+      "end_ms": 43500,
+      "attribution": "other"
+    },
+    {
+      "seq": 6,
+      "speaker_label": "Robin Hale",
+      "text": "Understood. For the record, the monthly retainer is 18,500 dollars.",
+      "start_ms": 45000,
+      "end_ms": 50000,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@halestudio.example",
+  "upstream_owner_name": "Robin Hale",
+  "private_notes": "Alex seemed worried about the board vote.\n\nI'll ask Tomas whether the Azure credits cover staging."
+}

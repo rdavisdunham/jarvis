@@ -1,0 +1,67 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "gamma-01",
+  "title": "Quillmark discovery call",
+  "occurred_at": "2026-07-07T09:00:00-07:00",
+  "ended_at": "2026-07-07T09:45:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Jordan Ellis",
+      "email": "jordan.ellis@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Jordan Ellis"
+    },
+    {
+      "name": "Wes Okoro",
+      "email": "wes.okoro@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Wes Okoro"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Jordan Ellis",
+      "text": "List price is 64 dollars per seat per month, and you mentioned 120 seats.",
+      "start_ms": 0,
+      "end_ms": 6000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Wes Okoro",
+      "text": "I'll send the security questionnaire answers in two weeks.",
+      "start_ms": 7500,
+      "end_ms": 11500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Jordan Ellis",
+      "text": "If you sign before the end of the quarter, we could waive the onboarding fee.",
+      "start_ms": 13000,
+      "end_ms": 19000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "We'll need to see the security answers before we go further.",
+      "start_ms": 20500,
+      "end_ms": 25500,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale",
+  "private_notes": "Jordan pushed hard on a three-year term.\n\nI'll check with finance whether a three-year term is acceptable."
+}

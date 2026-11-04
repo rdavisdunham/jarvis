@@ -1,0 +1,66 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "alpha-04",
+  "title": "Hosting rethink",
+  "occurred_at": "2026-08-25T15:00:00-05:00",
+  "ended_at": "2026-08-25T15:30:00-05:00",
+  "timezone": "America/Chicago",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@halestudio.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Alex Chen",
+      "email": "alex.chen@larkspur.example",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+    },
+    {
+      "name": "Tomas Varga",
+      "email": "tomas@halestudio.example",
+      "role": "attendee",
+      "speaker_label": "Tomas Varga"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Alex Chen",
+      "text": "Our compliance team came back on hosting.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "text": "Decision: we move hosting to AWS instead of Azure, because the Microsoft agreement does not cover HIPAA workloads.",
+      "start_ms": 5500,
+      "end_ms": 14500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Tomas Varga",
+      "text": "I'll redo the staging setup on AWS by 2026-09-04.",
+      "start_ms": 16000,
+      "end_ms": 20000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "That pushes staging by a week but keeps the launch plan intact.",
+      "start_ms": 21500,
+      "end_ms": 26500,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@halestudio.example",
+  "upstream_owner_name": "Robin Hale"
+}
