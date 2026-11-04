@@ -1,5 +1,6 @@
 """The plan-scale corpus generator (evals/context/corpus.py) at a small size: deterministic, internally
-consistent deletion and lifecycle history, loadable, and searchable by the native retriever without leaks."""
+consistent deletion and lifecycle history, loadable, and searchable by the native retriever without leaks; and
+the synthetic one-hour meeting the pipeline cost run uses."""
 
 import math
 from collections import Counter, defaultdict
@@ -8,6 +9,8 @@ from itertools import pairwise
 
 import pytest
 from jarvis import memory_learning
+from jarvis.context import sources
+from jarvis.context.doubles import rule_based
 from jarvis.context.models import (
     ContextAssertion,
     ContextAssertionVersion,
@@ -19,12 +22,12 @@ from jarvis.context.models import (
     ContextSourceRevision,
 )
 from jarvis.context.native.retrieve import NativeRetriever
-from jarvis.context.schema import EntityRef, RetrieveQuery, ScopePredicate
+from jarvis.context.schema import EntityRef, ExtractRequest, RetrieveQuery, ScopePredicate
 from jarvis.db import session_scope
 from sqlalchemy import func, select
 
 from evals.context.bench import Expect
-from evals.context.corpus import CorpusSpec, generate, load, queries
+from evals.context.corpus import CorpusSpec, generate, load, meeting, queries
 
 SMALL = CorpusSpec(sources=40, segments=2_000, embedded=400, entities_per_owner=24, topics=6, seed=7,
                    deleted=0.15, revised=0.15)
@@ -124,3 +127,18 @@ def test_loads_and_retrieval_stays_inside_scope(corpus):
                 hits = retriever.retrieve(RetrieveQuery(text=q.text, scope=scope, include_raw=True))
                 assert expect.violations(q, [(h.ref_type, h.id) for h in hits], history=False) == 0
             assert retriever.retrieve(RetrieveQuery(text=q.text, scope=ScopePredicate(owner_id=q.owner)))
+
+
+def test_synthetic_meeting_is_an_hour_of_speech_with_items_the_double_extracts():
+    envelope = meeting(60)
+    assert meeting(60) == envelope and meeting(60, seed=61) != envelope
+    segments = envelope.segments
+    assert 59 <= segments[-1].end_ms / 60_000 <= 61
+    assert 8_000 <= sum(len(s.text.split()) for s in segments) <= 9_500
+    planted = sum(s.text.count("I'll ") for s in segments), sum(s.text.startswith("Decision:") for s in segments)
+    assert planted[0] >= 10 and planted[1] >= 5
+    request = ExtractRequest(owner_id="o", source_revision_id="r", occurred_at=envelope.occurred_at,
+                             timezone=envelope.timezone, participants=envelope.participants,
+                             segments=sources.build_segments(envelope))
+    found = Counter(a.kind for a in rule_based(request).assertions)
+    assert (found["commitment"], found["decision"]) == planted
