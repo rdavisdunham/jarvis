@@ -111,6 +111,8 @@ def task_home(db, owner, changes, row=None):
         if actor.archived and actor.id != getattr(row, "assignee_id", None):
             raise DomainError("INVALID_ARGUMENT", "Choose an active assignee.")
         changes["assignee_id"] = actor.id
+        if "assignee" in changes:  # an alias resolves to the actor; the task shows its display name
+            changes["assignee"] = actor.name
     return changes
 
 
@@ -262,13 +264,15 @@ def mutate(db, owner, tool, args):
     if kind == "actor" and not allow_duplicate and not row.archived and (
         action == "create" or row.name != old_name or "archived" in values
     ):
-        from .assignees import active_actors_named
+        from .assignees import name_in_use
 
-        # Display names may repeat, but only on request: a repeated name can no longer be resolved by name.
-        if any(a.id != row.id for a in active_actors_named(db, owner, row.name)):
+        # Display names may repeat, but only on request: a repeated name (or another actor's alias) can no longer
+        # be resolved by name.
+        if name_in_use(db, owner, row.name, exclude=row.id):
             raise DomainError(
                 "DUPLICATE_ACTOR_NAME",
-                "An active person or agent already has this name. Use a distinguishing name, or pass allow_duplicate=true.",
+                "An active person or agent already has this name or goes by it. Use a distinguishing name, or pass "
+                "allow_duplicate=true.",
                 409,
             )
     if kind in {"space", "area", "project"}:

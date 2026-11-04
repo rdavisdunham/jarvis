@@ -259,6 +259,10 @@ class SettingsUpdate(Args):
     agent_profile: Literal["openai", "luna", "luna-none", "gemini", "groq"] | None = None
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
+    name_aliases: list[str] | None = Field(
+        default=None, max_length=10,
+        description="Every other name the owner goes by (full name, nicknames), replacing the saved list. Used to "
+        "recognise them when assigning work by name and in meetings.")
     history_enabled: bool | None = None
     memory_learning: bool | None = None
     live_memory_updates: bool | None = None
@@ -397,6 +401,7 @@ def preferences(db, owner):
     values = {
         "agent_provider": default_provider(),
         "preferred_name": settings.owner_name,
+        "name_aliases": [],
         "history_enabled": True,
         "memory_learning": True,
         # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
@@ -1099,6 +1104,10 @@ def mutate(db, owner, tool, args, command_id):
             values["source_colors"] = {**preferences(db, owner)["source_colors"], **values["source_colors"]}
         if "timezone" in values:
             zone(values["timezone"])
+        if "name_aliases" in values:
+            from .assignees import set_own_aliases
+
+            values["name_aliases"] = set_own_aliases(db, owner, values["name_aliases"])
         if "work_windows" in values and any(any(day<0 or day>6 for day in w["days"]) for w in values["work_windows"]):raise DomainError("INVALID_ARGUMENT","Work days must be Monday through Sunday.")
         row = db.get(OwnerSettings, owner)
         if row:
