@@ -15,6 +15,9 @@ revision) in the same transaction, for `views.changes`.
   re-extracting a meeting never re-admits a superseded or retracted statement. Replaying a run adds nothing.
 - `apply_speakers` writes `native.link.resolve_speakers` results onto segments; `apply_links` writes mention links
   for assertions. Neither overwrites a human decision (confirmed or rejected rows, or rows with a decision).
+- `retire_old_revisions`, once a newer revision of a meeting is completely extracted: what only the earlier
+  revisions said loses that support and is retracted unless another source (or a human Changed) still supports
+  it (`evidence.supersede_revisions`).
 - `replace_chunks` swaps receipt's provisional chunks for the extraction chunker's.
 """
 
@@ -224,6 +227,19 @@ def apply_extraction(db, owner: str, run: ContextRun, source: ContextSource, rev
     temporal.stale_briefs(db, owner, out.attached)
     emit_assertions(db, owner, out.admitted)  # attaching evidence leaves the head version as it is
     return out
+
+
+def retire_old_revisions(db, owner: str, source_id: str, revision_id: str) -> dict:
+    """See `evidence.supersede_revisions`; emits `context.changed` for each assertion it retracts or rechains."""
+    e = ContextEvidence
+    ids = list(db.scalars(select(e.assertion_id).where(e.owner_id == owner, e.source_id == source_id,
+                                                       e.revision_id != revision_id).distinct()))
+    if not ids:
+        return {"retracted": [], "kept": [], "revalidate": [], "rechained": []}
+    before = versions(db, owner, ids)
+    result = evidence.supersede_revisions(db, owner, source_id, revision_id)
+    emit_assertions(db, owner, [*ids, *result["rechained"]], before)
+    return result
 
 
 # ---------------------------------------------------------------- entity links

@@ -225,7 +225,7 @@ def test_granola_poll_feeds_the_native_pipeline(provider, vectors, monkeypatch):
     kinds = drain()
     assert kinds[:2] == ["context_granola_sync", "context_granola_backfill"]
     assert kinds[2:7] == ["context_ingest", "context_extract", "context_link", "context_reconcile", "context_embed"]
-    assert set(kinds[7:]) == {"context_brief"} and provider.briefs  # native synthesis was asked (and refused)
+    assert set(kinds[7:]) == {"context_brief"} and provider.briefs == []  # deterministic briefs: no model call
     assert sent.count("context_detect") == 1 and "context_reconciliation" not in sent
     with session_scope() as db:
         source = db.scalar(select(m.ContextSource))

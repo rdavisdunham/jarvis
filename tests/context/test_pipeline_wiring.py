@@ -10,10 +10,11 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 from jarvis.config import get_settings
-from jarvis.context import decisions, pipeline, sources, views
+from jarvis.context import decisions, evidence, pipeline, sources, views
 from jarvis.context import models as m
 from jarvis.context.doubles import DoubleSynthesizer
 from jarvis.context.routes import admin
+from jarvis.context.schema import EvidenceRef
 from jarvis.db import session_scope
 from jarvis.domain import enqueue_job
 from jarvis.models import Actor, Event, Job
@@ -173,9 +174,15 @@ def _job_ids():
 # ---------------------------------------------------------------- briefs
 
 
+def synthesizing():
+    with session_scope() as db:
+        db.get(m.ContextOwnerState, OWNER).settings = {"engine": "double", "synthesize_briefs": True}
+
+
 def test_brief_jobs_skip_unchanged_inputs_refuse_bad_types_and_requeue_when_inputs_move(envelope, vectors,
                                                                                          monkeypatch):
     use_doubles()
+    synthesizing()
     receive(envelope)
     drain()
     with session_scope() as db:
@@ -289,3 +296,47 @@ def test_granola_jobs_take_the_settings_payloads(monkeypatch):
                                           ids["b@example.com"]: {"connection": "b@example.com", "days": None}}}
     assert results[3] == {"connection": "b@example.com", "days": 90}
     assert results[4] == {"skipped": "connection not found"}
+
+
+# ---------------------------------------------------------------- revised meetings
+
+
+def test_a_revised_meeting_retracts_what_it_no_longer_says_unless_supported_elsewhere(envelope, vectors):
+    use_doubles()
+    first = receive(envelope)
+    drain()
+    with session_scope() as db:
+        rows = {r.statement: r.id for r in db.scalars(select(m.ContextAssertion))}
+    budget, decision = rows["I'll send the revised budget by 2026-11-20."], \
+        rows["we launch the pilot on Postgres with pgvector."]
+    (checklist,) = set(rows.values()) - {budget, decision}  # Marco's action, said only in this meeting
+    # Another meeting quotes Priya's budget commitment too.
+    line = envelope.segments[3]
+    other = receive(envelope.model_copy(update={"external_id": "meeting-002", "private_notes": None,
+                                                "segments": [line.model_copy(update={"seq": 0})]}))
+    statement = "I'll send the revised budget by 2026-11-20."
+    start = line.text.index(statement)
+    with session_scope() as db:
+        evidence.attach(db, OWNER, db.get(m.ContextAssertion, budget), [EvidenceRef(
+            segment_seq=0, quote=statement, char_start=start, char_end=start + len(statement))],
+            revision_id=other.revision_id)
+    drain()
+    # Revision 2 drops Priya's budget line and Marco's action.
+    kept_lines = [s.model_copy(update={"seq": i}) for i, s in enumerate(envelope.segments[:3])]
+    revised = receive(envelope.model_copy(update={"external_revision": "rev-2", "segments": kept_lines}))
+    assert revised.source_id == first.source_id and revised.revision == 2
+    drain()
+    with session_scope() as db:
+        lifecycle = {i: db.get(m.ContextAssertion, i).lifecycle for i in (budget, decision, checklist)}
+        assert lifecycle == {budget: "current", decision: "current", checklist: "retracted"}
+        retired = runs("extract")[-1][3]["retired"]
+        assert retired["retracted"] == [checklist] and set(retired["kept"]) == {budget, decision}
+        # Old-revision support stops counting; the decision is supported by revision 2's own span.
+        spans = {(e.assertion_id, e.revision_id): (e.derivation or {}).get("superseded_by")
+                 for e in db.scalars(select(m.ContextEvidence).where(m.ContextEvidence.source_id == first.source_id))}
+        assert spans[(decision, first.revision_id)] == revised.revision_id
+        assert spans[(decision, revised.revision_id)] is None
+        head = db.get(m.ContextAssertion, checklist).current_version
+    assert (checklist, head) in events()  # views.changes sees the retraction
+    with session_scope() as db:
+        assert pipeline.apply.retire_old_revisions(db, OWNER, first.source_id, revised.revision_id)["retracted"] == []

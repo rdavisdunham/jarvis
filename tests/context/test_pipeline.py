@@ -179,9 +179,9 @@ def test_receipt_flows_through_every_stage(envelope, vectors):
                  if link.assertion_id}
         assert links == {("Priya", "responsible", "exact", priya), ("Marco", "responsible_mention", "unresolved", None)}
         assert embedding.status(db, OWNER)["unembedded_assertions"] == 0
-        # The reconcile stage queued Priya's brief; the double engine synthesizes it offline.
+        # The reconcile stage queued Priya's brief: deterministic unless the owner turns synthesis on.
         brief = db.scalar(select(m.ContextBrief))
-        assert (brief.entity_type, brief.entity_id, brief.watermarks["engine"]) == ("actor", priya, "synthesized")
+        assert (brief.entity_type, brief.entity_id, brief.watermarks["engine"]) == ("actor", priya, "deterministic")
 
 
 def test_replaying_every_job_and_redelivering_change_nothing(envelope, vectors):

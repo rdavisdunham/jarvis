@@ -445,6 +445,8 @@ def extract(work: Work) -> dict:
             _source_status(db, source_id, "awaiting_input" if "source_budget" in reasons else "partial")
             if "source_budget" not in reasons and (after := _backoff(work)):
                 extra["continue_after"] = after.isoformat()
+        else:  # complete: what only earlier revisions of this meeting said loses that support
+            extra["retired"] = apply.retire_old_revisions(db, work.owner, source_id, revision_id)
         actions = [{"action": a.model_dump(mode="json"),
                     "assertion_ids": [applied.assertion_ids[i] for i in a.assertion_indexes
                                       if applied.assertion_ids[i]]} for a in result.actions]
@@ -719,6 +721,13 @@ def granola_backfill(work: Work) -> dict:
     return _granola(work, lambda db, connection: resolve("granola").backfill(db, work.owner, connection, days))
 
 
+def synthesize_briefs(db, owner: str) -> bool:
+    """Owner setting `synthesize_briefs` (default off) turns on model-written briefs in the pipeline; otherwise
+    briefs are deterministic and cost no model call per entity per meeting."""
+    state = db.get(ContextOwnerState, owner)
+    return bool(state and (state.settings or {}).get("synthesize_briefs"))
+
+
 def synthesizer(engine: str):
     if engine == "double":
         from .doubles import DoubleSynthesizer
@@ -728,9 +737,9 @@ def synthesizer(engine: str):
 
 
 def brief(work: Work) -> dict:
-    """Prepare the brief in one transaction, synthesize with no transaction or lock held, commit in another.
-    Unchanged inputs are a no-op; inputs that changed during synthesis store the deterministic brief and enqueue
-    the job again."""
+    """Deterministic by default (`briefs.build_brief`). With `synthesize_briefs` on: prepare the brief in one
+    transaction, synthesize with no transaction or lock held, commit in another. Unchanged inputs are a no-op;
+    inputs that changed during synthesis store the deterministic brief and enqueue the job again."""
     from . import briefs
 
     entity_type, entity_id = str(work.payload["entity_type"]), str(work.payload["entity_id"])
@@ -742,6 +751,9 @@ def brief(work: Work) -> dict:
         if reason := apply.guard(db, work.owner, run):
             return _stale(db, work, run, reason)
         try:
+            if not synthesize_briefs(db, work.owner):
+                built = briefs.build_brief(db, work.owner, entity_type, entity_id, run_id=run.id)
+                return _finish(run, brief_id=built.id, version=built.version, engine="deterministic")
             plan = briefs.prepare_brief(db, work.owner, entity_type, entity_id)
         except DomainError as exc:  # not a brief entity type: retrying cannot help
             run.error = exc.code
