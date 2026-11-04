@@ -126,11 +126,19 @@ def test_mcp_header_binding_is_request_local(monkeypatch):
     assert external_mcp._run_binding.get() is None
 
 
-def test_real_mcp_transport_binds_the_run_and_saves_its_interview(durable, client):
+@pytest.mark.parametrize("reason", ["no_plan", "exited"])
+def test_real_mcp_transport_binds_the_run_and_saves_its_interview(durable, client, reason):
     from test_external_agents import key, rpc
     rid = new_run(durable)
     with session_scope() as db:
-        bound_token = coordinator.run_token(failed(db, rid))
+        run = failed(db, rid)
+        if reason == 'exited':
+            from jarvis.session_models import AgentSession
+            run.state_reason = 'exited'
+            row = db.get(AgentSession, run.session_pk)
+            row.state, row.surf, row.incarnation = 'idle', run.surf, run.incarnation + 1
+            run.incarnation = row.incarnation
+        bound_token = coordinator.run_token(run)
     _, headers = key(client, scopes=['agents:session'])
     headers = {**headers, 'X-Eridani-Run-Token': bound_token}
     response = rpc(client, headers, 'tools/call', {'name':'task_plan','arguments':{}})
@@ -145,3 +153,17 @@ def test_real_mcp_transport_binds_the_run_and_saves_its_interview(durable, clien
     assert not result.get('isError'), result
     assert result['structuredContent']['status'] == 'open'
     assert external_mcp._run_binding.get() is None
+
+
+def test_an_exited_planner_cannot_submit_until_its_host_confirms_it_alive(durable):
+    from jarvis import agent_plan
+    from jarvis.session_models import AgentSession
+    from test_agent_plan import call
+    rid = new_run(durable)
+    with session_scope() as db:
+        run = failed(db, rid)
+        run.state_reason = 'exited'
+        db.get(AgentSession, run.session_pk).state = 'exited'
+    with pytest.raises(DomainError, match='needs_you'):
+        call(agent_plan.task_interview, agent_plan.InterviewInput, rid,
+             questions=[{'id':'original','question':'Which scope?','free_text':True}])
