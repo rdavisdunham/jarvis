@@ -15,6 +15,11 @@ Revising a source (`supersede_revisions`, called once a newer revision is comple
 rule to what the meeting no longer says: evidence quoted from the source's earlier revisions stops counting
 (`derivation["superseded_by"]`, the quote kept as provenance). Statements the new revision repeats carry its own
 spans; the rest survive only on other sources or a human Changed decision, and are retracted otherwise.
+
+Such support-loss retractions are recorded with neither a decision nor a run. When live support comes back (a
+later revision says it again, or a deleted source is restored with new content), `revive` restores the assertion
+to the lifecycle it had before, with a new version. A human Wrong on it, an active durable negative matching it,
+or a retraction with any other cause (a decision, a reconcile merge) keeps it retracted.
 """
 
 from collections import defaultdict
@@ -155,6 +160,44 @@ def _retract_unsupported(db, owner: str, ids: Iterable[str], *, gone: Iterable[s
         else:
             result["kept" if status == "supported" else "revalidate"].append(row.id)
     return result, chains
+
+
+def _support_retraction(db, owner: str, row: ContextAssertion) -> str | None:
+    """The lifecycle to restore when the row was retracted only for lack of support, else None."""
+    v = ContextAssertionVersion
+    head, previous = (list(db.scalars(select(v).where(v.assertion_id == row.id).order_by(v.version.desc())
+                                      .limit(2))) + [None, None])[:2]
+    if head is None or head.lifecycle != "retracted" or head.decision_id or head.run_id:
+        return None
+    d = ContextDecision
+    wronged = db.scalar(temporal.active_decisions(owner).where(
+        d.operation == "wrong", d.target_type == "assertion", d.target_id == row.id).limit(1))
+    if wronged or temporal.negated_by(db, owner, row) is not None:
+        return None
+    restored = previous.lifecycle if previous is not None else "current"
+    return "current" if restored == "retracted" else restored
+
+
+def revive(db, owner: str, ids: Iterable[str], *, run_id: str | None = None) -> list[str]:
+    """Restore assertions among `ids` that were retracted only for lack of support and are supported again.
+    In the caller's transaction; idempotent. Returns the IDs whose head changed (revived ones and the keyed
+    chain neighbours rechained with them)."""
+    changed, chains = [], set()
+    at = now()
+    for row in db.scalars(select(ContextAssertion).where(
+            ContextAssertion.owner_id == owner, ContextAssertion.id.in_(sorted(set(ids))),
+            ContextAssertion.lifecycle == "retracted").order_by(ContextAssertion.id).with_for_update()):
+        lifecycle = _support_retraction(db, owner, row)
+        if lifecycle is None or support_status(db, owner, row) != "supported":
+            continue
+        if temporal.record_version(db, row, at=at, run_id=run_id, lifecycle=lifecycle):
+            changed.append(row.id)
+            if identity := temporal.chain_identity(row):
+                chains.add(identity)
+    for identity in sorted(chains):
+        changed.extend(temporal.rechain(db, owner, identity, at=at, run_id=run_id))
+    temporal.stale_briefs(db, owner, changed)
+    return sorted(set(changed))
 
 
 def supersede_revisions(db, owner: str, source_id: str, revision_id: str) -> dict:

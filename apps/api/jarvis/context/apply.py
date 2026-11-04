@@ -15,6 +15,8 @@ revision) in the same transaction, for `views.changes`.
   re-extracting a meeting never re-admits a superseded or retracted statement. Replaying a run adds nothing.
 - `apply_speakers` writes `native.link.resolve_speakers` results onto segments; `apply_links` writes mention links
   for assertions. Neither overwrites a human decision (confirmed or rejected rows, or rows with a decision).
+- An assertion retracted only because its support went away (a revision dropped it, its source was deleted) is
+  restored when this result quotes it again (`evidence.revive`); a human Wrong or durable negative still blocks.
 - `retire_old_revisions`, once a newer revision of a meeting is completely extracted: what only the earlier
   revisions said loses that support and is retracted unless another source (or a human Changed) still supports
   it (`evidence.supersede_revisions`).
@@ -173,6 +175,7 @@ class Applied:
     admitted: list[str] = field(default_factory=list)
     attached: list[str] = field(default_factory=list)
     rejected: list[dict] = field(default_factory=list)
+    revived: list[str] = field(default_factory=list)  # heads restored now that support is back
 
     @property
     def live(self) -> list[str]:
@@ -226,6 +229,9 @@ def apply_extraction(db, owner: str, run: ContextRun, source: ContextSource, rev
     out.attached = list(dict.fromkeys(out.attached))
     temporal.stale_briefs(db, owner, out.attached)
     emit_assertions(db, owner, out.admitted)  # attaching evidence leaves the head version as it is
+    before = versions(db, owner, out.attached)
+    out.revived = evidence.revive(db, owner, out.attached, run_id=run.id)
+    emit_assertions(db, owner, out.revived, before)
     return out
 
 

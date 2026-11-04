@@ -455,7 +455,8 @@ def extract(work: Work) -> dict:
         enqueue_job(db, work.owner, "context_link", {"source_id": source_id, "revision_id": revision_id,
                                                      "extract_run_id": run.id})
         return _finish(run, "partial" if partial else "succeeded", assertion_ids=applied.assertion_ids,
-                       admitted=applied.admitted, attached=applied.attached, refused=applied.rejected,
+                       admitted=applied.admitted, attached=applied.attached, revived=applied.revived,
+                       refused=applied.rejected,
                        actions=actions, **extra)
 
 
