@@ -38,7 +38,8 @@ def defaults(db, owner):
     assistant = next((a for a in actors if a.name == ASSISTANT_NAME and a.kind == "agent"), None)
     assistant_name = assistant.name if assistant else available_assistant_name(a.name for a in actors)
     for name, kind in (("owner", "person"), (assistant_name, "agent")):
-        if not db.scalar(select(Actor).where(Actor.owner_id == owner, Actor.name == name)):
+        # Seeding asks only whether the name exists (archived included), never which actor it is.
+        if not any(a.name == name for a in actors):
             db.add(Actor(owner_id=owner, name=name, kind=kind))
     if settings is None:
         settings = OwnerSettings(owner_id=owner, values={})
@@ -89,8 +90,16 @@ def task_home(db, owner, changes, row=None):
             raise DomainError("INVALID_ARGUMENT", "Assignee name and ID disagree.")
         changes["assignee"] = actor.name
     elif "assignee" in changes or row is None:
+        from .assignees import resolve_actor_by_name
+
         name = changes.get("assignee", "owner")
-        actor = db.scalar(select(Actor).where(Actor.owner_id == owner, Actor.name == name))
+        current = db.get(Actor, row.assignee_id) if getattr(row, "assignee_id", None) else None
+        # An unchanged name keeps the task's actor; otherwise the name must match one active actor.
+        actor = current if current and current.name == name else resolve_actor_by_name(db, owner, name)
+        if not actor and db.scalar(
+            select(Actor.id).where(Actor.owner_id == owner, Actor.name == name, Actor.archived.is_(True)).limit(1)
+        ):
+            raise DomainError("INVALID_ARGUMENT", "Choose an active assignee.")
         if not actor:
             actor = Actor(
                 owner_id=owner,
@@ -214,6 +223,7 @@ def mutate(db, owner, tool, args):
     key = kind + "_id"
     values = args.model_dump(exclude_unset=True, exclude={key, "expected_revision"})
     links = values.pop("project_ids" if kind == "goal" else "goal_ids", None)
+    allow_duplicate = values.pop("allow_duplicate", False)
     if action == "create":
         row = model(owner_id=owner)
     else:
@@ -249,7 +259,19 @@ def mutate(db, owner, tool, args):
         setattr(row, k, v)
     if kind == "project" and row.start_date and row.target_date and row.start_date > row.target_date:
         raise DomainError("INVALID_ARGUMENT", "Project target must be on or after its start.")
-    if kind in {"space", "area", "project", "actor"}:
+    if kind == "actor" and not allow_duplicate and not row.archived and (
+        action == "create" or row.name != old_name or "archived" in values
+    ):
+        from .assignees import active_actors_named
+
+        # Display names may repeat, but only on request: a repeated name can no longer be resolved by name.
+        if any(a.id != row.id for a in active_actors_named(db, owner, row.name)):
+            raise DomainError(
+                "DUPLICATE_ACTOR_NAME",
+                "An active person or agent already has this name. Use a distinguishing name, or pass allow_duplicate=true.",
+                409,
+            )
+    if kind in {"space", "area", "project"}:
         q = select(model).where(model.owner_id == owner, model.name == row.name, model.id != (row.id or ""))
         if kind == "area":
             q = q.where(Area.space_id == row.space_id)
