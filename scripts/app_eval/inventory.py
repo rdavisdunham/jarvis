@@ -88,6 +88,10 @@ def route_owner(path, source):
             or path == "/api/v1/external/agents/link"):
         # In-session run tools (task_plan, task_step, task_interview, submit_plan) and the host link too.
         return "agent_control"
+    if path.startswith("/api/v1/context/"):
+        # Meeting-context owner routes: pause, resume and rollback are operations; sources settings and imports
+        # sit with source retention.
+        return "operations" if path.startswith("/api/v1/context/admin") else "privacy"
     if "/external/agents/" in path:
         return "external_agents"
     if "/external/" in path or "/bot-keys" in path or path.startswith("/api/v1/sessions"):
@@ -157,6 +161,22 @@ def literal(node, constants):
     return None
 
 
+def context_owner_mounts():
+    """{"context.routes.<module>": owner_router prefix} for every `owner_router.include_router(<module>.router)`."""
+    tree = ast.parse((ROOT / "apps/api/jarvis/context/routes/__init__.py").read_text())
+    prefix = next((kw.value.value for node in tree.body if isinstance(node, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "owner_router" for t in node.targets)
+                   and isinstance(node.value, ast.Call)
+                   for kw in node.value.keywords if kw.arg == "prefix" and isinstance(kw.value, ast.Constant)), "")
+    return {
+        "context.routes." + node.args[0].value.id: prefix
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "include_router"
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "owner_router" and node.args
+        and isinstance(node.args[0], ast.Attribute) and isinstance(node.args[0].value, ast.Name)
+    }
+
+
 def routes():
     items = []
     modules = {f.stem: (f, ast.parse(f.read_text())) for f in sorted((ROOT / "apps/api/jarvis").glob("*.py"))}
@@ -190,6 +210,8 @@ def routes():
             )
             mounted[aliases.get(node.args[0].id, "")] = prefix
     mounted.update(dict.fromkeys(context_routes, "/api/v1/external"))
+    # Except modules included into `owner_router` (browser-session routes), which api.py mounts at that router's prefix.
+    mounted.update(context_owner_mounts())
     modules.update(context_routes)
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}

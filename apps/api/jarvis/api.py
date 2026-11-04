@@ -112,6 +112,9 @@ from . import bug_reports
 from .bug_reports import router as bug_reports_router
 
 app.include_router(bug_reports_router)
+from .context.routes import owner_router as context_owner_router  # browser-session context routes (/api/v1/context)
+
+app.include_router(context_owner_router)
 app.mount("/api/v1/external/mcp", mcp_mount)
 app.router.routes.append(Route("/api/v1/external/mcp", mcp_bare_path))
 User = Annotated[Identity, Depends(authenticate)]
@@ -157,8 +160,9 @@ async def security(request, call_next):
         )
     # A bug report carries a screenshot; bug_reports.read_body enforces the same cap without a Content-Length.
     cap = bug_reports.BODY_MAX if request.method == "POST" and request.url.path == bug_reports.PATH else 100_000
-    if request.method == "PUT" and request.url.path.startswith("/api/v1/external/sources/"):
-        # Meeting transcripts; the route also caps bodies sent without Content-Length.
+    if (request.method == "PUT" and request.url.path.startswith("/api/v1/external/sources/")) or (
+            request.method == "POST" and request.url.path == "/api/v1/context/settings/import"):
+        # Meeting transcripts; the routes also cap bodies sent without Content-Length.
         from .context.routes.sources import body_limit
 
         cap = body_limit()
