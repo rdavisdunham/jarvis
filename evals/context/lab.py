@@ -866,7 +866,8 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
     by_pred = {p["id"]: p for p in preds}
     pairs = [(items[m["gold"]], by_pred[m["pred"]]) for m in matches]
     hit = {g["id"] for g, _ in pairs}
-    hit_owner = {g["id"] for g, p in pairs if owner_correct(g, p, people)}
+    hit_owner = {g["id"] for g, p in pairs if owner_correct(g, p, people)
+                 or (g["kind"] == "waiting" and not g.get("owner"))}  # no gold owner: the title decides
     covered: dict[str, set[int]] = {}
     for m in matches:
         covered.setdefault(m["gold"], set()).update(m["parts"])
@@ -884,6 +885,7 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
         "matched_items": len(hit), "matched_mine": sum(items[g]["kind"] == "mine" for g in hit),
         "matched_mine_owner": sum(items[g]["kind"] == "mine" for g in hit_owner),
         "matched_waiting": sum(items[g]["kind"] == "waiting" for g in hit),
+        "matched_waiting_owner": sum(items[g]["kind"] == "waiting" for g in hit_owner),
         "full_items": len(full), "parts_total": parts_total, "parts_covered": parts_covered,
         "predictions": len(preds), "matched_predictions": len(matched_preds),
         "owner_correct": sum(owner_correct(g, p, people) for g, p in pairs), "owner_judged": len(pairs),
@@ -897,7 +899,7 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
 
 
 COUNTS = ("gold_items", "gold_mine", "gold_waiting", "matched_items", "matched_mine", "matched_mine_owner",
-          "matched_waiting", "full_items", "parts_total", "parts_covered", "predictions", "matched_predictions",
+          "matched_waiting", "matched_waiting_owner", "full_items", "parts_total", "parts_covered", "predictions", "matched_predictions",
           "owner_correct", "owner_judged", "checked_correct", "checked_judged", "checked_predictions", "checked_mine")
 OPTIONAL_COUNTS = ("unmatched_checked", "checked_must_not")
 
@@ -907,10 +909,12 @@ def _ratio(n: int, d: int) -> float | None:
 
 
 def metrics(counts: dict) -> dict:
-    """`recall_mine` needs the owner right; `candidate_recall*` count a match whoever it is assigned to."""
+    """`recall_mine` and `recall_waiting` need the owner right (a waiting item without a gold owner matches on
+    its title alone); `candidate_recall*` count a match whoever it is assigned to."""
     return {"recall_mine": _ratio(counts["matched_mine_owner"], counts["gold_mine"]),
             "candidate_recall_mine": _ratio(counts["matched_mine"], counts["gold_mine"]),
-            "recall_waiting": _ratio(counts["matched_waiting"], counts["gold_waiting"]),
+            "recall_waiting": _ratio(counts["matched_waiting_owner"], counts["gold_waiting"]),
+            "candidate_recall_waiting": _ratio(counts["matched_waiting"], counts["gold_waiting"]),
             "candidate_recall": _ratio(counts["matched_items"], counts["gold_items"]),
             "full_recall": _ratio(counts["full_items"], counts["gold_items"]),
             "parts_recall": _ratio(counts["parts_covered"], counts["parts_total"]),
@@ -1026,7 +1030,8 @@ def _count(value: int | None) -> str:
 
 
 METRIC_COLUMNS = (("recall mine", "recall_mine"), ("cand. recall mine", "candidate_recall_mine"),
-                  ("recall waiting", "recall_waiting"), ("cand. recall", "candidate_recall"),
+                  ("recall waiting", "recall_waiting"), ("cand. recall waiting", "candidate_recall_waiting"),
+                  ("cand. recall", "candidate_recall"),
                   ("parts recall", "parts_recall"), ("full recall", "full_recall"), ("precision", "precision"),
                   ("owner", "owner_accuracy"), ("checked acc.", "checked_accuracy"),
                   ("checked prec.", "checked_precision"))
@@ -1059,7 +1064,8 @@ def aggregate_md(result: dict, *, today: date | None = None) -> str:
     out = [f"# Meeting lab: action items ({(today or date.today()).isoformat()})", "",
            ("Scores against the answer keys. Meetings are numbered; no meeting text appears here. Unverified keys "
             "are marked and excluded from the verified pool and the ship gate. `recall mine` needs the right owner; "
-            "`cand.` recalls count a match whoever it is assigned to; `parts recall` counts the parts of grouped "
+            "`recall waiting` too (a waiting item without an owner in the key matches on its title alone); `cand.` "
+            "recalls count a match whoever it is assigned to; `parts recall` counts the parts of grouped "
             "items (an ungrouped item is one part); `checked prec.` is the share of checked proposals that are the "
             "user's real todos."), "",
            "## Pooled, all meetings", ""]
