@@ -1210,6 +1210,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "controller": (run.sync_state or {}).get("controller", "eridani"),
         "terminal_exited": (run.sync_state or {}).get("controller") == "terminal" and coordinator.native_exit_verified(run),
         "pause_reason": (run.sync_state or {}).get("automatic_pause"),
+        "operator_paused": bool(run.paused and (run.sync_state or {}).get("operator_paused", not (run.sync_state or {}).get("automatic_pause"))),
         "host_attention": (run.sync_state or {}).get("host_attention"),
         "coordination_failure": None if run.plan_pending else (run.sync_state or {}).get("coordination_failure"),
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,

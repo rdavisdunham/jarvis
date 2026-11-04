@@ -186,3 +186,12 @@ it("shows a planning recovery card even when chat is hidden", async () => {
   expect(posts[0].url).toContain("/retry-planning");
   expect(posts[0].body).toMatchObject({ expected_revision: 3 });
 });
+
+
+it.each([false, true])("permits a confirmed rejected-call retry only outside an operator pause (%s)", async operatorPaused => {
+  current = fixture({ state: "needs_you", stage: "interviewing", state_reason: "no_plan", plan: null, plan_revision: 0,
+    paused: true, operator_paused: operatorPaused, pause_reason: "receipt_uncertain",
+    coordination_failure: { code: "RUN_TOKEN_REQUIRED", outcome: "rejected", recovering: false } });
+  await mount();
+  expect(button("Retry planning").disabled).toBe(operatorPaused);
+});
