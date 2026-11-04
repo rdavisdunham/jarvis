@@ -84,6 +84,22 @@ def lab_user(folder: Path) -> dict:
     return user
 
 
+def user_names(user: dict) -> list[str]:
+    """The lab user's name and `aliases` (gold.json `lab_user.aliases`), deduplicated. Only full forms listed
+    there count: a bare first name is the user only when it is itself an alias."""
+    names = [user.get("name"), *(user.get("aliases") or [])]
+    return list(dict.fromkeys(n.strip() for n in names if isinstance(n, str) and n.strip()))
+
+
+def is_user(name: str | None, email: str | None, user: dict | None) -> bool:
+    """Whether (name, email) is the lab user: their email, or exactly their name or one of their aliases."""
+    if not user:
+        return False
+    if email and user.get("email") and email.strip().casefold() == user["email"].strip().casefold():
+        return True
+    return bool(_name(name)) and _name(name) in {_name(n) for n in user_names(user)}
+
+
 def lab_timezone(user: dict) -> str:
     """The lab user's IANA zone: gold.json `lab_user.timezone`, else America/Chicago."""
     return user.get("timezone") or DEFAULT_TIMEZONE
@@ -452,9 +468,8 @@ def seed_owner(owner: str, user: dict, *, engine: str = "native", others: Iterab
         db.flush()
         provenance = {"origin": "meeting-lab"}
         identity.add_identity(db, owner, actor_id, "email", user["email"], status="confirmed", provenance=provenance)
-        if user.get("name"):
-            identity.add_identity(db, owner, actor_id, "alias", user["name"], status="confirmed",
-                                  provenance=provenance)
+        for alias in user_names(user):
+            identity.add_identity(db, owner, actor_id, "alias", alias, status="confirmed", provenance=provenance)
         seen = {user["email"].strip().casefold()}
         for person in others:
             email = (person.get("email") or "").strip()
@@ -888,9 +903,12 @@ def _name(name: str | None) -> str:
 
 
 def same_person(a: tuple[str | None, str | None], b: tuple[str | None, str | None],
-                people: Iterable[dict] = ()) -> bool:
-    """(name, email) pairs: emails when both are known (a full name found among `people` supplies one), else
-    the full normalized name, else the first name when no two of `people` share it."""
+                people: Iterable[dict] = (), user: dict | None = None) -> bool:
+    """(name, email) pairs. The lab user is matched by email or alias only (never a bare first name that is not
+    an alias); others by email when both are known (a full name found among `people` supplies one), else the
+    full normalized name, else the first name when no two of `people` share it."""
+    if is_user(*a, user) or is_user(*b, user):
+        return is_user(*a, user) and is_user(*b, user)
     people = list(people)
     emails = {_name(p.get("name")): p["email"].casefold() for p in people if p.get("name") and p.get("email")}
     (an, ae), (bn, be) = a, b
@@ -907,23 +925,26 @@ def same_person(a: tuple[str | None, str | None], b: tuple[str | None, str | Non
                                              if p.get("name")) <= 1
 
 
-def owner_correct(gold: dict, pred: dict, people: Iterable[dict] = ()) -> bool:
+def owner_correct(gold: dict, pred: dict, people: Iterable[dict] = (), user: dict | None = None) -> bool:
+    """A prediction is the user's when it is assigned to their actor or names them (email or alias)."""
+    mine = pred["mine"] or is_user(pred.get("owner"), pred.get("owner_email"), user)
     if gold["kind"] == "mine":
-        return pred["mine"]
-    if pred["mine"]:
+        return mine
+    if mine:
         return False
     return not gold.get("owner") or same_person((gold["owner"], gold.get("owner_email")),
-                                                (pred.get("owner"), pred.get("owner_email")), people)
+                                                (pred.get("owner"), pred.get("owner_email")), people, user)
 
 
 def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: Iterable[dict] = ()) -> dict:
-    """Counts for one meeting and one system (ratios are computed from counts, so they pool)."""
-    people = list(people)
+    """Counts for one meeting and one system (ratios are computed from counts, so they pool). Owners are
+    compared with the lab user's aliases from gold.json."""
+    people, user = list(people), gold.get("lab_user")
     items = {g["id"]: g for g in gold["items"]}
     by_pred = {p["id"]: p for p in preds}
     pairs = [(items[m["gold"]], by_pred[m["pred"]]) for m in matches]
     hit = {g["id"] for g, _ in pairs}
-    hit_owner = {g["id"] for g, p in pairs if owner_correct(g, p, people)
+    hit_owner = {g["id"] for g, p in pairs if owner_correct(g, p, people, user)
                  or (g["kind"] == "waiting" and not g.get("owner"))}  # no gold owner: the title decides
     covered: dict[str, set[int]] = {}
     for m in matches:
@@ -945,7 +966,7 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
         "matched_waiting_owner": sum(items[g]["kind"] == "waiting" for g in hit_owner),
         "full_items": len(full), "parts_total": parts_total, "parts_covered": parts_covered,
         "predictions": len(preds), "matched_predictions": len(matched_preds),
-        "owner_correct": sum(owner_correct(g, p, people) for g, p in pairs), "owner_judged": len(pairs),
+        "owner_correct": sum(owner_correct(g, p, people, user) for g, p in pairs), "owner_judged": len(pairs),
         # An inferred owner is the proposal's owner for recall and owner accuracy, but is never checked:
         # an inferred "mine" item is right unchecked.
         "checked_correct": sum((g["kind"] == "mine" and not p.get("inferred")) == p["checked"]
@@ -1170,7 +1191,8 @@ def print_score(result: dict, echo: Callable[[str], None] = print) -> None:
                     mark = "x" if pred["checked"] else " " if pred["checked"] is not None else "-"
                     parts = f" parts {[i + 1 for i in m['parts']]}" if m["parts"] else ""
                     echo(f"   [{mark}] {item['kind']:7} {item['title'][:60]:60} <- {pred['title'][:60]}{parts}"
-                         + ("" if owner_correct(item, pred, people) else f"  (owner: {pred.get('owner')})"))
+                         + ("" if owner_correct(item, pred, people, meeting["gold"].get("lab_user"))
+                            else f"  (owner: {pred.get('owner')})"))
                 paired_g, paired_p = {m["gold"] for m in r["matches"]}, {m["pred"] for m in r["matches"]}
                 for g in gold:
                     if g not in paired_g:

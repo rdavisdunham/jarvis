@@ -208,7 +208,9 @@ uv run --no-sync python -m evals.context.lab gold-apply <slug> <sheet.md>
 
 A meeting folder holds `meeting.json` (`note_id`, `title`, `meeting_at` with offset, `timezone`, `owner` = the
 note's recorder, `participants`, `private_notes`, `granola_summary`, `transcript` in the Granola MCP text format),
-`gold.json` (`verified`, `lab_user` with optional `timezone`, `items` of `{id, title, owner, kind: mine|waiting,
+`gold.json` (`verified`, `lab_user` with optional `timezone` and `aliases` (other full forms of the user's
+name, seeded on the owner's actor and treated as the user when scoring owners; a bare first name counts only if
+listed), `items` of `{id, title, owner, kind: mine|waiting,
 due, notes}` plus optional `owner_email` and `parts` (a grouped item's atomic pieces), optional `must_not` items)
 and `granola.json` (Granola's next steps, same item shape). `import-granola` also keeps the raw REST responses,
 `granola-note.json` and `granola-transcript.json`.

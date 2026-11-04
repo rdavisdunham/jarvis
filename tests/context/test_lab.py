@@ -713,3 +713,54 @@ def test_report_renders_progress_report_rejections():
     assert "Rejected (not_a_follow_up 1, progress_report 1):" in page
     assert "- `progress_report` Shared the dashboard status: a status update (segments [4])" in page
     assert "Likely yours" in page
+
+
+# ---------------------------------------------------------------- lab user aliases
+
+ALIASED = {**ME, "aliases": ["Robin", "R. Vale", "Robin A. Vale"]}
+
+
+def test_aliases_are_the_user_but_a_bare_other_first_name_is_not():
+    assert lab.user_names(ALIASED) == ["Robin Vale", "Robin", "R. Vale", "Robin A. Vale"]
+    assert lab.is_user("r. vale", None, ALIASED) and lab.is_user("Robin Vale (you)", None, ALIASED)
+    assert lab.is_user(None, "ROBIN@studio.example", ALIASED)
+    assert not lab.is_user("Vale", None, ALIASED) and not lab.is_user("Robin", None, ME)  # not listed
+    people = [ALIASED, {"name": "Robin Marsh", "email": "rm@client.example"}]
+    mine = {"kind": "mine", "owner": "Robin Vale"}
+    # A proposal naming the user by alias (a mention, no actor) is the user's.
+    assert lab.owner_correct(mine, {"mine": False, "owner": "R. Vale"}, people, ALIASED)
+    assert not lab.owner_correct(mine, {"mine": False, "owner": "Robin Marsh"}, people, ALIASED)
+    # Someone else's item given to an alias of the user is wrong; the other Robert-style namesake is not the user.
+    marsh = {"kind": "waiting", "owner": "Robin Marsh"}
+    assert not lab.owner_correct(marsh, {"mine": False, "owner": "Robin A. Vale"}, people, ALIASED)
+    assert lab.owner_correct(marsh, {"mine": False, "owner": "robin marsh"}, people, ALIASED)
+    assert lab.same_person(("R. Vale", None), ("Robin A. Vale", None), people, ALIASED)
+    assert not lab.same_person(("Robin Marsh", None), ("Robin Vale", None), [], ALIASED)
+
+
+def test_bare_first_name_is_not_the_user_without_an_alias():
+    user = {**ME, "aliases": ["R. Vale"]}  # "Robin" alone is not an alias: another Robin works there
+    mine = {"kind": "mine", "owner": "Robin Vale"}
+    assert not lab.owner_correct(mine, {"mine": False, "owner": "Robin"}, [], user)
+    assert lab.owner_correct(mine, {"mine": False, "owner": "R. Vale"}, [], user)
+    assert not lab.same_person(("Robin", None), ("Robin Vale", None), [], user)
+    g = {"lab_user": user, "items": [{"id": "g1", "title": "Update the rubric", "owner": "Robin Vale",
+                                      "kind": "mine"}]}
+    p = preds(("Update the rubric", "R. Vale", False, False), ("Update rubric again", "Robin", False, False))
+    m = lab.metrics(lab.score_meeting(g, p, match(("g1", "P1"))))
+    assert m["recall_mine"] == 1.0 and m["owner_accuracy"] == 1.0
+    m = lab.metrics(lab.score_meeting(g, p, match(("g1", "P2"))))
+    assert m["recall_mine"] == 0.0 and m["candidate_recall_mine"] == 1.0
+
+
+def test_seeded_owner_carries_every_alias():
+    from jarvis.context import identity
+    from jarvis.db import session_scope
+
+    owner = "lab-alias-test"
+    actor = lab.seed_owner(owner, ALIASED)
+    with session_scope() as db:
+        for alias in ("Robin Vale", "Robin", "R. Vale", "Robin A. Vale"):
+            assert identity.actors_for(db, owner, "alias", alias) == [actor]
+        assert identity.resolve_exact(db, owner, "email", ME["email"]) == actor
+        assert identity.actors_for(db, owner, "alias", "Vale") == []
