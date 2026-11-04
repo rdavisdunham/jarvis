@@ -11,7 +11,6 @@ from jarvis.api import app
 from jarvis.config import get_settings
 from jarvis.context import models as m
 from jarvis.context.connectors import granola
-from jarvis.context.routes import owner_router
 from jarvis.context.routes import settings as routes
 from jarvis.db import session_scope
 from jarvis.models import Job
@@ -25,9 +24,10 @@ ACCOUNT = "davin@example.com"
 VTT = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<v Davin>Kick-off.</v>\n\n00:00:04.000 --> 00:00:06.000\n<v Priya>Ready.</v>\n"
 
 
-def test_api_mounts_owner_routes_before_the_spa_catch_all():
-    paths = [getattr(r, "path", "") for r in app.routes]
-    assert BASE in paths and paths.index(BASE) < paths.index("/{path:path}")
+def test_api_mounts_owner_routes_before_the_spa_catch_all(client):
+    # Reached through api.py's real mount: the route answers, not the catch-all's NOT_FOUND.
+    response = client.get(BASE)
+    assert response.status_code == 200, response.text
 
 
 @pytest.fixture(autouse=True)
