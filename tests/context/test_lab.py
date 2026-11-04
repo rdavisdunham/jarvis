@@ -397,3 +397,60 @@ def test_a_colleagues_recording_never_resolves_to_the_user(lab_dir):
     assert rows["Uma Recorder"]["actor"] == "Uma Recorder" and rows["Uma Recorder"]["status"] == "exact"
     assert not any(s["actor"] == "Robin Vale (you)" for s in run["speakers"])
     assert not any(p["mine"] or p["checked"] for p in run["proposals"])
+
+
+# ---------------------------------------------------------------- facts model and owner timezone
+
+
+def test_facts_model_routes_separately_and_labels_runs(monkeypatch):
+    monkeypatch.setitem(model_map.JOBS, "context_actions", model_map.JOBS["context_extraction"])
+    with lab.live("sonnet-5.5", facts_profile="luna"):
+        assert model_map.MODEL_MAP["context_actions"] == "sonnet-5.5"
+        assert model_map.MODEL_MAP["context_extraction"] == "luna"
+    with lab.live("sonnet-5.5"):
+        assert model_map.MODEL_MAP["context_extraction"] == "sonnet-5.5"
+    assert lab.model_label("terra", "luna") == "terra+luna"
+    assert lab.model_label("terra", "terra") == lab.model_label("terra", None) == "terra"
+    assert lab.check_profile("sonnet") == "sonnet-5.5" and lab.check_profile("luna-none") == "luna-none"
+    with pytest.raises(SystemExit, match="no 'gpt-9' profile"):
+        lab.check_profile("gpt-9")
+
+
+def test_score_rows_use_the_model_pair_label(lab_dir):
+    folder = lab_dir / "rubric-sync"
+    save_fake_run(folder, "terra+luna", [{"title": "Send the 50 calls", "responsible": "Kai Moreno",
+                                          "mine": False, "checked": False}], 0.03, "20261104T100000")
+    result = lab.score(["rubric-sync"], models=["terra+luna"])
+    assert result["systems"] == ["granola", "terra+luna"]
+
+
+def test_timezone_falls_back_to_the_lab_user(lab_dir):
+    no_zone = {**meeting(), "timezone": None}
+    assert lab.to_envelope(no_zone, lab_email=ME["email"]).timezone is None
+    assert lab.to_envelope(no_zone, lab_email=ME["email"], default_timezone="America/Chicago").timezone == \
+        "America/Chicago"
+    assert lab.to_envelope(meeting(), lab_email=ME["email"], default_timezone="UTC").timezone == "America/New_York"
+    assert lab.lab_timezone(ME) == "America/Chicago"
+    assert lab.lab_timezone({**ME, "timezone": "Europe/Berlin"}) == "Europe/Berlin"
+
+
+def test_seeded_owner_has_the_timezone_preference():
+    from jarvis.db import session_scope
+    from jarvis.domain import preferences
+
+    owner = "lab-tz-test"
+    lab.seed_owner(owner, ME, timezone="Europe/Berlin", others=[{"name": "Kai Moreno",
+                                                                  "email": "kai@client.example"}])
+    with session_scope() as db:
+        assert preferences(db, owner)["timezone"] == "Europe/Berlin"
+
+
+def test_full_loop_records_models_and_timezones(lab_dir):
+    folder = lab_dir / "rubric-sync"
+    lab.write_json(folder / "meeting.json", {**meeting(), "timezone": None})
+    lab.write_json(folder / "gold.json", {**gold(), "lab_user": {**ME, "timezone": "America/Denver"}})
+    with runner.offline():
+        run = lab.run_meeting(folder, "terra+luna", engine="double", profile="terra", facts_profile="luna")
+    assert run["actions_model"] == "terra" and run["facts_model"] == "luna" and run["model"] == "terra+luna"
+    assert run["owner_timezone"] == run["envelope_timezone"] == "America/Denver"
+    assert "Actions model terra, facts model luna" in lab.report_md(run)

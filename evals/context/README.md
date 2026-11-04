@@ -217,8 +217,11 @@ note's recorder, `participants`, `private_notes`, `granola_summary`, `transcript
   other speaker. Private notes are kept only when the lab user recorded the meeting. Granola's summary is never
   passed on.
 - **`run`** creates a throwaway database (refused unless the server is local), makes the lab user the owner (a
-  signed-in email and the owner actor with their email and name), sets `model_map.MODEL_MAP["context_actions"]`
-  and `["context_extraction"]` to the chosen profile, raises the per-source budget (`--budget-usd`, default 3) and
+  signed-in email and the owner actor with their email and name, an actor and email identity for every other
+  participant, and the timezone preference from `lab_user.timezone`, default America/Chicago, which also stands in
+  for a missing meeting timezone), sets `model_map.MODEL_MAP["context_actions"]` to `--model` and
+  `["context_extraction"]` to `--facts-model` (default: the same; runs and score rows are then named
+  `terra+luna`), raises the per-source budget (`--budget-usd`, default 3) and
   model timeout, receives the meeting and drains its jobs. Model calls are real (keys from settings, never
   printed); embeddings use the hashed bag-of-words vectors. It writes `<slug>/runs/<model>-<stamp>/run.json` and
   `report.md`: speakers, every run with cost and latency, extraction candidates, rejections, the action pass
