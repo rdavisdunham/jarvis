@@ -907,6 +907,34 @@
       "feature": "receipts"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/context/admin/pause",
+      "handler": "post_pause",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/resume",
+      "handler": "post_resume",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/rollback-drill",
+      "handler": "post_rollback_drill",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/admin/status",
+      "handler": "get_status",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/context/settings",
       "handler": "overview",
