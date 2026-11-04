@@ -402,6 +402,8 @@ def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
         item([(3, UNSEPARATED[3])], "Update the tracker", "Uttam Rao"),  # guessed as the recorder
         item([(4, UNSEPARATED[4])], "Book the room for Thursday", "Unknown speaker"),
         item([(5, UNSEPARATED[5])], "Draft the agenda", "Rowan Vale", "self_assigned_intent"),
+        item([(3, UNSEPARATED[3])], "Order the catering", "Mustafa Ali"),  # not in the meeting
+        item([(2, UNSEPARATED[2])], "Call the vendor back", "Rowan Vale"),  # the line shows Aarish took it
     ]})
 
     def call(name, user):
@@ -409,7 +411,8 @@ def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
             assert "Unknown speaker: Sure, I'll send it tomorrow." in user["lines"]
             return listed
         return ActionVerification.model_validate({"verdicts": [
-            {"item": i["item"], "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
+            {"item": i["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True,
+             "reason": ""} for i in user["items"]]})
 
     out = actions.ActionRun()
     actions.run(meeting, call, out)
@@ -420,13 +423,21 @@ def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
         "Send the pilot deck to the board": ("Davis Dunham", ["act_me"], "accepted_request", True),
         # self-identified on the line
         "Take the vendor call": ("Aarish Khan", ["act_aarish"], "stated_promise", True),
-        # nothing ties the line to anyone: unassigned, never the recorder, never dropped
-        "Update the tracker": (None, [], "implied_by_discussion", False),
+        # nothing in the lines proves it, but the model names a participant: an inferred owner, never a commitment
+        "Update the tracker": ("Uttam Rao", [None], "inferred", False),
+        # no owner given: unassigned, never the recorder, never dropped
         "Book the room for Thursday": (None, [], "implied_by_discussion", False),
         # the recorder's private note names the owner
-        "Draft the agenda": ("Rowan Vale", ["act_rowan"], "self_assigned_intent", False)}
+        "Draft the agenda": ("Rowan Vale", ["act_rowan"], "self_assigned_intent", False),
+        # a name outside the meeting, or one the quotes contradict: unassigned
+        "Order the catering": (None, [], "implied_by_discussion", False),
+        "Call the vendor back": (None, [], "implied_by_discussion", False)}
     signals = {d.title: d.signals for d in out.drafts}
-    assert signals["Update the tracker"] == {"owner_unverified": "Uttam Rao"}
+    assert signals["Update the tracker"]["owner_inferred"] == "Uttam Rao"
+    assert signals["Order the catering"] == {"owner_unverified": "Mustafa Ali",
+                                             "owner_unverified_reason": "not in the meeting"}
+    assert signals["Call the vendor back"] == {"owner_unverified": "Rowan Vale",
+                                               "owner_unverified_reason": "taken by Aarish Khan"}
     assert signals["Book the room for Thursday"] == {"owner_unknown": True}
     assert signals["Send the pilot deck to the board"]["owner_from_content"] is True
 
@@ -518,7 +529,7 @@ def test_regression_cases_keep_real_work_and_refuse_the_rest():
         if name == "context_actions":
             return listed
         return ActionVerification.model_validate({"verdicts": [
-            {"item": i["item"], "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
+            {"item": i["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
 
     out = actions.ActionRun()
     actions.run(meeting, call, out)
@@ -568,3 +579,60 @@ def test_near_titles_merge_unless_identifiers_recipients_or_dates_differ():
     kept, _ = actions.merge([draft("Send the deck"), draft("Send the deck", at=friday)])
     assert [d.due.at for d in kept] == [friday]
     assert titles(draft("Pull fifty calls"), draft("Pull 50 calls"))[1] == ["Pull 50 calls"]
+
+
+def test_a_checker_contradiction_blanks_an_inferred_owner_but_rejects_a_proven_one():
+    from jarvis.context.native.prompts import ActionVerdict
+
+    request = unseparated_request()
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    from jarvis.context.native.prompts import ActionList
+    listed = ActionList.model_validate({"items": [
+        item([(3, UNSEPARATED[3])], "Update the tracker", "Uttam Rao"),
+        item([(2, UNSEPARATED[2])], "Take the vendor call", "Aarish Khan")]})
+    drafts = [actions.check(i, meeting, lambda *_: True) for i in listed.items]
+    no = [ActionVerdict(item=i, progress_report=False, real_follow_up=True, owner_correct=False, reason="Rowan does")
+          for i in range(2)]
+    kept, rejected = actions.apply_verdicts(drafts, no)
+    assert [(d.title, d.owner, d.basis, d.signals["owner_rejected"]) for d in kept] == [
+        ("Update the tracker", None, "implied_by_discussion", "Uttam Rao")]
+    assert [(r["code"], r["title"]) for r in rejected] == [("owner_rejected", "Take the vendor call")]
+
+
+STANDUP = [
+    ("Rowan Vale", "Quick round. Jules?"),
+    ("Jules Park", "I'm working on the demos and the marketing site."),
+    ("Jules Park", "ClickHouse cert is going well, aiming to finish this weekend."),
+]
+
+
+def test_standup_progress_reports_are_refused_and_a_dated_next_step_is_kept():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(STANDUP)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        item([(1, STANDUP[1][1])], "Work on the demos and marketing site", "Jules Park", "self_assigned_intent"),
+        {**item([(2, STANDUP[2][1])], "Finish the ClickHouse certification", "Jules Park", "self_assigned_intent"),
+         "due": due("this weekend", "2026-11-08")}]})
+    reviewed = []
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        reviewed.extend(user["items"])
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": 0, "progress_report": True, "real_follow_up": False, "owner_correct": True,
+             "reason": "a status update"},
+            {"item": 1, "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""}]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert [(r["code"], r["title"]) for r in out.rejected] == [
+        ("progress_report", "Work on the demos and marketing site")]
+    (cert,) = out.drafts
+    assert (cert.title, cert.owner, cert.verified) == ("Finish the ClickHouse certification", "Jules Park", True)
+    assert cert.due is not None and cert.due.expression == "this weekend"
+    assert "progress_report" in ACTIONS_VERIFY_PROMPT and "Progress reports" in ACTIONS_PROMPT

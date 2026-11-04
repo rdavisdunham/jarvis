@@ -10,8 +10,10 @@ Deterministic checks per item (`check`):
   are dropped and listed in the item's signals, and an item left with none is rejected (`quote_not_found`);
 - owner: the owner is the speaker of a cited line (a private note's speaker is the recorder), is named in the
   quotes or the private notes, or, for implied items, is someone in the meeting (`attribution_mismatch`
-  otherwise). Owners the lines cannot show stay unassigned instead: "Unknown speaker", a guess on lines without
-  a speaker, and items cited only from shorthand notes (an explicit to-do note is the recorder's);
+  otherwise). On lines without a speaker, a participant the model names that the lines can't prove is kept as an
+  inferred owner (`owner_basis` "inferred", never checked) unless the quotes show someone else took it; a
+  non-participant, "Unknown speaker" and items cited only from shorthand notes stay unassigned (an explicit
+  to-do note is the recorder's);
 - numbers: every number and identifier in the title occurs somewhere in the meeting (lines and private notes);
   an identifier like `C2` is one token, never the number 2, and "1-to-5" is 1 and 5 (`ungrounded_number`). A
   description sentence with an ungrounded number is dropped (signal `description_ungrounded`), never the item;
@@ -23,8 +25,9 @@ Deterministic checks per item (`check`):
   without promise language becomes intent or implied), not rejections;
 - work finished in the meeting (`done_in_meeting`) and prior Wrong/Dismiss decisions (`prior_decision`) reject.
 
-Then one verify call ("is this a real follow-up, and is the owner right?") rejects only on no (`not_a_follow_up`)
-or a wrong owner (`owner_rejected`). Kept items become `ProposedAction`s; `stated_promise` and `accepted_request`
+Then one verify call ("a new follow-up or a progress report? is it real, and is the owner right?") rejects
+progress reports (`progress_report`), no (`not_a_follow_up`) or a wrong owner (`owner_rejected`; an inferred
+owner it contradicts is blanked instead). Kept items become `ProposedAction`s; `stated_promise` and `accepted_request`
 items also become commitment assertions so open loops and briefs keep working.
 """
 
@@ -78,6 +81,7 @@ VERIFY_NEIGHBOURS = 2
 MERGE = 0.75  # title-word Jaccard (without STOPWORDS) for the same owner's duplicate across chunks
 STOPWORDS = {"the", "and", "for", "with", "from", "into", "onto", "that", "this", "then", "their", "our", "your"}
 COMMITTING = ("stated_promise", "accepted_request")
+INFERRED = "inferred"  # owner_basis for a likely owner the lines can't prove (unseparated speakers)
 
 NEGATED = re.compile(
     r"\b(won't|will not|not going to|no need to|don't need to|do not need to|let's not|lets not|"
@@ -294,6 +298,32 @@ def _owner_quotes(owner: str | None, evidence: list[EvidenceRef], meeting: Meeti
     return [e.quote.translate(QUOTE_CHARS) for e in _owner_evidence(owner, evidence, meeting)]
 
 
+def _participant(name: str, meeting: Meeting) -> str | None:
+    """The meeting participant (name or speaker label) `name` refers to, if any."""
+    for person in meeting.people():
+        for label in (person.get("name"), person.get("speaker_label")):
+            if label and _same_person(name, label, meeting):
+                return label
+    return None
+
+
+def _someone_else_took_it(owner: str, evidence: list[EvidenceRef], meeting: Meeting) -> str | None:
+    """Another participant the quotes show taking the work ("this is Aarish, I'll take that", "Mustafa will")."""
+    quotes = " ".join(e.quote for e in evidence).translate(QUOTE_CHARS)
+    for person in meeting.people():
+        name = person.get("name") or person.get("speaker_label")
+        if not name or _same_person(name, owner, meeting):
+            continue
+        for n in _names(name, meeting) | _first(_names(name, meeting)):
+            if not n:
+                continue
+            claimed = re.search(NAMED_PROMISE.format(re.escape(n)), quotes, re.IGNORECASE) or re.search(
+                rf"\b(?:this is|i'm|i am|it's)\s+{re.escape(n)}\b", quotes, re.IGNORECASE)
+            if claimed:
+                return name
+    return None
+
+
 def _same_person(a: str, b: str, meeting: Meeting) -> bool:
     x, y = _names(a, meeting), _names(b, meeting)
     return bool(x & y or _first(x) & _first(y))
@@ -314,7 +344,7 @@ def _unattributed(evidence: list[EvidenceRef], meeting: Meeting) -> list[str]:
             if meeting.ctx.segments[e.segment_seq].kind == "transcript" and meeting.speaker(e.segment_seq) is None]
 
 
-def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Meeting) -> bool:
+def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Meeting, title: str = "") -> bool:
     key = owner.casefold().strip()
     quotes = " ".join(e.quote for e in evidence).translate(QUOTE_CHARS).casefold()
     if key in UNKNOWN:
@@ -327,9 +357,10 @@ def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Me
     names = _names(owner, meeting)
     if any(_word_in(n, quotes) for n in names | _first(names)):
         return True
-    notes = " ".join(s.text for s in meeting.notes.values()).translate(QUOTE_CHARS).casefold()
-    if notes and any(_word_in(n, notes) for n in names | _first(names)):
-        return True  # the recorder's own notes name the owner
+    for note in meeting.notes.values():  # a recorder's note about this work that names the owner
+        text = note.text.translate(QUOTE_CHARS).casefold()
+        if any(_word_in(n, text) for n in names | _first(names)) and _words(title) & _words(note.text):
+            return True
     if basis == "implied_by_discussion":  # implied work falls to someone in the meeting
         present = {n for p in meeting.people() for n in (p.get("name"), p.get("speaker_label")) if n}
         return any(_names(p, meeting) & names or _first(_names(p, meeting)) & _first(names) for p in present)
@@ -380,14 +411,22 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         return rejection("done_in_meeting", "finished during the meeting", title, seqs)
     owner = (item.owner or "").strip() or None
     unassigned: dict[str, Any] = {}
+    inferred = taker = False
     if item.kind == "suggestion":
         owner = None
     elif owner and owner.casefold() in UNKNOWN:
         owner, unassigned = None, {"owner_unknown": True}  # promised on a line without a speaker: unclear owner
-    elif owner and _unattributed(evidence, meeting) and not _attributed(owner, item.owner_basis, evidence, meeting):
-        # Unseparated speakers: the lines don't show who spoke and nothing names the model's owner, so it
-        # stays unassigned (never guessed as the recorder) rather than dropped.
-        owner, unassigned = None, {"owner_unverified": owner[:300]}
+    elif (owner and _unattributed(evidence, meeting)
+          and not _attributed(owner, item.owner_basis, evidence, meeting, title)):
+        # Unseparated speakers: the lines don't show who spoke and nothing names the model's owner. A participant
+        # the model names stays as an inferred owner (never checked), unless the quotes show someone else took
+        # it; a name outside the meeting leaves the item unassigned. Never dropped.
+        if _participant(owner, meeting) and not (taker := _someone_else_took_it(owner, evidence, meeting)):
+            inferred = True
+            unassigned = {"owner_inferred": owner[:300]}
+        else:
+            reason = f"taken by {taker}" if _participant(owner, meeting) else "not in the meeting"
+            owner, unassigned = None, {"owner_unverified": owner[:300], "owner_unverified_reason": reason}
     if owner and not any(meeting.ctx.segments[e.segment_seq].kind == "transcript" for e in evidence):
         # Only the recorder's shorthand notes: they assign nothing ("Cynthia annotation admin") unless a note is
         # an explicit personal to-do ("todo: send Yvette the deck", "I need to..."), which is the recorder's.
@@ -407,7 +446,7 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         return rejection("negated", "declined or ruled out in every quote", title, seqs)
     if item.owner_basis != "implied_by_discussion" and _taken_back(owned):
         return rejection("negated", "the owner declined or withdrew it after", title, seqs)
-    if owner and not _attributed(owner, item.owner_basis, evidence, meeting):
+    if owner and not inferred and not _attributed(owner, item.owner_basis, evidence, meeting, title):
         return rejection("attribution_mismatch", owner, title, seqs)
 
     quotes = " ".join(e.quote for e in evidence)
@@ -432,6 +471,8 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         return rejection("prior_decision", "dismissed or marked wrong before", title, seqs)
 
     basis, signals = _basis(item, owner_quotes, evidence, meeting) if owner else ("implied_by_discussion", {})
+    if inferred:
+        basis = INFERRED  # a likely owner the lines can't prove: never a commitment, never checked
     signals.update(unassigned)
     if unfounded:
         signals["description_ungrounded"] = list(dict.fromkeys(unfounded))
@@ -540,9 +581,18 @@ def apply_verdicts(drafts: list[ActionDraft], verdicts: list[ActionVerdict]) -> 
         if verdict is None:  # the verifier skipped it: kept, marked unverified
             kept.append(draft)
             continue
-        draft.verified, draft.verdict = verdict.real_follow_up and verdict.owner_correct, verdict.reason[:300]
-        if not verdict.real_follow_up:
+        draft.verified, draft.verdict = (verdict.real_follow_up and verdict.owner_correct
+                                         and not verdict.progress_report), verdict.reason[:300]
+        if verdict.progress_report:
+            rejected.append(rejection("progress_report", verdict.reason or "a status update, not a follow-up",
+                                      draft.title, draft.seqs))
+        elif not verdict.real_follow_up:
             rejected.append(rejection("not_a_follow_up", verdict.reason, draft.title, draft.seqs))
+        elif not verdict.owner_correct and draft.owner and draft.basis == INFERRED:
+            # An inferred owner the checker contradicts: the work stays, unassigned.
+            draft.signals["owner_rejected"] = draft.owner
+            draft.owner, draft.responsible, draft.basis, draft.verified = None, [], "implied_by_discussion", True
+            kept.append(draft)
         elif not verdict.owner_correct and draft.owner:
             rejected.append(rejection("owner_rejected", verdict.reason, draft.title, draft.seqs))
         else:

@@ -474,7 +474,7 @@ class ScriptedModel:
 
     @staticmethod
     def actions_verify(user: dict) -> dict:
-        return {"verdicts": [{"item": it["item"], "real_follow_up": True, "owner_correct": True, "reason": ""}
+        return {"verdicts": [{"item": it["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""}
                              for it in user["items"]]}
 
     @staticmethod

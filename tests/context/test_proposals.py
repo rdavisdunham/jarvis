@@ -195,7 +195,12 @@ def test_owner_basis_from_the_action_pass_decides_checked_and_reasons(monkeypatc
                      ProposedAction(kind="create", title="Book the venue",
                                     evidence=[ref(segs[3], "Someone has to book the venue.")]),
                      ProposedAction(kind="create", title="Recheck the scoring weights", responsible=mine,
-                                    evidence=[ref(segs[1], "The export still shows")])],
+                                    evidence=[ref(segs[1], "The export still shows")]),
+                     ProposedAction(kind="create", title="Chase the legal review", responsible=mine,
+                                    evidence=[ref(segs[1], "The export still shows")]),
+                     ProposedAction(kind="create", title="Book the caterer",
+                                    responsible=[EntityRef(entity_type="actor", mention="Priya")],
+                                    evidence=[ref(segs[3], "Someone has to book the venue.")])],
             coverage={s.seq: "extracted" for s in request.segments},
             diagnostics={"actions": {"items": [
                 {"action_index": 0, "owner_basis": "stated_promise", "verified": True},
@@ -203,7 +208,10 @@ def test_owner_basis_from_the_action_pass_decides_checked_and_reasons(monkeypatc
                 {"action_index": 2, "owner_basis": "stated_promise", "verified": True},
                 {"action_index": 3, "owner_basis": "implied_by_discussion", "verified": True},
                 # the checker skipped it: the user's own, but not checked
-                {"action_index": 4, "owner_basis": "self_assigned_intent", "verified": None}]}})
+                {"action_index": 4, "owner_basis": "self_assigned_intent", "verified": None},
+                # owners the lines could not prove (unseparated speakers): likely, never checked
+                {"action_index": 5, "owner_basis": "inferred", "verified": True},
+                {"action_index": 6, "owner_basis": "inferred", "verified": True}]}})
     canned(monkeypatch, build)
     got = process(meeting(lines))
     items = rows(got.source_id)
@@ -215,6 +223,9 @@ def test_owner_basis_from_the_action_pass_decides_checked_and_reasons(monkeypatc
     assert not venue["preselected"] and venue["reason"] == "Who owns this is unclear."
     scoring = by_title(items, "scoring")
     assert not scoring["preselected"] and scoring["reason"] == "The checker did not confirm this one. Check it if it is yours."
+    legal, caterer = by_title(items, "legal"), by_title(items, "caterer")
+    assert not legal["preselected"] and legal["reason"] == "Likely yours, inferred from the discussion. Check it if so."
+    assert not caterer["preselected"] and caterer["reason"] == "Likely Priya, inferred from the discussion."
 
 
 def test_attended_meeting_keeps_the_recorders_work_off_the_users_list(monkeypatch):
