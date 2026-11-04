@@ -26,6 +26,7 @@ from .fixtures.extraction import long_meeting
 OWNER = "davin"
 RECORDED = json.loads((Path(__file__).parent / "fixtures/extraction/pilot_meeting.json").read_text())
 STAGES = ["context_ingest", "context_extract", "context_link", "context_reconcile", "context_embed"]
+BRIEF_FORMAT = "context_brief"
 
 
 # ---------------------------------------------------------------- helpers shared with test_end_to_end
@@ -99,22 +100,32 @@ def vectors(monkeypatch):
 
 @pytest.fixture
 def provider(monkeypatch):
-    """install(handler): answer the extraction provider's HTTP calls with handler(body) -> (status, json).
-    Returns the list of request format names sent."""
+    """install(handler, briefs=None): answer the provider's HTTP calls with handler(body) -> (status, json).
+    Returns the list of extraction and reconciliation format names sent. Brief synthesis calls go to `briefs`
+    when given, else they are refused (the brief keeps its deterministic sections); either way they are recorded
+    in `install.briefs`, not in the returned list."""
     original = httpx.Client
     monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic")
-    sent = []
+    sent, synthesis = [], []
 
-    def install(handler):
+    def install(handler, briefs=None):
         def respond(request):
             body = json.loads(request.content)
-            sent.append(body["text"]["format"]["name"])
+            name = body["text"]["format"]["name"]
+            if name == BRIEF_FORMAT:
+                synthesis.append(name)
+                if briefs is None:
+                    return httpx.Response(400, json={"error": {"message": "not scripted"}})
+                status, data = briefs(body)
+                return httpx.Response(status, json=data)
+            sent.append(name)
             status, data = handler(body)
             return httpx.Response(status, json=data)
         def client(**kw):  # httpx is shared: clients built with their own transport (Granola's) keep it
             return original(**kw) if kw.get("transport") else original(transport=httpx.MockTransport(respond))
         monkeypatch.setattr(memory_learning.httpx, "Client", client)
         return sent
+    install.briefs = synthesis
     return install
 
 
@@ -135,13 +146,11 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
     receipt = receive(envelope)
-    ran = drain()
-    # Briefs for touched entities follow reconciliation (deterministic by default, no model call).
-    assert [k for k in ran if k != "context_brief"] == STAGES and set(ran) - set(STAGES) <= {"context_brief"}
-    assert all(s == "succeeded" for _, s, *_ in jobs())
-    assert [(stage, status) for stage, status, *_ in runs() if stage != "brief"] == [
+    assert drain() == [*STAGES, "context_brief"]  # Priya's brief: her commitment links to her actor
+    assert [(k, s) for k, s, *_ in jobs()] == [(k, "succeeded") for k in [*STAGES, "context_brief"]]
+    assert [(stage, status) for stage, status, *_ in runs()] == [
         ("ingest", "succeeded"), ("extract", "succeeded"), ("link", "succeeded"), ("reconcile", "succeeded"),
-        ("embed", "succeeded")]
+        ("embed", "succeeded"), ("brief", "succeeded")]
     with session_scope() as db:
         source = db.get(m.ContextSource, receipt.source_id)
         assert source.status == "ready"
@@ -170,6 +179,9 @@ def test_receipt_flows_through_every_stage(envelope, vectors):
                  if link.assertion_id}
         assert links == {("Priya", "responsible", "exact", priya), ("Marco", "responsible_mention", "unresolved", None)}
         assert embedding.status(db, OWNER)["unembedded_assertions"] == 0
+        # The reconcile stage queued Priya's brief: deterministic unless the owner turns synthesis on.
+        brief = db.scalar(select(m.ContextBrief))
+        assert (brief.entity_type, brief.entity_id, brief.watermarks["engine"]) == ("actor", priya, "deterministic")
 
 
 def test_replaying_every_job_and_redelivering_change_nothing(envelope, vectors):

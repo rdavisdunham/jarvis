@@ -13,9 +13,9 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import Text, cast, func, select, update
+from sqlalchemy import func, select, update
 
-from ..domain import DomainError, advisory, enqueue_job
+from ..domain import DomainError, advisory, emit, enqueue_job
 from ..models import now
 from ..redaction import redact
 from . import calendar_link
@@ -23,7 +23,6 @@ from . import settings as context_settings
 from .connectors import LABEL_KEY
 from .imports import text_segments
 from .models import (
-    ContextBrief,
     ContextChunk,
     ContextConnection,
     ContextEntityLink,
@@ -45,6 +44,7 @@ CHUNK_TOKENS = 5_000
 CHARS_PER_TOKEN = 4
 INGEST_JOB = "context_ingest"
 DELETE_JOB = "context_delete"
+CHANGED = "context.changed"  # views.changes: (source ID, current revision) on new revisions, refreshes, deletion
 LABEL = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 Change = Literal["created", "content", "metadata", "none", "deleted"]
 
@@ -253,6 +253,7 @@ def receive(db, owner: str, envelope: SourceEnvelope, connection_id: str | None 
                 source.connection_id = connection_id
             db.flush()
             calendar_link.link_source(db, owner, source.id, current.id, envelope)
+            emit(db, owner, CHANGED, source.id, source.current_revision)
             return ReceiveResult(source.id, source.current_revision, current.id, source.status, "metadata")
     created = source is None
     if created:
@@ -280,6 +281,7 @@ def receive(db, owner: str, envelope: SourceEnvelope, connection_id: str | None 
     source.status, source.updated_at = "queued", stamp
     db.flush()
     calendar_link.link_source(db, owner, source.id, revision.id, envelope)
+    emit(db, owner, CHANGED, source.id, source.current_revision)
     return ReceiveResult(source.id, revision.revision, revision.id, source.status,
                          "created" if created else "content", job.id)
 
@@ -399,6 +401,7 @@ def delete_source(db, owner: str, source_id: str) -> dict:
         job_id = enqueue_job(db, owner, DELETE_JOB, {"source_id": source.id,
                                                      "through_revision": source.current_revision}).id
         db.flush()
+        emit(db, owner, CHANGED, source.id, source.current_revision)
     return {"id": source.id, "status": source.status, "deleted_at": source.deleted_at.isoformat(), "job_id": job_id}
 
 
@@ -432,11 +435,15 @@ def purge_source(db, owner: str, source_id: str, through_revision: int | None = 
     db.execute(update(ContextEntityLink).where(ContextEntityLink.owner_id == owner,
                                                ContextEntityLink.subject_type == "source",
                                                ContextEntityLink.subject_id == source.id).values(mention=""))
-    stale = db.execute(update(ContextBrief).where(ContextBrief.owner_id == owner,
-                                                  cast(ContextBrief.dependencies, Text).contains(source.id))
-                       .values(stale=True, updated_at=now())).rowcount
+    from . import apply, briefs
+
+    supported = list(db.scalars(select(ContextEvidence.assertion_id).where(
+        ContextEvidence.owner_id == owner, ContextEvidence.source_id == source.id)))
+    before = apply.versions(db, owner, supported)
     if propagate_source_deletion is not None:
         propagate_source_deletion(db, owner, source.id)
+    apply.emit_assertions(db, owner, supported, before)  # retracted (or rechained) by the deletion
+    stale = briefs.mark_stale(db, owner, source_id=source.id)
     db.flush()
     return {"purged": True, "revisions": len(revision_ids), "segments": segments, "chunks": chunks,
             "evidence": evidence, "stale_briefs": stale}

@@ -252,3 +252,30 @@ def test_setup_code_mcp_key_and_command_match_remotea():
     assert routes.SETUP_CODE_PREFIX == "eridani-setup:1:"
     doc = (ROOT / "docs/AGENT_CONTROL.md").read_text()
     assert routes.SETUP_CODE_PREFIX in doc and routes.SETUP_COMMAND in doc and "/targets/{key}/probe" in doc
+
+
+def test_context_tools_scopes_routes_and_docs_agree():
+    """context/mcp.py TOOLS is the meeting-context tool list. bot_access READ_SCOPES / WRITE_TOOLS carry the same
+    scopes, every tool has a REST twin in context/routes/context.py, and docs/EXTERNAL_AGENTS.md names it."""
+    from jarvis.bot_access import READ_SCOPES, WRITE_TOOLS
+    from jarvis.context.mcp import TOOLS
+
+    mapped = {n: s for n, s in {**READ_SCOPES, **WRITE_TOOLS}.items() if n.startswith("context_")}
+    assert mapped == {n: t.scope for n, t in TOOLS.items()}, "bot_access READ_SCOPES/WRITE_TOOLS vs context TOOLS"
+    assert all(t.read == (n in READ_SCOPES) for n, t in TOOLS.items()), "read tools vs READ_SCOPES"
+    routes = (ROOT / "apps/api/jarvis/context/routes/context.py").read_text()
+    doc = (ROOT / "docs/EXTERNAL_AGENTS.md").read_text()
+    assert not [n for n in TOOLS if f"`{n}`" not in routes], "context tool without a REST twin"
+    assert not [n for n in TOOLS if f"`{n}`" not in doc], "context tool missing from docs/EXTERNAL_AGENTS.md"
+
+
+def test_context_resolve_command_matches_the_service_input():
+    """`context.resolve` validates in `domain.ResolveContext` and again in `context.service.ResolveInput`."""
+    from jarvis.context.service import ResolveInput
+    from jarvis.domain import COMMANDS
+
+    command = COMMANDS["context.resolve"].model_fields
+    service = ResolveInput.model_fields
+    assert command.keys() == service.keys()
+    assert all(command[name].annotation == service[name].annotation and command[name].default == service[name].default
+               for name in command)

@@ -173,7 +173,7 @@ Scopes (`bot_access.py`):
 - [ ] `PRIVILEGED` if every use is a write check and viewers/shared workspaces must not hold it
       (today `agents:control`, `agents:session`; `agents:read` is not privileged).
 - [ ] `COMMAND_SCOPES` (domain command → scope) for direct commands; `READ_SCOPES` (read tool →
-      scope) for read tools. `tool_allowed()` uses both to filter Dani's registry for bot-queued work
+      scope) for read tools; `WRITE_TOOLS` (non-command write tool → scope, today `context_feedback`). `tool_allowed()` uses both to filter Dani's registry for bot-queued work
       (`external_service.py`, `registry()` filtered by `tool_allowed`).
 - [ ] `bot_access.create`: viewers are refused `:write`, `work:run` and `PRIVILEGED`; `schema:write`
       needs the owner; `PRIVILEGED` is refused in shared workspaces. Extend if the new scope needs a
@@ -194,6 +194,22 @@ MCP and HTTP (`external_mcp.py`, `external_routes.py`):
       `remotea_routes.MCP_KEY_SCOPES`, the key a setup code carries (docs/AGENT_CONTROL.md § The setup code), and
       the tool name in `tests/test_drift_guards.py` `REMOTEA_MCP_TOOLS`. Never give that key `agents:control`,
       and never give the link key (`KEY_SCOPES`) `tasks:write`.
+- [ ] Meeting-context tools are the exception to the two items above: they live in
+      `context/mcp.py` `TOOLS` (input model, service call, scope, description). `definitions` adds
+      `context.mcp.definitions(scopes)` for `context:read` keys (empty while `context_enabled` is off) and
+      `dispatch` hands every `context_*` name to `context.mcp.dispatch`, which authorizes and validates
+      itself. The service (`context/service.py`) opens its own sessions: it authorizes before assembly and
+      again before returning, and embeds a search query with no transaction open. A new context tool needs a
+      `TOOLS` entry, a REST twin in `context/routes/context.py`, a `READ_SCOPES` entry (reads) or
+      `WRITE_TOOLS` entry (non-command writes, each use a write check), and a row in the "Meeting context"
+      table of `docs/EXTERNAL_AGENTS.md`. Guard: `test_context_tools_scopes_routes_and_docs_agree`. Context
+      keys are personal-only (`PERSONAL_ONLY` in `bot_access.create`; the service refuses shared workspaces
+      at use, since `authorize` only enforces that for `PRIVILEGED`). Every read also has a session twin in
+      `context/routes/owner.py` (on `owner_router`, `/api/v1/context`) calling the same service function
+      inside `service.as_owner(user)`. Answering a context Question is the domain command `context.resolve`
+      (`domain.ResolveContext`, kept equal to `service.ResolveInput` by
+      `test_context_resolve_command_matches_the_service_input`); its Questions items keep `answer_args`
+      spreadable into that command, with the allowed answers in `actions`.
 - [ ] The MCP app is mounted at `/api/v1/external/mcp` with `streamable_http_path="/"`, so only the
       trailing-slash URL `/api/v1/external/mcp/` works; the no-slash path answers 405. Any doc or UI
       that prints the URL must use the slash (`external_routes.keys` returns `mcp_url` with it).
@@ -522,6 +538,7 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | `test_every_control_tool_is_gated_on_remotea` | registry tools named `control_*` == `tool_policy.CONTROL_TOOLS` |
 | `test_settings_can_grant_every_bot_scope_but_the_link_key` | scopes buildable in `BotSettings.tsx` == `bot_access.SCOPES` minus `agents:control` |
 | `test_external_record_kinds_and_mcp_reads_agree` | `external_service.Kind` == `KINDS`; each `CUSTOM_READS` tool appears in `external_mcp.definitions` for its `READ_SCOPES` scope |
+| `test_context_tools_scopes_routes_and_docs_agree` | `context/mcp.py` `TOOLS` == the `context_*` entries of `bot_access.READ_SCOPES` + `WRITE_TOOLS` (same scopes); each tool has a REST twin in `context/routes/context.py` and a row in `EXTERNAL_AGENTS.md` |
 | `test_setup_code_mcp_key_and_command_match_remotea` | the setup code's MCP key (`remotea_routes.MCP_KEY_SCOPES`) offers every tool in `REMOTEA_MCP_TOOLS` (remotea's `ERIDANI_MCP_TOOLS`) and lacks `agents:control`; the link key lacks `tasks:write`; `remotea-setup.ts` `SETUP_COMMAND` == `remotea_routes.SETUP_COMMAND`; `AGENT_CONTROL.md` names the code prefix, the command and the probe route |
 
 Also: `tests/test_agent_retention.py::test_every_agent_table_is_in_the_retention_doc` (every `session_models.py`

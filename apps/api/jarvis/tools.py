@@ -390,6 +390,7 @@ VOICE_MUTATIONS = {
     "notification.dismiss",
     "memory.capture",
     "memory.resolve",
+    "context.resolve",
     "settings.update",
 }
 
