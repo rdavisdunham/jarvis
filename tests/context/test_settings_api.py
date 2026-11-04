@@ -24,12 +24,6 @@ ACCOUNT = "davin@example.com"
 VTT = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<v Davin>Kick-off.</v>\n\n00:00:04.000 --> 00:00:06.000\n<v Priya>Ready.</v>\n"
 
 
-def test_api_mounts_owner_routes_before_the_spa_catch_all(client):
-    # Reached through api.py's real mount: the route answers, not the catch-all's NOT_FOUND.
-    response = client.get(BASE)
-    assert response.status_code == 200, response.text
-
-
 @pytest.fixture(autouse=True)
 def enabled(monkeypatch):
     monkeypatch.setenv("JARVIS_CONTEXT_ENABLED", "true")
@@ -227,3 +221,30 @@ def test_remove_forgets_the_key_and_keeps_imported_meetings(client, granola_on, 
     assert code(client.post(f"{BASE}/granola/{connection}/sync")) == (404, "NOT_FOUND")
     reconnected = connect(client).json()
     assert (reconnected["id"], reconnected["has_key"]) == (connection, True)
+
+
+def test_owner_routes_are_mounted_on_the_app_with_session_csrf(client):
+    paths = set(app.openapi()["paths"])
+    assert BASE in paths and BASE + "/import" in paths
+    assert not any(p.startswith("/api/v1/external/settings") for p in paths)
+    csrf = client.headers.pop("X-CSRF-Token")
+    try:
+        assert code(upload(client)) == (403, "NOT_AUTHORIZED")
+        assert code(connect(client)) == (403, "NOT_AUTHORIZED")
+    finally:
+        client.headers["X-CSRF-Token"] = csrf
+    with session_scope() as db:
+        assert db.scalar(select(func.count()).select_from(m.ContextSource)) == 0
+
+
+def test_import_has_the_transcript_body_cap_not_the_100_kb_default(client, monkeypatch):
+    from jarvis.context.routes.sources import body_limit
+
+    large = "\n\n".join(f"Davin: Line {i}. " + "x" * 1000 for i in range(150))
+    assert len(large) > 150_000
+    accepted = upload(client, large, "text/plain", filename="long.txt")
+    assert accepted.status_code == 200, accepted.text
+    monkeypatch.setenv("JARVIS_CONTEXT_MAX_SOURCE_CHARS", "1000")
+    get_settings.cache_clear()
+    assert len(large) > body_limit()
+    assert upload(client, large + " more", "text/plain", filename="long2.txt").status_code == 413
