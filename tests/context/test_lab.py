@@ -84,7 +84,12 @@ def test_envelope_when_the_lab_user_recorded_the_meeting():
     assert people["kai@client.example"].speaker_label is None and len(envelope.participants) == 2
     assert envelope.upstream_owner_email == "robin@studio.example" and envelope.content_hash
     assert envelope.metadata["lab"] == {"recorder_is_lab_user": True, "speakers_separated": True,
-                                        "microphone_as": "recorder", "private_notes_dropped": False}
+                                        "microphone_as": "recorder", "private_notes_status": "kept",
+                                        "private_notes_dropped": False}
+    without = lab.to_envelope(meeting(), lab_email=ME["email"], private_notes=False)
+    assert without.private_notes is None and without.metadata["lab"]["private_notes_status"] == \
+        "dropped: --no-private-notes"
+    assert without.content_hash != envelope.content_hash
 
 
 def test_envelope_when_someone_else_recorded_the_meeting():
@@ -134,13 +139,13 @@ def test_envelope_needs_transcript_and_offset():
 
 
 def test_import_file_writes_the_envelope_and_copies_loose_json(lab_dir, tmp_path_factory):
-    folder, envelope = lab.import_file("rubric-sync")
-    assert folder == lab_dir / "rubric-sync" and len(envelope.segments) == 5
+    folder, envelope, built = lab.import_file("rubric-sync")
+    assert folder == lab_dir / "rubric-sync" and len(envelope.segments) == 5 and built == "text"
     assert json.loads((folder / "envelope.json").read_text())["external_id"] == "not_abcdefghijklmn"
     loose = tmp_path_factory.mktemp("loose") / "export.json"
     loose.write_text(json.dumps(meeting()))
     lab.write_json(lab_dir / "copied" / "gold.json", gold())
-    folder, _ = lab.import_file(str(loose), "copied")
+    folder, _, _ = lab.import_file(str(loose), "copied")
     assert (lab_dir / "copied" / "meeting.json").exists() and folder.name == "copied"
 
 
@@ -203,21 +208,50 @@ def test_jaccard_pairs_are_one_to_one_and_thresholded():
     assert lab.jaccard("", "anything") == 0.0
 
 
+def match(*pairs):
+    return [{"gold": g, "pred": p, "parts": list(parts)} for g, p, *parts in pairs]
+
+
 def test_score_meeting_math():
     g = lab.gold_with_ids({**gold(), "must_not": [{"title": "Cancel the pilot", "notes": "hypothetical"}]})
     p = preds(("Update the rubric", "Robin Vale (you)", True, True),
               ("Send the calls", "Robin Vale (you)", True, True),  # waiting item wrongly made mine and checked
               ("Cancel the pilot", "Robin Vale (you)", True, True),
-              ("Write notes", None, False, False))
-    counts = lab.score_meeting(g, p, [("g1", "P1"), ("g2", "P2")])
+              ("Write notes", None, False, False),
+              ("Build annotation admin", "Kai Moreno", False, False))  # the user's todo given to Kai
+    counts = lab.score_meeting(g, p, match(("g1", "P1"), ("g2", "P2"), ("g3", "P5")))
     m = lab.metrics(counts)
-    assert m["recall_mine"] == 0.5 and m["recall_waiting"] == 1.0 and m["precision"] == 0.5
-    assert m["owner_accuracy"] == 0.5 and m["checked_accuracy"] == 0.5 and m["checked_must_not"] == 1
-    granola = lab.score_meeting(g, [{**x, "checked": None} for x in p], [("g1", "P1")])
-    assert lab.metrics(granola)["checked_accuracy"] is None and granola["checked_must_not"] is None
+    assert m["recall_mine"] == 0.5 and m["candidate_recall_mine"] == 1.0  # g3 matched, wrong owner
+    assert m["recall_waiting"] == 1.0 and m["candidate_recall"] == 1.0 and m["precision"] == 0.6
+    assert m["owner_accuracy"] == pytest.approx(1 / 3) and m["checked_accuracy"] == pytest.approx(1 / 3)
+    # Three checked proposals: one is the user's todo, one someone else's, one matches nothing.
+    assert m["checked_precision"] == pytest.approx(1 / 3) and m["unmatched_checked"] == 1
+    assert m["checked_must_not"] == 1 and m["parts_recall"] == 1.0 and m["full_recall"] == 1.0
+    granola = lab.score_meeting(g, [{**x, "checked": None} for x in p], match(("g1", "P1")))
+    gm = lab.metrics(granola)
+    assert gm["checked_accuracy"] is None and gm["checked_precision"] is None
+    assert granola["checked_must_not"] is None and granola["unmatched_checked"] is None
     pooled = lab.pool([{**counts, "cost_usd": 0.02}, {**granola, "cost_usd": 0.04}])
     assert pooled["meetings"] == 2 and pooled["gold_mine"] == 4 and pooled["recall_mine"] == 0.5
+    assert pooled["candidate_recall_mine"] == 0.75 and pooled["unmatched_checked"] == 1
     assert pooled["cost_per_meeting"] == pytest.approx(0.03) and pooled["checked_must_not"] == 1
+
+
+def test_grouped_items_match_on_parts():
+    grouped = {"id": "g1", "title": "Rubric rework", "owner": "Robin Vale", "kind": "mine",
+               "parts": ["Change the C2 scale to 1-5", "Add an N/A option", "Re-import the rubric to TI"]}
+    g = lab.gold_with_ids({"items": [grouped, gold()["items"][1]]})
+    p = preds(("Change the C2 scale to 1-5", "Robin Vale (you)", True, True),
+              ("Add an N/A option to the rubric", "Robin Vale (you)", True, True),
+              ("Change C2 scale to 1-5 now", "Robin Vale (you)", True, True))  # a duplicate of part 1
+    matches = lab.jaccard_matches(g["items"], p)
+    assert [(x["gold"], x["pred"], x["parts"]) for x in matches] == [("g1", "P1", [0]), ("g1", "P2", [1])]
+    m = lab.metrics(lab.score_meeting(g, p, matches))
+    assert m["candidate_recall"] == 0.5 and m["full_recall"] == 0.0 and m["parts_recall"] == 0.5  # 2 of 4 parts
+    assert m["precision"] == pytest.approx(2 / 3) and m["unmatched_checked"] == 1
+    whole = lab.accept(g["items"], p, [("g1", "P3", [])])
+    assert whole == [{"gold": "g1", "pred": "P3", "parts": [0, 1, 2]}]
+    assert lab.metrics(lab.score_meeting(g, p, whole))["full_recall"] == 0.5
 
 
 def test_owner_correct_rules():
@@ -227,26 +261,45 @@ def test_owner_correct_rules():
     assert lab.owner_correct(waiting, {"mine": False, "owner": "kai"})
     assert not lab.owner_correct(waiting, {"mine": False, "owner": "Lee"})
     assert lab.owner_correct({"kind": "waiting", "owner": None}, {"mine": False, "owner": None})
+    people = [{"name": "Kai Moreno", "email": "kai@client.example"}, {"name": "Kai Lund", "email": "kl@x.example"},
+              {"name": "Lee Park", "email": None}]
+    # Emails decide when both are known, directly or through a full name among the participants.
+    assert lab.same_person(("K. Moreno", "KAI@client.example"), ("Kai", "kai@client.example"), people)
+    assert not lab.same_person(("Kai Moreno", None), ("Someone", "kl@x.example"), people)
+    # Full names match; a shared first name does not.
+    assert lab.same_person(("Lee  Park", None), ("lee park (you)", None), people)
+    assert not lab.owner_correct(waiting, {"mine": False, "owner": "Kai"}, people)
+    assert lab.same_person(("Lee Park", None), ("Lee", None), people)  # unique first name
 
 
-def test_judge_pairs_keeps_known_one_to_one_pairs():
-    g = lab.gold_with_ids(gold())["items"]
-    p = preds(("a", None, False, False), ("b", None, False, False))
+def test_judge_matches_keep_known_pairs_and_parts():
+    items = gold()["items"]
+    items[0] = {**items[0], "parts": ["Change the scale", "Re-import"]}
+    g = lab.gold_with_ids({"items": items})["items"]
+    p = preds(("a", None, False, False), ("b", None, False, False), ("c", None, False, False),
+              ("d", None, False, False))
     seen = {}
 
     def call(payload):
         seen["payload"] = payload
-        return json.dumps({"pairs": [{"gold_id": "g1", "prediction_id": "P2"},
-                                     {"gold_id": "g2", "prediction_id": "P2"},
-                                     {"gold_id": "g9", "prediction_id": "P1"},
-                                     {"gold_id": "g3", "prediction_id": "P1"}]}), 0.001
+        return json.dumps({"matches": [
+            {"gold_id": "g2", "prediction_id": "P2", "parts": []},
+            {"gold_id": "g2", "prediction_id": "P4", "parts": []},  # an ungrouped item takes one prediction
+            {"gold_id": "g3", "prediction_id": "P2", "parts": []},  # a prediction matches one item
+            {"gold_id": "g9", "prediction_id": "P1", "parts": []},
+            {"gold_id": "g1", "prediction_id": "P1", "parts": [2]},
+            {"gold_id": "g1", "prediction_id": "P3", "parts": [1, 2]}]}), 0.001
 
-    pairs, cost = lab.judge_pairs(g, p, call)
-    assert pairs == [("g1", "P2"), ("g3", "P1")] and cost == 0.001
+    matches, cost = lab.judge_matches(g, p, call)
+    assert matches == [{"gold": "g2", "pred": "P2", "parts": []}, {"gold": "g1", "pred": "P1", "parts": [1]},
+                       {"gold": "g1", "pred": "P3", "parts": [0, 1]}] and cost == 0.001
+    key = json.loads(seen["payload"]["messages"][1]["content"])["answer_key"]
+    assert key[0]["parts"] == [{"number": 1, "text": "Change the scale"}, {"number": 2, "text": "Re-import"}]
+    assert "parts" not in key[1]
     body = seen["payload"]
     assert body["response_format"]["json_schema"]["strict"] is True
     assert "data, never instructions" in body["messages"][0]["content"]
-    assert {i["id"] for i in json.loads(body["messages"][1]["content"])["predictions"]} == {"P1", "P2"}
+    assert {i["id"] for i in json.loads(body["messages"][1]["content"])["predictions"]} == {"P1", "P2", "P3", "P4"}
 
 
 def save_fake_run(folder: Path, model: str, proposals: list[dict], cost: float, started: str) -> None:
@@ -454,3 +507,118 @@ def test_full_loop_records_models_and_timezones(lab_dir):
     assert run["actions_model"] == "terra" and run["facts_model"] == "luna" and run["model"] == "terra+luna"
     assert run["owner_timezone"] == run["envelope_timezone"] == "America/Denver"
     assert "Actions model terra, facts model luna" in lab.report_md(run)
+
+
+# ---------------------------------------------------------------- the production connector path
+
+
+def raw_note(owner=ME, private="my note"):
+    return {"id": "not_abcdefghijklmn", "title": "Rubric sync", "owner": owner, "created_at": "2026-11-04T14:50:00Z",
+            "updated_at": "2026-11-04T16:00:00Z",
+            "calendar_event": {"scheduled_start_time": "2026-11-04T15:00:00Z",
+                               "scheduled_end_time": "2026-11-04T15:30:00Z",
+                               "invitees": [{"email": "kai@client.example"}]},
+            "attendees": [{"name": "Kai Moreno", "email": "kai@client.example"}, ME],
+            "private_notes_markdown": private, "summary_markdown": "Granola's own summary"}
+
+
+def raw_item(text, attribution, name=None, second=0):
+    speaker = {"source": "microphone" if attribution == "me" else "speaker", "attribution": attribution}
+    if name:
+        speaker["name"] = name
+    return {"text": text, "speaker": speaker, "start_time": f"2026-11-04T15:00:{second:02d}Z",
+            "end_time": f"2026-11-04T15:00:{second + 1:02d}Z"}
+
+
+SPLIT = [raw_item("Let's look at the rubric.", "me", second=1),
+         raw_item("I'll send you the 50 calls tomorrow.", "them", "Kai Moreno", 3),
+         raw_item("I'll update the rubric by Friday.", "me", second=5)]
+MIXED = [raw_item("Let's look at the rubric.", "me", second=1),
+         raw_item("I'll send you the 50 calls tomorrow.", "me", second=3)]
+
+
+def raw_folder(lab_dir, slug, note, transcript):
+    folder = lab_dir / slug
+    lab.write_json(folder / "gold.json", gold())
+    lab.write_json(folder / lab.RAW_NOTE, note)
+    lab.write_json(folder / lab.RAW_TRANSCRIPT, transcript)
+    return folder
+
+
+def test_raw_folders_go_through_the_production_connector(lab_dir):
+    from jarvis.context.connectors import granola
+
+    folder = raw_folder(lab_dir, "raw-split", raw_note(), SPLIT)
+    envelope, built = lab.build_envelope(folder, ME)
+    production = granola.to_envelope(raw_note(), SPLIT)
+    assert built == "connector" and envelope.external_revision == production.external_revision
+    assert [(s.speaker_label, s.attribution, s.text, s.start_ms) for s in envelope.segments] == \
+        [(s.speaker_label, s.attribution, s.text, s.start_ms) for s in production.segments]
+    assert envelope.metadata["granola"] == production.metadata["granola"]
+    assert envelope.summary == production.summary  # whatever production passes on, the lab passes on
+    assert envelope.private_notes == "my note" and envelope.timezone == "America/Chicago"
+    assert envelope.metadata["lab"]["speakers_separated"] is True
+    nonotes, _ = lab.build_envelope(folder, ME, private_notes=False)
+    assert nonotes.private_notes is None
+
+
+def test_connector_path_applies_the_lab_rules_after_the_connector(lab_dir):
+    recorder = {"name": "Uma Recorder", "email": "uma@studio.example"}
+    colleague = raw_folder(lab_dir, "raw-colleague", raw_note(owner=recorder), SPLIT)
+    envelope, _ = lab.build_envelope(colleague, ME)
+    assert {(s.speaker_label, s.attribution) for s in envelope.segments if s.seq in (0, 2)} == \
+        {("Uma Recorder", "other")}
+    assert envelope.private_notes is None
+    assert envelope.metadata["lab"]["private_notes_status"] == "dropped: recorded by someone else"
+    mixed = raw_folder(lab_dir, "raw-mixed", raw_note(owner=recorder), MIXED)
+    auto, _ = lab.build_envelope(mixed, ME)
+    assert {(s.speaker_label, s.attribution) for s in auto.segments} == {(None, None)}
+    assert auto.metadata["lab"]["speakers_separated"] is False
+    assert not any(p.speaker_label for p in auto.participants)
+    forced, _ = lab.build_envelope(mixed, ME, speakers="recorder")
+    assert {(s.speaker_label, s.attribution) for s in forced.segments} == {("Uma Recorder", "other")}
+
+
+def test_import_granola_saves_the_raw_responses(lab_dir):
+    folder = lab.import_granola("not_abcdefghijklmn", "from-raw", client=FakeGranola())
+    assert json.loads((folder / lab.RAW_NOTE).read_text()) == FakeGranola().get_note("not_abcdefghijklmn")
+    assert json.loads((folder / lab.RAW_TRANSCRIPT).read_text()) == FakeGranola().get_transcript("x")
+    lab.write_json(folder / "gold.json", gold())
+    _, envelope, built = lab.import_file("from-raw")
+    assert built == "connector" and len(envelope.segments) == 3
+
+
+def test_full_loop_on_the_connector_path_without_notes(lab_dir):
+    folder = raw_folder(lab_dir, "raw-loop", raw_note(), SPLIT)
+    with runner.offline():
+        run = lab.run_meeting(folder, lab.model_label("terra", "luna", False), engine="double",
+                              private_notes=False)
+    assert run["envelope_path"] == "connector" and run["private_notes_enabled"] is False
+    assert run["model"] == "terra+luna-nonotes" and run["meeting"]["private_notes"] is False
+    assert not any(s["kind"] == "private_note" for s in run["speakers"])
+    kai = [p for p in run["proposals"] if p["responsible"] == "Kai Moreno"]
+    assert kai and kai[0]["responsible_email"] == "kai@client.example" and not kai[0]["checked"]
+    assert "envelope from connector" in lab.report_md(run)
+
+
+def test_run_cli_passes_notes_and_facts_options(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(lab, "run_lab", lambda slugs, model, **kw: seen.update(slugs=slugs, model=model, **kw))
+    assert lab.main(["run", "a", "b", "--model", "terra", "--facts-model", "luna", "--no-private-notes"]) == 0
+    assert seen["slugs"] == ["a", "b"] and seen["facts_model"] == "luna" and seen["private_notes"] is False
+
+
+def test_gold_sheet_round_trips_parts_and_owner_email(lab_dir):
+    folder = lab_dir / "rubric-sync"
+    key = gold()
+    key["items"][0] = {**key["items"][0], "parts": ["Change C2 to 1-5", "Add N/A"], "owner_email": ME["email"]}
+    lab.write_json(folder / "gold.json", key)
+    sheet = lab.gold_sheet(key, "rubric-sync")
+    assert "- parts:\n  - Change C2 to 1-5\n  - Add N/A" in sheet
+    path = lab_dir / "sheet.md"
+    path.write_text(sheet.replace("  - Add N/A", "  - Add N/A\n  - Re-import to TI"))
+    applied = lab.gold_apply(folder, path)
+    assert applied["items"][0]["parts"] == ["Change C2 to 1-5", "Add N/A", "Re-import to TI"]
+    assert applied["items"][0]["owner_email"] == ME["email"] and "parts" not in applied["items"][1]
+    assert lab.parse_sheet("## a\n- title: x\n- kind: mine\n- parts: inline part\n")[1][0]["parts"] == \
+        ["inline part"]

@@ -208,14 +208,22 @@ uv run --no-sync python -m evals.context.lab gold-apply <slug> <sheet.md>
 
 A meeting folder holds `meeting.json` (`note_id`, `title`, `meeting_at` with offset, `timezone`, `owner` = the
 note's recorder, `participants`, `private_notes`, `granola_summary`, `transcript` in the Granola MCP text format),
-`gold.json` (`verified`, `lab_user`, `items` of `{id, title, owner, kind: mine|waiting, due, notes}`, optional
-`must_not` items) and `granola.json` (Granola's next steps, same item shape).
+`gold.json` (`verified`, `lab_user` with optional `timezone`, `items` of `{id, title, owner, kind: mine|waiting,
+due, notes}` plus optional `owner_email` and `parts` (a grouped item's atomic pieces), optional `must_not` items)
+and `granola.json` (Granola's next steps, same item shape). `import-granola` also keeps the raw REST responses,
+`granola-note.json` and `granola-transcript.json`.
 
-- **Conversion.** `Microphone:` is the recorder: the Eridani owner (attribution `owner`) when the recorder is the
+- **Envelope.** With the raw REST files, the envelope comes from production's builder
+  (`connectors.granola.to_envelope`); otherwise `meeting.json` is converted to the same shape. The lab rules
+  below apply after either (`run.json` records `envelope_path`: `connector` or `text`).
+- **Conversion.** `Microphone:` (Granola's "me") is the recorder: the Eridani owner (attribution `owner`) when the recorder is the
   lab user, otherwise that person (attribution `other`, labelled with their name), because `owner` attribution
   always means the account owner. `System audio (Name):` is that participant, bare `System audio:` an unnamed
-  other speaker. Private notes are kept only when the lab user recorded the meeting. Granola's summary is never
-  passed on.
+  other speaker. When every line is the recorder's although several people attended (room or mixed audio),
+  `--speakers auto` leaves those lines unattributed; `--speakers recorder|unknown` overrides. Private notes are
+  kept only when the lab user recorded the meeting, and `run --no-private-notes` drops them (run name
+  `-nonotes`). The text path never passes Granola's summary on; the connector path passes what production does
+  (display only, never evidence).
 - **`run`** creates a throwaway database (refused unless the server is local), makes the lab user the owner (a
   signed-in email and the owner actor with their email and name, an actor and email identity for every other
   participant, and the timezone preference from `lab_user.timezone`, default America/Chicago, which also stands in
@@ -228,11 +236,16 @@ note's recorder, `participants`, `private_notes`, `granola_summary`, `transcript
   diagnostics, assertions and proposals with checked state and reason.
 - **`score`** matches proposals (and Granola's items) to the answer key with one judge call per meeting and
   system (`--judge`, default Luna, strict JSON schema), falling back to greedy token-Jaccard on titles
-  (`--no-judge`, or when the judge fails). It reports recall of the lab user's todos and of waiting-for items,
-  precision, owner accuracy, checked accuracy (mine checked, waiting unchecked), checked `must_not` items and cost
-  per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. The terminal shows the
+  (`--no-judge`, or when the judge fails). A grouped item matches any prediction covering one of its parts. It
+  reports `recall_mine` (the user's todos matched with the right owner), `candidate_recall_mine` and
+  `candidate_recall` (matched whoever owns them), waiting-for recall, `parts_recall` and `full_recall` (every
+  part covered), precision, owner accuracy (email when both sides have one, else full name, else a first name no
+  two participants share), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
+  proposals that are the user's real todos, unmatched ones included), `unmatched_checked`, checked `must_not`
+  items and cost per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. The terminal shows the
   match tables; `--out` (default `evals/context/reports/actions-lab-<date>.md`) gets numbered aggregates only.
-- **`gold-sheet` / `gold-apply`** round-trip the answer key through a markdown worksheet; `verified` becomes true
+- **`gold-sheet` / `gold-apply`** round-trip the answer key (parts and owner emails included) through a
+  markdown worksheet; `verified` becomes true
   only when its box is ticked.
 
 ## Caveats of the synthetic numbers
