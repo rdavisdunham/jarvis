@@ -8,6 +8,7 @@ import {
   type TranscriptSegment,
 } from "./context-model";
 
+const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
 type Props = { sourceId: string; zone?: string; onBack: () => void; onPerson: (actorId: string) => void };
 const GROUPS: { id: ProposalGroup; title: string; hint: string }[] = [
   { id: "tasks", title: "Work to add", hint: "New tasks, or links to tasks you already have." },
@@ -27,7 +28,7 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
 
   const apply = useCallback((next: Review) => {
     setSelected(previous => nextSelection(previous, current.current?.proposals ?? null, next.proposals));
-    current.current = next; setReview(next); setStale(false);
+    current.current = next; setReview(next); setStale(false); setUpdated(false);
   }, []);
   const load = useCallback(async () => {
     try { apply(await context.getReview(sourceId)); setError(""); }
@@ -37,6 +38,15 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
     void load();
     context.transcript(sourceId).then(p => { setPage(p); setSegments(p.segments); }).catch(e => setError((e as Error).message));
   }, [sourceId, load]);
+
+  // A context change elsewhere (processing finished, another device, publication progress): reload when the reader has
+  // nothing unsaved here; otherwise ask, so their selections are not replaced under them.
+  const dirty = !!review && (destination !== null || !sameSet(selected, nextSelection(new Set(), null, review.proposals)));
+  const [updated, setUpdated] = useState(false);
+  context.useContextChanged(() => {
+    if (busy) return;  // the write in flight returns the latest review
+    if (dirty) setUpdated(true); else void load();
+  });
 
   /** Every write: apply the review the server returns (with its new revisions), or reload; never guess. */
   async function act(run: () => Promise<context.WriteResult>, done: string) {
@@ -103,6 +113,8 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
       <button className="btn btn-sm" onClick={() => setFinishing(false)}>Keep reviewing</button>
     </div>}
     {stale && <div className="error-banner meeting-stale" role="alert"><span>This meeting changed since you opened it, so nothing was saved. Refresh to review the latest version; your selections are kept where nothing changed.</span>
+      <button className="btn btn-sm" onClick={() => void load()}><RefreshCw size={14}/>Refresh</button></div>}
+    {updated && !stale && <div className="meeting-updated" role="status"><span>This meeting has new changes. Refresh to see them; selections on unchanged proposals are kept.</span>
       <button className="btn btn-sm" onClick={() => void load()}><RefreshCw size={14}/>Refresh</button></div>}
     {error && <p role="alert" className="error-banner">{error}</p>}
     {notice && <p role="status" className="meeting-notice">{notice}</p>}

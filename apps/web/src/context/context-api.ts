@@ -1,9 +1,24 @@
 /** The only way the Meetings view and meeting review reach the server: the owner's session routes under
  * /api/v1/context (sources and drill-down from the context service, reviews from the review routes). */
+import { useEffect, useRef } from "react";
 import { api, ApiError, commandId, post } from "../api";
 import type { Destination, Evidence, Review, ReviewSummary, SourceList, SourcePage, SourceStatus } from "./context-model";
 
 const BASE = "/context";
+/** `events.ts` dispatches this when the change feed reports `context.changed` (processing, reviews, publication). */
+export const CONTEXT_CHANGED = "eri-context-changed";
+
+/** Calls `handler` once a burst of context changes settles (`delay` ms after the last one). */
+export function useContextChanged(handler: () => void, delay = 1000) {
+  const latest = useRef(handler);
+  latest.current = handler;
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const changed = () => { clearTimeout(timer); timer = setTimeout(() => latest.current(), delay); };
+    window.addEventListener(CONTEXT_CHANGED, changed);
+    return () => { window.removeEventListener(CONTEXT_CHANGED, changed); clearTimeout(timer); };
+  }, [delay]);
+}
 /** The server refuses these when meeting memory does not apply here: it is off, or this is a shared workspace. */
 export const UNAVAILABLE = new Set(["CONTEXT_DISABLED", "PERSONAL_WORKSPACE"]);
 export const isUnavailable = (e: unknown) => e instanceof ApiError && UNAVAILABLE.has(e.code);

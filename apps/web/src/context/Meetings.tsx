@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, RefreshCw, UserRound } from "lucide-react";
-import { isUnavailable, listMeetings, reviewSummaries } from "./context-api";
+import { isUnavailable, listMeetings, reviewSummaries, useContextChanged } from "./context-api";
 import { meetingDate, meetingStatus, type MeetingSource, type ReviewSummary, type SourceStatus } from "./context-model";
 import { MeetingReview } from "./MeetingReview";
 import "./meetings.css";
@@ -36,6 +36,7 @@ function MeetingList({ zone, onOpen }: { zone?: string; onOpen: (sourceId: strin
     } finally { setLoading(false); }
   }, [status, pages]);
   useEffect(() => { void load(); }, [load]);
+  useContextChanged(() => void load());
   const busy = !!items?.some(s => ["received", "queued", "processing"].includes(s.status));
   useEffect(() => {
     if (!busy) return;

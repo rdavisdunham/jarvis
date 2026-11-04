@@ -103,3 +103,6 @@ button.chip { border: 0; cursor: pointer; }
   .meeting-review-actions .btn, .proposal-footer .btn { flex: 1 1 140px; }
   .meeting-destination { flex: 1 1 100%; }
 }
+.meeting-updated { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; padding: 10px 14px;
+  border-radius: var(--r-md); background: var(--violet-soft); color: var(--ink); font-size: 14px; }
+.meeting-updated span { flex: 1 1 240px; }

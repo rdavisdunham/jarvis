@@ -159,4 +159,28 @@ describe("MeetingReview", () => {
       { proposal_id: "p-own", revision: 1 }, { proposal_id: "p-other", revision: 1 }, { proposal_id: "p-upd", revision: 1 }] });
     expect(onBack).toHaveBeenCalledTimes(2);
   });
+
+  it("reloads after a burst of context changes, but asks first when the reader has unsaved selections", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await render();
+      const reads = () => calls.filter(c => c.method === "GET" && c.url === R).length;
+      const before = reads();
+      current = review({ revision: 5, proposals: [proposal({ revision: 2, title: "Send the final deck" }), ...review().proposals.slice(1)] });
+      for (let i = 0; i < 3; i++) window.dispatchEvent(new Event("eri-context-changed"));
+      await act(async () => { vi.advanceTimersByTime(1000); }); await settle();
+      expect(reads()).toBe(before + 1);
+      expect(box("Send the final deck").checked).toBe(true);
+      await click(box("Kim drafts the FAQ"));
+      window.dispatchEvent(new Event("eri-context-changed"));
+      await act(async () => { vi.advanceTimersByTime(1000); }); await settle();
+      expect(reads()).toBe(before + 1);
+      expect(host.querySelector(".meeting-updated")?.textContent).toContain("new changes");
+      expect(box("Kim drafts the FAQ").checked).toBe(true);
+      await click(button("Refresh", host.querySelector(".meeting-updated")!));
+      expect(reads()).toBe(before + 2);
+      expect(host.querySelector(".meeting-updated")).toBeNull();
+      expect(box("Kim drafts the FAQ").checked).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
 });

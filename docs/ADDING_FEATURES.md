@@ -116,7 +116,9 @@ Example: the Meetings and Person pages (context platform D2) touched `types.ts`,
 `Meetings` and the `PersonPage` placeholder, the URL sync for `source`/`actor`), `task-presets.ts`,
 `site-actions.ts`, `ui_control.py` and `ui_contracts.py`; nothing in `tools.py` (no `entity_id` support yet).
 The page stylesheet is `context/meetings.css`; its data comes only from `context/context-api.ts`
-(`test_meeting_review_reads_only_the_context_api`).
+(`test_meeting_review_reads_only_the_context_api`). Both pages refresh on `eri-context-changed` (`events.ts`, from
+`context.changed`) through `context-api.ts` `useContextChanged`, debounced; the review asks before replacing
+unsaved selections. Notifications open meetings through `notice-target.ts` `openNotice` → `openMeeting`.
 
 Tests: `tests/test_drift_guards.py` (`test_web_pages_match_backend_views`,
 `test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`,
