@@ -10,18 +10,18 @@ without foreign keys (module boundary, plan section 2).
 Identity seeding (`seed_identities`) is a processing step for the `context_ingest` job, not part of receipt:
 `identity.seed_candidates` may create actors through the command path, which must not depend on the scopes of
 the bot key that delivered the transcript. It passes the current revision's participants and, only for an exact
-or confirmed calendar link, the event's attendees.
+or confirmed calendar link, the event's attendees as Google's raw dicts (`self` marks the owner; `resource`
+rooms are skipped).
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Literal
 
 from sqlalchemy import select, text
 
-from ..calendar_details import details
 from ..models import now
 from .models import ContextEntityLink, ContextSource, ContextSourceRevision
 from .schema import Participant, SourceEnvelope
@@ -64,7 +64,6 @@ class CalendarMatch:
     provider_id: str
     status: Literal["exact", "inferred"]
     score: float
-    attendees: list[Participant] = field(default_factory=list)
 
 
 def _words(value: str) -> str:
@@ -97,21 +96,18 @@ def score(title: str, occurred_at: datetime, event_title: str, event_start: date
     return round(0.6 * similarity + 0.4 * closeness, 4)
 
 
-def attendees(payload: dict) -> list[Participant]:
-    people = []
-    for guest in details(payload)["attendees"]:
-        name, email = guest.get("displayName"), guest.get("email")
-        if name or email:
-            people.append(Participant(name=(name or None) and name[:200], email=(email or None) and email[:320],
-                                      role="organizer" if guest.get("organizer") else "attendee"))
-    return people
+def attendees(payload: dict) -> list[dict]:
+    """The event's attendees as Google returns them, so `self` (the owner) and `resource` (rooms) survive."""
+    keys = ("email", "displayName", "self", "organizer", "resource")
+    return [{k: guest[k] for k in keys if k in guest}
+            for guest in (payload.get("attendees") or [])[:200] if isinstance(guest, dict)]
 
 
 def find_event(db, owner: str, envelope: SourceEnvelope, rejected: set[str] = frozenset()) -> CalendarMatch | None:
     if envelope.calendar_event_id:
         row = db.execute(_EVENT_EXACT, {"owner": owner, "provider_id": envelope.calendar_event_id}).first()
         if row and row.id not in rejected:
-            return CalendarMatch(row.id, row.provider_id, "exact", 1.0, attendees(row.payload))
+            return CalendarMatch(row.id, row.provider_id, "exact", 1.0)
     rows = db.execute(_EVENTS_NEAR, {"owner": owner, "lo": envelope.occurred_at - WINDOW,
                                      "hi": envelope.occurred_at + WINDOW}).all()
     scored = [(score(envelope.title, envelope.occurred_at, row.payload.get("summary") or "", start), row)
