@@ -146,6 +146,7 @@ export type Run = {
   message_deliveries?: { action_id: string; op_id: string; text: string; status: string; stage: "saved" | "handed_to_harness" | "provider_acknowledged" | "uncertain" }[];
   execution_mode?: "managed" | "legacy"; controller?: "terminal" | "eridani"; terminal_exited?: boolean;
   pause_reason?: "permission_denied" | "receipt_uncertain" | null;
+  coordination_failure?: { code?: string; outcome?: string; recovering?: boolean; request_id?: string };
   host_attention?: { kind: string; tool?: string; reason?: string; action?: unknown; question_id?: string } | null;
   stage?: string; attention?: "none" | "decision" | "paused" | "error"; connectivity?: "online" | "offline"; paused?: boolean;
   activity?: { kind: string; label?: string; at: string } | null; decisions?: RunDecision[];

@@ -297,6 +297,11 @@ def run_scoped(db, bot, body, states):
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
     run = coordinator.load(db, run.owner_id, run.id)
     coordinator.ensure_eridani_control(run)
+    if run.state == "needs_you" and run.state_reason == "no_plan" and not run.plan_revision and not run.plan_pending:
+        # A verified planning session may finish its rejected handoff; no operator decision is bypassed.
+        from . import agent_automation
+        if not run.paused and not agent_automation.held(run) and not coordinator.open_questions(db, run):
+            coordinator.transition(db, run, "interviewing", actor=actor, reason="planning_retry")
     if run.state not in states:
         raise DomainError("PLAN_LOCKED", f"The run is {run.state}; ask for a re-plan to change the plan.", 409,
                           data={"state": run.state})
@@ -349,6 +354,7 @@ def task_interview(db, bot, body):
                          answers={}, status="open")
     db.add(row)
     db.flush()
+    run.sync_state = {k: v for k, v in (run.sync_state or {}).items() if k not in ("coordination_failure", "planning_auto_generation")}
     coordinator.start_wait(run)  # The owner has the move: this time does not count toward the wall clock.
     coordinator.note(run, "interview", interview_id=row.id, questions=len(questions))
     coordinator.notify(db, run, "agent_question", "An agent has questions before it plans",

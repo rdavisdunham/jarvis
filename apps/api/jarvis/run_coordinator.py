@@ -844,6 +844,14 @@ def record_turn(db, run, frame):
                           "execution_waits_for_planning_stop": False, "planning_continuation_pending": False}
         if wait_for_old_stop:
             return  # The authoring turn ended after approval/revision; it is never an execution turn or a new-plan failure.
+    failure = (run.sync_state or {}).get("coordination_failure") or {}
+    if failure and not failure.get("recovering"):
+        from . import agent_planning_recovery
+        try:
+            if agent_planning_recovery.retry(db, run, actor=Actor("run_judge"), automatic=True):
+                return
+        except DomainError:
+            pass  # A hold, existing decision, or uncertain outcome requires the operator.
     if run.paused:
         return
     if run.state == "waiting_answer":
@@ -1117,6 +1125,9 @@ def settle_planning(db, run):
     if open_questions(db, run) or open_interview(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
+        failure = (run.sync_state or {}).get("coordination_failure")
+        if failure:
+            run.sync_state = {**run.sync_state, "coordination_failure": {**failure, "recovering": False}}
         if run.state != "needs_you":
             transition(db, run, "needs_you", reason="no_plan", detail=no_tools_detail(run))
         return
@@ -2903,6 +2914,11 @@ def record_host_pause(db, run, frame):
             or (run.sync_state or {}).get("controller") == "terminal":
         return
     previous = run.sync_state or {}
+    attention = getattr(frame, "attention", None) or {}
+    failure = (attention.get("action") or {}).get("coordination")
+    if failure:
+        run.sync_state = {**previous, "coordination_failure": {**failure, "recovering": False}}
+        previous = run.sync_state
     same = run.paused and previous.get("automatic_pause") == reason
     run.sync_state = {**previous, "automatic_pause": reason,
                       "operator_paused": previous.get("operator_paused", bool(run.paused)),

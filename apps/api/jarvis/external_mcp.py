@@ -2,6 +2,7 @@
 
 import copy
 import json
+from contextvars import ContextVar
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -19,6 +20,8 @@ from . import external_service as service
 from .config import get_settings
 from .db import session_scope
 from .domain import COMMANDS, DomainError
+
+_run_binding = ContextVar("mcp_run_binding", default=None)
 
 UUID_SCHEMA = {"type": "string", "format": "uuid"}
 
@@ -225,6 +228,12 @@ def session_arguments(model, arguments):
 def dispatch(name, arguments):
     from . import agent_sessions as sessions
 
+    if name in ("task_plan", "task_step", "submit_plan", "task_interview", "submit_plan_review") and _run_binding.get():
+        arguments = dict(arguments)
+        supplied = arguments.get("run_token")
+        if supplied and supplied != _run_binding.get():
+            raise DomainError("RUN_CONTEXT_CONFLICT", "The supplied run token does not match this tool connection.", 409)
+        arguments["run_token"] = _run_binding.get()
     if name == "session_search":
         # Searching may call the embedding provider; hold no transaction meanwhile.
         with session_scope() as db:
@@ -346,8 +355,12 @@ class MCPMount:
         request = Request(scope, receive)
         try:
             identity = await run_in_threadpool(bot_access.authenticate, request)
-            with bot_access.bind(identity):
-                await self.app(scope, receive, send)
+            token = _run_binding.set(request.headers.get("X-Eridani-Run-Token"))
+            try:
+                with bot_access.bind(identity):
+                    await self.app(scope, receive, send)
+            finally:
+                _run_binding.reset(token)
         except DomainError as exc:
             headers = {"WWW-Authenticate": 'Bearer realm="Eridani bot API"'} if exc.status == 401 else {}
             await JSONResponse(
