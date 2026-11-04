@@ -6,7 +6,6 @@ from datetime import timedelta
 import pytest
 from jarvis.context import calendar_link, sources
 from jarvis.context import models as m
-from jarvis.context.schema import Participant
 from jarvis.db import session_scope
 from jarvis.models import GoogleCalendar, GoogleCalendarEvent, GoogleIdentity
 from sqlalchemy import select
@@ -37,7 +36,8 @@ def calendar():
         db.add_all([mine, theirs])
         db.flush()
         guests = [{"email": "priya@example.com", "displayName": "Priya"},
-                  {"email": "davin@example.com", "organizer": True, "self": True}]
+                  {"email": "davin@example.com", "organizer": True, "self": True, "responseStatus": "accepted"},
+                  {"email": "room-1@resource.calendar.google.com", "resource": True}]
         return {
             "exact": event(db, mine, "evt_20261103T150000Z", "Weekly sync", MEETING_AT, guests),
             "similar": event(db, mine, "evt-2", "Pilot scope review", MEETING_AT + timedelta(minutes=10)),
@@ -73,7 +73,7 @@ def test_exact_calendar_event_id_links_exactly_and_seeds_attendees(calendar, env
     with session_scope() as db:
         emails = set(db.scalars(select(m.ContextActorIdentity.normalized).where(
             m.ContextActorIdentity.owner_id == OWNER, m.ContextActorIdentity.namespace == "email")))
-    assert {"priya@example.com", "davin@example.com"} <= emails
+    assert {"priya@example.com", "davin@example.com"} <= emails and not any("resource" in e for e in emails)
 
 
 def fake_seeding(monkeypatch):
@@ -91,8 +91,9 @@ def test_exact_match_passes_calendar_attendees_to_seeding(calendar, envelope, mo
     seed(result.source_id)
     [(owner, source_id, participants, attendees)] = seeded
     assert (owner, source_id) == (OWNER, result.source_id) and [p.name for p in participants] == ["Davin", "Priya", "Marco"]
-    assert attendees == [Participant(name="Priya", email="priya@example.com"),
-                         Participant(email="davin@example.com", role="organizer")]
+    assert attendees == [{"email": "priya@example.com", "displayName": "Priya"},
+                         {"email": "davin@example.com", "organizer": True, "self": True},
+                         {"email": "room-1@resource.calendar.google.com", "resource": True}]
 
 
 def test_title_and_time_give_a_provisional_match_without_attendee_seeding(calendar, envelope, monkeypatch):
