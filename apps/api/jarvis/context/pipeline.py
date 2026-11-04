@@ -73,6 +73,7 @@ from .schema import (
     EntityCandidate,
     EntityRef,
     ExtractionResult,
+    ExtractLimits,
     ExtractRequest,
     LinkProposal,
     Participant,
@@ -88,6 +89,7 @@ SOURCE_STAGES = ("ingest", "extract", "link", "reconcile")
 MAX_ATTEMPTS = 10  # perform_job's DBOS step attempts
 MAX_REQUEUES = 5  # stale-on-decisions requeues of one stage before giving up
 CONFIG_VERSION = "pipeline-v1"
+EXTRACT_ACTIONS = 100  # the action pass lists every candidate before the checker filters
 CONTINUE_BACKOFF = (timedelta(minutes=5), timedelta(hours=6), timedelta(hours=24))  # then stop until asked
 EXTRACT_CANDIDATES = 50
 UNLINKABLE = {"we", "us", "team", "the team", "everyone", "all of us", "both of us", "unknown speaker", "unknown",
@@ -316,7 +318,8 @@ def _request(db, owner: str, source: ContextSource, revision: ContextSourceRevis
                           title=source.title, segments=segments,
                           participants=[Participant.model_validate(p) for p in revision.participants or []],
                           candidates=_candidates(db, owner, actor_ids),
-                          decisions=[temporal.to_decision(x) for x in negatives])
+                          decisions=[temporal.to_decision(x) for x in negatives],
+                          limits=ExtractLimits(max_actions=EXTRACT_ACTIONS))
 
 
 def _draft_dump(draft) -> dict:

@@ -103,7 +103,7 @@ def use(monkeypatch, profile: str) -> None:
     monkeypatch.setitem(model_map.MODEL_MAP, "context_actions", profile)
 
 
-@pytest.mark.parametrize("profile", ["luna", "terra", "sonnet-5.5"])
+@pytest.mark.parametrize("profile", ["luna", "terra", "terra-high", "sonnet-5.5", "sonnet-5.5-high"])
 def test_synthetic_meeting_recovers_the_missed_patterns(wire, monkeypatch, profile):
     sent = wire()
     use(monkeypatch, profile)
@@ -166,14 +166,15 @@ def test_synthetic_meeting_recovers_the_missed_patterns(wire, monkeypatch, profi
     if spec.api == "anthropic_messages":
         assert url == "https://api.anthropic.com/v1/messages"
         assert headers["x-api-key"] == "synthetic-anthropic" and headers["anthropic-version"] == "2026-10-21"
-        assert body["model"] == "claude-sonnet-5-5" and body["max_tokens"] == 16000
-        assert body["output_config"]["effort"] == "low" and body["output_config"]["format"]["type"] == "json_schema"
+        assert body["model"] == "claude-sonnet-5-5" and body["max_tokens"] == 32000
+        assert body["output_config"]["effort"] == spec.reasoning_effort
+        assert body["output_config"]["format"]["type"] == "json_schema"
         schema = json.dumps(body["output_config"]["format"]["schema"])
         assert "maxLength" not in schema and "minimum" not in schema and "maxItems" not in schema
         assert body["output_config"]["format"]["schema"]["additionalProperties"] is False
         assert "temperature" not in body and body["system"] == ACTIONS_PROMPT
     else:
-        assert body["model"] == spec.model and body["reasoning"] == {"effort": "low"}
+        assert body["model"] == spec.model and body["reasoning"] == {"effort": spec.reasoning_effort}
         assert body["text"]["format"]["strict"] is True and body["text"]["format"]["name"] == "context_actions"
 
     # Each call is reserved and recorded at the routed model's price (the chunk passes stay on Luna).
@@ -635,4 +636,40 @@ def test_standup_progress_reports_are_refused_and_a_dated_next_step_is_kept():
     (cert,) = out.drafts
     assert (cert.title, cert.owner, cert.verified) == ("Finish the ClickHouse certification", "Jules Park", True)
     assert cert.due is not None and cert.due.expression == "this weekend"
-    assert "progress_report" in ACTIONS_VERIFY_PROMPT and "Progress reports" in ACTIONS_PROMPT
+    assert "progress_report" in ACTIONS_VERIFY_PROMPT and "Status updates in a standup" in ACTIONS_PROMPT
+
+
+def test_high_reasoning_profiles_are_priced_like_their_base_and_routable(monkeypatch):
+    for high, base, effort in (("terra-high", "terra", "high"), ("sonnet-5.5-high", "sonnet-5.5", "high")):
+        spec = model_map.PROFILES[high]
+        assert (spec.model, spec.reasoning_effort) == (model_map.PROFILES[base].model, effort)
+        assert model_map.costing(high).price == model_map.costing(base).price
+        use(monkeypatch, high)
+        assert actions.route().profile == high
+
+
+def test_the_action_prompt_is_recall_first_and_status_updates_reach_the_checker():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    assert "List every candidate" in ACTIONS_PROMPT and "Scheduling, sending, forwarding" in ACTIONS_PROMPT
+    assert "status ongoing" in ACTIONS_PROMPT and "status ongoing" in ACTIONS_VERIFY_PROMPT
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(STANDUP)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        {**item([(1, STANDUP[1][1])], "Work on the demos and marketing site", "Jules Park"), "status": "ongoing"}]})
+    reviewed = []
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        reviewed.extend(user["items"])
+        return ActionVerification.model_validate({"verdicts": []})  # the checker skipped it
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert [i["status"] for i in reviewed] == ["ongoing"]
+    (kept,) = out.drafts  # never dropped by the extractor; unverified, so never checked in proposals
+    assert (kept.status, kept.verified) == ("ongoing", None)
+    assert kept.describe(meeting)["status"] == "ongoing"

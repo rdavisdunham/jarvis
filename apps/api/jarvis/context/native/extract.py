@@ -147,7 +147,9 @@ class NativeExtractor:
 
     def _actions(self, owner, meeting: action_pass.Meeting, out: action_pass.ActionRun, spend, timeout) -> None:
         """The whole-meeting action pass. A seam for callers that cache it (the pipeline caches chunks only)."""
-        slow = max(2 * timeout, 180.0)  # one call reads the whole meeting and writes the whole list
+        # One call reads the whole meeting and writes the whole list; high reasoning takes longer still.
+        effort = model_map.PROFILES[action_pass.route().profile].reasoning_effort
+        slow = max(2 * timeout, 600.0 if effort in ("high", "xhigh", "max") else 180.0)
         action_pass.run(meeting, lambda name, user: self._call(
             owner, name, user, spend, out, slow if name == "context_actions" else timeout,
             passes=ACTION_PASSES, job=action_pass.JOB), out)
