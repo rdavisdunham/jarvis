@@ -146,11 +146,13 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
     receipt = receive(envelope)
-    assert drain() == [*STAGES, "context_brief"]  # Priya's brief: her commitment links to her actor
-    assert [(k, s) for k, s, *_ in jobs()] == [(k, "succeeded") for k in [*STAGES, "context_brief"]]
-    assert [(stage, status) for stage, status, *_ in runs()] == [
+    ran = drain()
+    # Briefs for touched entities follow reconciliation (deterministic by default, no model call).
+    assert [k for k in ran if k != "context_brief"] == STAGES and set(ran) - set(STAGES) <= {"context_brief"}
+    assert all(s == "succeeded" for _, s, *_ in jobs())
+    assert [(stage, status) for stage, status, *_ in runs() if stage != "brief"] == [
         ("ingest", "succeeded"), ("extract", "succeeded"), ("link", "succeeded"), ("reconcile", "succeeded"),
-        ("embed", "succeeded"), ("brief", "succeeded")]
+        ("embed", "succeeded")]
     with session_scope() as db:
         source = db.get(m.ContextSource, receipt.source_id)
         assert source.status == "ready"
@@ -214,7 +216,7 @@ def test_seeding_runs_as_the_owner_even_under_a_bot_credential(envelope, vectors
 
 def test_unknown_and_placeholder_kinds(vectors):
     with session_scope() as db:
-        lint = enqueue_job(db, OWNER, "context_lint", {}).id
+        lint = enqueue_job(db, OWNER, "context_proposals", {}).id
         odd = enqueue_job(db, OWNER, "context_nonsense", {}).id
     pipeline.perform(lint)
     pipeline.perform(odd)

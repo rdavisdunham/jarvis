@@ -12,8 +12,10 @@ Stages, one job each (payloads in brackets), each enqueuing the next in the tran
 plus `context_delete` {source_id, through_revision} (B1's purge), `context_granola_sync` {connection_id?} and
 `context_granola_backfill` {connection_id?, days = 90} (B2's poller, enqueued by `schedule_due` and Settings;
 without a connection ID every enabled Granola connection of the owner), `context_brief` {entity_type, entity_id}
-(C3's briefs: prepare, synthesize outside any transaction, commit; enqueued by reconcile for the resolved entities
-its assertions touch), and `context_lint` and `context_proposals`, which no-op until their packages land.
+(C3's briefs, enqueued by reconcile for the resolved entities its assertions touch: deterministic unless the
+owner's `synthesize_briefs` is on, then prepare, synthesize outside any transaction, commit), `context_lint`
+{budget_usd?} (E2's weekly pass, `lint.perform`, one transaction per unit) and `context_proposals`, which no-ops
+until its package lands.
 
 Run rules. `perform_job` runs inside a DBOS step retried up to ten times, so every handler is idempotent and the
 job's status is set here. Each job has one `context_runs` row per stage; a replayed job whose run finished is a
@@ -781,6 +783,12 @@ def brief(work: Work) -> dict:
                        resynthesize=again)
 
 
+def lint(work: Work) -> dict:
+    from . import lint as weekly
+
+    return weekly.perform(work.owner, budget_usd=work.payload.get("budget_usd"))
+
+
 def placeholder(work: Work) -> dict:
     log.info("%s is a placeholder until its package lands; nothing to do", work.kind)
     return {"skipped": "not implemented yet"}
@@ -796,7 +804,7 @@ HANDLERS: dict[str, Callable[[Work], dict]] = {
     "context_granola_sync": granola_sync,
     "context_granola_backfill": granola_backfill,
     "context_brief": brief,
-    "context_lint": placeholder,  # weekly lint (Stage E)
+    "context_lint": lint,
     "context_proposals": placeholder,  # D1: proposals from extract runs' stage_results["actions"]
 }
 
