@@ -9,9 +9,13 @@
   failure in mechanical data (a deleted meeting's content returned, another owner's data disclosed) counts whatever
   the labels say; a failure that rests on unverified labels is listed as a warning to adjudicate.
 
+- Performance is graded from the retrieval benchmark's JSON (`evals.context.bench`): every scope's p95 at scale 1
+  under 2000 ms and no leaks. Larger scales are reported, not gated. Without the file it is "not run".
+
 The overall verdict is FAIL when anything fails, else NOT GRADEABLE when anything is ungraded, else PASS.
 """
 
+import json
 from dataclasses import dataclass, field
 from math import sqrt
 from pathlib import Path
@@ -205,3 +209,63 @@ def verdict(mechanical: list[dict], quality: list[dict], critical: list[dict]) -
     if any(g["status"] in (NOT_RUN, NOT_GRADEABLE) for g in (*mechanical, *quality, *critical)):
         return "NOT GRADEABLE"
     return "PASS"
+
+
+PERF_P95_MS = 2000.0  # plan section 11: p95 context_search under 2 s at the corpus fixture size
+PERF_GATED_SCALE = 1.0
+
+
+def load_perf(path: str | Path) -> list[dict]:
+    """bench.py's JSON: one run `{"scale", "corpus", "scopes": {name: {"p50_ms", "p95_ms", "queries"}}, "leaks"}`
+    or a list of them, one per scale. Malformed input is an error, never a silent pass."""
+    raw = json.loads(Path(path).read_text())
+    runs = raw if isinstance(raw, list) else [raw]
+    problems = []
+    for i, run in enumerate(runs):
+        if not isinstance(run, dict):
+            problems.append(f"entry {i} is not an object")
+            continue
+        if not isinstance(run.get("scale"), int | float):
+            problems.append(f"entry {i}: scale missing")
+        if not isinstance(run.get("leaks"), int):
+            problems.append(f"entry {i}: leaks missing")
+        scopes = run.get("scopes")
+        if not isinstance(scopes, dict) or not scopes:
+            problems.append(f"entry {i}: no scopes")
+            continue
+        for name, scope in scopes.items():
+            if not isinstance(scope, dict) or not isinstance(scope.get("p95_ms"), int | float):
+                problems.append(f"entry {i}: scope {name!r} has no p95_ms")
+    if problems:
+        raise ValueError(f"{path}: " + "; ".join(problems))
+    return runs
+
+
+def grade_performance(runs: list[dict] | None) -> dict:
+    """PASS when every scope's p95 at scale 1 is under 2000 ms and the benchmark saw no leaks. Other scales are
+    reported, not gated, except that a leak at any scale fails: a leak is a correctness failure, not a speed one.
+    No file, or no scale-1 run, is NOT RUN."""
+    gate = {"key": "performance", "title": "p95 context_search under 2 s at the corpus fixture size", "tests": {},
+            "probes": [], "scales": [], "pending": ""}
+    if runs is None:
+        return gate | {"status": NOT_RUN, "pending": "no benchmark results (`--perf`, written by evals.context.bench)"}
+    gated = [r for r in runs if float(r["scale"]) == PERF_GATED_SCALE]
+    for run in sorted(runs, key=lambda r: float(r["scale"])):
+        at_scale = float(run["scale"]) == PERF_GATED_SCALE
+        worst = max(s["p95_ms"] for s in run["scopes"].values())
+        gate["scales"].append({"scale": run["scale"], "gated": at_scale, "corpus": run.get("corpus", {}),
+                               "leaks": run["leaks"], "worst_p95_ms": worst, "scopes": run["scopes"]})
+        if at_scale:
+            gate["probes"] += [{"name": f"p95 {name} at scale 1 under {PERF_P95_MS:.0f} ms",
+                                "ok": s["p95_ms"] < PERF_P95_MS, "value": s["p95_ms"]}
+                               for name, s in sorted(run["scopes"].items())]
+        gate["probes"].append({"name": f"no leaks at scale {run['scale']}", "ok": run["leaks"] == 0,
+                               "value": run["leaks"]})
+    if any(not p["ok"] for p in gate["probes"]):
+        status = FAIL
+    elif not gated:
+        status = NOT_RUN
+        gate["pending"] = "no scale-1 run in the benchmark results"
+    else:
+        status = PASS
+    return gate | {"status": status}

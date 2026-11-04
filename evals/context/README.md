@@ -152,8 +152,12 @@ One markdown report with every section 11 gate:
 - Critical scenarios: temporal (deleted content returned, verified supersession errors, verified stale as-of
   answers) and permission (any cross-owner disclosure). A failure fails the release whatever the averages; a
   problem resting on unverified labels is listed as a warning to adjudicate.
-- Cost by meeting, stage and query (from `ContextRun` and usage events; zero with the doubles), performance
-  (NOT RUN until F2), and an explicit "Unverified labels excluded: N".
+- Performance from the retrieval benchmark (`--perf <bench JSON>`): PASS when every scope's p95 at scale 1 is
+  under 2000 ms and the benchmark saw no leaks. Larger scales are reported, not gated, but a leak at any scale
+  fails. The file is one `{"scale", "corpus", "scopes": {name: {"p50_ms", "p95_ms", "queries"}}, "leaks"}` or a
+  list of them, one per scale; a malformed file is refused (exit 2). Without it the gate is NOT RUN.
+- Cost by meeting, stage and query (from `ContextRun` and usage events; zero with the doubles), and an explicit
+  "Unverified labels excluded: N".
 
 Verdict: FAIL when anything fails, else NOT GRADEABLE when anything is ungraded, else PASS. Unverified data alone
 is always NOT GRADEABLE, never a pass.
@@ -166,6 +170,24 @@ plus `worksheet.csv` to fill. `import` turns the filled sheet into `labels.json`
 `verified: true` (and refuses, listing every problem, when a quote is not in its meeting); `score` gives the
 adjudicated figures `report --series` reads. The column guide is in the module docstring.
 
+## Retrieval benchmark (`bench.py`, `corpus.py`)
+
+`bench.py` times `NativeRetriever.retrieve` (the database part of `context_search`, synthesis excluded) on the
+plan-sized synthetic corpus that `corpus.py` generates: 500 sources, 50,000 segments, two owners, deletions,
+second revisions and every assertion lifecycle. Query embeddings are synthetic, so it makes no API calls. It runs
+every scope configuration with exact search and again with HNSW indexes, reports p50/p95 latency, index use and
+top-k agreement, and checks that no hit crosses owners or comes from a deleted source. It drops and recreates a
+database whose name must start with `jarvis_bench`.
+
+~~~sh
+uv run --no-sync python -m evals.context.bench                                   # full corpus, 200 queries
+uv run --no-sync python -m evals.context.bench --scale 0.1 --queries 40 --report -   # quick look, stdout only
+~~~
+
+Results: [`reports/native-retrieval-benchmark.md`](reports/native-retrieval-benchmark.md) (environment, corpus,
+latency per configuration). F2 owns `bench.py` and `corpus.py`; `bench.py` writes the JSON that
+`report --perf` grades, next to its markdown report.
+
 ## Caveats of the synthetic numbers
 
 - The histories are small: each meeting is one chunk, so raw recall is trivially high and the arm comparison
@@ -177,8 +199,5 @@ adjudicated figures `report --series` reads. The column guide is in the module d
 
 - All labels and questions are unverified; the report is NOT GRADEABLE until the owner adjudicates a series
   (plan section 11 budgets the time in milestone 8).
-- Approval and publication gates (D1, D2): preselected proposal precision has no sample until proposals exist,
-  and the mechanical gates name the tests still to come.
-- Performance gates wait for F2 and C4's benchmark corpus.
 - `runner --mode db --engine native` needs recorded responses; `compare --live` is untested against real
   providers.
