@@ -533,6 +533,7 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | `test_web_pages_match_backend_views` | `types.ts` `View` == `ui_control.View` == `ui_contracts.VIEWS` == `task-presets.ts` `initialView` list |
 | `test_meeting_review_reads_only_the_context_api` | `Meetings.tsx`, `MeetingReview.tsx` and `context-model.ts` never fetch; `context-api.ts` calls only `/api/v1/context/...` |
 | `test_meeting_types_match_the_context_schema` | `context-model.ts` `SourceStatus`, `Coverage`, `LinkStatus`, `ProposalKind`, `Disposition` == `context/schema.py` |
+| `test_context_questions_offer_every_resolve_action` | `Questions.tsx` `ContextQuestionCard` offers every `context.service.ResolveInput.action` |
 | `test_meeting_and_person_deep_links_survive_navigation` | `App.tsx` reads `?source=`/`?actor=` with `linkedId` and its URL sync keeps them on their pages |
 | `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` == `ui_show`/`ui_search`/`ui_workspace` enums == `VIEWS`; `ui_filter` ⊆ `VIEWS` |
 | `test_ui_show_opens_every_page_in_its_enum` | `call_tool`'s `ui_show` branch checks the tool's enum (no copy) and opens every page in it |

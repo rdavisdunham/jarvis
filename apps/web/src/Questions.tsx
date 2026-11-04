@@ -34,13 +34,13 @@ function QuestionCard({q,onChanged}:{q:Question;onChanged:()=>Promise<void>}){
  <details className="question-provenance"><summary>Why Dani is asking</summary><p>{q.kind==="memory"?memoryReason(q.review_kind):q.kind==="field"?"A field description needs clarification before Dani relies on it.":"Repeated organization choices produced a candidate rule. It is not active until confirmed or qualified by its separate quality gate."}</p>
  <small>Source: {q.source_id} · revision {q.revision}</small>{q.evidence!==undefined&&<pre>{JSON.stringify(q.evidence,null,2)}</pre>}{q.delivery&&<p>Last invitation: {q.delivery.channel} · {q.delivery.state} · {new Date(q.delivery.updated_at).toLocaleString()}. Voice forwarding does not confirm it was heard.</p>}</details></article>;
 }
-/** Meeting context: contested statements (keep one, or both) and who a mention is (link or dismiss), answered with
- * context.resolve. Older items carry the allowed actions inside answer_args; they are never sent back. */
+/** Meeting context, answered with context.resolve: contested statements (keep one, or both), who a mention is (link or
+ * dismiss) and agent suggestions (accept or dismiss). `actions` lists the allowed answers; `answer_args` holds only
+ * command fields and is spread into the command with the chosen action. */
 function ContextQuestionCard({q,people,onChanged}:{q:Question;people:Person[];onChanged:()=>Promise<void>}){
  const [person,setPerson]=useState(""),{run,busy,error}=useStructureActions();
- const {actions:inner,assertion_ids:_ids,link_id:_link,...args}=q.answer_args as Record<string,unknown>&{actions?:string[]};
- const actions=q.actions??inner??[],canAnswer=["pending","deferred"].includes(q.status);
- const apply=async(extra:Record<string,unknown>)=>{await run(q.answer_tool,{...args,...extra});setPerson("");await onChanged();};
+ const actions=q.actions??[],canAnswer=["pending","deferred"].includes(q.status);
+ const apply=async(extra:Record<string,unknown>)=>{await run(q.answer_tool,{...q.answer_args,...extra});setPerson("");await onChanged();};
  return <article className="question-card"><div className="question-meta"><span>Meeting context</span><span className="chip">{q.status}</span></div><h3>{q.question}</h3>
  {q.deferred_until&&q.status==="deferred"&&<p className="footnote">Snoozed until {new Date(q.deferred_until).toLocaleString()}. You can still answer now.</p>}
  {!!q.candidates?.length&&<ul>{q.candidates.map(c=><li key={c.assertion_id??c.id}>{c.statement??c.content}{canAnswer&&actions.includes("keep")&&c.assertion_id&&<button className="text-button" disabled={busy} onClick={()=>void apply({action:"keep",assertion_id:c.assertion_id}).catch(()=>{})}>Keep this one</button>}</li>)}</ul>}
