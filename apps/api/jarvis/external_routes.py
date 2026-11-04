@@ -398,6 +398,9 @@ async def session_search(identity: Bot, query: Annotated[sessions.Listing, Query
     return await run_in_threadpool(sessions.search, owner, query, reveal=reveal)
 
 
+from .context.routes import router as context_router  # noqa: E402 (registration point)
+
+external.include_router(context_router)
 router.include_router(external)
 
 
