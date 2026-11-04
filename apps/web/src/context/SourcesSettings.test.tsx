@@ -72,7 +72,7 @@ describe("SourcesSettings", () => {
     const [email, key] = [host.querySelector<HTMLInputElement>("input[type=email]")!, host.querySelector<HTMLInputElement>("input[aria-label='Granola API key']")!];
     expect(key.type).toBe("password");
     await act(async () => {
-      for (const [input, value] of [[email, "davin@example.com"], [key, "gk_secret_123456"]] as const) {
+      for (const [input, value] of [[email, "davin@example.com"], [key, "test-granola-key"]] as const) {
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       }
@@ -81,9 +81,9 @@ describe("SourcesSettings", () => {
     await act(async () => { button("Connect Granola").click(); });
     await act(async () => { await Promise.resolve(); });
     const sent = calls.find(c => c.url === "/api/v1/context/settings/granola")!;
-    expect(JSON.parse(String(sent.init.body))).toEqual({ account: "davin@example.com", api_key: "gk_secret_123456" });
+    expect(JSON.parse(String(sent.init.body))).toEqual({ account: "davin@example.com", api_key: "test-granola-key" });
     expect(text()).toContain("Business or Enterprise");
-    expect(text()).not.toContain("gk_secret_123456");
+    expect(text()).not.toContain("test-granola-key");
   });
 
   it("shows a connection's health and queues a sync", async () => {
