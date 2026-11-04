@@ -115,6 +115,39 @@ def test_mechanical_gates_read_junit_and_name_existing_tests(tmp_path):
             assert name in {f.name for f in ast.walk(tree) if isinstance(f, ast.FunctionDef)}, node
 
 
+def bench_run(scale, p95s, leaks=0):
+    return {"scale": scale, "corpus": {"sources": int(500 * scale)}, "leaks": leaks,
+            "scopes": {name: {"p50_ms": p95 / 2, "p95_ms": p95, "queries": 200} for name, p95 in p95s.items()}}
+
+
+def test_performance_gate_reads_the_benchmark_at_scale_one(tmp_path):
+    assert gates.grade_performance(None)["status"] == gates.NOT_RUN
+    fast = bench_run(1, {"owner": 90.3, "entity+raw": 510})
+    slow_large = bench_run(4, {"owner": 300, "entity+raw": 2600})
+    passing = gates.grade_performance([slow_large, fast])
+    assert passing["status"] == gates.PASS  # the larger scale is reported, not gated
+    assert [r["scale"] for r in passing["scales"]] == [1, 4] and passing["scales"][1]["worst_p95_ms"] == 2600
+    failing = gates.grade_performance([bench_run(1, {"owner": 90, "entity+raw": 2000})])
+    assert failing["status"] == gates.FAIL  # "under 2000 ms" is strict
+    assert [p["name"] for p in failing["probes"] if not p["ok"]] == ["p95 entity+raw at scale 1 under 2000 ms"]
+    assert gates.grade_performance([bench_run(1, {"owner": 90}, leaks=1)])["status"] == gates.FAIL
+    assert gates.grade_performance([fast, bench_run(4, {"owner": 300}, leaks=2)])["status"] == gates.FAIL
+    assert gates.grade_performance([bench_run(0.1, {"owner": 9})])["status"] == gates.NOT_RUN
+    assert gates.verdict([passing], [], []) == "PASS" and gates.verdict([failing], [], []) == "FAIL"
+
+    (tmp_path / "one.json").write_text(json.dumps(fast))
+    (tmp_path / "many.json").write_text(json.dumps([fast, slow_large]))
+    assert gates.load_perf(tmp_path / "one.json") == [fast] and len(gates.load_perf(tmp_path / "many.json")) == 2
+    (tmp_path / "bad.json").write_text(json.dumps({"scale": 1, "scopes": {"owner": {"p50_ms": 3}}}))
+    with pytest.raises(ValueError, match="leaks missing.*no p95_ms"):
+        gates.load_perf(tmp_path / "bad.json")
+    assert report.main(["--perf", str(tmp_path / "bad.json"), "--out", str(tmp_path)]) == 2
+
+    text = "\n".join(report.performance_section(report.performance({"compare": []}, [fast, slow_large])))
+    assert "**PASS**" in text and "### Scale 1 (gated)" in text and "### Scale 4 (reported, not gated)" in text
+    assert "| entity+raw | 1300.0 | 2600 | 200 | no |" in text
+
+
 # ---------------------------------------------------------------- question sets
 
 

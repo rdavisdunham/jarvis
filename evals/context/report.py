@@ -15,7 +15,9 @@ database: three orders, redelivery, ten maintenance runs) and the three-arm comp
 - quality targets on verified labels only, with sample counts and 95% intervals: synthetic labels are unverified,
   so the targets stay "not gradeable" until adjudicated series (`--series`, from `worksheet import`) supply
   verified verdicts;
-- cost by meeting, stage and query, from `context_runs`, budget usage events and the comparison's queries.
+- cost by meeting, stage and query, from `context_runs`, budget usage events and the comparison's queries;
+- performance from the retrieval benchmark's JSON (`--perf`, written by `evals.context.bench`): every scope's p95
+  at scale 1 under 2000 ms and no leaks; larger scales reported, not gated; without the file "not run".
 
 Outputs `report.md` and `report.json` under `--out`. Nothing calls a model.
 """
@@ -125,7 +127,7 @@ def quality(data: dict, series: list[dict]) -> tuple[list[Quality], list[Quality
         "entity_link_precision": Quality("entity_link_precision", "Precision of automatically applied entity links",
                                          0.95),
         "preselected_precision": Quality("preselected_precision", "Precision of preselected proposals", 0.95,
-                                         note="proposals arrive with D1; until then n is 0"),
+                                         note="own-action proposals; graded once a series adjudicates them"),
         "commitment_recall": Quality("commitment_recall", "Recall of labelled actionable commitments", 0.90),
         "decision_rationale_recall": Quality("decision_rationale_recall",
                                              "Recall of labelled decisions and rationale", 0.90),
@@ -263,19 +265,17 @@ def probes(data: dict) -> dict[str, list[dict]]:
     return out
 
 
-def performance(data: dict) -> dict:
+def performance(data: dict, perf: list[dict] | None) -> dict:
+    """The benchmark gate, plus the synthetic histories' p95 for information (a tiny corpus: never gated)."""
     p95 = max((c["latency_s"][arm]["p95"] or 0) for c in data["compare"] for arm in PLATFORM_ARMS) \
         if data["compare"] else None
-    return {"key": "performance", "title": "p95 context_search under 2 s at the corpus fixture size",
-            "status": gates.NOT_RUN, "tests": {}, "probes": [{"name": "p95 on the synthetic histories (tiny corpus, "
-                                                                     "informational)", "ok": True, "value": p95}],
-            "pending": "measured at corpus size by C4's benchmark and F2 (evals/context/reports/pilot-perf.md)"}
+    return gates.grade_performance(perf) | {"synthetic_p95_s": p95}
 
 
-def grade(data: dict, outcomes: dict | None, series: list[dict]) -> dict:
+def grade(data: dict, outcomes: dict | None, series: list[dict], perf: list[dict] | None = None) -> dict:
     found = probes(data)
     mechanical = [gates.grade_mechanical(g, outcomes, found.get(g.key, [])) for g in gates.MECHANICAL]
-    mechanical.append(performance(data))
+    mechanical.append(performance(data, perf))
     targets, reported = quality(data, series)
     graded_targets = [gates.grade_quality(q) for q in targets]
     graded_reported = [gates.grade_quality(q) for q in reported]
@@ -301,6 +301,25 @@ def _rate(x: dict) -> str:
 
 def _status(status: str) -> str:
     return status.upper()
+
+
+def performance_section(perf: dict) -> list[str]:
+    lines = ["## Performance", "", f"{perf['title']}: **{_status(perf['status'])}**"
+             + (f" ({perf['pending']})" if perf["pending"] else "") + f". Gated at scale "
+             f"{gates.PERF_GATED_SCALE:g} only: every scope's p95 under {gates.PERF_P95_MS:.0f} ms and no leaks; a "
+             "leak at any scale fails.", ""]
+    for run in perf["scales"]:
+        corpus = ", ".join(f"{k} {v}" for k, v in run["corpus"].items()) or "not given"
+        lines += [f"### Scale {run['scale']:g} ({'gated' if run['gated'] else 'reported, not gated'})", "",
+                  f"Corpus: {corpus}. Leaks: {run['leaks']}.", "", ("| Scope | p50 (ms) | p95 (ms) | Queries | Under "
+                  f"{gates.PERF_P95_MS:.0f} ms |"), "|---|---|---|---|---|"]
+        lines += [f"| {name} | {s.get('p50_ms', 'n/a')} | {s['p95_ms']} | {s.get('queries', 'n/a')} | "
+                  f"{'yes' if s['p95_ms'] < gates.PERF_P95_MS else 'no'} |" for name, s in sorted(run["scopes"].items())]
+        lines.append("")
+    if perf["synthetic_p95_s"] is not None:
+        lines += [(f"Synthetic histories (tiny corpus, informational): worst platform-arm p95 "
+                  f"{perf['synthetic_p95_s']} s."), ""]
+    return lines
 
 
 def markdown(data: dict, graded: dict, *, junit: Path | None, series: list[dict]) -> str:
@@ -362,10 +381,7 @@ def markdown(data: dict, graded: dict, *, junit: Path | None, series: list[dict]
               ("On these tiny histories one chunk usually holds a whole meeting, so the raw arm's recall@10 is close "
               "to trivially high; the doubles extract only decisions and commitments, so the structured arm cannot "
               "answer fact, risk or rationale questions. Neither says anything about the native engine."), ""]
-    lines += ["## Performance", ""]
-    perf = graded["mechanical"][-1]
-    lines += [f"- {perf['title']}: {_status(perf['status'])}; {perf['pending']}.",
-              f"- {perf['probes'][0]['name']}: p95 {perf['probes'][0]['value']} s.", ""]
+    lines += performance_section(graded["mechanical"][-1])
     lines += ["## Cost by meeting, stage and query", ""]
     for name, cost in data["costs"].items():
         lines += [f"### {name} (total {cost['total_usd']:.6f} USD)", "", ("| Stage | Runs | Input tokens | Output tokens "
@@ -398,16 +414,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--junit", type=Path, help="pytest --junitxml output for the suite-level gates")
     parser.add_argument("--series", type=Path, action="append", default=[],
                         help="an adjudicated series directory (worksheet import); repeatable")
+    parser.add_argument("--perf", type=Path, help="retrieval benchmark JSON from evals.context.bench")
     parser.add_argument("--samples", type=int, default=2000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--maintenance-runs", type=int, default=10)
     parser.add_argument("--out", type=Path, default=ROOT / "outputs" / "context-eval")
     args = parser.parse_args(argv)
     histories = args.histories or [FIXTURES / name for name in HISTORIES]
+    try:
+        perf = gates.load_perf(args.perf) if args.perf else None
+    except (OSError, ValueError) as exc:
+        print(f"--perf: {exc}", file=sys.stderr)
+        return 2
     data = collect(histories, samples=args.samples, seed=args.seed, maintenance_runs=args.maintenance_runs)
     outcomes = gates.junit_outcomes(args.junit) if args.junit else None
     series = [score_series(path) for path in args.series]
-    graded = grade(data, outcomes, series)
+    graded = grade(data, outcomes, series, perf)
     text = markdown(data, graded, junit=args.junit, series=series)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "report.md").write_text(text)
