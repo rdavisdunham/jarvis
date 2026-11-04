@@ -312,9 +312,11 @@ def live(profile: str | None, *, budget_usd: float = DEFAULT_BUDGET_USD, timeout
             setattr(settings, key, value)
 
 
-def seed_owner(owner: str, user: dict, *, engine: str = "native") -> str:
+def seed_owner(owner: str, user: dict, *, engine: str = "native", others: Iterable[dict] = ()) -> str:
     """The lab user as the Eridani owner: a signed-in email, the owner actor (named as productivity seeds it)
-    with the user's email and name as identities. Returns the owner actor's ID."""
+    with the user's email and name as identities; then an actor with email and name identities for every other
+    person in `others` (the recorder and participants, `{name, email}`), as production has once attendees are
+    seeded. Returns the owner actor's ID."""
     from jarvis.context import identity
     from jarvis.context.models import ContextOwnerState
     from jarvis.db import session_scope
@@ -330,6 +332,18 @@ def seed_owner(owner: str, user: dict, *, engine: str = "native") -> str:
         if user.get("name"):
             identity.add_identity(db, owner, actor_id, "alias", user["name"], status="confirmed",
                                   provenance=provenance)
+        seen = {user["email"].strip().casefold()}
+        for person in others:
+            email = (person.get("email") or "").strip()
+            name = (person.get("name") or "").strip() or email.split("@")[0]
+            if not email or email.casefold() in seen:
+                continue
+            seen.add(email.casefold())
+            other = str(uuid4())
+            db.add(Actor(id=other, owner_id=owner, kind="person", name=name[:100]))
+            db.flush()
+            identity.add_identity(db, owner, other, "email", email, status="confirmed", provenance=provenance)
+            identity.add_identity(db, owner, other, "alias", name, status="confirmed", provenance=provenance)
         db.add(ContextOwnerState(owner_id=owner, settings={"engine": "double"} if engine == "double" else {}))
     return actor_id
 
@@ -436,7 +450,8 @@ def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: st
     user = lab_user(folder)
     envelope = to_envelope(meeting, lab_email=user["email"], speakers=speakers)
     owner = f"lab-{uuid4().hex[:12]}"
-    owner_actor = seed_owner(owner, user, engine=engine)
+    owner_actor = seed_owner(owner, user, engine=engine,
+                             others=[meeting.get("owner") or {}, *(meeting.get("participants") or [])])
     started_at, started = datetime.now(UTC), time.monotonic()
     with session_scope() as db:
         received = sources.receive(db, owner, envelope)
