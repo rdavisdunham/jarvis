@@ -21,6 +21,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ... import bot_access
@@ -121,7 +122,7 @@ def rollback_drill(db: Session, owner: str) -> dict[str, Any]:
     try:
         report = export.import_history(db, "drill:" + uid(), history, preserve_ids=False)
         imported, problem = {name: report.counts[name] for name in export.SECTION_NAMES}, None
-    except export.HistoryImportError as exc:
+    except (export.HistoryImportError, SQLAlchemyError) as exc:  # the pause stays; the drill reports
         imported, problem = {}, str(exc)
     finally:
         savepoint.rollback()

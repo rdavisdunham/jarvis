@@ -159,6 +159,16 @@ def test_rollback_drill_pauses_and_returns_an_importable_history(client):
     assert report.counts["assertions"] == 2
 
 
+def test_a_failed_drill_check_is_reported_and_the_pause_stays(client, monkeypatch):
+    def refuse(*args, **kwargs):
+        raise export.HistoryImportError("broken")
+
+    monkeypatch.setattr(export, "import_history", refuse)
+    drill = client.post(f"{BASE}/rollback-drill").json()
+    assert (drill["verified"], drill["problem"]) == (False, "broken")
+    assert state(owner()).paused
+
+
 def test_routes_need_a_session_and_csrf_and_refuse_shared_workspaces(client):
     from jarvis.api import app
 
