@@ -776,7 +776,8 @@ HANDLERS: dict[str, Callable[[Work], dict]] = {
     "context_granola_backfill": granola_backfill,
     "context_brief": brief,
     "context_lint": lint,
-    "context_proposals": placeholder,  # D1: proposals from extract runs' stage_results["actions"]
+    "context_proposals": lambda work: __import__("jarvis.context.proposals", fromlist=["perform"]).perform(work),
+    "context_publish": lambda work: __import__("jarvis.context.publication", fromlist=["perform"]).perform(work),
 }
 
 
