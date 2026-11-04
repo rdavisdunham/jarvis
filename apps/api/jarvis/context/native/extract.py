@@ -24,9 +24,9 @@ from pydantic import ValidationError
 
 from ... import memory_learning, model_map
 from ...agent_models import catalog
-from ...config import get_settings
 from ...cost_features import current_feature
 from ...domain import DomainError
+from .. import settings as context_settings
 from ..schema import Coverage, ExtractionResult, ExtractRequest, ProposedAction
 from .chunking import TextChunk, chunk_segments
 from .prompts import PASSES, PROMPT_VERSION, meeting_block, payload
@@ -50,11 +50,9 @@ class ChunkFailed(Exception):
 
 
 def limits() -> tuple[float, float]:
-    """(model timeout seconds, per-source budget USD). Read defensively until A2's settings merge; then these
-    become `context.settings.current().model_timeout_s` and `.source_budget_usd`."""
-    settings = get_settings()
-    return float(getattr(settings, "context_model_timeout_s", 90)), float(
-        getattr(settings, "context_source_budget_usd", 1.0))
+    """(model timeout seconds, per-source budget USD)."""
+    settings = context_settings.current()
+    return float(settings.model_timeout_s), float(settings.source_budget_usd)
 
 
 def call_model(owner: str, body: dict, allowance: float, timeout: float, prompt_tokens: int) -> dict:
