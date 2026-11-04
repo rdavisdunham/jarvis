@@ -1720,6 +1720,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/retry-planning",
+      "handler": "retry_planning",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/stop",
       "handler": "stop",
       "source": "apps/api/jarvis/remotea_routes.py",
