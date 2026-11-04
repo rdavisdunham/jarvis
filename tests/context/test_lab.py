@@ -382,3 +382,18 @@ def test_full_loop_with_the_doubles(lab_dir):
     assert "## Speakers" in page and "## Proposals" in page
     assert json.loads((path / "run.json").read_text())["model"] == "doubles"
     assert lab.select_runs(folder)["doubles"][0]["run_dir"] == path.name
+
+
+def test_a_colleagues_recording_never_resolves_to_the_user(lab_dir):
+    """Recorded by someone else: the recorder's lines resolve to the recorder's seeded actor, never to the lab
+    user, and nothing of theirs becomes the user's checked work."""
+    folder = lab_dir / "rubric-sync"
+    lab.write_json(folder / "meeting.json", meeting(owner={"name": "Uma Recorder", "email": "uma@studio.example"}))
+    with runner.offline():
+        run = lab.run_meeting(folder, "doubles", engine="double")
+    assert run["errors"] == [] and run["meeting"]["recorder_is_lab_user"] is False
+    rows = {s["label"]: s for s in run["speakers"] if s["kind"] == "transcript"}
+    assert rows["Uma Recorder"]["attribution"] == "other"
+    assert rows["Uma Recorder"]["actor"] == "Uma Recorder" and rows["Uma Recorder"]["status"] == "exact"
+    assert not any(s["actor"] == "Robin Vale (you)" for s in run["speakers"])
+    assert not any(p["mine"] or p["checked"] for p in run["proposals"])
