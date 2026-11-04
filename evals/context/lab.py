@@ -46,6 +46,7 @@ WORD = re.compile(r"[a-z0-9]+")
 BLOCK = re.compile(r"^\s*(?:\[(?:(\d+):)?(\d+):(\d{2})\]\s*)?"
                    r"(Microphone|System audio(?:\s*\(([^)]*)\))?|Speaker [A-Za-z0-9]+)\s*:\s?(.*)$")
 SPEAKER_MODES = ("auto", "recorder", "unknown")
+DEFAULT_TIMEZONE = "America/Chicago"
 JACCARD_THRESHOLD = 0.2
 DEFAULT_BUDGET_USD = 3.0
 DEFAULT_TIMEOUT_S = 300
@@ -81,6 +82,11 @@ def lab_user(folder: Path) -> dict:
     if not user.get("email"):
         raise SystemExit(f"{folder.name}: no lab_user in gold.json and no CONTEXT_LAB_USER_EMAIL")
     return user
+
+
+def lab_timezone(user: dict) -> str:
+    """The lab user's IANA zone: gold.json `lab_user.timezone`, else America/Chicago."""
+    return user.get("timezone") or DEFAULT_TIMEZONE
 
 
 # ---------------------------------------------------------------- transcript conversion (pure)
@@ -134,7 +140,8 @@ def separated(blocks: list[Block], meeting: dict) -> bool:
     return len(people - {""}) <= 1
 
 
-def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto") -> SourceEnvelope:
+def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto",
+                default_timezone: str | None = None) -> SourceEnvelope:
     """The SourceEnvelope the Granola connector would deliver for this meeting folder.
 
     `Microphone:` is the note's recorder. When the recorder is the lab user it is the Eridani owner speaking
@@ -144,7 +151,8 @@ def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto") -> Sou
     Private notes travel only when the lab user wrote them: the pipeline attributes them to the owner.
 
     `speakers`: `recorder` maps `Microphone:` as above; `unknown` leaves those lines unattributed (no label, no
-    attribution); `auto` (default) is `unknown` when the speakers are not separated (see `separated`)."""
+    attribution); `auto` (default) is `unknown` when the speakers are not separated (see `separated`).
+    `default_timezone` stands in when meeting.json has none, so relative dues resolve to local dates."""
     if speakers not in SPEAKER_MODES:
         raise ValueError(f"speakers must be one of {', '.join(SPEAKER_MODES)}")
     owner = meeting.get("owner") or {}
@@ -189,7 +197,7 @@ def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto") -> Sou
         raise ValueError("meeting_at needs a UTC offset")
     return SourceEnvelope(
         connector="granola", external_id=str(meeting.get("note_id") or meeting.get("title") or "lab-meeting")[:500],
-        title=(meeting.get("title") or "")[:500], occurred_at=occurred, timezone=meeting.get("timezone") or None,
+        title=(meeting.get("title") or "")[:500], occurred_at=occurred, timezone=meeting.get("timezone") or default_timezone,
         participants=participants, segments=segments, private_notes=private,
         content_hash=content_hash([s.text for s in segments] + ([private] if private else [])),
         upstream_owner_email=owner.get("email") or None, upstream_owner_name=owner.get("name") or None,
@@ -241,8 +249,9 @@ def import_file(ref: str, slug: str | None = None, *, speakers: str = "auto") ->
         shutil.copyfile(path, folder / "meeting.json")
     else:
         folder = meeting_dir(ref)
-    envelope = to_envelope(read_json(folder / "meeting.json"), lab_email=lab_user(folder)["email"],
-                           speakers=speakers)
+    user = lab_user(folder)
+    envelope = to_envelope(read_json(folder / "meeting.json"), lab_email=user["email"], speakers=speakers,
+                           default_timezone=lab_timezone(user))
     write_json(folder / "envelope.json", envelope.model_dump(mode="json"))
     return folder, envelope
 
@@ -281,9 +290,26 @@ def check_model(model: str) -> str:
     return profile
 
 
+def check_profile(name: str) -> str:
+    """A model_map profile ID from a lab model name or a profile ID (for the facts model)."""
+    from jarvis import model_map
+
+    profile = MODELS.get(name, name)
+    if profile not in model_map.PROFILES:
+        raise SystemExit(f"model_map has no {profile!r} profile; choose one of {', '.join(model_map.PROFILES)}")
+    return profile
+
+
+def model_label(actions: str, facts: str | None) -> str:
+    """How runs and score rows name a model pair: `terra`, or `terra+luna` when the facts model differs."""
+    return actions if not facts or facts == actions else f"{actions}+{facts}"
+
+
 @contextmanager
-def live(profile: str | None, *, budget_usd: float = DEFAULT_BUDGET_USD, timeout_s: int = DEFAULT_TIMEOUT_S):
-    """Context on, `profile` routed for the extraction and action jobs, the per-source budget and model timeout
+def live(profile: str | None, *, facts_profile: str | None = None, budget_usd: float = DEFAULT_BUDGET_USD,
+         timeout_s: int = DEFAULT_TIMEOUT_S):
+    """Context on, `profile` routed for the action job and `facts_profile` (default: the same) for the fact
+    extraction job, the per-source budget and model timeout
     raised for the lab, embeddings from `fake_vector`. Model calls are real. Enter inside `throwaway_database`
     (it rebuilds settings)."""
     from jarvis import memory_learning, model_map
@@ -297,9 +323,9 @@ def live(profile: str | None, *, budget_usd: float = DEFAULT_BUDGET_USD, timeout
     memory_learning.embeddings = lambda owner, texts, timeout=20: [fake_vector(t) for t in texts]
     memory_learning.query_embedding = lambda owner, query, timeout=3, provider=None: fake_vector(query)
     if profile:
-        for job in LAB_JOBS:
+        for job, chosen in zip(LAB_JOBS, (profile, facts_profile or profile), strict=True):
             if job in model_map.JOBS:
-                model_map.MODEL_MAP[job] = profile
+                model_map.MODEL_MAP[job] = chosen
     settings.context_enabled = True
     settings.context_source_budget_usd, settings.context_model_timeout_s = budget_usd, timeout_s
     try:
@@ -312,19 +338,21 @@ def live(profile: str | None, *, budget_usd: float = DEFAULT_BUDGET_USD, timeout
             setattr(settings, key, value)
 
 
-def seed_owner(owner: str, user: dict, *, engine: str = "native", others: Iterable[dict] = ()) -> str:
+def seed_owner(owner: str, user: dict, *, engine: str = "native", others: Iterable[dict] = (),
+               timezone: str = DEFAULT_TIMEZONE) -> str:
     """The lab user as the Eridani owner: a signed-in email, the owner actor (named as productivity seeds it)
     with the user's email and name as identities; then an actor with email and name identities for every other
     person in `others` (the recorder and participants, `{name, email}`), as production has once attendees are
-    seeded. Returns the owner actor's ID."""
+    seeded. The owner's timezone preference is `timezone`. Returns the owner actor's ID."""
     from jarvis.context import identity
     from jarvis.context.models import ContextOwnerState
     from jarvis.db import session_scope
-    from jarvis.models import Actor, GoogleIdentity
+    from jarvis.models import Actor, GoogleIdentity, OwnerSettings
 
     actor_id = str(uuid4())
     with session_scope() as db:
         db.add(GoogleIdentity(owner_id=owner, subject=f"lab:{owner}", email=user["email"]))
+        db.add(OwnerSettings(owner_id=owner, values={"timezone": timezone}))
         db.add(Actor(id=actor_id, owner_id=owner, kind="person", name=identity.OWNER_ACTOR_NAME))
         db.flush()
         provenance = {"origin": "meeting-lab"}
@@ -440,7 +468,7 @@ def collect(owner: str, source_id: str, owner_actor: str, user: dict) -> dict:
 
 
 def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: str | None = None,
-                speakers: str = "auto") -> dict:
+                facts_profile: str | None = None, speakers: str = "auto") -> dict:
     """One delivery of the meeting into the current database under a fresh owner, drained. Needs `live()` (or
     runner's `offline()` with the double engine) around it."""
     from jarvis.context import sources
@@ -448,9 +476,10 @@ def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: st
 
     meeting = read_json(folder / "meeting.json")
     user = lab_user(folder)
-    envelope = to_envelope(meeting, lab_email=user["email"], speakers=speakers)
+    zone = lab_timezone(user)
+    envelope = to_envelope(meeting, lab_email=user["email"], speakers=speakers, default_timezone=zone)
     owner = f"lab-{uuid4().hex[:12]}"
-    owner_actor = seed_owner(owner, user, engine=engine,
+    owner_actor = seed_owner(owner, user, engine=engine, timezone=zone,
                              others=[meeting.get("owner") or {}, *(meeting.get("participants") or [])])
     started_at, started = datetime.now(UTC), time.monotonic()
     with session_scope() as db:
@@ -459,6 +488,8 @@ def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: st
     wall_ms = int((time.monotonic() - started) * 1000)
     data = collect(owner, received.source_id, owner_actor, user)
     return {"slug": folder.name, "model": model, "profile": profile, "engine": engine,
+            "actions_model": profile, "facts_model": (facts_profile or profile) if profile else None,
+            "owner_timezone": zone, "envelope_timezone": envelope.timezone,
             "started_at": started_at.isoformat(), "wall_ms": wall_ms, "errors": errors,
             "meeting": {"title": envelope.title, "note_id": envelope.external_id,
                         "segments": len(envelope.segments or []), "private_notes": bool(envelope.private_notes),
@@ -476,6 +507,8 @@ def _seconds(ms: int | None) -> str:
 def report_md(run: dict) -> str:
     """The run as a readable page (meeting text included: it stays in the private lab folder)."""
     out = [f"# {run['slug']} · {run['model']}", "",
+           f"Actions model {run.get('actions_model') or 'n/a'}, facts model {run.get('facts_model') or 'n/a'}, "
+           f"owner timezone {run.get('owner_timezone') or 'n/a'} (meeting {run.get('envelope_timezone') or 'n/a'}). "
            f"Started {run['started_at']}, wall {run['wall_ms'] / 1000:.1f}s, cost ${run['cost_usd']:.4f}, "
            f"source {run['source_status']}, {run['meeting']['segments']} transcript segments, private notes "
            f"{'yes' if run['meeting']['private_notes'] else 'no'}"
@@ -557,20 +590,24 @@ def save_run(folder: Path, run: dict, suffix: str = "") -> Path:
 
 
 def run_lab(slugs: list[str], model: str, *, repeat: int = 1, budget_usd: float = DEFAULT_BUDGET_USD,
-            timeout_s: int = DEFAULT_TIMEOUT_S, speakers: str = "auto") -> list[Path]:
+            timeout_s: int = DEFAULT_TIMEOUT_S, speakers: str = "auto", facts_model: str | None = None) -> list[Path]:
+    """`model` routes the action pass, `facts_model` (default: the same) the fact extraction."""
     profile = check_model(model)
+    facts = check_profile(facts_model) if facts_model else profile
+    label = model_label(profile, facts)
     folders = [meeting_dir(s) for s in slugs]
     for folder in folders:
         if not (folder / "meeting.json").exists():
             raise SystemExit(f"{folder}: no meeting.json")
     written = []
-    with throwaway_database("jarvis_lab"), live(profile, budget_usd=budget_usd, timeout_s=timeout_s):
+    with throwaway_database("jarvis_lab"), live(profile, facts_profile=facts, budget_usd=budget_usd,
+                                                timeout_s=timeout_s):
         for folder in folders:
             for n in range(repeat):
-                run = run_meeting(folder, profile, profile=profile, speakers=speakers)
+                run = run_meeting(folder, label, profile=profile, facts_profile=facts, speakers=speakers)
                 path = save_run(folder, run, f"-r{n + 1}" if repeat > 1 else "")
                 written.append(path)
-                print(f"{folder.name} {model} run {n + 1}/{repeat}: {len(run['proposals'])} proposals, "
+                print(f"{folder.name} {label} run {n + 1}/{repeat}: {len(run['proposals'])} proposals, "
                       f"${run['cost_usd']:.4f}, {run['wall_ms'] / 1000:.0f}s"
                       + (f", errors {run['errors']}" if run["errors"] else "") + f" -> {path}")
     return written
@@ -992,6 +1029,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD, help="per-meeting extraction budget")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="model timeout in seconds")
     p.add_argument("--speakers", choices=SPEAKER_MODES, default="auto")
+    p.add_argument("--facts-model", help="profile for fact extraction (context_extraction); default: --model")
     p = sub.add_parser("score", help="score runs and Granola against the answer keys")
     p.add_argument("slugs", nargs="+")
     p.add_argument("--run", default="latest", help="latest (default), all, or a run directory name")
@@ -1030,7 +1068,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.repeat < 1:
             parser.error("--repeat must be at least 1")
         run_lab(args.slugs, args.model, repeat=args.repeat, budget_usd=args.budget_usd, timeout_s=args.timeout,
-                speakers=args.speakers)
+                speakers=args.speakers, facts_model=args.facts_model)
         return 0
     if args.command == "score":
         judge = None if args.no_judge else judge_call(args.judge)
