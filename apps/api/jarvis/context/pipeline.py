@@ -53,7 +53,7 @@ from sqlalchemy import or_, select
 from .. import access, bot_access
 from ..cost_features import feature
 from ..db import session_scope
-from ..domain import DomainError, enqueue_job
+from ..domain import DomainError, enqueue_job, preferences
 from ..models import Actor, Job, Project, now
 from . import apply, calendar_link, decisions, identity, proposals, publication, temporal
 from . import settings as context_settings
@@ -311,7 +311,8 @@ def _request(db, owner: str, source: ContextSource, revision: ContextSourceRevis
     negatives = db.scalars(temporal.active_decisions(owner).where(
         d.negative.is_(True), d.operation.in_(("wrong", "dismiss"))).order_by(d.seq.desc()).limit(200))
     return ExtractRequest(owner_id=owner, source_revision_id=revision.id,
-                          occurred_at=revision.occurred_at or revision.received_at, timezone=revision.timezone,
+                          occurred_at=revision.occurred_at or revision.received_at,
+                          timezone=revision.timezone or preferences(db, owner)["timezone"],  # as proposals show dues
                           title=source.title, segments=segments,
                           participants=[Participant.model_validate(p) for p in revision.participants or []],
                           candidates=_candidates(db, owner, actor_ids),

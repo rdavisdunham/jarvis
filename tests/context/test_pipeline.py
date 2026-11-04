@@ -6,6 +6,7 @@ worker would."""
 import json
 from datetime import timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -17,7 +18,7 @@ from jarvis.context.native import embed as embedding
 from jarvis.context.schema import Segment, SourceEnvelope
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, enqueue_job, execute
-from jarvis.models import Actor, Job, now
+from jarvis.models import Actor, GoogleIdentity, Job, now
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -147,6 +148,8 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
+    with session_scope() as db:  # the note's owner (davin@example.com) is the signed-in user: "Davin" is them
+        db.add(GoogleIdentity(owner_id=OWNER, subject="sub-davin", email="davin@example.com"))
     receipt = receive(envelope)
     after = [*STAGES, "context_proposals", "context_brief"]  # Priya's brief: her commitment links to her actor
     assert drain() == after
@@ -342,6 +345,25 @@ def test_a_decision_during_the_model_call_requeues_and_reuses_the_chunks(envelop
                                                                            ("succeeded", None)]
     assert jobs("context_extract")[1][2]["requeues"] == 1
     assert len(sent) == 5 and set(assertions()) == NATIVE
+
+
+def test_a_meeting_without_a_timezone_extracts_in_the_owners(envelope, provider, vectors, monkeypatch):
+    """Day-precision dues resolve in the zone proposals show them in: the meeting's, else the owner's."""
+    provider(recorded)
+    monkeypatch.setattr(get_settings(), "timezone", "America/Chicago")
+    seen = []
+    original = pipeline.run_extractor
+
+    def watch(engine, request, *args, **kwargs):
+        seen.append(request.timezone)
+        return original(engine, request, *args, **kwargs)
+    monkeypatch.setattr(pipeline, "run_extractor", watch)
+    receive(envelope.model_copy(update={"timezone": None}))
+    drain()
+    assert seen == ["America/Chicago"]
+    with session_scope() as db:
+        due = db.scalar(select(m.ContextAssertion.due_at).where(m.ContextAssertion.kind == "commitment"))
+    assert due.astimezone(ZoneInfo("America/Chicago")).date().isoformat() == "2026-11-20"
 
 
 def test_source_budget_cap_waits_for_an_explicit_continuation(envelope, provider, vectors, monkeypatch):

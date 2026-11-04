@@ -282,6 +282,21 @@ def strip_identifiers(statement: str, quotes: str) -> str:
     return IDENTIFIER.sub(lambda m: " " if _word_in(m.group().casefold(), text) else m.group(), statement)
 
 
+def ungrounded_tokens(statement: str, text: str, derived: Sequence[date | datetime]) -> list[str]:
+    """For action items, grounded against the whole meeting: alphanumeric identifiers (C2, Q1, P0, v2) are whole
+    tokens that must occur in `text`, never bare numbers; every other number must occur in `text` outside its
+    identifiers (or be part of a derived date). Returns what is missing."""
+    folded = text.translate(QUOTE_CHARS).casefold()
+    missing = sorted({m.group() for m in IDENTIFIER.finditer(statement)
+                      if not _word_in(m.group().casefold(), folded)}, key=str.casefold)
+    allowed = numbers(IDENTIFIER.sub(" ", text))
+    for value in derived:
+        allowed |= {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
+        if isinstance(value, datetime):
+            allowed |= {Decimal(value.hour), Decimal(value.minute), Decimal(value.hour % 12 or 12)}
+    return missing + [format(n, "f") for n in sorted(numbers(IDENTIFIER.sub(" ", statement)) - allowed)]
+
+
 def ungrounded_numbers(statement: str, quotes: str, derived: Sequence[date | datetime]) -> set[Decimal]:
     statement = strip_identifiers(statement, quotes)
     allowed = numbers(quotes)
@@ -338,10 +353,14 @@ def expected_date(expression: str, meeting: date) -> tuple[date | None, bool]:
     return None, False
 
 
-def _parse_value(value: str, zone: ZoneInfo) -> datetime | None:
+def _parse_value(value: str, zone: ZoneInfo, precision: str = "instant") -> datetime | None:
+    """A model's time value as an aware datetime. A date-precision value (day and coarser) is the calendar date
+    it names, at local midnight in the meeting's zone: "2026-11-04T00:00:00Z" for "today" is Nov 4 there, never
+    midnight UTC shifted back to Nov 3."""
     try:
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            return datetime.combine(date.fromisoformat(value), time(), zone)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) or (precision not in ("instant", "unknown")
+                                                        and re.match(r"\d{4}-\d{2}-\d{2}(?:[T ]|$)", value)):
+            return datetime.combine(date.fromisoformat(value[:10]), time(), zone)
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
@@ -362,7 +381,7 @@ def resolve_time(name: str, te: TimeExpression | None, quotes: str, ctx: SourceC
         return None, {**record, "dropped": "expression not in quotes"}, None
     if te.value is None or te.precision == "unknown":
         return None, {**record, "dropped": "unknown"}, None
-    at = _parse_value(te.value, ctx.zone)
+    at = _parse_value(te.value, ctx.zone, te.precision)
     if at is None:
         return None, {**record, "dropped": "unparseable value"}, "invalid_time"
     expected, year_known = expected_date(te.expression, ctx.local_date)

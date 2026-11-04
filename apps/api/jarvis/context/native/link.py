@@ -267,9 +267,30 @@ def _evidence(segment: Segment, quote: str) -> EvidenceRef:
     return EvidenceRef(segment_seq=segment.seq, quote=quote, char_start=start, char_end=start + len(quote))
 
 
+def _note_owner(db, owner, source_id: str) -> str | None:
+    """The upstream note owner's email when it is someone other than the user, else None. Owner-attributed lines
+    ("me", "Microphone") are the note owner's: they are the user's only when the note's owner email is one of the
+    user's (sign-in email, a connector account, or an email identity of the user's own actor). A source without
+    an upstream owner email is the user's own (an upload, the API)."""
+    from ..models import ContextConnection, ContextSource
+
+    source = db.get(ContextSource, source_id)
+    email = source.upstream_owner_email if source is not None else None
+    if not email or not email.strip():
+        return None
+    key = identity.normalize("email", email)
+    mine = {identity._owner_email(db, owner)} | {
+        identity.normalize("email", a) for a in db.scalars(select(ContextConnection.external_account).where(
+            ContextConnection.owner_id == owner)) if a}
+    if key in mine or identity.resolve_exact(db, owner, "email", email) == identity.owner_actor(db, owner):
+        return None
+    return email
+
+
 def resolve_speakers(db, owner, source_id: str, segments: Sequence[Segment],
                      attendees: Sequence[identity.IdentityCandidate | Participant] = ()) -> list[LinkProposal]:
-    """One proposal per distinct speaker label in `segments`, in order of first appearance."""
+    """One proposal per distinct speaker label in `segments`, in order of first appearance. Owner-attributed
+    labels are the user only on the user's own notes (`_note_owner`); on a colleague's they are the colleague."""
     rejected = identity.rejected_links(db, owner)
     resolved = [a for a in attendees if isinstance(a, identity.IdentityCandidate) and a.actor_id]
     names: dict[str, set[str]] = {}
@@ -282,6 +303,7 @@ def resolve_speakers(db, owner, source_id: str, segments: Sequence[Segment],
                 if first != key:
                     names.setdefault(first, set()).add(attendee.actor_id)
     me: str | None = None
+    recorder = _note_owner(db, owner, source_id)
     by_label: dict[str, list[Segment]] = {}
     for segment in segments:
         label = segment.speaker_label or (OWNER_LABEL if segment.attribution == "owner" else None)
@@ -295,9 +317,12 @@ def resolve_speakers(db, owner, source_id: str, segments: Sequence[Segment],
     for label, lines in by_label.items():
         status, actor_id, evidence = "unresolved", None, []
         if all(s.attribution == "owner" for s in lines):
-            me = me or identity.owner_actor(db, owner)
-            if allowed(label, me):
-                status, actor_id = "exact", me
+            if recorder is None:  # the user's own note
+                me = me or identity.owner_actor(db, owner)
+                if allowed(label, me):
+                    status, actor_id = "exact", me
+            elif allowed(label, found := identity.resolve_exact(db, owner, "email", recorder)):
+                status, actor_id = "exact", found  # a colleague's note: "me" is them, by their email
         if actor_id is None:
             scoped = identity.resolve_exact(db, owner, "granola_speaker", label, source_id)
             if allowed(label, scoped):

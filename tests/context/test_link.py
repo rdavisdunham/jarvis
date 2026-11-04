@@ -191,6 +191,37 @@ def test_speakers_resolve_from_owner_lines_attendees_and_introductions():
         assert intro.matches(lines[0].text) and intro.quote == "I'm Priya"
 
 
+def test_owner_lines_are_the_user_only_on_the_users_own_note():
+    from jarvis.context.models import ContextConnection, ContextSource
+
+    with session_scope() as db:
+        me = identity.owner_actor(db, OWNER)
+        db.add(ContextConnection(owner_id=OWNER, connector="granola", external_account="davin@brainforge.test",
+                                 credential_ciphertext="sealed"))
+        colleague = ContextSource(owner_id=OWNER, connector="granola", external_id="n-colleague",
+                                  upstream_owner_email="uttam@brainforge.test", upstream_owner_name="Uttam Rao")
+        own = ContextSource(owner_id=OWNER, connector="granola", external_id="n-own",
+                            upstream_owner_email="Davin@Brainforge.test", upstream_owner_name="Davin")
+        anonymous = ContextSource(owner_id=OWNER, connector="granola", external_id="n-anon",
+                                  upstream_owner_email="someone@else.test")
+        db.add_all([colleague, own, anonymous])
+        db.flush()
+        attendees = identity.seed_candidates(db, OWNER, colleague.id, [
+            Participant(name="Uttam Rao", email="uttam@brainforge.test", speaker_label="Uttam Rao"),
+            Participant(name="Davin", email="davin@brainforge.test")], [])
+        uttam = attendees[0].actor_id
+        lines = segments(("Uttam Rao", "owner", "I'll send the recap."), (None, "owner", "Note to self."))
+        # A colleague's recording: their "me" lines are theirs (by their email), never the user's.
+        assert by_label(link.resolve_speakers(db, OWNER, colleague.id, lines, attendees)) == {
+            "Uttam Rao": ("exact", uttam), "me": ("exact", uttam)}
+        # The user's own note (their connector account, any case): owner lines are the user.
+        assert by_label(link.resolve_speakers(db, OWNER, own.id, lines, attendees)) == {
+            "Uttam Rao": ("exact", me), "me": ("exact", me)}
+        # Someone else's note whose owner has no actor: unresolved rather than the user.
+        assert by_label(link.resolve_speakers(db, OWNER, anonymous.id, segments((None, "owner", "Hi.")))) == {
+            "me": ("unresolved", None)}
+
+
 def test_the_same_label_in_two_meetings_stays_separate():
     with session_scope() as db:
         a = identity.seed_candidates(db, OWNER, "meeting-a", [

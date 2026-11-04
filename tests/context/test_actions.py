@@ -3,7 +3,7 @@ recorded answers in each provider's wire shape (OpenAI Responses for Luna and Te
 Sonnet 5.5). Every model call is mocked at the HTTP transport; no network."""
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -14,14 +14,16 @@ from jarvis.config import get_settings
 from jarvis.context.native import actions
 from jarvis.context.native.extract import NativeExtractor
 from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION
-from jarvis.context.native.validate import SourceContext, ungrounded_numbers
+from jarvis.context.native.validate import SourceContext, ungrounded_numbers, ungrounded_tokens
 from jarvis.context.schema import (
     Decision,
     EntityCandidate,
     EntityRef,
+    EvidenceRef,
     ExtractRequest,
     Participant,
     Segment,
+    TimeBound,
     check_extraction,
 )
 from jarvis.db import session_scope
@@ -275,6 +277,17 @@ def test_identifiers_and_ranges_count_when_a_cited_quote_has_them():
     assert ungrounded_numbers("Update the C3 rubric", "C2 should go one to five", []) == {Decimal(3)}
 
 
+def test_action_titles_ground_identifiers_as_tokens_against_the_whole_meeting():
+    meeting = "[1] The C2 column is broken. [4] Let's move it to 1 to 5. [N1] Q1 planning: backfill scores"
+    assert ungrounded_tokens("Update the C2 rubric to a 1-5 scale", meeting, []) == []
+    assert ungrounded_tokens("Backfill C2 scores for Q1", meeting, []) == []
+    # an identifier is one token: C3 is not grounded by the digit 3 elsewhere, nor 2 by C2
+    assert ungrounded_tokens("Update the C3 rubric", meeting + " 3 people", []) == ["C3"]
+    assert ungrounded_tokens("Pull 2 samples", meeting, []) == ["2"]
+    assert ungrounded_tokens("Plan Q2 with 40 clinics", meeting, []) == ["Q2", "40"]
+    assert ungrounded_tokens("Ship v2 by the 6th", "ship v2", [date(2026, 11, 6)]) == []
+
+
 def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
     wire()
     request = meeting_request()
@@ -384,3 +397,142 @@ def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
     assert signals["Update the tracker"] == {"owner_unverified": "Uttam Rao"}
     assert signals["Book the room for Thursday"] == {"owner_unknown": True}
     assert signals["Send the pilot deck to the board"]["owner_from_content"] is True
+
+
+def test_date_only_dues_keep_the_meetings_calendar_date():
+    from zoneinfo import ZoneInfo
+
+    from jarvis.context.native.prompts import ActionList
+    from jarvis.context.proposals import _local_date
+
+    request = ExtractRequest.model_validate({
+        **unseparated_request().model_dump(),
+        "timezone": "America/Chicago", "occurred_at": "2026-11-04T18:00:00+00:00",  # noon in Chicago
+        "segments": [{"seq": 0, "speaker_label": "Davis Dunham", "attribution": "owner",
+                      "text": "I'll send the recap today."}]})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [{**item([(0, "I'll send the recap today.")], "Send the recap",
+                                                          "Davis Dunham"),
+                                                   "due": {"expression": "today", "value": "2026-11-04T00:00:00Z",
+                                                           "precision": "day", "derivation": "meeting date"}}]})
+    draft = actions.check(listed.items[0], meeting, lambda *_: True)
+    chicago = ZoneInfo("America/Chicago")
+    assert draft.due.at == datetime(2026, 11, 4, tzinfo=chicago) and draft.due.precision == "day"
+    assert _local_date(draft.due.at, "America/Chicago") == date(2026, 11, 4)
+    assert draft.derivations[0]["verified"] is True
+
+
+# ---------------------------------------------------------------- regression cases (synthetic)
+
+REGRESSION = [
+    ("Rowan Vale", "Jules, can you redo the onboarding slides?"),
+    ("Jules Park", "No, I can't take that on this week."),
+    ("Rowan Vale", "Okay, no problem."),
+    ("Jules Park", "Yes, the new office is great."),
+    ("Jules Park", "If approval arrives Monday, I'll start the data migration."),
+    ("Jules Park", "I just fixed the typo in the invite, it's done."),
+    ("Jules Park", "I'll update the C2 rubric and the C3 rubric before the review."),
+    ("Jules Park", "I'll send Rowan the report by Friday, and the final version by Monday."),
+    ("Jules Park", "I'll order new badges for the team."),
+    ("Jules Park", "Actually, scrap that, the old badges are fine."),
+    ("Rowan Vale", "I'll deploy the payment service fix to staging, then to production after QA."),
+]
+NOTES = ["Cynthia annotation admin", "todo: send Yvette the deck"]
+
+
+def regression_meeting() -> actions.Meeting:
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(REGRESSION)]
+    segments += [Segment(seq=len(REGRESSION) + i, kind="private_note", attribution="owner", text=t)
+                 for i, t in enumerate(NOTES)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    return actions.Meeting.of(request, SourceContext.from_request(request))
+
+
+def due(expression: str, value: str) -> dict:
+    return {"expression": expression, "value": value, "precision": "day", "derivation": "weekday after the meeting"}
+
+
+def test_regression_cases_keep_real_work_and_refuse_the_rest():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    meeting = regression_meeting()
+    q = dict(enumerate(t for _, t in REGRESSION))
+    listed = ActionList.model_validate({"items": [
+        # a declined request, then an unrelated "yes"
+        item([(0, q[0]), (1, q[1]), (3, q[3])], "Redo the onboarding slides", "Jules Park", "accepted_request"),
+        # a condition attached to planned work
+        {**item([(4, q[4])], "Start the data migration", "Jules Park"),
+         "description": "Start the data migration once approval arrives Monday."},
+        # finished during the meeting
+        {**item([(5, q[5])], "Fix the typo in the invite", "Jules Park"), "status": "done_in_meeting"},
+        # two deliverables that differ only by an identifier
+        item([(6, q[6])], "Update the C2 rubric", "Jules Park"),
+        item([(6, q[6])], "Update the C3 rubric", "Jules Park"),
+        # the same action on two dates
+        {**item([(7, q[7])], "Send Rowan the report", "Jules Park"), "due": due("by Friday", "2026-11-06")},
+        {**item([(7, q[7])], "Send Rowan the report", "Jules Park"), "due": due("by Monday", "2026-11-09")},
+        # promised, then withdrawn
+        item([(8, q[8]), (9, q[9])], "Order new badges for the team", "Jules Park"),
+        # the same fix to two environments
+        item([(10, q[10])], "Deploy the payment service fix to staging", "Rowan Vale"),
+        item([(10, q[10])], "Deploy the payment service fix to production", "Rowan Vale"),
+        # shorthand note only: assigns nothing; an explicit to-do note is the recorder's
+        item([("N1", NOTES[0])], "Build the annotation admin", "Jules Park", "self_assigned_intent"),
+        {**item([("N2", NOTES[1])], "Send Yvette the deck", "Yvette", "self_assigned_intent"), "recipient": "Yvette"},
+    ]})
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": i["item"], "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    refused = {r["title"]: r["code"] for r in out.rejected}
+    assert refused == {"Redo the onboarding slides": "negated", "Fix the typo in the invite": "done_in_meeting",
+                       "Order new badges for the team": "negated"}
+    kept = [(d.title, d.owner, d.due.at.date().isoformat() if d.due else None) for d in out.drafts]
+    assert kept == [
+        ("Start the data migration", "Jules Park", None),
+        ("Update the C2 rubric", "Jules Park", None), ("Update the C3 rubric", "Jules Park", None),
+        ("Send Rowan the report", "Jules Park", "2026-11-06"), ("Send Rowan the report", "Jules Park", "2026-11-09"),
+        ("Deploy the payment service fix to staging", "Rowan Vale", None),
+        ("Deploy the payment service fix to production", "Rowan Vale", None),
+        ("Build the annotation admin", None, None),
+        ("Send Yvette the deck", "Jules Park", None)]
+    drafts = {d.title: d for d in out.drafts}
+    migration = drafts["Start the data migration"]
+    assert "approval arrives" in migration.description and migration.signals["tentative"] is True
+    assert drafts["Build the annotation admin"].signals == {"note_only": "Jules Park"}
+    assert drafts["Build the annotation admin"].basis == "implied_by_discussion"
+    assert drafts["Send Yvette the deck"].signals["owner_from_note"] == "Yvette"
+
+
+def test_near_titles_merge_unless_identifiers_recipients_or_dates_differ():
+    meeting = regression_meeting()
+
+    def draft(title, recipient=None, at=None):
+        bound = TimeBound(at=at, precision="day") if at else None
+        return actions.ActionDraft(kind="action", title=title, description="", owner="Jules Park",
+                                   basis="stated_promise", model_basis="stated_promise", recipient=recipient,
+                                   evidence=[EvidenceRef(segment_seq=6, quote="I'll update", char_start=0, char_end=11)],
+                                   due=bound,
+                                   responsible=[actions.resolve("Jules Park", meeting)])
+    friday, monday = (datetime(2026, 11, d, tzinfo=UTC) for d in (6, 9))
+
+    def titles(*drafts):
+        kept, rejected = actions.merge(list(drafts))
+        return [d.title for d in kept], [r["title"] for r in rejected]
+    assert titles(draft("Update the C2 rubric"), draft("Update the C3 rubric"), draft("Update the C2 rubric now")) == (
+        ["Update the C2 rubric", "Update the C3 rubric"], ["Update the C2 rubric now"])
+    assert titles(draft("Deploy the payment service fix to staging"),
+                  draft("Deploy the payment service fix to production")) == (
+        ["Deploy the payment service fix to staging", "Deploy the payment service fix to production"], [])
+    assert titles(draft("Send the deck", "Rowan"), draft("Send the deck", "Yvette"))[1] == []
+    assert titles(draft("Send the deck", at=friday), draft("Send the deck", at=monday))[1] == []
+    # one dated copy and one undated copy are the same item, keeping the date
+    kept, _ = actions.merge([draft("Send the deck"), draft("Send the deck", at=friday)])
+    assert [d.due.at for d in kept] == [friday]
+    assert titles(draft("Pull fifty calls"), draft("Pull 50 calls"))[1] == ["Pull 50 calls"]
