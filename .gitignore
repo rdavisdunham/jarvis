@@ -38,6 +38,8 @@ Thumbs.db
 # Uploads (runtime data)
 uploads/
 outputs/
+# Meeting lab: private client meetings, never committed (evals/context/lab.py)
+evals/context/private/
 
 # Python
 __pycache__/
