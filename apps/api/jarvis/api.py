@@ -108,6 +108,9 @@ app.include_router(agent_link_router)
 from .remotea_routes import router as remotea_router
 
 app.include_router(remotea_router)
+from .context.routes import session_router as context_session_router
+
+app.include_router(context_session_router)
 from . import bug_reports
 from .bug_reports import router as bug_reports_router
 
@@ -949,6 +952,8 @@ def export(user: User, format: str = "json"):
         from .agent_retention import export_tables
         data.update(export_tables(db, user.owner_id))
         data["bug_reports"] = bug_reports.export(db, user.owner_id)
+        from .context.export import export_history
+        data["context_history"] = export_history(db, user.owner_id)  # canonical format; scripts/context_export.py imports it
         data["note_task_links"] = [
             serial(link)
             for link in db.scalars(
