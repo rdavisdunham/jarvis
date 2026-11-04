@@ -40,7 +40,7 @@ export type Proposal = {
   evidence: { quote: string; segment: number | null; speaker?: string | null }[];
   target: { id: string; title: string; entity_type?: string } | null;
   before: Record<string, unknown> | null; after: Record<string, unknown> | null;
-  publication: { status: PublicationStatus; task_id: string | null; error?: string | null } | null;
+  publication: { id: string; status: PublicationStatus; task_id: string | null; error?: string | null } | null;
 };
 export type Review = {
   source_id: string; source?: MeetingSource; revision: number; status: ReviewStatus; destination: Destination; destinations: Destination[];
@@ -152,6 +152,8 @@ export const pendingCount = (review: Review) => review.proposals.filter(selectab
 
 export const PUBLICATION_LABELS: Record<PublicationStatus, string> = { queued: "Queued", in_progress: "Sending", published: "Added",
   retrying: "Retrying", failed: "Failed", conflict: "Needs a look", unconfirmed: "Unconfirmed" };
+/** Publications the reader can send again (conflict answers with what to check on the task). */
+export const RETRYABLE: PublicationStatus[] = ["failed", "conflict", "unconfirmed"];
 export const DESTINATION_LABELS: Record<Destination, string> = { eridani: "Eridani", linear: "Linear" };
 
 /** Segment numbers that support each statement, from the transcript's own annotations. */

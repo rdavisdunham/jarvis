@@ -33,7 +33,7 @@ describe("selection", () => {
     const mine = new Set(["p-other"]);
     const second = [proposal({ revision: 2, preselected: true }), first[1], first[2]];
     expect([...nextSelection(mine, first, second)].sort()).toEqual(["p-other", "p-own"]);
-    const settled = [proposal({ disposition: "approved", publication: { status: "queued", task_id: null } }), first[1]];
+    const settled = [proposal({ disposition: "approved", publication: { id: "pub-q", status: "queued", task_id: null } }), first[1]];
     expect([...nextSelection(new Set(["p-own", "p-other"]), first, settled)]).toEqual(["p-other"]);
   });
 
