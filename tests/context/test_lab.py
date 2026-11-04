@@ -222,7 +222,8 @@ def test_score_meeting_math():
     counts = lab.score_meeting(g, p, match(("g1", "P1"), ("g2", "P2"), ("g3", "P5")))
     m = lab.metrics(counts)
     assert m["recall_mine"] == 0.5 and m["candidate_recall_mine"] == 1.0  # g3 matched, wrong owner
-    assert m["recall_waiting"] == 1.0 and m["candidate_recall"] == 1.0 and m["precision"] == 0.6
+    assert m["recall_waiting"] == 0.0 and m["candidate_recall_waiting"] == 1.0  # g2 matched as the user's
+    assert m["candidate_recall"] == 1.0 and m["precision"] == 0.6
     assert m["owner_accuracy"] == pytest.approx(1 / 3) and m["checked_accuracy"] == pytest.approx(1 / 3)
     # Three checked proposals: one is the user's todo, one someone else's, one matches nothing.
     assert m["checked_precision"] == pytest.approx(1 / 3) and m["unmatched_checked"] == 1
@@ -622,3 +623,15 @@ def test_gold_sheet_round_trips_parts_and_owner_email(lab_dir):
     assert applied["items"][0]["owner_email"] == ME["email"] and "parts" not in applied["items"][1]
     assert lab.parse_sheet("## a\n- title: x\n- kind: mine\n- parts: inline part\n")[1][0]["parts"] == \
         ["inline part"]
+
+
+def test_recall_waiting_needs_the_owner_unless_the_key_has_none():
+    items = [{"id": "w1", "title": "Send the 50 calls", "owner": "Kai Moreno", "kind": "waiting"},
+             {"id": "w2", "title": "Book the venue", "owner": None, "kind": "waiting"}]
+    g = {"items": items}
+    p = preds(("Send the calls", "Lee Park", False, False), ("Book the venue", "Robin Vale (you)", True, True))
+    m = lab.metrics(lab.score_meeting(g, p, match(("w1", "P1"), ("w2", "P2"))))
+    assert m["candidate_recall_waiting"] == 1.0 and m["recall_waiting"] == 0.5  # w1 wrong owner; w2 on title
+    assert m["owner_accuracy"] == 0.0  # owner accuracy still counts the user taking an unowned item
+    right = preds(("Send the calls", "Kai", False, False))
+    assert lab.metrics(lab.score_meeting(g, right, match(("w1", "P1"))))["recall_waiting"] == 0.5

@@ -238,7 +238,8 @@ and `granola.json` (Granola's next steps, same item shape). `import-granola` als
   system (`--judge`, default Luna, strict JSON schema), falling back to greedy token-Jaccard on titles
   (`--no-judge`, or when the judge fails). A grouped item matches any prediction covering one of its parts. It
   reports `recall_mine` (the user's todos matched with the right owner), `candidate_recall_mine` and
-  `candidate_recall` (matched whoever owns them), waiting-for recall, `parts_recall` and `full_recall` (every
+  `candidate_recall` (matched whoever owns them), `recall_waiting` (others' items with the right owner; an item
+  without an owner in the key matches on its title alone) and `candidate_recall_waiting`, `parts_recall` and `full_recall` (every
   part covered), precision, owner accuracy (email when both sides have one, else full name, else a first name no
   two participants share), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
   proposals that are the user's real todos, unmatched ones included), `unmatched_checked`, checked `must_not`
