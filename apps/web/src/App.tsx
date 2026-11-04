@@ -47,7 +47,7 @@ import { FinishedToday } from "./FinishedToday";
 import { isFinishedTask, mergeFinishedTasks, readFinishedTasks } from "./task-finished";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
-import { noticeDestination, noticeStatus } from "./notice-target";
+import { noticeDestination, noticeStatus, openNotice } from "./notice-target";
 import { MemoryEditor } from "./MemoryEditor";
 import { useEditorBridge } from "./editor-control";
 import {
@@ -2723,7 +2723,8 @@ export default function App() {
                         {timeLabel(n.scheduled_at, boot.preferences.timezone)}
                       </time>
                       <div className="notice-actions">
-                        <button className="notice-primary" onClick={()=>{const to=noticeDestination(n);if(to.open==="run")openRemoteaRun(to.run);else if(to.open==="task"){const task=tasks.find(t=>t.id===to.task);if(task)openTaskCard(task);else void openNoteTask(to.task);/* Not in the loaded list (an occurrence's own task, another tab): fetch it. */}else if(to.open==="activity")setActivityOpen(true);else setView("today");/* "notifications": this list is already open; Today as before. */void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
+                        <button className="notice-primary" onClick={()=>{openNotice(noticeDestination(n),{run:openRemoteaRun,meetings:openMeeting,activity:()=>setActivityOpen(true),today:()=>setView("today"),
+                          task:id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);else void openNoteTask(id);/* Not in the loaded list (an occurrence's own task, another tab): fetch it. */}});void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
                         {n.task_id&&["reminder","deadline"].includes(n.category??"reminder")&&<button
                           onClick={() =>
                             void mutate(

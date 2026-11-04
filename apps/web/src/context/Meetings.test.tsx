@@ -75,4 +75,18 @@ describe("Meetings list", () => {
     expect(text()).toContain("Meeting memory is not on");
     expect(host.querySelector("[role=alert]")).toBeNull();
   });
+
+  it("refreshes once after a burst of context changes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await render(<Meetings sourceId={null} onOpen={() => {}} onPerson={() => {}}/>);
+      const lists = () => calls.filter(c => c.url.startsWith("/api/v1/context/sources")).length;
+      const before = lists();
+      for (let i = 0; i < 3; i++) window.dispatchEvent(new Event("eri-context-changed"));
+      await act(async () => { vi.advanceTimersByTime(999); });
+      expect(lists()).toBe(before);
+      await act(async () => { vi.advanceTimersByTime(1); }); await act(async () => { await Promise.resolve(); });
+      expect(lists()).toBe(before + 1);
+    } finally { vi.useRealTimers(); }
+  });
 });

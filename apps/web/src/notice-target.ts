@@ -23,6 +23,21 @@ export function noticeDestination(n: Pick<Notice, "task_id" | "target">): Notice
   return { open: "notifications" };
 }
 
+/** What the Notifications page's Open does for each destination ("notifications": this list is already open; Today). */
+export type NoticeOpeners = {
+  run: (run: string | null) => void; meetings: (source: string | null) => void; task: (task: string) => void;
+  activity: () => void; today: () => void;
+};
+export function openNotice(to: NoticeDestination, open: NoticeOpeners) {
+  switch (to.open) {
+    case "run": return open.run(to.run);
+    case "meetings": return open.meetings(to.source);
+    case "task": return open.task(to.task);
+    case "activity": return open.activity();
+    default: return open.today();
+  }
+}
+
 const PRIORITY_LABELS: Record<string, string> = { urgent: "Urgent", high: "High priority", low: "Low priority" };
 
 /** The line under a notification: its priority when not normal, and its state when worth saying.
