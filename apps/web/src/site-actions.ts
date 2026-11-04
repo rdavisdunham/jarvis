@@ -14,6 +14,8 @@ export const views = [
   "notifications",
   "settings",
   "remotea",
+  "meetings",
+  "person",
 ] as const;
 export const editorKinds = [
   "task",

@@ -81,6 +81,40 @@ async def test_ui_show_opens_every_page_in_its_enum():
         raise AssertionError("ui_show opened an unknown page")
 
 
+def test_meeting_review_reads_only_the_context_api():
+    """The Meetings view and the meeting review reach the server only through context-api.ts, and that module only
+    through the owner's session routes under /api/v1/context (plan section 2; never /api/v1/external)."""
+    for name in ("context/Meetings.tsx", "context/MeetingReview.tsx", "context/context-model.ts"):
+        page = web(name)
+        assert not re.search(r'from "\.\./api"|\bfetch\(', page), f"apps/web/src/{name}: fetch through context-api.ts"
+    client = web("context/context-api.ts")
+    assert found(r'const BASE = "([^"]+)"', client, "context-api.ts BASE") == "/context"
+    paths = re.findall(r"(?:api|post)<[^>]*>\(\s*`([^`]*)`", client) + re.findall(r"=> `([^`]*)`", client)
+    assert paths, "Could not find the calls in context-api.ts; update the parser in tests/test_drift_guards.py"
+    assert all(p.startswith("${BASE}/") for p in paths), paths
+    assert "/external" not in client
+
+
+def test_meeting_types_match_the_context_schema():
+    """context-model.ts mirrors the context contract's enumerations the review UI branches on."""
+    from jarvis.context import schema
+
+    pairs = {"SourceStatus": schema.SOURCE_STATUSES, "Coverage": schema.COVERAGE, "LinkStatus": schema.LINK_STATUSES,
+             "ProposalKind": schema.PROPOSAL_KINDS, "Disposition": schema.PROPOSAL_DISPOSITIONS}
+    for name, values in pairs.items():
+        assert ts_union("context/context-model.ts", name) == set(values), f"context-model.ts {name} vs context/schema.py"
+
+
+def test_meeting_and_person_deep_links_survive_navigation():
+    """?view=meetings&source=<id> and ?view=person&actor=<id> are read on load and kept by App.tsx's URL sync."""
+    app = web("App.tsx")
+    for view, param, state in (("meetings", "source", "meetingSource"), ("person", "actor", "personActor")):
+        assert f'linkedId(location.search, "{param}")' in app, f"App.tsx reads ?{param}="
+        assert re.search(rf'view === "{view}" && {state}\) navigationUrl\.searchParams\.set\("{param}"', app), \
+            f"App.tsx URL sync keeps ?{param}= on the {view} page"
+        assert f'navigationUrl.searchParams.delete("{param}")' in app
+
+
 def test_push_and_in_app_notifications_open_the_same_place():
     """worker.notification_url (push) and notice-target.ts (the Notifications page's Open) share the cases in
     apps/web/src/notice-targets.json; notice-target.test.ts checks the web side against the same rows."""
