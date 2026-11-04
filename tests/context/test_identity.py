@@ -7,7 +7,7 @@ from jarvis.context.identity import DecisionInput, IdentityCandidate
 from jarvis.context.schema import EntityRef, Participant
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute
-from jarvis.models import Actor, Command, Task, now
+from jarvis.models import Actor, Command, GoogleIdentity, Task, now
 from sqlalchemy import func, select
 
 OWNER = "davin"
@@ -89,6 +89,17 @@ def test_calendar_self_and_me_resolve_to_the_owner_actor():
         assert (other.is_owner, db.get(Actor, other.actor_id).name) == (False, "priya")
         # Later meetings resolve the owner by email without the calendar's self flag.
         assert seed(db, "src-2", participants=[Participant(name="Davin", email="davin@acme.test")])[0].is_owner
+
+
+def test_the_owners_sign_in_email_is_the_owner_without_a_self_flag():
+    with session_scope() as db:
+        db.add(GoogleIdentity(owner_id=OWNER, subject="sub-1", email="Davin@Acme.test"))
+        db.flush()
+        me = identity.owner_actor(db, OWNER)
+        mine, = seed(db, participants=[Participant(name="Davin", email="davin@acme.test", speaker_label="Davin")])
+        assert (mine.actor_id, mine.is_owner, mine.created) == (me, True, False)
+        assert not actors(db, "Davin")
+        assert identity.resolve_exact(db, OWNER, "granola_speaker", "Davin", "src-1") == me
 
 
 def test_diarization_labels_are_scoped_to_their_source():
