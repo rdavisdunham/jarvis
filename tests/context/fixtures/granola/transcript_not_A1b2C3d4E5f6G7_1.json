@@ -1,0 +1,35 @@
+{
+  "transcript": [
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Thanks both for making time, let's walk through the onboarding plan.",
+      "start_time": "2026-11-03T15:01:04.250Z",
+      "end_time": "2026-11-03T15:01:09.000Z"
+    },
+    {
+      "speaker": {
+        "source": "speaker",
+        "attribution": "them",
+        "name": "Priya Natarajan"
+      },
+      "text": "Sure. We decided internally to start with the analytics team only.",
+      "start_time": "2026-11-03T15:01:10.500Z",
+      "end_time": "2026-11-03T15:01:18.750Z"
+    },
+    {
+      "speaker": {
+        "source": "speaker",
+        "attribution": "them",
+        "diarization_label": "Speaker B"
+      },
+      "text": "And I can get you the data export by November 14th.",
+      "start_time": "2026-11-03T15:01:19.000Z",
+      "end_time": "2026-11-03T15:01:24.000Z"
+    }
+  ],
+  "hasMore": true,
+  "cursor": "tc_8sd7Fh2"
+}

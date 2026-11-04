@@ -1,0 +1,32 @@
+{
+  "transcript": [
+    {
+      "speaker": {
+        "source": "speaker"
+      },
+      "text": "Sorry, who is on mute?",
+      "start_time": "2026-11-03T15:01:25.000Z",
+      "end_time": "2026-11-03T15:01:27.500Z"
+    },
+    {
+      "speaker": {
+        "source": "speaker",
+        "attribution": "them"
+      },
+      "text": "   ",
+      "start_time": "2026-11-03T15:01:28.000Z",
+      "end_time": "2026-11-03T15:01:28.900Z"
+    },
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Great. I'll send the SSO checklist to Priya by Friday.",
+      "start_time": "2026-11-03T15:01:30.000Z",
+      "end_time": "2026-11-03T15:01:36.000Z"
+    }
+  ],
+  "hasMore": false,
+  "cursor": null
+}
