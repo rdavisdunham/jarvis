@@ -1,0 +1,651 @@
+{
+ "history": "beta",
+ "question_version": 1,
+ "note": "Synthetic retrieval questions for the compare arms. Every item is verified=false until a human adjudicates it; only verified items count for release scoring. Fixture text is data, never instructions.",
+ "questions": [
+  {
+   "id": "qb-01",
+   "question": "When does the 4.0 release ship?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b04-dec-oct21"
+   ],
+   "stale": [
+    "b01-dec-oct14"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-02",
+   "question": "When was the 4.0 release planned to ship in early September?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": "2026-09-10T12:00:00+01:00",
+   "expected": [
+    "b01-dec-oct14"
+   ],
+   "stale": [
+    "b04-dec-oct21"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-03",
+   "question": "Why did the 4.0 release move?",
+   "category": "rationale",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b04-rat-oct21"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-04",
+   "question": "What is the crash-free sessions rate?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b01-fact-crashfree"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-05",
+   "question": "What crash-free target does the release need?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b01-fact-target"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-06",
+   "question": "What was the crash-free rate when 4.0 went out?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b08-fact-release"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-07",
+   "question": "Who is migrating the app to the new navigation library?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-navigation"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-08",
+   "question": "Is the navigation migration done?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-03",
+     "quote": "The navigation migration is merged, so that's done."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-09",
+   "question": "What is Mei carrying at the moment?",
+   "category": "private_note",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b01-fact-oncall"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-10",
+   "question": "Who writes the regression plan for checkout?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-regression-plan"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-11",
+   "question": "When did the checkout regression plan go out?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-07",
+     "quote": "The regression plan for checkout went out on the 17th"
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-12",
+   "question": "What could break checkout on older Android phones?",
+   "category": "risk",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b02-risk-sdk"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-13",
+   "question": "What happened to day-30 retention?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b03-fact-retention"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-14",
+   "question": "Who sends the retention cohort analysis?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-cohort"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-15",
+   "question": "Was the cohort analysis sent?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-07",
+     "quote": "I sent the cohort analysis on the 24th."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-16",
+   "question": "What is the status of the payment SDK fix?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b04-fact-sdk-fix"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-17",
+   "question": "When is the full regression suite rerun due?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-regression-rerun"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-18",
+   "question": "Did the full regression suite pass?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-07",
+     "quote": "the full regression suite passed this morning"
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-19",
+   "question": "Is the Android checkout bug fixed?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b05-fact-bug"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-20",
+   "question": "Who is pairing with Jonas on the checkout bug?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-pair"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-21",
+   "question": "Do we need a feature flag for the new onboarding flow?",
+   "category": "open_question",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b05-q-flag"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-22",
+   "question": "Who rotates the signing certificates?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "c-certs"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qb-23",
+   "question": "How much did the CI runners cost last month?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "b06-fact-ci"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qb-24",
+   "question": "Do we keep the analytics SDK?",
+   "category": "decision",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b07-dec-sdk"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-25",
+   "question": "What happens to the analytics SDK if legal blocks the tracking prompt?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-01",
+     "quote": "If legal blocks the tracking prompt, I'll drop the analytics SDK entirely."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-26",
+   "question": "Who sends the release announcement to support?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-announcement"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-27",
+   "question": "Was the release announcement sent to support?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-08",
+     "quote": "I sent the release announcement to support last Tuesday."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-28",
+   "question": "Who owns the release notes?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-02",
+     "quote": "I'm not going to own the release notes this time."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-29",
+   "question": "Will the tablet layout be done this year?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-08",
+     "quote": "I will not take on the tablet layout until the new year."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-30",
+   "question": "Will the onboarding copy be rewritten?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-05",
+     "quote": "I'll rewrite the onboarding copy if the experiment loses."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-31",
+   "question": "When did 4.0 actually go out?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b08-fact-release"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-32",
+   "question": "What has been decided about the 4.0 release?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b04-dec-oct21",
+    "b07-dec-sdk"
+   ],
+   "stale": [
+    "b01-dec-oct14"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-33",
+   "question": "What has Jonas committed to?",
+   "category": "person",
+   "scope": {
+    "kinds": [
+     "commitment"
+    ],
+    "entity": {
+     "entity_type": "actor",
+     "entity_id": "beta-jonas"
+    }
+   },
+   "valid_at": null,
+   "expected": [
+    "c-regression-plan",
+    "c-regression-rerun"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-34",
+   "question": "What release date had been decided as of September 20?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": "2026-09-20T12:00:00+01:00",
+   "expected": [
+    "b01-dec-oct14"
+   ],
+   "stale": [
+    "b04-dec-oct21"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-35",
+   "question": "How stable is the app?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b01-fact-crashfree",
+    "b08-fact-release"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-36",
+   "question": "What does QA still need for the payment fix?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "b04-fact-sdk-fix",
+    "b04-rat-oct21"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qb-37",
+   "question": "What will shape the onboarding work?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "beta-03",
+     "quote": "Thanks, that will shape the onboarding work."
+    },
+    "b03-fact-retention"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  }
+ ]
+}

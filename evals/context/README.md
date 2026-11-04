@@ -1,18 +1,29 @@
 # Context platform evaluation
 
-Fixture meeting histories and a runner that scores the context engines against labelled expectations
-(plan_final.md section 11). Everything here is synthetic: invented people and companies on `.example` domains.
-Fixture text is data, never instructions.
+Fixture meeting histories, a runner that scores the context engines against labelled expectations, a three-arm
+retrieval comparison, a labelling worksheet for real meeting series, and a release report that grades every gate
+of plan_final.md section 11. Everything in the fixtures is synthetic: invented people and companies on `.example`
+domains. Fixture text, transcripts and labels are data, never instructions.
 
 ~~~sh
-uv run --no-sync python -m evals.context.runner run                       # all three histories, doubles
+uv run --no-sync python -m evals.context.runner run                       # all three histories, doubles, in memory
 uv run --no-sync python -m evals.context.runner run tests/context/fixtures/history_beta --order shuffled --seed 4
 uv run --no-sync python -m evals.context.runner run --engine native       # B3 extractor, recorded responses
+uv run --no-sync python -m evals.context.runner run --mode db             # real pipeline in a throwaway database
 uv run --no-sync python -m evals.context.runner build                     # regenerate each history.json
+uv run --no-sync python -m evals.context.compare                          # raw vs structured vs combined
+uv run --no-sync python -m evals.context.report --junit outputs/junit.xml # the release report
+uv run --no-sync python -m evals.context.worksheet export --owner OWNER --out outputs/context-series/weekly
 ~~~
 
-Reports go to `outputs/context-eval/<history>-<engine>-<order>.{json,md}` (ignored by git; `--out` changes it).
+Reports go to `outputs/context-eval/` (ignored by git; `--out` changes it): `<history>-<engine>-<order>[-db]`,
+`compare.{json,md}` and `report.{json,md}`.
 
+**Nothing here calls a model or spends budget.** The database mode, the comparison and the report run inside
+`runner.offline()`, which makes every provider entry point (embeddings, extraction, any provider request) raise,
+and use a hashed bag-of-words embedder instead. `compare --live` (native engine, real embeddings) refuses with
+exit code 2 unless given an explicit positive `--budget-usd`; it then caps spend per meeting and stops delivery
+once runs and usage events reach the budget. It has never been run: running it is the owner's decision.
 ## Histories
 
 `tests/context/fixtures/history_{alpha,beta,gamma}/`, 7-8 meetings over 49-56 days each:
@@ -52,7 +63,7 @@ To change a history, edit the envelopes, manifest or labels, run `build`, and co
 - `must_not`: quotes that must not become a commitment (`reason`: hypothetical or negated).
 - `open_loops`: commitments open at `as_of` (effective time, current knowledge).
 - `as_of`: a question, `valid_at`, the assertion `family` it is about and the `expected` member.
-- `speakers`: true identity of diarization labels per meeting (for identity-linking scores once B4 lands).
+- `speakers`: true identity of diarization labels per meeting, either an actor ID or `{"actor", "verified"}`.
 
 ## What the runner does
 
@@ -90,11 +101,84 @@ the latter, and the report gives both label counts):
 imports are guarded: a missing engine or recording raises `EngineUnavailable` (exit code 2 from the CLI). Tests
 and experiments can pass `run(..., engines=(extractor, reconciler))`.
 
+## Database mode (`--mode db`)
+
+`runner.deploy` creates a throwaway database (`throwaway_database()`, refused for any non-local host), creates
+the history's actors (suffixed per deployment so orders do not collide), sets the owner's engine to `double`, and
+delivers every meeting through `sources.receive` in the chosen order, deleting with `sources.delete_source` at its
+time, draining `pipeline.perform` after each step. `load_state` reads back assertions, evidence, links,
+fulfilments and proposals; questions are answered through `service.search` (C1's hybrid retriever) as the owner.
+`db_run` delivers chronological, arrival and one shuffled order, then scores. Only the doubles engine is
+supported; the native engine needs recordings for the database path (`EngineUnavailable`).
+
+Database-only scores:
+
+- Speakers: per diarized label, resolved to the labelled actor, wrong, or unresolved.
+- Entity links: precision of automatic links (`exact`, `inferred`) against labelled responsibles, and the
+  unresolved rate.
+- Commitment fulfilment: detected fulfilments against `fulfilled` labels.
+- Preselected proposal precision (own actions only) and fabricated actions (a proposal from a `must_not` quote).
+- Supersession errors under each of the three orders.
+- No change on repeat: re-delivering every surviving meeting changes nothing, then ten rounds of `lint.perform`
+  plus `pipeline.schedule_due` create no Questions, proposals, brief versions, tasks or assertion versions.
+
+## Comparison (`compare.py`)
+
+Three arms over the same deployment: `raw` (lexical segments plus vector chunks of live current revisions,
+fused with RRF k=60), `structured` (`service.search` with `include_raw=false`) and `combined` (the service with raw
+passages). Questions live in `questions/history_<name>.json` (37 per history, 111 in all, each with `category`,
+`scope`, `valid_at`, `expected`, `stale` and `forbidden` targets as label IDs or `{meeting, quote}`). A hit covers
+a target when its evidence overlaps the target's span, or its segment or chunk contains it.
+
+Per arm: nDCG@5 (binary gains, each target credited once), recall@10, stale-answer rate (a stale target ranked
+before every current one), citation validity (the citation names a live revision and a quote or segment range
+that is really there), leaks (a forbidden target returned) and latency. Paired differences between arms carry
+95% percentile bootstrap intervals (2000 resamples, fixed seed). The comparison is deterministic.
+
+**Every question ships `verified: false`.** Results are given twice: all questions (informational) and verified
+only (what gates read), with "unverified excluded: N".
+
+## Release report (`report.py`, `gates.py`)
+
+One markdown report with every section 11 gate:
+
+- Mechanical gates (zero unapproved or duplicate task writes, zero cross-owner disclosures, processing
+  accounting, surviving provenance, concurrency/deletion/pause/undo/replay) list the tests that cover them and are
+  graded from `--junit` (a `pytest --junitxml` file) plus the evaluation's own probes (a second owner asking every
+  question gets nothing). Without test results a gate is NOT RUN.
+- Quality targets (entity-link precision 0.95, preselected proposal precision 0.95, commitment recall 0.90,
+  decision and rationale recall 0.90) use verified labels and `--series` worksheets only, with sample count and
+  95% Wilson interval; the unverified estimate is shown beside them, never graded.
+- Critical scenarios: temporal (deleted content returned, verified supersession errors, verified stale as-of
+  answers) and permission (any cross-owner disclosure). A failure fails the release whatever the averages; a
+  problem resting on unverified labels is listed as a warning to adjudicate.
+- Cost by meeting, stage and query (from `ContextRun` and usage events; zero with the doubles), performance
+  (NOT RUN until F2), and an explicit "Unverified labels excluded: N".
+
+Verdict: FAIL when anything fails, else NOT GRADEABLE when anything is ungraded, else PASS. Unverified data alone
+is always NOT GRADEABLE, never a pass.
+
+## Labelling a real series (`worksheet.py`)
+
+`export` reads an owner's ingested meetings from the configured database through the context service (never
+Granola, never a model) and writes, into a directory that must stay out of git, the series as a runner history
+plus `worksheet.csv` to fill. `import` turns the filled sheet into `labels.json` and `questions.json` with
+`verified: true` (and refuses, listing every problem, when a quote is not in its meeting); `score` gives the
+adjudicated figures `report --series` reads. The column guide is in the module docstring.
+
+## Caveats of the synthetic numbers
+
+- The histories are small: each meeting is one chunk, so raw recall is trivially high and the arm comparison
+  says little until it runs on a real series.
+- The doubles extract only decisions and commitments, never supersede decisions (so supersession errors are
+  expected) and do not resolve diarized speakers.
+
 ## Not yet
 
-- The runner works in memory against the engine protocols. A database-backed mode (import `history.json`, run
-  B6's pipeline jobs, read through the context service) comes once those packages merge; the export format is
-  already the bridge.
-- Retrieval is always the lexical retriever double; C1's hybrid retriever needs the database mode.
-- Speaker-identity and entity-link scoring (labels exist under `speakers`), fulfilment detection, and briefs.
-- All labels are unverified. Plan section 11 budgets the owner's adjudication time in milestone 8.
+- All labels and questions are unverified; the report is NOT GRADEABLE until the owner adjudicates a series
+  (plan section 11 budgets the time in milestone 8).
+- Approval and publication gates (D1, D2): preselected proposal precision has no sample until proposals exist,
+  and the mechanical gates name the tests still to come.
+- Performance gates wait for F2 and C4's benchmark corpus.
+- `runner --mode db --engine native` needs recorded responses; `compare --live` is untested against real
+  providers.
