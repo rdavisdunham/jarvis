@@ -1,0 +1,57 @@
+{
+  "id": "not_A1b2C3d4E5f6G7",
+  "object": "note",
+  "title": "Fernhill onboarding sync",
+  "owner": {
+    "name": "Alex Morgan",
+    "email": "alex.morgan@fernhill.example"
+  },
+  "created_at": "2026-11-03T14:58:12Z",
+  "updated_at": "2026-11-03T16:02:40Z",
+  "deleted_at": null,
+  "web_url": "https://notes.granola.example/d/not_A1b2C3d4E5f6G7",
+  "calendar_event": {
+    "event_title": "Fernhill x Northwind onboarding",
+    "invitees": [
+      {
+        "email": "priya.natarajan@northwind.example"
+      },
+      {
+        "email": "tomas.reyes@northwind.example"
+      },
+      {
+        "email": "alex.morgan@fernhill.example"
+      }
+    ],
+    "organiser": "priya.natarajan@northwind.example",
+    "calendar_event_id": "5q2vlk0e8m1c3b7d9f4a6h2j0k_20261103T150000Z",
+    "scheduled_start_time": "2026-11-03T15:00:00Z",
+    "scheduled_end_time": "2026-11-03T15:30:00Z"
+  },
+  "attachments": [],
+  "attendees": [
+    {
+      "name": "Priya Natarajan",
+      "email": "priya.natarajan@northwind.example"
+    },
+    {
+      "name": "Alex Morgan",
+      "email": "alex.morgan@fernhill.example"
+    }
+  ],
+  "folder_membership": [
+    {
+      "id": "fol_Q1w2E3r4T5y6U7",
+      "object": "folder",
+      "name": "Clients",
+      "parent_folder_id": null,
+      "space_id": null
+    }
+  ],
+  "space_membership": [],
+  "summary_text": "Agreed onboarding plan and data export timeline.",
+  "summary_markdown": "### Summary\n- Agreed onboarding plan\n- Data export by 2026-11-14",
+  "private_notes_text": "Check whether Northwind's SSO needs SCIM.",
+  "private_notes_markdown": "- Check whether Northwind's SSO needs **SCIM**.",
+  "transcript": null
+}
