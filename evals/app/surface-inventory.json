@@ -1047,6 +1047,62 @@
       "feature": "external_agents"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/external/context/brief",
+      "handler": "brief",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/evidence/{assertion_id}",
+      "handler": "evidence",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/feedback",
+      "handler": "feedback",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/meeting-prep",
+      "handler": "meeting_prep",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/open-loops",
+      "handler": "open_loops",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/sources/{source_id}",
+      "handler": "source",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/external/records/{kind}",
       "handler": "records",

@@ -5,7 +5,8 @@ Each context package adds one `router.include_router(...)` line here.
 
 from fastapi import APIRouter
 
-from . import sources
+from . import context, sources
 
 router = APIRouter()
 router.include_router(sources.router)
+router.include_router(context.router)
