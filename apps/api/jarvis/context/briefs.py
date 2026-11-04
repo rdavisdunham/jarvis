@@ -3,8 +3,11 @@ entity (plan section 6).
 
 A brief has the six sections of `schema.BRIEF_SECTIONS`. Version 0 is deterministic (no model): every claim
 restates current assertions with surviving evidence and cites them, plus linked task state read from tasks.
-`build_brief` can also take a `Synthesizer`; its sections are grounded (`native.synthesize.ground`) and the
-deterministic ones are kept if it fails. Next-meeting preparation is always deterministic (calendar data).
+Synthesis is split so no transaction or lock is held during the model call (plan section 9): `prepare_brief`
+reads the inputs into a detached `BriefPlan`, the caller closes its session and runs `run_synthesis`, and
+`commit_brief` re-checks the fingerprint and writes (grounded sections; the deterministic ones if synthesis
+failed, or if the inputs changed meanwhile, then flagged for re-synthesis). Next-meeting preparation is always
+deterministic (calendar data).
 
 Dependencies and freshness. `dependencies` records what the brief was built from: assertion versions (an object
 keyed by assertion ID, which `temporal.stale_briefs` matches), entity link revisions, source availability,
@@ -370,13 +373,7 @@ def synthesize_request(db, inputs: Inputs) -> SynthesizeRequest:
                         assertion_ids=ids) for t, ids in by_task.values()])
 
 
-def _synthesized(db, inputs: Inputs, synthesizer: Synthesizer, fallback: list[BriefSection]) -> list[BriefSection]:
-    request = synthesize_request(db, inputs)
-    grounded = {s.name: s for s in ground(synthesizer.synthesize(request), request)}
-    return [grounded.get(s.name, s) if s.name != "next_meeting_prep" else s for s in fallback]
-
-
-# ---------------------------------------------------------------- build, read, invalidate
+# ---------------------------------------------------------------- build (deterministic) and synthesis (split)
 
 
 def latest(db, owner: str, entity_type: str, entity_id: str) -> ContextBrief | None:
@@ -391,20 +388,12 @@ def _reusable(brief: ContextBrief | None, print_: str, engine: str) -> bool:
             and (engine == "deterministic" or brief.watermarks.get("engine") != "deterministic"))
 
 
-def _build(db, owner: str, inputs: Inputs, *, synthesizer: Synthesizer | None = None,
-           run_id: str | None = None) -> ContextBrief:
+def _write(db, owner: str, inputs: Inputs, sections: list[BriefSection], *, engine: str, run_id: str | None,
+           **marks) -> ContextBrief:
+    """Store a version unless the latest one already covers these inputs (then just clear its stale flag)."""
     deps = dependencies(inputs)
     print_ = fingerprint(deps)
     entity_type, entity_id = inputs.entity.entity_type, inputs.entity.entity_id
-    wanted = "deterministic" if synthesizer is None else "synthesized"
-    current = latest(db, owner, entity_type, entity_id)
-    sections, engine, failure = deterministic(inputs), "deterministic", None
-    if not _reusable(current, print_, wanted) and synthesizer is not None:
-        try:
-            sections, engine = _synthesized(db, inputs, synthesizer, sections), "synthesized"
-        except (SynthesisFailed, DomainError) as error:
-            failure = str(getattr(error, "code", None) or error)[:200]
-            log.warning("brief synthesis failed, keeping deterministic sections: %s", failure)
     advisory(db, f"context-brief:{owner}:{entity_type}:{entity_id}")
     current = latest(db, owner, entity_type, entity_id)
     if _reusable(current, print_, engine):
@@ -413,9 +402,8 @@ def _build(db, owner: str, inputs: Inputs, *, synthesizer: Synthesizer | None = 
             db.flush()
         return current
     watermarks = {"engine": engine, "format": FORMAT, "built_at": inputs.at.isoformat(),
-                  "decisions": decisions.watermark(db, owner), "dependency_decisions": inputs.decision_seq}
-    if failure:
-        watermarks["synthesis_error"] = failure
+                  "decisions": decisions.watermark(db, owner), "dependency_decisions": inputs.decision_seq,
+                  **{k: v for k, v in marks.items() if v}}
     brief = ContextBrief(owner_id=owner, entity_type=entity_type, entity_id=entity_id,
                          sections=[s.model_dump(mode="json") for s in sections], dependencies=deps,
                          watermarks=watermarks, fingerprint=print_, version=(current.version if current else 0) + 1,
@@ -432,12 +420,74 @@ def _entity(entity_type: str, entity_id: str) -> EntityRef:
     return EntityRef(entity_type=entity_type, entity_id=entity_id)
 
 
-def build_brief(db, owner: str, entity_type: str, entity_id: str, *, synthesizer: Synthesizer | None = None,
-                run_id: str | None = None, at: datetime | None = None) -> ContextBrief:
-    """Job entry for `context_brief`: rebuild the entity's brief in the caller's transaction. Returns the latest
-    version, which is the existing one when the dependency fingerprint is unchanged."""
-    return _build(db, owner, gather(db, owner, _entity(entity_type, entity_id), at=at), synthesizer=synthesizer,
-                  run_id=run_id)
+def build_brief(db, owner: str, entity_type: str, entity_id: str, *, run_id: str | None = None,
+                at: datetime | None = None) -> ContextBrief:
+    """Deterministic rebuild in the caller's transaction (no model). Returns the latest version, which is the
+    existing one when the dependency fingerprint is unchanged. For synthesis use `prepare_brief`,
+    `run_synthesis` and `commit_brief`."""
+    inputs = gather(db, owner, _entity(entity_type, entity_id), at=at)
+    return _write(db, owner, inputs, deterministic(inputs), engine="deterministic", run_id=run_id)
+
+
+@dataclass(frozen=True)
+class BriefPlan:
+    """What a synthesized brief will be built from, detached from any session: the fingerprint and dependencies
+    of the inputs, the deterministic sections (the fallback, and next-meeting prep), and the synthesis request."""
+    owner: str
+    entity_type: str
+    entity_id: str
+    at: datetime
+    fingerprint: str
+    dependencies: dict
+    deterministic: list[BriefSection]
+    request: SynthesizeRequest
+
+
+def prepare_brief(db, owner: str, entity_type: str, entity_id: str, *,
+                  at: datetime | None = None) -> BriefPlan | None:
+    """Read the inputs. None when the stored version is already synthesized from identical inputs (its stale
+    flag, if any, is cleared). Close the session before running the plan's synthesis."""
+    inputs = gather(db, owner, _entity(entity_type, entity_id), at=at)
+    deps = dependencies(inputs)
+    print_ = fingerprint(deps)
+    current = latest(db, owner, entity_type, entity_id)
+    if _reusable(current, print_, "synthesized"):
+        if current.stale:
+            current.stale, current.updated_at = False, now()
+            db.flush()
+        return None
+    return BriefPlan(owner=owner, entity_type=entity_type, entity_id=entity_id, at=inputs.at, fingerprint=print_,
+                     dependencies=deps, deterministic=deterministic(inputs),
+                     request=synthesize_request(db, inputs))
+
+
+def run_synthesis(plan: BriefPlan, synthesizer: Synthesizer) -> tuple[list[BriefSection] | None, str | None]:
+    """Run the model outside any session: (grounded sections, None), or (None, reason) when it failed."""
+    try:
+        return ground(synthesizer.synthesize(plan.request), plan.request), None
+    except (SynthesisFailed, DomainError) as error:
+        reason = str(getattr(error, "code", None) or error)[:200]
+        log.warning("brief synthesis failed, keeping deterministic sections: %s", reason)
+        return None, reason
+
+
+def commit_brief(db, owner: str, plan: BriefPlan, sections: list[BriefSection] | None, *,
+                 run_id: str | None = None, error: str | None = None) -> ContextBrief:
+    """Store the synthesized brief if the inputs are unchanged since `prepare_brief`. If they changed meanwhile,
+    store the deterministic brief of the new inputs with `watermarks["resynthesize"] = True` (enqueue again).
+    `sections=None` (synthesis failed or skipped) stores the deterministic sections with `error` recorded."""
+    if owner != plan.owner:
+        raise ValueError("plan belongs to another owner")
+    inputs = gather(db, owner, _entity(plan.entity_type, plan.entity_id), at=plan.at)
+    if fingerprint(dependencies(inputs)) != plan.fingerprint:
+        return _write(db, owner, inputs, deterministic(inputs), engine="deterministic", run_id=run_id,
+                      resynthesize=True)
+    if sections is None:
+        return _write(db, owner, inputs, plan.deterministic, engine="deterministic", run_id=run_id,
+                      synthesis_error=error or "skipped")
+    grounded = {s.name: s for s in ground(sections, plan.request)}
+    merged = [grounded.get(s.name, s) if s.name != "next_meeting_prep" else s for s in plan.deterministic]
+    return _write(db, owner, inputs, merged, engine="synthesized", run_id=run_id)
 
 
 def serialize(brief: ContextBrief | None, inputs: Inputs, *, basis: str, sections: list[dict] | None = None) -> dict:
@@ -470,7 +520,8 @@ def get_brief(db, owner: str, entity_type: str, entity_id: str, *, rebuild_if_st
     if stored is not None and not stored.stale and stored.fingerprint == fingerprint(dependencies(inputs)):
         return serialize(stored, inputs, basis="stored")
     if rebuild_if_stale:
-        return serialize(_build(db, owner, inputs), inputs, basis="rebuilt")
+        return serialize(_write(db, owner, inputs, deterministic(inputs), engine="deterministic", run_id=None),
+                         inputs, basis="rebuilt")
     return serialize(stored, inputs, basis="current_view",
                      sections=[s.model_dump(mode="json") for s in deterministic(inputs)])
 

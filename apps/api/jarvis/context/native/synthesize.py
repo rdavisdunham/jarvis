@@ -8,7 +8,7 @@ in the section's gaps. Its text is never shown, since an uncited sentence may be
 
 Calls go through `memory_learning.profile_request` under the `context_synthesis` model_map job and cost feature,
 with the upper-bound cost checked against the per-source budget before the call. Every failure raises
-`SynthesisFailed`; `briefs.build_brief` then keeps the deterministic sections.
+`SynthesisFailed`; `briefs.run_synthesis` reports it and `briefs.commit_brief` keeps the deterministic sections.
 """
 
 from collections.abc import Iterable
