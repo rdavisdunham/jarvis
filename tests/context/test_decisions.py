@@ -127,14 +127,27 @@ def test_links_confirm_reject_and_undo():
         db.flush()
         confirmed = decisions.confirm_link(db, OWNER, link.id, 1, **HUMAN)
         assert (link.status, link.revision, link.decision_id) == ("confirmed", 2, confirmed.id)
+        link.mention = "  PRIYA\u00a0Shah "
         rejected = decisions.reject_link(db, OWNER, link.id, 2, **HUMAN)
         assert link.status == "rejected" and rejected.negative
+        assert (rejected.target_type, rejected.target_id) == ("link", "actor:actor-a")
+        assert {k: rejected.before[k] for k in ("mention", "scope", "entity_type", "entity_id", "link_id")} == {
+            "mention": "priya shah", "scope": None, "entity_type": "actor", "entity_id": "actor-a",
+            "link_id": link.id}
         decisions.undo(db, OWNER, rejected.id, **HUMAN)
         assert (link.status, link.target_id, link.revision) == ("confirmed", "actor-a", 4)
         pair = decisions.no_merge(db, OWNER, "actor-b", "actor-a", **HUMAN)
-        assert pair.target_id == "actor-a|actor-b" and pair.negative
-        merged = decisions.merge(db, OWNER, "actor-a", "actor-b", **HUMAN)
-        assert merged.after == {"winner_id": "actor-a", "loser_id": "actor-b"}
+        assert pair.target_id == "actor-a:actor-b" and pair.negative
+        merged = decisions.merge(db, OWNER, "actor-a", "actor-b", merge_id="merge-1", **HUMAN)
+        assert (merged.target_type, merged.target_id, merged.after) == (
+            "actor", "actor-b", {"merge_id": "merge-1", "winner": "actor-a"})
+        with pytest.raises(DomainError):
+            decisions.undo(db, OWNER, merged.id, **HUMAN)
+        split = decisions.unmerge(db, OWNER, "merge-1", merged.id, **HUMAN)
+        assert (split.target_type, split.target_id, split.undoes_id) == ("actor_merge", "merge-1", merged.id)
+        assert merged.id not in {r.id for r in db.scalars(temporal.active_decisions(OWNER))}
+        with pytest.raises(DomainError):
+            decisions.unmerge(db, OWNER, "merge-1", merged.id, **HUMAN)
         with pytest.raises(DomainError):
             decisions.no_merge(db, OWNER, "actor-a", "actor-a", **HUMAN)
 
