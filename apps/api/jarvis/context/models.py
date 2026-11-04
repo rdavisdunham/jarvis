@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    DDL,
     BigInteger,
     Boolean,
     Computed,
@@ -22,12 +23,17 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy import text as sql
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..models import Base, now, uid
+
+# Any `create_all` on a fresh database (tests, eval and validation scripts) needs pgvector before the context tables;
+# migrations create it in 0048. Production and CI images ship the extension.
+event.listen(Base.metadata, "before_create", DDL("CREATE EXTENSION IF NOT EXISTS vector"))
 
 DIMENSIONS = 512
 # Identifier namespaces that may name several actors (plan section 3, People); every other namespace is strong.

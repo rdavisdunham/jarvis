@@ -1,0 +1,108 @@
+/* Meetings view and meeting review. Tokens only (theme.css); breakpoints mirror ux.tsx (1000 / 600). */
+.meetings-page { max-width: 1180px; overflow-wrap: anywhere; }
+.meetings-toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 4px 0 16px; }
+.meetings-toolbar p { flex: 1 1 260px; margin: 0; color: var(--ink-2); font-size: 14px; }
+.meetings-toolbar label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.meetings-hint { margin: 4px 0; color: var(--ink-3); font-size: 13px; }
+.meeting-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.meeting-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; text-align: left;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.meeting-row:hover { border-color: var(--line-strong); }
+.meeting-row:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.meeting-row svg { flex: 0 0 auto; color: var(--ink-3); }
+.meeting-row-main { display: grid; gap: 6px; flex: 1; min-width: 0; }
+.meeting-row-main strong { font-size: 15px; font-weight: 600; }
+.meeting-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--ink-2); font-size: 13px; }
+.meeting-row-detail { color: var(--ink-3); font-size: 13px; margin: 0; }
+.meeting-status.tone-ok { background: var(--done-soft); color: var(--done); }
+.meeting-status.tone-busy { background: var(--violet-soft); color: var(--violet); }
+.meeting-status.tone-warn { background: var(--due-today-soft); color: var(--due-today); }
+.meeting-status.tone-error { background: var(--danger-soft); color: var(--danger); }
+.chip.meeting-pending { background: var(--violet-soft); color: var(--violet); }
+.meetings-more { margin: 16px auto; display: flex; }
+
+.meeting-review-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 16px; margin-bottom: 12px; }
+.meeting-review-title { flex: 1 1 300px; display: grid; gap: 6px; min-width: 0; }
+.meeting-review-title h2 { margin: 0; font-size: 22px; line-height: 1.25; }
+.meeting-review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.meeting-stale { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.meeting-notice { margin: 8px 0; padding: 8px 12px; border-radius: var(--r-sm); background: var(--done-soft); color: var(--done); font-size: 14px; }
+.meeting-confirm { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 8px 0; padding: 12px 14px;
+  border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--sunken); }
+.meeting-confirm p { flex: 1 1 280px; margin: 0; font-size: 14px; }
+.meeting-review-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr); gap: 20px; align-items: start; }
+.meeting-review-main { display: grid; gap: 16px; min-width: 0; }
+.meeting-section { padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); min-width: 0; }
+.meeting-section h3 { margin: 0 0 10px; font-size: 16px; }
+.meeting-section h4 { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.meeting-section h4:first-of-type { margin-top: 0; }
+.meeting-brief ul { margin: 4px 0 8px; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.meeting-brief .text-button, .proposal-card .text-button { margin-left: 8px; font-size: 12px; }
+
+.proposal-group { display: grid; gap: 8px; margin-bottom: 12px; }
+.proposal-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--paper); }
+.proposal-card.is-settled { opacity: 0.75; }
+.proposal-card .check-label { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
+.proposal-card blockquote, .context-evidence blockquote {
+  margin: 0; padding: 6px 10px; border-left: 2px solid var(--line-strong); border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--sunken); color: var(--ink-2); font-size: 13px;
+}
+.context-evidence blockquote.is-contradiction { border-left-color: var(--danger); }
+blockquote cite { font-style: normal; font-weight: 600; }
+.proposal-reason { margin: 0; color: var(--ink-2); font-size: 13px; }
+.proposal-diff { margin: 0; display: grid; gap: 4px; font-size: 13px; }
+.proposal-diff div { display: flex; gap: 8px; flex-wrap: wrap; }
+.proposal-diff dt { color: var(--ink-3); min-width: 80px; }
+.proposal-diff dd { margin: 0; }
+.proposal-diff del { color: var(--ink-3); }
+.proposal-diff ins { text-decoration: none; font-weight: 600; }
+.chip.publication-published { background: var(--done-soft); color: var(--done); }
+.chip.publication-failed, .chip.publication-conflict { background: var(--danger-soft); color: var(--danger); }
+.chip.publication-retrying, .chip.publication-unconfirmed { background: var(--due-today-soft); color: var(--due-today); }
+.proposal-footer { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding-top: 12px; border-top: 1px solid var(--line); }
+.meeting-destination { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-2); }
+
+.context-group { display: grid; gap: 6px; margin-bottom: 10px; }
+.context-row { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.context-row:last-child { border-bottom: 0; }
+.context-row p { margin: 0; font-size: 14px; }
+.context-row.is-focused { background: var(--violet-soft); border-radius: var(--r-sm); padding-inline: 8px; }
+.context-row.is-ended p { color: var(--ink-3); text-decoration: line-through; }
+.context-row-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
+.chip.badge-inferred { background: var(--violet-soft); color: var(--violet); }
+.chip.badge-contested { background: var(--due-today-soft); color: var(--due-today); }
+button.chip { border: 0; cursor: pointer; }
+.context-evidence { display: grid; gap: 6px; }
+.context-correction { display: grid; gap: 8px; padding: 10px; border-radius: var(--r-md); background: var(--sunken); }
+.context-correction p { font-size: 13px; color: var(--ink-2); }
+.context-correction > div { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.speaker-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.speaker-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; }
+.speaker-label { font-weight: 600; min-width: 90px; }
+.speaker-actions { display: inline-flex; gap: 12px; font-size: 13px; }
+
+.meeting-transcript { position: sticky; top: 12px; max-height: calc(100dvh - var(--topbar-height) - 40px); overflow: auto; }
+.transcript-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.transcript-segment { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--r-sm); font-size: 14px; scroll-margin: 40px; }
+.transcript-segment.is-evidence { background: var(--sunken); border-left: 2px solid var(--line-strong); }
+.transcript-segment.is-focused { background: var(--violet-soft); border-left: 2px solid var(--violet); }
+.transcript-who { display: flex; gap: 8px; align-items: baseline; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.transcript-who small { font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.meeting-transcript > .btn { margin-top: 10px; }
+
+@media (max-width: 1000px) {
+  .meeting-review-body { grid-template-columns: minmax(0, 1fr); }
+  .meeting-transcript { position: static; max-height: none; }
+}
+@media (max-width: 600px) {
+  .meeting-section { padding: 12px; }
+  .meeting-row { padding: 12px; }
+  .meeting-review-actions .btn, .proposal-footer .btn { flex: 1 1 140px; }
+  .meeting-destination { flex: 1 1 100%; }
+}
+.meeting-updated { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; padding: 10px 14px;
+  border-radius: var(--r-md); background: var(--violet-soft); color: var(--ink); font-size: 14px; }
+.meeting-updated span { flex: 1 1 240px; }

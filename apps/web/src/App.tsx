@@ -26,6 +26,8 @@ import { PendingControls } from "./PendingControls";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { runsBadge } from "./remotea-model";
 import { revealSetup } from "./remotea-setup";
+import { meetingsAvailable } from "./context/context-api";
+import { linkedId } from "./context/context-model";
 import { VOICE_IDLE_SECONDS } from "./voice-idle";
 import { ChatLauncher, focusComposer, startNewConversation } from "./chat-focus";
 import { BugReportButton } from "./BugReport";
@@ -45,7 +47,7 @@ import { FinishedToday } from "./FinishedToday";
 import { isFinishedTask, mergeFinishedTasks, readFinishedTasks } from "./task-finished";
 import { initialView, isTaskTab, taskTabs, type TaskTab } from "./task-presets";
 import { validateSiteAction } from "./site-validation";
-import { noticeDestination, noticeStatus } from "./notice-target";
+import { noticeDestination, noticeStatus, openNotice } from "./notice-target";
 import { MemoryEditor } from "./MemoryEditor";
 import { useEditorBridge } from "./editor-control";
 import {
@@ -70,6 +72,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { flushSync } from "react-dom";
 import {
   ArrowUp,
+  AudioLines,
   Bell,
   Brain,
   CalendarDays,
@@ -153,6 +156,7 @@ const viewChunks = {
   bots: () => import("./BotSettings"),
   preferences: () => import("./PlannerPreferences"),
   remotea: () => import("./Remotea"),
+  meetings: () => import("./context/Meetings"),
 };
 const CalendarDetails = lazy(() => viewChunks.calendarDetails().then((m) => ({ default: m.CalendarDetails })));
 const GoogleEventDialog = lazy(() => viewChunks.googleEvent().then((m) => ({ default: m.GoogleEventDialog })));
@@ -169,6 +173,9 @@ const RunTaskDialog = lazy(() => import("./RunTaskDialog").then((m) => ({ defaul
 const SwarmDialog = lazy(() => import("./Swarm").then((m) => ({ default: m.SwarmDialog })));
 const TaskArchivePreferences = lazy(() => import("./TaskArchivePreferences").then(m => ({ default: m.TaskArchivePreferences })));
 const RemoteaSettings = lazy(() => viewChunks.remotea().then((m) => ({ default: m.RemoteaSettings })));
+const Meetings = lazy(() => viewChunks.meetings().then((m) => ({ default: m.Meetings })));
+// The person page (D4).
+const PersonPage = lazy(() => import("./context/PersonPage").then((m) => ({ default: m.PersonPage })));
 const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
   { id: "today", label: "Today", icon: Sun, tab: true },
   { id: "all", label: "Tasks", icon: ListChecks, tab: true },
@@ -178,6 +185,8 @@ const nav: { id: View; label: string; icon: typeof Sun; tab?: boolean }[] = [
 ];
 // Shown only once remotea is turned on in Settings → Connections.
 const remoteaNav = { id: "remotea" as View, label: "remotea", icon: SquareTerminal };
+// Shown only when meeting memory answers for this account (on, personal workspace).
+const meetingsNav = { id: "meetings" as View, label: "Meetings", icon: AudioLines };
 export default function App() {
   const editors = useEditorBridge();
   const initialRecord = useRef(readRecordLink(location.search));
@@ -246,6 +255,10 @@ export default function App() {
   const [view, setView] = useState<View>(
     () => initialSavedView?.tab ?? initialView(location.search),
   );
+  // Deep links ?view=meetings&source=<id> and ?view=person&actor=<id>; kept in the URL by the sync block below.
+  const [meetingSource, setMeetingSource] = useState<string | null>(() => linkedId(location.search, "source"));
+  const [personActor, setPersonActor] = useState<string | null>(() => linkedId(location.search, "actor"));
+  const [meetingsOn, setMeetingsOn] = useState(false);
   const planToday = true; // New tasks on Today and Next 7 days are planned for today.
   const [searchOpen, setSearchOpen] = useState(false);
   const searchLabel = view === "notes" ? "Search notes" : view === "memory" ? "Search memories" : view === "organize" ? "Search organization" : view === "calendar" ? "Search calendar" : view === "notifications" ? "Search notifications" : "Search tasks";
@@ -381,6 +394,16 @@ export default function App() {
   function openRemoteaRun(run: string | null) {
     if (run) remoteaActions.openRun(run); else setView("remotea");
   }
+  // Every in-app path to a meeting review or a person page (lists, Dani, notifications) goes through these.
+  function openMeeting(source: string | null) { setMeetingSource(source); setView("meetings"); }
+  function openPerson(actor: string) { setPersonActor(actor); setView("person"); }
+  useEffect(() => {
+    setMeetingsOn(false);
+    if (!boot || boot.workspace?.id) return;
+    let live = true;
+    meetingsAvailable().then(on => { if (live) setMeetingsOn(on); }).catch(() => {});
+    return () => { live = false; };
+  }, [boot?.account_id, boot?.workspace?.id]);
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
   const [runsOpen, setRunsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
@@ -1461,6 +1484,7 @@ export default function App() {
       setTaskFilters(emptyTaskFilters);
       setWorkKind("all");
       setView(action.view ?? "today");
+      if (action.view === "meetings") setMeetingSource(null);
       if (action.entity_id && action.view === "all") {
         openTaskCard(
           await api<Task>("/tasks/" + encodeURIComponent(action.entity_id)),
@@ -2028,6 +2052,8 @@ export default function App() {
     notifications: "Notifications",
     settings: "Settings",
     remotea: "remotea",
+    meetings: "Meetings",
+    person: "Person",
   };
   const previousLayer = useRef({record: null as string | null, structure: false});
   useEffect(() => {
@@ -2045,7 +2071,7 @@ export default function App() {
   }, [editors.summary?.kind, editors.summary?.record_id, collectionContext.design]);
   const detailKey = (detail: typeof editors.summary) => detail ? `${detail.kind}:${detail.record_id ?? "new"}:${detail.mode}` : "";
   const navigation = {view, settingsSection, query, savedViewState, collectionContext, calendarMode, calendarDay,
-    noteListId, notesMode, showArchived, todayList, companion, activityOpen, sidebar, searchOpen, detail: editors.summary, runPanel: remotea.panel.run,
+    noteListId, notesMode, showArchived, todayList, companion, activityOpen, sidebar, searchOpen, detail: editors.summary, runPanel: remotea.panel.run, meetingSource, personActor,
     selected, reminder, scheduleEditor, noteEditor, googleEvent, calendarDetail, bulkEditor, editingMemory, organizationEditor};
   const navigationUrl = isTaskTab(view) && !dashboard ? viewLink(savedViewState) : new URL(location.href);
   if (!isTaskTab(view) || dashboard) {navigationUrl.searchParams.set("view", view); navigationUrl.searchParams.delete("tab"); navigationUrl.searchParams.delete("state");}
@@ -2062,12 +2088,14 @@ export default function App() {
   }else{navigationUrl.searchParams.delete("home");navigationUrl.searchParams.delete("layout");navigationUrl.searchParams.delete("contents");}
   if (activityOpen) navigationUrl.searchParams.set("activity", "1"); else navigationUrl.searchParams.delete("activity");
   if (remotea.panel.run) navigationUrl.searchParams.set("run", remotea.panel.run); else navigationUrl.searchParams.delete("run");
+  if (view === "meetings" && meetingSource) navigationUrl.searchParams.set("source", meetingSource); else navigationUrl.searchParams.delete("source");
+  if (view === "person" && personActor) navigationUrl.searchParams.set("actor", personActor); else navigationUrl.searchParams.delete("actor");
   const openRecord = editors.summary?.record_id ? editors.summary.kind + ":" + editors.summary.record_id : null;
   useEffect(() => {
     if (boot) recordNavigation(view, remotea.panel.run, navigationUrl.pathname + navigationUrl.search);
-  }, [!!boot, view, remotea.panel.run, openRecord]);
+  }, [!!boot, view, remotea.panel.run, openRecord, meetingSource, personActor]);
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
-    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : ""),
+    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : view === "meetings" ? ":" + (meetingSource ?? "") : view === "person" ? ":" + (personActor ?? "") : ""),
     layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", remotea.panel.run ? "run:" + remotea.panel.run : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
     url: navigationUrl.href, onError: setError,
     restore: async target => {
@@ -2081,6 +2109,7 @@ export default function App() {
       setQuery(target.query); setSettingsSection(target.settingsSection); setCalendarMode(target.calendarMode);
       setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setNoteListId(target.noteListId); setShowArchived(target.showArchived);
       setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
+      setMeetingSource(target.meetingSource); setPersonActor(target.personActor);
       if (target.runPanel !== remotea.panel.run) { if (target.runPanel) remoteaActions.openRun(target.runPanel); else remoteaActions.closePanel(); }
       const collection = target.collectionContext;
       (isTaskTab(target.view) ? setTaskRecordControl : setRecordControl)({nonce: crypto.randomUUID(), type_id: String(collection.type_id ?? ""), parent_id: String(collection.parent_id ?? ""),
@@ -2406,7 +2435,7 @@ export default function App() {
           <span className="sr-only">{boot.workspace?.id ? "Shared workspace" : "Personal workspace"}</span>
         </a>
         <nav aria-label="Main">
-          {(boot.preferences.remotea_enabled ? [...nav, remoteaNav] : nav).map((item) => {
+          {[...nav, ...(meetingsOn ? [meetingsNav] : []), ...(boot.preferences.remotea_enabled ? [remoteaNav] : [])].map((item) => {
             const current = item.id === "today" ? dashboard : item.id === "all" ? isTaskTab(view) && !dashboard : view === item.id;
             const count = item.id === "today" ? todayCount : item.id === "all" ? openCount : 0;
             return (
@@ -2418,6 +2447,7 @@ export default function App() {
                 onClick={() => {
                   setView(item.id === "all" ? (lastTaskTab.current === "today" ? "inbox" : lastTaskTab.current) : item.id);
                   if (item.id === "today") setTodayList(false);
+                  if (item.id === "meetings") setMeetingSource(null);
                   setQuery("");
                   setSidebar(false);
                 }}
@@ -2562,7 +2592,7 @@ export default function App() {
                 </Popover>
               </div>
             </div>}
-            {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
+            {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "meetings" && view !== "person" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
             {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} finishedTasks={mergeFinishedTasks(dailyFinished, tasks)} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
@@ -2693,7 +2723,8 @@ export default function App() {
                         {timeLabel(n.scheduled_at, boot.preferences.timezone)}
                       </time>
                       <div className="notice-actions">
-                        <button className="notice-primary" onClick={()=>{const to=noticeDestination(n);if(to.open==="run")openRemoteaRun(to.run);else if(to.open==="task"){const task=tasks.find(t=>t.id===to.task);if(task)openTaskCard(task);else void openNoteTask(to.task);/* Not in the loaded list (an occurrence's own task, another tab): fetch it. */}else if(to.open==="activity")setActivityOpen(true);else setView("today");/* "notifications": this list is already open; Today as before. */void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
+                        <button className="notice-primary" onClick={()=>{openNotice(noticeDestination(n),{run:openRemoteaRun,meetings:openMeeting,activity:()=>setActivityOpen(true),today:()=>setView("today"),
+                          task:id=>{const task=tasks.find(t=>t.id===id);if(task)openTaskCard(task);else void openNoteTask(id);/* Not in the loaded list (an occurrence's own task, another tab): fetch it. */}});void mutate("notification.read",{notification_id:n.id},"");}}>Open</button>
                         {n.task_id&&["reminder","deadline"].includes(n.category??"reminder")&&<button
                           onClick={() =>
                             void mutate(
@@ -2795,7 +2826,11 @@ export default function App() {
             )}
             {view === "remotea" && (boot.preferences.remotea_enabled ? <Suspense fallback={<p role="status">Loading remotea…</p>}><Remotea/></Suspense>
               : <p>remotea is off. Turn it on in Settings → Connections.</p>)}
-            {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision}/>)}
+            {view === "meetings" && <Suspense fallback={<p role="status">Loading meetings…</p>}><Meetings sourceId={meetingSource} zone={boot.preferences.timezone}
+              onOpen={setMeetingSource} onPerson={openPerson}/></Suspense>}
+            {view === "person" && <Suspense fallback={<p role="status">Loading…</p>}><PersonPage actorId={personActor}
+              onMeetings={() => { setMeetingSource(null); setView("meetings"); }} onMeeting={openMeeting} onPerson={openPerson}/></Suspense>}
+            {view === "questions" && (boot.workspace?.id?<p>Switch to Personal to review your questions.</p>:<Questions refresh={memoryRevision+noteRevision} people={organization.actors}/>)}
             {view === "organize"&&!boot.workspace?.id&&<Questions organization compact refresh={noteRevision}/>}
             {view === "memory" && (
               <div className="memory-page">

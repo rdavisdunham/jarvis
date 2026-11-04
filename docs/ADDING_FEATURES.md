@@ -58,7 +58,7 @@ Web (`apps/web/src/`):
 
 - [ ] `types.ts` `View` union.
 - [ ] `App.tsx` `nav` (sidebar; `tab: true` also puts it in the phone `tabbar`) or a separate entry
-      like `remoteaNav` when it is gated; `titles: Record<View, string>` (the compiler enforces this
+      like `remoteaNav` (a preference) or `meetingsNav` (shown once `context-api.ts` `meetingsAvailable` answers) when it is gated; `titles: Record<View, string>` (the compiler enforces this
       one); the page body (`{view === "…" && …}`); and the `page-search` exclusion list near
       `className="page-search"` if the page has no search.
 - [ ] `task-presets.ts` `initialView`: the `?view=` deep-link allowlist. Not type-checked; a missing
@@ -69,12 +69,16 @@ Web (`apps/web/src/`):
       fix-remotea-wiring branch.
 - [ ] Lazy chunk: large pages go in `viewChunks` with `lazy()` + `<Suspense>` (as `Remotea` does).
 - [ ] Extra deep-link parameters (for example `?view=remotea&run=<id>`) are parsed inside the page
-      (`remotea-model.ts` `linkedRun`, validated as a UUID). The URL sync block in `App.tsx`
+      (`remotea-model.ts` `linkedRun`, validated as a UUID), or in `App.tsx` state when the shell owns them
+      (`?view=meetings&source=<id>` and `?view=person&actor=<id>`: `context-model.ts` `linkedId` into
+      `meetingSource`/`personActor`, which are also in the `navigation` snapshot and `restore` so back/forward
+      returns to the same meeting). The URL sync block in `App.tsx`
       (`navigationUrl.searchParams…`) sets/deletes only the parameters it knows; add yours there if
       back/forward should preserve it. In-app paths to the same place (a task row's Run, Dani's
       `ui_show`, the Notifications page) go through one helper, as `App.tsx` `openRemoteaRun` does:
       it opens the run in the shell's side panel (`RunPanel.tsx`, state in `remotea-context.tsx`) on
-      whatever page is open; `?run=` is kept in the URL by that same sync block.
+      whatever page is open; `?run=` is kept in the URL by that same sync block. Meetings and people open
+      through `App.tsx` `openMeeting(source)` and `openPerson(actor)`.
 - [ ] If Dani may open a record on the page, `App.tsx`'s `show` branch (the `action.entity_id` page
       list and an `else if (action.view === "…")` that fetches the record first) and the model map in
       `tools.py` `call_tool` (below).
@@ -107,8 +111,18 @@ Backend (`apps/api/jarvis/`):
 - [ ] If the page has its own settings section, see section 8.
 - [ ] Personal-only pages: add the API prefix to `access.py` `PERSONAL_PATHS` (as `/api/v1/remotea`).
 
+Example: the Meetings and Person pages (context platform D2) touched `types.ts`, `App.tsx` (gated
+`meetingsNav`, `titles`, both page bodies, the `page-search` exclusion, the `meetings` lazy chunk shared by
+`Meetings` and the `PersonPage` placeholder, the URL sync for `source`/`actor`), `task-presets.ts`,
+`site-actions.ts`, `ui_control.py` and `ui_contracts.py`; nothing in `tools.py` (no `entity_id` support yet).
+The page stylesheet is `context/meetings.css`; its data comes only from `context/context-api.ts`
+(`test_meeting_review_reads_only_the_context_api`). Both pages refresh on `eri-context-changed` (`events.ts`, from
+`context.changed`) through `context-api.ts` `useContextChanged`, debounced; the review asks before replacing
+unsaved selections. Notifications open meetings through `notice-target.ts` `openNotice` → `openMeeting`.
+
 Tests: `tests/test_drift_guards.py` (`test_web_pages_match_backend_views`,
-`test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`),
+`test_browser_accepts_the_views_eri_can_send`, `test_ui_show_opens_every_page_in_its_enum`,
+`test_meeting_and_person_deep_links_survive_navigation`),
 `tests/test_ui_control.py` (`test_every_web_view_is_a_valid_device_context`,
 `test_ui_show_opens_remotea_and_one_of_your_runs`), `apps/web/src/site-actions.test.ts`,
 `apps/web/src/calendar-tasks.test.ts` (`initialView`).
@@ -356,32 +370,38 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       (`deadline`, `morning`, `question`, `failure`, and the push vehicles `bundle`/`digest`),
       `domain.py` (`reminder` occurrences), `run_coordinator.notify` (`agent_question`, `agent_done`,
       `agent_stuck`; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
-      makes questions urgent).
+      makes questions urgent), `context/notices.py` (`context_ready` per meeting review revision,
+      `context_backfill` once per owner-local day, `context_digest` at 17:00 owner-local; written by
+      `context/scheduler.tick` from `worker.housekeeping` when `context_enabled`).
 - [ ] State: change `read_at`/`dismissed_at`/`completed_at`/`snoozed_until`/`delivered_at` through
       `notices.apply` (the state machine; `notices.state` derives the one state the API returns as
       `state`). Snoozing bumps `generation` and clears read, delivered and `bundle_id`.
 - [ ] Delivery rules in `notices.eligible`: `work_result` is never pushed; nothing in shared
       workspaces; quiet hours via `quiet_until`; task-linked notices drop when the task is done.
       Then `notices.plan` (called by `worker.prepare_deliveries`) picks what pushes now: urgent,
-      `morning` and already-started notices alone; two or more interrupting notices due together
+      `notices.SUMMARIES` (`morning`, `context_digest`) and already-started notices alone; two or more interrupting notices due together
       as one `bundle`; notices below the owner's `notify_min_priority` in one `digest` per
       `digest_cadence` period; a second due notice for the same task rides with the first
-      (`bundle_id` points at its carrier). Bundles and digests (`notices.VEHICLES`) are left out of
+      (`bundle_id` points at its carrier). A scheduled summary re-checks its content in `eligible`
+      (`morning` recounts tasks; `context_*` notices go through `context.notices.current`, which drops
+      a review already done and recounts the digest). Bundles and digests (`notices.VEHICLES`) are left out of
       `GET /api/v1/notifications` and `notification_list`; reading or dismissing one covers what it
       carried, and a submitted push marks its carried notices delivered (`notices.delivered`).
 - [ ] Deep link: `worker.notification_url(notification)` maps `target` to a `/?…` URL (remotea →
-      `/?view=remotea&run=<id>`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
+      `/?view=remotea&run=<id>`; meetings → `/?view=meetings[&source=<id>]`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
       the parameter (section 1). The in-app Notifications page's "Open" (`notice-primary` in `App.tsx`)
       goes through `apps/web/src/notice-target.ts` `noticeDestination`, which mirrors
       `notification_url` in the same order. A new `target.view` needs a branch in both and a row in
       `apps/web/src/notice-targets.json` (notification, push URL, in-app destination); the drift guard
-      fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` has no row.
+      fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` / `context/notices.py`
+      has no row.
 - [ ] `detailed_notifications` (preference, default off) replaces title/body with a generic text in
       the push payload; write titles that still make sense in-app only.
 - [ ] Snooze words are parsed by `snooze_words.snooze_time` in the owner's zone; a quick choice added to
       `NoticeSnooze.tsx` `SNOOZE_CHOICES` must parse
       (`tests/test_snooze_words.py::test_every_snooze_choice_in_the_app_parses`).
 - [ ] Tests: `tests/test_smart_notifications.py`, `tests/test_notification_bundles.py`,
+      `tests/context/test_notices.py`, `tests/context/test_scheduler.py`,
       `tests/test_snooze_words.py`, `tests/test_push_registration.py`,
       `apps/web/src/push-subscription.test.ts`, `apps/web/src/notice-target.test.ts` and
       `tests/test_drift_guards.py::test_push_and_in_app_notifications_open_the_same_place` (both read
@@ -392,7 +412,8 @@ Change feed (SSE `GET /api/v1/events`):
 - [ ] Emit with `domain.emit(db, owner, "<thing>.changed", entity_id, revision)` inside the transaction.
 - [ ] Web `events.ts`: kinds that only one page cares about go in `LOAD_SKIP` (no workspace reload)
       and/or `REVISION_SKIP` (no dependent view refresh); page-specific kinds dispatch a window event
-      (`agent.changed`/`session.changed` → `eri-agents-changed`, `work.changed` → `eri-work-changed`).
+      (`agent.changed`/`session.changed` → `eri-agents-changed`, `work.changed` → `eri-work-changed`,
+      `context.changed` → `eri-context-changed`, skipped for load and revision).
       An unknown kind triggers a full reload, which is safe but costly for chatty events. Test:
       `apps/web/src/events.test.ts` (`signalScope`).
 - [ ] Bots see only an allowlist (`external_service.changes`: `<kind>.changed` for permitted record
@@ -519,6 +540,10 @@ Added in `tests/test_drift_guards.py` (backend job; reads web sources as text):
 | Test | Asserts |
 |---|---|
 | `test_web_pages_match_backend_views` | `types.ts` `View` == `ui_control.View` == `ui_contracts.VIEWS` == `task-presets.ts` `initialView` list |
+| `test_meeting_review_reads_only_the_context_api` | `Meetings.tsx`, `MeetingReview.tsx` and `context-model.ts` never fetch; `context-api.ts` calls only `/api/v1/context/...` |
+| `test_meeting_types_match_the_context_schema` | `context-model.ts` `SourceStatus`, `Coverage`, `LinkStatus`, `ProposalKind`, `Disposition` == `context/schema.py` |
+| `test_context_questions_offer_every_resolve_action` | `Questions.tsx` `ContextQuestionCard` offers every `context.service.ResolveInput.action` |
+| `test_meeting_and_person_deep_links_survive_navigation` | `App.tsx` reads `?source=`/`?actor=` with `linkedId` and its URL sync keeps them on their pages |
 | `test_browser_accepts_the_views_eri_can_send` | `site-actions.ts` `views` == `ui_show`/`ui_search`/`ui_workspace` enums == `VIEWS`; `ui_filter` ⊆ `VIEWS` |
 | `test_ui_show_opens_every_page_in_its_enum` | `call_tool`'s `ui_show` branch checks the tool's enum (no copy) and opens every page in it |
 | `test_push_and_in_app_notifications_open_the_same_place` | `worker.notification_url` gives each `notice-targets.json` row's URL, the URL and the in-app destination agree, every created `target.view` has a row, and `App.tsx` Open calls `noticeDestination` (`notice-target.test.ts` checks the web side on the same rows) |
