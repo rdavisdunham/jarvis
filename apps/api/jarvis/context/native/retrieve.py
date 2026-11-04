@@ -18,6 +18,13 @@ superseded assertion carries that status and the successor's id. A segment (the 
 ended interpretation the scope would not show is excluded, like the assertion itself, so raw retrieval cannot
 revive it; a chunk spans many segments, so it is kept and annotated. Chunk hits cite their segment range.
 
+With an entity scope, raw candidates join one precomputed set of the owner's segments about those entities (a
+CTE: segment and source links, the actor's own lines, evidence for assertions about the entities) instead of
+probing links and evidence per candidate segment. The statement runs with `jit = off` for the rest of the
+caller's transaction: its scope clauses inflate the planner's cost estimate past PostgreSQL's JIT thresholds once
+an owner holds a few hundred thousand segments, and compiling then took 2.3 s of a 2.4 s query whose plan ran in
+under 300 ms (`evals/context/reports/pilot-perf.md`).
+
 The query vector comes from `memory_learning.query_embedding` under cost feature `context_embeddings`. When it
 fails the lexical leg answers alone and every hit carries `rank["semantic_unavailable"] == 1.0`.
 """
@@ -26,7 +33,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from datetime import datetime
 
-from sqlalchemy import and_, case, exists, false, func, literal, literal_column, or_, select, union_all
+from sqlalchemy import and_, case, exists, func, literal, literal_column, or_, select, text, union_all
 from sqlalchemy.orm import aliased
 
 from ... import memory_learning
@@ -76,10 +83,12 @@ class NativeRetriever:
         lexical = [_lexical("assertion", docs.c.id, docs.c.tsv, tsq, cand)]
         semantic = [] if vector is None else [_semantic("assertion", docs, vector, cand)]
         if query.include_raw:
-            segments = _segment_docs(scope, at).subquery("segment_docs")
+            entity_segments = _entity_segments(scope)
+            segments = _segment_docs(scope, at, entity_segments).subquery("segment_docs")
             lexical.append(_lexical("segment", segments.c.id, segments.c.tsv, tsq, cand))
             if vector is not None:
-                semantic.append(_semantic("chunk", _chunk_docs(scope, at).subquery("chunk_docs"), vector, cand))
+                chunks = _chunk_docs(scope, at, entity_segments).subquery("chunk_docs")
+                semantic.append(_semantic("chunk", chunks, vector, cand))
         legs = [_ranked("lexical", lexical)] + ([_ranked("semantic", semantic)] if semantic else [])
         fused = union_all(*legs).subquery("legs")
 
@@ -87,6 +96,7 @@ class NativeRetriever:
             return func.min(case((fused.c.leg == name, column)))
 
         rrf = func.sum(1.0 / (RRF_K + fused.c.rank))
+        self.db.execute(text("SET LOCAL jit = off"))
         rows = self.db.execute(
             select(fused.c.ref_type, fused.c.id, rrf.label("rrf"),
                    leg("lexical", fused.c.rank).label("lexical_rank"), leg("lexical", fused.c.score).label("lexical"),
@@ -188,23 +198,28 @@ def _revision_in_view(revision, source, scope: ScopePredicate):
         r.source_id == source.id, r.received_at <= scope.known_at).scalar_subquery()
 
 
-def _segment_matches_entities(segment, scope: ScopePredicate):
-    """A segment is about an entity when it, or its source, is linked to the entity, its speaker is the actor, or
-    it is evidence for an assertion about the entity."""
+def _entity_segments(scope: ScopePredicate):
+    """The owner's segments about the scope's entities, as one set the statement computes once (a CTE): linked to
+    an entity directly or through their source, spoken by the actor, or evidence for an assertion about an entity.
+    Set-based so the raw legs join it instead of probing links and evidence per candidate segment."""
     if not scope.entities:
         return None
-    link, r = ContextEntityLink, aliased(ContextSourceRevision)
-    source_id = select(r.source_id).where(r.id == segment.revision_id).correlate(segment).scalar_subquery()
-    targets = or_(*[and_(link.target_type == e.entity_type, link.target_id == e.entity_id) for e in scope.entities])
-    linked = exists().where(link.owner_id == scope.owner_id, link.status != "rejected", targets, or_(
-        and_(link.subject_type == "segment", link.subject_id == segment.id),
-        and_(link.subject_type == "source", link.subject_id == source_id)))
-    actors = [e.entity_id for e in scope.entities if e.entity_type == "actor"]
+    owner, link, g, r = scope.owner_id, ContextEntityLink, ContextSegment, ContextSourceRevision
+    linked = [link.owner_id == owner, link.status != "rejected",
+              or_(*[and_(link.target_type == e.entity_type, link.target_id == e.entity_id) for e in scope.entities])]
+    parts = [select(link.subject_id.label("id")).where(*linked, link.subject_type == "segment"),
+             select(g.id).join(r, r.id == g.revision_id)
+             .join(link, and_(link.subject_type == "source", link.subject_id == r.source_id))
+             .where(*linked, g.owner_id == owner)]
+    if actors := [e.entity_id for e in scope.entities if e.entity_type == "actor"]:
+        parts.append(select(g.id).where(g.owner_id == owner, g.speaker_actor_id.in_(actors)))
     e = ContextEvidence
-    about = exists().where(e.owner_id == scope.owner_id, e.segment_id == segment.id,
-                           e.assertion_id == ContextAssertion.id,
-                           *temporal._subject_clauses(scope.model_copy(update={"kinds": []})))
-    return or_(linked, segment.speaker_actor_id.in_(actors) if actors else false(), about)
+    parts.append(select(e.segment_id).join(ContextAssertion, ContextAssertion.id == e.assertion_id).where(
+        e.owner_id == owner, e.segment_id.is_not(None),
+        *temporal._subject_clauses(scope.model_copy(update={"kinds": []}))))
+    ids = union_all(*parts).subquery("entity_segment_ids")
+    return (select(g.id, g.revision_id, g.seq).where(g.owner_id == owner, g.id.in_(select(ids.c.id)))
+            .cte("entity_segments"))
 
 
 def _stale_passage(segment_id, scope: ScopePredicate, at: datetime):
@@ -227,21 +242,20 @@ def _raw_base(columns, segment_like, scope: ScopePredicate):
                    s.owner_id == scope.owner_id, *_live_source(s), _revision_in_view(r, s, scope)))
 
 
-def _segment_docs(scope: ScopePredicate, at: datetime):
+def _segment_docs(scope: ScopePredicate, at: datetime, entity_segments):
     g = ContextSegment
     query = _raw_base([g.id, g.tsv.label("tsv")], g, scope).where(~_stale_passage(g.id, scope, at))
-    entities = _segment_matches_entities(g, scope)
-    return query if entities is None else query.where(entities)
+    return query if entity_segments is None else query.where(g.id.in_(select(entity_segments.c.id)))
 
 
-def _chunk_docs(scope: ScopePredicate, at: datetime):
+def _chunk_docs(scope: ScopePredicate, at: datetime, entity_segments):
     c = ContextChunk
     query = _raw_base([c.id, c.embedding.label("embedding"), c.embedding_model.label("embedding_model")], c, scope)
-    if not scope.entities:
+    if entity_segments is None:
         return query
-    g = aliased(ContextSegment)
-    return query.where(exists().where(g.revision_id == c.revision_id, g.seq.between(c.segment_start, c.segment_end),
-                                      _segment_matches_entities(g, scope)))
+    es = entity_segments
+    return query.where(exists().where(es.c.revision_id == c.revision_id,
+                                      es.c.seq.between(c.segment_start, c.segment_end)))
 
 
 # ---------------------------------------------------------------- details
