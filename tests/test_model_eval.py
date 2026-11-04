@@ -252,10 +252,11 @@ def test_profile_request_is_extraction_request_by_default(monkeypatch):
             continue
         assert memory_learning.profile_request("owner", job, payload, 0.02) == {"ok": True}
     assert all(a[1:4] == ("chat/completions", payload, memory_learning.EXTRACTION_MODEL) for a in calls)
-    # A route to any other model is refused in production (the budget ledger prices Luna only).
-    monkeypatch.setattr(model_map, "RULES", (model_map.Rule("haiku-5.5", jobs=("session_summary",)),))
-    with pytest.raises(ValueError, match="not enabled"):
-        memory_learning.profile_request("owner", "session_summary", payload, 0.02)
+    # A route to an unpriced (placeholder) profile, or to the interactive Fast tier, is refused in production.
+    for refused in ("deepseek", "luna-fast"):
+        monkeypatch.setattr(model_map, "RULES", (model_map.Rule(refused, jobs=("session_summary",)),))
+        with pytest.raises(ValueError, match="not enabled"):
+            memory_learning.profile_request("owner", "session_summary", payload, 0.02)
     monkeypatch.setattr(model_map, "RULES", (model_map.Rule("haiku-5.5", jobs=("eri_chat",)),))
     with pytest.raises(ValueError, match="not enabled"):
         model_map.agent_model("eri_chat", PREFS)
@@ -333,7 +334,8 @@ def test_adapters_build_and_parse_each_wire_format():
                                    "stop_reason": "tool_use", "usage": {"input_tokens": 5, "output_tokens": 3,
                                                                         "cache_read_input_tokens": 100}})
     assert used["tool_calls"][0]["function"]["name"] == "task_list"
-    assert used["usage"] == {"input_tokens": 105, "cached_input_tokens": 100, "output_tokens": 3}
+    assert used["usage"] == {"input_tokens": 105, "cached_input_tokens": 100, "cache_write_tokens": 0,
+                             "output_tokens": 3}
     deepseek = model_map.PROFILES["deepseek"]
     body = model_map.build(deepseek, structured)
     assert body["response_format"] == {"type": "json_object"} and "JSON schema" in body["messages"][-1]["content"]

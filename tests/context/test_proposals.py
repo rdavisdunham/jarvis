@@ -10,6 +10,7 @@ from jarvis.context.schema import (
     EntityRef,
     EvidenceRef,
     ExtractionResult,
+    Participant,
     ProposedAction,
     Segment,
     SourceEnvelope,
@@ -101,7 +102,8 @@ def test_only_own_clear_unmatched_action_is_preselected():
     mine, priya, marco = by_title(items, "circulate"), by_title(items, "budget"), by_title(items, "checklist")
     assert mine["preselected"] and mine["due_date"] == "2026-11-06" and mine["disposition"] == "pending"
     assert "You said" in mine["reason"]
-    assert not priya["preselected"] and "Someone else" in priya["reason"] and priya["due_date"] == "2026-11-20"
+    assert not priya["preselected"] and priya["reason"].startswith("Waiting on Priya")
+    assert priya["due_date"] == "2026-11-20"
     assert not marco["preselected"] and marco["responsible_mention"] == "Marco"
     assert all(p["evidence"] and p["evidence"][0]["quote"] for p in items)
 
@@ -169,6 +171,70 @@ def test_unclear_ownership_is_unchecked_with_explanation(monkeypatch):
     [item] = rows(got.source_id)
     assert item["kind"] == "create" and not item["preselected"] and item["collective"]
     assert item["reason"] == "Who owns this is unclear."
+
+
+def test_owner_basis_from_the_action_pass_decides_checked_and_reasons(monkeypatch):
+    lines = [("Davin", "owner", "I'll circulate the notes."),
+             ("Davin", "owner", "The export still shows the old column names."),
+             ("Priya", "other", "I'll send the revised budget."),
+             ("Priya", "other", "Someone has to book the venue.")]
+    segs = meeting(lines).segments
+
+    def build(request):
+        me = next(c.ref.entity_id for c in request.candidates if c.name == "owner")
+        mine = [EntityRef(entity_type="actor", entity_id=me, mention="Davin")]
+        return ExtractionResult(
+            assertions=[commitment(segs[0], "I'll circulate the notes.", "Davin will circulate the notes")],
+            actions=[ProposedAction(kind="create", title="Circulate the notes", responsible=mine,
+                                    evidence=[ref(segs[0], "I'll circulate the notes.")], assertion_indexes=[0]),
+                     ProposedAction(kind="create", title="Rename the export columns", responsible=mine,
+                                    evidence=[ref(segs[1], "the old column names")]),
+                     ProposedAction(kind="create", title="Send the revised budget",
+                                    responsible=[EntityRef(entity_type="actor", mention="Priya")],
+                                    evidence=[ref(segs[2], "I'll send the revised budget.")]),
+                     ProposedAction(kind="create", title="Book the venue",
+                                    evidence=[ref(segs[3], "Someone has to book the venue.")])],
+            coverage={s.seq: "extracted" for s in request.segments},
+            diagnostics={"actions": {"items": [
+                {"action_index": 0, "owner_basis": "stated_promise"},
+                {"action_index": 1, "owner_basis": "implied_by_discussion"},
+                {"action_index": 2, "owner_basis": "stated_promise"},
+                {"action_index": 3, "owner_basis": "implied_by_discussion"}]}})
+    canned(monkeypatch, build)
+    got = process(meeting(lines))
+    items = rows(got.source_id)
+    notes, export = by_title(items, "Circulate"), by_title(items, "export")
+    budget, venue = by_title(items, "budget"), by_title(items, "venue")
+    assert notes["preselected"] and notes["reason"].startswith("You said you would do this")
+    assert not export["preselected"] and export["reason"].startswith("Implied by the discussion")
+    assert not budget["preselected"] and budget["reason"].startswith("Waiting on Priya")
+    assert not venue["preselected"] and venue["reason"] == "Who owns this is unclear."
+
+
+def test_attended_meeting_keeps_the_recorders_work_off_the_users_list(monkeypatch):
+    """Uttam recorded the meeting, so his lines carry the owner attribution, but the user is not Uttam: the
+    actor the action pass resolved by name wins over the recorder's speaker link."""
+    lines = [("Uttam Rao", "owner", "I'll draft the statement of work."),
+             ("Davin", "other", "Great, thanks.")]
+    envelope = meeting(lines).model_copy(update={"participants": [
+        Participant(name="Uttam Rao", email="uttam@example.com", speaker_label="Uttam Rao")]})
+    segs = envelope.segments
+
+    def build(request):
+        uttam = next(c.ref.entity_id for c in request.candidates if c.name == "Uttam Rao")
+        who = [EntityRef(entity_type="actor", entity_id=uttam, mention="Uttam Rao")]
+        quote = [ref(segs[0], "I'll draft the statement of work.")]
+        return ExtractionResult(
+            assertions=[CandidateAssertion(kind="commitment", statement="Uttam Rao will draft the statement of work",
+                                           evidence=quote, responsible=who)],
+            actions=[ProposedAction(kind="create", title="Draft the statement of work", responsible=who,
+                                    evidence=quote, assertion_indexes=[0])],
+            coverage={s.seq: "extracted" for s in request.segments},
+            diagnostics={"actions": {"items": [{"action_index": 0, "owner_basis": "stated_promise"}]}})
+    canned(monkeypatch, build)
+    got = process(envelope)
+    [item] = rows(got.source_id)
+    assert not item["preselected"] and item["reason"].startswith("Waiting on Uttam Rao")
 
 
 # ---------------------------------------------------------------- identity and dedupe

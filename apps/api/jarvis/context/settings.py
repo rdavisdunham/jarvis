@@ -24,6 +24,7 @@ class ContextSettings:
     poll_minutes: int
     max_source_chars: int
     granola_enabled: bool
+    actions_model: str = ""  # model_map profile for the action-item pass; "" keeps the model map's route
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
     embedding_storage: str = EMBEDDING_STORAGE
 
@@ -38,6 +39,7 @@ def current():
         poll_minutes=s.context_poll_minutes,
         max_source_chars=s.context_max_source_chars,
         granola_enabled=s.context_granola_enabled,
+        actions_model=s.context_actions_model,
     )
 
 

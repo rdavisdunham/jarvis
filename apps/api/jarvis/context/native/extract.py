@@ -1,16 +1,22 @@
-"""The native extractor: three model passes per chunk, deterministic validation, coverage and cost accounting.
+"""The native extractor: a whole-meeting action pass, three model passes per chunk, deterministic validation,
+coverage and cost accounting.
 
-Per chunk: detect (candidates by line reference) -> enrich (assertions with people, modality and times) ->
-deterministic checks (`validate.check_item`) -> verify (entailment, modality, attribution verdicts). Results are
-deduplicated across chunks and capped at the request limits. Nothing is persisted here; B6's pipeline persists
-the `ExtractionResult` and resumes from its coverage map.
+First the action pass (actions.py) lists every follow-up from the whole meeting: its items become
+`ProposedAction`s, and promised or accepted ones also commitment assertions. Then per chunk: detect (candidates by
+line reference) -> enrich (assertions with people, modality and times) -> deterministic checks
+(`validate.check_item`) -> verify (entailment, modality, attribution verdicts). The chunk passes no longer produce
+commitments or suggestions. Results are deduplicated across chunks and capped at the request limits. Nothing is
+persisted here; B6's pipeline persists the `ExtractionResult` and resumes from its coverage map.
 
-Model calls go through `memory_learning.extraction_request` (OpenAI Responses, strict JSON schema), which holds a
-budget reservation per call and records usage under the current cost feature; this module sets that feature to
-`context_extraction` and enforces the per-source cap. A call whose upper-bound cost would exceed what remains of
-the cap is not made: its chunk and every later chunk are `skipped` with reason `source_budget` (or
-`owner_budget` when the monthly budget refuses the reservation) and the result is marked partial. A chunk whose
-call fails or returns unusable output is `failed`; later chunks still run.
+Model calls go through `memory_learning.profile_request`, routed by job (`context_extraction` for the chunk passes,
+`context_actions` for the action pass; `model_map.MODEL_MAP` or the `actions_model` setting choose the profile)
+and priced by `model_map.costing(profile)`. Each call holds a budget reservation and records usage under the
+`context_extraction` cost feature; this module enforces the per-source cap. A call whose upper-bound cost would
+exceed what remains of the cap is not made: its chunk and every later chunk are `skipped` with reason
+`source_budget` (or `owner_budget` when the monthly budget refuses the reservation) and the result is marked
+partial. A chunk whose call fails or returns unusable output is `failed`; later chunks still run. A failed or
+skipped action pass marks every segment failed or skipped, so the source stays partial and is retried, and no
+proposal is superseded on an incomplete list.
 """
 
 import json
@@ -23,20 +29,21 @@ import httpx
 from pydantic import ValidationError
 
 from ... import memory_learning, model_map
-from ...agent_models import catalog
 from ...cost_features import current_feature
 from ...domain import DomainError
 from .. import settings as context_settings
 from ..schema import Coverage, ExtractionResult, ExtractRequest, ProposedAction
+from . import actions as action_pass
 from .chunking import TextChunk, chunk_segments
-from .prompts import PASSES, PROMPT_VERSION, meeting_block, payload
+from .prompts import ACTION_PASSES, PASSES, PROMPT_VERSION, meeting_block, payload
 from .validate import Draft, Rejection, SourceContext, apply_verdicts, candidate_key, check_item, dedupe
 
 log = logging.getLogger(__name__)
 
 FEATURE = "context_extraction"  # cost_features.LABELS entry added by package A2
-JOB = "context_extraction"  # model_map job; until it is registered, the extraction model is used directly
+JOB = "context_extraction"  # model_map job of the chunk passes
 BUDGET_CODES = {"BUDGET_EXCEEDED", "BUDGET_DEFERRED"}
+ACTION_KINDS = ("commitment", "suggestion")  # the action pass owns these
 
 
 class BudgetStop(Exception):
@@ -55,11 +62,14 @@ def limits() -> tuple[float, float]:
     return float(settings.model_timeout_s), float(settings.source_budget_usd)
 
 
-def call_model(owner: str, body: dict, allowance: float, timeout: float, prompt_tokens: int) -> dict:
-    if JOB in model_map.JOBS:
-        return memory_learning.profile_request(owner, JOB, body, allowance, timeout, prompt_tokens=prompt_tokens)
-    return memory_learning.extraction_request(owner, "chat/completions", body, memory_learning.EXTRACTION_MODEL,
-                                              allowance, timeout)
+def call_model(owner: str, body: dict, allowance: float, timeout: float, prompt_tokens: int, *, job: str = JOB,
+               profile: str | None = None) -> dict:
+    return memory_learning.profile_request(owner, job, body, allowance, timeout, prompt_tokens=prompt_tokens,
+                                           profile=profile)
+
+
+def route(job: str, prompt_tokens: int) -> model_map.Route:
+    return action_pass.route(prompt_tokens) if job == action_pass.JOB else model_map.route(job, prompt_tokens)
 
 
 @dataclass
@@ -78,6 +88,8 @@ class ChunkRun:
     reason: str = ""
     calls: int = 0
     cost: float = 0.0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
     drafts: list[Draft] = field(default_factory=list)
     rejected: list[Rejection] = field(default_factory=list)
 
@@ -103,9 +115,17 @@ class NativeExtractor:
         candidates = [{"id": candidate_key(c.ref), "type": c.ref.entity_type, "name": c.name,
                        "aliases": c.aliases, "detail": c.detail[:300]} for c in request.candidates]
         runs = [ChunkRun(c) for c in chunk_segments(request.segments, self.target_tokens, self.neighbour_tokens)]
+        acts, found = action_pass.ActionRun(), action_pass.Meeting.of(request, ctx)
         token = current_feature.set(FEATURE)
         try:
             stop = None
+            try:
+                self._actions(request.owner_id, found, acts, spend, timeout)
+            except BudgetStop as budget:
+                stop = budget.reason
+                acts.status, acts.reason, acts.drafts = "skipped", stop, []
+            except ChunkFailed as error:
+                acts.status, acts.reason, acts.drafts = "failed", str(error)[:300], []
             for run in runs:
                 if stop:
                     run.status, run.reason = "skipped", stop
@@ -121,7 +141,16 @@ class NativeExtractor:
                     run.drafts.clear()
         finally:
             current_feature.reset(token)
-        return assemble(request, runs, spend)
+        return assemble(request, runs, spend, acts, found)
+
+    # ------------------------------------------------------------ the action pass
+
+    def _actions(self, owner, meeting: action_pass.Meeting, out: action_pass.ActionRun, spend, timeout) -> None:
+        """The whole-meeting action pass. A seam for callers that cache it (the pipeline caches chunks only)."""
+        slow = max(2 * timeout, 180.0)  # one call reads the whole meeting and writes the whole list
+        action_pass.run(meeting, lambda name, user: self._call(
+            owner, name, user, spend, out, slow if name == "context_actions" else timeout,
+            passes=ACTION_PASSES, job=action_pass.JOB), out)
 
     # ------------------------------------------------------------ one chunk
 
@@ -135,6 +164,8 @@ class NativeExtractor:
             "entity_candidates": candidates}, spend, run, timeout)
         drafts = []
         for item in enrichment.items:
+            if item.kind in ACTION_KINDS:
+                continue  # never asked for per chunk: the action pass lists follow-ups
             outcome = check_item(item, ctx, run.chunk.owns)
             (drafts if isinstance(outcome, Draft) else run.rejected).append(outcome)
         if not drafts:
@@ -150,18 +181,25 @@ class NativeExtractor:
         kept, rejected = apply_verdicts(drafts, verification.verdicts)
         run.drafts, run.rejected = kept, run.rejected + rejected
 
-    def _call(self, owner: str, name: str, user: dict, spend: Spend, run: ChunkRun, timeout: float) -> Any:
-        system, model, max_tokens = PASSES[name]
+    def _call(self, owner: str, name: str, user: dict, spend: Spend, run, timeout: float, *,
+              passes: dict = PASSES, job: str = JOB) -> Any:
+        """One priced model call charged to `spend` and `run` (a ChunkRun or an ActionRun)."""
+        system, model, max_tokens = passes[name]
         body = payload(system, user, name, model, max_tokens)
         prompt_tokens = model_map.estimate_tokens(system) + model_map.estimate_tokens(body["messages"][1]["content"])
-        agent = catalog()["luna"]
+        profile = route(job, prompt_tokens).profile
+        agent = model_map.costing(profile)
+        if agent is None:
+            raise ChunkFailed(f"{name}: model profile {profile} has no price")
+        if hasattr(run, "profile"):
+            run.profile, run.model = profile, agent.model
         bound = replace(agent, max_output_tokens=max(8192, max_tokens)).reserve_cost(prompt_tokens)
         if spend.spent + bound > spend.cap:
             raise BudgetStop("source_budget")
         spend.calls += 1
         run.calls += 1
         try:
-            data = call_model(owner, body, bound, timeout, prompt_tokens)
+            data = call_model(owner, body, bound, timeout, prompt_tokens, job=job, profile=profile)
         except DomainError as error:
             if error.code in BUDGET_CODES:
                 raise BudgetStop("owner_budget") from error
@@ -174,6 +212,8 @@ class NativeExtractor:
         usage = agent.usage_record(data)
         spend.prompt_tokens += usage["prompt_tokens"]
         spend.completion_tokens += usage["completion_tokens"]
+        run.prompt_tokens += usage["prompt_tokens"]
+        run.completion_tokens += usage["completion_tokens"]
         self._charge(spend, run, agent.usage_cost(usage))
         message = data["choices"][0]["message"]
         if message.get("refusal"):
@@ -186,7 +226,7 @@ class NativeExtractor:
             raise ChunkFailed(f"{name}: invalid output") from error
 
     @staticmethod
-    def _charge(spend: Spend, run: ChunkRun, amount: float) -> None:
+    def _charge(spend: Spend, run, amount: float) -> None:
         spend.spent += amount
         run.cost += amount
 
@@ -196,7 +236,9 @@ class NativeExtractor:
 PRIORITY = {"failed": 3, "skipped": 2, "extracted": 1, "no_content": 0}
 
 
-def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend) -> ExtractionResult:
+def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend, acts: action_pass.ActionRun | None = None,
+             meeting: action_pass.Meeting | None = None) -> ExtractionResult:
+    acts = acts or action_pass.ActionRun(status="skipped", reason="not run")
     drafts, rejected = dedupe(d for run in runs for d in run.drafts)
     rejected = [r for run in runs for r in run.rejected] + rejected
     assertions, actions, links, derivations, notes, cited = [], [], {}, {}, {}, set()
@@ -223,9 +265,14 @@ def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend) -> Ext
                     responsible=draft.responsible, due=draft.due, evidence=draft.evidence,
                     assertion_indexes=[len(assertions) - 1] if draft.kind == "commitment" else []))
         cited.update(draft.seqs)
+    _add_actions(request, acts, assertions, actions, links, derivations, rejected, cited)
 
     coverage: dict[int, Coverage] = {}
     reasons: dict[str, dict[str, str]] = {"skipped": {}, "failed": {}}
+    if acts.status != "ok":  # an incomplete follow-up list leaves the whole source to retry
+        for segment in request.segments:
+            coverage[segment.seq] = acts.status
+            reasons[acts.status][str(segment.seq)] = f"actions: {acts.reason}"
     for run in runs:
         for seq in run.chunk.segment_seqs:
             status = run.status if run.status != "ok" else "extracted" if seq in cited else "no_content"
@@ -234,8 +281,10 @@ def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend) -> Ext
             if run.status != "ok":
                 reasons[run.status][str(seq)] = run.reason
     uncovered = sorted(seq for seq, status in coverage.items() if status in ("skipped", "failed"))
+    profile = model_map.PROFILES.get(model_map.route(JOB).profile)
     diagnostics = {
-        "engine": "native", "prompt_version": PROMPT_VERSION, "model": memory_learning.EXTRACTION_MODEL,
+        "engine": "native", "prompt_version": PROMPT_VERSION,
+        "model": profile.model if profile else memory_learning.EXTRACTION_MODEL,
         "feature": FEATURE, "partial": bool(uncovered), "uncovered_segments": uncovered, **reasons,
         "chunks": [{"seq": r.chunk.seq, "segment_start": r.chunk.spans[0].seq, "segment_end": r.chunk.spans[-1].seq,
                     "token_count": r.chunk.token_count, "status": r.status, "reason": r.reason, "calls": r.calls,
@@ -246,7 +295,37 @@ def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend) -> Ext
         "rejected": [r.as_dict() for r in rejected],
         "rejection_counts": dict(sorted(Counter(r.code for r in rejected).items())),
         "derivations": derivations, "notes": notes,
+        "actions": acts.diagnostics(meeting or action_pass.Meeting.of(request, SourceContext.from_request(request))),
     }
     return ExtractionResult(assertions=assertions, links=list(links.values()), actions=actions, coverage=coverage,
                             diagnostics=json.loads(json.dumps(diagnostics, default=str)))
 
+
+
+def _add_actions(request: ExtractRequest, acts: action_pass.ActionRun, assertions: list, actions: list, links: dict,
+                 derivations: dict, rejected: list, cited: set) -> None:
+    """The action pass's items as proposed actions, with commitment assertions for promised or accepted work."""
+    for draft in acts.drafts:
+        index = None
+        if draft.assertion is not None:
+            if len(assertions) >= request.limits.max_assertions:
+                rejected.append(Rejection("limit", draft.title, "max_assertions", tuple(draft.seqs)))
+            else:
+                index = len(assertions)
+                assertions.append(draft.assertion)
+                if draft.derivations:
+                    derivations[str(index)] = draft.derivations
+                for link in draft.links:
+                    links.setdefault((link.mention.casefold(), link.candidate.entity_type,
+                                      link.candidate.entity_id), link)
+        draft.assertion_index = index
+        if len(actions) >= request.limits.max_actions:
+            rejected.append(Rejection("limit", draft.title, "max_actions", tuple(draft.seqs)))
+            continue
+        draft.action_index = len(actions)
+        actions.append(ProposedAction(
+            kind="create" if draft.kind == "action" else "suggestion", title=draft.title,
+            description=draft.description, responsible=draft.responsible, due=draft.due, evidence=draft.evidence,
+            assertion_indexes=[] if index is None else [index]))
+        cited.update(draft.seqs)
+    rejected += [Rejection(r["code"], r["title"], r["reason"], tuple(r["segments"])) for r in acts.rejected]

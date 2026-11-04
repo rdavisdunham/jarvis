@@ -71,33 +71,50 @@ def test_recorded_meeting_yields_validated_assertions_actions_and_usage(provider
     assert [(a.kind, a.statement) for a in result.assertions] == [
         ("fact", "The pilot covers 40 clinics in the first wave."),
         ("decision", "The pilot launches on Postgres with pgvector."),
-        ("commitment", "Priya sends the revised budget by 2026-11-20."),
-        ("commitment", "Marco drafts the rollout checklist.")]
-    fact, decision, priya, marco = result.assertions
+        ("commitment", "Priya will send the revised budget by 2026-11-20.")]
+    fact, decision, priya = result.assertions
     assert fact.subject == EntityRef(entity_type="project", entity_id="proj_pilot", mention="the pilot")
     assert decision.evidence[0].quote == "we launch the pilot on Postgres with pgvector."  # normalized, then exact
     assert priya.responsible == [EntityRef(entity_type="actor", entity_id="act_priya", mention="Priya")]
     assert (priya.due.at.date(), priya.due.expression) == (date(2026, 11, 20), "by 2026-11-20")
+    # Promised work is an action with its commitment; work assigned to Marco is an action only.
+    assert [(x.kind, x.title, x.assertion_indexes) for x in result.actions] == [
+        ("create", "Send the revised budget", [2]), ("create", "Draft the rollout checklist", [])]
+    marco = result.actions[1]
     assert marco.responsible == [EntityRef(entity_type="actor", mention="Marco")]  # unknown id stays unresolved
-    assert [(x.kind, x.assertion_indexes) for x in result.actions] == [("create", [2]), ("create", [3])]
+    assert marco.description == "Davin assigned the rollout checklist to Marco."
     assert {(link.mention, link.candidate.entity_id) for link in result.links} == {
         ("the pilot", "proj_pilot"), ("Priya", "act_priya")}
     assert result.coverage == {0: "no_content", 1: "extracted", 2: "extracted", 3: "extracted", 4: "extracted"}
 
     diagnostics = result.diagnostics
-    assert diagnostics["rejection_counts"] == {"attribution_mismatch": 1, "duplicate": 1, "no_promise_language": 1,
-                                               "not_entailed": 1, "ungrounded_number": 1}
+    assert diagnostics["rejection_counts"] == {"attribution_mismatch": 1, "done_in_meeting": 1, "duplicate": 2,
+                                               "not_entailed": 1, "quote_not_found": 1, "ungrounded_number": 1}
     assert diagnostics["partial"] is False and diagnostics["prompt_version"] == PROMPT_VERSION
     assert diagnostics["derivations"]["2"][0]["verified"] is True
+    actions = diagnostics["actions"]
+    assert (actions["status"], actions["mode"], actions["calls"], actions["profile"]) == ("ok", "whole", 2, "luna")
+    assert [(i["action_index"], i["assertion_index"], i["owner_basis"]) for i in actions["items"]] == [
+        (0, 2, "stated_promise"), (1, None, "assigned_by_other")]
+    assert actions["items"][0]["evidence"] == [
+        {"segment": 3, "line": "3", "speaker": "Priya", "quote": "I'll send the revised budget by 2026-11-20."}]
+    assert sorted(r["code"] for r in actions["rejected"]) == [
+        "attribution_mismatch", "done_in_meeting", "duplicate", "quote_not_found"]
+    assert actions["cost_usd"] > 0 and actions["latency_ms"] >= 0 and actions["prompt_version"] == PROMPT_VERSION
 
-    assert [b["text"]["format"]["name"] for b in sent] == ["context_detect", "context_enrich", "context_verify"]
+    names = [b["text"]["format"]["name"] for b in sent]
+    assert names == ["context_actions", "context_actions_verify", "context_detect", "context_enrich",
+                     "context_verify"]
     assert all(b["text"]["format"]["strict"] and b["model"] == memory_learning.EXTRACTION_MODEL for b in sent)
-    assert "untrusted DATA" in sent[0]["input"][0]["content"]
-    assert "[3] Priya: Sounds right." in json.loads(sent[0]["input"][1]["content"])["lines"]
-    assert json.loads(sent[1]["input"][1]["content"])["entity_candidates"][0]["id"] == "project:proj_pilot"
+    assert all("untrusted DATA" in b["input"][0]["content"] for b in sent)
+    whole = json.loads(sent[0]["input"][1]["content"])
+    assert whole["lines"].splitlines()[3] == "[3] Priya: Sounds right. I'll send the revised budget by 2026-11-20."
+    assert whole["recorded_by"] == "Davin" and whole["private_notes"] == "(none)"
+    assert "[3] Priya: Sounds right." in json.loads(sent[2]["input"][1]["content"])["lines"]
+    assert json.loads(sent[3]["input"][1]["content"])["entity_candidates"][0]["id"] == "project:proj_pilot"
     with session_scope() as db:
         usage = db.scalars(select(Usage)).all()
-        assert len(usage) == 3 and {u.tokens["feature"] for u in usage} == {"context_extraction"}
+        assert len(usage) == 5 and {u.tokens["feature"] for u in usage} == {"context_extraction"}
         assert sum(u.amount for u in usage) == Decimal(str(diagnostics["cost_usd"]))
         assert {r.state for r in db.scalars(select(BudgetReservation))} == {"closed"}
 
@@ -119,11 +136,14 @@ def test_long_meeting_full_coverage_and_cost_per_meeting(provider):
     assert any(a.evidence[0].segment_seq == long_meeting.LONG_AT for a in result.assertions)
     unknown = [a for a in result.assertions if a.responsible and a.responsible[0].mention == "Unknown speaker"]
     assert unknown and all(request.segments[a.evidence[0].segment_seq].speaker_label is None for a in unknown)
-    assert result.diagnostics["rejection_counts"] == {}
+    planted = sum(1 for i in range(long_meeting.LINES) if i % long_meeting.COMMIT_EVERY == 7 or i == long_meeting.LONG_AT)
+    # Repeats of the same person's promise fold into one follow-up.
+    assert result.diagnostics["rejection_counts"] == {"duplicate": planted - commitments}
 
     chunks = result.diagnostics["chunks"]
     cost = result.diagnostics["cost_usd"]
-    assert len(model.calls) == sum(c["calls"] for c in chunks) and cost < 0.25
+    assert result.diagnostics["actions"]["mode"] == "whole" and result.diagnostics["actions"]["calls"] == 2
+    assert len(model.calls) == sum(c["calls"] for c in chunks) + 2 and cost < 0.25
     assert {c["calls"] for c in chunks} == {1, 3}  # chunks with no candidates stop after detection
     print(f"\nlong fixture: {len(request.segments)} segments, {len(chunks)} chunks, {len(model.calls)} calls, "
           f"{result.diagnostics['usage']['prompt_tokens']} prompt + "
@@ -134,7 +154,7 @@ def test_source_budget_exhaustion_marks_partial_and_lists_uncovered_segments(pro
     request = long_meeting.request()
     model = long_meeting.ScriptedModel()
     provider(model)
-    result = NativeExtractor(budget_usd=0.03).extract(request)
+    result = NativeExtractor(budget_usd=0.05).extract(request)
 
     assert check_extraction(request, result) == []
     statuses = [c["status"] for c in result.diagnostics["chunks"]]
@@ -143,8 +163,10 @@ def test_source_budget_exhaustion_marks_partial_and_lists_uncovered_segments(pro
     skipped = sorted(seq for seq, status in result.coverage.items() if status == "skipped")
     assert result.diagnostics["partial"] is True and result.diagnostics["uncovered_segments"] == skipped
     assert set(result.diagnostics["skipped"].values()) == {"source_budget"}
-    assert result.diagnostics["cost_usd"] <= 0.03
-    assert all(e.segment_seq not in skipped for a in result.assertions for e in a.evidence)
+    assert result.diagnostics["cost_usd"] <= 0.05 and result.diagnostics["actions"]["status"] == "ok"
+    # Chunk-pass assertions come only from chunks that ran; the whole-meeting action pass ran before the cap hit.
+    assert all(e.segment_seq not in skipped for a in result.assertions if a.kind != "commitment" for e in a.evidence)
+    assert any(e.segment_seq in skipped for a in result.assertions if a.kind == "commitment" for e in a.evidence)
 
 
 def test_owner_budget_refusal_skips_everything(monkeypatch, extract_request):
@@ -187,4 +209,7 @@ def test_request_limits_cap_assertions_and_actions(provider, pilot_request):
     result = NativeExtractor().extract(limited)
     assert check_extraction(limited, result) == []
     assert len(result.assertions) == 3 and result.actions == []
-    assert result.diagnostics["rejection_counts"]["limit"] == 2  # Marco's assertion; Priya's action
+    assert result.diagnostics["rejection_counts"]["limit"] == 2  # Priya's and Marco's actions
+    limited = pilot_request.model_copy(update={"limits": ExtractLimits(max_assertions=2, max_actions=5)})
+    result = NativeExtractor().extract(limited)
+    assert len(result.assertions) == 2 and [a.assertion_indexes for a in result.actions] == [[], []]
