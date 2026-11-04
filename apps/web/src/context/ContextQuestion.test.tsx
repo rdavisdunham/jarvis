@@ -10,17 +10,20 @@ const contested = { key: "context:contested:project:p1:due_date", kind: "context
   question: "These meeting notes disagree about the due date. Which is right?", answer_tool: "context.resolve",
   candidates: [{ assertion_id: "a1", revision: 1, statement: "Launch is Dec 1." }, { assertion_id: "a2", revision: 1, statement: "Launch is Dec 8." }],
   evidence: {}, actions: ["keep", "both"], answer_args: { question_key: "context:contested:project:p1:due_date", expected_revision: 3 } };
-// The pre-service shape keeps actions and ids inside answer_args; they must not be sent back.
+// The service's shape: allowed answers in `actions`, IDs in `evidence`, command fields only in `answer_args`.
 const link = { key: "context:link:l1", kind: "context", revision: 1, status: "pending", source_id: "k2", question: "Who is “Sam” in “Sam sends the deck”?",
-  answer_tool: "context.resolve", candidates: [], evidence: {},
-  answer_args: { question_key: "context:link:l1", expected_revision: 1, link_id: "l1", actions: ["link", "dismiss"] } };
+  answer_tool: "context.resolve", candidates: [], evidence: { mention: "Sam", assertion_id: "a9", link_id: "l1" }, actions: ["link", "dismiss"],
+  answer_args: { question_key: "context:link:l1", expected_revision: 1 } };
+const suggestion = { key: "context:feedback:f1", kind: "context", revision: 1, status: "pending", source_id: "k3", question: "An agent suggests “Launch is Dec 1.” is wrong. Accept?",
+  answer_tool: "context.resolve", candidates: [{ assertion_id: "a1", revision: 1, statement: "Launch is Dec 1." }], evidence: { suggestion: "wrong" },
+  actions: ["accept", "dismiss"], answer_args: { question_key: "context:feedback:f1", expected_revision: 1 } };
 
 let host: HTMLDivElement, root: Root, commands: { tool: string; arguments: Record<string, unknown> }[];
 beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host); commands = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
     if (url.startsWith("/api/v1/commands")) { const body = JSON.parse(String(init.body)); commands.push(body); return new Response(JSON.stringify({ data: {}, command_id: body.command_id })); }
-    return new Response(JSON.stringify({ items: [contested, link], total: 2, next_offset: null, counts: {}, learning: { runs: [] } }));
+    return new Response(JSON.stringify({ items: [contested, link, suggestion], total: 3, next_offset: null, counts: {}, learning: { runs: [] } }));
   }));
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
@@ -31,7 +34,7 @@ describe("context questions", () => {
   it("keeps one contested statement or links a mention to a person", async () => {
     await act(async () => { root.render(<Questions people={[{ id: "act-sam", name: "Sam Lee" }]}/>); });
     await settle();
-    const [first, second] = host.querySelectorAll<HTMLElement>(".question-card");
+    const [first, second, third] = host.querySelectorAll<HTMLElement>(".question-card");
     expect(first.textContent).toContain("Launch is Dec 8.");
     expect(first.textContent).toContain("Meeting context");
     await act(async () => { button("Keep this one", first.querySelectorAll("li")[1]).click(); });
@@ -43,5 +46,9 @@ describe("context questions", () => {
     await act(async () => { button("Link", second).click(); });
     await settle();
     expect(commands[1].arguments).toEqual({ question_key: link.key, expected_revision: 1, action: "link", entity_type: "actor", entity_id: "act-sam" });
+    expect(button("Keep this one", third)).toBeUndefined();
+    await act(async () => { button("Accept suggestion", third).click(); });
+    await settle();
+    expect(commands[2].arguments).toEqual({ question_key: suggestion.key, expected_revision: 1, action: "accept" });
   });
 });

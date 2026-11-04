@@ -105,6 +105,15 @@ def test_meeting_types_match_the_context_schema():
         assert ts_union("context/context-model.ts", name) == set(values), f"context-model.ts {name} vs context/schema.py"
 
 
+def test_context_questions_offer_every_resolve_action():
+    """Questions.tsx renders a control for each answer `context.resolve` accepts (service.ResolveInput.action)."""
+    from jarvis.context.service import ResolveInput
+
+    card = found(r"function ContextQuestionCard(.*?)\n}\n", web("Questions.tsx"), "ContextQuestionCard")
+    offered = set(re.findall(r'actions\.includes\("([a-z_]+)"\)', card))
+    assert offered == set(get_args(ResolveInput.model_fields["action"].annotation)), "Questions.tsx context answers"
+
+
 def test_meeting_and_person_deep_links_survive_navigation():
     """?view=meetings&source=<id> and ?view=person&actor=<id> are read on load and kept by App.tsx's URL sync."""
     app = web("App.tsx")
