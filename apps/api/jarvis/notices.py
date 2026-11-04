@@ -31,6 +31,8 @@ SAME_ALERT = timedelta(seconds=60)
 LEVELS = ("low", "normal", "high", "urgent")
 # Push vehicles for other notices. They are never items of their own on the Notifications page.
 VEHICLES = {"bundle", "digest"}
+# Scheduled summaries: each pushes alone and is never folded into a bundle or digest (`plan`).
+SUMMARIES = {"morning", "context_digest"}
 # This many interrupting notices due in one pass become one bundled push.
 BUNDLE_AT = 2
 DIGEST_HOURS = {"hourly": 1, "every_3_hours": 3}
@@ -287,6 +289,12 @@ def eligible(db, n, instant=None):
             )
             if explicit or occurrence:
                 return False
+    if n.category.startswith("context_"):
+        # Meeting-ready, backfill and the 17:00 context digest: dropped once the review is done (the digest
+        # is recounted), like the morning summary below.
+        from .context.notices import current
+
+        return current(db, n, instant)
     if n.category == "morning":
         task_ids = []
         for identity in n.target.get("task_ids", []):
@@ -518,7 +526,7 @@ def plan(db, due, accepted, instant=None):
             started = db.scalar(
                 select(Delivery.id).where(Delivery.notification_id == n.id, Delivery.generation == n.generation)
             )
-            if started or n.category in VEHICLES | {"morning"} or n.importance == "urgent" or not accepted(n):
+            if started or n.category in VEHICLES | SUMMARIES or n.importance == "urgent" or not accepted(n):
                 pushes.append(n)
             elif rank(n.importance) >= rank(prefs["notify_min_priority"]):
                 fresh.append(n)

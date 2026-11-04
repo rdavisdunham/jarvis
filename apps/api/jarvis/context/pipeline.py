@@ -9,19 +9,24 @@ Stages, one job each (payloads in brackets), each enqueuing the next in the tran
     context_reconcile {source_id, revision_id, extract_run_id}  bounded reconciliation, source ready
     context_embed {source_id, revision_id}        chunk and assertion embeddings (projections)
 
-plus `context_delete` {source_id, through_revision} (B1's purge), `context_granola_sync` and
-`context_granola_backfill` {connection_id} (B2's poller, enqueued by `schedule_due`), `context_brief`
-{entity_type, entity_id} (C3's `briefs.build_brief` when present), `context_lint` {budget_usd?} (E2's weekly
-pass, `lint.perform`, one transaction per unit) and `context_proposals`, which no-ops until its package lands.
+plus `context_delete` {source_id, through_revision} (B1's purge), `context_granola_sync` {connection_id?} and
+`context_granola_backfill` {connection_id?, days = 90} (B2's poller, enqueued by `schedule_due` and Settings;
+without a connection ID every enabled Granola connection of the owner), `context_brief` {entity_type, entity_id}
+(C3's briefs, enqueued by reconcile for the resolved entities its assertions touch: deterministic unless the
+owner's `synthesize_briefs` is on, then prepare, synthesize outside any transaction, commit), `context_lint`
+{budget_usd?} (E2's weekly pass, `lint.perform`, one transaction per unit) and `context_proposals`, which no-ops
+until its package lands.
 
 Run rules. `perform_job` runs inside a DBOS step retried up to ten times, so every handler is idempotent and the
 job's status is set here. Each job has one `context_runs` row per stage; a replayed job whose run finished is a
 no-op. Model and embedding calls happen outside database transactions, and their outputs are persisted on the
 run (`stage_results`: each extraction chunk as it completes, then the whole result, or the reconcile ops) before
 anything is applied, so a crash or retry never repeats a completed model call. Applying re-takes the owner's
-`context:{owner}` lock and re-checks the source revision, processing epoch, pause flag and decision watermark
-(`apply.guard`). A stale result is not applied: the run is marked `stale` and requeued when still relevant
-(moved decisions), continued after resume (pause), or dropped (newer revision, deleted source). Work commands
+`context:{owner}` lock and the owner-state row lock, and re-checks the processing epoch, pause flag, source
+revision and decision watermark (`apply.guard`). A stale result is not applied: the run is marked `stale` and
+requeued when still relevant (moved decisions), continued by `schedule_due` once the owner is resumed and the
+revision is still current (pause), or dropped (newer revision, deleted source). Every assertion version written
+emits `context.changed` in its transaction. Work commands
 (actors created while seeding identities) run as the owner, never under a bot credential of the calling context.
 
 Engine choice: the native engines, or the deterministic doubles when the owner's `ContextOwnerState.settings`
@@ -42,12 +47,11 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy import or_, select
-from sqlalchemy.dialects.postgresql import insert
 
 from .. import access, bot_access
 from ..cost_features import feature
 from ..db import session_scope
-from ..domain import enqueue_job
+from ..domain import DomainError, enqueue_job
 from ..models import Actor, Job, Project, now
 from . import apply, calendar_link, decisions, identity, temporal
 from . import settings as context_settings
@@ -87,6 +91,7 @@ EXTRACT_CANDIDATES = 50
 UNLINKABLE = {"we", "us", "team", "the team", "everyone", "all of us", "both of us", "unknown speaker", "unknown",
               "someone", "i", "me", "you"}
 BRIEF_TYPES = ("actor", "project", "client", "area", "goal")
+BACKFILL_DAYS = 90
 
 
 @dataclass(frozen=True)
@@ -442,6 +447,8 @@ def extract(work: Work) -> dict:
             _source_status(db, source_id, "awaiting_input" if "source_budget" in reasons else "partial")
             if "source_budget" not in reasons and (after := _backoff(work)):
                 extra["continue_after"] = after.isoformat()
+        else:  # complete: what only earlier revisions of this meeting said loses that support
+            extra["retired"] = apply.retire_old_revisions(db, work.owner, source_id, revision_id)
         actions = [{"action": a.model_dump(mode="json"),
                     "assertion_ids": [applied.assertion_ids[i] for i in a.assertion_indexes
                                       if applied.assertion_ids[i]]} for a in result.actions]
@@ -573,16 +580,8 @@ def _brief_targets(db, owner: str, assertion_ids: list[str]) -> set[tuple[str, s
                 targets.add((kind, ident))
     targets |= set(db.execute(select(link_.target_type, link_.target_id).where(
         link_.owner_id == owner, link_.assertion_id.in_(assertion_ids), link_.target_type.in_(BRIEF_TYPES),
-        link_.status.in_(("exact", "inferred", "confirmed")))).tuples())
+        link_.status.in_(("exact", "inferred", "confirmed")))).all())
     return targets
-
-
-def _briefs_available() -> bool:
-    try:
-        from .briefs import build_brief  # noqa: F401 - package C3
-    except ImportError:
-        return False
-    return True
 
 
 def reconcile(work: Work) -> dict:
@@ -615,17 +614,20 @@ def reconcile(work: Work) -> dict:
             return replay
         if reason := apply.guard(db, work.owner, run, source_id=source_id, revision_id=revision_id, watermark=True):
             return _stale(db, work, run, reason)
+        before = apply.versions(db, work.owner, (t for op in ops for t in op.targets))
         summary = temporal.apply_ops(db, work.owner, ops, run_id=run.id) if ops else {}
+        apply.emit_assertions(db, work.owner, summary.get("changed", []), before)
         if summary.get("stale"):
             return {**_stale(db, work, run, "decisions"), "applied": summary}
         if complete:
             _source_status(db, source_id, "ready")
         enqueue_job(db, work.owner, "context_embed", {"source_id": source_id, "revision_id": revision_id})
-        if _briefs_available():
-            for entity_type, entity_id in sorted(_brief_targets(db, work.owner, ids + summary.get("changed", []))):
-                if not _pending(db, work.owner, "context_brief", entity_type=entity_type, entity_id=entity_id):
-                    enqueue_job(db, work.owner, "context_brief", {"entity_type": entity_type, "entity_id": entity_id})
-        return _finish(run, summary=summary)
+        briefs = 0
+        for entity_type, entity_id in sorted(_brief_targets(db, work.owner, ids + summary.get("changed", []))):
+            if not _pending(db, work.owner, "context_brief", entity_type=entity_type, entity_id=entity_id):
+                enqueue_job(db, work.owner, "context_brief", {"entity_type": entity_type, "entity_id": entity_id})
+                briefs += 1
+        return _finish(run, summary=summary, briefs=briefs)
 
 
 # ---------------------------------------------------------------- embed
@@ -682,42 +684,67 @@ def delete(work: Work) -> dict:
                             through_revision=work.payload.get("through_revision"))
 
 
-def _connection(db, work: Work) -> ContextConnection | None:
-    connection = db.get(ContextConnection, work.payload.get("connection_id"))
-    return connection if connection is not None and connection.owner_id == work.owner else None
+def _connections(db, work: Work) -> list[str]:
+    """The payload's connection (owner's own, any state: an explicit Settings request), or without one every
+    enabled Granola connection of the owner."""
+    c = ContextConnection
+    if connection_id := work.payload.get("connection_id"):
+        return list(db.scalars(select(c.id).where(c.id == str(connection_id), c.owner_id == work.owner,
+                                                  c.connector == "granola")))
+    return list(db.scalars(select(c.id).where(c.owner_id == work.owner, c.connector == "granola",
+                                              c.enabled.is_(True)).order_by(c.created_at, c.id)))
+
+
+def _granola(work: Work, call: Callable) -> dict:
+    with session_scope() as db:
+        ids = _connections(db, work)
+    if not ids:
+        return {"skipped": "connection not found"}
+    out = {}
+    for connection_id in ids:  # one transaction per connection: a failing account does not undo the others
+        with session_scope() as db:
+            out[connection_id] = asdict(call(db, db.get(ContextConnection, connection_id)))
+    return out[ids[0]] if work.payload.get("connection_id") else {"connections": out}
 
 
 def granola_sync(work: Work) -> dict:
     from .connectors import resolve
 
-    with session_scope() as db:
-        connection = _connection(db, work)
-        if connection is None:
-            return {"skipped": "connection not found"}
-        return asdict(resolve("granola").poll(db, work.owner, connection))
+    return _granola(work, lambda db, connection: resolve("granola").poll(db, work.owner, connection))
 
 
 def granola_backfill(work: Work) -> dict:
     from .connectors import resolve
 
-    with session_scope() as db:
-        connection = _connection(db, work)
-        if connection is None:
-            return {"skipped": "connection not found"}
-        return asdict(resolve("granola").backfill(db, work.owner, connection, int(work.payload.get("days", 90))))
+    try:
+        days = min(max(int(work.payload.get("days") or BACKFILL_DAYS), 1), 365)
+    except (TypeError, ValueError):
+        days = BACKFILL_DAYS
+    return _granola(work, lambda db, connection: resolve("granola").backfill(db, work.owner, connection, days))
 
 
 def synthesize_briefs(db, owner: str) -> bool:
-    """Owner setting `synthesize_briefs` (default off) turns on model-written briefs in the pipeline."""
+    """Owner setting `synthesize_briefs` (default off) turns on model-written briefs in the pipeline; otherwise
+    briefs are deterministic and cost no model call per entity per meeting."""
     state = db.get(ContextOwnerState, owner)
     return bool(state and (state.settings or {}).get("synthesize_briefs"))
 
 
-def brief(work: Work) -> dict:
-    """Rebuild one entity's brief: read inputs, synthesize outside any transaction, commit if inputs held still."""
-    from .briefs import build_brief, commit_brief, prepare_brief, run_synthesis
+def synthesizer(engine: str):
+    if engine == "double":
+        from .doubles import DoubleSynthesizer
+        return DoubleSynthesizer()
+    from .native.synthesize import NativeSynthesizer
+    return NativeSynthesizer()
 
-    entity_type, entity_id = work.payload["entity_type"], work.payload["entity_id"]
+
+def brief(work: Work) -> dict:
+    """Deterministic by default (`briefs.build_brief`). With `synthesize_briefs` on: prepare the brief in one
+    transaction, synthesize with no transaction or lock held, commit in another. Unchanged inputs are a no-op;
+    inputs that changed during synthesis store the deterministic brief and enqueue the job again."""
+    from . import briefs
+
+    entity_type, entity_id = str(work.payload["entity_type"]), str(work.payload["entity_id"])
     with session_scope() as db:
         run = _run(db, work, "brief")
         run.entity_type, run.entity_id = entity_type, entity_id
@@ -725,33 +752,35 @@ def brief(work: Work) -> dict:
             return replay
         if reason := apply.guard(db, work.owner, run):
             return _stale(db, work, run, reason)
-        engine = run.engine = engine_name(db, work.owner)
-        if not synthesize_briefs(db, work.owner):
-            # Deterministic briefs by default: model synthesis costs a call per entity per meeting.
-            built = build_brief(db, work.owner, entity_type, entity_id, run_id=run.id)
-            return _finish(run, brief_id=built.id)
-        plan = prepare_brief(db, work.owner, entity_type, entity_id)
+        try:
+            if not synthesize_briefs(db, work.owner):
+                built = briefs.build_brief(db, work.owner, entity_type, entity_id, run_id=run.id)
+                return _finish(run, brief_id=built.id, version=built.version, engine="deterministic")
+            plan = briefs.prepare_brief(db, work.owner, entity_type, entity_id)
+        except DomainError as exc:  # not a brief entity type: retrying cannot help
+            run.error = exc.code
+            return _finish(run, "failed", permanent=True)
         if plan is None:
             return _finish(run, unchanged=True)
+        engine = run.engine = engine_name(db, work.owner)
         run_id = run.id
-    if engine == "double":
-        from .doubles import DoubleSynthesizer
-        synthesizer = DoubleSynthesizer()
-    else:
-        from .native.synthesize import NativeSynthesizer
-        synthesizer = NativeSynthesizer()
-    sections, error = run_synthesis(plan, synthesizer)
+    sections, error = briefs.run_synthesis(plan, synthesizer(engine))
     with session_scope() as db:
-        run = db.get(ContextRun, run_id, with_for_update=True)
+        run = _locked(db, run_id)
         if replay := _replay(run):
             return replay
         if reason := apply.guard(db, work.owner, run):
             return _stale(db, work, run, reason)
-        built = commit_brief(db, work.owner, plan, sections, run_id=run_id, error=error)
-        if (built.watermarks or {}).get("resynthesize"):
-            enqueue_job(db, work.owner, "context_brief", {"entity_type": entity_type, "entity_id": entity_id,
-                                                          "resynthesize": run_id})
-        return _finish(run, brief_id=built.id, synthesis_error=error)
+        built = briefs.commit_brief(db, work.owner, plan, sections, run_id=run.id, error=error)
+        watermarks = built.watermarks or {}
+        requeues = int(work.payload.get("requeues", 0))
+        again = bool(watermarks.get("resynthesize")) and requeues < MAX_REQUEUES
+        if again and not _pending(db, work.owner, "context_brief", exclude=work.job_id, entity_type=entity_type,
+                                  entity_id=entity_id):
+            enqueue_job(db, work.owner, "context_brief", {**work.base, "requeues": requeues + 1})
+        run.error = f"synthesis failed: {error}" if error else None
+        return _finish(run, brief_id=built.id, version=built.version, engine=watermarks.get("engine"),
+                       resynthesize=again)
 
 
 def lint(work: Work) -> dict:
@@ -784,30 +813,22 @@ HANDLERS: dict[str, Callable[[Work], dict]] = {
 # ---------------------------------------------------------------- pause, continuation and scheduling
 
 
-def _state_row(db, owner: str) -> ContextOwnerState:
-    db.execute(insert(ContextOwnerState).values(owner_id=owner).on_conflict_do_nothing(index_elements=["owner_id"]))
-    return db.scalar(select(ContextOwnerState).where(ContextOwnerState.owner_id == owner).with_for_update()
-                     .execution_options(populate_existing=True))
-
-
 def pause(db, owner: str) -> dict:
-    """Stop automatic processing: bump the epoch so in-flight results are refused. Sources, reads, manual
+    """E3's pause (epoch + 1, paused) under the owner lock: in-flight results are refused. Sources, reads, manual
     corrections and approved publications are unaffected."""
+    from .routes import admin
+
     apply.lock(db, owner)
-    state = _state_row(db, owner)
-    if not state.paused:
-        state.paused, state.paused_at, state.epoch, state.updated_at = True, now(), state.epoch + 1, now()
-    db.flush()
+    state = admin.pause(db, owner)
     return {"paused": True, "epoch": state.epoch}
 
 
 def resume(db, owner: str) -> dict:
-    """Resume processing and queue the work a pause interrupted."""
+    """E3's resume, then queue at once the work the pause interrupted (`schedule_due` would on its next tick)."""
+    from .routes import admin
+
     apply.lock(db, owner)
-    state = _state_row(db, owner)
-    if state.paused:
-        state.paused, state.paused_at, state.updated_at = False, None, now()
-    db.flush()
+    state = admin.resume(db, owner)
     return {"paused": False, "epoch": state.epoch, "continued": _continue(db, now(), owner=owner)}
 
 
@@ -823,8 +844,11 @@ def continue_source(db, owner: str, source_id: str, budget_usd: float) -> str | 
                                                       "continue": True, "budget_usd": float(budget_usd)}).id
 
 
-def _pending(db, owner: str, kind: str | None = None, **match) -> bool:
+def _pending(db, owner: str, kind: str | None = None, *, exclude: str | None = None, **match) -> bool:
+    """A context job (of `kind`, with these payload values) is waiting or running, other than `exclude`."""
     query = select(Job.id).where(Job.owner_id == owner, Job.status.in_(PENDING))
+    if exclude:
+        query = query.where(Job.id != exclude)
     query = query.where(Job.kind == kind) if kind else query.where(Job.kind.like("context\\_%"))
     for key, value in match.items():
         query = query.where(Job.payload[key].astext == str(value))

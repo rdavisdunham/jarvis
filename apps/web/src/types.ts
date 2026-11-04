@@ -259,7 +259,9 @@ export type View =
   | "questions"
   | "notifications"
   | "settings"
-  | "remotea";
+  | "remotea"
+  | "meetings"
+  | "person";
 export interface ChatMessage {
   id: string;
   native_id?: string;

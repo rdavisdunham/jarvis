@@ -60,6 +60,8 @@ export function initialView(search: string): View {
     "settings",
     "reminders",
     "remotea",
+    "meetings",
+    "person",
   ].includes(view ?? "")
     ? (view as View)
     : "today";

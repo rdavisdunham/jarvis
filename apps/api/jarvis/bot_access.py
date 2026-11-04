@@ -73,7 +73,12 @@ READ_SCOPES = {
     "note_lists": "notes:read", "note_list_items": "notes:read",
     "time_resolve": None,
     "session_search": "sessions:read",
+    # Meeting context (context/mcp.py TOOLS); the service re-authorizes before returning.
+    **{f"context_{name}": "context:read"
+       for name in ("search", "brief", "evidence", "source", "open_loops", "meeting_prep", "changes")},
 }
+# Non-command write tools: each use is a write check (authorize(..., write=True)) that refuses viewers.
+WRITE_TOOLS = {"context_feedback": "context:write"}
 
 
 def current_id():
@@ -285,6 +290,8 @@ def tool_allowed(name, scopes):
     if name in READ_SCOPES:
         required = READ_SCOPES[name]
         return required is None or required in scopes
+    if name in WRITE_TOOLS:
+        return WRITE_TOOLS[name] in scopes
     return COMMAND_SCOPES.get(name.replace("_", ".", 1)) in scopes
 
 

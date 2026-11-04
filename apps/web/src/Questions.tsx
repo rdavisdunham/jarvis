@@ -3,16 +3,17 @@ import {api,post} from "./api";
 import {useStructureActions} from "./structure-actions";
 import { ReviewQuestion, useMarkReviewed, type ReviewItem } from "./Reviews";
 import "./questions.css";
-type Question={key:string;kind:string;review_kind?:string;revision:number;status:string;question:string;source_id:string;definition_id?:string;deferred_until?:string;candidates?:{id:string;content:string}[];evidence?:unknown;answer_tool:string;answer_args:Record<string,unknown>;delivery?:{channel:string;state:string;updated_at:string}|null;record?:ReviewItem};
+type Question={key:string;kind:string;review_kind?:string;revision:number;status:string;question:string;source_id:string;definition_id?:string;deferred_until?:string;candidates?:{id?:string;content?:string;assertion_id?:string;statement?:string}[];actions?:string[];evidence?:unknown;answer_tool:string;answer_args:Record<string,unknown>;delivery?:{channel:string;state:string;updated_at:string}|null;record?:ReviewItem};
 type Page={items:Question[];total:number;next_offset:number|null;counts:Record<string,number>;learning:{runs:{kind:string;id:string|null;status:string;created_at:string|null;finished_at:string|null;result:unknown}[]}};
-export function Questions({organization=false,compact=false,refresh=0}:{organization?:boolean;compact?:boolean;refresh?:number}){
+type Person={id:string;name:string};
+export function Questions({organization=false,compact=false,refresh=0,people=[]}:{organization?:boolean;compact?:boolean;refresh?:number;people?:Person[]}){
  const [page,setPage]=useState<Page|null>(null),[status,setStatus]=useState("open"),[offset,setOffset]=useState(0),[error,setError]=useState("");
  const load=useCallback(async()=>{try{setPage(await api<Page>("/questions?category="+(organization?"organization":"all")+"&status="+status+"&offset="+offset));setError("");}catch(e){setError((e as Error).message);}},[organization,status,offset]);
  useEffect(()=>{void load();const timer=setInterval(()=>void load(),30000);return()=>clearInterval(timer);},[load,refresh]);
  const reviewed=useMarkReviewed(load);
  const content=<><div className="question-toolbar"><p>Optional questions help Dani learn. They never hold up your tasks.</p><label>Show<select aria-label="Question status" value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}>{["open","pending","deferred","resolved","stale","all"].map(s=><option key={s}>{s}</option>)}</select></label><button className="btn btn-sm" onClick={()=>void load()}>Refresh</button></div>
  {error&&<p role="alert">{error}</p>}
- {page?.items.map(q=>q.kind==="record_review"&&q.record?<ReviewQuestion key={q.key} q={{...q,record:q.record}} onChanged={load} onMark={reviewed.mark}/>:<QuestionCard key={q.key} q={q} onChanged={load}/>)}
+ {page?.items.map(q=>q.kind==="record_review"&&q.record?<ReviewQuestion key={q.key} q={{...q,record:q.record}} onChanged={load} onMark={reviewed.mark}/>:q.kind==="context"?<ContextQuestionCard key={q.key} q={q} people={people} onChanged={load}/>:<QuestionCard key={q.key} q={q} onChanged={load}/>)}
  {reviewed.error&&<p role="alert">{reviewed.error} Refresh to see the current review.</p>}
  {page&&!page.items.length&&<p className="empty">No questions in this view.</p>}
  {page&&(offset>0||page.next_offset!==null)&&<div className="question-pagination"><button className="btn" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous questions</button><span>{page.total} questions</span><button className="btn" disabled={page.next_offset===null} onClick={()=>setOffset(page.next_offset!)}>More questions</button></div>}
@@ -32,6 +33,26 @@ function QuestionCard({q,onChanged}:{q:Question;onChanged:()=>Promise<void>}){
  {error&&<p role="alert">{error} Your answer is kept. Refresh to see the current question.</p>}
  <details className="question-provenance"><summary>Why Dani is asking</summary><p>{q.kind==="memory"?memoryReason(q.review_kind):q.kind==="field"?"A field description needs clarification before Dani relies on it.":"Repeated organization choices produced a candidate rule. It is not active until confirmed or qualified by its separate quality gate."}</p>
  <small>Source: {q.source_id} · revision {q.revision}</small>{q.evidence!==undefined&&<pre>{JSON.stringify(q.evidence,null,2)}</pre>}{q.delivery&&<p>Last invitation: {q.delivery.channel} · {q.delivery.state} · {new Date(q.delivery.updated_at).toLocaleString()}. Voice forwarding does not confirm it was heard.</p>}</details></article>;
+}
+/** Meeting context: contested statements (keep one, or both) and who a mention is (link or dismiss), answered with
+ * context.resolve. Older items carry the allowed actions inside answer_args; they are never sent back. */
+function ContextQuestionCard({q,people,onChanged}:{q:Question;people:Person[];onChanged:()=>Promise<void>}){
+ const [person,setPerson]=useState(""),{run,busy,error}=useStructureActions();
+ const {actions:inner,assertion_ids:_ids,link_id:_link,...args}=q.answer_args as Record<string,unknown>&{actions?:string[]};
+ const actions=q.actions??inner??[],canAnswer=["pending","deferred"].includes(q.status);
+ const apply=async(extra:Record<string,unknown>)=>{await run(q.answer_tool,{...args,...extra});setPerson("");await onChanged();};
+ return <article className="question-card"><div className="question-meta"><span>Meeting context</span><span className="chip">{q.status}</span></div><h3>{q.question}</h3>
+ {q.deferred_until&&q.status==="deferred"&&<p className="footnote">Snoozed until {new Date(q.deferred_until).toLocaleString()}. You can still answer now.</p>}
+ {!!q.candidates?.length&&<ul>{q.candidates.map(c=><li key={c.assertion_id??c.id}>{c.statement??c.content}{canAnswer&&actions.includes("keep")&&c.assertion_id&&<button className="text-button" disabled={busy} onClick={()=>void apply({action:"keep",assertion_id:c.assertion_id}).catch(()=>{})}>Keep this one</button>}</li>)}</ul>}
+ {canAnswer&&<div className="question-actions">
+  {actions.includes("both")&&<button className="btn" disabled={busy} onClick={()=>void apply({action:"both"}).catch(()=>{})}>Both are right</button>}
+  {actions.includes("accept")&&<button className="btn btn-primary" disabled={busy} onClick={()=>void apply({action:"accept"}).catch(()=>{})}>Accept suggestion</button>}
+  {actions.includes("link")&&<><select aria-label="Who this is" value={person} onChange={e=>setPerson(e.target.value)}><option value="">Choose a person…</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>
+   <button className="btn btn-primary" disabled={busy||!person} onClick={()=>void apply({action:"link",entity_type:"actor",entity_id:person}).catch(()=>{})}>Link</button></>}
+  {actions.includes("dismiss")&&<button className="btn" disabled={busy} onClick={()=>void apply({action:"dismiss"}).catch(()=>{})}>Dismiss</button>}
+  <button className="btn btn-ghost" disabled={busy} onClick={()=>void run("review.defer",{question_key:q.key,expected_revision:q.revision,until:"week"}).then(onChanged).catch(()=>{})}>Ask next week</button></div>}
+ {error&&<p role="alert">{error} Refresh to see the current question.</p>}
+ <details className="question-provenance"><summary>Why Dani is asking</summary><p>Your meetings disagree, or a name could not be matched to one person, and the answer affects your work. Only your answer settles it.</p>{q.evidence!==undefined&&<pre>{JSON.stringify(q.evidence,null,2)}</pre>}</details></article>;
 }
 const memoryReason=(kind?:string)=>kind==="profile"?"A saved fact disagrees with your profile. Your answer replaces only the fact; change your profile in Settings.":kind==="paraphrase"?"Two saved facts read alike in meaning, not just wording. Only your answer can merge them.":"Two saved facts may refer to the same thing. Only your answer can merge them.";
 type Invitation={id:string;message:string;expires_at:string};
