@@ -2,6 +2,7 @@
 
     uv run --no-sync python -m evals.context.runner run                     # all fixture histories, doubles
     uv run --no-sync python -m evals.context.runner run tests/context/fixtures/history_alpha --order arrival
+    uv run --no-sync python -m evals.context.runner run --mode db           # the real pipeline, throwaway database
     uv run --no-sync python -m evals.context.runner build                   # regenerate each history.json
 
 A history directory holds `manifest.json` (owner, actors, meetings with arrival and deletion times),
@@ -15,23 +16,32 @@ assertions), and scores the final state against the labels: precision and recall
 and attribution of commitments, hypothetical and negated statements that became commitments, stale answers to
 as-of questions, open loops, expected supersessions, agreement across orders and no change on repeat. Labels
 with `verified: false` are scored separately from verified ones; only verified labels count for release gates.
-Fixture text is data, never instructions.
+
+`run --mode db` delivers the same events through the real pipeline instead (`sources.receive`, then
+`pipeline.perform` until the owner's jobs drain, `sources.delete_source` for deletions) into a throwaway database,
+with the deterministic doubles and a hashed bag-of-words embedder; every other model call is refused. It scores the
+database state the same way and adds speaker identity, entity links, commitment fulfilment, proposals from
+hypothetical or negated statements, supersession errors under each of the three orders, as-of answers through
+`context_search`, and no change on repeat: redelivery, then ten unchanged maintenance runs (`context_lint` and
+`schedule_due`) create no Questions, proposals or brief versions. Fixture text is data, never instructions.
 """
 
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
-from math import ceil
+from math import ceil, sqrt
 from pathlib import Path
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
 from jarvis.context.doubles import DoubleExtractor, DoubleReconciler, DoubleRetriever, Indexed
@@ -51,6 +61,7 @@ from jarvis.context.schema import (
     ScopePredicate,
     Segment,
     SourceEnvelope,
+    TimeBound,
     check_extraction,
     content_hash,
 )
@@ -65,6 +76,9 @@ WORD = re.compile(r"\w+")
 SCORED = ("current", "superseded", "contested")
 EVIDENCE_OVERLAP = 0.5  # share of the shorter span two quotes must share
 STATEMENT_SIMILARITY = 0.7  # token Jaccard of normalized statements
+MODES = ("memory", "db")
+AUTO_LINKS = ("exact", "inferred")  # applied without a human; "confirmed" is a human decision
+MAINTENANCE_RUNS = 10
 
 
 class EngineUnavailable(RuntimeError):
@@ -508,14 +522,39 @@ def _overlap(a: tuple, b: tuple) -> float:
     return max(inter, 0) / max(min(a[3] - a[2], b[3] - b[2]), 1)
 
 
+@dataclass
+class Facts:
+    """What only the database mode can observe, with fixture actor IDs restored (`None` in memory mode)."""
+
+    links: list[dict]  # assertion_id, role, status, target (fixture actor ID when it maps), mention
+    speakers: dict[tuple[str, str], tuple[str, str | None]]  # (meeting, label) -> (link status, actor)
+    completed: set[str]  # assertion IDs with completion evidence
+    proposals: list[dict]  # id, preselected, spans [(meeting, seq, start, end)]
+    leaks: list[str]  # live assertions supported only by deleted sources
+
+
+def speaker_labels(labels: dict, verified_only: bool) -> dict[tuple[str, str], str | None]:
+    """`speakers` maps meeting -> label -> actor ID (unverified) or {"actor", "verified"} (adjudicated)."""
+    out = {}
+    for meeting, mapping in labels.get("speakers", {}).items():
+        for label, value in mapping.items():
+            actor, verified = (value, False) if isinstance(value, str) or value is None else (
+                value.get("actor"), bool(value.get("verified")))
+            if verified or not verified_only:
+                out[(meeting, label)] = actor
+    return out
+
+
 class Scorer:
-    def __init__(self, history: History, store: Store):
-        self.history, self.store = history, store
+    def __init__(self, history: History, store: Store, *, facts: Facts | None = None,
+                 answer: Callable[[dict], str | None] | None = None):
+        self.history, self.store, self.facts, self.answer = history, store, facts, answer
         self.spans = {label["id"]: [_locate(history, e["meeting"], e["quote"]) for e in label["evidence"]]
                       for label in history.labels["assertions"]}
         self.labels = {label["id"]: label for label in history.labels["assertions"]}
         self.entries = [e for e in store.entries.values()
                         if e.view.lifecycle in SCORED and e.view.modality == "asserted"]
+        self.by_id = {e.view.id: e for e in self.entries}
 
     def matches(self, label: dict, entry: Entry) -> bool:
         if label["kind"] != entry.view.kind:
@@ -547,11 +586,102 @@ class Scorer:
                 per_kind[kind] = {"labels": len(labels), "candidates": len(entries), "true_positive": len(tp),
                                   "false_positive": fp, "ignored": len(ignored), "found": len(found),
                                   "precision": _ratio(len(tp), len(tp) + fp), "recall": _ratio(len(found), len(labels))}
-        return {"per_kind": per_kind, "commitments": self._commitments(positives),
-                "must_not": self._must_not([x for x in self.history.labels["must_not"] if counted(x)]),
+        must_not = self._must_not([x for x in self.history.labels["must_not"] if counted(x)])
+        return {"per_kind": per_kind, "commitments": self._commitments(positives), "must_not": must_not,
                 "deletion_leaks": self._leaks(), "as_of": self._as_of([x for x in self.history.labels["as_of"] if counted(x)]),
                 "open_loops": self._open_loops([x for x in self.history.labels["open_loops"] if counted(x)]),
-                "supersession": self._supersession([x for x in self.history.labels["changes"] if counted(x)])}
+                "supersession": self._supersession([x for x in self.history.labels["changes"] if counted(x)]),
+                "speakers": self._speakers(verified_only), "entity_links": self._links(positives, verified_only),
+                "fulfilment": self._fulfilment(positives), "proposals": self._proposals(positives, unknown),
+                "fabricated_actions": self._fabricated([x for x in self.history.labels["must_not"] if counted(x)],
+                                                       must_not)}
+
+    def _speakers(self, verified_only: bool) -> dict | None:
+        """Diarization labels resolved to the right actor. Not measured in memory mode (no speaker linking)."""
+        if self.facts is None:
+            return None
+        outcome = Counter()
+        for key, expected in speaker_labels(self.history.labels, verified_only).items():
+            status, actor = self.facts.speakers.get(key, ("unresolved", None))
+            outcome["unresolved" if status not in AUTO_LINKS else "correct" if actor == expected else "wrong"] += 1
+        judged = outcome["correct"] + outcome["wrong"]
+        return {"labels": sum(outcome.values()), **{k: outcome[k] for k in ("correct", "wrong", "unresolved")},
+                "precision": _ratio(outcome["correct"], judged),
+                "accuracy": _ratio(outcome["correct"], sum(outcome.values()))}
+
+    def _links(self, positives, verified_only: bool) -> dict | None:
+        """Automatically applied person links (responsible roles on labelled commitments, plus speaker links):
+        precision of `exact`/`inferred` links and the share left unresolved. Links on unlabelled assertions are
+        `unjudged`. Not measured in memory mode, where the runner applies no links."""
+        if self.facts is None:
+            return None
+        commitments = [x for x in positives if x["kind"] == "commitment"]
+        outcome = Counter()
+        for link in self.facts.links:
+            if link["role"] not in ("responsible", "responsible_mention"):
+                continue
+            entry = self.by_id.get(link["assertion_id"])
+            ids = self.labelled(entry, commitments) if entry else []
+            if not ids:
+                outcome["unjudged"] += 1
+                continue
+            expected = {actor for i in ids for actor in self.labels[i].get("responsible", [])}
+            outcome["unresolved" if link["status"] not in AUTO_LINKS else
+                    "correct" if link["target"] in expected else "wrong"] += 1
+        speakers = self._speakers(verified_only)
+        for k in ("correct", "wrong", "unresolved"):
+            outcome[k] += speakers[k]
+        auto = outcome["correct"] + outcome["wrong"]
+        return {"auto_applied": auto, **{k: outcome[k] for k in ("correct", "wrong", "unresolved", "unjudged")},
+                "precision": _ratio(outcome["correct"], auto),
+                "unresolved_rate": _ratio(outcome["unresolved"], auto + outcome["unresolved"])}
+
+    def _fulfilment(self, positives) -> dict:
+        """Labelled commitments with a `fulfilled` observation versus assertions carrying completion evidence."""
+        completed = self.facts.completed if self.facts else set()
+        outcome = Counter()
+        for label in (x for x in positives if x["kind"] == "commitment"):
+            done = any(e.view.id in completed for e in self.entries if self.matches(label, e))
+            expected = bool(label.get("fulfilled"))
+            outcome["detected" if expected and done else "missed" if expected else
+                    "false_completion" if done else "open_ok"] += 1
+        expected = outcome["detected"] + outcome["missed"]
+        return {"measured": self.facts is not None, "expected": expected,
+                **{k: outcome[k] for k in ("detected", "missed", "false_completion")},
+                "recall": _ratio(outcome["detected"], expected)}
+
+    def _proposals(self, positives, unknown) -> dict | None:
+        """Preselected task proposals under the own-action rule: correct when the proposal carries a labelled
+        commitment the owner is responsible for; one carrying only unverified labels is ignored. Not measured in
+        memory mode."""
+        if self.facts is None:
+            return None
+
+        def carried(labels, proposal):
+            return [x for x in labels if x["kind"] == "commitment" and any(
+                _overlap(a, b) >= EVIDENCE_OVERLAP for a in self.spans[x["id"]] for b in proposal["spans"])]
+
+        outcome = Counter()
+        for proposal in (p for p in self.facts.proposals if p["preselected"]):
+            labels = carried(positives, proposal)
+            if labels:
+                outcome["correct" if any(self.history.owner_actor in x.get("responsible", []) for x in labels)
+                        else "wrong"] += 1
+            else:
+                outcome["ignored" if carried(unknown, proposal) else "wrong"] += 1
+        judged = outcome["correct"] + outcome["wrong"]
+        return {"proposals": len(self.facts.proposals), "preselected": sum(outcome.values()),
+                **{k: outcome[k] for k in ("correct", "wrong", "ignored")}, "precision": _ratio(outcome["correct"], judged)}
+
+    def _fabricated(self, labels, must_not: dict) -> dict:
+        """Hypothetical or negated statements that became commitments or task proposals."""
+        proposals = []
+        for label in labels:
+            span = _locate(self.history, label["meeting"], label["quote"])
+            proposals += [{"label": label["id"], "proposal": p["id"]} for p in (self.facts.proposals if self.facts else [])
+                          if any(_overlap(span, s) >= EVIDENCE_OVERLAP for s in p["spans"])]
+        return {"labels": len(labels), "assertions": len(must_not["violations"]), "proposals": len(proposals),
+                "total": len(must_not["violations"]) + len(proposals), "proposal_violations": proposals}
 
     def _attributed(self, entry: Entry) -> str | None:
         """The actor the engine named as responsible: an entity ID, or a mention naming exactly one actor."""
@@ -591,26 +721,37 @@ class Scorer:
         return {"labels": len(labels), "violations": violations}
 
     def _leaks(self) -> list[str]:
+        if self.facts is not None:
+            return self.facts.leaks
         deleted = {m.key for m in self.history.meetings if m.deleted_at}
         return sorted(e.view.statement for e in self.entries if any(m in deleted for m, _ in e.evidence))
 
-    def _as_of(self, questions) -> dict:
+    def _retriever_answer(self) -> Callable[[dict], str | None]:
         corpus = [Indexed(owner_id=self.store.owner_id, text=e.view.statement, hit=Hit(
             ref_type="assertion", id=e.view.id, revision=e.view.revision, score=0, kind=e.view.kind,
             lifecycle=e.view.lifecycle, valid_from=e.view.valid_from.at,
             valid_to=e.view.valid_to.at if e.view.valid_to else None)) for e in self.entries]
-        retriever, by_id = DoubleRetriever(corpus), {e.view.id: e for e in self.entries}
-        results, outcome = [], Counter()
-        for q in questions:
+        retriever = DoubleRetriever(corpus)
+
+        def answer(q: dict) -> str | None:
             scope = ScopePredicate(owner_id=self.store.owner_id, include_superseded=True,
                                    valid_at=datetime.fromisoformat(q["valid_at"]), kinds=q["kinds"])
             hits = retriever.retrieve(RetrieveQuery(text=q["question"], scope=scope, limit=1))
+            return hits[0].id if hits else None
+        return answer
+
+    def _as_of(self, questions) -> dict:
+        """Each question answered with one result at `valid_at`: the retriever double in memory mode,
+        `context_search` in database mode."""
+        answer = self.answer or self._retriever_answer()
+        results, outcome = [], Counter()
+        for q in questions:
+            entry = self.by_id.get(answer(q) or "")
             family = [self.labels[x] for x in q["family"]]
-            answer = self.labelled(by_id[hits[0].id], family) if hits else []
-            verdict = "correct" if q["expected"] in answer else "stale" if answer else "unanswered"
+            labelled = self.labelled(entry, family) if entry else []
+            verdict = "correct" if q["expected"] in labelled else "stale" if labelled else "unanswered"
             outcome[verdict] += 1
-            results.append({"id": q["id"], "verdict": verdict,
-                            "answer": by_id[hits[0].id].view.statement if hits else None})
+            results.append({"id": q["id"], "verdict": verdict, "answer": entry.view.statement if entry else None})
         return {"questions": len(questions), **{k: outcome[k] for k in ("correct", "stale", "unanswered")},
                 "stale_answer_rate": _ratio(outcome["stale"], len(questions)), "results": results}
 
@@ -649,6 +790,449 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     return None if denominator == 0 else round(numerator / denominator, 4)
 
 
+# ---------------------------------------------------------------- database mode
+
+
+STOPWORDS = frozenset((
+    "a", "an", "and", "are", "as", "at", "be", "by", "did", "do", "does", "for", "from", "had", "has", "have", "how",
+    "i", "if", "in", "is", "it", "its", "of", "on", "or", "our", "so", "that", "the", "this", "to", "was", "we",
+    "were", "what", "when", "which", "who", "why", "will", "with", "you", "your"))
+
+
+def _stem(word: str) -> str:
+    return word[:-1] if len(word) > 3 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def fake_vector(text: str) -> list[float]:
+    """A deterministic stand-in for the embedding model: hashed bag of (crudely stemmed) words, 512 dimensions,
+    unit length. Texts sharing words are close; no paraphrase understanding."""
+    vector = [0.0] * 512
+    for word in WORD.findall(text.lower()):
+        if word not in STOPWORDS:
+            vector[int(hashlib.sha256(_stem(word).encode()).hexdigest(), 16) % 512] += 1.0
+    norm = sqrt(sum(x * x for x in vector))
+    if not norm:
+        vector[0] = 1.0
+        return vector
+    return [x / norm for x in vector]
+
+
+@contextmanager
+def offline(*, embeddings: bool = True):
+    """Context flag on, embeddings from `fake_vector`, and every model call refused, so nothing is spent.
+    `embeddings=False` leaves the embedding functions alone (the refused provider then fails them, and retrieval
+    falls back to lexical)."""
+    from jarvis import memory_learning
+    from jarvis.config import get_settings
+
+    def refuse(*args, **kwargs):
+        raise EngineUnavailable("model calls are disabled in offline evaluation")
+
+    settings = get_settings()
+    names = ("embeddings", "query_embedding", "provider_request", "extraction_request")
+    saved = {name: getattr(memory_learning, name) for name in names}
+    flag = settings.context_enabled
+    memory_learning.provider_request = memory_learning.extraction_request = refuse
+    if embeddings:
+        memory_learning.embeddings = lambda owner, texts, timeout=20: [fake_vector(t) for t in texts]
+        memory_learning.query_embedding = lambda owner, query, timeout=3, provider=None: fake_vector(query)
+    settings.context_enabled = True
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            setattr(memory_learning, name, value)
+        settings.context_enabled = flag
+
+
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+@contextmanager
+def throwaway_database(prefix: str = "jarvis_eval", *, allow_remote: bool = False):
+    """A fresh database (pgvector extension, tables from the models) beside the configured one, dropped on exit.
+    Refuses a non-local server unless `allow_remote`: evaluation never touches a deployed database."""
+    from jarvis.config import get_settings
+    from jarvis.db import engine
+    from jarvis.models import Base
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    original = get_settings().database_url
+    url = make_url(original)
+    if url.host not in LOCAL_HOSTS and not allow_remote:
+        raise SystemExit(f"refusing to create an evaluation database on {url.host!r}; point JARVIS_DATABASE_URL at "
+                         "a local test server (see docs/ADDING_FEATURES.md)")
+    name = f"{prefix}_{uuid4().hex[:12]}"
+    admin = create_engine(original, isolation_level="AUTOCOMMIT")
+    with admin.connect() as connection:
+        connection.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    saved = os.environ.get("JARVIS_DATABASE_URL")
+    os.environ["JARVIS_DATABASE_URL"] = url.set(database=name).render_as_string(hide_password=False)
+    get_settings.cache_clear()
+    engine.cache_clear()
+    try:
+        with engine().begin() as connection:
+            connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
+        Base.metadata.create_all(engine())
+        yield name
+    finally:
+        engine().dispose()
+        engine.cache_clear()
+        if saved is None:
+            os.environ.pop("JARVIS_DATABASE_URL", None)
+        else:
+            os.environ["JARVIS_DATABASE_URL"] = saved
+        get_settings.cache_clear()
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+        admin.dispose()
+
+
+@dataclass(frozen=True)
+class Deployment:
+    """A history delivered into the database under its own owner. Fixture actor IDs get a per-owner suffix
+    (`alpha-robin~1a2b3c4d`) so several deliveries share one database; `fixture` maps them back."""
+
+    history: History
+    owner: str
+    tag: str
+    order: str
+    seed: int
+
+    def actor(self, fixture_actor: str) -> str:
+        return f"{fixture_actor}~{self.tag}"
+
+    def fixture(self, actor_id: str | None) -> str | None:
+        suffix = "~" + self.tag
+        return actor_id[:-len(suffix)] if actor_id and actor_id.endswith(suffix) else actor_id
+
+
+def identity_of(owner: str):
+    """The signed-in owner, for `service.as_owner`."""
+    from jarvis.auth import Identity
+
+    return Identity(owner_id=owner, device_id="context-eval", csrf="", role="owner")
+
+
+def drain(owner: str, limit: int = 5000) -> list[str]:
+    """Run the owner's queued context jobs oldest first, as the worker would, until none are left."""
+    from jarvis.context import pipeline
+    from jarvis.db import session_scope
+    from jarvis.models import Job
+    from sqlalchemy import select
+
+    kinds = []
+    for _ in range(limit):
+        with session_scope() as db:
+            job = db.scalar(select(Job).where(Job.owner_id == owner, Job.kind.like("context\\_%"),
+                                              Job.status.in_(("queued", "retrying")))
+                            .order_by(Job.created_at, Job.id).limit(1))
+            if job is None:
+                return kinds
+            job_id, kind = job.id, job.kind
+        pipeline.perform(job_id)
+        kinds.append(kind)
+    raise RuntimeError(f"context jobs for {owner} did not drain")
+
+
+def _seed(deployment: Deployment, engine: str) -> None:
+    """The history's actors (the owner's own actor under `identity.OWNER_ACTOR_NAME`, as productivity seeds it,
+    with its real name as an alias), their e-mail identities, and the owner's engine setting."""
+    from jarvis.context import identity
+    from jarvis.context.models import ContextOwnerState
+    from jarvis.db import session_scope
+    from jarvis.models import Actor
+
+    history, owner = deployment.history, deployment.owner
+    with session_scope() as db:
+        for a in history.actors:
+            mine = a["id"] == history.owner_actor
+            db.add(Actor(id=deployment.actor(a["id"]), owner_id=owner, kind=a.get("kind", "person"),
+                         name=identity.OWNER_ACTOR_NAME if mine else a["name"]))
+        db.flush()
+        for a in history.actors:
+            for email in a.get("emails", []):
+                identity.add_identity(db, owner, deployment.actor(a["id"]), "email", email, status="confirmed",
+                                      provenance={"origin": "fixture"})
+            if a["id"] == history.owner_actor:
+                identity.add_identity(db, owner, deployment.actor(a["id"]), "alias", a["name"], status="confirmed",
+                                      provenance={"origin": "fixture"})
+        db.add(ContextOwnerState(owner_id=owner, settings={"engine": "double"} if engine == "doubles" else {}))
+
+
+def source_ids(owner: str) -> dict[str, str]:
+    """Meeting key (the envelope's external ID) -> source ID."""
+    from jarvis.context import sources
+    from jarvis.context.models import ContextSource, ContextSourceRevision
+    from jarvis.db import session_scope
+    from sqlalchemy import select
+
+    with session_scope() as db:
+        out = {}
+        for source, revision in db.execute(
+                select(ContextSource, ContextSourceRevision).join(
+                    ContextSourceRevision, (ContextSourceRevision.source_id == ContextSource.id)
+                    & (ContextSourceRevision.revision == ContextSource.current_revision))
+                .where(ContextSource.owner_id == owner)):
+            out[sources.split_external_id(source, revision)[1]] = source.id
+        return out
+
+
+def deploy(history: History, order: str = "arrival", seed: int = 0, *, engine: str = "doubles",
+           owner: str | None = None, between: Callable[[str], None] | None = None) -> Deployment:
+    """Deliver the history's events in `order` through `sources.receive` / `sources.delete_source`, draining the
+    owner's context jobs after each. `between(owner)` runs after each drain (the live comparison's budget check).
+    Needs a database (see `throwaway_database`) and `offline()` unless running live."""
+    from jarvis.context import sources
+    from jarvis.db import session_scope
+
+    tag = uuid4().hex[:8]
+    deployment = Deployment(history, owner or f"eval-{history.name}-{order[:5]}-{tag}", tag, order, seed)
+    _seed(deployment, engine)
+    for event, meeting, _ in schedule(history, order, seed):
+        with session_scope() as db:
+            if event == "receive":
+                sources.receive(db, deployment.owner, meeting.envelope)
+            else:
+                source_id = source_ids(deployment.owner).get(meeting.key)
+                if source_id:
+                    sources.delete_source(db, deployment.owner, source_id)
+        drain(deployment.owner)
+        if between:
+            between(deployment.owner)
+    return deployment
+
+
+def load_state(deployment: Deployment) -> tuple[Store, Facts]:
+    """The deployment's assertions as an in-memory `Store` (evidence from deleted sources dropped, as the memory
+    mode's deletion does) and the database-only facts, with fixture actor IDs restored."""
+    from jarvis.context import sources
+    from jarvis.context.models import (
+        ContextAssertion,
+        ContextEntityLink,
+        ContextEvidence,
+        ContextProposal,
+        ContextSegment,
+        ContextSource,
+        ContextSourceRevision,
+    )
+    from jarvis.db import session_scope
+    from sqlalchemy import select
+
+    owner = deployment.owner
+    with session_scope() as db:
+        meeting_of, deleted = {}, set()
+        for source in db.scalars(select(ContextSource).where(ContextSource.owner_id == owner)):
+            revision = db.scalar(select(ContextSourceRevision).where(
+                ContextSourceRevision.source_id == source.id,
+                ContextSourceRevision.revision == source.current_revision))
+            meeting_of[source.id] = sources.split_external_id(source, revision)[1]
+            if source.status == "deleted" or source.deleted_at is not None:
+                deleted.add(source.id)
+        segments = {s.id: s for s in db.scalars(select(ContextSegment).where(ContextSegment.owner_id == owner))}
+        revision_source = dict(db.execute(select(ContextSourceRevision.id, ContextSourceRevision.source_id)
+                                          .where(ContextSourceRevision.owner_id == owner)).all())
+        evidence = defaultdict(list)
+        for e in db.scalars(select(ContextEvidence).where(ContextEvidence.owner_id == owner)
+                            .order_by(ContextEvidence.created_at, ContextEvidence.id)):
+            evidence[e.assertion_id].append(e)
+        links = [{"assertion_id": x.assertion_id, "role": x.role, "status": x.status, "mention": x.mention,
+                  "target": deployment.fixture(x.target_id) if x.target_type == "actor" else x.target_id}
+                 for x in db.scalars(select(ContextEntityLink).where(ContextEntityLink.owner_id == owner)
+                                     .order_by(ContextEntityLink.created_at, ContextEntityLink.id))]
+        responsible = defaultdict(list)
+        for link in links:
+            if link["role"] == "responsible" and link["status"] in (*AUTO_LINKS, "confirmed") and link["target"]:
+                responsible[link["assertion_id"]].append(link["target"])
+        store, leaks, completed = Store(owner), [], set()
+        rows = list(db.scalars(select(ContextAssertion).where(ContextAssertion.owner_id == owner,
+                                                              ContextAssertion.lifecycle != "shadow")
+                               .order_by(ContextAssertion.created_at, ContextAssertion.id)))
+        for row in rows:
+            spans = []
+            for e in evidence[row.id]:
+                segment = segments.get(e.segment_id)
+                if e.source_id in deleted or segment is None or e.char_start is None or not e.quote:
+                    continue
+                spans.append((meeting_of[e.source_id], EvidenceRef.model_construct(
+                    segment_seq=segment.seq, quote=e.quote, char_start=e.char_start, char_end=e.char_end,
+                    role=e.role, origin=e.origin, source_revision_id=e.revision_id)))
+            supported = any(ref.role == "support" for _, ref in spans)
+            if row.lifecycle in ("current", "contested") and not supported and any(
+                    e.source_id in deleted for e in evidence[row.id]):
+                leaks.append(row.statement)
+            if row.completion_evidence:
+                completed.add(row.id)
+            people = [EntityRef(entity_type="actor", entity_id=a) for a in responsible.get(row.id, [])] or [
+                EntityRef.model_validate(r) for r in row.responsible or []]
+            view = AssertionView.model_construct(
+                id=row.id, revision=row.current_version, kind=row.kind, statement=row.statement, key=row.key,
+                modality=row.modality, inferred=not row.explicit, lifecycle=row.lifecycle,
+                valid_from=TimeBound(at=row.valid_from or row.created_at, precision=row.valid_precision
+                                     if row.valid_precision in ("instant", "day", "month", "year") else "instant"),
+                valid_to=TimeBound(at=row.valid_to) if row.valid_to else None, recorded_at=row.created_at,
+                due=TimeBound(at=row.due_at, precision="day") if row.due_at else None, responsible=people,
+                recipient=None, subject=None, object=None, evidence=[ref for _, ref in spans],
+                confidence=row.confidence, source_revision_id=None)
+            store.entries[row.id] = Entry(view, spans[0][0] if spans else "", spans)
+        for row in rows:
+            if row.supersedes_id in store.entries and row.lifecycle != "retracted":
+                store.entries[row.supersedes_id].superseded_by = row.id
+        speakers: dict[tuple[str, str], Counter] = defaultdict(Counter)
+        for segment in segments.values():
+            source_id = revision_source.get(segment.revision_id)
+            if segment.speaker_label and source_id in meeting_of and source_id not in deleted:
+                speakers[(meeting_of[source_id], segment.speaker_label)][
+                    (segment.speaker_link_status, deployment.fixture(segment.speaker_actor_id))] += 1
+        proposals = []
+        for p in db.scalars(select(ContextProposal).where(ContextProposal.owner_id == owner)):
+            spans = []
+            for e in p.evidence or []:
+                segment = segments.get(e.get("segment_id"))
+                source_id = revision_source.get(segment.revision_id) if segment else None
+                if segment is not None and e.get("char_start") is not None and source_id in meeting_of:
+                    spans.append((meeting_of[source_id], segment.seq, e["char_start"], e["char_end"]))
+            proposals.append({"id": p.id, "preselected": p.preselected, "disposition": p.disposition,
+                              "spans": spans})
+    facts = Facts(links=links, speakers={k: v.most_common(1)[0][0] for k, v in speakers.items()},
+                  completed=completed, proposals=proposals, leaks=sorted(leaks))
+    return store, facts
+
+
+def service_answer(deployment: Deployment) -> Callable[[dict], str | None]:
+    """As-of questions through `context_search` (the native hybrid retriever behind the application service)."""
+    from jarvis.context import service
+
+    def answer(q: dict) -> str | None:
+        with service.as_owner(identity_of(deployment.owner)):
+            found = service.search(service.SearchInput(query=q["question"], kinds=q["kinds"],
+                                                       valid_at=datetime.fromisoformat(q["valid_at"]), limit=1))
+        hits = [r for r in found["results"] if r["ref"] == "assertion"]
+        return hits[0]["id"] if hits else None
+    return answer
+
+
+def snapshot(owner: str) -> dict:
+    """What maintenance must not create when nothing changed: Questions, proposals, brief versions, tasks and
+    assertion versions."""
+    from jarvis.context import service
+    from jarvis.context.models import ContextAssertionVersion, ContextBrief, ContextProposal
+    from jarvis.db import session_scope
+    from jarvis.models import Task
+    from sqlalchemy import func, select
+
+    def count(model, *where):
+        return db.scalar(select(func.count()).select_from(model).where(model.owner_id == owner, *where))
+
+    with session_scope() as db:
+        return {"questions": sorted(f"{q['key']}@{q['revision']}" for q in service.question_items(db, owner)),
+                "proposals": count(ContextProposal), "briefs": count(ContextBrief),
+                "brief_versions": int(db.scalar(select(func.coalesce(func.sum(ContextBrief.version), 0))
+                                                .where(ContextBrief.owner_id == owner))),
+                "tasks": count(Task), "assertion_versions": count(ContextAssertionVersion)}
+
+
+def maintenance(deployment: Deployment, runs: int = MAINTENANCE_RUNS) -> dict:
+    """Redeliver every surviving meeting (nothing may change), settle one maintenance pass, then `runs` more
+    `context_lint` passes and `schedule_due` ticks: the later runs must create no Questions, proposals, brief
+    versions, tasks or assertion versions."""
+    from jarvis.context import lint, pipeline, sources
+    from jarvis.db import session_scope
+
+    owner, history = deployment.owner, deployment.history
+    store_before = signature(load_state(deployment)[0])
+    unchanged = 0
+    for meeting in history.meetings:
+        if meeting.deleted_at is None:
+            with session_scope() as db:
+                unchanged += sources.receive(db, owner, meeting.envelope).unchanged
+    drain(owner)
+    redelivery_stable = signature(load_state(deployment)[0]) == store_before
+    lint.perform(owner)
+    drain(owner)
+    settled = snapshot(owner)
+    for _ in range(runs):
+        lint.perform(owner)
+        with session_scope() as db:
+            pipeline.schedule_due(db)
+        drain(owner)
+    after = snapshot(owner)
+    created = {k: (len(set(after[k]) - set(settled[k])) if isinstance(after[k], list) else after[k] - settled[k])
+               for k in after}
+    return {"redelivered": sum(1 for m in history.meetings if m.deleted_at is None), "unchanged": unchanged,
+            "redelivery_stable": redelivery_stable, "runs": runs, "settled": settled, "created": created,
+            "no_change": redelivery_stable and not any(created.values())}
+
+
+def db_processing(deployment: Deployment) -> dict:
+    """Accounting for the deployment: sources by status, segments covered by succeeded extraction, runs by stage
+    and status, and cost."""
+    from jarvis.context.models import ContextRun, ContextSegment, ContextSource
+    from jarvis.db import session_scope
+    from sqlalchemy import select
+
+    owner = deployment.owner
+    with session_scope() as db:
+        statuses = Counter(db.scalars(select(ContextSource.status).where(ContextSource.owner_id == owner)))
+        runs = list(db.scalars(select(ContextRun).where(ContextRun.owner_id == owner)))
+        extracted = {r.revision_id: r for r in runs if r.stage == "extract" and r.status == "succeeded"}
+        segments = Counter(db.scalars(select(ContextSegment.revision_id).where(
+            ContextSegment.owner_id == owner, ContextSegment.text != "")))
+        covered = sum(len(set(r.coverage or {}) & {str(i) for i in range(segments[rev])})
+                      for rev, r in extracted.items())
+        by_stage = Counter(f"{r.stage}:{r.status}" for r in runs)
+        return {"owner": owner, "meetings": len(deployment.history.meetings), "sources": dict(sorted(statuses.items())),
+                "segments": sum(segments.values()), "covered_segments": covered,
+                "runs": dict(sorted(by_stage.items())),
+                "cost_usd": round(sum(float(r.cost_usd or 0) for r in runs), 6),
+                "events": [f"{e}:{m.key}" for e, m, _ in schedule(deployment.history, deployment.order, deployment.seed)]}
+
+
+THREE_ORDERS = ("chronological", "arrival", "shuffled")
+
+
+def db_run(history_dir: str | Path, order: str = "arrival", seed: int = 0, *, engine: str = "doubles",
+           maintenance_runs: int = MAINTENANCE_RUNS) -> "tuple[Report, Deployment]":
+    """Score one history through the real pipeline: the primary `order` plus the other two of chronological,
+    arrival and shuffled (with `seed`), each under its own owner in the current database. Needs `offline()`
+    (and a database: `throwaway_database`). Returns the report and the primary deployment (compare uses it)."""
+    if engine != "doubles":
+        raise EngineUnavailable("database mode runs the pipeline with the doubles; the native engines need recorded "
+                                "responses for every stage, which do not exist yet (use --mode memory --engine native)")
+    if order not in ORDERS:
+        raise ValueError(f"unknown order {order!r}; choose one of {ORDERS}")
+    history = load_history(history_dir)
+    deployments = {o: deploy(history, o, seed, engine=engine) for o in (order, *[x for x in THREE_ORDERS if x != order])}
+    primary = deployments[order]
+    store, facts = load_state(primary)
+    scorer = Scorer(history, store, facts=facts, answer=service_answer(primary))
+    states = {o: load_state(d)[0] for o, d in deployments.items()}
+    pairs, state = supersessions(store), signature(store)
+    others = [o for o in deployments if o != order]
+    errors_by_order = {}
+    for o, s in states.items():
+        by_order = Scorer(history, s)
+        errors_by_order[o] = {
+            "all": len(by_order._supersession(history.labels["changes"])["errors"]),
+            "verified": len(by_order._supersession([x for x in history.labels["changes"] if x["verified"]])["errors"])}
+    kept = maintenance(primary, maintenance_runs)
+    stability = {
+        "compared_runs": len(others), "orders": [f"{o}:{seed}" if o == "shuffled" else o for o in others],
+        "supersession_agreement": _ratio(sum(supersessions(states[o]) == pairs for o in others), len(others)),
+        "state_agreement": _ratio(sum(signature(states[o]) == state for o in others), len(others)),
+        "supersessions": sorted(list(p) for p in pairs), "supersession_errors_by_order": errors_by_order,
+        "deterministic": None, "repeat_stable": kept["redelivery_stable"], "maintenance": kept,
+        "no_change_on_repeat": kept["no_change"]}
+    processing = db_processing(primary) | {
+        "assertions": len(store.entries),
+        "lifecycles": dict(sorted(Counter(e.view.lifecycle for e in store.entries.values()).items())),
+        "rejected_candidates": None, "stale_ops": None, "extraction_problems": []}
+    report = Report(history.name, engine, order, seed, _label_counts(history.labels),
+                    {"all": scorer.score(False), "verified": scorer.score(True)}, stability, processing, mode="db")
+    return report, primary
+
+
 # ---------------------------------------------------------------- the run
 
 
@@ -662,13 +1246,14 @@ class Report:
     scores: dict
     stability: dict
     processing: dict
+    mode: str = "memory"
 
     def to_dict(self) -> dict:
         return asdict(self)
 
     def markdown(self) -> str:
         s = self.scores["all"]
-        lines = [f"# Context eval: {self.history} ({self.engine}, {self.order}, seed {self.seed})", "",
+        lines = [f"# Context eval: {self.history} ({self.mode}, {self.engine}, {self.order}, seed {self.seed})", "",
                  f"Labels: {self.labels['total']} total, {self.labels['verified']} verified. "
                  + ("Release scoring uses verified labels only; none are verified yet, so the figures below are "
                     "informational." if not self.labels["verified"] else "Release figures: see `scores.verified`."),
@@ -676,25 +1261,43 @@ class Report:
         lines += [f"| {k} | {v['labels']} | {v['candidates']} | {_fmt(v['precision'])} | {_fmt(v['recall'])} |"
                   for k, v in s["per_kind"].items()]
         c, a, loops = s["commitments"], s["as_of"], s["open_loops"]["results"]
-        sup, stab = s["supersession"], self.stability
+        sup, stab, fab, done = s["supersession"], self.stability, s["fabricated_actions"], s["fulfilment"]
+        speakers, links = s["speakers"], s["entity_links"]
         lines += ["", (f"- Commitment due dates: {_fmt(c['due_date_accuracy'])} correct; attribution "
                       f"{c['attribution'] or 'n/a'}."),
-                  (f"- Hypothetical or negated statements recorded as commitments: {len(s['must_not']['violations'])} "
-                  f"of {s['must_not']['labels']}."),
+                  (f"- Hypothetical or negated statements recorded as commitments: {fab['assertions']} of "
+                   f"{fab['labels']}; as task proposals: {fab['proposals']}."),
                   f"- Assertions still supported by deleted sources: {len(s['deletion_leaks'])}.",
                   (f"- As-of questions: {a['correct']} correct, {a['stale']} stale, {a['unanswered']} unanswered; "
                   f"stale-answer rate {_fmt(a['stale_answer_rate'])}."),
                   "- Open loops (precision/recall by date): "
                   + (", ".join(f"{x['id']} {_fmt(x['precision'])}/{_fmt(x['recall'])}" for x in loops) or "n/a") + ".",
+                  (f"- Commitment fulfilment: {done['detected']} of {done['expected']} detected, "
+                   f"{done['false_completion']} false completions" + ("" if done["measured"] else
+                                                                     " (not measured in memory mode)") + "."),
+                  ("- Speakers: not measured in memory mode." if speakers is None else
+                   f"- Speakers: {speakers['correct']} correct, {speakers['wrong']} wrong, "
+                   f"{speakers['unresolved']} unresolved of {speakers['labels']} labelled diarization labels."),
+                  ("- Entity links: not measured in memory mode." if links is None else
+                   f"- Entity links applied automatically: precision {_fmt(links['precision'])} over "
+                   f"{links['auto_applied']}; unresolved rate {_fmt(links['unresolved_rate'])}; "
+                   f"{links['unjudged']} on unlabelled assertions."),
                   f"- Expected supersessions found: {sup['agreed']} of {sup['expected']}.",
+                  "- Supersession errors by order: " + ", ".join(
+                      f"{o} {v['all']}" for o, v in stab.get("supersession_errors_by_order", {}).items()) + ".",
                   (f"- Supersession agreement across {stab['compared_runs']} other orders: "
                   f"{_fmt(stab['supersession_agreement'])}; state agreement {_fmt(stab['state_agreement'])}."),
-                  f"- Deterministic: {stab['deterministic']}; no change on repeat: {stab['no_change_on_repeat']}.",
-                  (f"- Processing: {self.processing['meetings']} meetings, coverage "
-                  f"{self.processing['covered_segments']}/{self.processing['segments']} segments, "
-                  f"{len(self.processing['extraction_problems'])} extraction problems, "
-                  f"{self.processing['rejected_candidates']} rejected candidates, {self.processing['stale_ops']} stale ops."),
-                  ""]
+                  f"- Deterministic: {stab['deterministic']}; no change on repeat: {stab['no_change_on_repeat']}."]
+        if "maintenance" in stab:
+            kept = stab["maintenance"]
+            lines.append(f"- Maintenance: {kept['runs']} unchanged lint and schedule runs created "
+                         + (", ".join(f"{v} {k}" for k, v in kept["created"].items() if v) or "nothing")
+                         + f"; {kept['unchanged']} of {kept['redelivered']} redeliveries unchanged.")
+        p = self.processing
+        lines += [(f"- Processing: {p['meetings']} meetings, coverage {p['covered_segments']}/{p['segments']} "
+                   f"segments, {len(p['extraction_problems'])} extraction problems"
+                   + (f", {p['rejected_candidates']} rejected candidates, {p['stale_ops']} stale ops."
+                      if self.mode == "memory" else f"; runs {p['runs']}.")), ""]
         return "\n".join(lines)
 
 
@@ -704,8 +1307,13 @@ def _fmt(value: float | None) -> str:
 
 def _label_counts(labels: dict) -> dict:
     items = [x for section in ("assertions", "changes", "must_not", "open_loops", "as_of") for x in labels[section]]
-    return {"total": len(items), "verified": sum(1 for x in items if x["verified"]),
-            **{section: len(labels[section]) for section in ("assertions", "changes", "must_not", "open_loops", "as_of")}}
+    speakers = speaker_labels(labels, False)
+    verified_speakers = speaker_labels(labels, True)
+    sections = ("assertions", "changes", "must_not", "open_loops", "as_of")
+    return {"total": len(items) + len(speakers), "verified": sum(1 for x in items if x["verified"]) + len(verified_speakers),
+            **{section: len(labels[section]) for section in sections}, "speakers": len(speakers),
+            "verified_by_section": {**{section: sum(1 for x in labels[section] if x["verified"]) for section in sections},
+                                    "speakers": len(verified_speakers)}}
 
 
 def run(history_dir: str | Path, engine: str = "doubles", order: str = "chronological", seed: int = 0, *,
@@ -727,12 +1335,20 @@ def run(history_dir: str | Path, engine: str = "doubles", order: str = "chronolo
     others = [o for o in others if o != (order, seed if order == "shuffled" else 0)]
     runs = [simulate(history, extractor, reconciler, schedule(history, o, s)) for o, s in others]
     pairs, state = supersessions(store), signature(store)
+    errors_by_order = {}
+    for o in THREE_ORDERS:
+        s = store if o == order else simulate(history, extractor, reconciler, schedule(history, o, seed))
+        by_order = Scorer(history, s)
+        errors_by_order[o] = {
+            "all": len(by_order._supersession(history.labels["changes"])["errors"]),
+            "verified": len(by_order._supersession([x for x in history.labels["changes"] if x["verified"]])["errors"])}
     stability = {
         "compared_runs": len(runs), "orders": [f"{o}:{s}" if o == "shuffled" else o for o, s in others],
         "supersession_agreement": _ratio(sum(supersessions(r) == pairs for r in runs), len(runs)),
         "state_agreement": _ratio(sum(signature(r) == state for r in runs), len(runs)),
-        "supersessions": sorted(list(p) for p in pairs), "deterministic": deterministic,
-        "repeat_stable": repeat_stable, "no_change_on_repeat": deterministic and repeat_stable}
+        "supersessions": sorted(list(p) for p in pairs), "supersession_errors_by_order": errors_by_order,
+        "deterministic": deterministic, "repeat_stable": repeat_stable,
+        "no_change_on_repeat": deterministic and repeat_stable}
     lifecycles = Counter(e.view.lifecycle for e in store.entries.values())
     processing = {"meetings": len(history.meetings), "segments": store.segments, "covered_segments": store.covered,
                   "assertions": len(store.entries), "lifecycles": dict(sorted(lifecycles.items())),
@@ -747,8 +1363,9 @@ def write_report(report: Report, out: str | Path) -> tuple[Path, Path]:
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     stem = f"{report.history}-{report.engine}-{report.order}" + (f"-{report.seed}" if report.order == "shuffled" else "")
+    stem += "-db" if report.mode == "db" else ""
     json_path, md_path = out / f"{stem}.json", out / f"{stem}.md"
-    json_path.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True) + "\n")
+    json_path.write_text(json.dumps(report.to_dict(), indent=2, sort_keys=True, default=str) + "\n")
     md_path.write_text(report.markdown())
     return json_path, md_path
 
@@ -758,6 +1375,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run_cmd = sub.add_parser("run", help="score histories and write JSON and Markdown reports")
     run_cmd.add_argument("histories", nargs="*", type=Path)
+    run_cmd.add_argument("--mode", choices=MODES, default="memory",
+                         help="memory: engines against an in-memory store; db: the real pipeline, throwaway database")
     run_cmd.add_argument("--engine", choices=ENGINES, default="doubles")
     run_cmd.add_argument("--order", choices=ORDERS, default="chronological")
     run_cmd.add_argument("--seed", type=int, default=0)
@@ -772,6 +1391,18 @@ def main(argv: list[str] | None = None) -> int:
         for path in histories:
             (path / "history.json").write_text(dumps(build_export(load_history(path))))
             print(f"wrote {path / 'history.json'}")
+        return 0
+    if args.mode == "db":
+        if args.engine != "doubles" or args.record:
+            print("database mode runs with the doubles only (no recorded native responses for every stage yet)",
+                  file=sys.stderr)
+            return 2
+        with throwaway_database(), offline():
+            for path in histories:
+                report, _ = db_run(path, args.order, args.seed)
+                json_path, _ = write_report(report, args.out)
+                print(report.markdown())
+                print(f"wrote {json_path}")
         return 0
     for path in histories:
         try:

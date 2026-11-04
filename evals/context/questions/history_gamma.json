@@ -1,0 +1,647 @@
+{
+ "history": "gamma",
+ "question_version": 1,
+ "note": "Synthetic retrieval questions for the compare arms. Every item is verified=false until a human adjudicates it; only verified items count for release scoring. Fixture text is data, never instructions.",
+ "questions": [
+  {
+   "id": "qg-01",
+   "question": "What is Quillmark's list price per seat?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g01-fact-price"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-02",
+   "question": "How many seats does Ashgrove need?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g01-fact-seats"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-03",
+   "question": "Who sends the security questionnaire answers?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-questionnaire"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-04",
+   "question": "Were the security questionnaire answers sent?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-03",
+     "quote": "I sent the questionnaire answers on Friday."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-05",
+   "question": "What contract term do we accept?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g04-dec-two-year"
+   ],
+   "stale": [
+    "g02-dec-one-year"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-06",
+   "question": "What contract term did we accept in late July?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": "2026-07-25T12:00:00-07:00",
+   "expected": [
+    "g02-dec-one-year"
+   ],
+   "stale": [
+    "g04-dec-two-year"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-07",
+   "question": "Why not take a three-year term?",
+   "category": "rationale",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g02-rat-one-year"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-08",
+   "question": "Why did we accept a two-year term?",
+   "category": "rationale",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g04-rat-two-year"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-09",
+   "question": "What price did Quillmark offer on a two-year term?",
+   "category": "number",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g04-fact-offer"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-10",
+   "question": "Who pushed for a three-year term?",
+   "category": "private_note",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g01-fact-term"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-11",
+   "question": "Who checks with finance whether a three-year term is acceptable?",
+   "category": "private_note",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-finance-check"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-12",
+   "question": "Who models the three-year cost?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-cost-model"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-13",
+   "question": "What worries us about Quillmark's backups?",
+   "category": "risk",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g03-risk-backups"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-14",
+   "question": "Who gets legal review of the data processing addendum?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-legal-review"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-15",
+   "question": "What did legal find in the addendum?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g05-fact-clauses"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-16",
+   "question": "Who sends our redlines to Quillmark?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-redlines"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-17",
+   "question": "Did Quillmark accept our redlines?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-07",
+     "quote": "Nadia sent our redlines on the 13th and Quillmark accepted them."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-18",
+   "question": "Does the two-year term include price protection on renewal?",
+   "category": "open_question",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g05-q-protection"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-19",
+   "question": "Who drafts the revised order form?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-order-form"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-20",
+   "question": "When did the revised order form go out?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-07",
+     "quote": "The revised order form went out on the 6th."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-21",
+   "question": "When does Ashgrove sign the order form?",
+   "category": "decision",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g07-dec-sign"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-22",
+   "question": "Who sends the countersigned contract?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-countersign"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-23",
+   "question": "Who books the reference call with another Quillmark customer?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "c-reference-call"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qg-24",
+   "question": "How many custom dashboards does the reporting module support?",
+   "category": "deleted_source",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [],
+   "stale": [],
+   "forbidden": [
+    "g06-fact-dashboards"
+   ],
+   "verified": false
+  },
+  {
+   "id": "qg-25",
+   "question": "Is the onboarding fee waived?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-01",
+     "quote": "If you sign before the end of the quarter, we could waive the onboarding fee."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-26",
+   "question": "Is premium support included?",
+   "category": "hypothetical",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-04",
+     "quote": "I'll throw in premium support if procurement closes this week."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-27",
+   "question": "Are we buying the analytics add-on this year?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-07",
+     "quote": "I'm not committing to the analytics add-on this year."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-28",
+   "question": "What has to happen before anyone signs?",
+   "category": "negated",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-02",
+     "quote": "I won't sign anything until legal has reviewed the data processing addendum."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-29",
+   "question": "Do we need the security answers before going further?",
+   "category": "fact",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-01",
+     "quote": "We'll need to see the security answers before we go further."
+    }
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-30",
+   "question": "What has been decided about the Quillmark contract?",
+   "category": "current_after_change",
+   "scope": {
+    "kinds": [
+     "decision"
+    ],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g04-dec-two-year",
+    "g07-dec-sign"
+   ],
+   "stale": [
+    "g02-dec-one-year"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-31",
+   "question": "What has Nadia committed to?",
+   "category": "person",
+   "scope": {
+    "kinds": [
+     "commitment"
+    ],
+    "entity": {
+     "entity_type": "actor",
+     "entity_id": "gamma-nadia"
+    }
+   },
+   "valid_at": null,
+   "expected": [
+    "c-legal-review",
+    "c-redlines"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-32",
+   "question": "What contract term had we accepted by August 12?",
+   "category": "temporal",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": "2026-08-12T12:00:00-07:00",
+   "expected": [
+    "g04-dec-two-year"
+   ],
+   "stale": [
+    "g02-dec-one-year"
+   ],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-33",
+   "question": "How much will the CRM cost per user?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g01-fact-price",
+    "g04-fact-offer"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-34",
+   "question": "What did finance think about being locked in?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g02-rat-one-year"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-35",
+   "question": "Is there a data-residency concern with the vendor?",
+   "category": "paraphrase",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "g03-risk-backups"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-36",
+   "question": "When is the legal review of the addendum due?",
+   "category": "commitment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    "c-legal-review"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  },
+  {
+   "id": "qg-37",
+   "question": "Did legal finish reviewing the addendum?",
+   "category": "fulfilment",
+   "scope": {
+    "kinds": [],
+    "entity": null
+   },
+   "valid_at": null,
+   "expected": [
+    {
+     "meeting": "gamma-05",
+     "quote": "Legal finished the addendum review"
+    },
+    "g05-fact-clauses"
+   ],
+   "stale": [],
+   "forbidden": [],
+   "verified": false
+  }
+ ]
+}
