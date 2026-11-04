@@ -374,12 +374,15 @@ def resumable_extractor(cached: dict, save: Callable[[int, dict], None], budget_
     return ResumableExtractor(budget_usd=budget_usd)
 
 
-def _cached_chunks(db, owner: str, revision_id: str) -> dict:
-    """Saved chunk results from every extraction run of the revision, newest winning."""
+def _cached_chunks(db, owner: str, revision_id: str, reprocess: str | None = None) -> dict:
+    """Saved chunk results from every extraction run of the revision, newest winning. A reprocess reuses only its
+    own runs' chunks (its retries and continuations), so it calls the current prompt and model afresh."""
     cached: dict = {}
-    for row in db.scalars(select(ContextRun).where(ContextRun.owner_id == owner, ContextRun.stage == "extract",
-                                                   ContextRun.revision_id == revision_id)
-                          .order_by(ContextRun.created_at, ContextRun.id)):
+    query = select(ContextRun).where(ContextRun.owner_id == owner, ContextRun.stage == "extract",
+                                     ContextRun.revision_id == revision_id)
+    if reprocess:
+        query = query.where(ContextRun.stage_results["payload"]["reprocess"].astext == reprocess)
+    for row in db.scalars(query.order_by(ContextRun.created_at, ContextRun.id)):
         cached.update((row.stage_results or {}).get("chunks", {}))
     return cached
 
@@ -408,7 +411,8 @@ def extract(work: Work) -> dict:
             return replay
         if reason := apply.guard(db, work.owner, run, source_id=source_id, revision_id=revision_id):
             return _stale(db, work, run, reason)
-        if not work.payload.get("continue") and _done(db, work.owner, "extract", revision_id, run.id):
+        reprocess = work.payload.get("reprocess")
+        if not (work.payload.get("continue") or reprocess) and _done(db, work.owner, "extract", revision_id, run.id):
             return _finish(run, skipped="duplicate")
         segments = apply.segments(db, revision_id)
         if not segments:
@@ -417,7 +421,7 @@ def extract(work: Work) -> dict:
         request = _request(db, work.owner, source, revision, segments)
         engine = run.engine = engine_name(db, work.owner)
         stored = (run.stage_results or {}).get("result")
-        cached = _cached_chunks(db, work.owner, revision_id)
+        cached = _cached_chunks(db, work.owner, revision_id, reprocess)
         run_id = run.id
 
     if stored is not None:
@@ -843,6 +847,38 @@ def continue_source(db, owner: str, source_id: str, budget_usd: float) -> str | 
         ContextSourceRevision.source_id == source_id, ContextSourceRevision.revision == source.current_revision))
     return enqueue_job(db, owner, "context_extract", {"source_id": source_id, "revision_id": revision,
                                                       "continue": True, "budget_usd": float(budget_usd)}).id
+
+
+def busy(db, owner: str, source_id: str) -> bool:
+    """A context job for this source is waiting or running."""
+    return _pending(db, owner, source_id=source_id)
+
+
+def reprocess(db, owner: str, source_id: str, nonce: str) -> dict:
+    """The owner's explicit re-run: a fresh extract of the source's current revision under the current prompt and
+    model, then the normal link, reconcile and proposals stages. The job is keyed by `nonce` (the UI's command
+    ID): resending it answers the job it queued. Refused while any job for the source is in flight. Approved and
+    published proposals never change and durable negatives still apply (`proposals.generate`, `_request`)."""
+    apply.lock(db, owner)
+    source = db.get(ContextSource, source_id)
+    if source is None or source.owner_id != owner or source.status == "deleted":
+        raise DomainError("NOT_FOUND", "That source was not found.", 404)
+    queued = db.scalar(select(Job).where(Job.owner_id == owner, Job.kind == "context_extract",
+                                         Job.payload["reprocess"].astext == nonce).limit(1))
+    if queued is not None:
+        if queued.payload.get("source_id") != source_id:
+            raise DomainError("INVALID_ARGUMENT", "That command ID was used for another meeting.")
+        return {"job_id": queued.id, "replayed": True}
+    if busy(db, owner, source_id):
+        raise DomainError("CONTEXT_BUSY", "This meeting is still being processed. Try again when it finishes.", 409)
+    revision = db.scalar(select(ContextSourceRevision.id).where(
+        ContextSourceRevision.source_id == source_id, ContextSourceRevision.revision == source.current_revision))
+    if revision is None:
+        raise DomainError("NOT_FOUND", "That meeting has no transcript to process.", 404)
+    job = enqueue_job(db, owner, "context_extract", {"source_id": source_id, "revision_id": revision,
+                                                     "reprocess": nonce})
+    _source_status(db, source_id, "processing")
+    return {"job_id": job.id, "replayed": False}
 
 
 def _pending(db, owner: str, kind: str | None = None, *, exclude: str | None = None, **match) -> bool:

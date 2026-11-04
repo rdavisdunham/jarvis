@@ -184,6 +184,59 @@ describe("MeetingReview", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("lists work others owe under Waiting on others, unchecked even when the server preselects it", async () => {
+    current = review({ proposals: [proposal(), proposal({ id: "p-wait", title: "Kim sends the 50 calls", assignee: { id: "act-kim", name: "Kim" },
+      preselected: true, reason: "Waiting on Kim to send the 50 calls." })] });
+    await render();
+    const waiting = host.querySelector<HTMLElement>("[role=group][aria-label='Waiting on others']")!;
+    expect(waiting.textContent).toContain("Kim sends the 50 calls");
+    expect(host.querySelector<HTMLElement>("[role=group][aria-label='Work to add']")!.textContent).not.toContain("Kim sends");
+    expect(box("Kim sends the 50 calls").checked).toBe(false);
+    expect(box("Send the pricing deck").checked).toBe(true);
+    await click(box("Kim sends the 50 calls"));
+    await click(button("Add selected tasks (2)"));
+    expect(posts("approve")[0].body.items).toEqual([{ proposal_id: "p-own", revision: 1 }, { proposal_id: "p-wait", revision: 1 }]);
+  });
+
+  it("reprocesses after a confirm, shows the pending state and checks back until processing settles", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await render();
+      await click(button("Reprocess"));
+      expect(posts("reprocess")).toHaveLength(0);
+      expect(host.querySelector("[role=alertdialog]")?.textContent).toContain("Work you added or dismissed stays");
+      await click(button("Cancel"));
+      expect(host.querySelector("[role=alertdialog]")).toBeNull();
+      await click(button("Reprocess"));
+      queued[`POST ${R}/reprocess`] = [[200, { reprocess: { job_id: "j-1", replayed: false }, review: review({ busy: true }) }]];
+      await click(button("Reprocess now"));
+      const [sent] = posts("reprocess");
+      expect(Object.keys(sent.body)).toEqual(["command_id"]);
+      expect(button("Reprocessing").disabled).toBe(true);
+      expect(text()).toContain("Reprocessing. Updated proposals appear here");
+      const reads = () => calls.filter(c => c.method === "GET" && c.url === R).length, before = reads();
+      current = review({ busy: true });
+      await act(async () => { vi.advanceTimersByTime(5000); }); await settle();
+      expect(reads()).toBe(before + 1);
+      current = review({ busy: false, proposals: [proposal({ revision: 2, title: "Send the final deck" })] });
+      await act(async () => { vi.advanceTimersByTime(5000); }); await settle();
+      expect(reads()).toBe(before + 2);
+      expect(button("Reprocess").disabled).toBe(false);
+      expect(box("Send the final deck").checked).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(20000); }); await settle();
+      expect(reads()).toBe(before + 2);  // settled: no more polling
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("explains when the meeting is still processing", async () => {
+    await render();
+    queued[`POST ${R}/reprocess`] = [[409, { error: { code: "CONTEXT_BUSY", message: "This meeting is still being processed. Try again when it finishes." } }]];
+    await click(button("Reprocess"));
+    await click(button("Reprocess now"));
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("still being processed");
+    expect(host.querySelector(".meeting-stale")).toBeNull();
+  });
+
   it("retries failed, conflicting and unconfirmed publications, not finished ones", async () => {
     const sent = (id: string, status: "failed" | "conflict" | "unconfirmed" | "published", error: string | null = null) =>
       proposal({ id: "p-" + id, title: "Task " + id, disposition: "approved", publication: { id: "pub-" + id, status, task_id: null, error } });

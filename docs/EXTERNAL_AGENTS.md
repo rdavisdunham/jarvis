@@ -183,7 +183,8 @@ while meeting context is turned on; otherwise every route and tool answers `PERS
 
 Permissions:
 
-- `context:read`: search, briefs, evidence, sources, open loops, meeting preparation and changes.
+- `context:read`: search, briefs, evidence, sources, open loops, meeting preparation, changes, and a meeting's
+  processing runs and task proposals.
 - `context:write`: everything in read, plus `context_feedback` (correction suggestions). Bot keys never delete sources; the owner deletes from the Meetings view.
   It never approves task proposals, publishes tasks or confirms anything on the owner's behalf.
 - `sources:write`: submit transcripts; reading them back needs `context:read`.
@@ -211,7 +212,7 @@ this way. Limits and the endpoint are shown in Settings → Connections → Meet
 Source reads: `GET /sources?status=&limit=&offset=` and `GET /sources/{id}` need `context:read`;
 `DELETE /sources/{id}` needs `context:write` and removes the meeting's content from every read at once (a purge job
 scrubs it; published tasks stay). Meeting reviews are read-only for agents: `GET /context/reviews` (the inbox) and
-`GET /context/reviews/{source_id}` with `context:read`. Approving, dismissing and publishing are the owner's, in
+`GET /context/reviews/{source_id}` with `context:read`. Approving, dismissing, publishing and reprocessing are the owner's, in
 the web app.
 
 API operations (under `/api/v1/external`) and their MCP twins:
@@ -222,6 +223,8 @@ API operations (under `/api/v1/external`) and their MCP twins:
 | `POST /context/brief` | `context_brief` | An entity's brief (current state and why, open loops, next meeting prep, who is who, recent changes, unknowns), or a brief about a `query`. `sections` narrows it; `include_history` adds what was superseded or retracted. |
 | `GET /context/evidence/{assertion_id}?include_history=` | `context_evidence` | Every supporting and contradicting span: source, segment, speaker, exact quote; support status; versions with `include_history`. |
 | `GET /context/sources/{source_id}?segment_start=&segment_end=&revision=` | `context_source` | Up to 50 transcript segments; follow `next_segment`. Each segment lists the assertions it supports and their status. |
+| `GET /context/sources/{source_id}/runs?detail=&limit=` | `context_runs` | The meeting's processing runs, newest first: stage, status, engine, model, profile, prompt version, revision, coverage counts, cost and tokens, and for extraction the rejection counts and the first rejections (`code`, `reason`, `statement`, `segments`), with the action pass's under `diagnostics.actions`. `detail=true` lists every rejection. |
+| `GET /context/sources/{source_id}/proposals` | `context_proposals` | The meeting's task proposals: title, kind, status, `preselected` (checked), reason (`Waiting on ...` for someone else's work), responsible person or mention, due date, source revision and the cited quotes with segment numbers. |
 | `POST /context/open-loops` | `context_open_loops` | Open commitments for an `entity` or overall; `mine=true` for the user's own work, `waiting_for=true` for what others owe the user. |
 | `POST /context/meeting-prep` | `context_meeting_prep` | Preparation for `calendar_event_id`, or the next meeting with `entity`: open loops, decisions, open questions, earlier meetings, gaps. |
 | `GET /context/changes?after=&limit=` | `context_changes` | Cursor feed like `changes_list`; retracted assertions and deleted sources arrive as tombstones. |

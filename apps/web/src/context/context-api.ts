@@ -83,6 +83,8 @@ export const wrong = (sourceId: string, assertionId: string, expectedRevision: n
   write(review(sourceId, "wrong"), { assertion_id: assertionId, expected_revision: expectedRevision, reason });
 export const changed = (sourceId: string, assertionId: string, expectedRevision: number, statement: string, effective: string) =>
   write(review(sourceId, "changed"), { assertion_id: assertionId, expected_revision: expectedRevision, statement, effective_at: effective });
+/** Read the meeting again with the current prompt and model (human only; refused while it is still processing). */
+export const reprocess = (sourceId: string) => write(review(sourceId, "reprocess"), {});
 /** Send a failed, conflicting or unconfirmed publication again under its original identity (human only). */
 export const retry = (publicationId: string) => write(publicationRetry(publicationId), {});
 export const speaker = (sourceId: string, linkId: string, expectedRevision: number, action: "confirm" | "reject" | "undo", decisionId?: string | null) =>

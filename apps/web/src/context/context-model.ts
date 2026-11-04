@@ -45,6 +45,8 @@ export type Proposal = {
 export type Review = {
   source_id: string; source?: MeetingSource; revision: number; status: ReviewStatus; destination: Destination; destinations: Destination[];
   brief: Brief | null; items: ContextItem[]; speakers: Speaker[]; proposals: Proposal[]; names?: Record<string, string>;
+  /** A processing job for this meeting is waiting or running (for example after Reprocess). */
+  busy?: boolean;
 };
 export type TranscriptSegment = { seq: number; kind: string; speaker: string | null; attribution: string | null;
   speaker_actor_id: string | null; start_ms: number | null; end_ms: number | null; text: string;
@@ -133,15 +135,19 @@ export function groupItems(items: ContextItem[]) {
     .map(([kind, rows]) => ({ kind, label: KIND_LABELS[kind] ?? kind.replaceAll("_", " "), items: rows }));
 }
 
-export type ProposalGroup = "tasks" | "updates" | "suggestions";
-export const proposalGroup = (p: Proposal): ProposalGroup => p.kind === "update" ? "updates" : p.kind === "suggestion" ? "suggestions" : "tasks";
+export type ProposalGroup = "tasks" | "waiting" | "updates" | "suggestions";
+/** Someone else's work from the meeting: the server's reason reads "Waiting on <name>". */
+export const waitingOn = (p: Proposal) => /^waiting on\b/i.test(p.reason ?? "");
+export const proposalGroup = (p: Proposal): ProposalGroup => p.kind === "update" ? "updates" : p.kind === "suggestion" ? "suggestions"
+  : waitingOn(p) ? "waiting" : "tasks";
 /** A proposal can still be chosen: undecided, deferred, or selected, and not yet sent anywhere. */
 export const selectable = (p: Proposal) => ["pending", "selected", "later"].includes(p.disposition) && !p.publication;
 
-/** The server's preselection, keeping the reader's choices for proposals whose revision did not change. */
+/** The server's preselection (never for work others owe), keeping the reader's choices for proposals whose revision did not change. */
 export function nextSelection(previous: Set<string>, before: Proposal[] | null, after: Proposal[]) {
   const old = new Map((before ?? []).map(p => [p.id, p.revision]));
-  return new Set(after.filter(p => selectable(p) && (old.get(p.id) === p.revision ? previous.has(p.id) : p.preselected)).map(p => p.id));
+  return new Set(after.filter(p => selectable(p)
+    && (old.get(p.id) === p.revision ? previous.has(p.id) : p.preselected && proposalGroup(p) !== "waiting")).map(p => p.id));
 }
 export function chosen(proposals: Proposal[], selected: Set<string>, group: ProposalGroup | "approvable") {
   return proposals.filter(p => selected.has(p.id) && selectable(p)
