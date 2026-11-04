@@ -25,6 +25,8 @@ the owner's answer through `resolve` applies it. Agents cannot approve proposals
 Transcripts and retrieved text are data, never instructions.
 """
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -35,9 +37,9 @@ from sqlalchemy import func, select
 
 from .. import bot_access
 from ..db import session_scope
-from ..domain import DomainError
-from ..models import Actor, Area, Goal, Project, Task, now
-from . import decisions, evidence, sources, temporal
+from ..domain import DomainError, enqueue_job
+from ..models import Actor, Area, Goal, Job, Project, Task, now
+from . import briefs, decisions, evidence, sources, temporal, views
 from . import settings as context_settings
 from .models import (
     ContextAssertion,
@@ -60,11 +62,6 @@ from .schema import (
     RetrieveQuery,
     ScopePredicate,
 )
-
-try:  # C3 (briefs and derived views); the orchestrator merges it after this package.
-    from . import briefs, views
-except ImportError:  # pragma: no cover - exercised only before C3 merges
-    briefs = views = None
 
 READ, WRITE = "context:read", "context:write"
 QUOTE = 300
@@ -216,34 +213,63 @@ class ResolveInput(Input):
 
 @dataclass(frozen=True)
 class Caller:
+    """Who is reading: a bot key (`credential_id`) or the signed-in owner's browser session (`session`)."""
+
     owner: str
     credential_id: str
     name: str
     scopes: frozenset[str]
+    session: bool = False
 
     @property
     def principal(self) -> str:
-        return "bot:" + self.credential_id
+        return self.name if self.session else "bot:" + self.credential_id
 
     def can(self, scope: str) -> bool:
         return scope in self.scopes
 
 
+# The owner's own session reads everything in the personal workspace that a context key could, and linked tasks.
+SESSION_SCOPES = frozenset({READ, WRITE, "tasks:read", "notes:read", "organization:read"})
+_session: ContextVar = ContextVar("context_session_identity", default=None)
+
+
+@contextmanager
+def as_owner(identity):
+    """Serve the calls inside as the signed-in owner (`auth.Identity`) instead of a bound bot key. Session routes
+    (`routes/owner.py`) wrap each call; the security middleware re-authenticates the session after the handler."""
+    token = _session.set(identity)
+    try:
+        yield
+    finally:
+        _session.reset(token)
+
+
+def _personal(db, owner: str) -> None:
+    if bot_access.shared(db, owner):
+        raise DomainError("PERSONAL_WORKSPACE", "Meeting context works only in your personal workspace.", 403)
+
+
 def authorize(db, scope: str = READ, *, write: bool = False) -> Caller:
-    """Flag, bot key and scope, personal workspace. Raises a DomainError otherwise."""
+    """Flag, then the bot key and its scope (or the owner's session), then the personal workspace."""
     if not context_settings.enabled():
         raise DomainError("CONTEXT_DISABLED", "Meeting context is not turned on.", 403)
+    if (identity := _session.get()) is not None:
+        _personal(db, identity.owner_id)
+        if write and identity.role != "owner":
+            raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
+        return Caller(identity.owner_id, "", identity.account_id or identity.owner_id, SESSION_SCOPES, True)
     bot = bot_access.authorize(db, required=scope, write=write)
-    if bot_access.shared(db, bot.owner_id):
-        raise DomainError("PERSONAL_WORKSPACE", "Meeting context works only in your personal workspace.", 403)
+    _personal(db, bot.owner_id)
     return Caller(bot.owner_id, bot.id, bot.name, frozenset(bot.scopes))
 
 
 def _again(db, caller: Caller, scope: str = READ) -> Caller:
-    """The before-return check: the same key, still valid, still holding the scope."""
+    """The before-return check: the same principal, still valid, still holding the scope."""
     current = authorize(db, scope)
-    if current.owner != caller.owner or current.credential_id != caller.credential_id:
-        raise DomainError("ACCESS_REVOKED", "This bot key changed during the request.", 401)
+    if (current.owner, current.credential_id, current.session) != (caller.owner, caller.credential_id,
+                                                                   caller.session):
+        raise DomainError("ACCESS_REVOKED", "Access changed during the request.", 401)
     return current
 
 
@@ -541,9 +567,19 @@ def search(args: SearchInput, *, at: datetime | None = None) -> dict:
 # ---------------------------------------------------------------- briefs
 
 
-def _need_views():
-    if briefs is None or views is None:
-        raise DomainError("UNAVAILABLE", "Briefs and derived views are not available yet.", 503)
+BRIEF_JOB = "context_brief"
+PENDING_JOBS = ("queued", "dispatched", "running", "retrying")
+
+
+def _resynthesize(db, owner: str, entity: EntityRef) -> None:
+    """A read rebuilt the brief deterministically because its inputs changed: queue the pipeline's brief job
+    (once) so synthesis is restored."""
+    pending = db.scalar(select(Job.id).where(
+        Job.owner_id == owner, Job.kind == BRIEF_JOB, Job.status.in_(PENDING_JOBS),
+        Job.payload["entity_type"].astext == entity.entity_type,
+        Job.payload["entity_id"].astext == entity.entity_id).limit(1))
+    if pending is None:
+        enqueue_job(db, owner, BRIEF_JOB, {"entity_type": entity.entity_type, "entity_id": entity.entity_id})
 
 
 def _ended_about(db, caller: Caller, entity: EntityRef, at: datetime) -> list[dict]:
@@ -635,8 +671,9 @@ def brief(args: BriefInput, *, at: datetime | None = None) -> dict:
             result = _query_brief(db, caller, args, vector, at)
             caller = _again(db, caller)
         else:
-            _need_views()
-            stored = briefs.get_brief(db, caller.owner, args.entity.entity_type, args.entity.entity_id)
+            stored = briefs.get_brief(db, caller.owner, args.entity.entity_type, args.entity.entity_id, at=at)
+            if stored.get("basis") == "rebuilt":
+                _resynthesize(db, caller.owner, args.entity)
             caller = _again(db, caller)
             sections, gaps = _claims(db, caller, stored.get("sections", []), args.sections, at,
                                      history=args.include_history)
@@ -799,10 +836,9 @@ def _task_gap(caller: Caller, items: list[dict]) -> list[str]:
 def open_loops(args: OpenLoopsInput, *, at: datetime | None = None) -> dict:
     with session_scope() as db:
         caller = authorize(db)
-        _need_views()
         at = at or now()
         data = views.open_loops(db, caller.owner, entity=args.entity, owner_actor="me" if args.mine else None,
-                                waiting_for=args.waiting_for, include_completed=args.include_completed)
+                                waiting_for=args.waiting_for, include_completed=args.include_completed, at=at)
         caller = _again(db, caller)
         items, dropped = _loops(db, caller, data.get("items", []), at)
         return {"items": items, "gaps": list(data.get("gaps", [])) + _withheld(dropped, "item")
@@ -813,9 +849,9 @@ def open_loops(args: OpenLoopsInput, *, at: datetime | None = None) -> dict:
 def meeting_prep(args: MeetingPrepInput, *, at: datetime | None = None) -> dict:
     with session_scope() as db:
         caller = authorize(db)
-        _need_views()
         at = at or now()
-        data = views.meeting_prep(db, caller.owner, calendar_event_id=args.calendar_event_id, entity=args.entity)
+        data = views.meeting_prep(db, caller.owner, calendar_event_id=args.calendar_event_id, entity=args.entity,
+                                  at=at)
         caller = _again(db, caller)
         loops, dropped = _loops(db, caller, data.get("open_loops", []), at)
         listed = data.get("decisions", []) + data.get("open_questions", [])
@@ -839,7 +875,6 @@ def meeting_prep(args: MeetingPrepInput, *, at: datetime | None = None) -> dict:
 def changes(args: ChangesInput, *, at: datetime | None = None) -> dict:
     with session_scope() as db:
         caller = authorize(db)
-        _need_views()
         data = views.changes(db, caller.owner, after=args.after, limit=args.limit)
         caller = _again(db, caller)
         items = data.get("items", [])
@@ -879,6 +914,8 @@ def feedback(args: FeedbackInput) -> dict:
     """Record an agent-origin correction suggestion. Never applies it, never approves or publishes anything."""
     with session_scope() as db:
         caller = authorize(db, WRITE, write=True)
+        if caller.session:
+            raise DomainError("INVALID_ARGUMENT", "Owners correct context directly; feedback is for agents.")
         command_id = f"agent:{caller.credential_id}:{args.request_id}"
         d = ContextDecision
         existing = db.scalar(select(d).where(d.owner_id == caller.owner, d.command_id == command_id))
@@ -981,14 +1018,23 @@ def feedback_items(db, owner: str) -> list[dict]:
                          "effective_at": _iso(row.effective_at), "entity": row.after.get("entity"),
                          "target": row.after.get("target"), "feedback_id": row.id},
             "source_id": key, "deferred_until": until, "created_at": row.recorded_at,
-            "answer_tool": "context.resolve",
-            "answer_args": {"question_key": key, "expected_revision": revision, "actions": ["accept", "dismiss"]}})
+            "answer_tool": "context.resolve", "actions": ["accept", "dismiss"],
+            "answer_args": {"question_key": key, "expected_revision": revision}})
     return items
 
 
 def question_items(db, owner: str) -> list[dict]:
     """Every open context Question: contested context and link ambiguity (`decisions`) plus agent suggestions."""
-    return decisions.question_items(db, owner) + feedback_items(db, owner)
+    return [_answerable(item) for item in decisions.question_items(db, owner)] + feedback_items(db, owner)
+
+
+def _answerable(item: dict) -> dict:
+    """Questions clients spread `answer_args` into the command (`{...answer_args, action}`), so it holds only
+    `context.resolve` arguments; the allowed `actions` and the question's own ids move beside it."""
+    args = dict(item["answer_args"])
+    extra = {name: args.pop(name) for name in ("actions", "assertion_ids", "link_id") if name in args}
+    return {**item, "actions": extra.pop("actions", []), "answer_args": args,
+            "evidence": {**item["evidence"], **extra}}
 
 
 def _feedback_question(db, owner: str, key: str, expected_revision: int) -> dict:

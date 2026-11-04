@@ -112,6 +112,10 @@ from . import bug_reports
 from .bug_reports import router as bug_reports_router
 
 app.include_router(bug_reports_router)
+# Meeting context: signed-in owner routes (/api/v1/context); bot-key routes ride on external_router.
+from .context.routes import owner_router as context_owner_router
+
+app.include_router(context_owner_router)
 app.mount("/api/v1/external/mcp", mcp_mount)
 app.router.routes.append(Route("/api/v1/external/mcp", mcp_bare_path))
 User = Annotated[Identity, Depends(authenticate)]
@@ -157,7 +161,9 @@ async def security(request, call_next):
         )
     # A bug report carries a screenshot; bug_reports.read_body enforces the same cap without a Content-Length.
     cap = bug_reports.BODY_MAX if request.method == "POST" and request.url.path == bug_reports.PATH else 100_000
-    if request.method == "PUT" and request.url.path.startswith("/api/v1/external/sources/"):
+    if (request.method == "PUT" and request.url.path.startswith("/api/v1/external/sources/")) or (
+        request.method == "POST" and request.url.path == "/api/v1/context/settings/import"
+    ):
         # Meeting transcripts; the route also caps bodies sent without Content-Length.
         from .context.routes.sources import body_limit
 
@@ -949,6 +955,8 @@ def export(user: User, format: str = "json"):
         from .agent_retention import export_tables
         data.update(export_tables(db, user.owner_id))
         data["bug_reports"] = bug_reports.export(db, user.owner_id)
+        from .context.export import export_history
+        data["context_history"] = export_history(db, user.owner_id)  # canonical format; scripts/context_export.py imports it
         data["note_task_links"] = [
             serial(link)
             for link in db.scalars(

@@ -447,14 +447,6 @@ def test_changes_tombstone_assertions_whose_evidence_is_gone(client, monkeypatch
     assert by_id[ids.new]["statement"] == "new" and result["next_cursor"] == 6
 
 
-def test_views_report_unavailable_until_c3_merges(client, monkeypatch):
-    monkeypatch.setattr(service, "views", None)
-    reader, _ = mint(client, "context:read")
-    with bot(reader), pytest.raises(DomainError) as missing:
-        service.open_loops(service.OpenLoopsInput())
-    assert missing.value.code == "UNAVAILABLE"
-
-
 # ---------------------------------------------------------------- feedback and Questions
 
 
@@ -488,7 +480,7 @@ def test_agent_feedback_is_an_agent_suggestion_that_changes_nothing(client):
         assert decisions.question_items(db, OWNER) == []  # B5's own items are untouched
         assert [q["key"] for q in service.question_items(db, OWNER)] == [item["key"]]
     assert item["key"] == receipt["question_key"] and item["kind"] == "context"
-    assert item["answer_tool"] == "context.resolve" and item["answer_args"]["actions"] == ["accept", "dismiss"]
+    assert item["answer_tool"] == "context.resolve" and item["actions"] == ["accept", "dismiss"]
     assert item["evidence"]["origin"] == "agent" and item["evidence"]["agent"] == "Claude Code"
     assert "is wrong" in item["question"] and item["candidates"][0]["assertion_id"] == ids.new
 

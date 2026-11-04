@@ -264,3 +264,15 @@ def test_context_tools_scopes_routes_and_docs_agree():
     doc = (ROOT / "docs/EXTERNAL_AGENTS.md").read_text()
     assert not [n for n in TOOLS if f"`{n}`" not in routes], "context tool without a REST twin"
     assert not [n for n in TOOLS if f"`{n}`" not in doc], "context tool missing from docs/EXTERNAL_AGENTS.md"
+
+
+def test_context_resolve_command_matches_the_service_input():
+    """`context.resolve` validates in `domain.ResolveContext` and again in `context.service.ResolveInput`."""
+    from jarvis.context.service import ResolveInput
+    from jarvis.domain import COMMANDS
+
+    command = COMMANDS["context.resolve"].model_fields
+    service = ResolveInput.model_fields
+    assert command.keys() == service.keys()
+    assert all(command[name].annotation == service[name].annotation and command[name].default == service[name].default
+               for name in command)

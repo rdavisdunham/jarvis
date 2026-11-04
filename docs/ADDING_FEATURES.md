@@ -204,7 +204,12 @@ MCP and HTTP (`external_mcp.py`, `external_routes.py`):
       `WRITE_TOOLS` entry (non-command writes, each use a write check), and a row in the "Meeting context"
       table of `docs/EXTERNAL_AGENTS.md`. Guard: `test_context_tools_scopes_routes_and_docs_agree`. Context
       keys are personal-only (`PERSONAL_ONLY` in `bot_access.create`; the service refuses shared workspaces
-      at use, since `authorize` only enforces that for `PRIVILEGED`).
+      at use, since `authorize` only enforces that for `PRIVILEGED`). Every read also has a session twin in
+      `context/routes/owner.py` (on `owner_router`, `/api/v1/context`) calling the same service function
+      inside `service.as_owner(user)`. Answering a context Question is the domain command `context.resolve`
+      (`domain.ResolveContext`, kept equal to `service.ResolveInput` by
+      `test_context_resolve_command_matches_the_service_input`); its Questions items keep `answer_args`
+      spreadable into that command, with the allowed answers in `actions`.
 - [ ] The MCP app is mounted at `/api/v1/external/mcp` with `streamable_http_path="/"`, so only the
       trailing-slash URL `/api/v1/external/mcp/` works; the no-slash path answers 405. Any doc or UI
       that prints the URL must use the slash (`external_routes.keys` returns `mcp_url` with it).

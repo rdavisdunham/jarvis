@@ -138,9 +138,9 @@ def items(db, owner):
     from .record_reviews import inbox_items
 
     result.extend(inbox_items(db, owner))
-    from .context.decisions import question_items
+    from .context.service import question_items
 
-    # Contested meeting context and consequential link ambiguity (kind "context").
+    # Contested meeting context, consequential link ambiguity and agent suggestions (kind "context").
     result.extend(question_items(db, owner))
     return result
 
@@ -227,7 +227,7 @@ def defer(db, owner, args, command_id=None):
     q = find(db, owner, args.question_key, args.expected_revision)
     delta = {"today": timedelta(hours=3), "tomorrow": timedelta(days=1), "week": timedelta(days=7)}[args.until]
     if q["kind"] == "context":
-        from .context.decisions import defer_question
+        from .context.service import defer_question
 
         return defer_question(db, owner, q["key"], args.expected_revision, delta, command_id=command_id)
     if q["kind"] == "record_review":

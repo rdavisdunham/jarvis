@@ -221,6 +221,15 @@ Questions; nothing changes unless the owner accepts it. A suggestion on context 
 is answered `REVISION_CONFLICT` (409); read it again first. Reusing a `request_id` for a different suggestion
 is `IDEMPOTENCY_CONFLICT` (409).
 
+Only the owner answers Questions: `context.resolve` is a site command (`POST /api/v1/commands`), not a bot
+command or tool, so a key calling it gets `INSUFFICIENT_SCOPE`. Inside Eridani, Dani can answer one with
+`context_resolve` after the owner's clear reply; that answer is recorded as the agent's.
+
+Eridani's own web app reads the same context through the signed-in session at `/api/v1/context/*` (`search`,
+`brief`, `evidence/{id}`, `open-loops`, `meeting-prep`, `changes`, `GET /sources`, `GET /sources/{id}`,
+`GET /sources/{id}/segments`, `DELETE /sources/{id}`). Those routes are not for bots; they share the service,
+the checks and the response shapes above, with the owner's own task access.
+
 ## Agent session ledger
 
 Answers "where did I work on X?" across Claude Code, Codex, ChatGPT desktop and Claude Desktop.

@@ -1,6 +1,8 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Tabs } from "./ux";
 import { settingsSections, type SettingsSection } from "./settings-sections";
+// Meeting sources sit under Connections; the panel hides itself when meeting context is off or the workspace is shared.
+const SourcesSettings = lazy(() => import("./context/SourcesSettings").then(m => ({ default: m.SourcesSettings })));
 export function SettingsLayout({section, onChange, children}: {
   section: SettingsSection; onChange: (section: SettingsSection) => void; children: ReactNode;
 }) {
@@ -16,6 +18,7 @@ export function SettingsLayout({section, onChange, children}: {
     </label>
     <div id="settings-panel" className="settings-content" role="region" aria-label={selected.label}>
       <p className="settings-intro">{selected.description}</p>{children}
+      {section === "integrations" && <Suspense fallback={null}><SourcesSettings/></Suspense>}
     </div>
   </div></div>;
 }
