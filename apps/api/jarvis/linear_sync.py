@@ -85,11 +85,65 @@ def summary(db, owner):
         "last_sync_at": row.last_sync_at,
         "status": row.status,
         "error": row.error,
-        "recent_changes": [
-            {"job_id": j.id, "status": j.status, "message": (j.result or {}).get("message", "")} for j in jobs
-        ],
+        "recent_changes": recent_changes(db, owner, jobs),
         "structure": overview(row),
     }
+
+
+def recent_changes(db, owner, jobs):
+    """Project stored writes without contacting Linear or loading connection secrets."""
+    link_ids = {j.payload.get("link_id") for j in jobs if isinstance(j.payload.get("link_id"), str)}
+    links = (
+        {
+            link.id: link
+            for link in db.scalars(
+                select(LinearIssue).where(LinearIssue.owner_id == owner, LinearIssue.id.in_(link_ids))
+            )
+        }
+        if link_ids
+        else {}
+    )
+    task_ids = {link.task_id for link in links.values()}
+    task_ids.update(
+        j.result["task_id"] for j in jobs if j.result and isinstance(j.result.get("task_id"), str)
+    )
+    tasks = (
+        {
+            task.id: task
+            for task in db.scalars(select(Task).where(Task.owner_id == owner, Task.id.in_(task_ids)))
+        }
+        if task_ids
+        else {}
+    )
+    changes = []
+    for job in jobs:
+        payload, result = job.payload, job.result or {}
+        link_id = payload.get("link_id")
+        link = links.get(link_id) if isinstance(link_id, str) else None
+        result_task_id = result.get("task_id")
+        task = tasks.get(link.task_id) if link else None
+        if task is None and isinstance(result_task_id, str):
+            task = tasks.get(result_task_id)
+        base, patch = payload.get("base") or {}, payload.get("patch") or {}
+        snapshot = link.snapshot if link else {}
+        changes.append(
+            {
+                "job_id": job.id,
+                "status": job.status,
+                "message": result.get("message", ""),
+                "created_at": job.created_at.isoformat(),
+                "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+                "task_id": task.id if task else None,
+                "issue_identifier": base.get("identifier") or snapshot.get("identifier"),
+                "issue_title": patch.get("title")
+                or base.get("title")
+                or snapshot.get("title")
+                or (task.title if task else None),
+                "payload": job.payload,
+                "result": job.result,
+            }
+        )
+    return changes
 
 
 def connect(owner, key):

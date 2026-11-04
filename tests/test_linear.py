@@ -543,3 +543,184 @@ def test_local_reopen_clears_manual_linear_archive(linear):
     # Reopen is explicit recovery even for an already-open manually archived task.
     reopened = run("task.reopen", task_id=tid, expected_revision=archived["revision"])
     assert not reopened["archived"] and not reopened["external"]["local_archived"]
+
+
+def test_recent_changes_preserve_queued_and_succeeded_stored_data(linear, client, monkeypatch):
+    from datetime import datetime
+
+    tid, rev = imported()
+    edited = run("task.update", task_id=tid, expected_revision=rev, title="Requested Δ title")
+    jid = edited["external"]["job_id"]
+    with session_scope() as db:
+        job = db.get(Job, jid)
+        payload = copy.deepcopy(job.payload)
+        created_at = job.created_at
+    queued = client.get("/api/v1/integrations/linear").json()["recent_changes"][0]
+    assert queued == {
+        "job_id": jid,
+        "status": "queued",
+        "message": "",
+        "payload": payload,
+        "result": None,
+        "created_at": created_at.isoformat(),
+        "finished_at": None,
+        "task_id": tid,
+        "issue_identifier": "ERI-1",
+        "issue_title": "Requested Δ title",
+    }
+    assert datetime.fromisoformat(queued["created_at"]).utcoffset() is not None
+    sync.process_write(jid)
+    with session_scope() as db:
+        job = db.get(Job, jid)
+        outcome, finished_at = copy.deepcopy(job.result), job.finished_at
+        # Changing the live snapshot must not rewrite the stored historical identity.
+        link = db.scalar(select(LinearIssue))
+        link.snapshot = {**link.snapshot, "identifier": "ERI-NEW", "title": "Later title"}
+
+    def unexpected_client(*_):
+        pytest.fail("Reading stored logs must not contact Linear")
+
+    monkeypatch.setattr(sync, "LinearClient", unexpected_client)
+    saved = client.get("/api/v1/integrations/linear")
+    change = saved.json()["recent_changes"][0]
+    assert change["status"] == "succeeded"
+    assert change["message"] == outcome["message"]
+    assert change["result"] == outcome
+    assert change["payload"] == payload
+    assert change["finished_at"] == finished_at.isoformat()
+    assert datetime.fromisoformat(change["finished_at"]).utcoffset() is not None
+    assert change["issue_identifier"] == "ERI-1"
+    assert change["issue_title"] == "Requested Δ title"
+    for secret in ("fixture-key", "credentials", "Authorization", "api_key"):
+        assert secret not in saved.text
+
+
+def test_recent_changes_new_publish_uses_link_snapshot_and_local_title(linear, client):
+    task = run("task.create", title="New local task")
+    queued = run("linear.publish", task_id=task["id"], expected_revision=1, team_id="team")
+    sync.process_write(queued["job_id"])
+    with session_scope() as db:
+        job = db.get(Job, queued["job_id"])
+        assert not job.payload["base"].get("identifier")
+        assert not job.payload["base"].get("title")
+        job.payload = {**job.payload, "base": {}}
+    change = client.get("/api/v1/integrations/linear").json()["recent_changes"][0]
+    assert change["task_id"] == task["id"]
+    assert change["issue_identifier"] == "ERI-1"
+    assert change["issue_title"] == "New local task"
+    with session_scope() as db:
+        job = db.get(Job, queued["job_id"])
+        job.payload = {**job.payload, "patch": {}}
+        link = db.scalar(select(LinearIssue).where(LinearIssue.task_id == task["id"]))
+        link.snapshot = {}
+    change = client.get("/api/v1/integrations/linear").json()["recent_changes"][0]
+    assert change["issue_title"] == "New local task"
+
+
+def test_recent_changes_keep_missing_history_and_validate_context_owners(linear, client):
+    tid, _ = imported()
+    nested = {"notes": "Line one\nLine two — 雪 <script>alert(1)</script>", "values": [None, {}, [True, 3]]}
+    with session_scope() as db:
+        foreign = Task(owner_id="someone-else", title="Private title")
+        db.add(foreign)
+        db.flush()
+        foreign_link = LinearIssue(
+            owner_id="someone-else",
+            workspace_id="other",
+            remote_id="private",
+            task_id=foreign.id,
+            snapshot={"identifier": "PRIVATE-1", "title": "Private title"},
+        )
+        db.add(foreign_link)
+        db.flush()
+        link = db.scalar(select(LinearIssue).where(LinearIssue.task_id == tid))
+        removed_id = link.id
+        db.delete(link)
+        cases = [
+            (
+                "unlinked",
+                {"link_id": removed_id, "base": {"identifier": "OLD-1", "title": "Historical"}},
+                None,
+            ),
+            ("missing", {"link_id": "gone", "base": {}, "metadata": nested}, None),
+            ("foreign", {"link_id": foreign_link.id}, {"task_id": foreign.id}),
+            ("fallback", {"link_id": "gone"}, {"task_id": tid, "nested": nested}),
+            ("empty", {}, {}),
+        ]
+        for name, payload, result in cases:
+            db.add(
+                Job(
+                    id=name,
+                    owner_id="davin",
+                    kind="linear_write",
+                    status="failed",
+                    payload=payload,
+                    result=result,
+                )
+            )
+    changes = {j["job_id"]: j for j in client.get("/api/v1/integrations/linear").json()["recent_changes"]}
+    assert len(changes) == 5
+    assert changes["unlinked"]["task_id"] is None
+    assert changes["unlinked"]["issue_identifier"] == "OLD-1"
+    assert changes["unlinked"]["issue_title"] == "Historical"
+    assert changes["missing"]["payload"]["metadata"] == nested
+    for name in ("missing", "foreign", "empty"):
+        assert changes[name]["task_id"] is None
+        assert changes[name]["issue_identifier"] is None
+        assert changes[name]["issue_title"] is None
+    assert changes["fallback"]["task_id"] == tid
+    assert changes["fallback"]["issue_title"] == "Shared task"
+    assert changes["fallback"]["result"]["nested"] == nested
+    assert changes["empty"]["result"] == {}
+    assert changes["missing"]["result"] is None
+    assert all(j["finished_at"] is None for j in changes.values())
+
+
+def test_recent_changes_newest_twenty_outgoing_only_and_batched(linear, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from jarvis.db import engine
+    from sqlalchemy import event
+
+    tid, _ = imported()
+    with session_scope() as db:
+        link = db.scalar(select(LinearIssue).where(LinearIssue.task_id == tid))
+        start = datetime(2026, 10, 1, tzinfo=UTC)
+        for i in range(24):
+            db.add(
+                Job(
+                    id=f"write-{i}",
+                    owner_id="davin",
+                    kind="linear_write",
+                    created_at=start + timedelta(seconds=i),
+                    payload={"link_id": link.id},
+                    status=["queued", "failed", "succeeded", "unconfirmed"][i % 4],
+                    result=None,
+                )
+            )
+        for name, owner, kind in [
+            ("foreign", "other", "linear_write"),
+            ("incoming", "davin", "linear_sync"),
+            ("comment", "davin", "linear_comment"),
+        ]:
+            db.add(Job(id=name, owner_id=owner, kind=kind, created_at=start + timedelta(days=1), payload={}))
+    statements = []
+
+    def record(_conn, _cursor, statement, *_args):
+        statements.append(statement)
+
+    def unexpected_client(*_):
+        pytest.fail("Summary must not fetch Linear")
+
+    monkeypatch.setattr(sync, "LinearClient", unexpected_client)
+    event.listen(engine(), "before_cursor_execute", record)
+    try:
+        with session_scope() as db:
+            changes = sync.summary(db, "davin")["recent_changes"]
+    finally:
+        event.remove(engine(), "before_cursor_execute", record)
+    assert [j["job_id"] for j in changes] == [f"write-{i}" for i in range(23, 3, -1)]
+    assert {j["status"] for j in changes} == {"queued", "failed", "succeeded", "unconfirmed"}
+    assert all(j["task_id"] == tid for j in changes)
+    # One connection, jobs, links and tasks query regardless of number of rows.
+    assert len(statements) == 4
