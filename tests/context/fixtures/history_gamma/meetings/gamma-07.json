@@ -1,0 +1,74 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "gamma-07",
+  "title": "Contract signing",
+  "occurred_at": "2026-08-25T09:30:00-07:00",
+  "ended_at": "2026-08-25T10:00:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Jordan Ellis",
+      "email": "jordan.ellis@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Jordan Ellis"
+    },
+    {
+      "name": "Wes Okoro",
+      "email": "wes.okoro@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Wes Okoro"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Wes Okoro",
+      "text": "The revised order form went out on the 6th.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Robin Hale",
+      "text": "Nadia sent our redlines on the 13th and Quillmark accepted them.",
+      "start_ms": 5500,
+      "end_ms": 10500,
+      "attribution": "owner"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Robin Hale",
+      "text": "Decision: Ashgrove signs the two-year order form on 2026-08-31.",
+      "start_ms": 12000,
+      "end_ms": 17000,
+      "attribution": "owner"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Jordan Ellis",
+      "text": "I'll send the countersigned contract within a day of receiving yours.",
+      "start_ms": 18500,
+      "end_ms": 23500,
+      "attribution": "other"
+    },
+    {
+      "seq": 4,
+      "speaker_label": "Robin Hale",
+      "text": "I'm not committing to the analytics add-on this year.",
+      "start_ms": 25000,
+      "end_ms": 29000,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale"
+}

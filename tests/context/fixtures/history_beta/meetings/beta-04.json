@@ -1,0 +1,58 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "beta-04",
+  "title": "Release replan",
+  "occurred_at": "2026-09-22T10:00:00+01:00",
+  "ended_at": "2026-09-22T10:30:00+01:00",
+  "timezone": "Europe/London",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@fernhill.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Sam Patel",
+      "email": "sam.patel@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Sam Patel"
+    },
+    {
+      "name": "Jonas Weber",
+      "email": "jonas.weber@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Jonas Weber"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Jonas Weber",
+      "text": "The payment SDK fix landed but it needs another week of QA.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Sam Patel",
+      "text": "Decision: we move the 4.0 release to 2026-10-21 because the payment SDK fix needs another week of QA.",
+      "start_ms": 5500,
+      "end_ms": 13500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Jonas Weber",
+      "text": "Action: Jonas to rerun the full regression suite by 2026-10-16.",
+      "start_ms": 15000,
+      "end_ms": 20000,
+      "attribution": "other"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@fernhill.example",
+  "upstream_owner_name": "Robin Hale"
+}

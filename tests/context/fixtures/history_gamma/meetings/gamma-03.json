@@ -1,0 +1,58 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "gamma-03",
+  "title": "Security review",
+  "occurred_at": "2026-07-21T10:00:00-07:00",
+  "ended_at": "2026-07-21T10:45:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Wes Okoro",
+      "email": "wes.okoro@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Wes Okoro"
+    },
+    {
+      "name": "Nadia Rahman",
+      "email": "nadia.rahman@ashgrove.example",
+      "role": "attendee",
+      "speaker_label": "Nadia Rahman"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Wes Okoro",
+      "text": "I sent the questionnaire answers on Friday.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Nadia Rahman",
+      "text": "Quillmark stores backups in a single region, which worries me.",
+      "start_ms": 5500,
+      "end_ms": 10500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Nadia Rahman",
+      "text": "Action: Nadia to get legal review of the data processing addendum by 2026-07-31.",
+      "start_ms": 12000,
+      "end_ms": 18000,
+      "attribution": "other"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale"
+}

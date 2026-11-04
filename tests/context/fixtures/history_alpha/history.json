@@ -1,0 +1,1724 @@
+{
+ "actor_identities": [
+  {
+   "actor_id": "alpha-alex-larkspur",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "16e355a2-cf63-5f8e-bd63-7b0da2a674ce",
+   "namespace": "email",
+   "normalized": "alex.chen@larkspur.example",
+   "owner_id": "fixture-owner",
+   "provenance": {
+    "origin": "fixture"
+   },
+   "source_scope": null,
+   "status": "confirmed",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "value": "alex.chen@larkspur.example"
+  },
+  {
+   "actor_id": "alpha-alex-studio",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "d97354cd-8d68-5346-a247-2e8206df3e80",
+   "namespace": "email",
+   "normalized": "alex@chenstudio.example",
+   "owner_id": "fixture-owner",
+   "provenance": {
+    "origin": "fixture"
+   },
+   "source_scope": null,
+   "status": "confirmed",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "value": "alex@chenstudio.example"
+  },
+  {
+   "actor_id": "alpha-priya",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "ef1a58a5-8b3a-5212-9f8b-87a742beeaf1",
+   "namespace": "email",
+   "normalized": "priya.nair@larkspur.example",
+   "owner_id": "fixture-owner",
+   "provenance": {
+    "origin": "fixture"
+   },
+   "source_scope": null,
+   "status": "confirmed",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "value": "priya.nair@larkspur.example"
+  },
+  {
+   "actor_id": "alpha-robin",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "ea0b0fb4-508c-5851-9382-2d9806ed6996",
+   "namespace": "email",
+   "normalized": "robin.hale@halestudio.example",
+   "owner_id": "fixture-owner",
+   "provenance": {
+    "origin": "fixture"
+   },
+   "source_scope": null,
+   "status": "confirmed",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "value": "robin.hale@halestudio.example"
+  },
+  {
+   "actor_id": "alpha-tomas",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "7ea88e6c-777c-5d9c-8574-3432dff1fc4c",
+   "namespace": "email",
+   "normalized": "tomas@halestudio.example",
+   "owner_id": "fixture-owner",
+   "provenance": {
+    "origin": "fixture"
+   },
+   "source_scope": null,
+   "status": "confirmed",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "value": "tomas@halestudio.example"
+  }
+ ],
+ "actor_merges": [],
+ "actors": [
+  {
+   "id": "alpha-alex-larkspur",
+   "kind": "person",
+   "name": "Alex Chen"
+  },
+  {
+   "id": "alpha-alex-studio",
+   "kind": "person",
+   "name": "Alex Chen"
+  },
+  {
+   "id": "alpha-priya",
+   "kind": "person",
+   "name": "Priya Nair"
+  },
+  {
+   "id": "alpha-robin",
+   "kind": "person",
+   "name": "Robin Hale"
+  },
+  {
+   "id": "alpha-tomas",
+   "kind": "person",
+   "name": "Tomas Varga"
+  }
+ ],
+ "assertion_versions": [],
+ "assertions": [],
+ "briefs": [],
+ "chunks": [
+  {
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "id": "1e153cd5-920d-5443-acbb-a84dba45898e",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "segment_end": 6,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "Let's walk through the booking flow first and leave billing for later.\nI shared the clinic list last Thursday, so you should have all 14 locations.\nWe want the portal to be mobile-first; most bookings come from phones.\nI'll deliver the first wireframes by 2026-08-21.\nI won't be taking on the patient survey, that's marketing's job.\nOne concern: the legacy scheduling system has no API, which is a risk for the integration.\nI can design around that for now.",
+   "token_count": 115,
+   "updated_at": "2026-08-11T20:30:00+00:00"
+  },
+  {
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "id": "a23e3bfd-7168-543a-92c2-914dde744d37",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "segment_end": 4,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "I sent the statement of work this morning, it should be in your inbox.\nGot it. Decision: Larkspur signs the statement of work as written.\nWho owns the data migration from the old scheduling system?\nLet's take that offline; I don't have an answer yet.\nAction: Tomas to set up the staging environment on Azure by 2026-08-28.",
+   "token_count": 81,
+   "updated_at": "2026-08-18T16:10:00+00:00"
+  },
+  {
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "id": "cb0f3bad-b961-543d-931d-04a06b42b028",
+   "owner_id": "fixture-owner",
+   "revision_id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "segment_end": 3,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "Our compliance team came back on hosting.\nDecision: we move hosting to AWS instead of Azure, because the Microsoft agreement does not cover HIPAA workloads.\nI'll redo the staging setup on AWS by 2026-09-04.\nThat pushes staging by a week but keeps the launch plan intact.",
+   "token_count": 68,
+   "updated_at": "2026-09-02T14:00:00+00:00"
+  },
+  {
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "id": "b52b68df-0b10-5a0e-9bf7-5045e9ec373a",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "segment_end": 5,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "Alex's wireframes arrived on 2026-08-20 and the clinic managers liked them.\nStaging on AWS has been up since Wednesday.\nDecision: the portal launches with online booking and bill pay, and messaging waits for phase two.\nI will finish the booking API integration by 2026-09-25.\nI'll add SMS reminders if we ever get budget for Twilio.\nFine by me.",
+   "token_count": 86,
+   "updated_at": "2026-09-01T17:00:00+00:00"
+  },
+  {
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "id": "05fbd18f-3fc3-590e-815d-4f90bc700599",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "segment_end": 8,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "Thanks for making time. Today I want to agree on scope, hosting and next steps for the patient portal.\nThe portal needs to serve 14 clinics at launch, and patients should be able to book and pay online.\nDecision: we host the portal on Azure because Larkspur already has a Microsoft agreement.\nGood. I'll send the statement of work in two weeks.\nAction: Priya to share the clinic list by 2026-08-07.\nIf the board rejects the budget, I'll pause the project until January.\nUnderstood. For the record, the monthly retainer is 18,500 dollars.\nAlex seemed worried about the board vote.\nI'll ask Tomas whether the Azure credits cover staging.",
+   "token_count": 159,
+   "updated_at": "2026-08-04T16:20:00+00:00"
+  },
+  {
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "id": "6cc61f1f-835c-5cd4-825e-86cedb7e7e1d",
+   "owner_id": "fixture-owner",
+   "revision_id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "segment_end": 3,
+   "segment_start": 0,
+   "seq": 0,
+   "text": "The booking integration is done; I merged it yesterday.\nDecision: the portal launches on 2026-10-05.\nAction: Priya to train the front desk staff before launch.\nI'm not going to build the analytics dashboard this phase.",
+   "token_count": 55,
+   "updated_at": "2026-09-22T16:00:00+00:00"
+  }
+ ],
+ "connections": [
+  {
+   "checkpoint": {},
+   "connector": "api",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "enabled": true,
+   "external_account": "fixture:alpha:api",
+   "health": "ok",
+   "id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "last_error": null,
+   "last_success_at": "2026-08-04T16:20:00+00:00",
+   "owner_id": "fixture-owner",
+   "updated_at": "2026-08-04T16:20:00+00:00"
+  },
+  {
+   "checkpoint": {},
+   "connector": "zoom",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "enabled": true,
+   "external_account": "fixture:alpha:zoom",
+   "health": "ok",
+   "id": "50154b20-1c8e-5421-b81a-a5c0c014f3fd",
+   "last_error": null,
+   "last_success_at": "2026-08-04T16:20:00+00:00",
+   "owner_id": "fixture-owner",
+   "updated_at": "2026-08-04T16:20:00+00:00"
+  }
+ ],
+ "cursors": [],
+ "decisions": [],
+ "entity_links": [],
+ "evidence": [],
+ "format": "eridani-context-history",
+ "include_embeddings": false,
+ "owner_id": "fixture-owner",
+ "owner_state": {
+  "created_at": "2026-08-04T16:20:00+00:00",
+  "decision_seq": 0,
+  "epoch": 0,
+  "owner_id": "fixture-owner",
+  "paused": false,
+  "paused_at": null,
+  "settings": {},
+  "updated_at": "2026-08-04T16:20:00+00:00"
+ },
+ "proposals": [],
+ "publications": [],
+ "revisions": [
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "e8861fa4f1f5b55461fdb0aceb369c06e76f2a7f17ff2bbafb969d8be2c4eaf0",
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "ended_at": "2026-08-18T15:45:00+00:00",
+   "external_revision": "1",
+   "id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "occurred_at": "2026-08-18T15:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer",
+     "speaker_label": "Robin Hale"
+    },
+    {
+     "email": "alex.chen@larkspur.example",
+     "name": "Alex Chen",
+     "role": "attendee",
+     "speaker_label": "Alex Chen"
+    },
+    {
+     "email": "tomas@halestudio.example",
+     "name": "Tomas Varga",
+     "role": "attendee",
+     "speaker_label": "Tomas Varga"
+    }
+   ],
+   "payload": {
+    "connector": "api",
+    "ended_at": "2026-08-18T10:45:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-03",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-08-18T10:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+     },
+     {
+      "email": "alex.chen@larkspur.example",
+      "name": "Alex Chen",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+     },
+     {
+      "email": "tomas@halestudio.example",
+      "name": "Tomas Varga",
+      "role": "attendee",
+      "speaker_label": "Tomas Varga"
+     }
+    ],
+    "segments": [
+     {
+      "attribution": "owner",
+      "end_ms": 5000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Robin Hale",
+      "start_ms": 0,
+      "text": "I sent the statement of work this morning, it should be in your inbox."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 11500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "start_ms": 6500,
+      "text": "Got it. Decision: Larkspur signs the statement of work as written."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 17000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Alex Chen",
+      "start_ms": 13000,
+      "text": "Who owns the data migration from the old scheduling system?"
+     },
+     {
+      "attribution": "owner",
+      "end_ms": 22500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "start_ms": 18500,
+      "text": "Let's take that offline; I don't have an answer yet."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 29000,
+      "kind": "transcript",
+      "seq": 4,
+      "speaker_label": "Tomas Varga",
+      "start_ms": 24000,
+      "text": "Action: Tomas to set up the staging environment on Azure by 2026-08-28."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Statement of work review",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-08-18T16:10:00+00:00",
+   "revision": 1,
+   "source_id": "091b40d5-5d01-527a-a939-742fe4975d7c",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "1ed5a6054fe726424127b1691a81093d53933eb6772dbbb0a6830a38f4c1fc7d",
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "ended_at": "2026-08-25T20:30:00+00:00",
+   "external_revision": "1",
+   "id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "occurred_at": "2026-08-25T20:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer",
+     "speaker_label": "Robin Hale"
+    },
+    {
+     "email": "alex.chen@larkspur.example",
+     "name": "Alex Chen",
+     "role": "attendee",
+     "speaker_label": "Alex Chen"
+    },
+    {
+     "email": "tomas@halestudio.example",
+     "name": "Tomas Varga",
+     "role": "attendee",
+     "speaker_label": "Tomas Varga"
+    }
+   ],
+   "payload": {
+    "connector": "api",
+    "ended_at": "2026-08-25T15:30:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-04",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-08-25T15:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+     },
+     {
+      "email": "alex.chen@larkspur.example",
+      "name": "Alex Chen",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+     },
+     {
+      "email": "tomas@halestudio.example",
+      "name": "Tomas Varga",
+      "role": "attendee",
+      "speaker_label": "Tomas Varga"
+     }
+    ],
+    "segments": [
+     {
+      "attribution": "other",
+      "end_ms": 4000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Alex Chen",
+      "start_ms": 0,
+      "text": "Our compliance team came back on hosting."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 14500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "start_ms": 5500,
+      "text": "Decision: we move hosting to AWS instead of Azure, because the Microsoft agreement does not cover HIPAA workloads."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 20000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Tomas Varga",
+      "start_ms": 16000,
+      "text": "I'll redo the staging setup on AWS by 2026-09-04."
+     },
+     {
+      "attribution": "owner",
+      "end_ms": 26500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "start_ms": 21500,
+      "text": "That pushes staging by a week but keeps the launch plan intact."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Hosting rethink",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-09-02T14:00:00+00:00",
+   "revision": 1,
+   "source_id": "258518d7-c2a5-55b6-992f-fc59ae2c3a01",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "4769e9902cf6804a8ec5db881665949e17dbed4c76a6aceaee0cee457b767057",
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "ended_at": "2026-08-11T20:00:00+00:00",
+   "external_revision": "1",
+   "id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "occurred_at": "2026-08-11T19:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer"
+    },
+    {
+     "email": "alex@chenstudio.example",
+     "name": "Alex Chen",
+     "role": "attendee"
+    },
+    {
+     "email": "priya.nair@larkspur.example",
+     "name": "Priya Nair",
+     "role": "attendee"
+    }
+   ],
+   "payload": {
+    "connector": "zoom",
+    "ended_at": "2026-08-11T15:00:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-02",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-08-11T14:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer"
+     },
+     {
+      "email": "alex@chenstudio.example",
+      "name": "Alex Chen",
+      "role": "attendee"
+     },
+     {
+      "email": "priya.nair@larkspur.example",
+      "name": "Priya Nair",
+      "role": "attendee"
+     }
+    ],
+    "segments": [
+     {
+      "end_ms": 5000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Speaker 1",
+      "start_ms": 0,
+      "text": "Let's walk through the booking flow first and leave billing for later."
+     },
+     {
+      "end_ms": 12500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Speaker 3",
+      "start_ms": 6500,
+      "text": "I shared the clinic list last Thursday, so you should have all 14 locations."
+     },
+     {
+      "end_ms": 19000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Speaker 3",
+      "start_ms": 14000,
+      "text": "We want the portal to be mobile-first; most bookings come from phones."
+     },
+     {
+      "end_ms": 24500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Speaker 2",
+      "start_ms": 20500,
+      "text": "I'll deliver the first wireframes by 2026-08-21."
+     },
+     {
+      "end_ms": 31000,
+      "kind": "transcript",
+      "seq": 4,
+      "speaker_label": "Speaker 3",
+      "start_ms": 26000,
+      "text": "I won't be taking on the patient survey, that's marketing's job."
+     },
+     {
+      "end_ms": 39500,
+      "kind": "transcript",
+      "seq": 5,
+      "speaker_label": "Speaker 1",
+      "start_ms": 32500,
+      "text": "One concern: the legacy scheduling system has no API, which is a risk for the integration."
+     },
+     {
+      "end_ms": 45000,
+      "kind": "transcript",
+      "seq": 6,
+      "speaker_label": "Speaker 2",
+      "start_ms": 41000,
+      "text": "I can design around that for now."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Portal design workshop",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-08-11T20:30:00+00:00",
+   "revision": 1,
+   "source_id": "76595e87-120e-5330-8a69-b3a09765ced3",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "97c758077d5162bb0e1213e049703218c7b6ceb4c46982ac42a7af0128b33406",
+   "created_at": "2026-09-10T15:45:00+00:00",
+   "ended_at": "2026-09-10T15:20:00+00:00",
+   "external_revision": "1",
+   "id": "957ab569-dfa8-5190-b4dd-c8e1f70df1d8",
+   "occurred_at": "2026-09-10T15:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [],
+   "payload": {},
+   "received_at": "2026-09-10T15:45:00+00:00",
+   "revision": 1,
+   "source_id": "778bf021-9ff5-5313-9c35-cad6fe4858fd",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "9af3daa1d69849c6c02831fe42bd5f6c618025a93f2cb7bcce9eabdb14ecb829",
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "ended_at": "2026-09-01T16:40:00+00:00",
+   "external_revision": "1",
+   "id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "occurred_at": "2026-09-01T16:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer"
+    },
+    {
+     "email": "tomas@halestudio.example",
+     "name": "Tomas Varga",
+     "role": "attendee"
+    },
+    {
+     "email": "alex.chen@larkspur.example",
+     "name": "Alex Chen",
+     "role": "attendee"
+    }
+   ],
+   "payload": {
+    "connector": "zoom",
+    "ended_at": "2026-09-01T11:40:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-05",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-09-01T11:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer"
+     },
+     {
+      "email": "tomas@halestudio.example",
+      "name": "Tomas Varga",
+      "role": "attendee"
+     },
+     {
+      "email": "alex.chen@larkspur.example",
+      "name": "Alex Chen",
+      "role": "attendee"
+     }
+    ],
+    "segments": [
+     {
+      "end_ms": 6000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Speaker 1",
+      "start_ms": 0,
+      "text": "Alex's wireframes arrived on 2026-08-20 and the clinic managers liked them."
+     },
+     {
+      "end_ms": 11500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Speaker 2",
+      "start_ms": 7500,
+      "text": "Staging on AWS has been up since Wednesday."
+     },
+     {
+      "end_ms": 21000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Speaker 3",
+      "start_ms": 13000,
+      "text": "Decision: the portal launches with online booking and bill pay, and messaging waits for phase two."
+     },
+     {
+      "end_ms": 26500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Speaker 2",
+      "start_ms": 22500,
+      "text": "I will finish the booking API integration by 2026-09-25."
+     },
+     {
+      "end_ms": 32000,
+      "kind": "transcript",
+      "seq": 4,
+      "speaker_label": "Speaker 2",
+      "start_ms": 28000,
+      "text": "I'll add SMS reminders if we ever get budget for Twilio."
+     },
+     {
+      "end_ms": 37500,
+      "kind": "transcript",
+      "seq": 5,
+      "speaker_label": "Speaker 3",
+      "start_ms": 33500,
+      "text": "Fine by me."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Design review",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-09-01T17:00:00+00:00",
+   "revision": 1,
+   "source_id": "819cb2a8-f22f-53e2-9b3d-62b38e194d8b",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "ce00ab876584f4402d3bb75b3bf9f9360dbcf2a9bb5bf425790465db9e60248c",
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "ended_at": "2026-09-22T15:40:00+00:00",
+   "external_revision": "1",
+   "id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "occurred_at": "2026-09-22T15:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer",
+     "speaker_label": "Robin Hale"
+    },
+    {
+     "email": "tomas@halestudio.example",
+     "name": "Tomas Varga",
+     "role": "attendee",
+     "speaker_label": "Tomas Varga"
+    },
+    {
+     "email": "priya.nair@larkspur.example",
+     "name": "Priya Nair",
+     "role": "attendee",
+     "speaker_label": "Priya Nair"
+    },
+    {
+     "email": "alex.chen@larkspur.example",
+     "name": "Alex Chen",
+     "role": "attendee",
+     "speaker_label": "Alex Chen"
+    }
+   ],
+   "payload": {
+    "connector": "api",
+    "ended_at": "2026-09-22T10:40:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-07",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-09-22T10:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+     },
+     {
+      "email": "tomas@halestudio.example",
+      "name": "Tomas Varga",
+      "role": "attendee",
+      "speaker_label": "Tomas Varga"
+     },
+     {
+      "email": "priya.nair@larkspur.example",
+      "name": "Priya Nair",
+      "role": "attendee",
+      "speaker_label": "Priya Nair"
+     },
+     {
+      "email": "alex.chen@larkspur.example",
+      "name": "Alex Chen",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+     }
+    ],
+    "segments": [
+     {
+      "attribution": "other",
+      "end_ms": 4000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Tomas Varga",
+      "start_ms": 0,
+      "text": "The booking integration is done; I merged it yesterday."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 9500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "start_ms": 5500,
+      "text": "Decision: the portal launches on 2026-10-05."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 15000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Priya Nair",
+      "start_ms": 11000,
+      "text": "Action: Priya to train the front desk staff before launch."
+     },
+     {
+      "attribution": "owner",
+      "end_ms": 20500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "start_ms": 16500,
+      "text": "I'm not going to build the analytics dashboard this phase."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Pre-launch check",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-09-22T16:00:00+00:00",
+   "revision": 1,
+   "source_id": "c8cb9083-9a69-573b-b296-1e0773284d94",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  },
+  {
+   "calendar_event_id": null,
+   "change_kind": "content",
+   "content_hash": "7edf9b8a0bb71e796692a3c58fa83aeaf89a1dd4b7ddaf7be73862043d012394",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "ended_at": "2026-08-04T16:00:00+00:00",
+   "external_revision": "1",
+   "id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "occurred_at": "2026-08-04T15:00:00+00:00",
+   "owner_id": "fixture-owner",
+   "participants": [
+    {
+     "email": "robin.hale@halestudio.example",
+     "name": "Robin Hale",
+     "role": "organizer",
+     "speaker_label": "Robin Hale"
+    },
+    {
+     "email": "alex.chen@larkspur.example",
+     "name": "Alex Chen",
+     "role": "attendee",
+     "speaker_label": "Alex Chen"
+    },
+    {
+     "email": "priya.nair@larkspur.example",
+     "name": "Priya Nair",
+     "role": "attendee",
+     "speaker_label": "Priya Nair"
+    }
+   ],
+   "payload": {
+    "connector": "api",
+    "ended_at": "2026-08-04T11:00:00-05:00",
+    "envelope_version": 1,
+    "external_id": "alpha-01",
+    "external_revision": "1",
+    "metadata": {},
+    "occurred_at": "2026-08-04T10:00:00-05:00",
+    "participants": [
+     {
+      "email": "robin.hale@halestudio.example",
+      "name": "Robin Hale",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+     },
+     {
+      "email": "alex.chen@larkspur.example",
+      "name": "Alex Chen",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+     },
+     {
+      "email": "priya.nair@larkspur.example",
+      "name": "Priya Nair",
+      "role": "attendee",
+      "speaker_label": "Priya Nair"
+     }
+    ],
+    "private_notes": "Alex seemed worried about the board vote.\n\nI'll ask Tomas whether the Azure credits cover staging.",
+    "segments": [
+     {
+      "attribution": "owner",
+      "end_ms": 8000,
+      "kind": "transcript",
+      "seq": 0,
+      "speaker_label": "Robin Hale",
+      "start_ms": 0,
+      "text": "Thanks for making time. Today I want to agree on scope, hosting and next steps for the patient portal."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 17500,
+      "kind": "transcript",
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "start_ms": 9500,
+      "text": "The portal needs to serve 14 clinics at launch, and patients should be able to book and pay online."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 26000,
+      "kind": "transcript",
+      "seq": 2,
+      "speaker_label": "Alex Chen",
+      "start_ms": 19000,
+      "text": "Decision: we host the portal on Azure because Larkspur already has a Microsoft agreement."
+     },
+     {
+      "attribution": "owner",
+      "end_ms": 31500,
+      "kind": "transcript",
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "start_ms": 27500,
+      "text": "Good. I'll send the statement of work in two weeks."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 37000,
+      "kind": "transcript",
+      "seq": 4,
+      "speaker_label": "Priya Nair",
+      "start_ms": 33000,
+      "text": "Action: Priya to share the clinic list by 2026-08-07."
+     },
+     {
+      "attribution": "other",
+      "end_ms": 43500,
+      "kind": "transcript",
+      "seq": 5,
+      "speaker_label": "Alex Chen",
+      "start_ms": 38500,
+      "text": "If the board rejects the budget, I'll pause the project until January."
+     },
+     {
+      "attribution": "owner",
+      "end_ms": 50000,
+      "kind": "transcript",
+      "seq": 6,
+      "speaker_label": "Robin Hale",
+      "start_ms": 45000,
+      "text": "Understood. For the record, the monthly retainer is 18,500 dollars."
+     }
+    ],
+    "timezone": "America/Chicago",
+    "title": "Larkspur portal kickoff",
+    "upstream_owner_email": "robin.hale@halestudio.example",
+    "upstream_owner_name": "Robin Hale"
+   },
+   "received_at": "2026-08-04T16:20:00+00:00",
+   "revision": 1,
+   "source_id": "f9412f3e-4526-54ef-9dca-f59452eb89ab",
+   "summary": null,
+   "timezone": "America/Chicago",
+   "upstream_updated_at": null
+  }
+ ],
+ "runs": [],
+ "segments": [
+  {
+   "char_end": 70,
+   "char_start": 0,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 5000,
+   "id": "f2015578-8fe1-5fd9-a819-1cfc90e42e9b",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 1",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "Let's walk through the booking flow first and leave billing for later."
+  },
+  {
+   "char_end": 147,
+   "char_start": 71,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 12500,
+   "id": "0453e037-07dd-58b4-9c65-a4c2a18e7c7d",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 3",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 6500,
+   "text": "I shared the clinic list last Thursday, so you should have all 14 locations."
+  },
+  {
+   "char_end": 218,
+   "char_start": 148,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 19000,
+   "id": "93adad58-30ab-5571-a83c-bd780c6cf665",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 3",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 14000,
+   "text": "We want the portal to be mobile-first; most bookings come from phones."
+  },
+  {
+   "char_end": 267,
+   "char_start": 219,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 24500,
+   "id": "9bb2ad7b-5957-5b45-b5a3-ff64f0664bf8",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 2",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 20500,
+   "text": "I'll deliver the first wireframes by 2026-08-21."
+  },
+  {
+   "char_end": 332,
+   "char_start": 268,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 31000,
+   "id": "954f7850-2784-52e5-976e-d9cb00ef246e",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 4,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 3",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 26000,
+   "text": "I won't be taking on the patient survey, that's marketing's job."
+  },
+  {
+   "char_end": 423,
+   "char_start": 333,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 39500,
+   "id": "2499992e-568a-5509-93b7-0d1085e78862",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 5,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 1",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 32500,
+   "text": "One concern: the legacy scheduling system has no API, which is a risk for the integration."
+  },
+  {
+   "char_end": 457,
+   "char_start": 424,
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "end_ms": 45000,
+   "id": "e84b238d-4482-5f6d-950b-86c1776088a9",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "317cd750-5f9c-5f81-b290-2455ac000c9c",
+   "seq": 6,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 2",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 41000,
+   "text": "I can design around that for now."
+  },
+  {
+   "char_end": 70,
+   "char_start": 0,
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "end_ms": 5000,
+   "id": "10f0f4ea-9e5e-5f8f-8eab-0f111318a067",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "I sent the statement of work this morning, it should be in your inbox."
+  },
+  {
+   "char_end": 137,
+   "char_start": 71,
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "end_ms": 11500,
+   "id": "58da87cf-70a9-575b-afd4-82d55ad36654",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 6500,
+   "text": "Got it. Decision: Larkspur signs the statement of work as written."
+  },
+  {
+   "char_end": 197,
+   "char_start": 138,
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "end_ms": 17000,
+   "id": "97ef79e9-7128-53c8-95e2-1f59077c9eee",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 13000,
+   "text": "Who owns the data migration from the old scheduling system?"
+  },
+  {
+   "char_end": 250,
+   "char_start": 198,
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "end_ms": 22500,
+   "id": "bf1afb5d-351f-51b1-acad-e3473d515ec0",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 18500,
+   "text": "Let's take that offline; I don't have an answer yet."
+  },
+  {
+   "char_end": 322,
+   "char_start": 251,
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "end_ms": 29000,
+   "id": "08313c92-236b-5987-9d7d-a12a2c00e829",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "3e37c96a-4975-56df-a5b1-1abf1ffa4859",
+   "seq": 4,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Tomas Varga",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 24000,
+   "text": "Action: Tomas to set up the staging environment on Azure by 2026-08-28."
+  },
+  {
+   "char_end": 41,
+   "char_start": 0,
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "end_ms": 4000,
+   "id": "153250b5-293e-5256-a921-76b0ee56e20d",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "Our compliance team came back on hosting."
+  },
+  {
+   "char_end": 156,
+   "char_start": 42,
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "end_ms": 14500,
+   "id": "00576862-73cc-5314-98c4-466e1f1456c2",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 5500,
+   "text": "Decision: we move hosting to AWS instead of Azure, because the Microsoft agreement does not cover HIPAA workloads."
+  },
+  {
+   "char_end": 206,
+   "char_start": 157,
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "end_ms": 20000,
+   "id": "e0353f19-c897-5e8e-837a-f307c54df05a",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Tomas Varga",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 16000,
+   "text": "I'll redo the staging setup on AWS by 2026-09-04."
+  },
+  {
+   "char_end": 270,
+   "char_start": 207,
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "end_ms": 26500,
+   "id": "a416527d-5c92-5c42-a76f-2fda8670f9c3",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "960e0b65-a503-5f7a-bca9-da8e677bbe74",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 21500,
+   "text": "That pushes staging by a week but keeps the launch plan intact."
+  },
+  {
+   "char_end": 75,
+   "char_start": 0,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 6000,
+   "id": "9371b395-497b-58d7-aa08-6be6c5be7a09",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 1",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "Alex's wireframes arrived on 2026-08-20 and the clinic managers liked them."
+  },
+  {
+   "char_end": 119,
+   "char_start": 76,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 11500,
+   "id": "a6def901-a2ca-554f-88f5-4e2997eb848b",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 2",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 7500,
+   "text": "Staging on AWS has been up since Wednesday."
+  },
+  {
+   "char_end": 218,
+   "char_start": 120,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 21000,
+   "id": "420f021d-65df-565d-acb5-70d6bae3f69d",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 3",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 13000,
+   "text": "Decision: the portal launches with online booking and bill pay, and messaging waits for phase two."
+  },
+  {
+   "char_end": 275,
+   "char_start": 219,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 26500,
+   "id": "9481201e-3706-57b8-bf24-5d0c310e22ad",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 2",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 22500,
+   "text": "I will finish the booking API integration by 2026-09-25."
+  },
+  {
+   "char_end": 332,
+   "char_start": 276,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 32000,
+   "id": "44ce9bb0-db4e-543d-ae31-1553b73810c9",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 4,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 2",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 28000,
+   "text": "I'll add SMS reminders if we ever get budget for Twilio."
+  },
+  {
+   "char_end": 344,
+   "char_start": 333,
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "end_ms": 37500,
+   "id": "6da037ed-3e3f-5065-96d9-c46fcec9d911",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "a0ce45e6-8c0b-5f23-91b6-658f7075cad9",
+   "seq": 5,
+   "speaker_actor_id": null,
+   "speaker_attribution": null,
+   "speaker_label": "Speaker 3",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 33500,
+   "text": "Fine by me."
+  },
+  {
+   "char_end": 102,
+   "char_start": 0,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 8000,
+   "id": "7e953b75-0677-5c20-a023-1532a6c8c329",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "Thanks for making time. Today I want to agree on scope, hosting and next steps for the patient portal."
+  },
+  {
+   "char_end": 202,
+   "char_start": 103,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 17500,
+   "id": "b2652959-8168-5201-a605-25efd6d3630d",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 9500,
+   "text": "The portal needs to serve 14 clinics at launch, and patients should be able to book and pay online."
+  },
+  {
+   "char_end": 292,
+   "char_start": 203,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 26000,
+   "id": "b7e133f0-ec76-59be-ba49-f17a6bb89234",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 19000,
+   "text": "Decision: we host the portal on Azure because Larkspur already has a Microsoft agreement."
+  },
+  {
+   "char_end": 344,
+   "char_start": 293,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 31500,
+   "id": "67d7b336-b8b6-5811-b009-844ebf9fb181",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 27500,
+   "text": "Good. I'll send the statement of work in two weeks."
+  },
+  {
+   "char_end": 398,
+   "char_start": 345,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 37000,
+   "id": "423665b6-6c8b-534d-b38e-3ed9269e4757",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 4,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Priya Nair",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 33000,
+   "text": "Action: Priya to share the clinic list by 2026-08-07."
+  },
+  {
+   "char_end": 469,
+   "char_start": 399,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 43500,
+   "id": "37f67e62-fb5f-5599-bf02-19d44fb5253a",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 5,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 38500,
+   "text": "If the board rejects the budget, I'll pause the project until January."
+  },
+  {
+   "char_end": 537,
+   "char_start": 470,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": 50000,
+   "id": "87ec7772-3d8b-595b-99c1-79f5acbae3eb",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 6,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 45000,
+   "text": "Understood. For the record, the monthly retainer is 18,500 dollars."
+  },
+  {
+   "char_end": 579,
+   "char_start": 538,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": null,
+   "id": "2ee79ba8-5551-589b-b87f-995bbb80f234",
+   "kind": "private_note",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 7,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": null,
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": null,
+   "text": "Alex seemed worried about the board vote."
+  },
+  {
+   "char_end": 635,
+   "char_start": 580,
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "end_ms": null,
+   "id": "54f46271-c058-5f9d-aa92-701064806dbf",
+   "kind": "private_note",
+   "owner_id": "fixture-owner",
+   "revision_id": "c84c527f-5230-51e8-b753-e793e31b9117",
+   "seq": 8,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": null,
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": null,
+   "text": "I'll ask Tomas whether the Azure credits cover staging."
+  },
+  {
+   "char_end": 55,
+   "char_start": 0,
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "end_ms": 4000,
+   "id": "f0809db3-abf1-5c02-ad0e-e9bdff6c24cd",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "seq": 0,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Tomas Varga",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 0,
+   "text": "The booking integration is done; I merged it yesterday."
+  },
+  {
+   "char_end": 100,
+   "char_start": 56,
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "end_ms": 9500,
+   "id": "df4b46e9-d901-5bd1-b35b-8c7c5fda754f",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "seq": 1,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Alex Chen",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 5500,
+   "text": "Decision: the portal launches on 2026-10-05."
+  },
+  {
+   "char_end": 159,
+   "char_start": 101,
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "end_ms": 15000,
+   "id": "996abad6-7164-5097-8fc1-374efca867fe",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "seq": 2,
+   "speaker_actor_id": null,
+   "speaker_attribution": "other",
+   "speaker_label": "Priya Nair",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 11000,
+   "text": "Action: Priya to train the front desk staff before launch."
+  },
+  {
+   "char_end": 218,
+   "char_start": 160,
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "end_ms": 20500,
+   "id": "523ad333-2208-5915-8965-999cb74a4cd6",
+   "kind": "transcript",
+   "owner_id": "fixture-owner",
+   "revision_id": "ddd78975-4840-585c-ae27-73d7a5e3799e",
+   "seq": 3,
+   "speaker_actor_id": null,
+   "speaker_attribution": "owner",
+   "speaker_label": "Robin Hale",
+   "speaker_link_status": "unresolved",
+   "speaker_provenance": {},
+   "start_ms": 16500,
+   "text": "I'm not going to build the analytics dashboard this phase."
+  }
+ ],
+ "sources": [
+  {
+   "availability": "available",
+   "connection_id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "connector": "api",
+   "created_at": "2026-08-04T16:20:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-01",
+   "id": "f9412f3e-4526-54ef-9dca-f59452eb89ab",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Larkspur portal kickoff",
+   "updated_at": "2026-08-04T16:20:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "available",
+   "connection_id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "connector": "api",
+   "created_at": "2026-08-18T16:10:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-03",
+   "id": "091b40d5-5d01-527a-a939-742fe4975d7c",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Statement of work review",
+   "updated_at": "2026-08-18T16:10:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "available",
+   "connection_id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "connector": "api",
+   "created_at": "2026-09-02T14:00:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-04",
+   "id": "258518d7-c2a5-55b6-992f-fc59ae2c3a01",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Hosting rethink",
+   "updated_at": "2026-09-02T14:00:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "deleted",
+   "connection_id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "connector": "api",
+   "created_at": "2026-09-10T15:45:00+00:00",
+   "current_revision": 1,
+   "deleted_at": "2026-09-12T13:00:00+00:00",
+   "external_id": "alpha-06",
+   "id": "778bf021-9ff5-5313-9c35-cad6fe4858fd",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "deleted",
+   "title": "Weekly status (recorded by mistake)",
+   "updated_at": "2026-09-12T13:00:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "available",
+   "connection_id": "041f65df-a9a2-510b-a68c-a36a8ce8b0c0",
+   "connector": "api",
+   "created_at": "2026-09-22T16:00:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-07",
+   "id": "c8cb9083-9a69-573b-b296-1e0773284d94",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Pre-launch check",
+   "updated_at": "2026-09-22T16:00:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "available",
+   "connection_id": "50154b20-1c8e-5421-b81a-a5c0c014f3fd",
+   "connector": "zoom",
+   "created_at": "2026-08-11T20:30:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-02",
+   "id": "76595e87-120e-5330-8a69-b3a09765ced3",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Portal design workshop",
+   "updated_at": "2026-08-11T20:30:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  },
+  {
+   "availability": "available",
+   "connection_id": "50154b20-1c8e-5421-b81a-a5c0c014f3fd",
+   "connector": "zoom",
+   "created_at": "2026-09-01T17:00:00+00:00",
+   "current_revision": 1,
+   "deleted_at": null,
+   "external_id": "alpha-05",
+   "id": "819cb2a8-f22f-53e2-9b3d-62b38e194d8b",
+   "kind": "meeting",
+   "owner_id": "fixture-owner",
+   "status": "received",
+   "title": "Design review",
+   "updated_at": "2026-09-01T17:00:00+00:00",
+   "upstream_owner_email": "robin.hale@halestudio.example",
+   "upstream_owner_name": "Robin Hale"
+  }
+ ],
+ "version": 1
+}

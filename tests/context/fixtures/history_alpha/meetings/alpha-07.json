@@ -1,0 +1,72 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "alpha-07",
+  "title": "Pre-launch check",
+  "occurred_at": "2026-09-22T10:00:00-05:00",
+  "ended_at": "2026-09-22T10:40:00-05:00",
+  "timezone": "America/Chicago",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@halestudio.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Tomas Varga",
+      "email": "tomas@halestudio.example",
+      "role": "attendee",
+      "speaker_label": "Tomas Varga"
+    },
+    {
+      "name": "Priya Nair",
+      "email": "priya.nair@larkspur.example",
+      "role": "attendee",
+      "speaker_label": "Priya Nair"
+    },
+    {
+      "name": "Alex Chen",
+      "email": "alex.chen@larkspur.example",
+      "role": "attendee",
+      "speaker_label": "Alex Chen"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Tomas Varga",
+      "text": "The booking integration is done; I merged it yesterday.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Alex Chen",
+      "text": "Decision: the portal launches on 2026-10-05.",
+      "start_ms": 5500,
+      "end_ms": 9500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Priya Nair",
+      "text": "Action: Priya to train the front desk staff before launch.",
+      "start_ms": 11000,
+      "end_ms": 15000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "I'm not going to build the analytics dashboard this phase.",
+      "start_ms": 16500,
+      "end_ms": 20500,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@halestudio.example",
+  "upstream_owner_name": "Robin Hale"
+}

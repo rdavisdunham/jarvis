@@ -1,0 +1,66 @@
+{
+  "envelope_version": 1,
+  "connector": "zoom",
+  "external_id": "gamma-02",
+  "title": "Internal: contract term",
+  "occurred_at": "2026-07-14T13:00:00-07:00",
+  "ended_at": "2026-07-14T13:30:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer"
+    },
+    {
+      "name": "Jordan Ellis",
+      "email": "jordan.ellis@ashgrove.example",
+      "role": "attendee"
+    },
+    {
+      "name": "Nadia Rahman",
+      "email": "nadia.rahman@ashgrove.example",
+      "role": "attendee"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Speaker 1",
+      "text": "I asked finance to join so we can settle the term question.",
+      "start_ms": 0,
+      "end_ms": 4000
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Speaker 2",
+      "text": "A three-year term locks us in while our volumes are still uncertain.",
+      "start_ms": 5500,
+      "end_ms": 10500
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Speaker 1",
+      "text": "Decision: we only accept a one-year term with a renewal cap.",
+      "start_ms": 12000,
+      "end_ms": 17000
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Speaker 2",
+      "text": "I'll model the three-year cost by 2026-07-20 anyway, so we have the numbers.",
+      "start_ms": 18500,
+      "end_ms": 24500
+    },
+    {
+      "seq": 4,
+      "speaker_label": "Speaker 3",
+      "text": "I won't sign anything until legal has reviewed the data processing addendum.",
+      "start_ms": 26000,
+      "end_ms": 32000
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale"
+}
