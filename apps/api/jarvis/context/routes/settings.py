@@ -6,14 +6,20 @@ workspaces (PERSONAL_WORKSPACE). The live sources without any account are file i
 and the submission endpoint (`PUT /api/v1/external/sources/{connector}/{external_id}`, `sources:write`). The
 Granola REST adapter is optional: its routes refuse unless `context_granola_enabled` is set, the key is kept
 only as ciphertext (`granola.seal_credential`) and is never returned or logged.
+
+Owner preferences (`PATCH /settings/preferences`) are an allow-list over `ContextOwnerState.settings`:
+`synthesize_briefs`, `semantic_supersede`, `lint_budget_usd` and `review_destination`, written under the owner-state
+row lock. Other keys in that JSON (`engine`, lint progress, the remembered Linear team) are never exposed or changed
+here. Like `routes/owner.py`, the route runs under `service.as_owner(user)` and `service.authorize(write=True)`, and
+`auth.authenticate` requires the CSRF header; bot keys cannot reach the session router.
 """
 
 import hashlib
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
 from sqlalchemy import func, select
 from starlette.concurrency import run_in_threadpool
 
@@ -23,10 +29,13 @@ from ...config import get_settings
 from ...db import session_scope
 from ...domain import DomainError, advisory, enqueue_job
 from ...models import Job
-from .. import connectors, imports, sources
+from .. import connectors, imports, service, sources
 from .. import settings as context_settings
 from ..connectors import granola
-from ..models import ContextConnection, ContextSource, ContextSourceRevision
+from ..lint import DEFAULT_BUDGET_USD, RECONCILE_RESERVE_USD
+from ..models import ContextConnection, ContextOwnerState, ContextSource, ContextSourceRevision
+from ..proposals import DESTINATIONS
+from .admin import lock_state
 from .sources import body_limit, read_body
 
 User = Annotated[Identity, Depends(authenticate)]
@@ -35,6 +44,9 @@ router = APIRouter(prefix="/settings", tags=["Meeting context settings"])
 SYNC_JOB = "context_granola_sync"
 BACKFILL_JOB = "context_granola_backfill"
 SUBMISSION_LABELS = ("recorder", "zoom", "granola", "other")
+LINT_BUDGET_MAX_USD = 5.0  # 100 reconcile calls a week at the lint's per-call reserve
+PREFERENCE_DEFAULTS = {"synthesize_briefs": False, "semantic_supersede": False, "lint_budget_usd": DEFAULT_BUDGET_USD,
+                       "review_destination": "eridani"}
 ENTITLEMENT = ("Granola refused this key. Granola's API needs a Business or Enterprise workspace; on other plans, "
                "bring meetings in with file import or the submission endpoint instead.")
 
@@ -116,8 +128,13 @@ def overview(user: User):
         owner = owner_of(db, user)
         connections = [public_connection(c) for c in granola_connections(db, owner)] if granola_on else []
         delivered = deliveries(db, owner)
+        current = preferences_of(db.get(ContextOwnerState, owner))
     live = {"upload": True, "api": True, "granola": bool(granola_on and connections), "zoom": False}
     return {
+        "preferences": current,
+        "preference_limits": {"lint_budget_usd": {"min": 0.0, "max": LINT_BUDGET_MAX_USD, "default": DEFAULT_BUDGET_USD,
+                                                  "per_call": RECONCILE_RESERVE_USD},
+                              "review_destination": list(DESTINATIONS)},
         "adapters": [{"key": key, "description": adapter.description, "live": live[key]}
                      for key, adapter in connectors.ADAPTERS.items()],
         "deliveries": delivered,
@@ -125,6 +142,50 @@ def overview(user: User):
         "limits": limits(),
         "granola": {"enabled": granola_on, "connections": connections},
     }
+
+
+# ---------------------------------------------------------------- owner preferences
+
+
+def preferences_of(state: ContextOwnerState | None) -> dict:
+    """The allow-listed owner settings with their effective values (what the pipeline reads when a key is absent)."""
+    stored = (state.settings or {}) if state else {}
+    values = {key: stored.get(key, default) for key, default in PREFERENCE_DEFAULTS.items()}
+    values["synthesize_briefs"] = bool(values["synthesize_briefs"])
+    values["semantic_supersede"] = bool(values["semantic_supersede"])
+    values["lint_budget_usd"] = float(values["lint_budget_usd"])
+    if values["review_destination"] not in DESTINATIONS:
+        values["review_destination"] = "eridani"
+    return values
+
+
+class Preferences(BaseModel):
+    """Changed fields only; anything else in the body is refused."""
+    model_config = ConfigDict(extra="forbid")
+    synthesize_briefs: StrictBool | None = None
+    semantic_supersede: StrictBool | None = None
+    lint_budget_usd: float | None = Field(None, ge=0, le=LINT_BUDGET_MAX_USD, allow_inf_nan=False)
+    review_destination: Literal["eridani", "linear"] | None = None
+
+    @model_validator(mode="after")
+    def one_change(self):
+        if not self.model_fields_set or any(getattr(self, name) is None for name in self.model_fields_set):
+            raise ValueError("Send at least one setting, each with a value.")
+        return self
+
+
+@router.patch("/preferences")
+def update_preferences(body: Preferences, user: User):
+    with service.as_owner(user), session_scope() as db:
+        caller = service.authorize(db, write=True)
+        if not caller.session:
+            raise DomainError("NOT_AUTHORIZED", "Only you can change meeting memory settings, from Settings.", 403)
+        state = lock_state(db, caller.owner)
+        values = {**(state.settings or {}), **body.model_dump(include=body.model_fields_set)}
+        if values != (state.settings or {}):
+            state.settings, state.updated_at = values, datetime.now(UTC)
+        db.flush()
+        return {"preferences": preferences_of(state)}
 
 
 # ---------------------------------------------------------------- file import

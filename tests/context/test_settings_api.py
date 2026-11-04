@@ -248,3 +248,66 @@ def test_import_has_the_transcript_body_cap_not_the_100_kb_default(client, monke
     get_settings.cache_clear()
     assert len(large) > body_limit()
     assert upload(client, large + " more", "text/plain", filename="long2.txt").status_code == 413
+
+
+def stored_settings():
+    with session_scope() as db:
+        state = db.get(m.ContextOwnerState, "davin")
+        return dict(state.settings or {}) if state else {}
+
+
+def test_preferences_show_defaults_and_save_only_allow_listed_fields(client):
+    from jarvis.context.lint import DEFAULT_BUDGET_USD
+
+    data = client.get(BASE).json()
+    assert data["preferences"] == {"synthesize_briefs": False, "semantic_supersede": False,
+                                   "lint_budget_usd": DEFAULT_BUDGET_USD, "review_destination": "eridani"}
+    assert data["preference_limits"]["lint_budget_usd"]["max"] == routes.LINT_BUDGET_MAX_USD
+    with session_scope() as db:  # keys the route must keep and never expose
+        db.add(m.ContextOwnerState(owner_id="davin", settings={"engine": "double", "lint": {"spent": 0.1}}))
+    saved = client.patch(BASE + "/preferences", json={"synthesize_briefs": True, "lint_budget_usd": 1.25})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["preferences"] == {"synthesize_briefs": True, "semantic_supersede": False,
+                                           "lint_budget_usd": 1.25, "review_destination": "eridani"}
+    client.patch(BASE + "/preferences", json={"review_destination": "linear", "semantic_supersede": True})
+    assert stored_settings() == {"engine": "double", "lint": {"spent": 0.1}, "synthesize_briefs": True,
+                                 "lint_budget_usd": 1.25, "review_destination": "linear", "semantic_supersede": True}
+    assert "engine" not in client.get(BASE).json()["preferences"]
+    from jarvis.context import pipeline, proposals, temporal
+    with session_scope() as db:
+        assert pipeline.synthesize_briefs(db, "davin") and temporal.semantic_supersede_enabled(db, "davin")
+        assert proposals.destination(db, "davin") == "linear"
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"engine": "double"}, {"synthesize_briefs": "yes"}, {"synthesize_briefs": None},
+    {"lint_budget_usd": -1}, {"lint_budget_usd": 999}, {"review_destination": "jira"},
+    {"synthesize_briefs": True, "lint": {}},
+])
+def test_preferences_refuse_anything_outside_the_allow_list(client, body):
+    assert client.patch(BASE + "/preferences", json=body).status_code == 422
+    assert stored_settings() == {}
+
+
+def test_preferences_need_a_session_csrf_the_flag_and_a_personal_workspace(client, monkeypatch):
+    change = {"synthesize_briefs": True}
+    assert code(TestClient(app).patch(BASE + "/preferences", json=change)) == (401, "NOT_AUTHORIZED")
+    token = client.post("/api/v1/bot-keys", json={"name": "ctx", "scopes": ["context:write"],
+                                                  "expires_in_days": 30}).json()["token"]
+    bot = TestClient(app).patch(BASE + "/preferences", json=change, headers={"Authorization": "Bearer " + token})
+    assert code(bot) == (401, "NOT_AUTHORIZED")
+    csrf = client.headers.pop("X-CSRF-Token")
+    try:
+        assert code(client.patch(BASE + "/preferences", json=change)) == (403, "NOT_AUTHORIZED")
+    finally:
+        client.headers["X-CSRF-Token"] = csrf
+    monkeypatch.setenv("JARVIS_CONTEXT_ENABLED", "false")
+    get_settings.cache_clear()
+    assert code(client.patch(BASE + "/preferences", json=change)) == (403, "CONTEXT_DISABLED")
+    monkeypatch.setenv("JARVIS_CONTEXT_ENABLED", "true")
+    get_settings.cache_clear()
+    from test_accounts import client_for, shared
+
+    shared(client, client_for("guest"))
+    assert code(client.patch(BASE + "/preferences", json=change)) == (403, "PERSONAL_WORKSPACE")
+    assert stored_settings() == {}

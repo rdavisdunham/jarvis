@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AudioLines, Check, Copy, FileUp, RefreshCw, Trash2 } from "lucide-react";
 import { api, ApiError, post } from "../api";
 import { SettingRow, SettingsGroup } from "../SettingsLayout";
+import { MeetingMemorySettings, type MeetingPreferences, type PreferenceLimits, type ProcessingStatus } from "./MeetingMemorySettings";
 
 export type SourceDelivery = { connector: string; label: string; sources: number; last_delivery_at: string | null };
 export type GranolaConnection = { id: string; connector: "granola"; account: string; has_key: boolean; enabled: boolean;
@@ -12,6 +13,8 @@ export type SourcesOverview = {
   submission: { method: "PUT"; url: string; scope: string; labels: string[]; bridge: string };
   limits: { max_source_chars: number; max_segments: number; max_body_bytes: number; formats: string[]; extensions: string[] };
   granola: { enabled: boolean; connections: GranolaConnection[] };
+  preferences: MeetingPreferences;
+  preference_limits: PreferenceLimits;
 };
 export type ImportResult = { id: string; external_id: string; title: string; format: string; revision: number;
   ingestion_status: "created" | "content" | "metadata" | "none" | "deleted"; processing_status: string };
@@ -45,7 +48,7 @@ const zone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZo
 const HEALTH: Record<string, string> = { ok: "Working", auth_failed: "Key rejected", degraded: "Retrying", not_entitled: "Not entitled",
   unconfigured: "No key", rejected: "Refused", unknown: "Not checked" };
 
-export function SourcesSettings({ initial = null }: { initial?: SourcesOverview | null }) {
+export function SourcesSettings({ initial = null, initialStatus = null }: { initial?: SourcesOverview | null; initialStatus?: ProcessingStatus | null }) {
   const [data, setData] = useState<SourcesOverview | null>(initial), [hidden, setHidden] = useState(false);
   const [error, setError] = useState(""), [refresh, setRefresh] = useState(0);
   useEffect(() => {
@@ -57,7 +60,7 @@ export function SourcesSettings({ initial = null }: { initial?: SourcesOverview 
   }, [refresh, initial]);
   if (hidden) return null;
   const reload = () => setRefresh(n => n + 1);
-  return <SettingsGroup className="sources-settings" icon={<AudioLines size={18}/>} title="Meeting sources"
+  return <><SettingsGroup className="sources-settings" icon={<AudioLines size={18}/>} title="Meeting sources"
     description="Transcripts reach meeting memory through any of these. Eridani keeps its own copy of every meeting it receives.">
     {error && <p role="alert" className="error-banner">{error}</p>}
     {!data ? !error && <p role="status" className="settings-empty">Loading meeting sources…</p> : <>
@@ -66,7 +69,9 @@ export function SourcesSettings({ initial = null }: { initial?: SourcesOverview 
       <Submission submission={data.submission}/>
       {data.granola.enabled && <GranolaSection connections={data.granola.connections} onChanged={reload}/>}
     </>}
-  </SettingsGroup>;
+  </SettingsGroup>
+  {data && <MeetingMemorySettings preferences={data.preferences} limits={data.preference_limits} initialStatus={initialStatus}/>}
+  </>;
 }
 
 function Deliveries({ items }: { items: SourceDelivery[] }) {

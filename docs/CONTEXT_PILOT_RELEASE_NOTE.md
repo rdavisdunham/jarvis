@@ -88,26 +88,25 @@ encrypted, never shown again), Test key, then Sync now. The poller runs every 5 
 behind new meetings with one consolidated notice. Only notes you own are imported. Without such a key, use the
 bridge with Granola MCP exports instead.
 
-## 4. Optional: model-written briefs (`synthesize_briefs`)
+## 4. Optional: model-written briefs and other meeting memory settings
 
-Briefs are deterministic by default (restated, cited assertions; no model). Model-written briefs cost a
-synthesis call per changed person or project and are opt-in per owner. There is no UI switch; set it from a
-shell with the app environment (as for `jarvis.deploy` commands):
+Briefs are deterministic by default (restated, cited assertions; no model). Model-written briefs cost one
+synthesis call per changed person or project in each meeting and are opt-in per owner:
 
-```sh
-/app/.venv/bin/python - <<'PY'
-from jarvis.db import session_scope
-from jarvis.context.routes.admin import lock_state
-OWNER = "<owner_id from admin/status>"
-with session_scope() as db:
-    state = lock_state(db, OWNER)
-    state.settings = {**(state.settings or {}), "synthesize_briefs": True}
-PY
-```
+1. Signed in, in your personal workspace, open Settings → Connections and scroll to **Meeting memory**.
+2. Turn on **Model-written briefs**. It saves at once; turn it off the same way.
 
-Set it back to `False` the same way. Other settings in the same JSON: `lint_budget_usd` (weekly lint cap, default
-0.50), `semantic_supersede` (leave off for the pilot: free-text supersessions stay in shadow), `engine: "double"`
-(deterministic engines, for offline trials only, never for the live pilot).
+The same panel holds the other owner settings:
+
+- **Apply reworded replacements** (`semantic_supersede`): leave off for the pilot, so free-text supersessions stay
+  in shadow and the current value is unchanged.
+- **Weekly cleanup budget** (`lint_budget_usd`): the weekly lint's model cap, default $0.50, from $0 (no model
+  checks) to $5.00; each check reserves $0.05.
+- **Approved tasks go to** (`review_destination`): the default destination on the meeting review, Eridani or
+  Linear. Choosing a destination when approving a review also updates it.
+
+The panel saves through `PATCH /api/v1/context/settings/preferences` (signed-in session with the CSRF header; bot
+keys cannot). The deterministic test engines are not a setting and are never used for the live pilot.
 
 ## 5. What to expect on the first day
 
@@ -138,8 +137,9 @@ continue; works even with the flag off):
 curl -X POST https://<origin>/api/v1/context/admin/pause -H "X-CSRF-Token: <csrf>" -b "<session cookie>"
 ```
 
-`POST /api/v1/context/admin/resume` resumes; work interrupted by the pause is requeued once. There is no button
-for these yet.
+`POST /api/v1/context/admin/resume` resumes; work interrupted by the pause is requeued once. Settings →
+Connections → Meeting memory → Processing has the same Pause and Resume control, with a status line (paused since,
+epoch, runs outstanding); it shows while meeting context is on. With the flag off, use the routes above.
 
 **Rollback drill.** `POST /api/v1/context/admin/rollback-drill` pauses, exports your history and proves it
 imports. Its response contains the whole history: save it as you would an export, or discard it.
