@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importOutcome, importParams, SourcesSettings, type SourcesOverview } from "./SourcesSettings";
+import { processingLine, type ProcessingStatus } from "./MeetingMemorySettings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -15,16 +16,19 @@ const overview = (granola: Partial<SourcesOverview["granola"]> = {}): SourcesOve
   limits: { max_source_chars: 400000, max_segments: 20000, max_body_bytes: 900000, formats: ["txt", "markdown", "vtt", "srt", "json"],
     extensions: [".json", ".md", ".srt", ".txt", ".vtt"] },
   granola: { enabled: false, connections: [], ...granola },
+  preferences: { synthesize_briefs: false, semantic_supersede: false, lint_budget_usd: 0.5, review_destination: "eridani" },
+  preference_limits: { lint_budget_usd: { min: 0, max: 5, default: 0.5, per_call: 0.05 }, review_destination: ["eridani", "linear"] },
 });
 
 type Call = { url: string; init: RequestInit };
+const running: ProcessingStatus = { epoch: 2, paused: false, paused_at: null, queue: { jobs: {}, runs: { queued: 1, running: 1, succeeded: 9 } } };
 let host: HTMLDivElement, root: Root, calls: Call[], replies: ((call: Call) => [number, unknown])[], current: SourcesOverview;
 beforeEach(() => {
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   calls = []; replies = []; current = overview();
   vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit = {}) => {
     const call = { url, init }; calls.push(call);
-    const [status, body] = (replies.shift() ?? (() => [200, current]))(call);
+    const [status, body] = (replies.shift() ?? (() => [200, url.endsWith("/context/admin/status") ? running : current]))(call);
     return new Response(JSON.stringify(body), { status });
   }));
 });
@@ -111,5 +115,54 @@ describe("import helpers", () => {
     const base = { id: "s", external_id: "x", title: "Retro", format: "md", revision: 1, processing_status: "queued" };
     expect(importOutcome({ ...base, ingestion_status: "created" })).toBe("Imported “Retro”.");
     expect(importOutcome({ ...base, ingestion_status: "none" })).toContain("already imported");
+  });
+});
+
+describe("Meeting memory", () => {
+  const input = (label: string) => [...host.querySelectorAll<HTMLElement>(".setting-row, label.field")]
+    .find(row => row.textContent?.includes(label))!.querySelector<HTMLInputElement | HTMLSelectElement>("input, select")!;
+  const sent = (url: string) => calls.filter(c => c.url === url).map(c => ({ method: c.init.method, body: c.init.body && JSON.parse(String(c.init.body)) }));
+
+  it("shows the processing status and current preferences, without an engine or rollback control", async () => {
+    await render(<SourcesSettings/>);
+    expect(calls.map(c => c.url)).toContain("/api/v1/context/admin/status");
+    expect(text()).toContain("Meeting memory");
+    expect(text()).toContain("Running · epoch 2 · 2 runs outstanding");
+    expect((input("Model-written briefs") as HTMLInputElement).checked).toBe(false);
+    expect(text()).toContain("one model call per changed person or project");
+    expect((input("Weekly cleanup budget") as HTMLInputElement).value).toBe("0.5");
+    expect((input("Approved tasks go to") as HTMLSelectElement).value).toBe("eridani");
+    expect(text()).not.toMatch(/engine|rollback/i);
+  });
+
+  it("saves a switch through PATCH and pauses through the admin route", async () => {
+    await render(<SourcesSettings/>);
+    replies.push(() => [200, { preferences: { ...current.preferences, synthesize_briefs: true } }]);
+    await act(async () => { (input("Model-written briefs") as HTMLInputElement).click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(sent("/api/v1/context/settings/preferences")).toEqual([{ method: "PATCH", body: { synthesize_briefs: true } }]);
+    expect((input("Model-written briefs") as HTMLInputElement).checked).toBe(true);
+    replies.push(() => [200, { ...running, paused: true, epoch: 3, paused_at: "2026-11-04T12:00:00Z" }]);
+    await act(async () => { button("Pause").click(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(sent("/api/v1/context/admin/pause")).toEqual([{ method: "POST", body: {} }]);
+    expect(text()).toContain("Paused since");
+    expect(text()).toContain("epoch 3");
+    expect(button("Resume")).toBeTruthy();
+  });
+
+  it("shows a refused change and keeps the saved value", async () => {
+    await render(<SourcesSettings/>);
+    replies.push(() => [422, { error: { code: "INVALID_ARGUMENT", message: "Input should be 'eridani' or 'linear'" } }]);
+    const select = input("Approved tasks go to") as HTMLSelectElement;
+    await act(async () => { select.value = "linear"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => { await Promise.resolve(); });
+    expect(text()).toContain("Input should be");
+    expect(select.value).toBe("eridani");
+  });
+
+  it("describes paused and running states", () => {
+    expect(processingLine({ ...running, queue: { jobs: {}, runs: { queued: 1 } } })).toBe("Running · epoch 2 · 1 run outstanding");
+    expect(processingLine({ ...running, paused: true, paused_at: null })).toContain("Paused since an unknown time");
   });
 });

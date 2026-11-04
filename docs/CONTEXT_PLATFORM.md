@@ -300,11 +300,12 @@ brief is rebuilt or served as the deterministic current view marked stale, never
 `context_max_source_chars` (1,000,000; at most 20,000 segments), `context_granola_enabled` (false),
 `context_granola_api_key` (server-wide fallback; connections store their own sealed key).
 
-**Per-owner settings** (`context_owner_state.settings` JSON; there is no UI or route for them, set them from a
-shell as the release note shows): `synthesize_briefs` (model-written briefs; default off), `engine: "double"`
-(deterministic engines, for offline trials), `semantic_supersede` (apply free-text supersessions instead of
-shadow; default off), `lint_budget_usd` (default 0.50). The owner state also keeps lint progress and the last
-explicitly chosen publication destination.
+**Per-owner settings** (`context_owner_state.settings` JSON). Settings → Connections → Meeting memory edits the
+allow-listed ones through `PATCH /api/v1/context/settings/preferences` (session only): `synthesize_briefs`
+(model-written briefs; default off), `semantic_supersede` (apply free-text supersessions instead of shadow; default
+off), `lint_budget_usd` (default 0.50, 0 to 5.00) and `review_destination` (`eridani` or `linear`, also set when a
+review approval names one). `engine: "double"` (deterministic engines, for offline trials) has no route or UI. The
+owner state also keeps lint progress and the remembered Linear team.
 
 **Pause, resume, epoch.** `POST /api/v1/context/admin/pause` increments the epoch and sets `paused` under the row
 lock: in-flight automatic results fail the apply guard and nothing automatic applies. Sources, reads, manual
