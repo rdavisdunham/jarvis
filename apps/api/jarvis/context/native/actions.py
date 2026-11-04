@@ -272,6 +272,12 @@ def _owner_quotes(owner: str | None, evidence: list[EvidenceRef], meeting: Meeti
     return out
 
 
+def _unattributed(evidence: list[EvidenceRef], meeting: Meeting) -> list[str]:
+    """Quotes from transcript lines without a speaker (unseparated audio)."""
+    return [e.quote.translate(QUOTE_CHARS) for e in evidence
+            if meeting.ctx.segments[e.segment_seq].kind == "transcript" and meeting.speaker(e.segment_seq) is None]
+
+
 def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Meeting) -> bool:
     key = owner.casefold().strip()
     quotes = " ".join(e.quote for e in evidence).translate(QUOTE_CHARS).casefold()
@@ -285,6 +291,9 @@ def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Me
     names = _names(owner, meeting)
     if any(_word_in(n, quotes) for n in names | _first(names)):
         return True
+    notes = " ".join(s.text for s in meeting.notes.values()).translate(QUOTE_CHARS).casefold()
+    if notes and any(_word_in(n, notes) for n in names | _first(names)):
+        return True  # the recorder's own notes name the owner
     if basis == "implied_by_discussion":  # implied work falls to someone in the meeting
         present = {n for p in meeting.people() for n in (p.get("name"), p.get("speaker_label")) if n}
         return any(_names(p, meeting) & names or _first(_names(p, meeting)) & _first(names) for p in present)
@@ -298,8 +307,15 @@ def _basis(item: ActionItem, owner_quotes: list[str], evidence: list[EvidenceRef
     named = [re.compile(NAMED_PROMISE.format(re.escape(n)), re.IGNORECASE) for n in names | _first(names) if n]
     promising = [q for q in owner_quotes if PROMISE.search(q)]
     promising += [e.quote for e in evidence if any(p.search(e.quote.translate(QUOTE_CHARS)) for p in named)]
+    signals: dict[str, Any] = {}
+    unattributed = _unattributed(evidence, meeting)
+    quotes = " ".join(e.quote for e in evidence).translate(QUOTE_CHARS).casefold()
+    if unattributed and not owner_quotes and any(_word_in(n, quotes) for n in names | _first(names)):
+        # Speakers not separated: "Davis, can you..." then "Sure, I'll do it" on an unattributed line.
+        promising += [q for q in unattributed if PROMISE.search(q)]
+        signals["owner_from_content"] = True
     tentative = bool(promising) and all(TENTATIVE.search(q) for q in promising)
-    signals = {"promise": bool(promising), "tentative": tentative, "owner_spoke": bool(owner_quotes)}
+    signals.update(promise=bool(promising), tentative=tentative, owner_spoke=bool(owner_quotes))
     basis = item.owner_basis
     if basis in COMMITTING and not promising:
         basis = "self_assigned_intent" if owner_quotes else "implied_by_discussion"
@@ -327,8 +343,15 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
     if item.status == "done_in_meeting":
         return rejection("done_in_meeting", "finished during the meeting", title, seqs)
     owner = (item.owner or "").strip() or None
+    unassigned: dict[str, Any] = {}
     if item.kind == "suggestion":
         owner = None
+    elif owner and owner.casefold() in UNKNOWN:
+        owner, unassigned = None, {"owner_unknown": True}  # promised on a line without a speaker: unclear owner
+    elif owner and _unattributed(evidence, meeting) and not _attributed(owner, item.owner_basis, evidence, meeting):
+        # Unseparated speakers: the lines don't show who spoke and nothing names the model's owner, so it
+        # stays unassigned (never guessed as the recorder) rather than dropped.
+        owner, unassigned = None, {"owner_unverified": owner[:300]}
     owner_quotes = _owner_quotes(owner, evidence, meeting)
     primary = owner_quotes or [e.quote.translate(QUOTE_CHARS) for e in evidence]
     if any(HYPOTHETICAL.search(q) for q in primary) and not any(not HYPOTHETICAL.search(q) for q in primary):
@@ -357,6 +380,7 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         return rejection("prior_decision", "dismissed or marked wrong before", title, seqs)
 
     basis, signals = _basis(item, owner_quotes, evidence, meeting) if owner else ("implied_by_discussion", {})
+    signals.update(unassigned)
     if dropped:
         signals["dropped_quotes"] = dropped
     responsible = [r for r in (resolve(owner, meeting),) if r]
