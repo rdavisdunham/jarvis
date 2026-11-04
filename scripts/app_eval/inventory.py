@@ -81,8 +81,10 @@ def owner(name):
 
 def route_owner(path, source):
     if path.startswith("/api/v1/context/"):
-        # Meeting context session routes; a dedicated eval feature arrives with the context docs package.
-        return "operations" if "/admin" in path else "privacy"
+        # Meeting context session routes; the owner's pause, resume and rollback drill are operations.
+        return "operations" if path.startswith("/api/v1/context/admin") else "meeting_context"
+    if path.startswith(("/api/v1/external/sources", "/api/v1/external/context/")):
+        return "meeting_context"
     if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
     if "/onboarding" in path:return "onboarding"

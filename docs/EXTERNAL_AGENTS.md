@@ -190,6 +190,30 @@ Permissions:
 - Linked task state (in briefs and open loops) also needs `tasks:read`; without it, task details are withheld
   and the response says so.
 
+### Submit transcripts
+
+`PUT /api/v1/external/sources/{connector}/{external_id}` with a `sources:write` key delivers one completed
+meeting. `connector` is a label: `granola`, `zoom`, `upload` and `api` are kept as themselves; any other label
+(`recorder`, `other`) is recorded as connector `api` with the label kept, so two clients never collide. The body
+is either a JSON envelope (`{"version": 1, ...}` with `occurred_at` (required, timezone-aware), `title`,
+`ended_at`, `timezone`, `participants`, `segments` or `text`, `private_notes`, `summary` (display only, never
+evidence), `calendar_event_id`, and `external_revision` or `content_hash` (required with `segments`)) or a raw TXT, Markdown, WebVTT or SRT body chosen by
+`Content-Type`, with `title`, `occurred_at`, `timezone` and `external_revision` as query parameters. Speaker labels
+come from `Name: text` lines or VTT voice tags.
+
+The response gives the stable source `id`, `revision`, `revision_id`, `ingestion_status` (`created`, `content` for
+a new revision, `metadata` when only display details changed, `none` for an identical delivery, `deleted` when
+the meeting was deleted and this content is not new) and `processing_status`. Repeating a delivery is safe; the
+client keeps its own watermark. Bodies over the limit are `SOURCE_TOO_LARGE` (413); malformed files are refused
+with the problem and its location, never echoing content. `scripts/bridge_submit.py` submits a folder of exports
+this way. Limits and the endpoint are shown in Settings → Connections → Meeting sources.
+
+Source reads: `GET /sources?status=&limit=&offset=` and `GET /sources/{id}` need `context:read`;
+`DELETE /sources/{id}` needs `context:write` and removes the meeting's content from every read at once (a purge job
+scrubs it; published tasks stay). Meeting reviews are read-only for agents: `GET /context/reviews` (the inbox) and
+`GET /context/reviews/{source_id}` with `context:read`. Approving, dismissing and publishing are the owner's, in
+the web app.
+
 API operations (under `/api/v1/external`) and their MCP twins:
 
 | HTTP | MCP tool | What it returns |
@@ -227,8 +251,12 @@ command or tool, so a key calling it gets `INSUFFICIENT_SCOPE`. Inside Eridani, 
 
 Eridani's own web app reads the same context through the signed-in session at `/api/v1/context/*` (`search`,
 `brief`, `evidence/{id}`, `open-loops`, `meeting-prep`, `changes`, `GET /sources`, `GET /sources/{id}`,
-`GET /sources/{id}/segments`, `DELETE /sources/{id}`). Those routes are not for bots; they share the service,
-the checks and the response shapes above, with the owner's own task access.
+`GET /sources/{id}/segments`, `DELETE /sources/{id}`), and adds the owner-only meeting review (`reviews/*`:
+approve, apply updates, dismiss, later, done, Wrong, Changed, speaker corrections, publication retry), person pages (`people/*`: merge,
+unmerge, not the same person, link corrections), the Meeting sources settings (`settings/*`) and processing
+controls (`admin/*`: status, pause, resume, rollback drill). Those routes are not for bots; they share the
+service, the checks and the response shapes above, with the owner's own task access. Architecture and
+operations: [CONTEXT_PLATFORM.md](CONTEXT_PLATFORM.md).
 
 ## Agent session ledger
 

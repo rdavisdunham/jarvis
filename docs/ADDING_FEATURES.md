@@ -497,11 +497,37 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 | `docs/TASK_CARDS.md` | Both task cards' sections and every entry point that opens each | A task-card section or a route into either card changes |
 | `docs/APP_FUNCTIONALITY.md` | Feature map, dated September 19; "Bug reports" at the end | New user-facing feature |
 | `evals/app/README.md`, `evals/app/surface-inventory.json` | Eval catalog and exposed surfaces | New feature, route, command or read tool |
+| `docs/CONTEXT_PLATFORM.md`, `docs/CONTEXT_PILOT_RELEASE_NOTE.md` | `jarvis/context/` (tables, job kinds, routes, flags, owner settings) and the pilot switch-on steps | Any meeting-context table, job kind, route, flag or owner setting |
 
 - There is no `CLAUDE.md` or `AGENTS.md` in this repository; coding agents should be pointed at this
   file.
 - CI runs on every pull request, including stacked ones; `main` requires the three CI checks with
   strict up-to-date branches (`docs/CI.md`).
+
+## 12. Meeting context (`jarvis/context/`)
+
+The context platform is an extractable module ([CONTEXT_PLATFORM.md](CONTEXT_PLATFORM.md)). Nothing outside
+`jarvis/context/` imports it except the registration points below; inside it, reach Eridani only through entity
+lookup and search, the command path for planner writes, and auth and scopes. Entity references are
+`(entity_type, entity_id)` strings, never foreign keys. The sections above still apply; this is where each
+kind of context change registers.
+
+| Adding | Touch | Guard / test |
+|---|---|---|
+| A table or column | `context/models.py` and a new migration (context tables are in 0048-0050); `export.py` `SECTIONS` when the rows belong to a history; every column `owner_id`-scoped | `tests/context/test_migrations.py`, `test_export_roundtrip.py`, CI `alembic check` |
+| An enumerated value (status, kind, lifecycle) | `context/schema.py` Literal; `apps/web/src/context/context-model.ts` when the web shows it | `test_meeting_types_match_the_context_schema` |
+| A job kind | Name it `context_<stage>`, add one line to `pipeline.HANDLERS`; never touch `worker.py` (the prefix routes it to `jarvis-context`); record a `context_runs` row and make the handler idempotent (DBOS retries it) | Section 10; `tests/context/test_pipeline_wiring.py` |
+| Applying engine output | Go through `apply.guard` (owner lock, epoch, pause, revision, decision watermark); no model call inside a transaction | `tests/context/test_pipeline.py`, `test_apply.py` |
+| A cost-bearing model call | One of the `context_*` labels in `cost_features.LABELS` (`@feature`), a budget reservation through `memory_learning`, the per-source cap | `tests/context/test_extract.py` |
+| A bot route | `context/routes/<module>.py` on `router` (mounted under `/api/v1/external`), `sources.authorize` (flag, scope, personal workspace); a line in `routes/__init__.py`; `route_owner` already maps `/api/v1/external/sources` and `/external/context/*` to `meeting_context` | Section 2; `test_surface_inventory_matches_current_app` |
+| A session (web) route | A router included in `owner_router` (`/api/v1/context`, mounted in `api.py`), never the external router; reads go through `service.as_owner(user)`; human-only writes check `routing.human_command`; owner admin routes go under `/admin` (eval owner `operations`) | Section 2; `tests/context/test_context_owner.py` |
+| An agent tool | `context/mcp.py` `TOOLS`, a REST twin in `routes/context.py`, `bot_access.READ_SCOPES` or `WRITE_TOOLS`, a row in `EXTERNAL_AGENTS.md` "Meeting context" | Section 3; `test_context_tools_scopes_routes_and_docs_agree` |
+| A web call | Only through `apps/web/src/context/context-api.ts` against `/api/v1/context/...` | `test_meeting_review_reads_only_the_context_api` |
+| A notice | `context/notices.py` writes `Notification` rows with a stable dedup key; category `context_*`; rows in `notice-targets.json` and `worker.notification_url` | Section 7; `test_push_and_in_app_notifications_open_the_same_place` |
+| A Questions item | `decisions.question_items` / `service.question_items` (kind `context`), answered by `context.resolve` | `test_context_questions_offer_every_resolve_action` |
+| A server flag | `config.py` `context_*` field and `context/settings.py` `ContextSettings`; default off for anything that spends or reaches out | `docs/CONTEXT_PILOT_RELEASE_NOTE.md` |
+| A per-owner setting | A key in `context_owner_state.settings` read where used; list it in `CONTEXT_PLATFORM.md` "Operations" | None |
+| An eval scenario | `evals/app/features/meeting_context.json` (25-50 cases), bindings in `evals/app/bindings.json`, regenerate `automation-coverage.json`; engine and retrieval quality evals in `evals/context/` | `evals/test_app_eval.py` |
 
 ---
 

@@ -3,14 +3,18 @@
 Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md),
 [Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
 
-The catalog contains **1,107 scenarios across 44 features**. The on-demand runner
+The catalog contains **1,155 scenarios across 45 features**. The on-demand runner
 indexes every scenario, selects its available adapters, and reports unmet criteria.
-This does **not** mean every scenario is automated. Current bindings cover **112**
-complete acceptance scenarios; component evidence is available for **224** cases
+This does **not** mean every scenario is automated. Current bindings cover **245**
+complete acceptance scenarios; component evidence is available for **226** cases
 (overlapping acceptance coverage). Remaining scenarios retain incomplete or physical
 acceptance requirements. Batch C adds 25 Quick-capture and 25 onboarding scenarios,
-with 12 exact deterministic bindings. Agent control (remotea) adds 25 scenarios, not yet
-bound; its outcome eval lives in `evals/agent_control/`. The backend model comparison (cheapest model per job
+with 12 exact deterministic bindings. Agent control (remotea) has 31 scenarios, six of them
+bound; its outcome eval lives in `evals/agent_control/`. Meeting context (`meeting_context`,
+pipeline type) adds 31 scenarios covering submission, the pipeline, cited retrieval, review and publication,
+notices and pause controls, not yet bound; its `tests/context/` suites are supporting evidence, and engine
+quality, the retrieval benchmark and the pilot gates live in [evals/context](../context/README.md)
+([architecture](../../docs/CONTEXT_PLATFORM.md)). The backend model comparison (cheapest model per job
 type) lives in `evals/models/` and `scripts/model_eval.py` (docs/COST_TRACKING.md). See
 [automation-coverage.json](automation-coverage.json) for the per-feature backlog.
 Historical reports keep their original scenario counts and outcomes.
@@ -20,7 +24,7 @@ Historical reports keep their original scenario counts and outcomes.
 - **contracts:** task/record commands, dates, recurrence, schema, permissions,
   notifications, budgets and recovery.
 - **agent:** queued conversations, clarifications and action receipts.
-- **pipeline:** memories, both dream systems, notes/list organization and retrieval.
+- **pipeline:** memories, both dream systems, notes/list organization, retrieval and meeting context.
 - **integration:** Google Calendar, Linear, scoped external-agent API/MCP and agent control (remotea).
 - **browser:** navigation, settings and site controls, using synthetic provider/media fixtures.
 - **voice:** current Live/idle/wake/shutdown regressions; actual microphone, OS
