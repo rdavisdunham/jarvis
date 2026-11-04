@@ -1,0 +1,43 @@
+{
+  "scale": 4.0,
+  "corpus": {
+    "context_sources": 2000,
+    "context_source_revisions": 2200,
+    "context_segments": 200000,
+    "context_chunks": 11054,
+    "context_decisions": 868,
+    "context_assertions": 28946,
+    "context_assertion_versions": 35581,
+    "context_evidence": 33801,
+    "context_entity_links": 50492,
+    "context_owner_state": 3
+  },
+  "scopes": {
+    "owner": {
+      "p50_ms": 128.3,
+      "p95_ms": 141.7,
+      "queries": 200
+    },
+    "owner+raw": {
+      "p50_ms": 189.9,
+      "p95_ms": 219.6,
+      "queries": 200
+    },
+    "entity": {
+      "p50_ms": 61.3,
+      "p95_ms": 70.6,
+      "queries": 200
+    },
+    "entity+raw": {
+      "p50_ms": 144.7,
+      "p95_ms": 172.7,
+      "queries": 200
+    },
+    "known_at": {
+      "p50_ms": 245.6,
+      "p95_ms": 370.9,
+      "queries": 200
+    }
+  },
+  "leaks": 0
+}

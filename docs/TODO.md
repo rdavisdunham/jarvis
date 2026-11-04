@@ -724,7 +724,8 @@ serves cited context to agents over MCP. Off by default; personal workspace only
 - [x] Evaluation harness: database-mode runner, raw vs structured vs combined comparison on 111 questions,
   release report grading every section 11 gate (NOT GRADEABLE until labels are verified), labelling worksheet.
 - [x] Docs and app eval registry: `meeting_context` feature (31 scenarios, unbound), this documentation.
-- [ ] Performance pass (F2): pilot-scale latency and cost report, `evals/context/reports/pilot-perf.md`.
+- [x] Performance pass (F2): p95 gate met at 1x, 4x and 10x with exact search; cost about $0.038 per meeting
+  (`evals/context/reports/pilot-perf.md`). Measure real model latency per stage on live meetings.
 - [ ] Take an encrypted database export, then switch the pilot on for the owner (release note steps 0-3).
 - [ ] Owner adjudication: verify labels on two real meeting series (6-10 hours; `evals/context/worksheet.py`
   export, fill, import) so the plan section 11 quality gates can be scored with sample counts; then run

@@ -184,9 +184,10 @@ uv run --no-sync python -m evals.context.bench                                  
 uv run --no-sync python -m evals.context.bench --scale 0.1 --queries 40 --report -   # quick look, stdout only
 ~~~
 
-Results: [`reports/native-retrieval-benchmark.md`](reports/native-retrieval-benchmark.md) (environment, corpus,
-latency per configuration). F2 owns `bench.py` and `corpus.py`; `bench.py` writes the JSON that
-`report --perf` grades, next to its markdown report.
+Results: [`reports/native-retrieval-benchmark.md`](reports/native-retrieval-benchmark.md) and
+[`-4x.md`](reports/native-retrieval-benchmark-4x.md) (environment, corpus, latency per configuration), with a
+`.json` summary beside each that `report --perf` grades. [`reports/pilot-perf.md`](reports/pilot-perf.md) has
+the gate verdict, review-ready time and cost per meeting and per query (`bench.py --pipeline 60`).
 
 ## Caveats of the synthetic numbers
 

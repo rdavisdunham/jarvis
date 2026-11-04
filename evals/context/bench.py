@@ -183,6 +183,14 @@ def run_config(engine, corpus: Corpus, qs: list[BenchQuery], build, expect: Expe
             "results": results}
 
 
+def perf_summary(scale: float, corpus: Corpus, exact: dict) -> dict:
+    """The exact-scan timings (the production plan) in the shape `evals.context.report --perf` grades."""
+    return {"scale": scale, "corpus": corpus.counts(),
+            "scopes": {name: {"p50_ms": round(r["p50"], 1), "p95_ms": round(r["p95"], 1), "queries": len(r["results"])}
+                       for name, r in exact.items()},
+            "leaks": sum(r["violations"] for r in exact.values())}
+
+
 def plan_uses(engine, build, q: BenchQuery, corpus: Corpus) -> dict[str, bool]:
     """EXPLAIN the retrieval statement for one query and report which HNSW indexes the planner chose."""
     captured = []
@@ -753,6 +761,7 @@ def main(argv: list[str] | None = None) -> int:
             hnsw_engine.dispose()
         env = environment(engine)
         report = render(corpus, env, timings, exact, indexed, agree, used, qs, probe)
+        summary = perf_summary(args.scale, corpus, exact)
     finally:
         engine.dispose()
         if not args.keep:
@@ -761,7 +770,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.report != "-":
         Path(args.report).parent.mkdir(parents=True, exist_ok=True)
         Path(args.report).write_text(report)
-        print(f"report written to {args.report}", file=sys.stderr)
+        Path(args.report).with_suffix(".json").write_text(json.dumps(summary, indent=2) + "\n")
+        print(f"report written to {args.report} (and .json for report --perf)", file=sys.stderr)
     failed = any(r["violations"] for r in [*exact.values(), *(indexed or {}).values()])
     return 1 if failed else 0
 

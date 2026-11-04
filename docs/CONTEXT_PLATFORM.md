@@ -210,8 +210,15 @@ development machine the worst exact-scan p95 was 530 ms (entity scope with raw h
 bare semantic leg costs 11.7 ms p95. HNSW indexes were not chosen by the planner (the leg orders by distance and
 ID) and are not needed; no HNSW migration exists. At 4x scale only entity scope with raw hits exceeded the gate
 (p95 2,706 ms), caused by the per-segment entity predicate, not vector search; F2 replaced it with one
-precomputed set of the owner's segments about the entities and runs the statement with `jit = off` (see
-`evals/context/reports/pilot-perf.md` for the current numbers).
+precomputed set of the owner's segments about the entities and runs the statement with `jit = off` (a JIT
+compile was costing 2.3 s on a plan that ran in under 300 ms). After that change the worst p95 is 160 ms at 1x,
+398 ms at 4x and 1,183 ms at 10x (`known_at`, which has no stored tsvector on assertion versions; a stored
+column with a GIN index is the next fix if it grows). HNSW top-20 agreement with exact search was 100% at every
+scale, and switching to ANN makes sense only once the exact semantic leg nears 500 ms (about 30x). A 60-minute
+meeting is review-ready in 1.3 s of pipeline time plus 12 sequential model calls; it costs about $0.038 with
+default settings (3.6% of the $1 per-source cap), plus $0.0034 per entity when model briefs are on. Details in
+`evals/context/reports/pilot-perf.md`; `bench.py` writes a JSON summary next to each report for
+`evals.context.report --perf`.
 
 ## 7. Agent contract
 
