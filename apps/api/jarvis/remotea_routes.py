@@ -722,6 +722,19 @@ def respond_decision(identity: str, body: RespondInput, user: User):
         return agent_decisions.respond(db, user.owner_id, identity, body, actor=actor_for(user))
 
 
+@router.post("/runs/{identity}/retry-planning")
+def retry_planning(identity: UUID, body: PauseInput, user: User):
+    from . import agent_planning_recovery
+    with session_scope() as db:
+        writable(db, user)
+        def apply():
+            run = coordinator.load(db, user.owner_id, str(identity))
+            coordinator.check_revision(run, body.expected_revision)
+            agent_planning_recovery.retry(db, run, actor=actor_for(user))
+            return control.public_run(db, run, detail=True)
+        return receipts.once(db, user.owner_id, str(identity), "retry_planning", body, apply)
+
+
 @router.post("/runs/{identity}/pause")
 def pause_run(identity: UUID, body: PauseInput, user: User):
     from . import agent_decisions

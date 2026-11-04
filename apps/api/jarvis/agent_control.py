@@ -1210,7 +1210,9 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "controller": (run.sync_state or {}).get("controller", "eridani"),
         "terminal_exited": (run.sync_state or {}).get("controller") == "terminal" and coordinator.native_exit_verified(run),
         "pause_reason": (run.sync_state or {}).get("automatic_pause"),
+        "operator_paused": bool(run.paused and (run.sync_state or {}).get("operator_paused", not (run.sync_state or {}).get("automatic_pause"))),
         "host_attention": (run.sync_state or {}).get("host_attention"),
+        "coordination_failure": None if run.plan_pending else (run.sync_state or {}).get("coordination_failure"),
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
@@ -1245,6 +1247,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
         **run_summaries.public(run),
     }
+    if not run.plan_pending and (run.state_reason == "no_plan" or (run.sync_state or {}).get("coordination_failure")):
+        result["summary"] = "Planning submission needs recovery; no questions or plan are awaiting your approval."
     from .agent_decisions import for_run
     run_decisions = for_run(db, run)
     result.update(decisions=run_decisions,
