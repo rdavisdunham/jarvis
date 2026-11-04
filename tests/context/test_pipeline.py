@@ -135,9 +135,11 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
     receipt = receive(envelope)
-    assert drain() == STAGES
-    assert [(k, s) for k, s, *_ in jobs()] == [(k, "succeeded") for k in STAGES]
-    assert [(stage, status) for stage, status, *_ in runs()] == [
+    ran = drain()
+    # Briefs for touched entities follow reconciliation (deterministic by default, no model call).
+    assert [k for k in ran if k != "context_brief"] == STAGES and set(ran) - set(STAGES) <= {"context_brief"}
+    assert all(s == "succeeded" for _, s, *_ in jobs())
+    assert [(stage, status) for stage, status, *_ in runs() if stage != "brief"] == [
         ("ingest", "succeeded"), ("extract", "succeeded"), ("link", "succeeded"), ("reconcile", "succeeded"),
         ("embed", "succeeded")]
     with session_scope() as db:

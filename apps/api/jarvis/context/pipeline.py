@@ -707,22 +707,51 @@ def granola_backfill(work: Work) -> dict:
         return asdict(resolve("granola").backfill(db, work.owner, connection, int(work.payload.get("days", 90))))
 
 
+def synthesize_briefs(db, owner: str) -> bool:
+    """Owner setting `synthesize_briefs` (default off) turns on model-written briefs in the pipeline."""
+    state = db.get(ContextOwnerState, owner)
+    return bool(state and (state.settings or {}).get("synthesize_briefs"))
+
+
 def brief(work: Work) -> dict:
-    try:
-        from .briefs import build_brief
-    except ImportError:
-        log.info("context_brief skipped: briefs are not available yet (package C3)")
-        return {"skipped": "briefs not available"}
-    ref = EntityRef(entity_type=work.payload["entity_type"], entity_id=work.payload["entity_id"])
+    """Rebuild one entity's brief: read inputs, synthesize outside any transaction, commit if inputs held still."""
+    from .briefs import build_brief, commit_brief, prepare_brief, run_synthesis
+
+    entity_type, entity_id = work.payload["entity_type"], work.payload["entity_id"]
     with session_scope() as db:
         run = _run(db, work, "brief")
-        run.entity_type, run.entity_id = ref.entity_type, ref.entity_id
+        run.entity_type, run.entity_id = entity_type, entity_id
         if replay := _replay(run):
             return replay
         if reason := apply.guard(db, work.owner, run):
             return _stale(db, work, run, reason)
-        built = build_brief(db, work.owner, ref, run_id=run.id)
-        return _finish(run, brief_id=getattr(built, "id", None))
+        engine = run.engine = engine_name(db, work.owner)
+        if not synthesize_briefs(db, work.owner):
+            # Deterministic briefs by default: model synthesis costs a call per entity per meeting.
+            built = build_brief(db, work.owner, entity_type, entity_id, run_id=run.id)
+            return _finish(run, brief_id=built.id)
+        plan = prepare_brief(db, work.owner, entity_type, entity_id)
+        if plan is None:
+            return _finish(run, unchanged=True)
+        run_id = run.id
+    if engine == "double":
+        from .doubles import DoubleSynthesizer
+        synthesizer = DoubleSynthesizer()
+    else:
+        from .native.synthesize import NativeSynthesizer
+        synthesizer = NativeSynthesizer()
+    sections, error = run_synthesis(plan, synthesizer)
+    with session_scope() as db:
+        run = db.get(ContextRun, run_id, with_for_update=True)
+        if replay := _replay(run):
+            return replay
+        if reason := apply.guard(db, work.owner, run):
+            return _stale(db, work, run, reason)
+        built = commit_brief(db, work.owner, plan, sections, run_id=run_id, error=error)
+        if (built.watermarks or {}).get("resynthesize"):
+            enqueue_job(db, work.owner, "context_brief", {"entity_type": entity_type, "entity_id": entity_id,
+                                                          "resynthesize": run_id})
+        return _finish(run, brief_id=built.id, synthesis_error=error)
 
 
 def placeholder(work: Work) -> dict:
