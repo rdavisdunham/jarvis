@@ -442,6 +442,10 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 - [ ] `worker.perform_job`: dispatch on `job.kind`.
 - [ ] `worker` dispatcher's `queue_name` chain: a kind not listed lands on the default `jarvis` queue;
       memory-like work belongs in `jarvis-memory`, provider calls in their provider queue.
+- [ ] Context platform work (`jarvis/context/`): name the kind `context_<stage>` and touch neither list.
+      Every kind starting with `context_` goes to the `jarvis-context` queue (concurrency
+      `JARVIS_CONTEXT_QUEUE_CONCURRENCY`, default 2) and `perform_job` hands it to
+      `jarvis.context.pipeline.perform(job_id)`, which dispatches on the kind. No other kind may use the prefix.
 
 ## 11. Docs and process
 

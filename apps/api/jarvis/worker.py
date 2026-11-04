@@ -53,6 +53,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind and kind.startswith("context_"):
+        from .context import pipeline
+
+        return pipeline.perform(job_id)
     if kind in {"agent_intake", "agent_action"}:
         from . import work_intake, work_runner
         asyncio.run((work_intake if kind == "agent_intake" else work_runner).run(job_id))
@@ -157,7 +161,8 @@ def dispatch_outbox(client, after=None):
             client.enqueue(
                 {
                     "workflow_name": "jarvis_job_v1",
-                    "queue_name": "jarvis-intake" if job.kind == "agent_intake"
+                    "queue_name": "jarvis-context" if job.kind.startswith("context_")
+                    else "jarvis-intake" if job.kind == "agent_intake"
                     else "jarvis-agent" if job.kind == "agent_action"
                     else "jarvis-linear"
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
@@ -542,6 +547,8 @@ def run_supervisor(stop, lease):
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
     Queue("jarvis-intake", concurrency=4, worker_concurrency=4)
     Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
+    Queue("jarvis-context", concurrency=settings.context_queue_concurrency,
+          worker_concurrency=settings.context_queue_concurrency)
     DBOS.launch()
     client = DBOSClient(
         system_database_url=settings.database_url, system_database_pool_size=settings.dbos_client_pool_size
