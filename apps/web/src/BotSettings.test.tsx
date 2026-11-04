@@ -11,6 +11,8 @@ describe("connected agents", () => {
     expect(permissionScopes({ tasks:"write" }, false, false)).not.toContain("agents:session");
     expect(permissionScopes({ tasks:"read" }, false, false, true)).toEqual(["tasks:read", "agents:read"]);
     expect(permissionScopes({ tasks:"read" }, false, true)).not.toContain("agents:read");
+    expect(permissionScopes({ context:"write", tasks:"none" }, false, false, false, true)).toEqual(["context:write", "sources:write"]);
+    expect(permissionScopes({ context:"read" }, false)).not.toContain("sources:write");
   });
   it("identifies the selected workspace", () => {
     const html = renderToStaticMarkup(<BotSettings workspace="Team launch"/>);

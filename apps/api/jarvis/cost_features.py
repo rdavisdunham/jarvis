@@ -22,6 +22,11 @@ LABELS = {
     "session_ledger": "Agent session summaries and search",
     "agent_control": "Agent run judge",
     "agent_summaries": "Agent run summaries",
+    "context_extraction": "Meeting context extraction",
+    "context_linking": "Meeting people and entity linking",
+    "context_reconciliation": "Meeting context reconciliation",
+    "context_embeddings": "Meeting context embeddings",
+    "context_synthesis": "Meeting briefs and summaries",
     "unattributed": "Earlier or unclassified usage",
 }
 

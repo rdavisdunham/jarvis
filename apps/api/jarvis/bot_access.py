@@ -31,9 +31,14 @@ SCOPES = {
     "agents:control": "Link a remotea server: report live sessions, turns and status (remotea only)",
     "agents:session": "In-session agent tools for a linked task's plan and steps (remotea only)",
     "agents:read": "Read runs started from tasks: state, frozen plan, turns, questions, verdicts and commands (remotea only)",
+    "context:read": "Search meeting context, briefs, evidence and sources (personal workspace only)",
+    "context:write": "Suggest corrections to meeting context; never approves or publishes (personal workspace only)",
+    "sources:write": "Submit meeting transcripts and notes; reading them back needs context:read (personal workspace only)",
 }
 # Control scopes mutate on every use: viewers cannot hold them and each use is a write check.
 PRIVILEGED = {"agents:control", "agents:session"}
+# Meeting context is personal (plan_final.md section 6): keys holding these exist only in the personal workspace.
+PERSONAL_ONLY = {"context:read", "context:write", "sources:write"}
 COMMAND_SCOPES = {
     "quicklist.create":"tasks:write", "quicklist.item":"tasks:write", "quicklist.promote":"tasks:write",
     **{f"structure.{op}": "schema:write" for op in ("preview", "apply", "restore")},
@@ -91,7 +96,8 @@ def normalize(scopes):
     values = set(scopes)
     if not values or values - SCOPES.keys():
         raise DomainError("INVALID_ARGUMENT", "Select valid bot permissions.")
-    values |= {s.replace(":write", ":read") for s in values if s.endswith(":write")}
+    # A write scope implies its read twin where one exists (sources:write has none).
+    values |= {s.replace(":write", ":read") for s in values if s.endswith(":write")} & SCOPES.keys()
     if "work:run" in values and not any(s.endswith(":read") for s in values):
         raise DomainError("INVALID_ARGUMENT", "Queued work needs at least one record read permission.")
     return sorted(values)
@@ -179,6 +185,8 @@ def create(db, owner, account, name, scopes, days):
         raise DomainError("OWNER_REQUIRED", "Only the workspace owner can grant structure editing.", 403)
     if PRIVILEGED & set(scopes) and shared(db, owner):
         raise DomainError("PERSONAL_WORKSPACE", "Agent keys exist only in your personal workspace.", 403)
+    if PERSONAL_ONLY & set(scopes) and shared(db, owner):
+        raise DomainError("PERSONAL_WORKSPACE", "Meeting context keys exist only in your personal workspace.", 403)
     # Secrets are returned once; neither the database nor receipts store the token.
     token = "eri_bot_" + secrets.token_urlsafe(32)
     row = BotCredential(
