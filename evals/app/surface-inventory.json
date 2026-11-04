@@ -907,6 +907,55 @@
       "feature": "receipts"
     },
     {
+      "method": "GET",
+      "path": "/api/v1/context/settings",
+      "handler": "overview",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola",
+      "handler": "granola_connect",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/context/settings/granola/{connection_id}",
+      "handler": "granola_remove",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/backfill",
+      "handler": "granola_backfill",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/sync",
+      "handler": "granola_sync_now",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/test",
+      "handler": "granola_test",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/import",
+      "handler": "import_file",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
       "method": "POST",
       "path": "/api/v1/conversations",
       "handler": "create_conversation",
@@ -1135,55 +1184,6 @@
       "path": "/api/v1/external/sessions/{tool}/{session_id}/link",
       "handler": "session_link",
       "source": "apps/api/jarvis/external_routes.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/external/settings",
-      "handler": "overview",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/external/settings/granola",
-      "handler": "granola_connect",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "DELETE",
-      "path": "/api/v1/external/settings/granola/{connection_id}",
-      "handler": "granola_remove",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/external/settings/granola/{connection_id}/backfill",
-      "handler": "granola_backfill",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/external/settings/granola/{connection_id}/sync",
-      "handler": "granola_sync_now",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/external/settings/granola/{connection_id}/test",
-      "handler": "granola_test",
-      "source": "apps/api/jarvis/context/routes/settings.py",
-      "feature": "external_agents"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/external/settings/import",
-      "handler": "import_file",
-      "source": "apps/api/jarvis/context/routes/settings.py",
       "feature": "external_agents"
     },
     {

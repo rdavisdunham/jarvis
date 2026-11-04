@@ -25,15 +25,9 @@ ACCOUNT = "davin@example.com"
 VTT = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<v Davin>Kick-off.</v>\n\n00:00:04.000 --> 00:00:06.000\n<v Priya>Ready.</v>\n"
 
 
-@pytest.fixture(autouse=True, scope="module")
-def mounted():
-    """api.py mounts `owner_router`; until that registration line lands, mount it ahead of the SPA catch-all."""
-    if not any(getattr(r, "path", "") == BASE for r in app.routes):
-        before = len(app.router.routes)
-        app.include_router(owner_router)
-        added = app.router.routes[before:]
-        del app.router.routes[before:]
-        app.router.routes[0:0] = added
+def test_api_mounts_owner_routes_before_the_spa_catch_all():
+    paths = [getattr(r, "path", "") for r in app.routes]
+    assert BASE in paths and paths.index(BASE) < paths.index("/{path:path}")
 
 
 @pytest.fixture(autouse=True)
