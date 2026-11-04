@@ -351,6 +351,7 @@ def resumable_extractor(cached: dict, save: Callable[[int, dict], None], budget_
     """The native extractor with per-chunk persistence: a chunk whose inputs (prompt version, lines, context and
     candidates) match a saved one is restored without model calls, and a chunk completed now is saved at once.
     Skipped and failed chunks are never saved, so a continuation retries exactly those."""
+    from .native import actions as action_pass
     from .native.extract import NativeExtractor
     from .native.prompts import meeting_block
     from .native.validate import Rejection
@@ -370,6 +371,16 @@ def resumable_extractor(cached: dict, save: Callable[[int, dict], None], budget_
             save(run.chunk.seq, {"key": key, "cost": run.cost, "calls": run.calls,
                                  "drafts": [_draft_dump(d) for d in run.drafts],
                                  "rejected": [r.as_dict() for r in run.rejected]})
+
+        def _actions(self, owner, meeting, out, spend, timeout):  # saved beside the chunks, under "actions"
+            key = action_pass.cache_key(meeting)
+            saved = cached.get("actions")
+            if saved and saved.get("key") == key:
+                out.restore(saved, meeting)
+                spend.spent += out.cost
+                return
+            super()._actions(owner, meeting, out, spend, timeout)
+            save("actions", out.dump(key))
 
     return ResumableExtractor(budget_usd=budget_usd)
 

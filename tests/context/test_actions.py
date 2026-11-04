@@ -16,6 +16,7 @@ from jarvis.context.native.extract import NativeExtractor
 from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION
 from jarvis.context.native.validate import SourceContext, ungrounded_numbers
 from jarvis.context.schema import (
+    Decision,
     EntityCandidate,
     EntityRef,
     ExtractRequest,
@@ -284,12 +285,23 @@ def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
     key = actions.cache_key(meeting)
     saved = json.loads(json.dumps(out.dump(key)))
     restored = actions.ActionRun()
-    restored.restore(saved)
+    restored.restore(saved, meeting)
     assert saved["key"] == key and restored.cost == out.cost > 0 and restored.calls == out.calls == 2
     assert restored.diagnostics(meeting) == out.diagnostics(meeting)
     assert [d.assertion for d in restored.drafts] == [d.assertion for d in out.drafts]
     # anything the pass reads changes the key: the lines, the prompt's model, the candidates
     assert actions.cache_key(actions.Meeting.of(request.model_copy(update={"title": "Other"}), ctx)) != key
+    # a dismissal since the save rejects that item again; decisions alone don't change the key
+    title = out.drafts[0].title
+    dismissed = request.model_copy(update={"decisions": [Decision(
+        id="dec-1", seq=1, operation="dismiss", origin="human", target_type="proposal", target_id="p-1",
+        statement=title, recorded_at=request.occurred_at)]})
+    later = actions.Meeting.of(dismissed, SourceContext.from_request(dismissed))
+    assert actions.cache_key(later) == key
+    again = actions.ActionRun()
+    again.restore(saved, later)
+    assert [d.title for d in again.drafts] == [d.title for d in out.drafts[1:]]
+    assert again.rejected[-1]["code"] == "prior_decision"
     use(monkeypatch, "terra")
     assert actions.cache_key(meeting) != key
 

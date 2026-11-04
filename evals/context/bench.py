@@ -429,13 +429,14 @@ PLANTED = re.compile(r"Decision: ([^.]+)\.|I'll ([^.]+?) by (\d{4}-\d{2}-\d{2})\
 
 class ScriptedModel:
     """Stands in for the extraction model behind `native.extract.call_model`: answers each pass as a well-behaved
-    model would for `corpus.meeting`'s planted decisions and commitments, and reports estimated usage (prompt:
-    system, user content and response schema; completion: the answer plus REASONING_TOKENS). No network."""
+    model would for `corpus.meeting`'s planted decisions (the chunk passes) and commitments (the action pass), and
+    reports estimated usage (prompt: system, user content and response schema; completion: the answer plus
+    REASONING_TOKENS). No network."""
 
     def __init__(self):
         self.passes: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])  # name -> [calls, prompt, completion]
 
-    def __call__(self, owner, body, allowance, timeout, prompt_tokens) -> dict:
+    def __call__(self, owner, body, allowance, timeout, prompt_tokens, **route) -> dict:
         from jarvis.model_map import estimate_tokens
 
         name = body["response_format"]["json_schema"]["name"]
@@ -454,9 +455,27 @@ class ScriptedModel:
         found = []
         for line in user["lines"].splitlines():
             if m := SCRIPTED_LINE.match(line):
-                found += [{"kind": "decision" if p[1] else "commitment", "summary": p[0], "segment_seqs": [int(m[1])],
-                           "quote": p[0]} for p in PLANTED.finditer(m[3])]
+                found += [{"kind": "decision", "summary": p[0], "segment_seqs": [int(m[1])], "quote": p[0]}
+                          for p in PLANTED.finditer(m[3]) if p[1]]
         return {"candidates": found}
+
+    @staticmethod
+    def actions(user: dict) -> dict:
+        items = []
+        for line in user["lines"].splitlines():
+            if m := SCRIPTED_LINE.match(line):
+                items += [{"evidence": [{"line": m[1], "quote": p[0]}], "title": p[2][0].upper() + p[2][1:],
+                           "description": "", "owner": m[2], "owner_basis": "stated_promise", "recipient": None,
+                           "due": {"expression": f"by {p[3]}", "value": p[3], "precision": "day",
+                                   "derivation": "explicit date"},
+                           "status": "open", "kind": "action", "confidence": 0.9}
+                          for p in PLANTED.finditer(m[3]) if p[2]]
+        return {"items": items}
+
+    @staticmethod
+    def actions_verify(user: dict) -> dict:
+        return {"verdicts": [{"item": it["item"], "real_follow_up": True, "owner_correct": True, "reason": ""}
+                             for it in user["items"]]}
 
     @staticmethod
     def enrich(user: dict) -> dict:

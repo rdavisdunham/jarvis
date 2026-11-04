@@ -494,8 +494,9 @@ class ActionRun:
             "cost": self.cost, "prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens,
             "latency_ms": self.latency_ms, "drafts": drafts, "rejected": self.rejected}, default=str))
 
-    def restore(self, data: dict[str, Any]) -> None:
-        """Load a `dump` (status stays ok; `cost` is what the saved calls cost, for the caller to charge)."""
+    def restore(self, data: dict[str, Any], meeting: Meeting) -> None:
+        """Load a `dump` (status stays ok; `cost` is what the saved calls cost, for the caller to charge). Items
+        dismissed or marked wrong since it was saved are rejected again, as a fresh pass would."""
         for name in ("mode", "profile", "model", "calls", "cost", "prompt_tokens", "completion_tokens",
                      "latency_ms"):
             setattr(self, name, data[name])
@@ -506,6 +507,10 @@ class ActionRun:
             due=TimeBound.model_validate(d["due"]) if d["due"] else None,
             assertion=CandidateAssertion.model_validate(d["assertion"]) if d["assertion"] else None,
             links=[LinkProposal.model_validate(x) for x in d["links"]]) for d in data["drafts"]]
+        blocked = [d for d in self.drafts if normalized(d.title) in meeting.ctx.blocked]
+        self.drafts = [d for d in self.drafts if d not in blocked]
+        self.rejected += [rejection("prior_decision", "dismissed or marked wrong before", d.title, d.seqs)
+                          for d in blocked]
 
 
 DRAFT_FIELDS = ("kind", "title", "description", "owner", "basis", "model_basis", "recipient", "confidence",
@@ -513,10 +518,12 @@ DRAFT_FIELDS = ("kind", "title", "description", "owner", "basis", "model_basis",
 
 
 def cache_key(meeting: Meeting) -> str:
-    """What the pass's result depends on: the prompt version, the routed profile and the whole request (lines,
-    notes, participants, candidates, blocked titles, timezone). A saved pass with this key can be reused."""
-    raw = json.dumps({"prompt": PROMPT_VERSION, "profile": route().profile,
-                      "request": meeting.request.model_dump(mode="json")}, sort_keys=True, default=str)
+    """What the pass's calls depend on: the prompt version, the routed profile and the request (revision, lines,
+    notes, participants, candidates, timezone). Decisions are left out, as for saved chunks: `restore` rechecks
+    them. A reprocess never sees an earlier run's saved pass (the pipeline reads only its own runs')."""
+    request = meeting.request.model_dump(mode="json", exclude={"decisions", "limits"})
+    raw = json.dumps({"prompt": PROMPT_VERSION, "profile": route().profile, "request": request}, sort_keys=True,
+                     default=str)
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
